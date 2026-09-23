@@ -11,9 +11,7 @@ class McpToolImportSerializer(serializers.ModelSerializer):
     # back with auth unset and must have it re-entered manually — the
     # secure default, mirroring how LLMConfig/EmbeddingConfig etc. keep
     # `api_key` out of exports (see BaseConfigImportSerializer).
-    auth = serializers.CharField(
-        write_only=True, required=False, allow_null=True, allow_blank=True
-    )
+    auth = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = McpTool

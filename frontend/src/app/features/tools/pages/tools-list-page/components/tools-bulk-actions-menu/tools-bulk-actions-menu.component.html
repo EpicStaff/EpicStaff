@@ -1,4 +1,5 @@
 <div
+    #panel
     class="bulk-menu"
     role="menu"
     (click)="$event.stopPropagation()"
@@ -8,7 +9,7 @@
             type="button"
             class="menu-item"
             role="menuitem"
-            (click)="$event.stopPropagation(); ld.openAt($any($event.currentTarget))"
+            (click)="$event.stopPropagation(); ld.openAt(panel, labelsPositions)"
         >
             <span class="label">Manage Labels</span>
             <app-svg-icon

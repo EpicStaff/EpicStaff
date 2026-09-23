@@ -1,14 +1,15 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
 import { finalize, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
+import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { CollectionDetailsComponent } from './components/collection-details/collection-details.component';
 import { CollectionsListItemSidebarComponent } from './components/collections-list-sidebar/collections-list-sidebar.component';
 
@@ -17,29 +18,41 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
     templateUrl: './collections-list-page.component.html',
     styleUrls: ['./collections-list-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, SpinnerComponent],
+    imports: [
+        CollectionDetailsComponent,
+        CollectionsListItemSidebarComponent,
+        SpinnerComponent,
+        FetchErrorStateComponent,
+    ],
 })
-export class CollectionsListPageComponent implements OnInit {
+export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
     private collectionsStorageService = inject(CollectionsStorageService);
+    private pollingService = inject(KnowledgeSourcesPollingService);
     private deepLinkService = inject(ChunkDeepLinkService);
     private toastService = inject(ToastService);
 
     isLoading = signal<boolean>(true);
+    error = signal<string | null>(null);
     collections = this.collectionsStorageService.collections;
-    selectedCollectionId = signal<number | null>(null);
 
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
         this.getCollections();
+        this.pollingService.startPagePolling();
+    }
+
+    ngOnDestroy(): void {
+        this.pollingService.stopPagePolling();
     }
 
     getCollections(): void {
         this.isLoading.set(true);
+        this.error.set(null);
 
         this.collectionsStorageService
-            .getCollections()
+            .getCollections(true)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => {
@@ -48,8 +61,12 @@ export class CollectionsListPageComponent implements OnInit {
                 })
             )
             .subscribe({
-                error: () => this.toastService.error('Failed to get collections.'),
+                error: () => this.error.set('Failed to load knowledge sources.'),
             });
+    }
+
+    retryLoad(): void {
+        this.getCollections();
     }
 
     private handleDeepLink(): void {
@@ -64,7 +81,7 @@ export class CollectionsListPageComponent implements OnInit {
             return;
         }
 
-        this.selectedCollectionId.set(params.collectionId);
+        this.collectionsStorageService.setSelectedCollectionId(params.collectionId);
 
         this.collectionsStorageService
             .getFullCollection(params.collectionId, true)
@@ -78,7 +95,12 @@ export class CollectionsListPageComponent implements OnInit {
                         return;
                     }
 
-                    const ragConfig = fullCollection.rag_configurations.find((r) => r.rag_id === params.ragId);
+                    // Chunk deep links only ever point at naive RAG documents (see
+                    // ChunkDeepLinkService) — scope the match to 'naive' explicitly, since
+                    // naive and graph rag_id sequences are independent and can collide.
+                    const ragConfig = fullCollection.rag_configurations.find(
+                        (r) => r.rag_id === params.ragId && r.rag_type === 'naive'
+                    );
                     if (!ragConfig) {
                         this.toastService.error('Deep link: RAG configuration not found');
                         this.deepLinkService.consume();
@@ -100,7 +122,7 @@ export class CollectionsListPageComponent implements OnInit {
         this.dialog.open(NaiveRagConfigurationDialog, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
-            data: { ragId, collectionId },
+            data: { ragId, ragType: 'naive', collectionId },
             disableClose: true,
         });
     }
@@ -112,6 +134,7 @@ export class CollectionsListPageComponent implements OnInit {
             .subscribe({
                 next: ({ collection_id }) => {
                     if (!collection_id) return;
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                     this.openCreateModal(collection_id);
                 },
                 error: () => this.toastService.error('Failed to create collection'),
@@ -136,7 +159,7 @@ export class CollectionsListPageComponent implements OnInit {
             )
             .subscribe({
                 next: () => {
-                    this.selectedCollectionId.set(collection_id);
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                 },
                 error: () => {
                     this.toastService.error('Failed to get collection data');

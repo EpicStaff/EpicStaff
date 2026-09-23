@@ -1,15 +1,14 @@
-import uuid
 import asyncio
+import uuid
 from typing import Any
 
-from loguru import logger
-
 from core import config
-from utils.singleton_meta import SingletonMeta
-from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
+from domain.ports.i_redis_messaging_service import IRedisMessagingService
+from loguru import logger
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from src.shared.storage_credentials import publish_credential_scope_async
+from utils.singleton_meta import SingletonMeta
 
 
 class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonMeta):
@@ -52,18 +51,14 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
         # Trusted scope for the storage-credential issuer, written before the
         # task itself is published.
-        await publish_credential_scope_async(
-            self.redis_service.aioredis_client, code_task_data
-        )
+        await publish_credential_scope_async(self.redis_service.aioredis_client, code_task_data)
         await self.redis_service.async_publish(
             config.CODE_EXEC_CHANNEL, code_task_data.model_dump()
         )
         logger.info("Waiting for code_results")
 
         while True:
-            message = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0
-            )
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message:
                 code_result_data = CodeResultData.model_validate_json(message["data"])
                 if code_result_data.execution_id == unique_task_id:

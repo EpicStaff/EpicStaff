@@ -179,7 +179,6 @@
         cursor: pointer;
         color: var(--color-text-secondary);
         flex-shrink: 0;
-
         transition: color 0.15s ease;
 
         &--active {
@@ -194,55 +193,10 @@
         }
     }
 
-    &__badge {
-        position: absolute;
-        top: 0;
-        right: 0;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.25rem;
-        padding: 0.2rem 0.5rem;
-        font-size: 0.7rem;
-        color: var(--color-text-primary);
-        background: var(--color-text-primary) 14;
-        border-radius: 0.25rem;
-        z-index: 1;
-    }
-
-    &__badge-type {
-        color: var(--color-text-primary);
-    }
-
-    &__badge-suffix {
-        color: var(--color-text-primary);
-        opacity: 0.6;
-    }
-
     &__body {
         flex: 1;
         overflow: hidden;
         position: relative;
-        padding-top: 28px;
-
-        &--no-content {
-            padding-top: 0;
-        }
-
-        &--pdf {
-            padding-top: 0;
-        }
-    }
-
-    &__scroll {
-        height: calc(100% - 28px);
-        overflow: auto;
-        padding: 0 24px 24px;
-
-        &--pdf {
-            height: 100%;
-            overflow: hidden;
-            padding: 0;
-        }
     }
 
     &__empty-state {

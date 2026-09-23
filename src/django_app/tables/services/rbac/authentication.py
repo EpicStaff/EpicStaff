@@ -1,11 +1,8 @@
-from typing import Optional
-
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
-
 from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.authenticator import ApiKeyAuthenticator
 
@@ -34,14 +31,14 @@ class ApiKeyAuthScheme(OpenApiAuthenticationExtension):
         return {"type": "apiKey", "in": "header", "name": "X-Api-Key"}
 
 
-def _get_header(request: Request, name: str) -> Optional[str]:
+def _get_header(request: Request, name: str) -> str | None:
     value = request.META.get(name)
     if value:
         return value
     return None
 
 
-def _get_api_key_from_headers(request: Request) -> Optional[str]:
+def _get_api_key_from_headers(request: Request) -> str | None:
     header = _get_header(request, "HTTP_X_API_KEY")
     if header:
         return header.strip()

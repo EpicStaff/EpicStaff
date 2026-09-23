@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel, ConfigDict
-
 from shared.models.agent_service import ToolResult
 
 
@@ -53,8 +52,8 @@ def system_tool(
             async def executor(args: dict) -> ToolResult:
                 try:
                     validated = model.model_validate(args)
-                except Exception as exc:
-                    return ToolResult(tool_call_id="", content=str(exc), is_error=True)
+                except Exception as error:
+                    return ToolResult(tool_call_id="", content=str(error), is_error=True)
 
                 result = await func(validated.model_dump())
                 return ToolResult(tool_call_id="", content=str(result), is_error=False)

@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.label_models import Label
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
@@ -39,9 +38,7 @@ class LabelSerializer(serializers.ModelSerializer):
         """
         self_pk = self.instance.pk
         if parent.pk == self_pk:
-            raise serializers.ValidationError(
-                {"parent": "A label cannot be its own parent."}
-            )
+            raise serializers.ValidationError({"parent": "A label cannot be its own parent."})
 
         visited = set()
         current_id = parent.parent_id
@@ -58,9 +55,7 @@ class LabelSerializer(serializers.ModelSerializer):
                 # stop walking rather than loop forever.
                 break
             visited.add(current_id)
-            row = Label.objects.filter(pk=current_id).values_list(
-                "parent_id", flat=True
-            ).first()
+            row = Label.objects.filter(pk=current_id).values_list("parent_id", flat=True).first()
             current_id = row
 
     def validate(self, attrs):
@@ -73,9 +68,7 @@ class LabelSerializer(serializers.ModelSerializer):
             parent = attrs["parent"]
             if parent is not None and parent.scope != scope:
                 raise serializers.ValidationError(
-                    {
-                        "parent": "Parent label must belong to the same label tree (scope)."
-                    }
+                    {"parent": "Parent label must belong to the same label tree (scope)."}
                 )
             if parent is not None and self.instance is not None:
                 self._validate_no_parent_cycle(parent)

@@ -2,18 +2,14 @@ from functools import lru_cache
 
 from django.apps import apps
 from django.db import connection, transaction
-
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.models.base_models import BaseGlobalNode
+from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
+from tables.models.base_models import BaseGlobalNode
 from tables.models.graph_models import ConditionalEdge, Edge
-from tables.models.rbac_models import Organization
-
 from tables.serializers.graph_bulk_save_serializers import (
     ConditionalEdgeBulkSerializer,
     EdgeBulkSerializer,
 )
-from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.services.graph_bulk_save_service.data_types import (
     BuildSaveableResult,
     EdgeListValidationResult,
@@ -50,27 +46,11 @@ class GraphBulkSaveService:
     _request = None
 
     @staticmethod
-    def _resolve_organization() -> Organization | None:
-        """Resolve the default organization for serializer validation context.
-
-        Serializers treat a missing "organization" key in context as
-        permissive (skip org-scoped validation) — see TaskNodeSerializer.validate.
-        Falling back to None here preserves that behavior instead of raising
-        when the default organization has not been provisioned.
-        """
-        try:
-            return Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
-        except Organization.DoesNotExist:
-            return None
-
-    @staticmethod
     @lru_cache(maxsize=1)
     def _get_global_node_models() -> tuple[type, ...]:
         """Return all concrete BaseGlobalNode subclasses. Cached for process lifetime."""
         return tuple(
-            m
-            for m in apps.get_models()
-            if issubclass(m, BaseGlobalNode) and not m._meta.abstract
+            m for m in apps.get_models() if issubclass(m, BaseGlobalNode) and not m._meta.abstract
         )
 
     @transaction.atomic
@@ -84,10 +64,7 @@ class GraphBulkSaveService:
         all_errors: dict = {}
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
-        self._serializer_context = {
-            "organization": self._resolve_organization(),
-            "request": self._request,
-        }
+        self._serializer_context = {"request": self._request}
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 
@@ -106,12 +83,8 @@ class GraphBulkSaveService:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
                 continue
-            db_map = {
-                obj.id: obj for obj in config.model_class.objects.filter(graph=graph)
-            }
-            result = self._validate_node_list(
-                graph, incoming, config, db_map, payload_temp_ids
-            )
+            db_map = {obj.id: obj for obj in config.model_class.objects.filter(graph=graph)}
+            result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
             if result.errors:
                 all_errors[config.list_key] = result.errors
             else:
@@ -219,9 +192,7 @@ class GraphBulkSaveService:
             if build.error:
                 result.errors.append(build.error)
             else:
-                result.node_saveables.append(
-                    _NodeSaveable(build.inner_saveable, temp_id or None)
-                )
+                result.node_saveables.append(_NodeSaveable(build.inner_saveable, temp_id or None))
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
                     result.real_routing_node_ids |= self._collect_real_routing_refs(
@@ -248,9 +219,7 @@ class GraphBulkSaveService:
             return BuildSaveableResult(error={"index": index, "errors": routing_errors})
 
         s = (
-            config.serializer_class(
-                instance, data=data, context=self._serializer_context
-            )
+            config.serializer_class(instance, data=data, context=self._serializer_context)
             if instance is not None
             else config.serializer_class(data=data, context=self._serializer_context)
         )
@@ -330,16 +299,12 @@ class GraphBulkSaveService:
                     continue
 
                 item_data.pop("id", None)
-                s = serializer_class(
-                    db_instance, data=item_data, context=self._serializer_context
-                )
+                s = serializer_class(db_instance, data=item_data, context=self._serializer_context)
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _EdgeSaveable(
-                        s, start_parsed.ref, end_parsed.ref, instance=db_instance
-                    )
+                    _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=db_instance)
                 )
 
         return result
@@ -371,9 +336,7 @@ class GraphBulkSaveService:
 
             if item_id is None:
                 item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(
-                    data=item_data, context=self._serializer_context
-                )
+                s = ConditionalEdgeBulkSerializer(data=item_data, context=self._serializer_context)
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -494,8 +457,7 @@ class GraphBulkSaveService:
         id_list = list(node_ids)
         placeholders = ",".join(["%s"] * len(id_list))
         union_parts = [
-            f"SELECT id FROM {m._meta.db_table} WHERE id IN ({placeholders})"
-            for m in node_models
+            f"SELECT id FROM {m._meta.db_table} WHERE id IN ({placeholders})" for m in node_models
         ]
         query = " UNION ALL ".join(union_parts)
         params = id_list * len(node_models)

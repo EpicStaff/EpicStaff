@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { AppSvgIconComponent, CheckboxComponent, SearchComponent } from '@shared/components';
-import { CatalogAction, CatalogResourceType, CatalogResponse } from '@shared/models';
+import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, signal } from '@angular/core';
+import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
+import { ActionCode, CatalogAction, CatalogResourceType, CatalogResponse, ResourceCode } from '@shared/models';
 
-import { ACTION_ICONS, GROUP_META, GroupMeta, RESOURCE_META } from '../../constants/permission-table.constant';
+import { ACTION_ICONS, GROUP_META, GroupMeta } from '../../constants/permission-table.constant';
 
 interface CatalogGroup {
     key: string;
@@ -11,26 +11,44 @@ interface CatalogGroup {
     resources: CatalogResourceType[];
 }
 
+type TriState = 'checked' | 'indeterminate' | 'empty';
+
 @Component({
     selector: 'app-permissions-table',
     templateUrl: './permissions-table.component.html',
     styleUrls: ['./permissions-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppSvgIconComponent, SearchComponent, CheckboxComponent],
+    imports: [AppSvgIconComponent, SearchComponent, CheckboxComponent, ButtonComponent],
 })
 export class PermissionsTableComponent {
     catalog = input.required<CatalogResponse>();
     selectedPermissions = input.required<Set<string>>();
     readonly = input(false);
+    /** Set of `${resource}:${action}` keys the actor is NOT allowed to grant (ceiling rule).
+     *  Ignored in readonly mode (all cells are already non-interactive). */
+    disabledPermissions = input<Set<string>>(new Set<string>());
 
-    permissionToggle = output<{ resourceType: string; action: string }>();
+    permissionToggle = output<{ resourceType: ResourceCode; action: ActionCode }>();
+    /** Toggles ALL applicable & grantable actions for a resource on/off. */
+    resourceToggle = output<{ resourceCode: ResourceCode; select: boolean }>();
+    /** Toggles ALL applicable & grantable actions across every resource in a group. */
+    groupToggle = output<{ groupKey: string; select: boolean }>();
+    /** Toggles a single action across every applicable & grantable resource in a group. */
+    groupActionToggle = output<{ groupKey: string; actionCode: ActionCode; select: boolean }>();
     selectAllClick = output<void>();
     clearAllClick = output<void>();
-    groupSelectAllClick = output<string>();
-    groupClearClick = output<string>();
+    /** Adds the missing recommended keys triggered by a specific resource to the selection. */
+    enableRecommendedForResource = output<{ resourceCode: ResourceCode; keys: string[] }>();
+
+    private readonly hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
 
     searchTerm = signal('');
     collapsedGroups = signal<Set<string>>(new Set());
+    /** Missing-keys signatures whose recommendation banner the user dismissed within this dialog
+     *  session. Only hides the banner UI — yellow borders on recommended checkboxes remain visible. */
+    dismissedSignatures = signal<Set<string>>(new Set());
+    lastToggledResources = signal<Set<ResourceCode>>(new Set());
+    lastShownPendingResourceCode = signal<ResourceCode | null>(null);
 
     totalSelected = computed(() => this.selectedPermissions().size);
 
@@ -50,13 +68,17 @@ export class PermissionsTableComponent {
 
     filteredGroups = computed<CatalogGroup[]>(() => {
         const term = this.searchTerm().toLowerCase().trim();
-        if (!term) return this.groupedCatalog();
+        const hideEmpty = this.readonly();
+        if (!term && !hideEmpty) return this.groupedCatalog();
         return this.groupedCatalog()
             .map((g) => ({
                 ...g,
                 resources: g.resources.filter((r) => {
-                    const desc = RESOURCE_META[r.code]?.description ?? '';
-                    return r.label.toLowerCase().includes(term) || desc.toLowerCase().includes(term);
+                    if (term && !(r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term))) {
+                        return false;
+                    }
+                    if (hideEmpty && !this.hasGrantedPermission(r)) return false;
+                    return true;
                 }),
             }))
             .filter((g) => g.resources.length > 0);
@@ -79,6 +101,140 @@ export class PermissionsTableComponent {
         );
     });
 
+    private readonly relations = computed<Record<string, string[]>>(() => {
+        const map: Record<string, string[]> = {};
+        for (const rt of this.catalog().resource_types) {
+            for (const [action, cells] of Object.entries(rt.recommended_with)) {
+                map[`${rt.code}:${action}`] = cells.map((c) => `${c.resource_type}:${c.action}`);
+            }
+        }
+        return map;
+    });
+
+    readonly recommendedByResource = computed<Map<ResourceCode, { triggers: string[]; missingKeys: string[] }>>(() => {
+        if (this.readonly()) return new Map();
+        const selected = this.selectedPermissions();
+        const disabled = this.disabledPermissions();
+        const applicable = this.applicableKeySet();
+        const relations = this.relations();
+        const acc = new Map<ResourceCode, { triggers: Set<string>; missing: Set<string> }>();
+        for (const trigger of selected) {
+            const deps = relations[trigger];
+            if (!deps || deps.length === 0) continue;
+            const missing: string[] = [];
+            for (const dep of deps) {
+                if (selected.has(dep)) continue;
+                if (disabled.has(dep)) continue;
+                if (!applicable.has(dep)) continue;
+                missing.push(dep);
+            }
+            if (missing.length === 0) continue;
+            const resource = trigger.split(':')[0] as ResourceCode;
+            const entry = acc.get(resource) ?? { triggers: new Set<string>(), missing: new Set<string>() };
+            entry.triggers.add(trigger);
+            for (const k of missing) entry.missing.add(k);
+            acc.set(resource, entry);
+        }
+        const result = new Map<ResourceCode, { triggers: string[]; missingKeys: string[] }>();
+        for (const [k, v] of acc) result.set(k, { triggers: [...v.triggers], missingKeys: [...v.missing] });
+        return result;
+    });
+
+    /** Union of all missing recommended keys — drives yellow highlighting and the global pending count. */
+    readonly recommendedSet = computed<Set<string>>(() => {
+        const set = new Set<string>();
+        for (const entry of this.recommendedByResource().values()) {
+            for (const key of entry.missingKeys) set.add(key);
+        }
+        return set;
+    });
+
+    private readonly missingKeysSignatureByResource = computed<Map<ResourceCode, string>>(() => {
+        const map = new Map<ResourceCode, string>();
+        for (const [resourceCode, entry] of this.recommendedByResource()) {
+            map.set(resourceCode, [...entry.missingKeys].sort().join('|'));
+        }
+        return map;
+    });
+
+    private readonly consolidationWinners = computed<Set<ResourceCode>>(() => {
+        const lastToggled = this.lastToggledResources();
+        const signatures = this.missingKeysSignatureByResource();
+        const bySignature = new Map<string, { resourceCode: ResourceCode; toggled: boolean }>();
+        for (const rt of this.catalog().resource_types) {
+            const signature = signatures.get(rt.code);
+            if (!signature) continue;
+            const toggled = lastToggled.has(rt.code);
+            const existing = bySignature.get(signature);
+            if (!existing || (toggled && !existing.toggled)) {
+                bySignature.set(signature, { resourceCode: rt.code, toggled });
+            }
+        }
+        return new Set([...bySignature.values()].map((winner) => winner.resourceCode));
+    });
+
+    readonly consolidatedRecommendations = computed<{ resourceCode: ResourceCode; missingKeys: string[] }[]>(() => {
+        const winners = this.consolidationWinners();
+        const result: { resourceCode: ResourceCode; missingKeys: string[] }[] = [];
+        for (const [resourceCode, entry] of this.recommendedByResource()) {
+            if (!winners.has(resourceCode)) continue;
+            if (this.isBannerDismissed(resourceCode)) continue;
+            result.push({ resourceCode, missingKeys: entry.missingKeys });
+        }
+        return result;
+    });
+
+    private readonly visibleRecommendationByResource = computed<Map<ResourceCode, { missingKeys: string[] }>>(() => {
+        const map = new Map<ResourceCode, { missingKeys: string[] }>();
+        for (const entry of this.consolidatedRecommendations()) map.set(entry.resourceCode, entry);
+        return map;
+    });
+
+    recommendationFor(resourceCode: ResourceCode): { missingKeys: string[] } | undefined {
+        return this.visibleRecommendationByResource().get(resourceCode);
+    }
+
+    readonly globalPendingCount = computed(() => this.recommendedSet().size);
+
+    private readonly orderedPendingResourceCodes = computed<ResourceCode[]>(() => {
+        const winners = this.consolidationWinners();
+        const codes: ResourceCode[] = [];
+        for (const rt of this.catalog().resource_types) {
+            if (winners.has(rt.code) && !this.isBannerDismissed(rt.code)) codes.push(rt.code);
+        }
+        return codes;
+    });
+
+    readonly nextPendingResourceCode = computed<ResourceCode | null>(() => {
+        const ordered = this.orderedPendingResourceCodes();
+        if (ordered.length === 0) return null;
+        const lastShown = this.lastShownPendingResourceCode();
+        const lastIndex = lastShown === null ? -1 : ordered.indexOf(lastShown);
+        return ordered[(lastIndex + 1) % ordered.length];
+    });
+
+    private readonly resourceToGroupMap = computed<Map<ResourceCode, string>>(() => {
+        const map = new Map<ResourceCode, string>();
+        for (const rt of this.catalog().resource_types) map.set(rt.code, rt.group);
+        return map;
+    });
+
+    /** Whether the recommendation banner for this resource's missing-keys signature has been dismissed. */
+    isBannerDismissed(resourceCode: ResourceCode): boolean {
+        const signature = this.missingKeysSignatureByResource().get(resourceCode);
+        return signature !== undefined && this.dismissedSignatures().has(signature);
+    }
+
+    private readonly applicableKeySet = computed<Set<string>>(() => {
+        const set = new Set<string>();
+        for (const rt of this.catalog().resource_types) {
+            for (const action of rt.applicable_actions) {
+                set.add(`${rt.code}:${action}`);
+            }
+        }
+        return set;
+    });
+
     isGroupCollapsed(groupKey: string): boolean {
         return this.collapsedGroups().has(groupKey);
     }
@@ -95,12 +251,148 @@ export class PermissionsTableComponent {
         return resource.applicable_actions.includes(action.code);
     }
 
-    isChecked(resourceCode: string, actionCode: string): boolean {
+    isChecked(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
         return this.selectedPermissions().has(`${resourceCode}:${actionCode}`);
     }
 
-    resourceDescription(resourceCode: string): string {
-        return RESOURCE_META[resourceCode]?.description ?? '';
+    private hasGrantedPermission(resource: CatalogResourceType): boolean {
+        const selected = this.selectedPermissions();
+        return resource.applicable_actions.some((action) => selected.has(`${resource.code}:${action}`));
+    }
+
+    isCellDisabled(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
+        return this.readonly() || this.disabledPermissions().has(`${resourceCode}:${actionCode}`);
+    }
+
+    isRecommended(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
+        return this.recommendedSet().has(`${resourceCode}:${actionCode}`);
+    }
+
+    /** Tri-state for a single resource row. Considers only grantable actions. */
+    resourceState(resource: CatalogResourceType): TriState {
+        const selected = this.selectedPermissions();
+        const disabled = this.disabledPermissions();
+        let grantable = 0;
+        let sel = 0;
+        for (const action of resource.applicable_actions) {
+            const key = `${resource.code}:${action}`;
+            if (disabled.has(key)) continue;
+            grantable++;
+            if (selected.has(key)) sel++;
+        }
+        if (grantable === 0 || sel === 0) return 'empty';
+        if (sel === grantable) return 'checked';
+        return 'indeterminate';
+    }
+
+    /** Tri-state for a group header checkbox. Considers only grantable actions in the group. */
+    groupState(group: CatalogGroup): TriState {
+        const selected = this.selectedPermissions();
+        const disabled = this.disabledPermissions();
+        let grantable = 0;
+        let sel = 0;
+        for (const rt of group.resources) {
+            for (const action of rt.applicable_actions) {
+                const key = `${rt.code}:${action}`;
+                if (disabled.has(key)) continue;
+                grantable++;
+                if (selected.has(key)) sel++;
+            }
+        }
+        if (grantable === 0 || sel === 0) return 'empty';
+        if (sel === grantable) return 'checked';
+        return 'indeterminate';
+    }
+
+    /** Whether the row-checkbox should render as fully-checked (drives the `checked` input). */
+    resourceCheckboxChecked(resource: CatalogResourceType): boolean {
+        return this.resourceState(resource) === 'checked';
+    }
+
+    resourceCheckboxIndeterminate(resource: CatalogResourceType): boolean {
+        return this.resourceState(resource) === 'indeterminate';
+    }
+
+    groupCheckboxChecked(group: CatalogGroup): boolean {
+        return this.groupState(group) === 'checked';
+    }
+
+    groupCheckboxIndeterminate(group: CatalogGroup): boolean {
+        return this.groupState(group) === 'indeterminate';
+    }
+
+    /** Tri-state for a single action across all resources of a group. Considers only applicable & grantable cells. */
+    groupActionState(group: CatalogGroup, actionCode: ActionCode): TriState {
+        const selected = this.selectedPermissions();
+        const disabled = this.disabledPermissions();
+        let grantable = 0;
+        let sel = 0;
+        for (const rt of group.resources) {
+            if (!rt.applicable_actions.includes(actionCode)) continue;
+            const key = `${rt.code}:${actionCode}`;
+            if (disabled.has(key)) continue;
+            grantable++;
+            if (selected.has(key)) sel++;
+        }
+        if (grantable === 0 || sel === 0) return 'empty';
+        if (sel === grantable) return 'checked';
+        return 'indeterminate';
+    }
+
+    groupActionCheckboxChecked(group: CatalogGroup, actionCode: ActionCode): boolean {
+        return this.groupActionState(group, actionCode) === 'checked';
+    }
+
+    groupActionCheckboxIndeterminate(group: CatalogGroup, actionCode: ActionCode): boolean {
+        return this.groupActionState(group, actionCode) === 'indeterminate';
+    }
+
+    /** Whether the group has at least one applicable & grantable cell for this action. */
+    hasGroupApplicableAction(group: CatalogGroup, actionCode: ActionCode): boolean {
+        const disabled = this.disabledPermissions();
+        for (const rt of group.resources) {
+            if (!rt.applicable_actions.includes(actionCode)) continue;
+            if (!disabled.has(`${rt.code}:${actionCode}`)) return true;
+        }
+        return false;
+    }
+
+    /** Bulk-action click: toggle the action across every applicable & grantable resource in the group. */
+    onGroupActionToggleClick(group: CatalogGroup, actionCode: ActionCode): void {
+        if (this.readonly()) return;
+        const select = this.groupActionState(group, actionCode) !== 'checked';
+        const disabled = this.disabledPermissions();
+        this.lastToggledResources.set(
+            new Set(
+                group.resources
+                    .filter(
+                        (rt) => rt.applicable_actions.includes(actionCode) && !disabled.has(`${rt.code}:${actionCode}`)
+                    )
+                    .map((rt) => rt.code)
+            )
+        );
+        this.groupActionToggle.emit({ groupKey: group.key, actionCode, select });
+    }
+
+    /** Row-checkbox click: any non-checked state selects everything grantable; fully-checked clears the row. */
+    onResourceRowToggle(resource: CatalogResourceType): void {
+        if (this.readonly()) return;
+        const select = this.resourceState(resource) !== 'checked';
+        this.lastToggledResources.set(new Set([resource.code]));
+        this.resourceToggle.emit({ resourceCode: resource.code, select });
+    }
+
+    /** BULK SELECT row leading checkbox: toggle every applicable & grantable action in the group. */
+    onGroupBulkToggle(group: CatalogGroup): void {
+        if (this.readonly()) return;
+        const select = this.groupState(group) !== 'checked';
+        this.lastToggledResources.set(new Set(group.resources.map((rt) => rt.code)));
+        this.groupToggle.emit({ groupKey: group.key, select });
+    }
+
+    onPermissionCellToggle(resourceType: ResourceCode, action: ActionCode): void {
+        this.lastToggledResources.set(new Set([resourceType]));
+        this.permissionToggle.emit({ resourceType, action });
     }
 
     actionLabel(action: CatalogAction): string {
@@ -111,5 +403,85 @@ export class PermissionsTableComponent {
         return ACTION_ICONS[action.code] ?? 'circle';
     }
 
-    readonly gridTemplate = computed(() => `minmax(300px, 1fr) repeat(${this.catalog().actions.length}, 100px)`);
+    keyLabel(key: string): string {
+        const [resource, action] = key.split(':');
+        const rt = this.catalog().resource_types.find((r) => r.code === resource);
+        const act = this.catalog().actions.find((a) => a.code === action);
+        const resourceLabel = rt?.label ?? resource;
+        const actionLabel = act?.label ?? action;
+        return `${resourceLabel}: ${actionLabel}`;
+    }
+
+    onEnableResourceRecommended(resourceCode: ResourceCode): void {
+        const entry = this.recommendedByResource().get(resourceCode);
+        if (!entry || entry.missingKeys.length === 0) return;
+        this.enableRecommendedForResource.emit({ resourceCode, keys: entry.missingKeys });
+    }
+
+    onDismissResourceRecommended(resourceCode: ResourceCode): void {
+        const signature = this.missingKeysSignatureByResource().get(resourceCode);
+        if (!signature) return;
+        this.dismissedSignatures.update((set) => {
+            if (set.has(signature)) return set;
+            const next = new Set(set);
+            next.add(signature);
+            return next;
+        });
+    }
+
+    onShowNextPending(): void {
+        const resourceCode = this.nextPendingResourceCode();
+        if (!resourceCode) return;
+        this.lastShownPendingResourceCode.set(resourceCode);
+        this.lastToggledResources.set(new Set([resourceCode]));
+        const groupKey = this.resourceToGroupMap().get(resourceCode);
+        if (groupKey) {
+            this.collapsedGroups.update((set) => {
+                if (!set.has(groupKey)) return set;
+                const next = new Set(set);
+                next.delete(groupKey);
+                return next;
+            });
+        }
+        this.scrollToResourceWhenSettled(resourceCode);
+    }
+
+    private scrollRequestId = 0;
+
+    private scrollToResourceWhenSettled(resourceCode: ResourceCode, deadline = performance.now() + 1000): void {
+        const requestId = ++this.scrollRequestId;
+        const host = this.hostEl.nativeElement;
+        requestAnimationFrame(() => {
+            if (requestId !== this.scrollRequestId) return;
+            const el = host.querySelector<HTMLElement>(`[data-resource-code="${resourceCode}"]`);
+            const container = host.querySelector<HTMLElement>('.perm-table');
+            if (!el || !container) return;
+            let lastTop = el.getBoundingClientRect().top;
+            let stableFrames = 0;
+            const step = (): void => {
+                if (requestId !== this.scrollRequestId) return;
+                const top = el.getBoundingClientRect().top;
+                stableFrames = Math.abs(top - lastTop) < 0.5 ? stableFrames + 1 : 0;
+                lastTop = top;
+                if (stableFrames >= 3 || performance.now() >= deadline) {
+                    this.scrollRowUnderStickyHeader(container, el);
+                    return;
+                }
+                requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        });
+    }
+
+    private scrollRowUnderStickyHeader(container: HTMLElement, el: HTMLElement): void {
+        const headers = container.querySelector<HTMLElement>('.perm-headers');
+        const topBanner = container.querySelector<HTMLElement>('.related-banner.top');
+        const stickyOffset =
+            (headers?.getBoundingClientRect().height ?? 0) + (topBanner?.getBoundingClientRect().height ?? 0) + 8;
+        const currentOffset =
+            el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        container.scrollTo({ top: Math.max(0, currentOffset - stickyOffset), behavior: 'smooth' });
+    }
+
+    readonly gridTemplate = computed(() => `24px minmax(280px, 1fr) repeat(${this.catalog().actions.length}, 100px)`);
 }

@@ -10,7 +10,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.exceptions import (
     AgentServiceError,
     McpToolError,
@@ -47,7 +46,6 @@ from shared.models.tools import (
     PythonCodeData,
     PythonCodeToolData,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,16 +235,18 @@ async def test_unknown_tool_ref_raises():
 
 
 async def test_unsupported_tool_prefix_raises_agent_service_error():
-    from shared.models.tools import ConfiguredToolData, ToolConfigData
+    """`python-code-tool-config:` is accepted by ``BaseToolData`` (converter_service
+    still emits it for ``PythonCodeToolConfig`` tools, see
+    tables/services/converter_service.py), but the resolver's dispatch only
+    branches on the exact ``python-code-tool`` / ``mcp-tool`` prefixes, so it
+    is the prefix that actually reaches the resolver's "not supported" branch.
 
-    agent = _agent_spec(tool_refs=["configured-tool:5"])
-    tool = _base_tool(
-        "configured-tool:5",
-        ConfiguredToolData(
-            name_alias="alias",
-            tool_config=ToolConfigData(id=5),
-        ),
-    )
+    The formerly deprecated ``configured-tool:`` prefix used here is rejected
+    earlier, at ``BaseToolData`` construction itself (shared/models/tools.py
+    raises "Unknown tool prefix"), so it can never reach the resolver.
+    """
+    agent = _agent_spec(tool_refs=["python-code-tool-config:5"])
+    tool = _base_tool("python-code-tool-config:5", _python_tool_data())
     request = _request([agent], tools=[tool])
 
     with pytest.raises(AgentServiceError, match="not supported"):
@@ -409,9 +409,7 @@ async def test_knowledge_sink_threaded_to_registry_builder():
 
     await _resolver().resolve(agent, request, knowledge_sink=sink)
 
-    sink.register_knowledge_tool.assert_called_once_with(
-        "search_test_knowledge_base_naive"
-    )
+    sink.register_knowledge_tool.assert_called_once_with("search_test_knowledge_base_naive")
 
 
 async def test_resolve_without_knowledge_sink_still_works():

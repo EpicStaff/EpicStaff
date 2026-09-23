@@ -7,7 +7,7 @@
 .icon-selector {
     min-width: 25px;
     height: 25px;
-    border-radius: 6px;
+    border-radius: 4px;
     background-color: var(--gray-750);
     display: flex;
     align-items: center;
@@ -82,7 +82,7 @@
     overflow-y: auto; /* Enable vertical scroll if needed */
     background-color: var(--gray-850);
     border: 1px solid var(--gray-700);
-    border-radius: 8px;
+    border-radius: 4px;
     box-shadow: 0 8px 16px var(--black-alpha-20);
     z-index: 10;
 }

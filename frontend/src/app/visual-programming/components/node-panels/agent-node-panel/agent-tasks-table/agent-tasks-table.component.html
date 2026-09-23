@@ -1,4 +1,7 @@
-<div class="att">
+<div
+    class="att"
+    #tableWrapper
+>
     <div class="att__scroll">
         <div class="att__inner">
             <div class="att-row att-row--header">
@@ -142,75 +145,17 @@
     </div>
 </div>
 
-<ng-template #contextPopupTemplate>
-    <div class="att-popup">
-        <div class="att-popup__header">
-            <app-svg-icon
-                icon="search"
-                size="14px"
-                class="att-popup__search-icon"
-            />
-            <input
-                type="text"
-                class="att-popup__search"
-                placeholder="Search tasks..."
-                [value]="contextSearch()"
-                (input)="onContextSearch($event)"
-            />
-        </div>
-
-        <div class="att-popup__list">
-            @for (candidate of contextCandidates(); track candidate.tempId) {
-                <div
-                    class="att-popup__item"
-                    [class.selected]="isContextSelected(candidate)"
-                    (click)="toggleContextSelection(candidate)"
-                >
-                    <span class="att-popup__order">{{ candidate.order }}</span>
-                    <span class="att-popup__name">{{ candidate.name || 'Untitled' }}</span>
-                    <span class="att-popup__checkbox-wrapper">
-                        <input
-                            type="checkbox"
-                            class="transparent-checkbox"
-                            [checked]="isContextSelected(candidate)"
-                            (click)="$event.stopPropagation()"
-                            (change)="toggleContextSelection(candidate)"
-                        />
-                        @if (isContextSelected(candidate)) {
-                            <span class="checkmark"></span>
-                        }
-                    </span>
-                </div>
-            }
-            @if (contextCandidates().length === 0) {
-                <div class="att-popup__empty">No earlier tasks available</div>
-            }
-        </div>
-
-        <div class="att-popup__footer">
-            <button
-                type="button"
-                class="att-btn att-btn--outline"
-                (click)="onContextClear()"
-            >
-                Clear
-            </button>
-            <div class="att-popup__footer-right">
-                <button
-                    type="button"
-                    class="att-btn att-btn--outline"
-                    (click)="onContextCancel()"
-                >
-                    Cancel
-                </button>
-                <button
-                    type="button"
-                    class="att-btn att-btn--primary"
-                    (click)="onContextSave()"
-                >
-                    Save Changes
-                </button>
-            </div>
-        </div>
-    </div>
-</ng-template>
+<app-multi-select
+    #contextMultiSelect
+    [hideTrigger]="true"
+    [items]="contextItems()"
+    [selectedValues]="contextSelectedValues()"
+    [allowFlip]="true"
+    checkboxPosition="left"
+    [showClearFilter]="true"
+    saveLabel="Save Changes"
+    panelWidth="390px"
+    searchPlaceholder="Search tasks..."
+    emptyText="No earlier tasks available"
+    (selectionChange)="onContextSelectionChange($event)"
+/>

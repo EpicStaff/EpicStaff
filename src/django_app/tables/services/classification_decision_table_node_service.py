@@ -2,27 +2,26 @@ import json
 from dataclasses import dataclass
 
 from rest_framework.exceptions import ValidationError as DRFValidationError
-
 from tables.exceptions import ClassificationDecisionTableNodeNotFoundError
-from tables.models.graph_models import ClassificationDecisionTableNode
-from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
-    ClassificationDecisionTableNodeSerializer,
-    ClassificationDecisionTablePromptSerializer,
-    ClassificationConditionGroupSerializer,
-)
 from tables.import_export.enums import EntityType
+from tables.import_export.export_tabular_projections.export_classification_decision_table_csv import (
+    export_condition_groups_csv,
+)
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
 )
-from tables.import_export.export_tabular_projections.export_classification_decision_table_csv import (
-    export_condition_groups_csv,
+from tables.models.graph_models import ClassificationDecisionTableNode
+from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    ClassificationConditionGroupSerializer,
+    ClassificationDecisionTableNodeSerializer,
+    ClassificationDecisionTablePromptSerializer,
 )
-from tables.utils.helpers import generate_file_name
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
+from tables.utils.helpers import generate_file_name
 
 
 @dataclass
@@ -87,9 +86,7 @@ class ClassificationDecisionTableNodeService:
         (including [] to remove all)."""
         if raw is None:
             return None
-        child = serializer_class(
-            data=raw, many=True, partial=True, context={"request": request}
-        )
+        child = serializer_class(data=raw, many=True, partial=True, context={"request": request})
         child.is_valid(raise_exception=True)
         return child.validated_data
 
@@ -105,19 +102,13 @@ class ClassificationDecisionTableNodeService:
             raise ClassificationDecisionTableNodeNotFoundError(pk)
         return node
 
-    def export(
-        self, pk, export_format: str = "json", *, org_id: int
-    ) -> NodeExportResult:
+    def export(self, pk, export_format: str = "json", *, org_id: int) -> NodeExportResult:
         export_format = (export_format or "json").lower()
         if export_format not in ("json", "csv"):
-            raise DRFValidationError(
-                {"export_format": "Unsupported format. Use 'json' or 'csv'."}
-            )
+            raise DRFValidationError({"export_format": "Unsupported format. Use 'json' or 'csv'."})
 
         if export_format == "csv":
-            node = self._get_node_or_404(
-                pk, org_id, select_related="default_llm_config__model"
-            )
+            node = self._get_node_or_404(pk, org_id, select_related="default_llm_config__model")
             buf = export_condition_groups_csv(node)
             return NodeExportResult(
                 content=buf.getvalue(),

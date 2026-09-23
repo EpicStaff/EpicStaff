@@ -15,7 +15,14 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path
+from tables.views.api_key_views import (
+    ProfileApiKeyDetailView,
+    ProfileApiKeyRevokeView,
+    ProfileApiKeysView,
+)
 from tables.views.auth_views import (
     AdminPasswordResetView,
     ApiKeyValidateView,
@@ -31,13 +38,8 @@ from tables.views.auth_views import (
     TokenIntrospectView,
     WsTicketView,
 )
-from tables.views.api_key_views import (
-    ApiKeyManagementViewSet,
-    ProfileApiKeyDetailView,
-    ProfileApiKeyRevokeView,
-    ProfileApiKeysView,
-)
 from tables.views.permission_views import (
+    MyOrgsPermissionsView,
     MyPermissionsView,
     PermissionCatalogView,
 )
@@ -47,10 +49,8 @@ from tables.views.user_profile_views import (
     ProfileAvatarView,
     ProfileView,
 )
-from .yasg import urlpatterns as doc_urls
-from django.conf import settings
-from django.conf.urls.static import static
 
+from .yasg import urlpatterns as doc_urls
 
 urlpatterns = [
     path("api/auth/login/", LoginView.as_view(), name="login"),
@@ -58,9 +58,7 @@ urlpatterns = [
     path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="refresh"),
     path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
     path("api/auth/ws-ticket/", WsTicketView.as_view(), name="ws_ticket"),
-    path(
-        "api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"
-    ),
+    path("api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"),
     path(
         "api/auth/api-key/validate/",
         ApiKeyValidateView.as_view(),
@@ -116,21 +114,6 @@ urlpatterns = [
         name="profile_api_key_revoke",
     ),
     path(
-        "api/api-keys/",
-        ApiKeyManagementViewSet.as_view({"get": "list"}),
-        name="api_keys_management",
-    ),
-    path(
-        "api/api-keys/<int:pk>/",
-        ApiKeyManagementViewSet.as_view({"delete": "destroy"}),
-        name="api_keys_management_detail",
-    ),
-    path(
-        "api/api-keys/<int:pk>/revoke/",
-        ApiKeyManagementViewSet.as_view({"post": "revoke"}),
-        name="api_keys_management_revoke",
-    ),
-    path(
         "api/permissions/catalog/",
         PermissionCatalogView.as_view(),
         name="permissions_catalog",
@@ -139,6 +122,11 @@ urlpatterns = [
         "api/permissions/me/",
         MyPermissionsView.as_view(),
         name="permissions_me",
+    ),
+    path(
+        "api/permissions/me/orgs/",
+        MyOrgsPermissionsView.as_view(),
+        name="permissions_me_orgs",
     ),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),

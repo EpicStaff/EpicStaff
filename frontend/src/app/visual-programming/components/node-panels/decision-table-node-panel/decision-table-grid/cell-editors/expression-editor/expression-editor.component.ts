@@ -15,10 +15,10 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowService } from '../../../../../../services/flow.service';
 import { AutocompleteItem, AutocompleteOverlayComponent } from './autocomplete-overlay/autocomplete-overlay.component';
 import { EditorToolbarComponent } from './editor-toolbar/editor-toolbar.component';

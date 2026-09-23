@@ -1,9 +1,10 @@
-from pydantic import BaseModel
 from typing import Literal
-from pydantic import ConfigDict, Field
-from .ai_providers import LLMData, EmbedderData
-from .tools import BaseToolData
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .ai_providers import EmbedderData, LLMData
 from .knowledge import RagSearchConfig
+from .tools import BaseToolData
 
 
 class AgentData(BaseModel):
@@ -31,6 +32,8 @@ class AgentData(BaseModel):
     rag_search_config: RagSearchConfig | None = None
     rag_embedder_api_key: str | None = None
     rag_embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    rag_llm_api_key: str | None = None
+    rag_llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +49,8 @@ class RealtimeAgentChatData(BaseModel):
     rag_search_config: RagSearchConfig | None = None
     rag_embedder_api_key: str | None = None
     rag_embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    rag_llm_api_key: str | None = None
+    rag_llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
     llm: LLMData | None = None
     rt_model_name: str
     rt_api_key: str | None = None

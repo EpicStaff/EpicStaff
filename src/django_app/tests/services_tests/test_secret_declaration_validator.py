@@ -166,6 +166,7 @@ from tables.models import Session
 from tables.models.graph_models import Edge, StartNode
 from tables.services.secrets.exceptions import UndeclaredSecretError
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 
 
 @pytest.mark.django_db
@@ -191,7 +192,9 @@ class TestSessionAborts:
         )
 
         with pytest.raises(UndeclaredSecretError):
-            service.run_session(graph_id=graph.pk, variables={})
+            service.run_session(
+                graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            )
 
         session = Session.objects.filter(graph_id=graph.pk).latest("pk")
         assert session.status == Session.SessionStatus.ERROR
@@ -219,7 +222,9 @@ class TestSessionAborts:
             lambda channel, message: published.append(message) or 2,
         )
 
-        session_id = service.run_session(graph_id=graph.pk, variables={})
+        session_id = service.run_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
 
         session = Session.objects.get(pk=session_id)
         assert session.status != Session.SessionStatus.ERROR

@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from django.db import transaction
 from loguru import logger
 from rest_framework import serializers
-
 from tables.constants.variables_constants import (
     DOMAIN_ORGANIZATION_KEY,
     DOMAIN_PERSISTENT_KEY,
@@ -67,11 +66,7 @@ class PersistentVariablesService:
         """Merge `updates` over `base`, recursing into nested dicts. Pure."""
         result = dict(base or {})
         for key, value in (updates or {}).items():
-            if (
-                key in result
-                and isinstance(result[key], dict)
-                and isinstance(value, dict)
-            ):
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self.deep_merge(result[key], value)
             else:
                 result[key] = value
@@ -79,9 +74,7 @@ class PersistentVariablesService:
 
     def _org_paths(self, variables: dict) -> list:
         return (
-            (variables or {})
-            .get(DOMAIN_PERSISTENT_KEY, {})
-            .get(DOMAIN_ORGANIZATION_KEY, [])
+            (variables or {}).get(DOMAIN_PERSISTENT_KEY, {}).get(DOMAIN_ORGANIZATION_KEY, [])
         ) or []
 
     def _actual(self, variables: dict) -> dict:
@@ -89,9 +82,7 @@ class PersistentVariablesService:
 
     def extract(self, variables: dict, domain_key: str) -> dict:
         """Extract the values for a domain's declared paths from the Domain defaults."""
-        paths = (
-            (variables or {}).get(DOMAIN_PERSISTENT_KEY, {}).get(domain_key, [])
-        ) or []
+        paths = ((variables or {}).get(DOMAIN_PERSISTENT_KEY, {}).get(domain_key, [])) or []
         actual = self._actual(variables)
         result: dict = {}
         for path in paths:
@@ -124,9 +115,7 @@ class PersistentVariablesService:
                 return
             with transaction.atomic():
                 GraphOrganization.objects.get_or_create(graph=graph)
-                graph_org = GraphOrganization.objects.select_for_update().get(
-                    graph=graph
-                )
+                graph_org = GraphOrganization.objects.select_for_update().get(graph=graph)
                 stored = graph_org.persistent_variables or {}
                 changed = False
                 for path in org_paths:

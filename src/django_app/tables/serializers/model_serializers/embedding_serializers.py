@@ -1,24 +1,22 @@
 from rest_framework import serializers
-
-from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgScopedUniqueTogetherValidator,
-    OrgVisiblePrimaryKeyRelatedField,
-    OrgScopedUniqueValidator,
-)
-from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
-from tables.models.secret_models import Secret
 from tables.models.embedding_models import (
     EmbeddingConfig,
     EmbeddingModel,
 )
-
+from tables.models.secret_models import Secret
+from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingConfigTagSerializer,
     EmbeddingTagSerializer,
 )
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
+)
+from tables.serializers.utils.mixins import TagHandlingMixin
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):

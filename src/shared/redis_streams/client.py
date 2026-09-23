@@ -27,9 +27,7 @@ class RedisStreamClient:
         self._host = host
         self._port = port
         self._password = password
-        self._retry = Retry(
-            backoff=ExponentialBackoff(cap=backoff_cap), retries=retry_attempts
-        )
+        self._retry = Retry(backoff=ExponentialBackoff(cap=backoff_cap), retries=retry_attempts)
         self._decode_responses = decode_responses
         self._client: aioredis.Redis | None = None
 
@@ -63,9 +61,7 @@ class RedisStreamClient:
     ) -> None:
         assert self._client is not None, "call connect() first"
         try:
-            await self._client.xgroup_create(
-                stream, group, id=start_id, mkstream=mkstream
-            )
+            await self._client.xgroup_create(stream, group, id=start_id, mkstream=mkstream)
             logger.info("consumer group created: {} @ {}", group, stream)
         except ResponseError as error:
             if "BUSYGROUP" in str(error):
@@ -97,14 +93,10 @@ class RedisStreamClient:
         for stream_name, entries in raw:
             for message_id, fields in entries:
                 messages.append(
-                    StreamMessage(
-                        stream=stream_name, message_id=message_id, fields=fields
-                    )
+                    StreamMessage(stream=stream_name, message_id=message_id, fields=fields)
                 )
 
-        logger.debug(
-            "read {} messages from streams {}", len(messages), list(streams.keys())
-        )
+        logger.debug("read {} messages from streams {}", len(messages), list(streams.keys()))
         return messages
 
     async def ack(self, stream: str, group: str, *message_ids: str) -> int:

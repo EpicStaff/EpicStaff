@@ -18,7 +18,11 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number formControlName="rows_in_chunk" />
+            @if (canUpdate()) {
+                <app-input-number formControlName="rows_in_chunk" />
+            } @else {
+                <span>{{ params().rows_in_chunk || 0 }}</span>
+            }
         </div>
 
         <div class="config__grid-item">
@@ -31,7 +35,11 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number formControlName="headers_level" />
+            @if (canUpdate()) {
+                <app-input-number formControlName="headers_level" />
+            } @else {
+                <span>{{ params().headers_level || 0 }}</span>
+            }
         </div>
     </div>
 </form>

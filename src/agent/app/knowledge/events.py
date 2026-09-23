@@ -13,12 +13,17 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from shared.models.knowledge import BaseKnowledgeSearchMessageResponse
+from shared.knowledge.target import KnowledgeSearchTarget
+from shared.models.knowledge_new import FoundChunk
 
 
 class KnowledgeEventSink(Protocol):
     def register_knowledge_tool(self, name: str) -> None: ...
 
     async def on_knowledge_search(
-        self, response: BaseKnowledgeSearchMessageResponse
+        self,
+        target: KnowledgeSearchTarget,
+        query: str,
+        result: list[FoundChunk] | str,
+        error: str | None = None,
     ) -> None: ...

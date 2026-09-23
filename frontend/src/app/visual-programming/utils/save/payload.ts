@@ -1,16 +1,13 @@
-import {
-    AgentNodeTaskUi,
-    AgentNodeTaskWrite,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
+import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
 import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
+} from '../../core/models/classification-decision-table-node.model';
+import { ConnectionModel } from '../../core/models/connection.model';
 import {
     CreateConditionGroupRequest,
     CreateDecisionTableNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import { ConnectionModel } from '../../core/models/connection.model';
+} from '../../core/models/decision-table-node.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
     ClassificationDecisionTableNodeModel,

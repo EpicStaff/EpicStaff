@@ -18,21 +18,15 @@ import {
     CheckboxComponent,
     IconButtonComponent,
     LoadingSpinnerComponent,
+    StopButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
-import {
-    DurationFilter,
-    GraphSessionLight,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-    SessionTrigger,
-    TriggerType,
-} from '../../services/flows-sessions.service';
+import { DurationFilter, GraphSessionLight, SessionTrigger, TriggerType } from '../../services/flows-sessions.service';
 import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
@@ -49,6 +43,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         FlowSessionStatusBadgeComponent,
         LoadingSpinnerComponent,
         IconButtonComponent,
+        StopButtonComponent,
         GraphMessagesComponent,
         FlowSessionStatusFilterDropdownComponent,
         FlowNameFilterDropdownComponent,
@@ -226,19 +221,10 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                             />
                                         </button>
                                         @if (canStop(session.status)) {
-                                            <button
-                                                type="button"
-                                                class="icon-img-btn"
-                                                matTooltip="Stop session"
-                                                matTooltipPosition="above"
-                                                (click)="stopSession.emit(session.id)"
-                                            >
-                                                <img
-                                                    src="assets/icons/ui/stop-session.svg"
-                                                    alt="arrow-icon"
-                                                    class="arrow-icon"
-                                                />
-                                            </button>
+                                            <app-stop-button
+                                                tooltip="Stop session"
+                                                (triggered)="stopSession.emit(session.id)"
+                                            />
                                         }
                                         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
                                             @if (!canStop(session.status)) {

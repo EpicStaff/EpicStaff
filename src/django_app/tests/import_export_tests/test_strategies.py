@@ -344,7 +344,7 @@ class TestGraphStrategy:
         new_graph = strategy.create_entity(graph_data, mapper, org_id=default_org.id)
 
         assert Graph.objects.count() == graph_count_before + 1
-        assert new_graph.name == "graph1 (2)"
+        assert new_graph.name == "graph1 #2"
         # The source graph's legacy CrewNode is skipped, not recreated.
         assert new_graph.crew_node_list.count() == 0
 
@@ -430,7 +430,7 @@ class TestLLMConfigStrategy:
         new_config = strategy.create_entity(config_data, mapper, org_id=default_org.id)
 
         assert LLMConfig.objects.count() == config_count_before + 1
-        assert new_config.custom_name == "MyGPT-4o (2)"
+        assert new_config.custom_name == "MyGPT-4o #2"
 
     @pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
     def test_find_existing(
@@ -479,6 +479,55 @@ class TestWebhookTriggerStrategy:
         scoped = WebhookTrigger.objects.filter(strategy.get_org_scope_q(default_org.id))
 
         assert list(scoped) == [own]
+
+
+# ──────────────────────────────────────────
+# TelegramTriggerNode Strategy
+# ──────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestTelegramTriggerNodeStrategy:
+    def test_create_entity_remaps_webhook_trigger_fk(self, rich_seeded_db, default_org):
+        """Regression test: create_entity used to pass the raw OLD
+        webhook_trigger id straight through to the serializer instead of
+        remapping it via id_mapper, which 400s on any target DB where that
+        old id doesn't exist ("Invalid pk ... - object does not exist.")."""
+        graph = rich_seeded_db["graph"]
+        old_trigger = WebhookTrigger.objects.create(path="old-webhook", org=default_org)
+        new_trigger = WebhookTrigger.objects.create(path="new-webhook", org=default_org)
+
+        mapper = IDMapper()
+        mapper.map(EntityType.GRAPH, graph.id, graph.id, was_created=False)
+        mapper.map(EntityType.WEBHOOK_TRIGGER, old_trigger.id, new_trigger.id)
+
+        strategy = _get_strategy(EntityType.TELEGRAM_TRIGGER_NODE)
+        data = {
+            "node_name": "telegram_node_1",
+            "graph": graph.id,
+            "webhook_trigger": old_trigger.id,
+            "fields": [],
+        }
+
+        node = strategy.create_entity(data, mapper)
+
+        assert node.webhook_trigger_id == new_trigger.id
+
+    def test_create_entity_with_no_webhook_trigger(self, rich_seeded_db):
+        graph = rich_seeded_db["graph"]
+        strategy = _get_strategy(EntityType.TELEGRAM_TRIGGER_NODE)
+        data = {
+            "node_name": "telegram_node_2",
+            "graph": graph.id,
+            "webhook_trigger": None,
+            "fields": [],
+        }
+
+        mapper = IDMapper()
+        mapper.map(EntityType.GRAPH, graph.id, graph.id, was_created=False)
+        node = strategy.create_entity(data, mapper)
+
+        assert node.webhook_trigger_id is None
 
 
 # ---- provider model strategies: per-org name uniquification ----

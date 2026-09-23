@@ -1,4 +1,4 @@
-from typing import Callable, Awaitable, Optional
+from collections.abc import Awaitable, Callable
 
 from domain.ports.i_transcription_client import ITranscriptionClient
 from domain.ports.i_transcription_client_factory import ITranscriptionClientFactory
@@ -21,7 +21,7 @@ class TranscriptionClientFactory(ITranscriptionClientFactory):
         config: RealtimeAgentChatData,
         on_server_event: Callable[[dict], Awaitable[None]],
         buffer: ChatSummarizedBuffer,
-    ) -> Optional[ITranscriptionClient]:
+    ) -> ITranscriptionClient | None:
         if config.rt_provider in ("elevenlabs", "gemini"):
             return None
         if not config.transcript_api_key:

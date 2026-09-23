@@ -243,7 +243,6 @@ export class ChunkPreviewComponent implements OnChanges, AfterViewInit {
         if (this.loading() || this.nextOffset >= this.totalChunks) return;
         this.loading.set('down');
 
-        // TODO need to test it in large files
         // Capture anchor: first chunk element before any DOM change
         const firstChunkIndex = this.chunks()[0]?.chunkIndex;
         const anchorEl =

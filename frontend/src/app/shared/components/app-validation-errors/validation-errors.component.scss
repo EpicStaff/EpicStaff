@@ -6,12 +6,19 @@
     margin: 0.5rem 0;
     row-gap: 0.5rem;
     &__item {
-        display: block;
-        font-size: 0.75rem;
-        border-radius: 5px;
-        border-left: 3px solid var(--color-ks-status-failed);
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
+        display: flex;
+        align-items: center;
+        height: 28px;
+        border-radius: var(--radius-sm);
+        border-left: 2px solid var(--red-500);
+        background: var(--red-alpha-8-flat);
+        color: var(--red-500);
+        font-family: var(--font-family);
+        font-weight: var(--text-body-small-weight);
+        font-size: var(--text-body-small-size);
+        line-height: 100%;
+        letter-spacing: 0;
+        vertical-align: middle;
         padding: 0.25rem 0.5rem;
     }
 }

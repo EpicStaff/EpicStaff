@@ -9,9 +9,8 @@ import {
     signal,
     TemplateRef,
 } from '@angular/core';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
-import { NODE_COLORS, NODE_ICONS } from '../../../visual-programming/core/enums/node-config';
-import { NodeType } from '../../../visual-programming/core/enums/node-type';
 import { SearchComponent } from '../search/search.component';
 import { SelectComponent, SelectItem } from '../select/select.component';
 
@@ -33,6 +32,7 @@ export class FlowNodeListComponent<T extends FlowNodeListItem = FlowNodeListItem
     public readonly nodeTypeLabels = input.required<Partial<Record<NodeType, string>>>();
     public readonly trailingTemplate = input<TemplateRef<{ $implicit: T }> | null>(null);
     public readonly searchPlaceholder = input<string>('Search node...');
+    public readonly nodeTypeFilterTransparent = input<boolean>(false);
 
     public readonly rowClick = output<T>();
 

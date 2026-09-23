@@ -1,0 +1,34 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            <!-- Node Name Field -->
+            <div class="field-isolated">
+                <app-custom-input
+                    label="Node Name"
+                    tooltipText="The unique identifier used to reference this File Extractor node. This name must be unique within the flow."
+                    formControlName="node_name"
+                    placeholder="Enter node name"
+                    [activeColor]="activeColor"
+                ></app-custom-input>
+                <app-validation-errors [control]="form.get('node_name')!" />
+            </div>
+
+            <!-- Input Map Key-Value Pairs -->
+            <div class="input-map">
+                <app-input-map [activeColor]="activeColor"></app-input-map>
+            </div>
+
+            <!-- Output Variable Path -->
+            <app-custom-input
+                label="Output Variable Path"
+                tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                formControlName="output_variable_path"
+                placeholder="Enter output variable path (leave empty for null)"
+                [activeColor]="activeColor"
+            ></app-custom-input>
+        </form>
+    </div>
+</div>

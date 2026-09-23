@@ -1,5 +1,6 @@
 from django.conf import settings
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from django.contrib.auth import get_user_model
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -8,12 +9,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-
-from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.first_setup_mode import FirstSetupMode
-from tables.services.rbac.permissions import IsSuperadmin
 from tables.models.rbac_models import ApiKey, OrganizationUser
-from django.contrib.auth import get_user_model
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
@@ -25,8 +21,11 @@ from tables.serializers.rbac_serializers import (
 )
 from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.auth_validation_service import AuthValidationService
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
+from tables.services.rbac.permissions import IsSuperadmin
 from tables.services.rbac.rbac_exceptions import (
     FirstSetupDisabledError,
     InvalidRefreshTokenError,
@@ -204,10 +203,7 @@ class TokenIntrospectView(APIView):
 
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
-        if (
-            not isinstance(request.auth, ApiKey)
-            or request.auth.key_type != ApiKey.KeyType.SYSTEM
-        ):
+        if not isinstance(request.auth, ApiKey) or request.auth.key_type != ApiKey.KeyType.SYSTEM:
             return Response(
                 {"detail": "System API key required"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -224,13 +220,9 @@ class TokenIntrospectView(APIView):
 
         user_id = access.get("user_id")
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user_id).values_list(
-                "org_id", flat=True
-            )
+            OrganizationUser.objects.filter(user_id=user_id).values_list("org_id", flat=True)
         )
-        is_superadmin = (
-            get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
-        )
+        is_superadmin = get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
 
         return Response(
             {
@@ -341,9 +333,7 @@ class PasswordResetConfirmView(APIView):
         request=PasswordResetConfirmSerializer,
         responses={
             200: PasswordResetConfirmResponseSerializer,
-            400: OpenApiResponse(
-                description="Token invalid/expired/used or weak password"
-            ),
+            400: OpenApiResponse(description="Token invalid/expired/used or weak password"),
         },
     )
     def post(self, request):

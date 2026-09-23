@@ -16,12 +16,12 @@ Always selects related 'org' and 'user' on the returned row.
 """
 
 from tables.models.rbac_models.organization_user import OrganizationUser
+
 from .rbac_exceptions import (
+    OrganizationContextAmbiguous,
     OrganizationMembershipNotFound,
     UserHasNoOrganizationMembership,
-    OrganizationContextAmbiguous,
 )
-
 
 # ── Public helper ─────────────────────────────────────────────────────────────
 
@@ -40,18 +40,18 @@ def resolve_organization_user(request) -> OrganizationUser:
     if header_value:
         try:
             org_id = int(header_value)
-        except ValueError:
+        except ValueError as e:
             raise OrganizationMembershipNotFound(
                 detail=f"Invalid X-Organization-Id header value: '{header_value}'."
-            )
+            ) from e
 
         try:
             return OrganizationUser.objects.select_related("org", "user").get(
                 user=request.user,
                 org_id=org_id,
             )
-        except OrganizationUser.DoesNotExist:
-            raise OrganizationMembershipNotFound()
+        except OrganizationUser.DoesNotExist as e:
+            raise OrganizationMembershipNotFound() from e
 
     # No header — single-org fallback
     memberships = list(

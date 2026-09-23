@@ -1,13 +1,15 @@
+import asyncio
+import contextlib
 import os
 import shutil
 import tempfile
-import asyncio
-from loguru import logger
-from pyngrok import ngrok, installer, conf
-from pyngrok.conf import PyngrokConfig
+
 import pyngrok.process
+from loguru import logger
+from pyngrok import conf, installer, ngrok
+from pyngrok.conf import PyngrokConfig
+
 from app.providers.tunnels.base import AbstractTunnelProvider
-from typing import Optional
 
 
 class NgrokTunnel(AbstractTunnelProvider):
@@ -15,9 +17,9 @@ class NgrokTunnel(AbstractTunnelProvider):
         self,
         port: int,
         host: str = "localhost",
-        auth_token: Optional[str] = None,
-        domain: Optional[str] = None,
-        region: Optional[str] = None,
+        auth_token: str | None = None,
+        domain: str | None = None,
+        region: str | None = None,
         reconnect_timeout: int = 10,
     ):
         super().__init__(port, auth_token, domain=domain)
@@ -27,15 +29,13 @@ class NgrokTunnel(AbstractTunnelProvider):
         self._reconnect_timeout = reconnect_timeout
 
         self._is_running = False
-        self._monitor_task: Optional[asyncio.Task] = None
+        self._monitor_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
         if not self._auth_token:
             raise ValueError("NgrokTunnel requires an auth_token.")
 
-        self._config_path = os.path.join(
-            tempfile.gettempdir(), f"ngrok_config_{id(self)}.yml"
-        )
+        self._config_path = os.path.join(tempfile.gettempdir(), f"ngrok_config_{id(self)}.yml")
 
         self._ngrok_path = os.path.join(tempfile.gettempdir(), f"ngrok_bin_{id(self)}")
         self._config = None
@@ -66,13 +66,9 @@ class NgrokTunnel(AbstractTunnelProvider):
         # from equinox.io (which can fail).  pyngrok also installs its own Python
         # shim at /usr/local/bin/ngrok, so shutil.which() is not reliable here —
         # it finds the shim first.  Check known system binary paths explicitly.
-        _SYSTEM_NGROK_CANDIDATES = ["/usr/local/bin/ngrok", "/usr/bin/ngrok"]
+        system_ngrok_candidates = ["/usr/local/bin/ngrok", "/usr/bin/ngrok"]
         system_ngrok = next(
-            (
-                p
-                for p in _SYSTEM_NGROK_CANDIDATES
-                if os.path.isfile(p) and os.access(p, os.X_OK)
-            ),
+            (p for p in system_ngrok_candidates if os.path.isfile(p) and os.access(p, os.X_OK)),
             None,
         )
         if system_ngrok:
@@ -98,23 +94,17 @@ class NgrokTunnel(AbstractTunnelProvider):
 
         def _start():
             addr = f"{self._host}:{self._port}"
-            return ngrok.connect(
-                addr, "http", domain=self._domain, pyngrok_config=self._config
-            )
+            return ngrok.connect(addr, "http", domain=self._domain, pyngrok_config=self._config)
 
         try:
             new_tunnel = await asyncio.to_thread(_start)
 
             async with self._lock:
                 if not self._is_running:
-                    print(
-                        "Disconnect called during connection! Rolling back new tunnel..."
-                    )
+                    print("Disconnect called during connection! Rolling back new tunnel...")
 
                     def _rollback():
-                        ngrok.disconnect(
-                            new_tunnel.public_url, pyngrok_config=self._config
-                        )
+                        ngrok.disconnect(new_tunnel.public_url, pyngrok_config=self._config)
                         pyngrok.process.kill_process(self._config.ngrok_path)
 
                     await asyncio.to_thread(_rollback)
@@ -161,10 +151,8 @@ class NgrokTunnel(AbstractTunnelProvider):
 
         if self._monitor_task:
             self._monitor_task.cancel()
-            try:
+            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._monitor_task, timeout=1.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
             self._monitor_task = None
 
         async with self._lock:
@@ -181,16 +169,12 @@ class NgrokTunnel(AbstractTunnelProvider):
 
                     for path_to_remove in [self._config_path, self._ngrok_path]:
                         if os.path.exists(path_to_remove):
-                            try:
+                            with contextlib.suppress(OSError):
                                 os.remove(path_to_remove)
-                            except OSError:
-                                pass
 
                 try:
                     await asyncio.to_thread(_close)
-                    logger.info(
-                        f"Ngrok tunnel {url_to_disconnect} closed successfully."
-                    )
+                    logger.info(f"Ngrok tunnel {url_to_disconnect} closed successfully.")
                 except Exception:
                     logger.exception(f"Failed to disconnect tunnel {url_to_disconnect}")
                 finally:

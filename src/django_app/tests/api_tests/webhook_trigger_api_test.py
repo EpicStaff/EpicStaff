@@ -5,8 +5,8 @@ import pytest
 from django.urls import reverse
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.models.rbac_models import Organization, OrganizationUser, Role, RolePermission
+from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -15,6 +15,7 @@ from tables.models.webhook_models import (
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.secrets import secret_service
+from tables.views.model_view_sets import WebhookTriggerViewSet
 from rest_framework.test import APIClient
 
 # `NgrokWebhookConfig.auth_token` is now a Secret reference
@@ -762,16 +763,16 @@ class TestWebhookTriggerTwilioOnlyVisibility:
 
 @pytest.mark.django_db
 class TestWebhookTriggerDuplicatePathValidation:
-    """PUT/PATCH to /api/webhook-triggers/<id>/ with a (path,
-    provider_type) pair that collides with another existing WebhookTrigger
+    """PUT/PATCH to /api/webhook-triggers/<id>/ with a `path` that collides
+    with another existing WebhookTrigger (regardless of `provider_type`)
     must fail cleanly with a serializer ValidationError (-> 400), not blow
-    up with a raw IntegrityError from the DB's unique_together constraint at
-    save time."""
+    up with a raw IntegrityError from the DB's `unique=True` constraint on
+    `path` at save time."""
 
     def test_full_update_colliding_path_and_provider_is_rejected(self, default_org):
         """Full PUT-style call (all fields present) with a path that
-        collides with another trigger's (path, provider_type) is rejected
-        by validate() before hitting the DB."""
+        collides with another trigger's `path` is rejected by validate()
+        before hitting the DB."""
         WebhookTrigger.objects.create(
             path="taken-path", provider_type=ProviderType.NGROK, org=default_org
         )
@@ -909,14 +910,14 @@ class TestWebhookTriggerCreateDoesNotMerge:
         assert ngrok_config.name == "original-ngrok"
         assert ngrok_config.auth_token_secret_id == original_secret.id
 
-    def test_same_path_different_provider_type_creates_separate_row(
+    def test_same_path_different_provider_type_is_rejected(
         self, auth_client, default_org
     ):
-        """The model's actual constraint is unique_together(path,
-        provider_type) — two different providers ARE allowed to share a
-        path as separate rows. POSTing a new provider_type for an existing
-        path must create a sibling row, not hijack/mutate the existing one
-        (the old get_or_create looked up by `path` alone)."""
+        """Behavior change: the model's constraint is now `unique=True` on
+        `path` alone — two different providers are NO LONGER allowed to
+        share a path. POSTing a new provider_type for an existing path must
+        be rejected, not create a sibling row or hijack/mutate the existing
+        one."""
         existing = WebhookTrigger.objects.create(
             path="shared-path-diff-provider",
             provider_type=ProviderType.LOCALHOST,
@@ -941,12 +942,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
             format="json",
         )
 
-        assert response.status_code == 201, response.json()
-        new_trigger_id = response.json()["id"]
-        assert new_trigger_id != existing.id
-
-        rows = WebhookTrigger.objects.filter(path="shared-path-diff-provider")
-        assert rows.count() == 2
+        assert response.status_code == 400, response.json()
 
         # the original row must be untouched — same provider, config intact
         existing.refresh_from_db()
@@ -955,10 +951,11 @@ class TestWebhookTriggerCreateDoesNotMerge:
         local_cfg = LocalhostWebhookConfig.objects.get(trigger=existing)
         assert local_cfg.name == "local-cfg"
 
-        # the new row is a genuinely separate WebhookTrigger with its own config
-        new_trigger = WebhookTrigger.objects.get(id=new_trigger_id)
-        assert new_trigger.provider_type == ProviderType.NGROK
-        assert NgrokWebhookConfig.objects.filter(trigger=new_trigger).exists()
+        # no sibling row was created
+        assert (
+            WebhookTrigger.objects.filter(path="shared-path-diff-provider").count()
+            == 1
+        )
 
     def test_fresh_unique_path_creates_normally(self, auth_client, default_org):
         """No-regression sanity check: a normal POST with a fresh, unique
@@ -1988,4 +1985,114 @@ class TestWebhookTriggerAuthAPI:
 
         assert response.status_code == 201, response.json()
         assert response.json()["auth"]["kind"] == "webhook"
+
+
+@pytest.fixture
+def viewer_client(default_org, django_user_model):
+    role_viewer = Role.objects.get(
+        name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="webhook-rbac-viewer@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role_viewer)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.fixture
+def member_client(default_org, django_user_model):
+    role_member = Role.objects.get(
+        name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="webhook-rbac-member@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role_member)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.fixture
+def flows_only_client(default_org, django_user_model):
+    """A custom role holding full FLOWS access but no `webhooks` permission
+    row at all -- proves the view is not (still) reading the FLOWS bit."""
+    role = Role.objects.create(name="Flows Only", org=default_org, is_built_in=False)
+    RolePermission.objects.create(role=role, resource_type="flows", permissions=31)
+    user = django_user_model.objects.create_user(
+        email="webhook-rbac-flows-only@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=default_org, role=role)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return client
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerRbacResourceType:
+    """WebhookTriggerViewSet must be gated by the dedicated `webhooks` RBAC
+    resource -- not `llm_configs` (the pre-fix value) and not `flows` (an
+    alternative the ticket considered and rejected in favor of a dedicated
+    resource)."""
+
+    def test_resource_type_is_webhooks(self):
+        assert WebhookTriggerViewSet.rbac_resource_type == ResourceType.WEBHOOKS
+
+    def test_viewer_can_read_but_not_write(self, viewer_client, default_org):
+        trigger = WebhookTrigger.objects.create(
+            org=default_org, path="viewer-read-only", provider_type=None
+        )
+
+        list_resp = viewer_client.get(reverse("webhooktrigger-list"))
+        assert list_resp.status_code == 200
+
+        detail_resp = viewer_client.get(
+            reverse("webhooktrigger-detail", args=[trigger.id])
+        )
+        assert detail_resp.status_code == 200
+
+        create_resp = viewer_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "viewer-should-fail", "provider_type": None},
+            format="json",
+        )
+        assert create_resp.status_code == 403
+
+    def test_member_has_full_crud(self, member_client):
+        create_resp = member_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "member-can-create", "provider_type": None},
+            format="json",
+        )
+        assert create_resp.status_code == 201, create_resp.json()
+        trigger_id = create_resp.json()["id"]
+
+        update_resp = member_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"path": "member-can-update"},
+            format="json",
+        )
+        assert update_resp.status_code == 200, update_resp.json()
+
+        delete_resp = member_client.delete(
+            reverse("webhooktrigger-detail", args=[trigger_id])
+        )
+        assert delete_resp.status_code == 204
+
+    def test_flows_permission_alone_does_not_grant_webhook_access(
+        self, flows_only_client
+    ):
+        """A role with full FLOWS access but nothing on `webhooks` must be
+        denied -- the view is gated by webhooks, not flows."""
+        response = flows_only_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "flows-only-should-fail", "provider_type": None},
+            format="json",
+        )
+        assert response.status_code == 403
 

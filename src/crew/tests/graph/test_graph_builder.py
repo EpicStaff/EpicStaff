@@ -63,7 +63,8 @@ class FakePythonCodeExecutorService:
 def mock_services():
     redis_service = RedisService(
         host="127.0.0.1",
-        port="6379",
+        port=6379,
+        user="default",
         password="redis_password",
     )
     return {

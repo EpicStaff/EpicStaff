@@ -1,10 +1,20 @@
 import json
+import sys
 
 import pytest
 
-import storage as storage_module
-from storage import EpicStaffStorage, clear_mutations
+# `epicstaff_storage/__init__.py` ends with `storage = EpicStaffStorage()`,
+# which rebinds the *attribute* `epicstaff_storage.storage` to that instance,
+# shadowing the submodule of the same name. Import the package (so its
+# `.storage` submodule is registered) and reach the submodule through
+# `sys.modules`, where the module-level `__cache` / `_mutations` state this
+# conftest resets actually lives — matches the pattern documented in
+# `tools/tests/conftest.py`, which hits the same gotcha.
+import epicstaff_storage  # noqa: F401
+from epicstaff_storage import EpicStaffStorage, clear_mutations
 from fakes import FakeS3Client
+
+storage_module = sys.modules["epicstaff_storage.storage"]
 
 TEST_BUCKET = "test-bucket"
 

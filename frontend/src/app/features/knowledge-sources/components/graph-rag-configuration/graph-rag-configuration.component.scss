@@ -36,13 +36,12 @@
             align-items: flex-start;
             gap: 0.5rem;
             margin: 0.75rem 1.875rem 0 2.5rem;
-            padding: 0.625rem 0.75rem;
+            padding: 0.5rem 0.75rem;
             background: var(--amber-600-alpha-8);
-            border: 1px solid var(--amber-600-alpha-30);
+            border-left: 2px solid var(--amber-600);
             border-radius: 6px;
-            font-size: 0.8125rem;
+            font-size: 0.75rem;
             color: var(--amber-600);
-            line-height: 1.4;
 
             .warning-icon {
                 margin-top: 1px;
@@ -50,7 +49,7 @@
         }
 
         .files-content {
-            padding: 1.25rem 0 1.25rem 2.5rem;
+            padding: 1.25rem 0 1.25rem 0;
             flex-grow: 1;
             overflow: hidden;
         }

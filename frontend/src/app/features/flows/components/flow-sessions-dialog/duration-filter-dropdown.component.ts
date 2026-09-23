@@ -9,9 +9,9 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '@shared/components';
+import { ClickOutsideDirective } from '@shared/directives';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 import { DurationFilter, DurationOperator } from '../../services/flows-sessions.service';
 
 @Component({

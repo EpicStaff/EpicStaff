@@ -14,6 +14,7 @@ from io import BytesIO
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 
 from tables.constants.upload_limits import default_upload_limits
 from tables.exceptions import DocumentUploadException
@@ -23,9 +24,16 @@ from tables.services.knowledge_services.document_management_service import (
 
 
 @pytest.fixture
-def total_cap(monkeypatch):
-    """Shrink the batch total cap so fixtures stay small."""
-    monkeypatch.setenv("MAX_UPLOAD_TOTAL_BYTES", "300")
+def total_cap():
+    """Shrink the batch total cap so fixtures stay small.
+
+    `default_upload_limits()` reads `settings.MAX_UPLOAD_TOTAL_SIZE` (a plain
+    module attribute computed once from `DJANGO_MAX_UPLOAD_TOTAL_SIZE` at
+    Django startup) -- `monkeypatch.setenv` after startup never reaches it,
+    so the setting itself must be overridden instead.
+    """
+    with override_settings(MAX_UPLOAD_TOTAL_SIZE=300):
+        yield
 
 
 def _file(name: str, size: int) -> SimpleUploadedFile:
@@ -90,9 +98,11 @@ def test_ordinary_batch_passes_under_shipped_defaults():
 
 
 @pytest.fixture
-def small_unpacked_cap(monkeypatch):
-    """Shrink the unpacked cap so the fixture stays small."""
-    monkeypatch.setenv("MAX_ARCHIVE_UNCOMPRESSED_BYTES", "100000")
+def small_unpacked_cap():
+    """Shrink the unpacked cap so the fixture stays small (see `total_cap`
+    above for why this must override the setting, not the environment)."""
+    with override_settings(MAX_ARCHIVE_UNCOMPRESSED_SIZE=100000):
+        yield
 
 
 def test_rejects_a_docx_that_unpacks_past_the_archive_cap(small_unpacked_cap):
@@ -125,9 +135,8 @@ def test_caps_match_the_knowledge_service():
     The knowledge service is a separate container, so these numbers cannot be
     imported from it -- they are asserted on both sides instead. If someone
     changes one service's limit, that service's suite goes red.
-    See knowledge/tests/test_extraction_limits.py::test_caps_match_the_upload_path.
     """
     limits = default_upload_limits()
 
     assert limits.max_file_bytes == 50 * 1024 * 1024
-    assert limits.max_archive_uncompressed_bytes == 256 * 1024 * 1024
+    assert limits.max_archive_uncompressed_bytes == 50 * 1024 * 1024

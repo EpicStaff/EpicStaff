@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from shared.models.agent_service import ToolResult
+
 from app.output.schema import as_object_schema
 from app.tools.registry import ToolSpec
-from shared.models.agent_service import ToolResult
 
 ANSWER_TOOL = "submit_final_answer"
 

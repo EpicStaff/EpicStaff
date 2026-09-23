@@ -1,0 +1,13 @@
+server_name ${NGINX_SERVER_NAME};
+listen 80;
+listen 443 ssl;
+ssl_certificate /etc/nginx/certs/fullchain.pem;
+ssl_certificate_key /etc/nginx/certs/privkey.pem;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers HIGH:!aNULL:!MD5;
+
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+if ($scheme = http) {
+    return 301 https://$host$request_uri;
+}

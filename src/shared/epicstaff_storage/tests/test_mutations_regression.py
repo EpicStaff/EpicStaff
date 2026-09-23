@@ -1,6 +1,6 @@
 import pytest
 
-from storage import get_mutations
+from epicstaff_storage import get_mutations
 
 
 def test_write_bytes_records_write_mutation(storage, fake_client):

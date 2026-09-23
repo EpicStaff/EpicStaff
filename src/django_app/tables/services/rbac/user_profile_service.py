@@ -1,10 +1,7 @@
-from typing import Optional, Tuple
-
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models.functions import Lower
 from loguru import logger
-
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.auth_service import TokenPair
@@ -36,23 +33,21 @@ class UserProfileService:
 
     def __init__(
         self,
-        avatar_storage: Optional[UserAvatarStorageService] = None,
-        password_change_ticket: Optional[PasswordChangeTicketService] = None,
-        password_writer: Optional[PasswordWriter] = None,
-        session_invalidator: Optional[SessionInvalidationService] = None,
-        permission_resolver: Optional[PermissionResolver] = None,
+        avatar_storage: UserAvatarStorageService | None = None,
+        password_change_ticket: PasswordChangeTicketService | None = None,
+        password_writer: PasswordWriter | None = None,
+        session_invalidator: SessionInvalidationService | None = None,
+        permission_resolver: PermissionResolver | None = None,
     ):
         self._avatar_storage = avatar_storage or UserAvatarStorageService()
-        self._password_change_ticket = (
-            password_change_ticket or PasswordChangeTicketService()
-        )
+        self._password_change_ticket = password_change_ticket or PasswordChangeTicketService()
         self._password_writer = password_writer or PasswordWriter()
         self._session_invalidator = session_invalidator or SessionInvalidationService()
         self._permission_resolver = permission_resolver or PermissionResolver()
 
     # ---- read ----
 
-    def get_profile(self, user, active_org_id: Optional[int] = None):
+    def get_profile(self, user, active_org_id: int | None = None):
         """Refetch the user and attach the memberships list.
 
         `_profile_memberships` is the caller's own active memberships, or —
@@ -62,7 +57,7 @@ class UserProfileService:
         and `_active_permissions` for the serializer to render. Soft-fail:
         invalid `active_org_id` results in both attributes being None (NOT 403).
         """
-        User = get_user_model()
+        User = get_user_model()  # noqa: N806
         user = User.objects.get(pk=user.pk)
         user._profile_memberships = self._get_memberships(user)
 
@@ -73,9 +68,7 @@ class UserProfileService:
             if not Organization.objects.filter(pk=active_org_id).exists():
                 return user
             try:
-                effective = self._permission_resolver.resolve(
-                    user=user, org_id=active_org_id
-                )
+                effective = self._permission_resolver.resolve(user=user, org_id=active_org_id)
             except OrgMembershipRequiredError:
                 return user
             user._active_organization_id = active_org_id
@@ -103,9 +96,7 @@ class UserProfileService:
             )
             return [
                 {"id": None, "org": org, "role": superadmin_role, "joined_at": None}
-                for org in Organization.objects.filter(is_active=True).order_by(
-                    Lower("name")
-                )
+                for org in Organization.objects.filter(is_active=True).order_by(Lower("name"))
             ]
         return (
             OrganizationUser.objects.filter(user=user, org__is_active=True)
@@ -115,7 +106,7 @@ class UserProfileService:
 
     # ---- profile field updates ----
 
-    def update_display_name(self, user, display_name: Optional[str]):
+    def update_display_name(self, user, display_name: str | None):
         """Set or clear display_name. None clears (column allows NULL)."""
         user.display_name = display_name
         user.save(update_fields=["display_name", "updated_at"])
@@ -143,7 +134,7 @@ class UserProfileService:
 
     # ---- password change (two-step) ----
 
-    def password_change_request(self, user, current_password: str) -> Tuple[str, int]:
+    def password_change_request(self, user, current_password: str) -> tuple[str, int]:
         """Verify current_password and issue a single-use ticket.
 
         Raises InvalidCurrentPasswordError on mismatch. Returns
@@ -156,9 +147,7 @@ class UserProfileService:
         logger.info("profile.password_change_request_issued user_id={}", user.id)
         return ticket, expires_in
 
-    def password_change_confirm(
-        self, actor, ticket: str, new_password: str
-    ) -> TokenPair:
+    def password_change_confirm(self, actor, ticket: str, new_password: str) -> TokenPair:
         """Step 2: consume ticket, write new password, blacklist all
         outstanding refresh tokens, mint a fresh pair.
 

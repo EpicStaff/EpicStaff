@@ -35,9 +35,7 @@ def set_org_scoped_labels(instance, labels, request) -> None:
         instance.labels.set(labels)
         return
     org_id = resolve_active_org_id(request)
-    other_org_label_ids = list(
-        instance.labels.exclude(org_id=org_id).values_list("pk", flat=True)
-    )
+    other_org_label_ids = list(instance.labels.exclude(org_id=org_id).values_list("pk", flat=True))
     # `.set()` accepts a list of pks: other orgs' existing label ids, kept
     # as-is, plus this org's newly submitted label ids.
     instance.labels.set([*other_org_label_ids, *(label.pk for label in labels)])

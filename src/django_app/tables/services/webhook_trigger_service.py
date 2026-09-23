@@ -1,8 +1,9 @@
 import time
 
-from loguru import logger
-
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from loguru import logger
+from src.shared.models import WebhookConfigData
 from tables.models.graph_models import WebhookTriggerNode
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
@@ -15,10 +16,9 @@ from tables.models.webhook_models import (
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
-from src.shared.models import WebhookConfigData
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
-from tables.services.secrets import secret_resolver, SecretResolutionError
+from tables.services.secrets import SecretResolutionError, secret_resolver
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.validators.telegram_secret_token_validator import (
@@ -35,6 +35,14 @@ USER_SETTABLE_AUTH_KINDS = (
 AUTH_SECRET_MIN_LENGTH = 32
 
 
+def validate_path_uniqueness(path: str, exclude_pk: int | None = None) -> None:
+    qs = WebhookTrigger.objects.filter(path=path)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        raise ValidationError("A WebhookTrigger with this path already exists.")
+
+
 class WebhookTriggerService(metaclass=SingletonMeta):
     def __init__(
         self,
@@ -46,9 +54,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.session_manager_service = session_manager_service
 
-    def get_trigger_filters(
-        self, path: str, config_id: str | None = None
-    ) -> dict | None:
+    def get_trigger_filters(self, path: str, config_id: str | None = None) -> dict | None:
         """Build ORM filter kwargs for `WebhookTriggerNode`.
 
         `config_id` is resolved by the `webhook` service purely from the
@@ -111,9 +117,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         try:
             org_id = int(org_id_str)
         except ValueError:
-            logger.error(
-                f"Unparseable org segment in config_id '{config_id}' -- rejecting."
-            )
+            logger.error(f"Unparseable org segment in config_id '{config_id}' -- rejecting.")
             return None
 
         filters["webhook_trigger__provider_type"] = provider
@@ -148,9 +152,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         ).all():
             try:
                 ngrok_configs.append(
-                    self.converter_service.convert_ngrok_webhook_config_to_pydantic(
-                        config
-                    )
+                    self.converter_service.convert_ngrok_webhook_config_to_pydantic(config)
                 )
             except SecretResolutionError as e:
                 logger.error(f"Error converting Ngrok webhook config: {e}")
@@ -160,13 +162,11 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         ).all():
             try:
                 localhost_configs.append(
-                    self.converter_service.convert_localhost_webhook_config_to_pydantic(
-                        config
-                    )
+                    self.converter_service.convert_localhost_webhook_config_to_pydantic(config)
                 )
             except SecretResolutionError as e:
                 logger.error(f"Error converting Localhost webhook config: {e}")
-            
+
         data = WebhookConfigData(
             ngrok_configs=ngrok_configs,
             localhost_configs=localhost_configs,
@@ -192,9 +192,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
     def get_localhost_tunnel_url(self, webhook_trigger: "WebhookTrigger") -> str | None:
         return self._get_tunnel_url(webhook_trigger.localhost)
 
-    def get_tunnel_url_for_trigger(
-        self, webhook_trigger: "WebhookTrigger"
-    ) -> str | None:
+    def get_tunnel_url_for_trigger(self, webhook_trigger: "WebhookTrigger") -> str | None:
         """Provider-agnostic: resolves the active config via get_active_config()."""
         config = webhook_trigger.get_active_config()
         if config is None:
@@ -265,41 +263,30 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         (`X-Telegram-Bot-Api-Secret-Token`), or `kind=twilio`.
         """
         if kind not in USER_SETTABLE_AUTH_KINDS:
-            raise ValueError(
-                f"kind='{kind}' auth is not user-settable via this endpoint."
-            )
+            raise ValueError(f"kind='{kind}' auth is not user-settable via this endpoint.")
 
         if (
             kind in (WebhookTriggerAuthKind.TELEGRAM, WebhookTriggerAuthKind.TWILIO)
             and trigger.provider_type in LOCAL_ONLY_PROVIDERS
         ):
-            provider_name = (
-                "Telegram" if kind == WebhookTriggerAuthKind.TELEGRAM else "Twilio"
-            )
+            provider_name = "Telegram" if kind == WebhookTriggerAuthKind.TELEGRAM else "Twilio"
             raise ValueError(
                 f"Localhost webhook provider is not reachable by {provider_name}. "
                 "Use ngrok or a publicly accessible provider."
             )
 
-        if (
-            kind == WebhookTriggerAuthKind.WEBHOOK
-            and trigger.telegram_trigger_nodes.exists()
-        ):
+        if kind == WebhookTriggerAuthKind.WEBHOOK and trigger.telegram_trigger_nodes.exists():
             raise ValueError(
                 "This trigger is attached to a Telegram trigger node and "
                 "cannot use kind='webhook' auth; use kind='telegram' instead."
             )
-        if (
-            kind == WebhookTriggerAuthKind.TELEGRAM
-            and trigger.webhook_trigger_nodes.exists()
-        ):
+        if kind == WebhookTriggerAuthKind.TELEGRAM and trigger.webhook_trigger_nodes.exists():
             raise ValueError(
                 "This trigger is attached to a webhook trigger node and "
                 "cannot use kind='telegram' auth; use kind='webhook' instead."
             )
         if kind == WebhookTriggerAuthKind.TWILIO and (
-            trigger.webhook_trigger_nodes.exists()
-            or trigger.telegram_trigger_nodes.exists()
+            trigger.webhook_trigger_nodes.exists() or trigger.telegram_trigger_nodes.exists()
         ):
             raise ValueError(
                 "This trigger already has a webhook or Telegram trigger node "

@@ -9,6 +9,124 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Path gating lives in this job rather than in a workflow-level `paths:` filter.
+  # A workflow that `paths:` filters out never reports its checks at all, so a
+  # required check stays pending forever and the pull request can never merge.
+  # A job skipped by `if:` still reports a conclusion, so gating has to be here.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      fe: ${{ steps.filter.outputs.fe }}
+      fe_deps: ${{ steps.filter.outputs.fe_deps }}
+      code: ${{ steps.filter.outputs.code }}
+      cla: ${{ steps.filter.outputs.cla }}
+      sandbox: ${{ steps.filter.outputs.be_sandbox }}
+      py_services: ${{ steps.filter.outputs.py_services }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The three-dot diff below has to resolve the merge base, which is not
+          # reachable from a shallow clone.
+          fetch-depth: 0
+
+      - name: Work out what this pull request touches
+        id: filter
+        run: |
+          # Three dots, not two: diff from the merge base, so commits merged in
+          # from main do not count as changes made by this pull request.
+          git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
+            > changed-files.txt
+          cat changed-files.txt
+
+          # One list, several filters. Each filter is a single anchored regex so
+          # adding a path is a one-line edit.
+          filter() {   # $1 = output name, $2 = extended regex over the file list
+            if grep -qE "$2" changed-files.txt; then result=true; else result=false; fi
+            echo "$1=$result" >> "$GITHUB_OUTPUT"
+            echo "$1=$result"
+          }
+
+          # Every filter also matches the files of the check it guards, so a pull
+          # request that edits a check still runs that check on itself.
+          filter fe '^(frontend/|\.github/workflows/pr\.yml$|scripts/check-undeclared-imports\.mjs$|scripts/check-third-party-notices\.mjs$)'
+
+          filter fe_deps '^(frontend/package\.json$|frontend/package-lock\.json$|scripts/check-third-party-notices\.mjs$)'
+
+          # Wider than src/ and frontend/ on purpose: the compose matrix generator
+          # in compose-build.yml also runs scripts/envtool.py and
+          # .github/scripts/compose_matrix.py, so a change to either of those
+          # changes what actually gets built. (The env.yaml they read lives under
+          # src/, so it is already covered by the src/ prefix.)
+          filter code '^(src/|frontend/|scripts/envtool\.py$|\.github/scripts/compose_matrix\.py$|\.github/workflows/compose-build\.yml$|\.github/workflows/pr\.yml$)'
+
+          filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
+
+          # Backend suites are gated per service, so a pull request touching one
+          # service does not pay for the other three. Three inputs force every
+          # suite to run whichever service directory changed:
+          #   src/shared/  -- imported by all four (django_app 49, crew 48 and
+          #                   sandbox 4 `src.shared` imports, agent 91 `shared`
+          #                   imports, plus crew's shared/dotdict path dependency)
+          #   Makefile     -- defines the *-tests targets these jobs invoke
+          #   this file    -- same self-testing rule as the filters above
+          backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
+
+          # crew and agent need no database and nothing from the filesystem
+          # beyond an interpreter, so one matrix job covers them both and this
+          # picks its legs. `filter` leaves $result set, so the array is built
+          # from the same regex that writes each output rather than from a
+          # second copy of it.
+          nodb=''
+          for svc in crew agent; do
+            filter "be_$svc" "^(src/$svc/|$backend_wide)"
+            if [ "$result" = true ]; then
+              nodb="$nodb${nodb:+,}\"$svc\""
+            fi
+          done
+          echo "py_services=[$nodb]" >> "$GITHUB_OUTPUT"
+          echo "py_services=[$nodb]"
+
+          # sandbox gets its own output: its job runs inside a container image
+          # instead of on the runner, so its steps cannot be a leg of the
+          # matrix above.
+          filter be_sandbox "^(src/sandbox/|$backend_wide)"
+
+  # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
+  # toggle controls signature enforcement; this is repo hygiene. An edit to
+  # CLA.md that does not bump the version corrupts the signature audit trail
+  # either way: every stored signature records a sha256 of the document text,
+  # so changing the text invalidates them all, and each re-signature overwrites
+  # the contributor's old file in the SAME version folder -- destroying the
+  # record of what they originally agreed to. Turning signature checks off does
+  # not make that damage go away, it only hides it until they are turned back on.
+  check-cla-version:
+    needs: changes
+    if: needs.changes.outputs.cla == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # `git show BASE:CLA.md` and the three-dot diff both need the base
+          # commit, which is not reachable from a shallow clone.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # No pip install step: check_cla_version.py is standard library only.
+      - name: Verify CLA.md version was bumped
+        run: python .github/scripts/check_cla_version.py
+        env:
+          CLA_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CLA_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+  # Deliberately ungated: cheap, and a docs-only pull request is exactly where an
+  # unsigned contributor or a pasted CDN link turns up.
   check-cla:
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +162,13 @@ jobs:
       - name: Check for runtime CDN / external URL references
         run: node scripts/check-external-urls.mjs
 
+  # This is the repository's only required status check (ruleset "Main PR"). A job
+  # skipped by `if:` reports conclusion `skipped`, and required status checks treat
+  # `skipped` as passing -- a workflow-level `paths:` filter would instead leave the
+  # check pending and block the merge.
   frontend-checks:
+    needs: changes
+    if: needs.changes.outputs.fe == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -83,7 +207,10 @@ jobs:
       # Licence attribution has to follow the production dependency set. Compares the
       # lockfile hash stamped in the notices header, so it needs neither network nor
       # a license-checker run.
+      # Only the lockfile feeds that hash, so nothing but a dependency change can
+      # alter the outcome.
       - name: Check third-party notices are in sync
+        if: needs.changes.outputs.fe_deps == 'true'
         working-directory: .
         run: node scripts/check-third-party-notices.mjs
 
@@ -92,11 +219,170 @@ jobs:
 
       # Dependency drift is what produced the EST-3802 backlog: half of it was stale
       # lockfile entries rather than genuinely outdated direct dependencies.
+      # Gated on the manifests for the same reason: the audit reads the lockfile and
+      # nothing else in the tree can move its result.
       - name: Audit dependencies
+        if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
+  # crew and agent: no database, no service containers, well under a minute for
+  # both. One matrix job whose legs are decided at runtime, so a pull request
+  # touching only src/agent/ runs one leg and a pull request touching neither
+  # service skips the job outright. sandbox was a third leg until it needed a
+  # container of its own; it has a separate job below.
+  #
+  # An empty `py_services` array would make `fromJSON` produce a matrix with no
+  # legs, which GitHub treats as a workflow error rather than a skip -- hence the
+  # explicit `!= '[]'` guard.
+  backend-tests:
+    needs: changes
+    if: needs.changes.outputs.py_services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      # One failing service should not hide the state of the others.
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.py_services) }}
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Every service pins requires-python to exactly this version.
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ matrix.service }}-${{ hashFiles(format('src/{0}/uv.lock', matrix.service)) }}
+          restore-keys: uv-${{ runner.os }}-${{ matrix.service }}-
+
+      # Not just a django_app concern: each service's settings.py calls
+      # env.read_env() at import time, which raises `ValueError: Not found file
+      # in .../src/.env` when the file is absent. Without this, crew collapses
+      # at collection and agent errors out across the board.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install ${{ matrix.service }} dependencies
+        run: make uv-sync svc=${{ matrix.service }}
+
+      - name: Unit tests
+        run: make ${{ matrix.service }}-tests
+
+  # Sandbox is the one suite that cares what the filesystem around it looks
+  # like. Its tests build a real Landlock jail, and jail.py's read_exec
+  # allowlist is the venv directory plus /usr, /lib, /lib64 and /bin -- the
+  # layout of the image the service ships in. actions/setup-python installs its
+  # interpreter under /opt/hostedtoolcache and the venv's bin/python is a
+  # symlink to it, so launcher.py's os.execv lands outside every allowed path
+  # and the kernel denies it: `PermissionError: [Errno 13] Permission denied`,
+  # fifteen failures across the two chain test files. Running the suite in an
+  # image whose interpreter sits in /usr/local reproduces the shipped layout, so
+  # no test has to be taught that it is in CI.
+  sandbox-tests:
+    needs: changes
+    if: needs.changes.outputs.sandbox == 'true'
+    runs-on: ubuntu-latest
+    container:
+      # Same interpreter version and the same /usr/local prefix as
+      # Dockerfile.sandbox's python:3.12.10-slim base, but the full Debian
+      # variant: this job cannot install anything system-wide (see the uid
+      # below), and -slim ships neither make -- which every backend suite is
+      # invoked through -- nor git, without which actions/checkout quietly falls
+      # back to downloading a REST tarball. Pinned to its multi-arch index
+      # digest, like the service containers further down.
+      image: python:3.12.10@sha256:45d13f5cba9b0f9bdfaed658d3e4fcfb1694ce49a6d70ec07c9f3980a7dc8b26
+      # Container jobs run as root by default, and root is the one uid this
+      # suite cannot use: whenever the chain is root it drops the executing
+      # child to sandboxuser (uid 1000, which a stock image does not have),
+      # while pytest's tmp_path directories are 0700 and root-owned, so the
+      # dropped child cannot read the job files it was handed.
+      # DynamicVenvExecutorChain.run() chowns those directories, but these tests
+      # drive ExecuteCodeHandler directly and never reach that code. Measured in
+      # this image: root gives 15 failed / 106 passed, uid 1001 gives 121
+      # passed. 1001 is also the runner user's own uid, which is what keeps the
+      # mounted workspace and /github/home writable.
+      options: --user 1001:1001
+    env:
+      # Matches the service Dockerfiles, and here it also guarantees uv uses the
+      # image's interpreter rather than fetching one into a path the jail denies.
+      UV_PYTHON_DOWNLOADS: never
+      # A uid injected with --user has no /etc/passwd entry, so `~` is not a
+      # dependable prefix. Both directories are therefore named outright, under
+      # the workspace, which is the mount this uid is guaranteed to own.
+      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      PYTHONUSERBASE: ${{ github.workspace }}/.py-user
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No actions/setup-python step, unlike the jobs above: the image's own
+      # interpreter is the entire point, and a second one from the tool cache
+      # would put back exactly the exec denial this job exists to avoid.
+      - name: Install uv
+        run: |
+          # --user because /usr/local is root-owned and this job is not root,
+          # and GITHUB_PATH because nothing else puts that prefix's bin
+          # directory on PATH, while the Makefile calls `uv` by name.
+          python -m pip install --no-cache-dir --user uv==0.11.21
+          echo "$PYTHONUSERBASE/bin" >> "$GITHUB_PATH"
+
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-sandbox-${{ hashFiles('src/sandbox/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-sandbox-
+
+      # Same reason as the matrix job: settings.py calls env.read_env() at
+      # import time and raises `ValueError: Not found file in .../src/.env` when
+      # the file is absent, so the suite cannot even be collected without this.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet --user pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install sandbox dependencies
+        run: make uv-sync svc=sandbox
+
+      - name: Unit tests
+        run: make sandbox-tests
+
+  # There is deliberately no django-tests job here. The suite takes about twenty
+  # minutes -- measured on 2026-09-18, and that is already with tests/api_tests
+  # left out as too slow to run here -- and that is a wait every django_app pull
+  # request was paying. The consequence is that src/django_app now has no
+  # automated test coverage in CI at all. That cost is not hypothetical: on
+  # 2026-09-21 three separate circular-import bugs reached main and left the
+  # Django app unable to start, and the build job below stayed green through all
+  # three, because it only builds the images and never imports the application.
+  # This is meant to be temporary.
+
   build:
-    needs: [check-cla, check-external-urls, frontend-checks]
+    needs: [changes, check-cla, check-external-urls, frontend-checks]
+    # `!cancelled() && !failure()` is mandatory, not defensive. frontend-checks can
+    # now be skipped, and a skipped dependency skips its dependants by default;
+    # overriding the default job condition with an explicit `if:` is the only way to
+    # stop that propagation, and doing so means re-stating "do not run on failure or
+    # cancellation" by hand.
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.code == 'true' }}
     uses: ./.github/workflows/compose-build.yml
     with:
       compose-file: src/docker-compose.yaml

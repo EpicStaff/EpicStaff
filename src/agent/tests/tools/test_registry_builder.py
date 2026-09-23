@@ -7,7 +7,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.exceptions import AgentServiceError, DuplicateToolNameError
 from app.tools.mcp.gateway import McpToolGateway
 from app.tools.registry_builder import ToolRegistryBuilder
@@ -358,9 +357,7 @@ async def test_knowledge_tools_fan_out_naive_and_one_graph_tool():
             _graph_local_entry(rag_id=2),
         ],
     )
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -371,9 +368,7 @@ async def test_knowledge_tools_fan_out_naive_and_one_graph_tool():
 
 async def test_knowledge_tools_suffix_naive():
     collection = _collection_spec(name="docs", entries=[_naive_entry()])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -382,9 +377,7 @@ async def test_knowledge_tools_suffix_naive():
 
 async def test_knowledge_tools_suffix_graph():
     collection = _collection_spec(name="docs", entries=[_graph_basic_entry(rag_id=2)])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -397,9 +390,7 @@ async def test_knowledge_tools_graph_schema_both_methods():
         name="wiki",
         entries=[_graph_basic_entry(rag_id=2), _graph_local_entry(rag_id=2)],
     )
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -412,9 +403,7 @@ async def test_knowledge_tools_graph_schema_both_methods():
 async def test_knowledge_tools_graph_schema_only_basic():
     """Graph tool with only basic entry → enum is ['basic'], default 'basic'."""
     collection = _collection_spec(name="docs", entries=[_graph_basic_entry(rag_id=2)])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -427,9 +416,7 @@ async def test_knowledge_tools_graph_schema_only_basic():
 async def test_knowledge_tools_graph_schema_only_local():
     """Graph tool with only local entry → enum is ['local'], default 'local'."""
     collection = _collection_spec(name="docs", entries=[_graph_local_entry(rag_id=2)])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -445,9 +432,7 @@ async def test_knowledge_tools_graph_schema_search_method_not_required():
         name="wiki",
         entries=[_graph_basic_entry(rag_id=2), _graph_local_entry(rag_id=2)],
     )
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -463,9 +448,7 @@ async def test_knowledge_tools_two_graph_rags_separate_tools():
         name="corp",
         entries=[_graph_basic_entry(rag_id=2), _graph_basic_entry(rag_id=3)],
     )
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -477,9 +460,7 @@ async def test_knowledge_tools_same_naive_type_dedup_appends_rag_id():
     """Two naive entries in one collection → second gets _{rag_id} suffix."""
     entries = [_naive_entry(rag_id=1), _naive_entry(rag_id=2)]
     collection = _collection_spec(name="corp", entries=entries)
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -489,9 +470,7 @@ async def test_knowledge_tools_same_naive_type_dedup_appends_rag_id():
 
 async def test_knowledge_tools_name_sanitization():
     collection = _collection_spec(name="My Docs!", entries=[_naive_entry()])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -503,9 +482,7 @@ async def test_knowledge_tools_suffix_survives_truncation():
     """Long collection name must not eat the suffix after truncation."""
     long_name = "a" * 60
     collection = _collection_spec(name=long_name, entries=[_naive_entry()])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     names = {spec.name for spec in registry.tool_specs()}
@@ -516,9 +493,7 @@ async def test_knowledge_tools_suffix_survives_truncation():
 
 async def test_knowledge_tools_description_naive():
     collection = _collection_spec(name="wiki", entries=[_naive_entry()])
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -533,9 +508,7 @@ async def test_knowledge_tools_description_graph():
         name="wiki",
         entries=[_graph_basic_entry(rag_id=2), _graph_local_entry(rag_id=2)],
     )
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -552,9 +525,7 @@ async def test_knowledge_tools_collection_description_appended():
         entries=[_naive_entry()],
         description="Internal company knowledge.",
     )
-    builder = ToolRegistryBuilder(
-        _fake_sandbox(), knowledge_client=_fake_knowledge_client()
-    )
+    builder = ToolRegistryBuilder(_fake_sandbox(), knowledge_client=_fake_knowledge_client())
     registry = builder.add_knowledge_tools(collection).build()
 
     specs = {spec.name: spec for spec in registry.tool_specs()}
@@ -618,9 +589,7 @@ async def test_collision_suffixed_names_registered_with_sink():
     )
     builder.add_knowledge_tools(collection).build()
 
-    registered_names = {
-        call.args[0] for call in sink.register_knowledge_tool.call_args_list
-    }
+    registered_names = {call.args[0] for call in sink.register_knowledge_tool.call_args_list}
     assert registered_names == {"search_corp_naive", "search_corp_naive_2"}
 
 

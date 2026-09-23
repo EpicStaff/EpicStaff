@@ -12,17 +12,21 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { ActivatedRoute, Router } from '@angular/router';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    UNSAVED_CHANGES_RESULT,
+    UnsavedChangesDialogService,
+} from '@shared/components';
+import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
-import {
-    UNSAVED_CHANGES_RESULT,
-    UnsavedChangesDialogService,
-} from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
-import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
@@ -72,6 +76,7 @@ import {
         DetailHeaderComponent,
         AppSvgIconComponent,
         OverlayModule,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-definitions-page.component.html',
     styleUrls: ['./agent-definitions-page.component.scss'],
@@ -85,8 +90,50 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
+    private readonly route: ActivatedRoute = inject(ActivatedRoute);
+    private readonly router: Router = inject(Router);
+    private readonly permissions: PermissionsService = inject(PermissionsService);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+
+    /** Read-only mode when the active org can't mutate agents/surfaces. */
+    protected readonly agentsReadOnly = computed<boolean>(() => {
+        this.permissions.active();
+        return !this.permissions.canAny(ResourceCode.Agents, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+    });
+
+    /** Storage preview is read-only when Files write actions are denied. */
+    protected readonly filesReadOnly = computed<boolean>(() => {
+        this.permissions.active();
+        return !this.permissions.canAny(ResourceCode.Files, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]);
+    });
+
+    /** Can the selected item (agent or surface) be duplicated in the active org? */
+    protected readonly canDuplicateSelected = computed<boolean>(() => {
+        this.permissions.active();
+        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Create);
+        if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Create);
+        return false;
+    });
+
+    /** Can the selected item (agent or surface) be deleted in the active org? */
+    protected readonly canDeleteSelected = computed<boolean>(() => {
+        this.permissions.active();
+        if (this.store.selectedAgent()) return this.permissions.can(ResourceCode.Agents, ActionCode.Delete);
+        if (this.store.selectedSurface()) return this.permissions.can(ResourceCode.Surfaces, ActionCode.Delete);
+        return false;
+    });
+
+    /** Kebab is worth showing only if at least one action is permitted. */
+    protected readonly canOpenHeaderMenu = computed<boolean>(
+        () => this.canDuplicateSelected() || this.canDeleteSelected()
+    );
 
     private readonly explorer = viewChild(ExplorerComponent);
+
+    private preselectApplied = false;
+    private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
 
@@ -145,6 +192,38 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 this.store.clearSelection();
             }
         });
+
+        effect(() => {
+            if (this.preselectApplied) return;
+            const loading = this.store.loading();
+            if (loading) {
+                this.sawLoading = true;
+                return;
+            }
+            if (!this.sawLoading) return;
+            this.preselectApplied = true;
+            this.applySurfaceIdPreselect();
+        });
+    }
+
+    private applySurfaceIdPreselect(): void {
+        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
+        if (raw == null) return;
+        void this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { surfaceId: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+        });
+        const surfaceId = Number(raw);
+        if (!Number.isFinite(surfaceId)) return;
+        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+        if (!surface) return;
+        if (surface.owner_agent != null) {
+            this.store.selectAgent(surface.owner_agent);
+        } else {
+            this.store.openSharedSurfaceSource(surface.id);
+        }
     }
 
     ngOnInit(): void {

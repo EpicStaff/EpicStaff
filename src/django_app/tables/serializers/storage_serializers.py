@@ -1,23 +1,19 @@
 import os
 
 from rest_framework import serializers
-
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.validators.file_upload_validator import FileValidator
-
 
 _MAX_STORAGE_PATH_BYTES = 1000
 
 
 def _normalize_path(value: str) -> str:
     if len(value.encode("utf-8")) > _MAX_STORAGE_PATH_BYTES:
-        raise serializers.ValidationError(
-            f"Path too long: max {_MAX_STORAGE_PATH_BYTES} bytes."
-        )
+        raise serializers.ValidationError(f"Path too long: max {_MAX_STORAGE_PATH_BYTES} bytes.")
     try:
-        return sanitize_storage_path(value, allow_empty=True)
+        return sanitize_storage_path(value, allow_empty=True, allow_leading_slash=True)
     except ValueError as exc:
-        raise serializers.ValidationError(str(exc))
+        raise serializers.ValidationError(str(exc)) from exc
 
 
 class StoragePathQuerySerializer(serializers.Serializer):
@@ -46,8 +42,9 @@ class StorageUploadSerializer(serializers.Serializer):
     def validate_path(self, value: str) -> str:
         return _normalize_path(value)
 
-    def validate_files(self, value):
-        return FileValidator().validate(value)
+    def validate(self, attrs):
+        FileValidator().validate(attrs["files"])
+        return attrs
 
 
 class StorageMkdirSerializer(serializers.Serializer):
@@ -282,9 +279,7 @@ class StorageGraphFilesQuerySerializer(serializers.Serializer):
 
 class StorageTreeQuerySerializer(serializers.Serializer):
     path = serializers.CharField(required=False, default="")
-    max_depth = serializers.IntegerField(
-        required=False, min_value=1, allow_null=True, default=None
-    )
+    max_depth = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
 
     def validate_path(self, value: str) -> str:
         return _normalize_path(value)
@@ -314,9 +309,7 @@ class StorageTreeResponseSerializer(serializers.Serializer):
 class StorageSearchQuerySerializer(serializers.Serializer):
     q = serializers.CharField(min_length=2, max_length=100)
     path = serializers.CharField(required=False, default="")
-    limit = serializers.IntegerField(
-        required=False, default=50, min_value=1, max_value=200
-    )
+    limit = serializers.IntegerField(required=False, default=50, min_value=1, max_value=200)
     offset = serializers.IntegerField(required=False, default=0, min_value=0)
 
     def validate_path(self, value: str) -> str:
@@ -349,9 +342,7 @@ class StorageFilesByIdsQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError("At least one id is required.")
 
         if not all(token.isdigit() for token in tokens):
-            raise serializers.ValidationError(
-                "ids must be a comma-separated list of integers."
-            )
+            raise serializers.ValidationError("ids must be a comma-separated list of integers.")
 
         return [int(token) for token in tokens]
 
@@ -374,12 +365,6 @@ class StorageFileSerializer(serializers.Serializer):
     is_system = serializers.BooleanField(
         read_only=True, help_text="True for platform-written files"
     )
-    parent_path = serializers.CharField(
-        read_only=True, help_text="Immediate parent directory path"
-    )
-    created_at = serializers.DateTimeField(
-        read_only=True, help_text="Row creation timestamp"
-    )
-    updated_at = serializers.DateTimeField(
-        read_only=True, help_text="Row last update timestamp"
-    )
+    parent_path = serializers.CharField(read_only=True, help_text="Immediate parent directory path")
+    created_at = serializers.DateTimeField(read_only=True, help_text="Row creation timestamp")
+    updated_at = serializers.DateTimeField(read_only=True, help_text="Row last update timestamp")

@@ -1,6 +1,5 @@
 from django.utils.functional import SimpleLazyObject
 from rest_framework import serializers
-
 from tables.models import Secret
 from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueTogetherValidator,
@@ -15,9 +14,7 @@ _permission_resolver = PermissionResolver()
 def _effective_for(*, context):
     """The requesting user's resolved permissions in the active org."""
     request = context["request"]
-    return _permission_resolver.resolve(
-        user=request.user, org_id=resolve_active_org_id(request)
-    )
+    return _permission_resolver.resolve(user=request.user, org_id=resolve_active_org_id(request))
 
 
 class SecretUsageCountListSerializer(serializers.ListSerializer):

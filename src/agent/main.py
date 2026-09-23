@@ -4,24 +4,23 @@ import socket
 import sys
 from uuid import uuid4
 
-from loguru import logger
-
+import settings
 from app.data_loader import DataLoader
 from app.enums import RunType
 from app.factory import RunnerFactory
-from app.knowledge.client import KnowledgeClient
 from app.llm.config import configure_litellm
 from app.llm.litellm_client import LiteLLMClient
 from app.loop.agent_loop import DefaultAgentLoop
 from app.request_handler import RequestHandler
 from app.resources.resolver import AgentResolver
-from app.tools.mcp.client_factory import FastMCPClientFactory
-from app.tools.mcp.gateway import McpToolGateway
 from app.runners.deps import RunnerDependencies
 from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
 from app.sandbox.client import SandboxClient
-import settings
+from app.tools.mcp.client_factory import FastMCPClientFactory
+from app.tools.mcp.gateway import McpToolGateway
+from loguru import logger
+from shared.knowledge.client import KnowledgeClient
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 
@@ -55,13 +54,7 @@ async def main() -> None:
     )
     await sandbox_client.start()
 
-    knowledge_client = KnowledgeClient(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD,
-        request_channel=settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL,
-        response_channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
-    )
+    knowledge_client = KnowledgeClient(base_url=settings.KNOWLEDGE_BASE_URL)
     await knowledge_client.start()
 
     loader = DataLoader(

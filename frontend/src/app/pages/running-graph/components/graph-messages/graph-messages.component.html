@@ -327,7 +327,7 @@
         <div class="empty-list">No messages to show</div>
     }
 
-    @if (isLoadingMore) {
+    @if (isLoadingMore && (messages.length > 0 || !isProcessing)) {
         <div class="loading-more-indicator">
             <app-loading-dots></app-loading-dots>
         </div>

@@ -7,5 +7,5 @@ export interface ConfigureModelsTab {
     iconClass?: string;
     /** app-svg-icon `icon` input. Mutually exclusive with `iconClass`. */
     svgIcon?: string;
-    isPermitted: boolean;
+    isPermitted: () => boolean;
 }

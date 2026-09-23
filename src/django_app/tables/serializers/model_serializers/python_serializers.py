@@ -1,6 +1,5 @@
 from django.db import transaction
 from rest_framework import serializers
-
 from tables.exceptions import (
     BuiltInToolModificationError,
     PythonCodeToolConfigSerializerError,
@@ -17,11 +16,12 @@ from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
 from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
-    OrgVisiblePrimaryKeyRelatedField,
-    OrgScopedUniqueValidator,
     OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
     resolve_active_org_id,
 )
+from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
@@ -82,9 +82,7 @@ class PythonCodeSerializer(
         """Convert 'libraries' string to a list of strings for output."""
         representation = super().to_representation(instance)
         representation["libraries"] = (
-            list(filter(None, instance.libraries.split(" ")))
-            if instance.libraries
-            else []
+            list(filter(None, instance.libraries.split(" "))) if instance.libraries else []
         )
         return representation
 
@@ -132,11 +130,7 @@ class PythonCodeSerializer(
         undeclared = parsed - declared
         if undeclared:
             raise serializers.ValidationError(
-                {
-                    "secret_ids": self._undeclared_message(
-                        undeclared=undeclared, declared=declared
-                    )
-                }
+                {"secret_ids": self._undeclared_message(undeclared=undeclared, declared=declared)}
             )
 
         return attrs
@@ -165,9 +159,7 @@ class PythonCodeSerializer(
             org_id = resolve_active_org_id(request=request)
         except Exception:
             return []
-        return sorted(
-            Secret.objects.filter(org_id=org_id).values_list("name", flat=True)
-        )
+        return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
 class PythonCodeToolSerializer(serializers.ModelSerializer):
@@ -180,6 +172,8 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             OrgScopedUniqueValidator(
                 queryset=PythonCodeTool.objects.all(),
                 message="A tool with this name already exists.",
+                global_queryset=PythonCodeTool.objects.filter(built_in=True),
+                global_message="A built-in tool with this name already exists.",
             )
         ]
     )
@@ -201,8 +195,14 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "built_in",
             "use_storage",
             "labels",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "built_in"]
+        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
+
+    def validate_description(self, value: str) -> str:
+        """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
+        return sanitize_description(value)
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.
@@ -213,9 +213,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         shared row (EST-3773).
         """
         representation = super().to_representation(instance)
-        representation["labels"] = org_scoped_label_ids(
-            instance, self.context.get("request")
-        )
+        representation["labels"] = org_scoped_label_ids(instance, self.context.get("request"))
         return representation
 
     def create(self, validated_data):
@@ -263,12 +261,9 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
     def __init__(self, *args, tool_config_validator=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.tool_config_validator = (
-            tool_config_validator
-            or PythonCodeToolConfigValidator(
-                validate_null_fields=True,
-                validate_missing_required_fields=True,
-            )
+        self.tool_config_validator = tool_config_validator or PythonCodeToolConfigValidator(
+            validate_null_fields=True,
+            validate_missing_required_fields=True,
         )
 
     class Meta:
@@ -287,12 +282,10 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
     def validate(self, data: dict):
         name = data.get("name")
         tool = data.get("tool")
-        configuration = data.get("configuration", dict())
+        configuration = data.get("configuration", {})
 
         if name is None:
-            raise PythonCodeToolConfigSerializerError(
-                "Name for configuration is not provided."
-            )
+            raise PythonCodeToolConfigSerializerError("Name for configuration is not provided.")
         if tool is None:
             raise PythonCodeToolConfigSerializerError("Tool is not provided.")
         if configuration is None:
@@ -306,7 +299,7 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
             )
             data["configuration"] = validated_configuration
         except serializers.ValidationError as e:
-            raise PythonCodeToolConfigSerializerError(e.message)
+            raise PythonCodeToolConfigSerializerError(e.message) from e
 
         return data
 

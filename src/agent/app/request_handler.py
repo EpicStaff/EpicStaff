@@ -11,11 +11,11 @@ pre-runner failures (load / build).  The message is always acked in finally.
 from __future__ import annotations
 
 from loguru import logger
+from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.factory import RunnerFactory
-from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 
 class RequestHandler:
@@ -82,9 +82,7 @@ class RequestHandler:
 
         try:
             request = await self._loader.load(envelope)
-            runner, emitter = self._factory.build(
-                request, self._redis_client, self._result_stream
-            )
+            runner, emitter = self._factory.build(request, self._redis_client, self._result_stream)
 
         except Exception as error:
             logger.exception(
@@ -101,6 +99,4 @@ class RequestHandler:
 
         finally:
             await self._redis_client.ack(stream, self._consumer_group, message_id)
-            logger.debug(
-                "acked message_id={} correlation_id={}", message_id, correlation_id
-            )
+            logger.debug("acked message_id={} correlation_id={}", message_id, correlation_id)

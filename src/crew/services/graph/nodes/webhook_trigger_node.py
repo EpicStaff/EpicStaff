@@ -2,16 +2,13 @@ import json
 from typing import Any
 
 from langgraph.types import StreamWriter
-
-from services.run_python_code_service import RunPythonCodeService
-
-from services.graph.exceptions import ReturnCodeError
-from src.shared.models import PythonCodeData
-
 from models.graph_models import GraphMessage, PythonMessageData
 from models.state import State
-from services.graph.nodes.base_node import BaseNode
 from services.graph.events import StopEvent
+from services.graph.exceptions import ReturnCodeError
+from services.graph.nodes.base_node import BaseNode
+from services.run_python_code_service import RunPythonCodeService
+from src.shared.models import PythonCodeData
 
 
 class WebhookTriggerNode(BaseNode):
@@ -35,9 +32,7 @@ class WebhookTriggerNode(BaseNode):
         self.python_code_executor_service = python_code_executor_service
         self.python_code_data = python_code_data
 
-    async def execute(
-        self, state: State, writer: StreamWriter, execution_order: int, input_: Any
-    ):
+    async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         additional_global_kwargs = {
             "state": {
                 "variables": state["variables"].model_dump(),

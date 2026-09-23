@@ -66,6 +66,12 @@
         }
     }
 
+    // Zero out the component's default margin — .control's own gap (4px)
+    // already gives the 4px input-to-error spacing.
+    ::ng-deep .control .validation-errors {
+        margin: 0 !important;
+    }
+
     .footer {
         display: flex;
         align-items: center;

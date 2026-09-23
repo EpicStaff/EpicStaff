@@ -17,15 +17,17 @@
                         class="form-fields"
                         [style.flex-basis.px]="leftColumnWidth.width()"
                     >
-                        <app-custom-input
-                            label="Node Name"
-                            [required]="true"
-                            tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                        <div class="field-isolated">
+                            <app-custom-input
+                                label="Node Name"
+                                [required]="true"
+                                tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
 
                         <div class="field">
                             <div class="field__label-row">
@@ -70,7 +72,7 @@
                             <div class="field__label-row">
                                 <label class="field__label">Surface (Group of Permissions)</label>
                                 <app-help-tooltip
-                                    text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                    text="Assign one or more surfaces (permission groups) this task's agent can use while executing. A collection may only appear in one surface per node."
                                     position="right"
                                     size="18px"
                                 />
@@ -114,6 +116,11 @@
                         <div class="input-map">
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
+
+                        <app-inputs-you-can-use
+                            [names]="inputMapKeys()"
+                            (insert)="insertInputToInstructions($event)"
+                        />
 
                         <app-custom-input
                             label="Output Variable Path"
@@ -193,6 +200,7 @@
                                     </div>
                                 </div>
                                 <app-variable-highlight-textarea
+                                    #instructionsTextareaSchemaView
                                     class="editor-block__textarea"
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
@@ -267,6 +275,7 @@
                                     ></markdown>
                                 } @else {
                                     <app-variable-highlight-textarea
+                                        #instructionsTextareaMainPane
                                         class="main-editor-pane__textarea"
                                         formControlName="instructions"
                                         placeholder="Enter task instructions..."
@@ -302,15 +311,17 @@
                 </div>
             } @else {
                 <div class="form-layout collapsed">
-                    <app-custom-input
-                        label="Node Name"
-                        [required]="true"
-                        tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <div class="field-isolated">
+                        <app-custom-input
+                            label="Node Name"
+                            [required]="true"
+                            tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                        <app-validation-errors [control]="form.get('node_name')!" />
+                    </div>
 
                     <div class="field">
                         <div class="field__label-row">
@@ -355,7 +366,7 @@
                         <div class="field__label-row">
                             <label class="field__label">Surface (Group of Permissions)</label>
                             <app-help-tooltip
-                                text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                text="Assign one or more surfaces (permission groups) this task's agent can use while executing. A collection may only appear in one surface per node."
                                 position="right"
                                 size="18px"
                             />
@@ -400,6 +411,11 @@
                         <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
 
+                    <app-inputs-you-can-use
+                        [names]="inputMapKeys()"
+                        (insert)="insertInputToInstructions($event)"
+                    />
+
                     <app-custom-input
                         label="Output Variable Path"
                         tooltipText="Path where the Task node output will be stored in flow variables."
@@ -421,6 +437,7 @@
                     </div>
 
                     <app-variable-highlight-textarea
+                        #instructionsTextareaCollapsed
                         label="Instructions"
                         [required]="true"
                         tooltipText="Instructions given to the agent describing what this task should accomplish."
@@ -430,7 +447,10 @@
                         [invalid]="instructionsInvalid()"
                         [variables]="inputMapKeys()"
                     ></app-variable-highlight-textarea>
-                    <app-validation-errors [control]="form.get('instructions')!" />
+                    <app-validation-errors
+                        class="instructions-collapsed-validation"
+                        [control]="form.get('instructions')!"
+                    />
 
                     <div class="output-schema-section">
                         <button

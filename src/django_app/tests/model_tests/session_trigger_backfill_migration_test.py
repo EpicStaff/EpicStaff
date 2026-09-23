@@ -24,7 +24,7 @@ def test_backfill_classifies_all_session_shapes(default_org, regular_user):
     schedule_node = ScheduleTriggerNode.objects.create(
         graph=graph, node_name="my_schedule"
     )
-    webhook_trigger = WebhookTrigger.objects.create(path="wpath")
+    webhook_trigger = WebhookTrigger.objects.create(path="wpath", org=default_org)
     python_code = PythonCode.objects.create(code="def main(): return None")
     webhook_node = WebhookTriggerNode.objects.create(
         graph=graph,

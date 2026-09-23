@@ -1,0 +1,23 @@
+<div class="running-graph-container">
+    <app-running-graph-header
+        [graphId]="graphId"
+        [sessionId]="sessionId"
+        [graphName]="graphData?.name"
+        [sessionStatus]="currentSessionStatus"
+        [graphData]="graphData"
+        (stopSession)="onStopSession()"
+    >
+    </app-running-graph-header>
+
+    <div class="content-container">
+        <app-graph-messages
+            [graphId]="graphId"
+            [sessionId]="sessionId"
+            (sessionStatusChanged)="handleSessionStatusChange($event)"
+            (messagesChanged)="handleMessagesChanged($event)"
+        >
+        </app-graph-messages>
+        <!-- <app-flow-representation [graphData]="graphData" [messages]="messages">
+</app-flow-representation> -->
+    </div>
+</div>

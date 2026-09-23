@@ -6,6 +6,7 @@ import copy
 
 from app.logging_utils import redact, redacted_dump
 from shared.models.agent_service import AgentRequest
+
 from tests.test_contract import EXAMPLE_BLOB
 
 

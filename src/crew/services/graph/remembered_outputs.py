@@ -16,7 +16,7 @@ class RememberedOutputsStore:
 
     def __init__(self, redis_service: RedisService, ttl_s: int = settings.REMEMBERED_OUTPUTS_TTL):
         self._redis_service = redis_service
-        self._ttl_s = ttl_s
+        self._ttl_s = int(ttl_s)
 
     @staticmethod
     def _key(session_id: int) -> str:

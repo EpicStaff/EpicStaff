@@ -42,7 +42,7 @@ class SubGraphValidator:
                 if sub_id == root_graph.id:
                     return [graph_id, sub_id]
                 if sub_id not in visited:
-                    stack.append((sub_id, path + [sub_id]))
+                    stack.append((sub_id, [*path, sub_id]))
 
         return None
 
@@ -51,9 +51,7 @@ class SubGraphValidator:
         Gets information about the SubGraphNode that creates the cycle.
         """
         node = (
-            SubGraphNode.objects.filter(
-                graph_id=parent_graph_id, subgraph_id=subgraph_id
-            )
+            SubGraphNode.objects.filter(graph_id=parent_graph_id, subgraph_id=subgraph_id)
             .select_related("subgraph")
             .first()
         )
@@ -63,9 +61,7 @@ class SubGraphValidator:
             "name": (
                 node.graph.name
                 if node and node.graph.name
-                else f'SubGraph Node {node.id if node else "Unknown"}'
+                else f"SubGraph Node {node.id if node else 'Unknown'}"
             ),
-            "subgraph_name": (
-                node.subgraph.name if node and node.subgraph else "Unknown Flow"
-            ),
+            "subgraph_name": (node.subgraph.name if node and node.subgraph else "Unknown Flow"),
         }

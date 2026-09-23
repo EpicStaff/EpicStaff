@@ -1,5 +1,5 @@
-from django.core.management.base import BaseCommand
 from django.apps import apps
+from django.core.management.base import BaseCommand
 from django.db import connection
 from loguru import logger
 
@@ -33,7 +33,7 @@ class Command(BaseCommand):
                     """
                     )
                     fixed_count += 1
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
 
         if fixed_count:

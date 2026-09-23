@@ -15,4 +15,5 @@ export class TooltipComponent {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    inline = input<boolean>(false);
 }

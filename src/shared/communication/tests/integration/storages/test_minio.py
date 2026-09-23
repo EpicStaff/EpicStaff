@@ -4,7 +4,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-from communication.storages.minio_ import MinioStorage
+from communication.storages.minio_storage import MinioStorage
 
 
 @pytest.fixture

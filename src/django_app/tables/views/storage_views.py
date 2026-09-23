@@ -7,13 +7,9 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
-
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.views.mixins import OrgScopedResolverMixin
-from tables.services.rbac.authentication import JwtAuthentication, ApiKeyAuthentication
-from tables.services.rbac.permissions import HasOrgPermission
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -32,6 +28,8 @@ from tables.serializers.storage_serializers import (
     StorageTreeQuerySerializer,
     StorageUploadSerializer,
 )
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
@@ -52,6 +50,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_SWAGGER,
 )
+from tables.views.mixins import OrgScopedResolverMixin
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
@@ -84,15 +83,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     def _assert_cross_org_superadmin(self, request, src_org_id, dst_org_id) -> bool:
         """True when this is a cross-org transfer; such transfers require
         superadmin (operating across organizations is a platform action)."""
-        cross_org = bool(
-            src_org_id and dst_org_id and int(src_org_id) != int(dst_org_id)
-        )
+        cross_org = bool(src_org_id and dst_org_id and int(src_org_id) != int(dst_org_id))
         # TODO: refactor by checking permision of READ in src_org_id then check permission of
         # CREATE in dst_org_id, Part of cross-org RBAC feature
         if cross_org and not getattr(request.user, "is_superadmin", False):
-            raise PermissionDenied(
-                "Cross-organization file transfer requires superadmin."
-            )
+            raise PermissionDenied("Cross-organization file transfer requires superadmin.")
         return cross_org
 
     @extend_schema(**STORAGE_LIST_SWAGGER)
@@ -106,8 +101,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         if prefix:
             try:
                 self.manager.info(org_id, prefix)
-            except FileNotFoundError:
-                raise NotFound({"path": f"Path does not exist: {prefix}"})
+            except FileNotFoundError as e:
+                raise NotFound({"path": f"Path does not exist: {prefix}"}) from e
 
         items = self.manager.list_(org_id, prefix)
         return Response({"path": prefix, "items": [i.to_dict() for i in items]})
@@ -122,8 +117,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             data = self.manager.info(org_id, path)
-        except FileNotFoundError:
-            raise NotFound({"path": f"File does not exist: {path}"})
+        except FileNotFoundError as e:
+            raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         response = data.to_dict()
 
@@ -149,8 +144,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             file_bytes = self.manager.download(org_id, path)
-        except FileNotFoundError:
-            raise NotFound({"path": f"File does not exist: {path}"})
+        except FileNotFoundError as e:
+            raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         filename = path.rstrip("/").split("/")[-1] if path else "file"
         response = HttpResponse(file_bytes, content_type="application/octet-stream")
@@ -162,12 +157,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @parser_classes([MultiPartParser])
     def upload(self, request):
         org_id = self.get_active_org_id()
-        raw = (
-            request.data.dict() if hasattr(request.data, "dict") else dict(request.data)
-        )
-        serializer = StorageUploadSerializer(
-            data={**raw, "files": request.FILES.getlist("files")}
-        )
+        raw = request.data.dict() if hasattr(request.data, "dict") else dict(request.data)
+        serializer = StorageUploadSerializer(data={**raw, "files": request.FILES.getlist("files")})
         serializer.is_valid(raise_exception=True)
         path = serializer.validated_data["path"]
         files = serializer.validated_data["files"]
@@ -175,7 +166,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         try:
             results = [self.manager.upload_file(org_id, path, f) for f in files]
         except ValueError as e:
-            raise ValidationError({"detail": str(e)})
+            raise ValidationError({"detail": str(e)}) from e
 
         return Response(
             {"uploaded": [r.to_dict() for r in results]},
@@ -192,11 +183,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             zip_filename, zip_chunks = self.manager.download_zip(org_id, paths)
-            response = HttpResponse(
-                b"".join(zip_chunks), content_type="application/zip"
-            )
+            response = HttpResponse(b"".join(zip_chunks), content_type="application/zip")
         except FileNotFoundError as e:
-            raise ValidationError({"paths": str(e)})
+            raise ValidationError({"paths": str(e)}) from e
 
         response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
         return response
@@ -218,12 +207,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         except FileNotFoundError:
             pass
         except ValueError as e:
-            raise ValidationError({"detail": str(e)})
+            raise ValidationError({"detail": str(e)}) from e
 
         try:
             self.manager.mkdir(org_id, path)
         except ValueError as e:
-            raise ValidationError({"detail": str(e)})
+            raise ValidationError({"detail": str(e)}) from e
         return Response({"path": path, "created": True}, status=status.HTTP_201_CREATED)
 
     @extend_schema(**STORAGE_DELETE_SWAGGER)
@@ -249,12 +238,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             self.manager.rename(org_id, from_path, to_path)
-        except FileNotFoundError:
-            raise ValidationError({"from": f"Source path does not exist: {from_path}"})
-        except FileExistsError:
-            raise ValidationError({"to": f"Destination already exists: {to_path}"})
+        except FileNotFoundError as e:
+            raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
+        except FileExistsError as e:
+            raise ValidationError({"to": f"Destination already exists: {to_path}"}) from e
         except ValueError as e:
-            raise ValidationError({"detail": str(e)})
+            raise ValidationError({"detail": str(e)}) from e
 
         return Response({"from": from_path, "to": to_path, "success": True})
 
@@ -271,15 +260,13 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.move_cross_org(
-                    int(src_org_id), from_path, int(dst_org_id), to_path
-                )
+                self.manager.move_cross_org(int(src_org_id), from_path, int(dst_org_id), to_path)
             else:
                 self.manager.move(org_id, from_path, to_path)
-        except FileNotFoundError:
-            raise ValidationError({"from": f"Source path does not exist: {from_path}"})
+        except FileNotFoundError as e:
+            raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
-            raise ValidationError({"detail": str(e)})
+            raise ValidationError({"detail": str(e)}) from e
 
         return Response({"from": from_path, "to": to_path, "success": True})
 
@@ -296,15 +283,13 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.copy_cross_org(
-                    int(src_org_id), from_path, int(dst_org_id), to_path
-                )
+                self.manager.copy_cross_org(int(src_org_id), from_path, int(dst_org_id), to_path)
             else:
                 self.manager.copy(org_id, from_path, to_path)
-        except FileNotFoundError:
-            raise ValidationError({"from": f"Source path does not exist: {from_path}"})
+        except FileNotFoundError as e:
+            raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
-            raise ValidationError({"detail": str(e)})
+            raise ValidationError({"detail": str(e)}) from e
 
         return Response({"from": from_path, "to": to_path, "success": True})
 
@@ -332,8 +317,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         for path in paths:
             try:
                 path_info = self.manager.info(org_id, path)
-            except FileNotFoundError:
-                raise ValidationError({"paths": f"Path does not exist: {path}"})
+            except FileNotFoundError as e:
+                raise ValidationError({"paths": f"Path does not exist: {path}"}) from e
 
             if isinstance(path_info, FolderInfo) and not path.endswith("/"):
                 path = path + "/"
@@ -341,9 +326,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             sf, _ = StorageFile.objects.get_or_create(org_id=org_id, path=path)
 
             for graph_id in graph_ids:
-                obj, _ = GraphStorageFile.objects.get_or_create(
-                    graph_id=graph_id, storage_file=sf
-                )
+                obj, _ = GraphStorageFile.objects.get_or_create(graph_id=graph_id, storage_file=sf)
                 results.append(obj)
 
         return Response(
@@ -360,9 +343,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         paths = serializer.validated_data["paths"]
         graph_ids = serializer.validated_data["graph_ids"]
 
-        normalized_paths = {
-            path for p in paths for path in (p, p.rstrip("/"), p.rstrip("/") + "/")
-        }
+        normalized_paths = {path for p in paths for path in (p, p.rstrip("/"), p.rstrip("/") + "/")}
 
         GraphStorageFile.objects.filter(
             graph_id__in=graph_ids,
@@ -383,16 +364,14 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         if prefix:
             try:
                 info = self.manager.info(org_id, prefix)
-            except FileNotFoundError:
-                raise NotFound({"path": f"Path does not exist: {prefix}"})
+            except FileNotFoundError as e:
+                raise NotFound({"path": f"Path does not exist: {prefix}"}) from e
 
             if not isinstance(info, FolderInfo):
                 raise ValidationError({"path": "tree requires a folder path"})
 
         root, truncated = self.manager.list_tree(org_id, prefix, max_depth=max_depth)
-        return Response(
-            {"path": prefix, "truncated": truncated, "tree": root.to_dict()}
-        )
+        return Response({"path": prefix, "truncated": truncated, "tree": root.to_dict()})
 
     @extend_schema(**STORAGE_GRAPH_FILES_SWAGGER)
     @action(detail=False, methods=["get"], url_path="graph-files")
@@ -407,9 +386,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise NotFound({"graph_id": f"Graph not found: {graph_id}"})
 
         qs = (
-            GraphStorageFile.objects.filter(
-                graph_id=graph_id, storage_file__org_id=org_id
-            )
+            GraphStorageFile.objects.filter(graph_id=graph_id, storage_file__org_id=org_id)
             .select_related("storage_file")
             .order_by("added_at")
         )
@@ -421,9 +398,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         org_id = self.get_active_org_id()
         params = StorageFilesByIdsQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
-        qs = StorageFile.objects.filter(
-            org_id=org_id, id__in=params.validated_data["ids"]
-        )
+        qs = StorageFile.objects.filter(org_id=org_id, id__in=params.validated_data["ids"])
         return Response(StorageFileSerializer(qs, many=True).data)
 
     @extend_schema(**STORAGE_SEARCH_SWAGGER)

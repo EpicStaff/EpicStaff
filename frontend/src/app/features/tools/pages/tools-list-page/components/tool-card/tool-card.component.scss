@@ -40,6 +40,17 @@
                 gap: 8px;
                 color: var(--transparent-white-16);
 
+                // Extends the checkbox click surface outward without changing
+                // its visual position: padding grows the hit box, matching
+                // negative margin absorbs it back out of the flex layout.
+                .checkbox-hit {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 8px;
+                    margin: -8px;
+                    cursor: pointer;
+                }
+
                 .unused {
                     font-size: 0.75rem;
                     color: var(--text-secondary-60);
@@ -79,6 +90,8 @@
                     background: transparent;
                     border: none;
                     border-radius: 4px;
+                    height: 28px;
+                    width: 28px;
                     color: var(--color-text-secondary);
                     cursor: pointer;
                     transition:

@@ -2,7 +2,6 @@ from typing import Any
 
 from tables.services.rbac.base_rbac_validator import BaseRBACValidator, FieldError
 
-
 ORG_NAME_MAX_LENGTH = 255
 
 

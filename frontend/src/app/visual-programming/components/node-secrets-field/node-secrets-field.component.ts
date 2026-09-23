@@ -12,13 +12,10 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent, HelpTooltipComponent, MultiSelectComponent, SelectItem } from '@shared/components';
 import { SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../services/notifications';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
-import { MultiSelectComponent } from '../../../shared/components/multi-select/multi-select.component';
-import { SelectItem } from '../../../shared/components/select/select.component';
 
 /** A "Secrets" field (label + input-styled trigger + multi-select dropdown) for node side
  *  panels — lets a node reference multiple secrets by id. Reused across Python/Webhook/CDT/
@@ -35,7 +32,7 @@ export class NodeSecretsFieldComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly toastService = inject(ToastService);
 
-    public readonly activeColor = input<string>('#685fff');
+    public readonly activeColor = input<string>('var(--accent-color)');
     public readonly value = model<number[]>([]);
     public readonly tooltipText = input<string>(
         "Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."

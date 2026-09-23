@@ -1,6 +1,13 @@
 <app-drag-drop-area (filesDropped)="facade.onFilesDropped($event)">
     <div class="storage-page">
-        @if (facade.isLoading()) {
+        @if (facade.error()) {
+            <app-fetch-error-state
+                class="storage-page__loading"
+                title="Failed to load storage files"
+                message="Check your connection and try again."
+                (retry)="facade.loadTree()"
+            />
+        } @else if (facade.isLoading()) {
             <div class="storage-page__loading">
                 <app-spinner
                     [text]="'Loading storage...'"

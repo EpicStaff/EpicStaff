@@ -1,4 +1,11 @@
 import pytest
+
+pytest.importorskip(
+    "pwd",
+    reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
+)
+
+import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain, AbstractHandler
 from services.storage_credential_client import StorageCredentialRequestError
 from src.shared.models import CodeResultData

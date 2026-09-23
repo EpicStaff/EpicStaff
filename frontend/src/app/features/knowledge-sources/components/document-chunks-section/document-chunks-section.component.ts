@@ -10,10 +10,14 @@ import {
     OnDestroy,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, SpinnerComponent } from '@shared/components';
-import { EMPTY } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { EMPTY, Subject } from 'rxjs';
+import { switchMap, takeUntil } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { ChunkSearchService } from '../../services/chunk-search.service';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
@@ -32,6 +36,7 @@ import { ChunkSearchBarComponent, ChunkSearchParams } from './chunk-search-bar/c
         ChunkSearchBarComponent,
         SpinnerComponent,
         NgTemplateOutlet,
+        MatTooltip,
     ],
 })
 export class DocumentChunksSectionComponent implements OnDestroy {
@@ -39,6 +44,8 @@ export class DocumentChunksSectionComponent implements OnDestroy {
     private chunkSearchService = inject(ChunkSearchService);
     private deepLinkService = inject(ChunkDeepLinkService);
     private destroyRef = inject(DestroyRef);
+    private toast = inject(ToastService);
+    private permissionService = inject(PermissionsService);
 
     naiveRagId = input.required<number>();
     collectionId = input.required<number>();
@@ -46,11 +53,17 @@ export class DocumentChunksSectionComponent implements OnDestroy {
 
     chunkSearchState = this.chunkSearchService.chunkSearchState;
 
+    private cancelChunking$ = new Subject<void>();
+
     selectedDocState = computed(() => {
         const id = this.selectedDocumentId();
         if (!id) return;
         return this.chunksStorageService.documentStates().get(id);
     });
+
+    canRunChunking = computed<boolean>(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update)
+    );
 
     constructor() {
         effect(() => {
@@ -83,12 +96,15 @@ export class DocumentChunksSectionComponent implements OnDestroy {
         this.chunksStorageService
             .runChunking(this.naiveRagId(), documentId)
             .pipe(
+                takeUntil(this.cancelChunking$),
                 takeUntilDestroyed(this.destroyRef),
                 switchMap(() => {
                     const state = this.chunksStorageService.documentStates().get(documentId);
-                    if (!state) return EMPTY;
 
+                    if (!state) return EMPTY;
                     if (state.status === 'chunks_outdated') return EMPTY;
+                    if (state.status === 'chunking_timeout') return EMPTY;
+                    if (state.status === 'chunking_failed') return EMPTY;
                     if (this.selectedDocumentId() !== documentId) return EMPTY;
 
                     const deepLinkChunkId = this.deepLinkService.pending()?.chunkId ?? 0;
@@ -96,6 +112,20 @@ export class DocumentChunksSectionComponent implements OnDestroy {
                 })
             )
             .subscribe();
+    }
+
+    stopChunking() {
+        const documentId = this.selectedDocumentId();
+        if (!documentId) return;
+
+        this.cancelChunking$.next();
+        this.chunksStorageService
+            .stopChunking(this.naiveRagId(), documentId)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => this.toast.success('Chunking cancellation requested'),
+                error: () => this.toast.error('Chunking stop failed'),
+            });
     }
 
     onSearchChange(params: ChunkSearchParams): void {

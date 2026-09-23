@@ -481,7 +481,10 @@ class TestAgentDefinitionLLMHydration:
         assert task_data.agent_definition.llm is not None
         assert task_data.agent_definition.llm.provider == "openai"
         assert task_data.agent_definition.llm.config.model == llm_config.model.name
-        assert task_data.agent_definition.llm.config.api_key == llm_config.api_key
+        assert (
+            task_data.agent_definition.llm.config.api_key_secret_id
+            == llm_config.api_key_secret_id
+        )
         assert task_data.agent_definition.fcm_llm is None
         assert task_data.agent_definition.llm_config_id == llm_config.pk
 

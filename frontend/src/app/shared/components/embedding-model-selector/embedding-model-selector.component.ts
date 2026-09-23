@@ -123,7 +123,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 justify-content: space-between;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 6px;
+                border-radius: 4px;
                 padding: 0.625rem 0.75rem;
                 cursor: pointer;
                 transition: border-color 0.2s ease;
@@ -191,7 +191,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 6px;
+                border-radius: 4px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 z-index: 1000;
                 max-height: 300px;

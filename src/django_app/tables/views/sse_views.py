@@ -1,30 +1,23 @@
 import asyncio
-import json
-import os
 import copy
+import json
 
-from loguru import logger
-from rest_framework.views import APIView
+from asgiref.sync import sync_to_async
+from django.conf import settings
+from django.http import JsonResponse
 from drf_spectacular.utils import (
     extend_schema,
-    OpenApiResponse,
-    OpenApiParameter,
-    inline_serializer,
 )
-from rest_framework import serializers as drf_serializers
-from asgiref.sync import sync_to_async
-from django.http import JsonResponse
+from loguru import logger
 from rest_framework.exceptions import APIException
-
-from tables.utils.mixins import SSEMixin
+from rest_framework.views import APIView
+from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
-from tables.models.graph_models import GraphSessionMessage
-from tables.services.redis_service import RedisService
 from tables.services.rbac.session_access import assert_session_org_access
+from tables.services.redis_service import RedisService
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
-
-from django.conf import settings
+from tables.utils.mixins import SSEMixin
 
 redis_service = RedisService()
 
@@ -47,9 +40,7 @@ class RunSessionSSEView(SSEMixin):
         }
 
     def __log(self, event, state, data):
-        logger.debug(
-            f"{self.__class__.__name__} sends event {event} {state} data: {data}"
-        )
+        logger.debug(f"{self.__class__.__name__} sends event {event} {state} data: {data}")
 
     async def _generate_initial_graph_session_messages(self, session_id):
         # 1. Get recent Redis entries for this session.
@@ -121,16 +112,12 @@ class RunSessionSSEView(SSEMixin):
         session_id = self.kwargs["session_id"]
         async for message in self._generate_initial_graph_session_messages(session_id):
             self.__log(event="messages", state="initial", data=message["uuid"])
-            message["message_data"] = self._trim_base64_file_data(
-                message["message_data"]
-            )
+            message["message_data"] = self._trim_base64_file_data(message["message_data"])
             yield {"event": "messages", "data": message}
 
         # Session Statuses
         queryset = (
-            Session.objects.only("id", "status", "status_data")
-            .filter(id=session_id)
-            .values()
+            Session.objects.only("id", "status", "status_data").filter(id=session_id).values()
         )
         async for session in self.async_orm_generator(queryset):
             self.__log(event="status", state="initial", data=session["status"])
@@ -144,9 +131,7 @@ class RunSessionSSEView(SSEMixin):
             }
 
         # Memories
-        queryset = MemoryDatabase.objects.filter(payload__run_id=session_id).values(
-            "id", "payload"
-        )
+        queryset = MemoryDatabase.objects.filter(payload__run_id=session_id).values("id", "payload")
         async for memo in self.async_orm_generator(queryset):
             self.__log(event="memory", state="initial", data=memo["id"])
             yield {
@@ -232,11 +217,7 @@ class RunSessionSSEView(SSEMixin):
             """Recursively traverse and trim 'base64_data' fields."""
             if isinstance(obj, dict):
                 for key, value in obj.items():
-                    if (
-                        key == "base64_data"
-                        and isinstance(value, str)
-                        and len(value) > 50
-                    ):
+                    if key == "base64_data" and isinstance(value, str) and len(value) > 50:
                         obj[key] = value[:50]
                     else:
                         trim_data_fields(value)

@@ -14,10 +14,9 @@ import {
     ViewEncapsulation,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent, JsonEditorComponent } from '@shared/components';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import {
     EMPTY_VALIDATION_RESULT,
     extractPathsFromArray,

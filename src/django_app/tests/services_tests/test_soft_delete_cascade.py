@@ -59,6 +59,17 @@ from tables.models.knowledge_models.graphrag_models import (
 from tables.services.soft_delete import DeleteService, _DeleteContext
 
 
+@pytest.fixture(autouse=True)
+def _soft_delete_enabled(settings):
+    """This module exercises the soft-delete cascade path, which only
+    `SoftDeleteMixin.delete()` takes when `settings.SOFT_DELETE` is True.
+    Per docs/soft_delete/SOFT_DELETE_FEATURE.md, that's the default the team
+    develops/tests against day to day (production defaults it to False and
+    opts in per-deployment). `TestHardDeletePath` explicitly overrides back
+    to False to exercise the opposite branch."""
+    settings.SOFT_DELETE = True
+
+
 @pytest.mark.django_db
 class TestFullCascadePerRoot:
     """Item 1: soft-deleting each root cascades through its full subtree."""

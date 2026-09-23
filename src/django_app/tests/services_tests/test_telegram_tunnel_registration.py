@@ -85,7 +85,9 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
         effects, so stub both to no-ops -- see
         `TestTelegramNodeAttachResyncsTunnelRegistration` below for the tests
         that actually exercise this signal."""
-        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            WebhookTriggerService, "register_webhooks", lambda self: True
+        )
         monkeypatch.setattr(
             TelegramTriggerService,
             "register_telegram_trigger",
@@ -97,11 +99,16 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             path="tg-path", provider_type=ProviderType.NGROK, org=default_org
         )
         TelegramTriggerNode.objects.create(
-            node_name="tg-node", graph=Graph.objects.create(name="g", org=default_org),
+            node_name="tg-node",
+            graph=Graph.objects.create(name="g", org=default_org),
             webhook_trigger=trigger,
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-secret"), trigger=trigger
+            name="cfg",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-secret"
+            ),
+            trigger=trigger,
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -159,7 +166,11 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             python_code=python_code,
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-plain", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-plain-secret"), trigger=trigger
+            name="cfg-plain",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-plain-secret"
+            ),
+            trigger=trigger,
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -196,7 +207,11 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             node_name="dual-telegram-node", graph=graph, webhook_trigger=trigger
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-dual", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-dual-secret"), trigger=trigger
+            name="cfg-dual",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-dual-secret"
+            ),
+            trigger=trigger,
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -212,7 +227,11 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             path="unlinked-path", provider_type=ProviderType.NGROK, org=default_org
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-unlinked", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-unlinked-secret"), trigger=trigger
+            name="cfg-unlinked",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-unlinked-secret"
+            ),
+            trigger=trigger,
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -237,7 +256,9 @@ class TestRedisPubsubTelegramDispatch:
         publish to live Redis and attempt a real outbound Telegram API call.
         Stub both to no-ops; this class tests `webhook_events_handler`
         dispatch, not the attach signal itself."""
-        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            WebhookTriggerService, "register_webhooks", lambda self: True
+        )
         monkeypatch.setattr(
             TelegramTriggerService,
             "register_telegram_trigger",
@@ -262,7 +283,11 @@ class TestRedisPubsubTelegramDispatch:
             node_name="tg-e2e-node", graph=graph, webhook_trigger=trigger
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-e2e-secret"), trigger=trigger
+            name="cfg-e2e",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-e2e-secret"
+            ),
+            trigger=trigger,
         )
 
         _stub_publish(monkeypatch)
@@ -275,7 +300,7 @@ class TestRedisPubsubTelegramDispatch:
                 {
                     "path": f"{trigger.path}/",
                     "payload": {"message": {"text": "hi"}},
-                    "config_id": f"ngrok:{trigger.path}",
+                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
                 }
             )
         }
@@ -299,7 +324,11 @@ class TestRedisPubsubTelegramDispatch:
             python_code=python_code,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-wh-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-wh-e2e-secret"), trigger=trigger
+            name="cfg-wh-e2e",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-wh-e2e-secret"
+            ),
+            trigger=trigger,
         )
 
         _stub_publish(monkeypatch)
@@ -310,7 +339,7 @@ class TestRedisPubsubTelegramDispatch:
                 {
                     "path": trigger.path,
                     "payload": {"m": 1},
-                    "config_id": f"ngrok:{trigger.path}",
+                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
                 }
             )
         }
@@ -342,7 +371,11 @@ class TestRedisPubsubTelegramDispatch:
             node_name="dual-e2e-telegram-node", graph=graph, webhook_trigger=trigger
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-dual-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-dual-e2e-secret"), trigger=trigger
+            name="cfg-dual-e2e",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-dual-e2e-secret"
+            ),
+            trigger=trigger,
         )
 
         _stub_publish(monkeypatch)
@@ -353,7 +386,7 @@ class TestRedisPubsubTelegramDispatch:
                 {
                     "path": trigger.path,
                     "payload": {"message": {"text": "hi"}},
-                    "config_id": f"ngrok:{trigger.path}",
+                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
                 }
             )
         }
@@ -377,7 +410,11 @@ class TestRedisPubsubTelegramDispatch:
             webhook_trigger=trigger,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-isolation-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-isolation-e2e-secret"), trigger=trigger
+            name="cfg-isolation-e2e",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-isolation-e2e-secret"
+            ),
+            trigger=trigger,
         )
 
         _stub_publish(monkeypatch)
@@ -386,9 +423,7 @@ class TestRedisPubsubTelegramDispatch:
         monkeypatch.setattr(
             WebhookTriggerService,
             "handle_webhook_trigger",
-            lambda self, *args, **kwargs: (_ for _ in ()).throw(
-                RuntimeError("boom")
-            ),
+            lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
         )
 
         message = {
@@ -396,7 +431,7 @@ class TestRedisPubsubTelegramDispatch:
                 {
                     "path": trigger.path,
                     "payload": {"message": {"text": "hi"}},
-                    "config_id": f"ngrok:{trigger.path}",
+                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
                 }
             )
         }
@@ -430,7 +465,11 @@ class TestTelegramNodeAttachResyncsTunnelRegistration:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-attach", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-attach-secret"), trigger=trigger
+            name="cfg-attach",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-attach-secret"
+            ),
+            trigger=trigger,
         )
 
         calls = []
@@ -467,7 +506,11 @@ class TestTelegramNodeAttachResyncsTunnelRegistration:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-detach", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-detach-secret"), trigger=trigger
+            name="cfg-detach",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="cfg-detach-secret"
+            ),
+            trigger=trigger,
         )
         graph = Graph.objects.create(name="g-detach-resync", org=default_org)
         node = TelegramTriggerNode.objects.create(
@@ -507,7 +550,9 @@ class TestUserProvidedTelegramSecretRegistration:
         one used during setup) -- see `_make_node`'s narrowly-scoped
         `patch.object` instead.
         """
-        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            WebhookTriggerService, "register_webhooks", lambda self: True
+        )
 
     @pytest.fixture
     def fresh_service(self, monkeypatch):
@@ -522,13 +567,14 @@ class TestUserProvidedTelegramSecretRegistration:
 
         def _build(*, tunnel_url="https://tunnel.test", register_webhooks_calls=None):
             SingletonMeta._instances.pop(TelegramTriggerService, None)
-            calls = register_webhooks_calls if register_webhooks_calls is not None else []
+            calls = (
+                register_webhooks_calls if register_webhooks_calls is not None else []
+            )
             service = TelegramTriggerService(
                 session_manager_service=SimpleNamespace(),
                 webhook_trigger_service=SimpleNamespace(
                     wait_for_tunnel_url_for_trigger=lambda trigger: tunnel_url,
-                    register_webhooks=lambda: calls.append("register_webhooks")
-                    or True,
+                    register_webhooks=lambda: calls.append("register_webhooks") or True,
                 ),
             )
             return service, calls
@@ -604,7 +650,7 @@ class TestUserProvidedTelegramSecretRegistration:
         node = self._make_node(
             default_org=default_org,
             path="user-secret-1",
-            telegram_secret_token="UserSecretA123",
+            telegram_secret_token="UserSecretA123-xxxxxxxxxxxxxxxxx",
         )
         service, _calls = fresh_service()
 
@@ -612,15 +658,13 @@ class TestUserProvidedTelegramSecretRegistration:
         monkeypatch.setattr(
             service,
             "_call_telegram_api",
-            lambda method, api_key, endpoint, params=None: seen.update(
-                params=params
-            )
+            lambda method, api_key, endpoint, params=None: seen.update(params=params)
             or {"ok": True},
         )
 
         service.register_telegram_trigger(telegram_trigger_instance=node)
 
-        assert seen["params"]["secret_token"] == "UserSecretA123"
+        assert seen["params"]["secret_token"] == "UserSecretA123-xxxxxxxxxxxxxxxxx"
         # (The `WebhookTriggerAuth` post_save push-to-`webhook` is exercised
         # separately, at the signal layer, in `test_webhook_trigger_node_
         # attach_resync.py`-style coverage -- it fires against the real
@@ -638,7 +682,7 @@ class TestUserProvidedTelegramSecretRegistration:
         node = self._make_node(
             default_org=default_org,
             path="user-secret-2",
-            telegram_secret_token="UserSecretB123",
+            telegram_secret_token="UserSecretB123-xxxxxxxxxxxxxxxxx",
         )
         service, _ = fresh_service()
         call_count = {"n": 0}
@@ -666,7 +710,7 @@ class TestUserProvidedTelegramSecretRegistration:
         node = self._make_node(
             default_org=default_org,
             path="user-secret-rotate",
-            telegram_secret_token="SecretAAA111",
+            telegram_secret_token="SecretAAA111-xxxxxxxxxxxxxxxxxxx",
         )
         service, _ = fresh_service()
         pushed_tokens = []
@@ -680,18 +724,24 @@ class TestUserProvidedTelegramSecretRegistration:
         )
 
         service.register_telegram_trigger(telegram_trigger_instance=node)
-        assert pushed_tokens == ["SecretAAA111"]
+        assert pushed_tokens == ["SecretAAA111-xxxxxxxxxxxxxxxxxxx"]
 
         # User changes the secret via the trigger API (same code path as
         # WebhookTriggerViewSet's auth_secret_id).
         node.refresh_from_db()
         self._set_secret(
-            default_org, node.webhook_trigger, "SecretBBB222", name_suffix="-b"
+            default_org,
+            node.webhook_trigger,
+            "SecretBBB222-xxxxxxxxxxxxxxxxxxx",
+            name_suffix="-b",
         )
 
         service.register_telegram_trigger(telegram_trigger_instance=node)
 
-        assert pushed_tokens == ["SecretAAA111", "SecretBBB222"]
+        assert pushed_tokens == [
+            "SecretAAA111-xxxxxxxxxxxxxxxxxxx",
+            "SecretBBB222-xxxxxxxxxxxxxxxxxxx",
+        ]
 
     def test_conflicting_kind_is_rejected(self, default_org, fresh_service):
         """`register_telegram_trigger`'s own kind guard is exercised here via
@@ -738,12 +788,10 @@ class TestUserProvidedTelegramSecretRegistration:
         node = self._make_node(
             default_org=default_org,
             path="unconditional-auth-3",
-            telegram_secret_token="UserSecretC123",
+            telegram_secret_token="UserSecretC123-xxxxxxxxxxxxxxxxx",
         )
         service, _ = fresh_service()
-        monkeypatch.setattr(
-            service, "_call_telegram_api", lambda *a, **k: {"ok": True}
-        )
+        monkeypatch.setattr(service, "_call_telegram_api", lambda *a, **k: {"ok": True})
 
         save_calls = []
         original_save = TelegramTriggerNode.save
@@ -770,7 +818,7 @@ class TestUserProvidedTelegramSecretRegistration:
         node = self._make_node(
             default_org=default_org,
             path="rollback-setwebhook",
-            telegram_secret_token="UserSecretD123",
+            telegram_secret_token="UserSecretD123-xxxxxxxxxxxxxxxxx",
         )
         service, _ = fresh_service()
 

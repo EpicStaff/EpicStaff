@@ -1,0 +1,2 @@
+server_name _;
+listen 80;

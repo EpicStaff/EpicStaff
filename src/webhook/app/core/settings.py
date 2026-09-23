@@ -34,8 +34,12 @@ class Settings:
     REDIS_PASSWORD: str = env.str("REDIS_PASSWORD")
 
     # --- Channels ---
-    REDIS_TUNNEL_CONFIG_CHANNEL: str = env.str("REDIS_TUNNEL_CONFIG_CHANNEL", "REDIS_TUNNEL_CONFIG_CHANNEL")
-    REQUEST_WEBHOOK_UPDATE_CHANNEL: str = env.str("REQUEST_WEBHOOK_UPDATE_CHANNEL", "REQUEST_WEBHOOK_UPDATE_CHANNEL")
+    REDIS_TUNNEL_CONFIG_CHANNEL: str = env.str(
+        "REDIS_TUNNEL_CONFIG_CHANNEL", "REDIS_TUNNEL_CONFIG_CHANNEL"
+    )
+    REQUEST_WEBHOOK_UPDATE_CHANNEL: str = env.str(
+        "REQUEST_WEBHOOK_UPDATE_CHANNEL", "REQUEST_WEBHOOK_UPDATE_CHANNEL"
+    )
     WEBHOOK_MESSAGE_CHANNEL: str = env.str("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
 
     # --- Tunnel behaviour ---
@@ -53,7 +57,7 @@ class Settings:
     CORS_ALLOWED_ORIGINS: str = env.str("DJANGO_CORS_ALLOWED_ORIGINS")
 
     # --- Soft config list (optional — default empty string preserves original behaviour) ---
-    WEBHOOK_EMPTY_JSON_PATHS: str = env.str("WEBHOOK_EMPTY_JSON_PATHS", "")
+    WEBHOOK_EMPTY_JSON_PATHS: str | None = env.str("WEBHOOK_EMPTY_JSON_PATHS")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
@@ -61,7 +65,7 @@ class Settings:
 
     @property
     def webhook_empty_json_paths_set(self) -> set[str]:
-        return {p.strip() for p in self.WEBHOOK_EMPTY_JSON_PATHS.split(",") if p.strip()}
+        return {p.strip() for p in (self.WEBHOOK_EMPTY_JSON_PATHS or "").split(",") if p.strip()}
 
 
 try:

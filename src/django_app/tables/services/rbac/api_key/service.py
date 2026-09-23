@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.utils import timezone
-
 from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
 from tables.services.rbac.rbac_exceptions import (
@@ -52,9 +51,9 @@ class ApiKeyService:
         return IssuedKey(api_key=api_key, raw_key=generated.raw_key)
 
     def list_keys(self, user):
-        return ApiKey.objects.filter(
-            created_by=user, key_type=ApiKey.KeyType.USER
-        ).order_by("-created_at")
+        return ApiKey.objects.filter(created_by=user, key_type=ApiKey.KeyType.USER).order_by(
+            "-created_at"
+        )
 
     def revoke_key(self, user, key_id) -> ApiKey:
         key = self._get_own_key(user, key_id)

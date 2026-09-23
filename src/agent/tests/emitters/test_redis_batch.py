@@ -8,14 +8,10 @@ publish a payload containing a 'warnings' key.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import MagicMock
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
-from shared.redis_streams import StreamEnvelope
-
 
 # ---------------------------------------------------------------------------
 # Helpers

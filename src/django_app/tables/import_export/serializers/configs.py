@@ -1,19 +1,19 @@
 from rest_framework import serializers
 
 from tables.models import (
+    EmbeddingConfig,
+    EmbeddingModel,
     LLMConfig,
     LLMModel,
-    EmbeddingModel,
-    EmbeddingConfig,
-    RealtimeModel,
     RealtimeConfig,
-    RealtimeTranscriptionModel,
+    RealtimeModel,
     RealtimeTranscriptionConfig,
+    RealtimeTranscriptionModel,
 )
 from tables.models.realtime_models import (
-    OpenAIRealtimeConfig,
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
+    OpenAIRealtimeConfig,
 )
 
 

@@ -71,7 +71,9 @@ class TestTriggerNodeAuthOrphanCleanup:
         # exactly what a new request would do in production.
         trigger = WebhookTrigger.objects.get(pk=trigger.pk)
         secret = secret_service.create(
-            text="epicstaff-api-key", org=org, name="orphan-webhook-secret"
+            text="epicstaff-api-key-xxxxxxxxxxxxxx",
+            org=org,
+            name="orphan-webhook-secret",
         )
         auth = WebhookTriggerService().set_trigger_auth_secret(
             trigger, secret, kind=WebhookTriggerAuthKind.WEBHOOK
@@ -118,7 +120,9 @@ class TestTriggerNodeAuthOrphanCleanup:
         # variant of this test above.
         trigger = WebhookTrigger.objects.get(pk=trigger.pk)
         secret = secret_service.create(
-            text="telegram-bot-secret-token", org=org, name="orphan-telegram-secret"
+            text="telegram-bot-secret-token-xxxxxx",
+            org=org,
+            name="orphan-telegram-secret",
         )
         auth = WebhookTriggerService().set_trigger_auth_secret(
             trigger, secret, kind=WebhookTriggerAuthKind.TELEGRAM

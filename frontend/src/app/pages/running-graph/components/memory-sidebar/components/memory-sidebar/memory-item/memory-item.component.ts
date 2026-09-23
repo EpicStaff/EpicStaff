@@ -1,8 +1,8 @@
 import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     EntityMemoryPayload,
     LongTermMemoryPayload,

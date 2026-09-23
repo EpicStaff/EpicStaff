@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, JSON, DateTime, func
+from sqlalchemy import JSON, Column, DateTime, Integer, Text, func
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -12,6 +12,4 @@ class RealtimeSessionItem(Base):
     data = Column(JSON, nullable=False)
     org_id = Column(Integer, nullable=True, index=True)
     created_by_id = Column(Integer, nullable=True, index=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

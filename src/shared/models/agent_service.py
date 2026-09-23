@@ -21,7 +21,7 @@ Hierarchy
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,7 +46,7 @@ class AgentTaskSpec(BaseModel):
     context: list[str] = []
 
 
-class RunType(str, Enum):
+class RunType(StrEnum):
     """Execution mode for an agent request.
 
     ``SINGLE_TASK`` — one prompt, one ``AgentLoop`` invocation.
@@ -58,7 +58,7 @@ class RunType(str, Enum):
     LIST_OF_TASKS = "LIST_OF_TASKS"
 
 
-class StopReason(str, Enum):
+class StopReason(StrEnum):
     """Terminal reason for one AgentLoop run; travels on LoopResult.stop_reason to crew/FE."""
 
     COMPLETED = "completed"  # agent returned a final answer, stopped calling tools
@@ -80,10 +80,13 @@ class SearchConfigEntry(BaseModel):
     graph-local).  ``AgentResolver`` builds one search tool per entry so the
     LLM can choose the appropriate strategy at runtime.
 
-    ``embedder`` itself is not part of the ``BaseKnowledgeSearchMessage``
-    wire format -- ``ToolRegistryBuilder`` extracts ``embedder.config.api_key``
-    onto ``KnowledgeSearchTarget.embedder_api_key``, which is what actually
-    reaches the wire message.
+    ``ToolRegistryBuilder`` extracts ``embedder.config.api_key`` and
+    ``llm.config.api_key`` onto ``KnowledgeSearchTarget``; both arrive already
+    resolved to plaintext (SecretResolver runs at publish time), the raw
+    credentials the knowledge_new REST search endpoint expects.
+
+    ``llm`` is only populated for graph entries — graph RAG runs LLM calls
+    server-side; naive search leaves it ``None``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -92,6 +95,7 @@ class SearchConfigEntry(BaseModel):
     rag_type: Literal["naive", "graph"]
     search_config: RagSearchConfig
     embedder: EmbedderData
+    llm: LLMData | None = None
 
 
 class CollectionSpec(BaseModel):

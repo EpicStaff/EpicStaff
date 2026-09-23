@@ -1,11 +1,11 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { GetPythonCodeToolRequest } from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';
@@ -29,6 +29,8 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
         labelIdsOf: (t) => t.labels ?? [],
         favoriteOf: (t) => t.is_favorite,
         searchableTextOf: (t) => [t.name, t.description],
+        updatedAtOf: (t) => t.updated_at,
+        builtInOf: (t) => t.built_in,
     };
 
     public readonly createdEvent$: Observable<GetPythonCodeToolRequest> = this.events.customToolCreated$;
@@ -49,8 +51,8 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     public getAll(): Observable<GetPythonCodeToolRequest[]> {
         return this.service.getPythonCodeTools();
     }
-    public copy(id: number, body: { name: string }): Observable<GetPythonCodeToolRequest> {
-        return this.service.copyPythonCodeTool(id, body);
+    public copy(id: number): Observable<GetPythonCodeToolRequest> {
+        return this.service.copyPythonCodeTool(id);
     }
     public exportOne(id: number): Observable<Blob> {
         return this.service.exportPythonCodeTool(id);
@@ -86,13 +88,9 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
         return this.service.getUsageDetailById(id);
     }
 
-    public openConfigureDialog(
-        dialog: Dialog,
-        tool: GetPythonCodeToolRequest,
-        allTools: GetPythonCodeToolRequest[]
-    ): DialogRef<GetPythonCodeToolRequest> {
+    public openConfigureDialog(dialog: Dialog, tool: GetPythonCodeToolRequest): DialogRef<GetPythonCodeToolRequest> {
         return dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, {
-            data: { pythonTools: allTools, selectedTool: tool },
+            data: { selectedTool: tool },
         });
     }
 

@@ -4,7 +4,6 @@ import io
 import json
 import struct
 import time
-from typing import Optional
 
 import httpx
 from fastapi import WebSocket, WebSocketDisconnect
@@ -15,10 +14,12 @@ try:
 except ImportError:
     _WsClosedOK = None
 
-from src.shared.models import RealtimeAgentChatData
+import contextlib
 
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 from infrastructure.providers.factory import RealtimeAgentClientFactory
+from src.shared.models import RealtimeAgentChatData
+
 from application.tool_manager_service import ToolManagerService
 
 MIN_CHUNK_SIZE = 2000
@@ -71,7 +72,7 @@ class VoiceCallService:
         factory: RealtimeAgentClientFactory,
         django_api_base_url: str,
         django_api_key: str = "",
-        initial_message: Optional[dict] = None,
+        initial_message: dict | None = None,
         max_call_duration_seconds: int = DEFAULT_MAX_CALL_DURATION_SECONDS,
     ):
         self.twilio_ws = twilio_ws
@@ -85,12 +86,12 @@ class VoiceCallService:
         self.initial_message = initial_message
         self.max_call_duration_seconds = max_call_duration_seconds
 
-        self.stream_sid: Optional[str] = None
+        self.stream_sid: str | None = None
         self.audio_accumulator = bytearray()
 
         self._start_time: float = time.monotonic()
         self._end_reason: str = "completed"
-        self._inbound_chunks: list[bytes] = []   # user audio (µ-law 8kHz from Twilio)
+        self._inbound_chunks: list[bytes] = []  # user audio (µ-law 8kHz from Twilio)
         self._outbound_chunks: list[bytes] = []  # agent audio (µ-law 8kHz to Twilio)
 
     async def execute(self):
@@ -147,10 +148,8 @@ class VoiceCallService:
                 self._end_reason = "error"
         finally:
             message_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await message_task
-            except asyncio.CancelledError:
-                pass
             await rt_agent_client.close()
 
             if self._end_reason == "max_duration_exceeded":
@@ -163,11 +162,9 @@ class VoiceCallService:
                     logger.debug(f"Error closing Twilio WebSocket after max duration: {e}")
 
             duration = time.monotonic() - self._start_time
-            asyncio.create_task(self._save_recordings(duration))
+            asyncio.create_task(self._save_recordings(duration))  # noqa: RUF006
 
-    async def _handle_twilio_message(
-        self, data: dict, client: IRealtimeAgentClient
-    ) -> None:
+    async def _handle_twilio_message(self, data: dict, client: IRealtimeAgentClient) -> None:
         event = data.get("event")
         if event == "start":
             self.stream_sid = data["start"]["streamSid"]
@@ -283,7 +280,13 @@ class VoiceCallService:
                         "recording_type": recording_type,
                         "duration_seconds": str(round(duration, 2)),
                     },
-                    files={"file": (f"{connection_key}_{recording_type}.wav", io.BytesIO(wav_bytes), "audio/wav")},
+                    files={
+                        "file": (
+                            f"{connection_key}_{recording_type}.wav",
+                            io.BytesIO(wav_bytes),
+                            "audio/wav",
+                        )
+                    },
                     timeout=30.0,
                 )
                 if not resp.is_success:

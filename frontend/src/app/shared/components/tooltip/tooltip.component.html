@@ -1,4 +1,7 @@
-<div class="tooltip-label-container">
+<div
+    class="tooltip-label-container"
+    [class.tooltip-label-container--inline]="inline()"
+>
     <label class="tooltip-label">
         <span class="tooltip-label-text">{{ label() }}</span>
         @if (required()) {

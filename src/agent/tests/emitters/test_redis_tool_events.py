@@ -12,16 +12,12 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.llm.client import LLMChunk
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
-from shared.models.knowledge import (
-    BaseKnowledgeSearchMessageResponse,
-    KnowledgeChunkResponse,
-    NaiveRagSearchConfig,
-)
-
+from shared.models.knowledge import NaiveRagSearchConfig
+from shared.models.knowledge_new import FoundChunk
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,20 +58,12 @@ def _make_loop_result() -> LoopResult:
     )
 
 
-def _make_knowledge_response(
-    chunks: list[KnowledgeChunkResponse] | None = None,
-) -> BaseKnowledgeSearchMessageResponse:
-    chunks = chunks if chunks is not None else []
-    return BaseKnowledgeSearchMessageResponse(
+def _make_knowledge_target() -> KnowledgeSearchTarget:
+    return KnowledgeSearchTarget(
+        collection_id=10,
         rag_id=2,
         rag_type="naive",
-        collection_id=10,
-        uuid="search-uuid",
-        retrieved_chunks=len(chunks),
-        query="what is epicstaff",
-        chunks=chunks,
-        rag_search_config=NaiveRagSearchConfig(),
-        token_usage={"prompt_tokens": 12, "completion_tokens": 0},
+        search_config=NaiveRagSearchConfig(),
     )
 
 
@@ -86,9 +74,7 @@ def _make_knowledge_response(
 
 async def test_on_tool_call_publishes_live_envelope():
     emitter, published = _make_emitter()
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search", "arguments": '{"q": "x"}'}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": '{"q": "x"}'})
 
     assert len(published) == 1
     assert published[0]["type"] == "agent.tool_call"
@@ -190,9 +176,7 @@ async def test_on_tool_result_still_buffers_event():
 async def test_on_tool_call_truncates_long_arguments():
     emitter, published = _make_emitter()
     long_arguments = "x" * 3000
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search", "arguments": long_arguments}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": long_arguments})
 
     payload = _decode_payload(published[0])
     assert len(payload["arguments"]) == 2000
@@ -255,9 +239,7 @@ async def test_on_chunk_without_usage_leaves_totals_zero():
 async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
     emitter, published = _make_emitter()
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
 
@@ -271,9 +253,7 @@ async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
     }
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
-        )
+        LLMChunk(usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28})
     )
     await emitter.on_tool_call({"id": "call_2", "name": "search", "arguments": "{}"})
 
@@ -339,9 +319,7 @@ async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
 async def test_token_usage_on_tool_result_immediately_after_tool_call_is_zero():
     emitter, published = _make_emitter()
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
     await emitter.on_tool_result(
@@ -391,16 +369,12 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
     # dropped from the stream, but the snapshot still advances so round 1
     # tokens are never re-emitted on the next event.
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
-        )
+        LLMChunk(usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28})
     )
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="result", is_error=False)
@@ -544,9 +518,7 @@ async def test_on_task_finish_resets_current_task():
 async def test_on_task_finish_consumes_token_delta_at_task_boundary():
     emitter, published = _make_emitter()
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     result = LoopResult(
         final_text="task result",
@@ -637,16 +609,15 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
 async def test_on_knowledge_search_publishes_full_payload_shape():
     emitter, published = _make_emitter()
     chunks = [
-        KnowledgeChunkResponse(
-            chunk_order=0,
-            chunk_similarity=0.9,
-            chunk_text="EpicStaff is an agentic UI platform.",
-            chunk_source="intro.pdf",
+        FoundChunk(
+            order=0,
+            similarity=0.9,
+            text="EpicStaff is an agentic UI platform.",
+            source="intro.pdf",
         )
     ]
-    response = _make_knowledge_response(chunks)
 
-    await emitter.on_knowledge_search(response)
+    await emitter.on_knowledge_search(_make_knowledge_target(), "what is epicstaff", chunks)
 
     assert len(published) == 1
     assert published[0]["type"] == "agent.knowledge_search"
@@ -659,8 +630,56 @@ async def test_on_knowledge_search_publishes_full_payload_shape():
         "knowledge_query": "what is epicstaff",
         "rag_search_config": NaiveRagSearchConfig().model_dump(),
         "chunks": [chunks[0].model_dump()],
-        "token_usage": {"prompt_tokens": 12, "completion_tokens": 0},
+        "answer": None,
+        "token_usage": {},
     }
+
+
+async def test_on_knowledge_search_graph_answer_shape():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(_make_knowledge_target(), "why", "the synthesised answer")
+
+    payload = _decode_payload(published[0])
+    assert payload["chunks"] == []
+    assert payload["retrieved_chunks"] == 0
+    assert payload["answer"] == "the synthesised answer"
+
+
+async def test_on_knowledge_search_error_payload_shape():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(
+        _make_knowledge_target(),
+        "what is epicstaff",
+        [],
+        error="connection refused",
+    )
+
+    assert len(published) == 1
+    assert published[0]["type"] == "agent.knowledge_search"
+    payload = _decode_payload(published[0])
+    assert payload == {
+        "collection_id": 10,
+        "rag_id": 2,
+        "rag_type": "naive",
+        "retrieved_chunks": 0,
+        "knowledge_query": "what is epicstaff",
+        "rag_search_config": NaiveRagSearchConfig().model_dump(),
+        "chunks": [],
+        "answer": None,
+        "token_usage": {},
+        "error": "connection refused",
+    }
+
+
+async def test_on_knowledge_search_success_payload_omits_error_key():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(_make_knowledge_target(), "q", [])
+
+    payload = _decode_payload(published[0])
+    assert "error" not in payload
 
 
 async def test_on_knowledge_search_publish_failure_does_not_propagate():
@@ -677,7 +696,7 @@ async def test_on_knowledge_search_publish_failure_does_not_propagate():
         correlation_id="test-corr",
     )
 
-    await emitter.on_knowledge_search(_make_knowledge_response())
+    await emitter.on_knowledge_search(_make_knowledge_target(), "q", [])
 
 
 # ---------------------------------------------------------------------------
@@ -689,9 +708,7 @@ async def test_registered_knowledge_tool_suppresses_live_tool_events():
     emitter, published = _make_emitter()
     emitter.register_knowledge_tool("search_docs_naive")
 
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search_docs_naive", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search_docs_naive", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="chunk text", is_error=False)
     )
@@ -706,9 +723,7 @@ async def test_unregistered_tool_still_publishes_live_events():
     emitter, published = _make_emitter()
     emitter.register_knowledge_tool("search_docs_naive")
 
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "other_tool", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "other_tool", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="result", is_error=False)
     )
@@ -724,25 +739,17 @@ async def test_suppressed_knowledge_tool_step_does_not_consume_usage_delta():
     emitter.register_knowledge_tool("search_docs_naive")
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search_docs_naive", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search_docs_naive", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="chunk text", is_error=False)
     )
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
-        )
+        LLMChunk(usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28})
     )
-    await emitter.on_tool_call(
-        {"id": "call_2", "name": "other_tool", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_2", "name": "other_tool", "arguments": "{}"})
 
     assert len(published) == 1
     payload = _decode_payload(published[0])

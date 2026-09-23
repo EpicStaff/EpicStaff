@@ -14,6 +14,9 @@ their collaborators.
 
 from __future__ import annotations
 
+from shared.models.agent_service import AgentRequest
+from shared.redis_streams import RedisStreamClient
+
 from app.emitters.base import Emitter
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
@@ -21,8 +24,6 @@ from app.enums import EmitterMode, RunType
 from app.exceptions import UnknownRunTypeError
 from app.runners.base import Runner
 from app.runners.deps import RunnerDependencies
-from shared.models.agent_service import AgentRequest
-from shared.redis_streams import RedisStreamClient
 
 
 class RunnerFactory:
@@ -69,9 +70,7 @@ class RunnerFactory:
         runner_cls = self._registry.get(request.run_type)
 
         if runner_cls is None:
-            raise UnknownRunTypeError(
-                f"No runner registered for run_type '{request.run_type}'"
-            )
+            raise UnknownRunTypeError(f"No runner registered for run_type '{request.run_type}'")
 
         runner = runner_cls(self._deps)
         emitter = self._build_emitter(
@@ -90,8 +89,6 @@ class RunnerFactory:
             return RedisStreamBatchEmitter(redis_client, result_stream, correlation_id)
 
         if mode == EmitterMode.TOOL_EVENTS:
-            return RedisStreamToolEventEmitter(
-                redis_client, result_stream, correlation_id
-            )
+            return RedisStreamToolEventEmitter(redis_client, result_stream, correlation_id)
 
         raise NotImplementedError(f"Emitter mode '{mode}' is not yet implemented")

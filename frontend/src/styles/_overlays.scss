@@ -2,6 +2,14 @@
     z-index: 1100 !important;
 }
 
+.cdk-overlay-pane.toast-overlay-panel {
+    pointer-events: none !important;
+
+    > * {
+        pointer-events: auto;
+    }
+}
+
 .cdk-overlay-pane.settings-dialog-panel {
     z-index: 10000 !important;
 }

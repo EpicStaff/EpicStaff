@@ -20,9 +20,7 @@ class ApiKey(models.Model):
         USER = "user", "User"
 
     name = models.CharField(max_length=255)
-    key_type = models.CharField(
-        max_length=8, choices=KeyType.choices, default=KeyType.USER
-    )
+    key_type = models.CharField(max_length=8, choices=KeyType.choices, default=KeyType.USER)
     prefix = models.CharField(max_length=12, db_index=True)
     key_hash = models.CharField(max_length=64, unique=True)
     created_by = models.ForeignKey(

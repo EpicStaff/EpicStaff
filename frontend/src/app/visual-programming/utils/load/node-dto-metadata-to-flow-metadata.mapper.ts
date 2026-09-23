@@ -1,5 +1,5 @@
-import { NODE_COLORS, NODE_ICONS } from '../../core/enums/node-config';
-import { NodeType } from '../../core/enums/node-type';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+
 import { NodeDtoMetadata } from '../../core/models/node-metadata.model';
 
 const DEFAULT_SIZE = { width: 330, height: 60 };

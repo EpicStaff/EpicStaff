@@ -1,7 +1,9 @@
 from django.db import models
 from loguru import logger
-from .base_models import MetadataMixin
+
 from tables.models.rbac_models.org_scoped import OrgScopedModel
+
+from .base_models import MetadataMixin
 
 
 class Label(OrgScopedModel, MetadataMixin):

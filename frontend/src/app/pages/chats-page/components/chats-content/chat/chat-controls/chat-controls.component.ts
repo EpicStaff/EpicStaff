@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
+import { CollapseOnOverflowDirective } from '@shared/directives';
 import { from } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CollapseOnOverflowDirective } from '../../../../../../shared/directives/collapse-on-overflow.directive';
+import { ToastService } from '../../../../../../services/notifications';
 import { ConsoleService } from '../../../../services/console.service';
 import { WavRecorderService } from '../../../../services/wav-recorder.service';
 import { MicrophoneSelectorComponent } from './microphone-selector/microphone-selector.component';

@@ -1,35 +1,33 @@
+import contextlib
 import json
 import os
 import time
 from collections import defaultdict, deque
-from typing import Type
 from uuid import uuid4
 
 import redis
-from django.db import close_old_connections, IntegrityError, models, transaction
-from loguru import logger
-
 from django.conf import settings
-
-from tables.models import (
-    GraphSessionMessage,
-    Session,
-    SessionStorageFile,
-    StorageFile,
-)
-from tables.models.session_models import SessionTrigger
-from tables.services.run_python_code_service import RunPythonCodeService
-from tables.services.persistent_variables_service import PersistentVariablesService
-from tables.services.telegram_trigger_service import TelegramTriggerService
-from tables.services.webhook_trigger_service import WebhookTriggerService
-from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.services.trigger_spec import TriggerSpec
+from django.db import IntegrityError, close_old_connections, models, transaction
+from loguru import logger
 from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
     StorageMutationEvent,
     WebhookEventData,
 )
+from tables.models import (
+    GraphSessionMessage,
+    Session,
+    SessionStorageFile,
+    StorageFile,
+)
+from tables.models.session_models import SessionPrincipal, SessionTrigger
+from tables.services.persistent_variables_service import PersistentVariablesService
+from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.services.trigger_spec import TriggerSpec
+from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
 class RedisPubSub:
@@ -53,14 +51,10 @@ class RedisPubSub:
         )
 
     def _reconnect(self):
-        try:
+        with contextlib.suppress(Exception):
             self.pubsub.close()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             self.redis_client.close()
-        except Exception:
-            pass
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
 
@@ -79,9 +73,7 @@ class RedisPubSub:
             close_old_connections()
             with transaction.atomic():
                 session = Session.objects.get(id=data["session_id"])
-                if data[
-                    "status"
-                ] == Session.SessionStatus.EXPIRED and session.status in [
+                if data["status"] == Session.SessionStatus.EXPIRED and session.status in [
                     Session.SessionStatus.END,
                     Session.SessionStatus.ERROR,
                 ]:
@@ -90,13 +82,19 @@ class RedisPubSub:
                     )
                 else:
                     status_data = data.get("status_data", {})
-                    status_data["total_token_usage"] = (
-                        self._calculate_total_token_usage(data["session_id"])
+                    status_data["total_token_usage"] = self._calculate_total_token_usage(
+                        data["session_id"]
                     )
-                    session.status = data["status"]
-                    session.status_data = status_data
-                    session.token_usage = status_data["total_token_usage"]
-                    session.save(force_update=True)
+                    updated_rows = Session.objects.filter(pk=session.pk).update(
+                        status=data["status"],
+                        status_data=status_data,
+                        token_usage=status_data["total_token_usage"],
+                    )
+                    if updated_rows == 0:
+                        logger.warning(
+                            f"Session {session.pk} was deleted concurrently, skipping status update"
+                        )
+                        return
 
                     if session.status in [
                         Session.SessionStatus.END,
@@ -104,9 +102,7 @@ class RedisPubSub:
                     ]:
                         self.persistent_variables_service.persist_session_results(
                             session=session,
-                            final_variables=data.get("status_data", {}).get(
-                                "variables"
-                            ),
+                            final_variables=data.get("status_data", {}).get("variables"),
                         )
                         self._save_session_storage_files(session=session)
 
@@ -119,9 +115,7 @@ class RedisPubSub:
             result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
             if not RunPythonCodeService().save_execution_result(result):
-                logger.debug(
-                    f"No pending execution for {result.execution_id}, skipping"
-                )
+                logger.debug(f"No pending execution for {result.execution_id}, skipping")
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
 
@@ -192,9 +186,7 @@ class RedisPubSub:
                 config_id=data.config_id,
             )
         except Exception:
-            logger.exception(
-                f"Error in generic webhook_trigger handling for path={path}"
-            )
+            logger.exception(f"Error in generic webhook_trigger handling for path={path}")
 
         try:
             TelegramTriggerService().handle_telegram_trigger(
@@ -207,14 +199,12 @@ class RedisPubSub:
 
     def request_webhook_update_handler(self, message: dict):
         try:
-            logger.debug(f"Received request to update webhook")
+            logger.debug("Received request to update webhook")
             registered = WebhookTriggerService().register_webhooks()
             if not registered:
                 raise ValueError("0 services listened for registration")
         except Exception as e:
-            logger.error(
-                f"Error updating webhook with current webhook configurations {e}"
-            )
+            logger.error(f"Error updating webhook with current webhook configurations {e}")
 
     def _save_session_storage_files(self, session: Session):
         try:
@@ -228,26 +218,18 @@ class RedisPubSub:
 
             for member in members:
                 try:
-                    member_str = (
-                        member.decode() if isinstance(member, bytes) else member
-                    )
+                    member_str = member.decode() if isinstance(member, bytes) else member
                     org_id_str, path = member_str.split(":", 1)
                     org_id = int(org_id_str)
-                    storage_file = StorageFile.objects.filter(
-                        org_id=org_id, path=path
-                    ).first()
+                    storage_file = StorageFile.objects.filter(org_id=org_id, path=path).first()
 
                     if storage_file:
                         file_refs.append(
-                            SessionStorageFile(
-                                session=session, storage_file=storage_file
-                            )
+                            SessionStorageFile(session=session, storage_file=storage_file)
                         )
 
                 except Exception as e:
-                    logger.warning(
-                        f"Skipping malformed session storage entry '{member}': {e}"
-                    )
+                    logger.warning(f"Skipping malformed session storage entry '{member}': {e}")
 
             if file_refs:
                 SessionStorageFile.objects.bulk_create(file_refs, ignore_conflicts=True)
@@ -257,7 +239,7 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error saving session storage files: {e}")
 
-    def _buffer_save(self, data, model: Type[models.Model]):
+    def _buffer_save(self, data, model: type[models.Model]):
         try:
             close_old_connections()
             with transaction.atomic():
@@ -303,18 +285,12 @@ class RedisPubSub:
                 if token_usage:
                     total_usage["total_tokens"] += token_usage.get("total_tokens", 0)
                     total_usage["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
-                    total_usage["completion_tokens"] += token_usage.get(
-                        "completion_tokens", 0
-                    )
-                    total_usage["successful_requests"] += token_usage.get(
-                        "successful_requests", 0
-                    )
+                    total_usage["completion_tokens"] += token_usage.get("completion_tokens", 0)
+                    total_usage["successful_requests"] += token_usage.get("successful_requests", 0)
                     total_usage["cached_prompt_tokens"] += token_usage.get(
                         "cached_prompt_tokens", 0
                     )
-                    total_usage["total_cost_usd"] += token_usage.get(
-                        "total_cost_usd", 0
-                    )
+                    total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
 
             except Exception as e:
                 logger.error(f"Error parsing cached message for key {key}: {e}")
@@ -348,24 +324,24 @@ class RedisPubSub:
                 value=json.dumps(data),
             )
 
-            subgraph_execution_ids = (
-                graph_session_message_data.message_data or {}
-            ).get("subgraph_execution_ids") or []
+            subgraph_execution_ids = (graph_session_message_data.message_data or {}).get(
+                "subgraph_execution_ids"
+            ) or []
             parent_subgraph_execution_id = (
                 subgraph_execution_ids[0] if subgraph_execution_ids else None
             )
 
             # Save in buffer.
             buffer.append(
-                dict(
-                    session_id=session_id,
-                    created_at=graph_session_message_data.timestamp,
-                    name=graph_session_message_data.name,
-                    execution_order=graph_session_message_data.execution_order,
-                    message_data=graph_session_message_data.message_data,
-                    uuid=message_uuid,
-                    parent_subgraph_execution_id=parent_subgraph_execution_id,
-                )
+                {
+                    "session_id": session_id,
+                    "created_at": graph_session_message_data.timestamp,
+                    "name": graph_session_message_data.name,
+                    "execution_order": graph_session_message_data.execution_order,
+                    "message_data": graph_session_message_data.message_data,
+                    "uuid": message_uuid,
+                    "parent_subgraph_execution_id": parent_subgraph_execution_id,
+                }
             )
 
             # Notify SSE about updates.
@@ -385,9 +361,7 @@ class RedisPubSub:
     def listen_for_messages(self):
         message = None
         try:
-            message = self.pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=0.001
-            )
+            message = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=0.001)
         except (redis.ConnectionError, redis.TimeoutError) as e:
             logger.error(f"Error while listening for Redis messages: {e}")
             raise
@@ -460,9 +434,7 @@ class RedisPubSub:
         buffer = self.buffers.get(settings.GRAPH_MESSAGES_CHANNEL)
 
         try:
-            graph_session_message_list = [
-                GraphSessionMessage(**data) for data in list(buffer)
-            ]
+            graph_session_message_list = [GraphSessionMessage(**data) for data in list(buffer)]
 
         except Exception:
             logger.critical("Error creating GraphSessionMessage in database")
@@ -481,7 +453,7 @@ class RedisPubSub:
                     f"Skipping entity for {GraphSessionMessage.__name__} with missing session_id: {session_id}"
                 )
 
-        for session_id, sessions_data_values in sessions_data.items():
+        for sessions_data_values in sessions_data.values():
             self._buffer_save(data=sessions_data_values, model=GraphSessionMessage)
 
     def _create_subgraph_sessions(self, root_session_id):
@@ -502,9 +474,7 @@ class RedisPubSub:
             root_session_id: The ID of the completed root session.
         """
         if Session.objects.filter(parent_session_id=root_session_id).exists():
-            logger.debug(
-                f"Subgraph sessions already exist for root session {root_session_id}"
-            )
+            logger.debug(f"Subgraph sessions already exist for root session {root_session_id}")
             return
 
         try:
@@ -516,9 +486,7 @@ class RedisPubSub:
         buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
 
         all_messages = list(
-            GraphSessionMessage.objects.filter(session_id=root_session_id).order_by(
-                "id"
-            )
+            GraphSessionMessage.objects.filter(session_id=root_session_id).order_by("id")
         )
 
         # look for the start/finish subgraph message_data
@@ -557,9 +525,7 @@ class RedisPubSub:
             # check if parent subgraph exist
             ancestor_exec_ids = start_data.get("subgraph_execution_ids") or []
             if ancestor_exec_ids:
-                parent_session_id = exec_id_to_session_id.get(
-                    ancestor_exec_ids[0], root_session_id
-                )
+                parent_session_id = exec_id_to_session_id.get(ancestor_exec_ids[0], root_session_id)
             else:
                 parent_session_id = root_session_id
 
@@ -589,6 +555,21 @@ class RedisPubSub:
                 for _, session, _ in created_sessions
             ]
         )
+        root_principal = getattr(root_session, "principal", None)
+        root_principal_data = {"kind": SessionPrincipal.ActionKind.UNKNOWN}
+        if root_principal:
+            root_principal_data = {
+                "kind": root_principal.kind,
+                "user_id": root_principal.user_id,
+                "api_key": root_principal.api_key,
+                "email": root_principal.email,
+            }
+        SessionPrincipal.objects.bulk_create(
+            [
+                SessionPrincipal(session=session, **root_principal_data)
+                for _, session, _ in created_sessions
+            ]
+        )
 
         # Copy messages to each subgraph session via buffer,
         # and keep source messages per exec_id for token calculation.
@@ -597,8 +578,7 @@ class RedisPubSub:
             matching = [
                 msg
                 for msg in all_messages
-                if exec_id
-                in ((msg.message_data or {}).get("subgraph_execution_ids") or [])
+                if exec_id in ((msg.message_data or {}).get("subgraph_execution_ids") or [])
             ]
             exec_id_messages[exec_id] = matching
 
@@ -616,15 +596,15 @@ class RedisPubSub:
                 }
 
                 copies.append(
-                    dict(
-                        session_id=session.pk,
-                        created_at=msg.created_at,
-                        name=msg.name,
-                        execution_order=msg.execution_order,
-                        message_data=scoped_message_data,
-                        uuid=uuid4(),
-                        parent_subgraph_execution_id=new_parent,
-                    )
+                    {
+                        "session_id": session.pk,
+                        "created_at": msg.created_at,
+                        "name": msg.name,
+                        "execution_order": msg.execution_order,
+                        "message_data": scoped_message_data,
+                        "uuid": uuid4(),
+                        "parent_subgraph_execution_id": new_parent,
+                    }
                 )
 
             if copies:
@@ -633,9 +613,7 @@ class RedisPubSub:
         # Calculate token usage from source messages already in DB
         # (reverse order — children before parents so parent can aggregate).
         for exec_id, session, finish_data in reversed(created_sessions):
-            token_usage = self._calculate_subgraph_token_usage(
-                exec_id_messages.get(exec_id, [])
-            )
+            token_usage = self._calculate_subgraph_token_usage(exec_id_messages.get(exec_id, []))
 
             subgraph_output = finish_data.get("output", {})
 
@@ -684,15 +662,9 @@ class RedisPubSub:
             if token_usage:
                 total_usage["total_tokens"] += token_usage.get("total_tokens", 0)
                 total_usage["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
-                total_usage["completion_tokens"] += token_usage.get(
-                    "completion_tokens", 0
-                )
-                total_usage["successful_requests"] += token_usage.get(
-                    "successful_requests", 0
-                )
-                total_usage["cached_prompt_tokens"] += token_usage.get(
-                    "cached_prompt_tokens", 0
-                )
+                total_usage["completion_tokens"] += token_usage.get("completion_tokens", 0)
+                total_usage["successful_requests"] += token_usage.get("successful_requests", 0)
+                total_usage["cached_prompt_tokens"] += token_usage.get("cached_prompt_tokens", 0)
                 total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
 
         return total_usage
@@ -756,9 +728,7 @@ class RedisPubSub:
             ScheduleTriggerService().handle_schedule_trigger(node_id)
             logger.info(f"[SchedulePubSub] run_session completed for node {node_id}")
         except Exception as e:
-            logger.error(
-                f"[SchedulePubSub] Error in run_session for node {node_id}: {e}"
-            )
+            logger.error(f"[SchedulePubSub] Error in run_session for node {node_id}: {e}")
 
     def _handle_schedule_deactivate(self, node_id: int):
         try:

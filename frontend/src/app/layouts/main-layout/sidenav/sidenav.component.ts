@@ -4,6 +4,7 @@ import {
     AfterViewInit,
     ChangeDetectionStrategy,
     Component,
+    computed,
     CUSTOM_ELEMENTS_SCHEMA,
     DestroyRef,
     ElementRef,
@@ -11,29 +12,35 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { AppSvgIconComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { filter, map } from 'rxjs/operators';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
+import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
-import { ConfigService } from '../../../services/config/config.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ConfigService } from '../../../services/config';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string;
+    routeLink?: string | (() => string | null);
     icon?: string;
     label: string;
     showTooltip: boolean;
-    isPermitted: boolean;
+    /** Function (not boolean) so signal reads inside happen at template-eval time.
+     *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
+    isPermitted: () => boolean;
     action?: () => void;
     customClass?: string;
 }
@@ -47,8 +54,10 @@ interface NavItem {
         OverlayModule,
         PortalModule,
         UserMenuComponent,
+        OrganizationsMenuComponent,
         AppSvgIconComponent,
         UserAvatarComponent,
+        OrgAvatarComponent,
         ClickOutsideDirective,
     ],
     templateUrl: './sidenav.component.html',
@@ -128,10 +137,34 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
+    public isOrgMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
+    public showOrgTooltip = false;
+
+    private router = inject(Router);
+    public isWorkspaceRoute = toSignal(
+        this.router.events.pipe(
+            filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+            map(() => this.router.url.startsWith('/workspace'))
+        ),
+        { initialValue: this.router.url.startsWith('/workspace') }
+    );
+
+    public activeMembership = computed(() => {
+        const user = this.user();
+        if (!user) return null;
+        const orgId = this.activeOrgService.activeOrgId();
+        return user.memberships.find((m) => m.organization.id === orgId) ?? null;
+    });
 
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
+
+    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
+     *  binding re-evaluates when active-org permissions reload after an org switch. */
+    public canReadFlows(): boolean {
+        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
+    }
 
     constructor(
         public epicChatService: EpicChatService,
@@ -158,7 +191,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'agents',
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -166,17 +199,15 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'tools',
                 icon: 'tools',
                 label: 'Tools',
-                isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'files',
-                routeLink: 'files',
+                routeLink: () => this.resolveFilesRoute(),
                 icon: 'sources',
                 label: 'Files',
-                isPermitted:
-                    this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
-                    this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+                isPermitted: () => this.resolveFilesRoute() !== null,
                 showTooltip: false,
             },
             {
@@ -184,14 +215,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'flows',
                 icon: 'flows',
                 label: 'Flows',
-                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'chats',
                 routeLink: 'chats',
                 icon: 'chats',
-                isPermitted: true,
+                isPermitted: () => true,
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -202,7 +233,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
-            isPermitted: this.permissionService.canOpenConfigureModelsDialog(),
+            isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
@@ -235,6 +266,15 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.isUserMenuOpen.update((prev) => !prev);
     }
 
+    public closeOrgMenu(): void {
+        this.isOrgMenuOpen.set(false);
+    }
+
+    public toggleOrgMenu(event: MouseEvent): void {
+        event.stopPropagation();
+        this.isOrgMenuOpen.update((prev) => !prev);
+    }
+
     public onEpChatCommandResult(event: Event): void {
         this.epicChatService.onEpChatCommandResult(event);
     }
@@ -248,5 +288,18 @@ export class LeftSidebarComponent implements AfterViewInit {
             event.preventDefault();
             item.action();
         }
+    }
+
+    public resolveRouteLink(item: NavItem): string | null {
+        if (typeof item.routeLink === 'function') return item.routeLink();
+        return item.routeLink ?? null;
+    }
+
+    /** Route to whichever `/files/*` sub-tab the user has read access to in the current org, or `null` if none. */
+    private resolveFilesRoute(): string | null {
+        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read))
+            return '/files/knowledge-sources';
+        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        return null;
     }
 }

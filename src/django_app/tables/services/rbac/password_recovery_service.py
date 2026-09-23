@@ -1,8 +1,5 @@
-from typing import Optional
-
 from django.contrib.auth import get_user_model
 from django.db import transaction
-
 from tables.services.rbac.rbac_exceptions import (
     InvalidOrExpiredTokenError,
     SuperadminRequiredError,
@@ -44,11 +41,11 @@ class PasswordRecoveryService:
 
     def __init__(
         self,
-        token_repo: Optional[PasswordResetTokenRepository] = None,
-        email_sender: Optional[PasswordResetEmailSender] = None,
-        session_invalidator: Optional[SessionInvalidationService] = None,
-        password_writer: Optional[PasswordWriter] = None,
-        smtp_config: Optional[SmtpConfigService] = None,
+        token_repo: PasswordResetTokenRepository | None = None,
+        email_sender: PasswordResetEmailSender | None = None,
+        session_invalidator: SessionInvalidationService | None = None,
+        password_writer: PasswordWriter | None = None,
+        smtp_config: SmtpConfigService | None = None,
     ):
         self._token_repo = token_repo or PasswordResetTokenRepository()
         self._email_sender = email_sender or PasswordResetEmailSender()
@@ -107,12 +104,12 @@ class PasswordRecoveryService:
 
     @staticmethod
     def _find_user_by_email(email: str):
-        User = get_user_model()
+        User = get_user_model()  # noqa: N806
         return User.objects.filter(email__iexact=email).first()
 
     @staticmethod
     def _get_user_by_id(user_id: int):
-        User = get_user_model()
+        User = get_user_model()  # noqa: N806
         user = User.objects.filter(pk=user_id).first()
         if user is None:
             raise UserNotFoundError()

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
@@ -14,6 +14,7 @@ import {
 import { AppStorageService } from '@shared/services';
 import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
+import { SKIP_FORBIDDEN_RELOAD } from '../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../config';
 import { ProfileService } from './profile.service';
 
@@ -113,9 +114,10 @@ export class AuthService {
         }
 
         this.deleteLegacyRefreshCookie();
+        const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
 
         this.refreshInProgress$ = this.http
-            .post<AccessToken>(`${this.baseUrl}refresh/`, {}, { withCredentials: true })
+            .post<AccessToken>(`${this.baseUrl}refresh/`, {}, { context, withCredentials: true })
             .pipe(
                 tap((resp) => {
                     this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));

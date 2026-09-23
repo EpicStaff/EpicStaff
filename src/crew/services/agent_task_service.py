@@ -26,10 +26,9 @@ per-call subscribe pattern but with server-side blocking.
 import json
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from loguru import logger
-
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
 from src.shared.models import AgentDefinitionData, AgentNodeData, TaskNodeData
@@ -97,9 +96,7 @@ class AgentTaskService:
     ) -> dict:
         blob = self._build_agent_node_request_blob(agent_node_data)
         task_count = len(agent_node_data.tasks)
-        timeout_s = self._resolve_timeout_s(
-            agent_node_data.agent_definition, task_count=task_count
-        )
+        timeout_s = self._resolve_timeout_s(agent_node_data.agent_definition, task_count=task_count)
         return await self._dispatch(blob, timeout_s, stop_event, on_event)
 
     async def _dispatch(
@@ -141,9 +138,7 @@ class AgentTaskService:
     def _resolve_timeout_s(
         self, agent_definition: AgentDefinitionData | None, task_count: int = 1
     ) -> float:
-        max_execution_time = (
-            agent_definition.max_execution_time if agent_definition else None
-        )
+        max_execution_time = agent_definition.max_execution_time if agent_definition else None
         if max_execution_time is not None:
             return max_execution_time * task_count + self.timeout_buffer_s
         return self.default_timeout_s * task_count
@@ -198,16 +193,13 @@ class AgentTaskService:
                         continue
 
                     if envelope.type == "agent.error":
-                        raise AgentTaskError(
-                            envelope.payload.get("error", "agent error")
-                        )
+                        raise AgentTaskError(envelope.payload.get("error", "agent error"))
 
                     if envelope.type == "agent.result":
                         stop_reason = envelope.payload.get("stop_reason")
                         if stop_reason in FAILURE_STOP_REASONS:
                             raise AgentTaskError(
-                                envelope.payload.get("error")
-                                or f"agent stop_reason={stop_reason}"
+                                envelope.payload.get("error") or f"agent stop_reason={stop_reason}"
                             )
                         return envelope.payload
 

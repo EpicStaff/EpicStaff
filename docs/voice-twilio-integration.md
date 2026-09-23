@@ -18,7 +18,6 @@ For provider-specific audio routing and adapter internals see [realtime-provider
 8. [RealtimeAgentChatData Contract](#realtimeagentchatdata-contract)
 9. [Cache Invalidation Flow](#cache-invalidation-flow)
 10. [Troubleshooting](#troubleshooting)
-11. [Migration from legacy (VoiceSettings)](#migration-from-legacy-voicesettings)
 
 ---
 
@@ -33,8 +32,6 @@ The voice feature allows a `RealtimeAgent` to answer inbound phone calls routed 
 Browser conversations follow the same session bootstrap (`POST /init-realtime/` → `connection_key` → `WS /realtime/`) without the Twilio step.
 
 The feature is configured through the **Voice & Channel Settings** section of the application's configure-models dialog. Each channel gets its own Twilio account, phone number, and assigned agent — a deployment can run many channels simultaneously.
-
-> **Status:** Supersedes the legacy global `VoiceSettings` singleton design — see [Migration from legacy](#migration-from-legacy-voicesettings).
 
 ---
 
@@ -510,7 +507,7 @@ PATCH /realtime-channels/ or /twilio-channels/ (Django)
   fetches fresh channel config from Django
 ```
 
-Note: the current channel write path relies on the **60s TTL** expiry unless a token is explicitly published on `voice_settings:invalidate`. The legacy `VoiceSettingsView.update()` still publishes to the same channel (without a token, clearing the full cache) on every settings save.
+Note: the channel write path relies on the **60s TTL** expiry.
 
 ---
 
@@ -525,20 +522,9 @@ Note: the current channel write path relies on the **60s TTL** expiry unless a t
 | Stream WS closes immediately after `start` | `stream_token` missing/invalid/expired/already consumed. TTL is only `STREAM_TOKEN_TTL_SECONDS` (120s default) — a long delay between the TwiML response and Twilio opening the Media Stream WS, or a retried/duplicated call to the TwiML webhook, can exhaust it before the stream connects |
 | `init-realtime` returns 400 | `RealtimeAgent` has no `active_provider_config`, or `agent_id` is invalid |
 | Garbled phone audio | `input_audio_format` / `output_audio_format` not `g711_ulaw` on the Twilio path. The stream handler forces these via the `init-realtime` `config` override |
-| Stale channel after edit | Per-channel cache has 60s TTL. Restart the service, wait it out, or publish the channel token on `voice_settings:invalidate` to evict that single entry |
+| Stale channel after edit | Per-channel cache has 60s TTL. Restart the service or wait it out |
 | Pydantic error in `redis_listener` | A required `RealtimeAgentChatData` field (`rt_model_name`, `rt_api_key`) was null. Ensure the provider config has both set |
 | Recordings or end metadata missing | `VoiceCallService` POSTs with `connection_key`; a missing `RealtimeAgentChat` row returns 404 and the recording is dropped. Confirm the chat row exists |
 | Phone numbers not loading in dialog | `account_sid` and `auth_token` must both be present. Numbers are fetched lazily — open the dropdown to trigger. Cache resets when credentials change |
 | Browser WS closes with `1011` | `connection_key` not found in `ConnectionRepository` — Redis snapshot never arrived. Check Redis connectivity and that `init-realtime` returned `201` before opening the WS |
 
----
-
-## Migration from legacy (`VoiceSettings`)
-
-The deprecated singleton `VoiceSettings` (`db_table = "voice_settings"`, fields `twilio_account_sid`, `twilio_auth_token`, `voice_agent`, `ngrok_config`) and its tokenless routes — Django `GET/PUT /voice-settings/` and FastAPI `POST /voice` + `WS /voice/stream` — remain in the codebase for backward compatibility only. They are explicitly marked **DEPRECATED** in `webhook_models.py`.
-
-They support a single global Twilio account/agent. Do not build new integrations on them.
-
-**The only live cross-over:** `VoiceSettingsView.update()` still publishes an empty payload to `voice_settings:invalidate`, which clears the entire `_channel_cache` in the realtime service as a side effect.
-
-**Migrate by:** creating a `RealtimeChannel` + `TwilioChannel` per phone number (see [Setup & Configuration](#setup--configuration)) and pointing each Twilio number's `VoiceUrl` at `/voice/{token}` instead of `/voice`. The old singleton can then be ignored.

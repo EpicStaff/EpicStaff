@@ -12,7 +12,7 @@ secret. A determined author can still exfiltrate by encoding or chunking the val
 or by sending it out over the network. This is a safety net, not a boundary.
 
 Gated by the SANDBOX_MASK_SECRET environment variable (default on), parsed into
-settings.MASK_SECRET at import time. When it is false ExecuteCodeHandler skips
+MASK_SECRET at import time. When it is false ExecuteCodeHandler skips
 these functions entirely, so debugging can see real values -- and plaintext
 credentials then reach every consumer listed above, including persisted rows
 and container logs. It is a development affordance, not something to carry

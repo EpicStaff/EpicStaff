@@ -10,13 +10,12 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError, InvalidOutputSchemaError
 from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
-from app.resources.resolver import AgentResolver, ResolvedAgent
+from app.resources.resolver import ResolvedAgent
 from app.runners.deps import RunnerDependencies
 from app.runners.list_of_tasks import ListOfTasksRunner, format_context_preamble
 from app.tools.registry import ToolRegistry
@@ -29,7 +28,6 @@ from shared.models.agent_service import (
     ToolResult,
 )
 from shared.models.ai_providers import LLMConfigData, LLMData
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -69,9 +67,7 @@ class FakeEmitter(Emitter):
     async def on_task_start(self, task_name: str, task_order: int) -> None:
         self.task_starts.append((task_name, task_order))
 
-    async def on_task_finish(
-        self, task_name: str, task_order: int, result: LoopResult
-    ) -> None:
+    async def on_task_finish(self, task_name: str, task_order: int, result: LoopResult) -> None:
         self.task_finishes.append((task_name, task_order, result))
 
 
@@ -256,9 +252,7 @@ async def test_per_task_output_schema_uses_enforcer():
     answer_loop = AnswerToolLoop([({"x": "result"}, TokenUsage())])
     emitter = FakeEmitter()
     runner = _runner(loop=answer_loop)
-    request = _request(
-        [{"name": "task_a", "instructions": "Do A", "output_schema": schema}]
-    )
+    request = _request([{"name": "task_a", "instructions": "Do A", "output_schema": schema}])
 
     from unittest.mock import patch
 

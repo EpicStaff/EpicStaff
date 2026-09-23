@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import pytest
-
 from app.exceptions import InvalidOutputSchemaError
 from app.output.schema import add_usage, as_object_schema, validate_output
 from shared.models.agent_service import TokenUsage
-
 
 # ---------------------------------------------------------------------------
 # as_object_schema

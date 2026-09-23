@@ -1,5 +1,6 @@
-from loguru import logger
 import sys
+
+from loguru import logger
 
 logger.remove()
 logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")

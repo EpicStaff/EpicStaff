@@ -1,3 +1,4 @@
+export * from './admin/admin-membership.model';
 export * from './admin/admin-user.model';
 export * from './membership.model';
 export * from './organization.model';

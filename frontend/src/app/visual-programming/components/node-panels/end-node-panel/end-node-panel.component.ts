@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { JsonEditorComponent } from '@shared/components';
 
-import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { EndNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 
@@ -62,7 +62,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
             .label-container label {
                 display: block;
                 font-size: 0.875rem;
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--color-text-secondary);
                 margin: 0;
             }
 

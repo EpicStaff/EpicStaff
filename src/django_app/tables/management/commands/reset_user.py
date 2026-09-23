@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-
 from tables.services.rbac.reset_user_service import ResetUserService
 
 

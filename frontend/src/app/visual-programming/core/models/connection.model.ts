@@ -1,6 +1,6 @@
 import { IPoint } from '@foblex/2d';
 
-import { Edge } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
+import { Edge } from './edge.model';
 import { CustomPortId } from './port.model';
 
 export interface ConnectionModel {

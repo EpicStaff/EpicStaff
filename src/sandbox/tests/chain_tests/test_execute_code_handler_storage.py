@@ -16,36 +16,21 @@ Behavior B — handle (async):
 """
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
+pytest.importorskip(
+    "pwd",
+    reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
+)
+
 from dynamic_venv_executor_chain import ExecuteCodeHandler
 
+from conftest import make_execute_context
 
-def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
-    """Minimal valid context for ExecuteCodeHandler.handle().
 
-    Mirrors _make_execute_context in test_build_environment_handler.py so the
-    fake-subprocess helper works without modification.
-    """
-    exec_dir = tmp_path / "exec"
-    exec_dir.mkdir(parents=True, exist_ok=True)
-
-    ctx: dict[str, Any] = {
-        "python_executable": tmp_path / "venv" / "bin" / "python",
-        "temp_code_path": exec_dir / "code.py",
-        "result_file_path": exec_dir / "output.txt",
-        "home_path": str(exec_dir / "home"),
-        "code": "def main(**kwargs):\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "test-exec-storage",
-        "use_storage": False,
-    }
-    ctx.update(overrides)
-    return ctx
+def _make_execute_context(tmp_path: Path, **overrides):
+    return make_execute_context(tmp_path, execution_id="test-exec-storage", **overrides)
 
 
 def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> None:
@@ -93,7 +78,10 @@ class TestWrapCodeStorageMutationsBlock:
         mutations_path = tmp_path / "storage_mutations.json"
         wrapped = self._wrap(tmp_path, storage_mutations_path=mutations_path)
 
-        assert "from epicstaff_storage.storage import get_mutations as __es_get_muts" in wrapped
+        assert (
+            "from epicstaff_storage.storage import get_mutations as __es_get_muts"
+            in wrapped
+        )
 
     def test_mutations_path_embedded_when_path_given(self, tmp_path):
         mutations_path = tmp_path / "storage_mutations.json"
@@ -107,7 +95,9 @@ class TestWrapCodeStorageMutationsBlock:
         assert "get_mutations" not in wrapped
         assert "get_mutations as __es_get_muts" not in wrapped
 
-    def test_mutations_block_absent_contains_no_storage_mutations_import(self, tmp_path):
+    def test_mutations_block_absent_contains_no_storage_mutations_import(
+        self, tmp_path
+    ):
         """The top-level try block always imports epicstaff_storage, but the
         mutations-specific symbol (__es_get_muts / get_mutations) must be absent
         when no path is given."""
@@ -162,7 +152,10 @@ class TestHandleStorageMutationsWiring:
         await ExecuteCodeHandler().handle(context)
 
         written = context["temp_code_path"].read_text()
-        assert "from epicstaff_storage.storage import get_mutations as __es_get_muts" in written
+        assert (
+            "from epicstaff_storage.storage import get_mutations as __es_get_muts"
+            in written
+        )
 
     @pytest.mark.asyncio
     async def test_use_storage_true_embeds_correct_mutations_path_in_written_code(

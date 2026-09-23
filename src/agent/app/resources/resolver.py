@@ -17,21 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from loguru import logger
-
-from app.exceptions import (
-    AgentServiceError,
-    UnknownCollectionRefError,
-    UnknownS3RefError,
-    UnknownToolRefError,
-)
-from app.knowledge.client import KnowledgeClient
-from app.knowledge.events import KnowledgeEventSink
-from app.loop.context import AgentContext
-from app.resources.s3_manifest import build_s3_manifest
-from app.sandbox.client import SandboxClient
-from app.tools.mcp.gateway import McpToolGateway
-from app.tools.registry import ToolRegistry
-from app.tools.registry_builder import ToolRegistryBuilder
+from shared.knowledge.client import KnowledgeClient
 from shared.models.agent_service import (
     AgentRequest,
     AgentSpec,
@@ -40,6 +26,20 @@ from shared.models.agent_service import (
     S3FileSpec,
 )
 from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
+
+from app.exceptions import (
+    AgentServiceError,
+    UnknownCollectionRefError,
+    UnknownS3RefError,
+    UnknownToolRefError,
+)
+from app.knowledge.events import KnowledgeEventSink
+from app.loop.context import AgentContext
+from app.resources.s3_manifest import build_s3_manifest
+from app.sandbox.client import SandboxClient
+from app.tools.mcp.gateway import McpToolGateway
+from app.tools.registry import ToolRegistry
+from app.tools.registry_builder import ToolRegistryBuilder
 
 
 @dataclass
@@ -100,9 +100,7 @@ class AgentResolver:
         and must be passed as a parameter rather than stored on the resolver,
         which is built once at startup and shared across concurrent requests.
         """
-        tool_pool: dict[str, BaseToolData] = {
-            entry.unique_name: entry for entry in request.tools
-        }
+        tool_pool: dict[str, BaseToolData] = {entry.unique_name: entry for entry in request.tools}
         collection_pool: dict[str, CollectionSpec] = {
             spec.unique_name: spec for spec in request.collections
         }

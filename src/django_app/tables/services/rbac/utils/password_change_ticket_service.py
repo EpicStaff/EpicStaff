@@ -1,5 +1,4 @@
 import secrets
-from typing import Optional, Tuple
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -27,18 +26,19 @@ class PasswordChangeTicketService:
     @property
     def ttl_seconds(self) -> int:
         return settings.PASSWORD_CHANGE_TICKET_TTL
+
     def _redis(self):
         return get_redis_connection("default")
 
     def _cache_key(self, ticket: str) -> str:
         return f"{self.CACHE_PREFIX}{ticket}"
 
-    def issue(self, user) -> Tuple[str, int]:
+    def issue(self, user) -> tuple[str, int]:
         ticket = secrets.token_urlsafe(32)
         self._redis().set(self._cache_key(ticket), user.pk, ex=self.ttl_seconds)
         return ticket, self.ttl_seconds
 
-    def consume(self, ticket: str) -> Optional[object]:
+    def consume(self, ticket: str) -> object | None:
         if not ticket:
             return None
         raw = self._redis().getdel(self._cache_key(ticket))

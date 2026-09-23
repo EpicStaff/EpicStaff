@@ -1,10 +1,11 @@
-from loguru import logger
-import redis.asyncio as aioredis
-from app.core.settings import settings
-from typing import Dict, Any, Optional
-from redis.client import PubSub
+from typing import Any
 
+import redis.asyncio as aioredis
+from loguru import logger
+from redis.client import PubSub
 from src.shared.models import WebhookEventData
+
+from app.core.settings import settings
 
 
 class RedisService:
@@ -14,16 +15,14 @@ class RedisService:
 
     def __init__(self, host: str, port: int, webhook_channel: str, password: str):
         self.redis_url = f"redis://{host}:{port}"
-        self.client = aioredis.from_url(
-            self.redis_url, password=password, decode_responses=True
-        )
+        self.client = aioredis.from_url(self.redis_url, password=password, decode_responses=True)
         self.webhook_channel = webhook_channel
         logger.info(f"RedisService initialized for {self.redis_url}")
 
     async def publish_webhook(
         self,
         path: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         config_id: str | None = None,
     ):
         """
@@ -57,7 +56,7 @@ class RedisService:
         return pubsub
 
 
-_redis_service: Optional[RedisService] = None
+_redis_service: RedisService | None = None
 
 
 async def get_redis_service() -> RedisService:
@@ -70,7 +69,6 @@ async def get_redis_service() -> RedisService:
             password=settings.REDIS_PASSWORD,
             webhook_channel=settings.WEBHOOK_MESSAGE_CHANNEL,
         )
-        _redis_service
 
     return _redis_service
 

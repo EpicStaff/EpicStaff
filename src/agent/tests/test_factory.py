@@ -7,7 +7,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.enums import EmitterMode

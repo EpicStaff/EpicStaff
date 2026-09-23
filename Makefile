@@ -31,7 +31,7 @@ uv_lock_targets := $(addprefix uv-lock-,$(uv_services))
         gen-env check-env \
         uv-lock \
         uv-sync \
-        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests
+        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests sandbox-tests
 
 # --- Help ---
 
@@ -219,3 +219,8 @@ agent-tests: export PYTHONPATH = $(CURDIR)
 
 agent-tests:
 	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)
+
+sandbox-tests: export PYTHONPATH = $(CURDIR)
+
+sandbox-tests:
+	@cd src/sandbox && $(VENV_PY) -m pytest $(ARGS)

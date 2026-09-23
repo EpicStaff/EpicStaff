@@ -1,17 +1,14 @@
 import asyncio
-from dataclasses import asdict
 from typing import Any
 
-from loguru import logger
 from langgraph.types import StreamWriter
-
-from models.graph_models import NodeExtractedChunksMessageData, GraphMessage
+from loguru import logger
 from models.state import State
+from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
-from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import RagSearchConfig
 
 
@@ -31,6 +28,7 @@ class KnowledgeNode(BaseNode):
         rag_search_config: RagSearchConfig | None,
         knowledge_search_service: KnowledgeSearchService,
         embedder_api_key: str | None = None,
+        llm_api_key: str | None = None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
     ):
         super().__init__(
@@ -47,6 +45,7 @@ class KnowledgeNode(BaseNode):
         self.rag_search_config = rag_search_config
         self.knowledge_search_service = knowledge_search_service
         self.embedder_api_key = embedder_api_key
+        self.llm_api_key = llm_api_key
 
     def _build_query(self, input_: Any) -> str:
         """Interpolate mapped variables into the template ({name}).
@@ -70,9 +69,7 @@ class KnowledgeNode(BaseNode):
         try:
             result = self.query_template.format_map(_Fillable(input_))
         except (ValueError, IndexError) as e:
-            logger.warning(
-                f"Knowledge node '{self.node_name}' query template not formattable: {e}"
-            )
+            logger.warning(f"Knowledge node '{self.node_name}' query template not formattable: {e}")
             return self.query_template
         if missing:
             logger.warning(
@@ -92,12 +89,10 @@ class KnowledgeNode(BaseNode):
                 "set a query or map an input that resolves to non-empty text."
             )
 
-        rag_search_config = (
-            self.rag_search_config.model_dump() if self.rag_search_config else {}
-        )
+        rag_search_config = self.rag_search_config.model_dump() if self.rag_search_config else {}
         try:
-            response, token_usage = await asyncio.to_thread(
-                self.knowledge_search_service.search_knowledges_detailed,
+            results = await asyncio.to_thread(
+                self.knowledge_search_service.search_knowledges,
                 sender="node",
                 knowledge_collection_id=self.collection_id,
                 rag_type_id=self.rag_type_id,
@@ -105,33 +100,18 @@ class KnowledgeNode(BaseNode):
                 rag_search_config=rag_search_config,
                 stop_event=self.stop_event,
                 rag_embedder_api_key=self.embedder_api_key,
+                rag_llm_api_key=self.llm_api_key,
+                writer=writer,
+                session_id=self.session_id,
+                node_name=self.node_name,
+                execution_order=execution_order,
             )
         except (RuntimeError, TimeoutError, ValueError) as e:
             raise KnowledgeSearchError(
                 f"Knowledge node '{self.node_name}' search failed: {e}"
             ) from e
 
-        if writer is not None:
-            writer(
-                GraphMessage(
-                    session_id=self.session_id,
-                    name=self.node_name,
-                    execution_order=execution_order,
-                    message_data=asdict(
-                        NodeExtractedChunksMessageData(
-                            knowledge_query=response.query,
-                            collection_id=response.collection_id,
-                            retrieved_chunks=response.retrieved_chunks,
-                            rag_search_config=response.rag_search_config.model_dump(),
-                            chunks=[chunk.model_dump() for chunk in response.chunks],
-                            token_usage=token_usage,
-                            input=input_,
-                        )
-                    ),
-                )
-            )
-
-        if not response.results:
+        if not results:
             return "No relevant results were found in the knowledge collection."
 
-        return "\n\n".join(response.results)
+        return "\n\n".join(results)

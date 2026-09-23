@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_resolver import PermissionResolver
@@ -74,9 +73,7 @@ class SecretReferenceGuard:
                 type(serializer).__name__,
             )
             raise serializers.ValidationError({field_name: _DENIED})
-        effective = self._resolver.resolve(
-            user=request.user, org_id=resolve_active_org_id(request)
-        )
+        effective = self._resolver.resolve(user=request.user, org_id=resolve_active_org_id(request))
         if not effective.can(ResourceType.SECRETS.value, Permission.USE):
             raise serializers.ValidationError({field_name: _DENIED})
 

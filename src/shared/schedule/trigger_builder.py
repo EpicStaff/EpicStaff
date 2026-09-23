@@ -8,12 +8,12 @@ Both sides build the same trigger from the same config, so the time Django
 records as "next_run" matches the time Manager will actually fire.
 """
 
-from datetime import datetime, timezone as _tz, tzinfo
+from datetime import UTC, datetime, tzinfo
 
 from apscheduler.triggers.base import BaseTrigger
 
-from src.shared.models import ScheduleTriggerNodePayload
-from src.shared.schedule.trigger_strategies import (
+from ..models import ScheduleTriggerNodePayload
+from .trigger_strategies import (
     ONCE_STRATEGY,
     UNIT_STRATEGIES,
     ScheduleTriggerContext,
@@ -23,7 +23,7 @@ from src.shared.schedule.trigger_strategies import (
 def _ensure_aware(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=_tz.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def build_trigger(

@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.utils import timezone
-
 from tables.models.rbac_models import ApiKey
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
 
@@ -28,9 +27,9 @@ class SystemKeyService:
             return existing
 
         with transaction.atomic():
-            ApiKey.objects.filter(
-                key_type=ApiKey.KeyType.SYSTEM, revoked_at__isnull=True
-            ).update(revoked_at=timezone.now())
+            ApiKey.objects.filter(key_type=ApiKey.KeyType.SYSTEM, revoked_at__isnull=True).update(
+                revoked_at=timezone.now()
+            )
             return ApiKey.objects.create(
                 name=self.KEY_NAME,
                 key_type=ApiKey.KeyType.SYSTEM,

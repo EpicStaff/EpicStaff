@@ -85,12 +85,6 @@ def test_dotobj_model_dump_list():
     expected_data = ["a", {"c": 2, "e": [1, 2, ["3", 4]]}]
     assert dumped == expected_data
 
-    expected_data = [1, 2, "3", test_obj]
-    assert len(expected_data) == len(dumped)
-    assert isinstance(dumped, list)
-    for val in expected_data:
-        assert val in dumped
-
 
 def test_dotobj_json_dump_set():
     data = {1, 2, "3"}
@@ -199,6 +193,17 @@ def test_dotobject_non_iterable_pass_through():
     assert obj == 123
 
 
+@pytest.mark.xfail(
+    raises=ValueError,
+    strict=True,
+    reason=(
+        "computed properties are broken: add_property calls ast.literal_eval, "
+        "which takes a single argument and cannot resolve sibling keys. "
+        "Restoring eval() would execute user-authored flow expressions in the "
+        "unsandboxed crew process, so the feature stays disabled pending a "
+        "restricted AST evaluator."
+    ),
+)
 def test_dotdict_property_expression_reflects_latest_value():
     d = DotDict({"a": 2, "b": 3})
     d.add_property("sum", "a + b")

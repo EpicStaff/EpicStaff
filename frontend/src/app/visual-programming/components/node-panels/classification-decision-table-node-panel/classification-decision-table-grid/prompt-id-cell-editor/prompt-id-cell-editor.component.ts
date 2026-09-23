@@ -114,7 +114,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 width: 380px;
                 background: #212325;
                 border: 1px solid #2b2d30;
-                border-radius: 10px;
+                border-radius: 4px;
                 box-shadow:
                     0px 2px 3px 0px rgba(0, 0, 0, 0.3),
                     0px 6px 10px 4px rgba(0, 0, 0, 0.15);

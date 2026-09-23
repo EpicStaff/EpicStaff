@@ -36,17 +36,7 @@ def client_a(member_a, org_a):
 
 
 def _assert_parent_error(resp):
-    """Assert the response body flags `parent` as the failing field.
-
-    `utils.exception_handler.custom_exception_handler` collapses a plain
-    DRF `ValidationError({"parent": [...]})` into a single string:
-    `response.data["message"] == f"{exc.__class__.__name__}: {exc.args[0]}"`
-    (e.g. `"ValidationError: {'parent': [...]}"`). It only adds a
-    structured `response.data["errors"]` list for exceptions that expose a
-    custom `.errors` attribute (see `tables.services.rbac.rbac_exceptions`),
-    which the serializer's `_validate_no_parent_cycle` does not use — so
-    `message` is genuinely the only place the field name is exposed here.
-    """
+    """Assert the response body flags `parent` as the failing field."""
     assert "errors" not in resp.data, (
         "structured 'errors' field appeared — update this assertion to use it "
         "instead of string-matching 'message'"

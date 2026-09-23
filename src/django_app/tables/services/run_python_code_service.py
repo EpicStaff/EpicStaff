@@ -1,6 +1,8 @@
-from typing import Any
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any
+
+from django.conf import settings
 from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.storage_credentials import publish_credential_scope
@@ -12,8 +14,6 @@ from tables.services.secrets import (
     secret_resolver,
 )
 from utils.singleton_meta import SingletonMeta
-
-from django.conf import settings
 
 MAX_STORED_RESULTS = 200
 
@@ -117,17 +117,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         # task itself is published.
         # Sync variant on purpose: run_code() is sync and uses the sync redis_client
         publish_credential_scope(self.redis_service.redis_client, code_task_data)
-        self.redis_service.redis_client.publish(
-            channel, code_task_data.model_dump_json()
-        )
+        self.redis_service.redis_client.publish(channel, code_task_data.model_dump_json())
         return execution_id
 
     def gen_execution_id(self):
-        now = datetime.now()
+        now = datetime.now(UTC)
         short_uuid = str(uuid.uuid4())[:4]
-        formatted_time = now.strftime(
-            f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}"
-        )
+        formatted_time = now.strftime(f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}")
         return f"{formatted_time}@{short_uuid}"
 
     def save_execution_result(self, result: CodeResultData) -> bool:

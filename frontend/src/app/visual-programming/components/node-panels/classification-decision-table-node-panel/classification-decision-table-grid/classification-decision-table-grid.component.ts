@@ -18,8 +18,17 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    HelpTooltipComponent,
+    MultiSelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { AgGridModule } from 'ag-grid-angular';
 import {
+    AllCommunityModule,
     BodyScrollEvent,
     CellClickedEvent,
     CellValueChangedEvent,
@@ -32,19 +41,13 @@ import {
     GridOptions,
     GridReadyEvent,
     IRowNode,
+    ModuleRegistry,
     RowSpanParams,
+    themeQuartz,
     ValueGetterParams,
     ValueSetterParams,
 } from 'ag-grid-community';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { themeQuartz } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { ConfirmationDialogService } from '../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
-import { MultiSelectComponent } from '../../../../../shared/components/multi-select/multi-select.component';
-import { SelectItem } from '../../../../../shared/components/select/select.component';
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import {
@@ -85,7 +88,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public conditionGroups = input.required<ConditionGroup[]>();
-    public activeColor = input<string>('#685fff');
+    public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
     public storageNodeId = input<string>('');
     public prompts = input<Record<string, PromptConfig>>({});

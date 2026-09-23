@@ -5,24 +5,23 @@ import uuid
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import F
-from django.utils import timezone
 from loguru import logger
 
+from tables.exceptions import GraphSaveVersionConflictError
 from tables.models.base_models import (
     ActiveManager,
     BaseGlobalNode,
     BaseGraphEntity,
-    TimestampMixin,
     ContentHashMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TimestampMixin,
     soft_delete_consistency_constraint,
 )
+from tables.models.knowledge_models.collection_models import BaseRagType
+from tables.models.knowledge_models.graphrag_models import AgentGraphRag
 from tables.models.label_models import Label
 from tables.models.rbac_models.org_scoped import OrgScopedModel
-from tables.exceptions import GraphSaveVersionConflictError
-from tables.models.knowledge_models.graphrag_models import AgentGraphRag
-from tables.models.knowledge_models.collection_models import BaseRagType
 
 
 class GraphManager(ActiveManager):
@@ -86,9 +85,7 @@ class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
             save_version=F("save_version") + 1
         )
         if not updated:
-            current = (
-                cls.objects.filter(pk=pk).values_list("save_version", flat=True).first()
-            )
+            current = cls.objects.filter(pk=pk).values_list("save_version", flat=True).first()
             raise GraphSaveVersionConflictError(current_version=current)
         return expected + 1
 
@@ -110,9 +107,7 @@ class BaseNode(BaseGraphEntity, BaseGlobalNode):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE)
     node_name = models.CharField(max_length=255, blank=True)
     input_map = models.JSONField(default=dict)
-    output_variable_path = models.CharField(
-        max_length=255, blank=True, null=True, default=None
-    )
+    output_variable_path = models.CharField(max_length=255, blank=True, null=True, default=None)
 
     class Meta:
         abstract = True
@@ -133,9 +128,7 @@ class CrewNode(BaseNode, SoftDeleteFields):
     compatibility with existing graphs.
     """
 
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="crew_node_list")
     crew = models.ForeignKey("Crew", on_delete=models.CASCADE)
 
     class Meta:
@@ -145,9 +138,7 @@ class CrewNode(BaseNode, SoftDeleteFields):
 
 
 class PythonNode(BaseNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="python_node_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
     use_storage = models.BooleanField(default=False)
@@ -186,9 +177,7 @@ class PythonNode(BaseNode, SoftDeleteFields):
 
 
 class KnowledgeNode(BaseNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="knowledge_node_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="knowledge_node_list")
     source_collection = models.ForeignKey(
         "SourceCollection", on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -241,9 +230,7 @@ class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
 
 class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     # TODO: can be OneToOne field
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="end_node"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="end_node")
     output_map = models.JSONField()
 
     @property
@@ -272,9 +259,7 @@ class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
 
 
 class SubGraphNode(BaseNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="subgraph_node_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="subgraph_node_list")
     subgraph = models.ForeignKey(
         "Graph",
         on_delete=models.SET_NULL,
@@ -289,9 +274,7 @@ class SubGraphNode(BaseNode, SoftDeleteFields):
 
 
 class Edge(BaseGraphEntity, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="edge_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="edge_list")
     start_node_id = models.BigIntegerField(null=False, default=0)
     end_node_id = models.BigIntegerField(null=False, default=0)
 
@@ -312,9 +295,7 @@ class Edge(BaseGraphEntity, SoftDeleteFields):
         # not found.
         start_node = BaseGlobalNode.find_globally(self.start_node_id)
         if not start_node or start_node.graph_id != self.graph_id:
-            raise ObjectDoesNotExist(
-                f"Start node with ID {self.start_node_id} not found."
-            )
+            raise ObjectDoesNotExist(f"Start node with ID {self.start_node_id} not found.")
 
         end_node = BaseGlobalNode.find_globally(self.end_node_id)
         if not end_node or end_node.graph_id != self.graph_id:
@@ -362,9 +343,7 @@ class ConditionalEdge(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     def clean(self):
         if not BaseGlobalNode.find_globally(self.source_node_id):
             raise ValidationError(
-                {
-                    "source_node_id": f"Node with ID {self.source_node_id} does not exist."
-                }
+                {"source_node_id": f"Node with ID {self.source_node_id} does not exist."}
             )
 
 
@@ -375,9 +354,7 @@ class GraphSessionMessage(models.Model):
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
     uuid = models.UUIDField(null=False, editable=False, unique=True)
-    parent_subgraph_execution_id = models.UUIDField(
-        null=True, blank=True, db_index=True
-    )
+    parent_subgraph_execution_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         indexes = [
@@ -389,9 +366,7 @@ class GraphSessionMessage(models.Model):
 
 
 class StartNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="start_node_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="start_node_list")
     variables = models.JSONField(default=dict)
 
     @property
@@ -486,9 +461,7 @@ class ConditionGroup(ContentHashMixin, SoftDeleteFields):
             for f in self._meta.fields
             if f.name not in excluded_fields
         }
-        data["conditions"] = sorted(
-            c.content_hash for c in self.conditions.all() if c.content_hash
-        )
+        data["conditions"] = sorted(c.content_hash for c in self.conditions.all() if c.content_hash)
         data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(data_string).hexdigest()
 
@@ -501,9 +474,7 @@ class ConditionGroup(ContentHashMixin, SoftDeleteFields):
             owner_graph_id = getattr(self.decision_table_node, "graph_id", None)
             if not next_node or next_node.graph_id != owner_graph_id:
                 raise ValidationError(
-                    {
-                        "next_node_id": f"Next node with ID '{self.next_node_id}' not found."
-                    }
+                    {"next_node_id": f"Next node with ID '{self.next_node_id}' not found."}
                 )
 
 
@@ -724,18 +695,12 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     )
     is_active = models.BooleanField(default=False)
     timezone = models.CharField(max_length=64, default="UTC", blank=True)
-    run_mode = models.CharField(
-        max_length=10, choices=RunMode.choices, null=True, blank=True
-    )
+    run_mode = models.CharField(max_length=10, choices=RunMode.choices, null=True, blank=True)
     start_date_time = models.DateTimeField(null=True, blank=True)
     every = models.IntegerField(null=True, blank=True)
-    unit = models.CharField(
-        max_length=10, null=True, blank=True, choices=TimeUnit.choices
-    )
+    unit = models.CharField(max_length=10, null=True, blank=True, choices=TimeUnit.choices)
     weekdays = models.JSONField(null=True, blank=True)
-    end_type = models.CharField(
-        max_length=15, choices=EndType.choices, null=True, blank=True
-    )
+    end_type = models.CharField(max_length=15, choices=EndType.choices, null=True, blank=True)
     end_date_time = models.DateTimeField(null=True, blank=True)
     max_runs = models.IntegerField(null=True, blank=True)
     current_runs = models.IntegerField(default=0)
@@ -765,9 +730,7 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class ClassificationDecisionTableNode(
-    BaseGraphEntity, BaseGlobalNode, SoftDeleteFields
-):
+class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -782,9 +745,7 @@ class ClassificationDecisionTableNode(
         related_name="cdt_pre_nodes",
     )
     pre_input_map = models.JSONField(default=dict, blank=True)
-    pre_output_variable_path = models.CharField(
-        max_length=512, null=True, default=None, blank=True
-    )
+    pre_output_variable_path = models.CharField(max_length=512, null=True, default=None, blank=True)
     post_python_code = models.ForeignKey(
         "PythonCode",
         on_delete=models.CASCADE,
@@ -911,16 +872,12 @@ class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
             next_node = BaseGlobalNode.find_globally(self.next_node_id)
             if not next_node:
                 raise ValidationError(
-                    {
-                        "next_node_id": f"Error node with ID '{self.next_node_id}' not found."
-                    }
+                    {"next_node_id": f"Error node with ID '{self.next_node_id}' not found."}
                 )
 
 
 class GraphNote(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="graph_note_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="graph_note_list")
     content = models.TextField()
 
     class Meta:
@@ -969,9 +926,7 @@ class StorageFile(models.Model):
         max_length=1000,
         help_text="Org-relative path, never starts with '/'. Folders end with '/'.",
     )
-    name = models.CharField(
-        max_length=255, help_text="Last path segment, denormalized for search."
-    )
+    name = models.CharField(max_length=255, help_text="Last path segment, denormalized for search.")
     item_type = models.CharField(
         max_length=6,
         choices=ITEM_TYPE_CHOICES,
@@ -1008,9 +963,7 @@ class StorageFile(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(
-                fields=["org", "path"], name="unique_storage_file_per_org"
-            )
+            models.UniqueConstraint(fields=["org", "path"], name="unique_storage_file_per_org")
         ]
         indexes = [
             models.Index(fields=["org", "path"]),
@@ -1019,9 +972,7 @@ class StorageFile(models.Model):
 
 
 class GraphStorageFile(SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="storage_files"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="storage_files")
     storage_file = models.ForeignKey(
         "StorageFile", on_delete=models.CASCADE, related_name="graph_storage_files"
     )
@@ -1039,9 +990,7 @@ class GraphStorageFile(SoftDeleteFields):
 
 
 class SessionStorageFile(models.Model):
-    session = models.ForeignKey(
-        "Session", on_delete=models.CASCADE, related_name="storage_files"
-    )
+    session = models.ForeignKey("Session", on_delete=models.CASCADE, related_name="storage_files")
     storage_file = models.ForeignKey(
         "StorageFile", on_delete=models.CASCADE, related_name="session_storage_files"
     )
@@ -1189,9 +1138,7 @@ class AgentNodeTask(TimestampMixin, SoftDeleteFields):
             invalid = self.context_tasks.exclude(agent_node=self.agent_node)
 
             if invalid.exists():
-                raise ValidationError(
-                    "context_tasks must belong to the same agent_node."
-                )
+                raise ValidationError("context_tasks must belong to the same agent_node.")
 
             forward = self.context_tasks.filter(order__gte=self.order)
 

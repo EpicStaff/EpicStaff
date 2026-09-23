@@ -66,9 +66,7 @@ class Secret(OrgScopedModel, TimestampMixin, MetadataMixin):
                 condition=Q(system=True),
                 name="unique_system_secret_name_per_org",
             ),
-            models.CheckConstraint(
-                condition=~models.Q(value=""), name="secret_value_not_empty"
-            ),
+            models.CheckConstraint(condition=~models.Q(value=""), name="secret_value_not_empty"),
         ]
 
     def __str__(self) -> str:

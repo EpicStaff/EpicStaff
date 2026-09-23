@@ -1,16 +1,15 @@
-import uuid
 import asyncio
+import uuid
 from typing import Any
 
+import settings
 from loguru import logger
 from pydantic import ValidationError
-
-import settings
 from services.graph.events import StopEvent
-from utils.singleton_meta import SingletonMeta
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from src.shared.storage_credentials import publish_credential_scope_async
+from utils.singleton_meta import SingletonMeta
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
@@ -68,9 +67,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
-        await self.redis_service.asubscribe(
-            settings.CODE_RESULT_CHUNNEL, subscriber=subscriber
-        )
+        await self.redis_service.asubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
 
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
@@ -78,19 +75,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         # Trusted scope for the storage-credential issuer, written before the
         # task itself is published.
-        await publish_credential_scope_async(
-            self.redis_service.aioredis_client, code_task_data
-        )
-        await self.redis_service.apublish(
-            settings.CODE_EXEC_CHANNEL, code_task_data.model_dump()
-        )
+        await publish_credential_scope_async(self.redis_service.aioredis_client, code_task_data)
+        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
         logger.info("Waiting for code_results")
 
         while True:
             if callback_receiver.results is not None:
-                self.redis_service.unsubscribe(
-                    settings.CODE_RESULT_CHUNNEL, subscriber=subscriber
-                )
+                self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
                 return callback_receiver.results
             if stop_event is not None:
                 stop_event.check_stop()

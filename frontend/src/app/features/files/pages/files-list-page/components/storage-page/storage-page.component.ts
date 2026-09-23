@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
-import { DragDropAreaComponent, SpinnerComponent } from '@shared/components';
+import { DragDropAreaComponent, FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
 
@@ -31,6 +31,7 @@ const SIDEBAR_STORAGE_KEY = 'files';
         SpinnerComponent,
         DragDropAreaComponent,
         ResizableSidebarDirective,
+        FetchErrorStateComponent,
     ],
     templateUrl: './storage-page.component.html',
     styleUrls: ['./storage-page.component.scss'],
@@ -79,6 +80,11 @@ export class StoragePageComponent {
         this.facade.selectInTree
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((item) => this.storageTree()?.selectItemExternally(item));
+
+        this.facade.renameInTree.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((item) => {
+            this.showSidebar.set(true);
+            setTimeout(() => this.storageTree()?.startRenameWhenReady(item));
+        });
 
         this.facade.init({ watchRefreshTick: true });
     }

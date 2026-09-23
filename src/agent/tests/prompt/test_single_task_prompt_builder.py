@@ -6,8 +6,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from app.prompt.single_task import SingleTaskPromptBuilder
 from shared.models.agent_service import AgentSpec, ContextAttachment
 from shared.models.ai_providers import LLMConfigData, LLMData

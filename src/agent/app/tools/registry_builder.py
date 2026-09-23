@@ -4,14 +4,14 @@ import re
 from collections import defaultdict
 from typing import Self
 
+from shared.knowledge.client import KnowledgeClient
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import CollectionSpec, SearchConfigEntry
 from shared.models.knowledge import GraphRagSearchConfig
 from shared.models.tools import McpToolData, PythonCodeToolData
 
 from app.exceptions import AgentServiceError, DuplicateToolNameError
-from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
-from app.knowledge.target import KnowledgeSearchTarget
 from app.sandbox.client import SandboxClient
 from app.tools.executors.knowledge_search import (
     GraphKnowledgeSearchExecutor,
@@ -50,8 +50,7 @@ def _graph_schema(methods: list[str], default_method: str) -> dict:
                 "enum": methods,
                 "default": default_method,
                 "description": (
-                    "basic = broad synthesis across documents; "
-                    "local = entity/relationship-focused"
+                    "basic = broad synthesis across documents; local = entity/relationship-focused"
                 ),
             },
         },
@@ -172,9 +171,7 @@ class ToolRegistryBuilder:
             parameters_schema=args_schema,
         )
         if self._mcp_gateway is None:
-            raise AgentServiceError(
-                "McpToolGateway is not configured — cannot register MCP tools"
-            )
+            raise AgentServiceError("McpToolGateway is not configured — cannot register MCP tools")
 
         executor = McpToolExecutor(self._mcp_gateway, data, name)
         self._registry.register(spec, executor)
@@ -238,9 +235,7 @@ class ToolRegistryBuilder:
             description=description,
             parameters_schema=_QUERY_ONLY_SCHEMA,
         )
-        executor = KnowledgeSearchExecutor(
-            self._knowledge_client, target, self._knowledge_sink
-        )  # type: ignore[arg-type]
+        executor = KnowledgeSearchExecutor(self._knowledge_client, target, self._knowledge_sink)  # type: ignore[arg-type]
         self._registry.register(spec, executor)
 
         if self._knowledge_sink is not None:
@@ -266,6 +261,7 @@ class ToolRegistryBuilder:
                 rag_type=entry.rag_type,
                 search_config=entry.search_config,
                 embedder_api_key=entry.embedder.config.api_key,
+                llm_api_key=entry.llm.config.api_key if entry.llm else None,
             )
 
         methods = sorted(targets.keys())
@@ -282,9 +278,7 @@ class ToolRegistryBuilder:
             description = f"{description} {collection.description}"
 
         schema = _graph_schema(methods, default_method)
-        spec = ToolSpec(
-            name=candidate, description=description, parameters_schema=schema
-        )
+        spec = ToolSpec(name=candidate, description=description, parameters_schema=schema)
         executor = GraphKnowledgeSearchExecutor(
             self._knowledge_client, targets, default_method, self._knowledge_sink
         )  # type: ignore[arg-type]

@@ -94,6 +94,8 @@
     @include mixins.resize-divider-bleed;
 }
 
+@include mixins.field-isolated-spacing;
+
 .code-editor-wrapper {
     display: flex;
     align-items: center;

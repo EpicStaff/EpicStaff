@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from fastmcp import Client
-
 from shared.models.tools import McpToolData
 
 

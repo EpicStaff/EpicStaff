@@ -5,16 +5,16 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { ResourceCode } from '@shared/models';
+import { ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 
 @Component({
@@ -27,6 +27,7 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         NodeSecretsFieldComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],

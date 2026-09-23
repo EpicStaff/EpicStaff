@@ -8,12 +8,8 @@ class OrganizationUser(models.Model):
         on_delete=models.CASCADE,
         related_name="organization_memberships",
     )
-    org = models.ForeignKey(
-        "Organization", on_delete=models.CASCADE, related_name="members"
-    )
-    role = models.ForeignKey(
-        "Role", on_delete=models.CASCADE, related_name="organization_users"
-    )
+    org = models.ForeignKey("Organization", on_delete=models.CASCADE, related_name="members")
+    role = models.ForeignKey("Role", on_delete=models.CASCADE, related_name="organization_users")
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

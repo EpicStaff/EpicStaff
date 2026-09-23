@@ -3,13 +3,12 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AppSvgIconComponent, Spinner2Component } from '@shared/components';
+import { downloadBlob } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
+import { ToastService } from '../../../../services/notifications';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
-import { downloadBlob } from '../../../../shared/utils/download-blob.util';
 import { SessionOutputFile } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { getFileExtension } from '../../utils/storage-file.utils';

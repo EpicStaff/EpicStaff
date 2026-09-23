@@ -8,7 +8,6 @@ bitmask at the boundary.
 
 from tables.models.rbac_models.rbac_enums import Permission
 
-
 _ACTION_CODE_TO_BIT = {
     "create": Permission.CREATE,
     "read": Permission.READ,

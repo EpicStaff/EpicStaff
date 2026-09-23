@@ -1,8 +1,8 @@
 from dataclasses import dataclass
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-
 from tables.models.rbac_models import (
     Organization,
     OrganizationUser,
@@ -14,7 +14,7 @@ from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
 @dataclass
 class SetupResult:
-    user: "User"
+    user: Any
     organization: Organization
     membership: OrganizationUser
     default_org_created: bool = False
@@ -43,9 +43,7 @@ class FirstSetupService:
         return not get_user_model().objects.exists()
 
     @transaction.atomic
-    def setup(
-        self, *, email: str, password: str, org_name: str | None = None
-    ) -> SetupResult:
+    def setup(self, *, email: str, password: str, org_name: str | None = None) -> SetupResult:
         # Before the existence check, not after: the guard is only sound if
         # no other writer can insert a user between the check and our own
         # insert.

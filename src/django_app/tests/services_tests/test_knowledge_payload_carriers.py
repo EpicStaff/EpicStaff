@@ -16,6 +16,7 @@ CARRIERS = [
     (ProcessRagIndexingMessage, "llm_api_key_secret_id", "llm_api_key"),
     (AgentData, "rag_embedder_api_key_secret_id", "rag_embedder_api_key"),
     (RealtimeAgentChatData, "rag_embedder_api_key_secret_id", "rag_embedder_api_key"),
+    (RealtimeAgentChatData, "rag_llm_api_key_secret_id", "rag_llm_api_key"),
 ]
 
 

@@ -1,7 +1,7 @@
-from typing import Callable
-from loguru import logger
+from collections.abc import Callable
 
 from django.core.exceptions import ValidationError
+
 from tables.import_export.constants import IMPORT_VERSION
 
 

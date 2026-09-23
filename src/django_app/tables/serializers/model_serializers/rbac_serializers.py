@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.rbac_models.organization import Organization
 from tables.models.rbac_models.organization_user import OrganizationUser
 

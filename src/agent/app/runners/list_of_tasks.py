@@ -3,6 +3,13 @@ from __future__ import annotations
 import secrets
 
 from loguru import logger
+from shared.models.agent_service import (
+    AgentRequest,
+    AgentTaskSpec,
+    LoopResult,
+    TaskRunSummary,
+    TokenUsage,
+)
 
 from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
@@ -16,13 +23,6 @@ from app.runners.task_execution import (
     _default_max_iter,
     _schema_max_retries,
     run_task_through_loop,
-)
-from shared.models.agent_service import (
-    AgentRequest,
-    AgentTaskSpec,
-    LoopResult,
-    TaskRunSummary,
-    TokenUsage,
 )
 
 
@@ -46,9 +46,7 @@ def format_context_preamble(context: list[str], outputs: dict[str, str]) -> str:
 
     for name in context:
         if name not in outputs:
-            raise AgentServiceError(
-                f"task context '{name}' has no output (unknown or not yet run)"
-            )
+            raise AgentServiceError(f"task context '{name}' has no output (unknown or not yet run)")
 
         blocks.append(f"Task '{name}':\n{outputs[name]}")
 
@@ -99,9 +97,7 @@ class ListOfTasksRunner(Runner):
                 [task.name for task in tasks],
             )
 
-            resolved = await self._deps.resolver.resolve(
-                agent, request, knowledge_sink=emitter
-            )
+            resolved = await self._deps.resolver.resolve(agent, request, knowledge_sink=emitter)
             logger.debug(
                 "resolved tools={} attachments={}",
                 [spec.name for spec in resolved.tools.tool_specs()],
@@ -203,17 +199,11 @@ class ListOfTasksRunner(Runner):
                 request.correlation_id,
                 error,
             )
-            await emitter.on_error(
-                error
-            )  # expected domain failure → agent.error; do NOT re-raise
+            await emitter.on_error(error)  # expected domain failure → agent.error; do NOT re-raise
 
         except Exception as error:
-            logger.exception(
-                "list_of_tasks crashed correlation_id={}", request.correlation_id
-            )
-            await emitter.on_error(
-                error
-            )  # unexpected failure → agent.error; do NOT re-raise
+            logger.exception("list_of_tasks crashed correlation_id={}", request.correlation_id)
+            await emitter.on_error(error)  # unexpected failure → agent.error; do NOT re-raise
 
     def _parse_tasks(self, payload: dict) -> list[AgentTaskSpec]:
         raw_tasks = payload.get("tasks")

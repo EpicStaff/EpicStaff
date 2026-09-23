@@ -7,10 +7,14 @@
    `provider_type` is stamped before the child row exists, e.g. mid-way
    through the configure-webhook flow.
 
-2. `unique_together` on `WebhookTrigger` now includes `org`, so two different
-   orgs can use the same `path` + `provider_type` combination without
-   colliding (previously a global `(path, provider_type)` unique constraint
-   caused cross-tenant collisions and acted as a cross-org existence oracle).
+2. `WebhookTrigger.path` is globally unique on its own (`unique=True`) --
+   not merely unique within an org, and not scoped by `provider_type`. A
+   colliding `path` between two different orgs -- or even between two
+   different `provider_type` values -- must raise `IntegrityError` at the
+   DB layer: the downstream `webhook` FastAPI service resolves inbound
+   requests by bare path with no org or provider discriminant, so an
+   org-scoped-only (or provider-scoped) constraint would let one org's
+   import silently break a sibling org's webhook deliveries.
 """
 
 import pytest
@@ -84,20 +88,28 @@ class TestGetActiveConfigMissingChildRow:
 
 
 @pytest.mark.django_db
-class TestWebhookTriggerOrgScopedUniqueConstraint:
-    def test_two_orgs_can_share_same_path_and_provider_type(
+class TestWebhookTriggerGlobalUniqueConstraint:
+    def test_two_orgs_sharing_same_path_and_provider_type_is_rejected(
         self, default_org, other_org
     ):
+        """The bug this constraint fixes: without a globally unique `path`,
+        a Member of one org could register a path already claimed by a
+        sibling org and silently break that org's webhook deliveries (the
+        `webhook` FastAPI service resolves by bare path, with no org
+        discriminant)."""
         WebhookTrigger.objects.create(
             path="shared-path", provider_type=ProviderType.NGROK, org=default_org
         )
 
-        # Must NOT raise — same path+provider_type is allowed across orgs.
-        WebhookTrigger.objects.create(
-            path="shared-path", provider_type=ProviderType.NGROK, org=other_org
-        )
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                WebhookTrigger.objects.create(
+                    path="shared-path",
+                    provider_type=ProviderType.NGROK,
+                    org=other_org,
+                )
 
-        assert WebhookTrigger.objects.filter(path="shared-path").count() == 2
+        assert WebhookTrigger.objects.filter(path="shared-path").count() == 1
 
     def test_same_org_same_path_and_provider_type_still_rejected(self, default_org):
         WebhookTrigger.objects.create(
@@ -111,3 +123,28 @@ class TestWebhookTriggerOrgScopedUniqueConstraint:
                     provider_type=ProviderType.NGROK,
                     org=default_org,
                 )
+
+    def test_same_path_different_provider_type_is_now_also_rejected(
+        self, default_org, other_org
+    ):
+        """Behavior change: uniqueness is now on `path` alone, so a shared
+        path is no longer legal even when the two rows use different
+        `provider_type` values (it used to be legal under the old
+        `(path, provider_type)` constraint)."""
+        WebhookTrigger.objects.create(
+            path="cross-provider-path",
+            provider_type=ProviderType.NGROK,
+            org=default_org,
+        )
+
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                WebhookTrigger.objects.create(
+                    path="cross-provider-path",
+                    provider_type=ProviderType.LOCALHOST,
+                    org=other_org,
+                )
+
+        assert (
+            WebhookTrigger.objects.filter(path="cross-provider-path").count() == 1
+        )

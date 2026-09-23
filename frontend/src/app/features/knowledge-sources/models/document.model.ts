@@ -5,6 +5,16 @@ export interface UploadDocumentResponse {
     documents: CollectionDocument[];
 }
 
+export interface CopyDocumentsRequest {
+    collection_id: number;
+    document_ids: number[];
+}
+
+export interface CopyDocumentsResponse {
+    message: string;
+    documents: CollectionDocument[];
+}
+
 export type FileType = (typeof FILE_TYPES)[number];
 
 export interface CollectionDocument {
