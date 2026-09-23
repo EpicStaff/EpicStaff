@@ -171,7 +171,7 @@ export class LeftSidebarComponent implements AfterViewInit {
         public activeOrgService: ActiveOrgService,
         private configService: ConfigService,
         private configureModelsDialogService: ConfigureModelsDialogService,
-        public authService: AuthService,
+        private authService: AuthService,
         private permissionService: PermissionsService
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;

@@ -71,13 +71,6 @@
             }
         }
 
-        <div
-            style="cursor: pointer"
-            (click)="authService.invalidatetoken()"
-        >
-            invalidate
-        </div>
-
         @for (item of topNavItems; track item.id) {
             @if (item.isPermitted()) {
                 <li
