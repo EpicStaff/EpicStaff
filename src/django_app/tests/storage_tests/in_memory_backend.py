@@ -86,7 +86,12 @@ class InMemoryStorageBackend(AbstractStorageBackend):
     def delete_prefix(self, prefix: str) -> None:
         """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
         full_prefix = self._full_path(prefix)
-        if full_prefix and not full_prefix.endswith("/"):
+        if not full_prefix or full_prefix == "/":
+            raise ValueError(
+                "delete_prefix() refused an empty resolved prefix — this "
+                "would delete every object in the store."
+            )
+        if not full_prefix.endswith("/"):
             full_prefix += "/"
         for key in [k for k in self._objects if k.startswith(full_prefix)]:
             del self._objects[key]
