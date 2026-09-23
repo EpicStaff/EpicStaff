@@ -16,9 +16,7 @@ class CredentialScopeValidator:
         """Returns the concrete set of folders the temporary account should
         be scoped to (already namespaced under `storage_org_prefix`)."""
         if not org_id or not storage_org_prefix:
-            raise CredentialScopeValidationError(
-                "Scope is missing org_id or storage_org_prefix."
-            )
+            raise CredentialScopeValidationError("Scope is missing org_id or storage_org_prefix.")
 
         normalized_org_prefix = storage_org_prefix.strip().strip("/")
         if not normalized_org_prefix:
@@ -30,7 +28,12 @@ class CredentialScopeValidator:
             # wants storage must pass an explicit, narrow path.
             raise CredentialScopeValidationError(
                 "storage_allowed_paths is empty; refusing to scope a "
-                "temporary credential to the entire org prefix."
+                "temporary credential to the entire org prefix. This "
+                "usually means the request has no session_id (so no "
+                "'sessions/<id>/' path was added) and the graph has no "
+                "GraphStorageFile items configured. Check the caller in "
+                "converter_service.py for a missing session_id or an "
+                "empty graph-level storage configuration."
             )
 
         scoped_folders: set[str] = set()

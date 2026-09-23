@@ -380,6 +380,12 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # `storage_allowed_paths_override` may be a list shared across
+                # several tool conversions in the same caller loop (see
+                # `base_node_payload_service._build_tool_pool`) -- rebuild rather
+                # than `.append()` so we never mutate a caller-owned list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if storage_org_prefix_override is not None:
                 storage_org_prefix = storage_org_prefix_override
             elif graph_id is not None:
@@ -444,6 +450,10 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # See `convert_python_code_tool_to_pydantic` -- rebuild instead of
+                # `.append()` to avoid mutating a caller-owned override list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if graph_id is not None:
                 storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 

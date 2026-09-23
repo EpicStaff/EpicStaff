@@ -68,6 +68,26 @@ def test_empty_list_storage_allowed_paths_is_rejected(validator):
         )
 
 
+def test_empty_storage_allowed_paths_error_message_is_diagnostic(validator):
+    """The error message must point tool operators at the two likely root
+    causes (missing session_id, no graph-level storage items) without
+    forcing them to trace back through converter_service.py."""
+    with pytest.raises(CredentialScopeValidationError) as exc_info:
+        validator.validate(
+            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[]
+        )
+
+    assert str(exc_info.value) == (
+        "storage_allowed_paths is empty; refusing to scope a "
+        "temporary credential to the entire org prefix. This "
+        "usually means the request has no session_id (so no "
+        "'sessions/<id>/' path was added) and the graph has no "
+        "GraphStorageFile items configured. Check the caller in "
+        "converter_service.py for a missing session_id or an "
+        "empty graph-level storage configuration."
+    )
+
+
 def test_missing_org_id_is_rejected(validator):
     with pytest.raises(CredentialScopeValidationError):
         validator.validate(
