@@ -160,6 +160,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     @ViewChild('arrangeBtnRef') private arrangeBtnRef?: ElementRef<HTMLButtonElement>;
 
+    @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
+
+    public closeNodesSearch(): void {
+        this.nodesSearchComponent?.closeSearch();
+    }
+
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
