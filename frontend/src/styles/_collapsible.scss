@@ -1,7 +1,12 @@
-.grid-collapsible {
+// On `:root`, not on `.grid-collapsible`: a consumer often has to move an ancestor
+// in step with the collapse, and an ancestor cannot read a property declared on its
+// own descendant. Override these on the collapser, never on something above it.
+:root {
     --collapse-duration: 180ms;
     --collapse-easing: ease-in-out;
+}
 
+.grid-collapsible {
     display: grid;
     grid-template-rows: 0fr;
     opacity: 0;
@@ -11,10 +16,16 @@
         opacity var(--collapse-duration) var(--collapse-easing),
         visibility var(--collapse-duration) var(--collapse-easing);
 
+    // Padding on the item is how a consumer puts space under its heading without it
+    // surviving the collapse, and it has to move with the row: `0fr` floors the track
+    // at the item's minimum, which padding counts towards, so padding that appears in
+    // one frame props the row open before it has started.
     > * {
         min-height: 0;
         overflow: hidden;
-        transition: overflow 0s;
+        transition:
+            overflow 0s,
+            padding var(--collapse-duration) var(--collapse-easing);
     }
 
     &.expanded {
@@ -22,9 +33,13 @@
         opacity: 1;
         visibility: visible;
 
+        // Padding is re-stated, not inherited: the shorthand above is replaced
+        // wholesale here, so leaving it out would animate only the closing half.
         > * {
             overflow: visible;
-            transition: overflow 0s var(--collapse-duration);
+            transition:
+                overflow 0s var(--collapse-duration),
+                padding var(--collapse-duration) var(--collapse-easing);
         }
     }
 }

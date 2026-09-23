@@ -159,7 +159,15 @@
         </section>
 
         @if (block().detail; as detail) {
-            <section class="cdt-tree-detail__section">
+            <!--
+                `--data` is permanent, `--fill` is the open state: the body must keep
+                handing its height down while the collapse runs, or the row
+                re-measures against the whole of the code mid-flight.
+            -->
+            <section
+                class="cdt-tree-detail__section cdt-tree-detail__section--data"
+                [class.cdt-tree-detail__section--fill]="dataOpen()"
+            >
                 <div class="cdt-tree-detail__section-row">
                     <h4 class="cdt-tree-detail__section-heading">
                         <button

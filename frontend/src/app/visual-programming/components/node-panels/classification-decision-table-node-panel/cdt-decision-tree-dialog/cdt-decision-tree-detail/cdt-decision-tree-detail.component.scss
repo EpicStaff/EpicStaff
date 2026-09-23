@@ -169,19 +169,24 @@
 // ---------------------------------------------------------------------------
 // Body
 //
-// One scroll container for the whole panel, not one per section: the collapse
-// animates `height: 0 → *`, so each section has to be its own content's height. A
-// section stretched to fill the column already has one, leaving nothing to
-// interpolate.
+// One scroll container for the whole panel, not one per section: `grid-collapsible`
+// interpolates the row between `0fr` and `1fr`, and `1fr` resolves against the
+// container's own height — so a section given a height of its own would have
+// nothing left to animate.
+//
+// A flex column so the last section can claim the leftover height; every other
+// section stays content-sized, which is what keeps its collapse animating.
 // ---------------------------------------------------------------------------
 
 .cdt-tree-detail__body {
+    display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
     overflow-y: auto;
 }
 
-// One block of the window: 24px top and bottom, the window's 30px sides, 16px gap.
+// One block of the window: 24px top and bottom, the window's 30px sides.
 // The padding sits here rather than on the header and body — `height: 0` does not
 // collapse padding, so a padded body would leave a band behind when shut.
 //
@@ -190,7 +195,6 @@
 .cdt-tree-detail__section {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     padding: 24px 30px;
     border-top: 1px solid var(--color-divider-subtle);
     border-bottom: 1px solid var(--color-divider-subtle);
@@ -198,6 +202,43 @@
     & + & {
         margin-top: -1px;
     }
+}
+
+// Everything about the code section that must not change while its collapse runs:
+// `grid-collapsible` resolves its `1fr` row against the body in that frame, so
+// anything re-sizing the body at the click re-bases the animation under itself.
+// Only the grow and the floor are toggled, by `--fill`.
+.cdt-tree-detail__section--data {
+    // Shut, this section is its heading and holds that size — otherwise a long
+    // explanation squeezes it and the bottom rule climbs into the heading.
+    flex-shrink: 0;
+
+    // Zero rather than a flex item's `auto`: it is what `--fill`'s floor animates
+    // out of.
+    min-height: 0;
+
+    transition:
+        flex-grow var(--collapse-duration) var(--collapse-easing),
+        min-height var(--collapse-duration) var(--collapse-easing);
+
+    // `flex-basis: 0`, not `auto`, and load-bearing: a body measured from its own
+    // content measures the whole of the code, so the collapse started from that and
+    // painted the entire block for a frame before sweeping shut. At zero the section
+    // is its heading and the block is whatever the grow leaves.
+    > .cdt-tree-detail__section-body {
+        flex: 1 1 0;
+        min-height: 0;
+    }
+}
+
+// Open, the section takes every pixel the ones above leave, so the block's bottom
+// edge sits on the bottom of the window and its top rises as space frees up. Driven
+// by `dataOpen()` rather than `:last-child`, or a collapsed section would hold the
+// column open as an empty band. The floor is what a long explanation cannot take;
+// past it the body scrolls instead.
+.cdt-tree-detail__section--fill {
+    flex: 1 1 auto;
+    min-height: 12rem;
 }
 
 // Right end of the Explanation heading line: the heading takes `flex: 1 1 auto`,
@@ -269,10 +310,16 @@
     }
 }
 
-// `.cdt-tree-detail__section-body` needs no rule of its own: collapsing is the
-// global `grid-collapsible` helper, whose defaults (180ms ease-in-out, matching
-// the caret above) already apply, and which clips through its own child rule.
-// The padding stays on the section so that it does not animate with the body.
+// Collapsing itself is the global `grid-collapsible` helper, whose defaults
+// (180ms ease-in-out, matching the caret above) already apply.
+//
+// The space under a heading rides on the content, not the section: as a `gap` it
+// stayed behind when the section was shut. Only while open, and that is not
+// cosmetic — `0fr` floors the row at the item's min-content height and padding
+// counts towards it, so left on it held the collapsed row 16px tall.
+.cdt-tree-detail__section-body.expanded > * {
+    padding-top: 1rem;
+}
 
 .cdt-tree-detail__explanation {
     margin: 0;

@@ -13,15 +13,23 @@
     --cdt-code-ink: #d9d9de;
     --cdt-code-ink-dim: #8a8f9c;
 
-    display: block;
+    // A column so the block fills the host wherever something above gives the host a
+    // height; where it is content-sized the block still measures its own lines.
+    display: flex;
+    flex-direction: column;
     min-width: 0;
 }
 
 .cdt-tree-code {
+    // So the block's bottom edge sits on the bottom of the panel and more code
+    // scrolls inside it rather than pushing that edge off screen.
+    flex: 1 1 auto;
+    min-height: 0;
+
     // Code is never wrapped — a rewrapped line no longer matches its number, and
     // the design draws long lines running past the edge. So the block scrolls
-    // sideways inside itself and the panel around it never does.
-    overflow-x: auto;
+    // inside itself, sideways and now down, and the panel around it never does.
+    overflow: auto;
     padding: 0.6rem 0;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 0.78rem;
