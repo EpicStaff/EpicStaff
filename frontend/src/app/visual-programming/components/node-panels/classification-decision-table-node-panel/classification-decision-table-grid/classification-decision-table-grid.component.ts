@@ -494,8 +494,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     public hasManipCols = computed(() => this.manipColumnOrder().some((id) => id.startsWith(CDT_MANIP_PREFIX)));
 
-    /** True when at least one above-grid "+" button is visible (i.e. at least one params group is absent). */
-    public hasAboveAddButtons = computed(() => !this.hasFieldCols() || !this.hasManipCols());
+    public hasAboveAddButtons = computed(
+        () =>
+            !this.hasFieldCols() ||
+            !this.hasManipCols() ||
+            this.hiddenColIds().size > 0 ||
+            this.hiddenColumnGroups().size > 0
+    );
 
     // ── Multi-select items for the field pickers ──
 
