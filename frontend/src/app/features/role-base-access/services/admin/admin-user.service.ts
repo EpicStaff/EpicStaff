@@ -1,6 +1,12 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { ActionCode, AdminCreateUserRequest, AdminCreateUserResponse, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    AdminCreateUserRequest,
+    AdminCreateUserResponse,
+    DeleteReport,
+    ResourceCode,
+} from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { withCrossOrgPermission } from '../../../../core/http/permission-context';
@@ -79,5 +85,12 @@ export class AdminUserService {
 
     resetPassword(userId: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${userId}/reset-password/`, {}, { headers: this.httpHeaders });
+    }
+
+    deleteUser(userId: number, dryRun: boolean): Observable<DeleteReport> {
+        return this.http.delete<DeleteReport>(`${this.apiUrl}${userId}/`, {
+            headers: this.httpHeaders,
+            params: new HttpParams().set('dry_run', String(dryRun)),
+        });
     }
 }

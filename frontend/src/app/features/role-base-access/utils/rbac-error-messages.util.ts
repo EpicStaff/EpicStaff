@@ -15,6 +15,10 @@ const CODE_TO_MESSAGE: Record<string, string> = {
     last_superadmin: 'At least one active superadmin must remain.',
     superadmin_not_assignable: 'Superadmins already have access to every organization and cannot be added as members.',
     user_not_active: 'This account is deactivated and cannot be added to an organization.',
+    default_organization_not_deletable:
+        'This is the default organization and can’t be deleted — promote another organization to default first.',
+    last_organization: 'At least one organization must remain on the platform.',
+    cannot_delete_self: 'You can’t delete your own account.',
 };
 
 /** Best-effort resolver: prefer the mapped message for a known `code`,

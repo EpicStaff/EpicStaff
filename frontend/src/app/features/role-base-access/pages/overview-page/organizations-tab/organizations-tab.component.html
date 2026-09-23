@@ -98,6 +98,12 @@
                     (triggered)="onDeactivateOrganization(row)"
                 />
             }
+            @if (isSuperadmin) {
+                <app-delete-button
+                    tooltip="Delete organization"
+                    (triggered)="onDeleteOrganization(row)"
+                />
+            }
         </div>
     </ng-template>
 

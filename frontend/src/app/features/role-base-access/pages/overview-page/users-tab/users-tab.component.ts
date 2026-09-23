@@ -49,6 +49,7 @@ import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
+import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
 import { adminUsersToAggregated, aggregateMembershipsByUser, rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
@@ -94,6 +95,7 @@ export class UsersTabComponent implements OnInit {
     private orgStorage = inject(OrganizationsStorageService);
     private toast = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
+    private hardDeleteFlow = inject(HardDeleteFlowService);
 
     private aggregatedUsers = signal<AggregatedUser[]>([]);
 
@@ -182,6 +184,10 @@ export class UsersTabComponent implements OnInit {
             !this.permissionsService.isSuperadmin &&
             this.membershipsIManage(row['id'] as number, ActionCode.Delete).length > 0
         );
+    }
+
+    showHardDelete(row: TableRow): boolean {
+        return this.permissionsService.isSuperadmin && this.profileService.currentUserSignal()?.id !== row['id'];
     }
 
     ngOnInit(): void {
@@ -281,6 +287,24 @@ export class UsersTabComponent implements OnInit {
                 this.toast.success('Account reactivated.');
                 this.loadUsers();
             });
+    }
+
+    onHardDeleteUser(row: TableRow): void {
+        const userId = row['id'] as number;
+        const label = (row['name'] as string) || (row['email'] as string) || 'this account';
+        this.hardDeleteFlow
+            .run((dryRun) => this.adminUserService.deleteUser(userId, dryRun), label, {
+                title: 'Permanently delete this account?',
+                caution: 'This action is irreversible.',
+                successMessage: 'Account deleted permanently.',
+                previewErrorFallback: 'Failed to preview account deletion.',
+                deleteErrorFallback: 'Failed to delete account.',
+            })
+            .pipe(
+                filter((deleted) => deleted === true),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.loadUsers());
     }
 
     /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */

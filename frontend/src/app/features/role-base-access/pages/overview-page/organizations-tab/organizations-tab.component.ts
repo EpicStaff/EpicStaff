@@ -10,6 +10,7 @@ import {
     AppTableComponent,
     ButtonComponent,
     ConfirmationDialogService,
+    DeleteButtonComponent,
     EditButtonComponent,
     LoadingSpinnerComponent,
     SearchComponent,
@@ -27,6 +28,7 @@ import { CreateOrganizationDialogComponent } from '../../../components/create-or
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
+import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
 import { rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
@@ -50,6 +52,7 @@ const STATUS_ITEMS: SelectItem[] = [
         StopButtonComponent,
         EditButtonComponent,
         ActivateButtonComponent,
+        DeleteButtonComponent,
         DatePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -61,6 +64,7 @@ export class OrganizationsTabComponent implements OnInit {
     private organizationStorage = inject(OrganizationsStorageService);
     private toast = inject(ToastService);
     private permissionsService = inject(PermissionsService);
+    private hardDeleteFlow = inject(HardDeleteFlowService);
 
     searchTerm = signal('');
     isLoading = signal(true);
@@ -175,6 +179,22 @@ export class OrganizationsTabComponent implements OnInit {
                 error: (err: HttpErrorResponse) =>
                     this.toast.error(rbacErrorMessage(err, 'Failed to reactivate organization.')),
             });
+    }
+
+    onDeleteOrganization(row: TableRow): void {
+        if (!this.isSuperadmin) return;
+        const id = row['id'] as number;
+        const name = row['name'] as string;
+        this.hardDeleteFlow
+            .run((dryRun) => this.organizationStorage.deleteOrganization(id, dryRun), name, {
+                title: 'Permanently delete the organization?',
+                caution: 'This action is irreversible. All data owned by this organization will be destroyed.',
+                successMessage: 'Organization deleted successfully',
+                previewErrorFallback: 'Failed to preview organization deletion.',
+                deleteErrorFallback: 'Failed to delete organization.',
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe();
     }
 
     canEditRow(row: TableRow): boolean {
