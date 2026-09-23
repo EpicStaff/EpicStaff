@@ -413,8 +413,7 @@ export class CdtDecisionTreeDialogComponent {
     }
 
     protected resetZoom(): void {
-        this.fCanvas()?.setScale(1);
-        this.zoomPercent.set(100);
+        this.fZoom()?.reset();
     }
 
     protected fit(): void {
