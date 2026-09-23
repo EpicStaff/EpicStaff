@@ -5,6 +5,7 @@ import { CdtExplanation } from '../core/models/classification-decision-table.mod
 import { ClassificationDecisionTableNodeModel } from '../core/models/node.model';
 import { CdtExplanationCacheService } from './cdt-explanation-cache.service';
 import { FlowService } from './flow.service';
+import { SidePanelService } from './side-panel.service';
 
 /**
  * Read and write for one table's explanations. The dialog holds one of these
@@ -31,15 +32,18 @@ export interface CdtExplanationScopeOptions {
  * Where a generated explanation is kept: the node's `metadata.explanations`, saved
  * with the graph like any other node change.
  *
- * Writing here marks the canvas dirty on purpose — an explanation is worth keeping
- * for everyone who opens the flow. Two consequences are accepted: the save that
- * persists one saves the whole table, unsaved grid edits included, because bulk save
- * diffs by node; and one generated but never saved is gone on reload, which is what
- * the write-through to `CdtExplanationCacheService` covers.
+ * Every write also asks the page to save that node, so closing the dialog cannot
+ * lose the text. The page debounces and serialises those requests, which is why
+ * this can fire once per explanation.
+ *
+ * The save carries the whole table, unsaved grid edits included, because bulk save
+ * diffs by node. A save that never lands leaves the canvas dirty, and the
+ * write-through to `CdtExplanationCacheService` keeps the text through a reload.
  */
 @Injectable({ providedIn: 'root' })
 export class CdtExplanationStoreService {
     private readonly flowService = inject(FlowService);
+    private readonly sidePanelService = inject(SidePanelService);
     private readonly cache = inject(CdtExplanationCacheService);
 
     public forNode(options: CdtExplanationScopeOptions): CdtExplanationScope {
@@ -68,7 +72,12 @@ export class CdtExplanationStoreService {
         }
 
         // Nothing routing-related changed, so the connection reset has nothing to do.
-        this.flowService.updateNode({ ...node, explanations }, { skipDecisionTableReset: true });
+        const updated = { ...node, explanations };
+        this.flowService.updateNode(updated, { skipDecisionTableReset: true });
+
+        // Every write, not only the last: the dialog cannot know which explanation
+        // is the final one, and a window closed mid-pass should keep what arrived.
+        this.sidePanelService.requestNodeAutosave(updated);
     }
 
     private findNode(nodeId: string): ClassificationDecisionTableNodeModel | null {
