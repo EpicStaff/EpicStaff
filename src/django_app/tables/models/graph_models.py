@@ -217,6 +217,34 @@ class FileExtractorNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
+class PersistenceNode(BaseNode, SoftDeleteFields):
+    class Mode(models.TextChoices):
+        READ = "read"
+        WRITE = "write"
+        DELETE = "delete"
+
+    graph = models.ForeignKey(
+        "Graph", on_delete=models.CASCADE, related_name="persistence_node_list"
+    )
+    # SET_NULL, not PROTECT: soft-deleted nodes keep the row, and PROTECT would block
+    # deleting a table referenced only by deleted flows. Active usage is checked by
+    # PersistenceTableService.assert_not_in_use before a table is deleted.
+    persistence_table = models.ForeignKey(
+        "PersistenceTable",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="nodes",
+    )
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.READ)
+    entries = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
+
 class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"

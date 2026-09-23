@@ -88,6 +88,7 @@ from tables.models import (
     GraphVersion,
     LLMConfig,
     LLMModel,
+    PersistenceNode,
     Provider,
     PythonCodeResult,
     PythonCodeTool,
@@ -696,6 +697,7 @@ class GraphViewSet(
                     ),
                 ),
                 Prefetch("file_extractor_node_list", queryset=FileExtractorNode.objects.all()),
+                Prefetch("persistence_node_list", queryset=PersistenceNode.objects.all()),
                 Prefetch(
                     "audio_transcription_node_list",
                     queryset=AudioTranscriptionNode.objects.all(),

@@ -15,6 +15,7 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
     EdgeSerializer,
     FileExtractorNodeSerializer,
     KnowledgeNodeReadSerializer,
+    PersistenceNodeSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
     TaskNodeSerializer,
@@ -160,6 +161,7 @@ class GraphSerializer(serializers.ModelSerializer):
     # Reverse relationships
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
+    persistence_node_list = PersistenceNodeSerializer(many=True, read_only=True)
     audio_transcription_node_list = AudioTranscriptionNodeSerializer(many=True, read_only=True)
     edge_list = EdgeSerializer(many=True, read_only=True)
     conditional_edge_list = ConditionalEdgeSerializer(many=True, read_only=True)
@@ -203,6 +205,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "description",
             "python_node_list",
             "file_extractor_node_list",
+            "persistence_node_list",
             "audio_transcription_node_list",
             "edge_list",
             "conditional_edge_list",

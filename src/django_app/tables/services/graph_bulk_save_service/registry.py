@@ -11,6 +11,7 @@ from tables.models.graph_models import (
     FileExtractorNode,
     GraphNote,
     KnowledgeNode,
+    PersistenceNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -28,6 +29,7 @@ from tables.serializers.graph_bulk_save_serializers import (
     FileExtractorNodeBulkSerializer,
     GraphNoteBulkSerializer,
     KnowledgeNodeBulkSerializer,
+    PersistenceNodeBulkSerializer,
     PythonNodeBulkSerializer,
     ScheduleTriggerNodeBulkSerializer,
     StartNodeBulkSerializer,
@@ -96,6 +98,12 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "file_extractor_node_ids",
         FileExtractorNode,
         FileExtractorNodeBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "persistence_node_list",
+        "persistence_node_ids",
+        PersistenceNode,
+        PersistenceNodeBulkSerializer,
     ),
     NodeTypeConfig(
         "audio_transcription_node_list",
