@@ -1,8 +1,8 @@
 import os
 
-# Settings() requires these at import time (no defaults) - set dummy values
-# before anything under app.* gets imported, so this module is runnable on
-# its own without a real .env file (mirrors what docker-compose injects).
+# The auditor settings module requires these at import time (no defaults) -
+# set dummy values before anything under app.* gets imported, so this module
+# is runnable on its own without a real .env file (mirrors what docker-compose injects).
 os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
 os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
 os.environ.setdefault("JWT_SECRET", "test-secret")
@@ -23,7 +23,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.controllers.export_routes import build_export_router
 from app.core.security import verify_user_jwt
-from app.core.settings import settings
+from app.core import settings
 from app.domains.sessions.domain import SESSIONS
 from app.services.export_job_service import ExportJobService
 from src.shared.models import SessionAuditEvent
@@ -70,7 +70,7 @@ def _build_app(events=None) -> FastAPI:
 
 @pytest_asyncio.fixture
 async def app_and_client(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "EXPORT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDITOR_EXPORT_DATA_DIR", str(tmp_path))
     app = _build_app(events=[_make_event()])
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -306,7 +306,7 @@ def _build_match_scope_app(events: list[SessionAuditEvent]) -> FastAPI:
 
 @pytest_asyncio.fixture
 async def match_scope_client(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "EXPORT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDITOR_EXPORT_DATA_DIR", str(tmp_path))
 
     async def _make(events: list[SessionAuditEvent]):
         app = _build_match_scope_app(events)

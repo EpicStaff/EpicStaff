@@ -9,7 +9,7 @@ from opensearchpy.exceptions import RequestError as OpenSearchRequestError
 
 from app.controllers import health_routes
 from app.controllers.domain_router import build_domain_router
-from app.core.settings import settings
+from app.core import settings
 from app.domains.registry import DOMAINS
 from app.domains.sessions.index import SESSIONS_INDEX
 from app.filtering.ast import FilterError

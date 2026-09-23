@@ -113,7 +113,7 @@ ownership can't be probed from the outside.
 Job state and the async result live in two different places for two different
 reasons: Redis is fast to poll and self-expiring (no export ever needs to be
 queried, cleaned up otherwise); the actual export file goes straight to disk
-(`EXPORT_DATA_DIR`, default `/app/export_data`) because a multi-GB org export
+(`AUDITOR_EXPORT_DATA_DIR`, default `/app/export_data`) because a multi-GB org export
 doesn't belong in a Redis value. `src/shared/audit/export_jobs.py` centralizes
 the key shapes so both `auditor` (job service) and `manager` (TTL sweep) stay
 in sync — one job keeps **three** Redis keys alive together, staged onto a
@@ -122,7 +122,7 @@ written or removed atomically:
 
 - `auditor:export_job:{job_id}` — hash: `status`, `org_id`, `user_id`,
   `created_at`, `expires_at`, `file_path`, `format` (and `error` once failed).
-  TTL'd to `EXPORT_FILE_TTL_SECONDS` plus a day of safety margin, so the hash
+  TTL'd to `AUDITOR_EXPORT_FILE_TTL_SECONDS` plus a day of safety margin, so the hash
   outlives the file long enough for `GET`/`DELETE` to still resolve ownership
   and return a clean `410` instead of losing the job record before the sweep
   even runs.
@@ -154,7 +154,7 @@ own background task competing over the same keys. Each sweep:
    `expires_at` has passed.
 2. For each due job: reads `file_path`/`org_id`/`user_id` off the job hash,
    deletes the file (falling back to a glob on `{job_id}.*` under
-   `EXPORT_DATA_DIR` if the hash itself already expired without `file_path`
+   `AUDITOR_EXPORT_DATA_DIR` if the hash itself already expired without `file_path`
    surviving), then calls `deregister_job` to remove all three keys.
 
 If the job hash is already gone by sweep time (its own TTL fired first), the

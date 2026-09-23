@@ -1,8 +1,8 @@
 import os
 
-# Settings() requires these at import time (no defaults) - set dummy values
-# before anything under app.* gets imported, so this module is runnable on
-# its own without a real .env file (mirrors what docker-compose injects).
+# The auditor settings module requires these at import time (no defaults) -
+# set dummy values before anything under app.* gets imported, so this module
+# is runnable on its own without a real .env file (mirrors what docker-compose injects).
 os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
 os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
 os.environ.setdefault("JWT_SECRET", "test-secret")

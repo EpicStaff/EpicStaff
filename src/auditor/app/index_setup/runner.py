@@ -4,7 +4,7 @@ import json
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
-from app.core.settings import settings
+from app.core import settings
 from app.db.opensearch_client import build_opensearch_client
 from app.domains.base import IndexSpec
 from app.domains.registry import DOMAINS

@@ -12,7 +12,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.security import require_audit_action
-from app.core.settings import settings
+from app.core import settings
 from app.domains.base import AuditDomain
 from app.domains.sessions.docs import (
     FILTERS_FIELD_DESCRIPTION,
@@ -100,8 +100,8 @@ async def _write_export_output(
         _to_csv(rows, event_model) if format == "csv" else json.dumps(rows).encode()
     )
 
-    os.makedirs(settings.EXPORT_DATA_DIR, exist_ok=True)
-    file_path = os.path.join(settings.EXPORT_DATA_DIR, f"{job_id}.{format}")
+    os.makedirs(settings.AUDITOR_EXPORT_DATA_DIR, exist_ok=True)
+    file_path = os.path.join(settings.AUDITOR_EXPORT_DATA_DIR, f"{job_id}.{format}")
 
     with open(file_path, "wb") as f:
         f.write(content)
@@ -171,7 +171,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
             job_id=job_id,
             org_id=claims["org_id"],
             user_id=claims["user_id"],
-            ttl_seconds=settings.EXPORT_FILE_TTL_SECONDS,
+            ttl_seconds=settings.AUDITOR_EXPORT_FILE_TTL_SECONDS,
             format=body.format,
         )
 

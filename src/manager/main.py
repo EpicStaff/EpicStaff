@@ -37,8 +37,8 @@ session_timeout_service = SessionTimeoutService(
 schedule_service = ScheduleService(redis_service=redis_service)
 export_cleanup_service = ExportCleanupService(
     redis_client=redis_export_service,
-    sweep_interval_seconds=settings.EXPORT_SWEEP_INTERVAL_SECONDS,
-    export_data_dir=settings.EXPORT_DATA_DIR,
+    sweep_interval_seconds=settings.AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS,
+    export_data_dir=settings.AUDITOR_EXPORT_DATA_DIR,
 )
 
 

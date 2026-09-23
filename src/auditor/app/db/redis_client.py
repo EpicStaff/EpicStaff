@@ -1,10 +1,10 @@
+from types import ModuleType
+
 from redis.asyncio import Redis
 from loguru import logger
 
-from app.core.settings import Settings
 
-
-def build_redis_client(settings: Settings) -> Redis:
+def build_redis_client(settings: ModuleType) -> Redis:
     """
     Construct a new Redis client from settings.
 

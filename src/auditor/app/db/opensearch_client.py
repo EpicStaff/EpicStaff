@@ -1,10 +1,10 @@
+from types import ModuleType
+
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
-from app.core.settings import Settings
 
-
-def build_opensearch_client(settings: Settings) -> AsyncOpenSearch:
+def build_opensearch_client(settings: ModuleType) -> AsyncOpenSearch:
     """
     Construct a new AsyncOpenSearch client from settings.
 

@@ -5,7 +5,7 @@ import jwt
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.settings import settings
+from app.core import settings
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _bearer_scheme = HTTPBearer(auto_error=False)

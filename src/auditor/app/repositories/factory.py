@@ -1,8 +1,8 @@
+from types import ModuleType
 from typing import Callable
 
 from pydantic import BaseModel
 
-from app.core.settings import Settings
 from app.db.opensearch_client import build_opensearch_client
 from app.domains.base import IndexSpec
 from app.repositories.base import AuditRepository
@@ -10,7 +10,7 @@ from app.repositories.opensearch_repository import OpenSearchAuditRepository
 
 
 def _build_opensearch_audit_repository(
-    settings: Settings, *, index: IndexSpec, model: type[BaseModel]
+    settings: ModuleType, *, index: IndexSpec, model: type[BaseModel]
 ) -> AuditRepository:
     client = build_opensearch_client(settings)
     return OpenSearchAuditRepository(client, index, model)
@@ -22,7 +22,7 @@ _BACKEND_BUILDERS: dict[str, Callable[..., AuditRepository]] = {
 
 
 def build_audit_repository(
-    settings: Settings, *, index: IndexSpec, model: type[BaseModel]
+    settings: ModuleType, *, index: IndexSpec, model: type[BaseModel]
 ) -> AuditRepository:
     """
     Construct the AuditRepository for the configured storage backend.

@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(BASE_DIR / '../.env')
+    env.read_env(BASE_DIR / "../.env")
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
@@ -28,5 +28,5 @@ TIMEZONE = env.str("DJANGO_TIMEZONE", "UTC")
 SYNC_RETRY_DELAY = 5
 
 AUDITOR_REDIS_DB = env.int("AUDITOR_REDIS_DB")
-EXPORT_DATA_DIR = env.str("EXPORT_DATA_DIR")
-EXPORT_SWEEP_INTERVAL_SECONDS = env.int("EXPORT_SWEEP_INTERVAL_SECONDS")
+AUDITOR_EXPORT_DATA_DIR = env.str("AUDITOR_EXPORT_DATA_DIR")
+AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS = env.int("AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS")

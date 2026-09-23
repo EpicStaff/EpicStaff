@@ -11,7 +11,7 @@ dependencies = [
     "fastapi>=0.141.1,<0.142.0",
     "loguru>=0.7.3,<0.8.0",
     "opensearch-py[async]>=3.2.0,<4.0.0",
-    "pydantic-settings>=2.15.0,<3.0.0",
+    "pydantic==2.13.4",
     "pyjwt>=2.13.0,<3.0.0",
     "redis>=5.3.1,<5.4.0",
     "uvicorn==0.52.3",

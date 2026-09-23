@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 
-from app.core.settings import settings
+from app.core import settings
 from app.db.opensearch_client import build_opensearch_client
 from app.domains.base import DEFAULT_SCOPING
 from app.domains.sessions.computed import SESSIONS_COMPUTED
