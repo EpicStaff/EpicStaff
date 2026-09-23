@@ -91,6 +91,43 @@ def test_table_requires_use_permission(flows_only_client, graph, table):
 
 
 @pytest.mark.django_db
+def test_update_without_table_key_still_requires_use_permission(flows_only_client, graph, table):
+    node = PersistenceNode.objects.create(
+        graph=graph, node_name="p", persistence_table=table, mode="read",
+        entries=[{"alias": "a", "key": "k"}],
+    )
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [
+            {"id": node.id, "graph": graph.id, "mode": "delete", "entries": [{"key": "x"}]}
+        ],
+    }
+    response = flows_only_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    node.refresh_from_db()
+    assert node.mode == "read"
+    assert node.entries == [{"alias": "a", "key": "k"}]
+
+
+@pytest.mark.django_db
+def test_mode_change_validates_stored_entries(auth_client, graph, table):
+    node = PersistenceNode.objects.create(
+        graph=graph, node_name="p", persistence_table=table, mode="read",
+        entries=[{"alias": "a", "key": "k"}],
+    )
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [{"id": node.id, "graph": graph.id, "mode": "delete"}],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    node.refresh_from_db()
+    assert node.mode == "read"
+
+
+@pytest.mark.django_db
 def test_node_without_table_is_saved(auth_client, graph):
     payload = {"save_version": graph.save_version, "persistence_node_list": [_node_payload(graph, None)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")

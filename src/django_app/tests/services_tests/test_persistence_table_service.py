@@ -4,7 +4,12 @@ from django.test.utils import CaptureQueriesContext
 
 from tables.exceptions import PersistenceKeyInvalidError, PersistenceValueTooLargeError
 from tables.models import PersistenceTable, PersistenceTableEntry, Session
+from rest_framework.exceptions import PermissionDenied
+
+from tables.models.rbac_models import OrganizationUser
 from tables.services.persistence_table_service import PersistenceTableService
+from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
@@ -85,3 +90,32 @@ def test_lookup_reports_existence_and_truncated_preview(service, table):
     assert result["missing"].exists is False
     assert result["missing"].value_preview is None
     assert result["missing"].updated_at is None
+
+
+@pytest.fixture
+def acme_table(acme) -> PersistenceTable:
+    return PersistenceTable.objects.create(org=acme, name="Acme customers")
+
+
+@pytest.mark.django_db
+def test_assert_can_use_allows_member(service, acme_table, member_only):
+    service.assert_can_use(member_only, acme_table)
+
+
+@pytest.mark.django_db
+def test_assert_can_use_denies_viewer(service, acme_table, acme, role_viewer, django_user_model):
+    viewer = django_user_model.objects.create_user(
+        email="viewer-persistence@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=viewer, org=acme, role=role_viewer)
+
+    with pytest.raises(PermissionDenied):
+        service.assert_can_use(viewer, acme_table)
+
+
+@pytest.mark.django_db
+def test_assert_can_use_denies_member_of_another_org(service, beta, member_only):
+    beta_table = PersistenceTable.objects.create(org=beta, name="Beta customers")
+
+    with pytest.raises(OrgMembershipRequiredError):
+        service.assert_can_use(member_only, beta_table)

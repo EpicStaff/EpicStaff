@@ -29,7 +29,6 @@ from tables.models.graph_models import (
 )
 from tables.models.knowledge_models import SourceCollection
 from tables.models.persistence_models import PersistenceTable
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -44,8 +43,8 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
+from tables.services.persistence_table_service import PersistenceTableService
 from tables.services.rag_assignment_service import SearchConfigService
-from tables.services.rbac.permission_assert import assert_org_permission
 from tables.validators.persistence_entries_validator import PersistenceEntriesValidator
 
 # Top-level keywords a real JSON Schema might use even without "type" (e.g.
@@ -144,19 +143,13 @@ class PersistenceNodeSerializer(ContentHashWritableMixin, serializers.ModelSeria
         model = PersistenceNode
         fields = "__all__"
 
-    def validate_persistence_table(self, table: PersistenceTable | None):
-        if table is None:
-            return table
-        assert_org_permission(
-            user=self.context["request"].user,
-            org_id=table.org_id,
-            resource_type=ResourceType.PERSISTENT_DATA,
-            action=Permission.USE,
-        )
-        return table
-
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        # Editing a table-bound node is using its table, so USE is checked against the
+        # effective table on every create/update, even when the payload omits it.
+        table = attrs.get("persistence_table", getattr(self.instance, "persistence_table", None))
+        if table is not None:
+            PersistenceTableService().assert_can_use(self.context["request"].user, table)
         mode = attrs.get("mode", getattr(self.instance, "mode", PersistenceNode.Mode.READ))
         entries = attrs.get("entries", getattr(self.instance, "entries", []))
         attrs["entries"] = PersistenceEntriesValidator().validate(mode, entries)

@@ -10,6 +10,8 @@ from tables.constants.persistence_constants import (
 )
 from tables.exceptions import PersistenceKeyInvalidError, PersistenceValueTooLargeError
 from tables.models import PersistenceTable, PersistenceTableEntry, Session
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.services.rbac.permission_assert import assert_org_permission
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,15 @@ class PersistenceTableService:
             )
             for key in keys
         }
+
+    def assert_can_use(self, user, table: PersistenceTable) -> None:
+        """Raise PermissionDenied (403) unless `user` holds persistent_data:USE in the table's org."""
+        assert_org_permission(
+            user=user,
+            org_id=table.org_id,
+            resource_type=ResourceType.PERSISTENT_DATA,
+            action=Permission.USE,
+        )
 
     def validate_key(self, key: str) -> None:
         if not key or len(key) > MAX_KEY_LENGTH:
