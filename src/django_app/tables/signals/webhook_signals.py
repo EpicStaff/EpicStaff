@@ -6,6 +6,7 @@ from tables.models.graph_models import WebhookTriggerNode
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
+    RealtimeChannel,
     TwilioChannel,
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
@@ -170,3 +171,24 @@ def twilio_channel_post_save_handler(sender, instance: TwilioChannel, **_):
 def twilio_channel_post_delete_handler(sender, instance: TwilioChannel, **_):
     trigger_id = instance.webhook_trigger_id
     _cleanup_orphaned_twilio_auth(trigger_id)
+
+
+def _invalidate_realtime_channel_cache(token) -> None:
+    """Publish a cache-invalidation event for `token` so `realtime`'s per-channel config cache stops serving a changed or removed RealtimeChannel."""
+    from tables.services.redis_service import RedisService
+
+    RedisService().publish_channel_invalidation(token)
+
+
+@receiver(post_save, sender=RealtimeChannel)
+def realtime_channel_post_save_handler(sender, instance: RealtimeChannel, **_):
+    """Invalidate the realtime service's cached channel config after every RealtimeChannel save, including cascaded ones."""
+    token = instance.token
+    transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))
+
+
+@receiver(post_delete, sender=RealtimeChannel)
+def realtime_channel_post_delete_handler(sender, instance: RealtimeChannel, **_):
+    """Invalidate the realtime service's cached channel config after every RealtimeChannel delete, including cascaded ones."""
+    token = instance.token
+    transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))
