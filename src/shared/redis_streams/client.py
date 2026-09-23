@@ -111,14 +111,27 @@ class RedisStreamClient:
         fields: dict[str, str],
         maxlen: int | None = 1_000_000,
         approximate: bool = True,
+        ttl_s: int | None = None,
     ) -> str:
+        """XADD ``fields`` to ``stream``.
+
+        With ``ttl_s`` the XADD and an EXPIRE on the whole stream run in one
+        MULTI/EXEC transaction, so the stream never exists without a TTL and
+        every publish pushes the expiry forward.
+        """
         assert self._client is not None, "call connect() first"
-        message_id = await self._client.xadd(
-            stream,
-            fields,
-            maxlen=maxlen,
-            approximate=approximate,
-        )
+        if ttl_s is None:
+            message_id = await self._client.xadd(
+                stream,
+                fields,
+                maxlen=maxlen,
+                approximate=approximate,
+            )
+        else:
+            async with self._client.pipeline(transaction=True) as pipeline:
+                pipeline.xadd(stream, fields, maxlen=maxlen, approximate=approximate)
+                pipeline.expire(stream, ttl_s)
+                message_id, _expire_applied = await pipeline.execute()
         logger.debug("published message to {}", stream)
         return message_id
 
