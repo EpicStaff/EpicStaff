@@ -45,7 +45,7 @@ Extends `AbstractDefaultFillableModel` (from [`tables/models/base_models.py`](..
 
 | Field | Type | Notes |
 |---|---|---|
-| `organization` | FK → `tables.Organization`, `CASCADE` | `related_name="agent_definitions"`. |
+| `organization` | FK → `rbac.Organization`, `CASCADE` | `related_name="agent_definitions"`. |
 | `name` | `CharField(max_length=255)` | Unique per organization via `UniqueConstraint(fields=["organization", "name"], name="unique_agent_definition_name_per_organization")`. Slug-like stable identifier used by flows/UI/code. |
 | `description` | `TextField`, blank, default `""` | Human-readable purpose/persona description. |
 | `instructions` | `TextField`, blank, default `""` | The agent's prompt — behavior, goals, tone, constraints. |

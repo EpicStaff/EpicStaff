@@ -159,8 +159,8 @@ Global defaults (`django_app/settings.py`):
 ```python
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "tables.services.rbac.authentication.JwtAuthentication",
-        "tables.services.rbac.authentication.ApiKeyAuthentication",
+        "rbac.identity.authentication.JwtAuthentication",
+        "rbac.identity.authentication.ApiKeyAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -344,7 +344,7 @@ transactions with `SELECT FOR UPDATE`:
   (`user_management_guards.py`). `role_is_assignable` is the same rule as a
   predicate, for the assignable-roles filter.
 - **the escalation ceiling** — `assert_within_ceiling`
-  (`services/rbac/permission_assert.py`) over
+  (`rbac/access/asserts.py`) over
   `EffectivePermissions.covers`: you cannot grant authority you do not hold.
   One comparison, two call paths — authoring a custom role
   (`RoleManagementService.create_role` / `update_role`, the bits written in) and
@@ -359,7 +359,7 @@ transactions with `SELECT FOR UPDATE`:
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
 - bootstrap advisory lock (`acquire_bootstrap_lock`,
-  `services/rbac/utils/bootstrap_lock.py`) — `FirstSetupService.setup()` and
+  `rbac/identity/bootstrap_lock.py`) — `FirstSetupService.setup()` and
   `ResetUserService.reset()` both take a PostgreSQL transaction-scoped
   advisory lock before checking whether a user exists, so concurrent callers
   cannot race past that check and create two bootstrap superadmins.
@@ -483,7 +483,7 @@ Serializer rules for org-scoped models:
   `{resource_type: [action_code, ...]}` with **every** catalog resource present (zero
   permissions surface as `[]`).
 - Wire format is always action-code strings, never raw bitmask ints
-  (`utils/permission_bitmask.py` converts both ways, filtering non-applicable bits).
+  (`rbac/access/bitmask.py` converts both ways, filtering non-applicable bits).
 
 ### 7.3 Error envelope
 

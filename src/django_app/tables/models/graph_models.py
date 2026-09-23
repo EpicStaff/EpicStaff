@@ -501,7 +501,7 @@ class Condition(ContentHashMixin, SoftDeleteFields):
 
 # Legacy graph-domain `Organization` and `OrganizationUser` (anonymous named
 # flow end-users) were replaced by the RBAC models `Organization` and
-# `OrganizationUser` (see tables/models/rbac_models/). GraphOrganization and
+# `OrganizationUser` (see rbac/models/). GraphOrganization and
 # GraphOrganizationUser below now hold per-flow persistent variables scoped to
 # those RBAC entities.
 #
