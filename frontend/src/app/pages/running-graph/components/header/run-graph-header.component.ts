@@ -15,6 +15,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
 import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
+import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
@@ -57,6 +58,8 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
     @Input() sessionStatus: GraphSessionStatus | null = null;
     @Input() graphData: GraphDto | null = null;
     @Output() stopSession = new EventEmitter<void>();
+
+    public readonly DATE_TIME_FORMAT_24H = DATE_TIME_FORMAT_24H;
 
     public showMemoriesSidebar = false;
     public sessions: GraphSessionLight[] = [];
