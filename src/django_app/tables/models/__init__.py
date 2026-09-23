@@ -103,6 +103,7 @@ from .llm_models import (
     RealtimeTranscriptionModel,
 )
 from .mcp_models import McpTool
+from .persistence_models import PersistenceTable, PersistenceTableEntry
 from .provider import Provider
 from .python_models import (
     PythonCode,
@@ -249,6 +250,8 @@ __all__ = [
     "Organization",
     "OrganizationUser",
     "PasswordResetToken",
+    "PersistenceTable",
+    "PersistenceTableEntry",
     "Process",
     "Provider",
     "ProviderType",
