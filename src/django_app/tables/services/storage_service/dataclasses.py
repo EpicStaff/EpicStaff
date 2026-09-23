@@ -59,32 +59,6 @@ class UploadResult:
 
 
 @dataclass(frozen=True, slots=True)
-class FileUploadResult:
-    """Result of uploading a single file (non-archive)."""
-
-    type: Literal["file"]
-    path: str
-    size: int
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass(frozen=True, slots=True)
-class ArchiveUploadResult:
-    """Result of uploading and extracting an archive."""
-
-    type: Literal["archive"]
-    extracted: list[str]
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-UploadFileResult = FileUploadResult | ArchiveUploadResult
-
-
-@dataclass(frozen=True, slots=True)
 class TreeNode:
     id: int | None
     name: str

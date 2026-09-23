@@ -1,7 +1,5 @@
 import io
 import mimetypes
-import os
-import tarfile
 import zipfile
 from collections.abc import Iterator
 
@@ -10,48 +8,14 @@ from django.db.models.functions import Lower
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
-    ArchiveUploadResult,
     FileInfo,
     FileListItem,
-    FileUploadResult,
     FolderInfo,
     TreeNode,
-    UploadFileResult,
     UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import sanitize_storage_path
-
-_DOCUMENT_EXTENSIONS = frozenset(
-    {
-        # Microsoft Office (OOXML)
-        ".xlsx",
-        ".xlsm",
-        ".xltx",
-        ".docx",
-        ".docm",
-        ".dotx",
-        ".pptx",
-        ".pptm",
-        ".ppsx",
-        ".potx",
-        # OpenDocument
-        ".ods",
-        ".odt",
-        ".odp",
-        ".odg",
-        ".odf",
-        ".ots",
-        ".ott",
-        ".otp",
-        # Other ZIP-based formats that should not be extracted
-        ".epub",
-        ".apk",
-        ".jar",
-        ".war",
-        ".xpi",
-    }
-)
 
 
 class StorageManager:
@@ -280,50 +244,6 @@ class StorageManager:
                 archive.writestr(arcname, file_bytes)
         buffer.seek(0)
         yield buffer.read()
-
-    def _upload_archive(self, org_id: int, prefix: str, archive_file) -> list[str]:
-        """Extract archive into prefix. Returns relative paths (no org prefix)."""
-        full_paths = self._backend.upload_archive(
-            self._build_storage_key(org_id, prefix), archive_file, archive_file.name
-        )
-        return [self._strip_org_prefix(org_id, p) for p in full_paths]
-
-    @staticmethod
-    def _is_archive(file_object, filename: str = "") -> bool:
-        ext = os.path.splitext(filename)[1].lower()
-        if ext in _DOCUMENT_EXTENSIONS:
-            return False
-        pos = file_object.tell()
-        result = zipfile.is_zipfile(file_object)
-        if not result:
-            file_object.seek(pos)
-            try:
-                result = tarfile.is_tarfile(file_object)
-            except Exception:
-                result = False
-        file_object.seek(pos)
-        return result
-
-    def upload_file(self, org_id: int, path: str, file_object) -> UploadFileResult:
-        """
-        Upload a file, auto-extracting archives (ZIP/TAR).
-        Returns FileUploadResult or ArchiveUploadResult.
-        """
-        is_archive = self._is_archive(file_object, filename=file_object.name)
-
-        if is_archive:
-            extracted = self._upload_archive(org_id, path, file_object)
-
-            for p in extracted:
-                StorageFileSync.on_upload(org_id, p)
-
-            return ArchiveUploadResult(type="archive", extracted=extracted)
-
-        destination = f"{path.rstrip('/')}/{file_object.name}" if path else file_object.name
-        result = self._backend.upload(self._build_storage_key(org_id, destination), file_object)
-        relative_path = self._strip_org_prefix(org_id, result.path)
-        StorageFileSync.on_upload(org_id, relative_path, size=result.size)
-        return FileUploadResult(type="file", path=relative_path, size=result.size)
 
     def list_tree(
         self,

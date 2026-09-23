@@ -117,11 +117,41 @@ superadmin. See `docs/rbac/organization_scoping.md`.
 
 ### Archive auto-extraction
 
-`upload_file()` detects ZIP and TAR archives and extracts them into the target directory automatically. Supported formats: `.zip`, `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`.
+Uploads go through the streaming endpoint (`tables/asgi_upload.py` →
+`upload_stream_service`), which routes on the file name: `is_archive_name()`
+covers `.zip`, `.tar`, `.tgz`, `.taz`, `.tar.gz`, `.tar.bz2`, `.tbz`, `.tbz2`,
+`.tar.xz`, `.txz`. The archive itself is capped at `DJANGO_MAX_ARCHIVE_FILE_SIZE`
+while it is buffered; its unpacked size has no cap of its own and is bounded
+only by the organization's free storage quota.
 
-Archives extract into a subfolder named after the archive stem (e.g., `data.zip` → `data/`). If the subfolder already exists, the name auto-increments: `data` → `data (1)` → `data (2)`.
+Before anything is written, `inspect_archive()` makes one pass over the headers:
+it confirms the bytes really are an archive (a file with an archive extension
+but no ZIP/gzip/bzip2/xz/tar signature is stored as a plain file; one that has
+the signature but does not parse is rejected as damaged), and rejects empty or
+encrypted archives, symlinks, zip-slip names, names with control characters or
+blank segments, a file and a folder with the same name, embedded executables,
+more than `DJANGO_MAX_ARCHIVE_ENTRIES` entries (folders included), and a
+declared unpacked size past the free quota (413).
 
-Password-protected ZIP files are rejected.
+Members are read in archive order through `iter_archive_members_streaming()`,
+and `ArchiveExtractionGuard` (capped at the same free quota) is charged as each
+is read, so a ZIP whose declared sizes lie is still stopped mid-member; the
+folder written so far is then removed. Their uploads to storage overlap
+(`archive_member_upload.upload_archive_members`, up to
+`DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` at a time).
+
+Archives extract into a subfolder named `<archive stem>-<uuid>`, so a repeated
+upload never collides with an earlier one. Empty folders in the archive are kept
+as folder markers. All rows of one archive are written with two bulk INSERTs
+(`StorageFileSync.on_bulk_upload`) while the org lock is held.
+
+A file larger than `DJANGO_UPLOAD_PART_SIZE` inside an archive is streamed with
+`upload_stream()` (parts of that size, one at a time), so memory stays near
+`DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` × part size.
+
+Two concurrent uploads to the same path both succeed and the last one to commit
+wins; its StorageFile row may carry the other upload's size if their row writes
+and commits interleave.
 
 Document formats (`.xlsx`, `.docx`, `.pptx`, `.epub`, `.jar`, `.apk`, `.war`, `.xpi`, etc.) are NOT extracted even though they are ZIP-based.
 

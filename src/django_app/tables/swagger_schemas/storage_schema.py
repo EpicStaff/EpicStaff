@@ -18,8 +18,6 @@ from tables.serializers.storage_serializers import (
     StorageRenameSerializer,
     StorageSearchResponseSerializer,
     StorageTreeResponseSerializer,
-    StorageUploadResponseSerializer,
-    StorageUploadSerializer,
 )
 
 _STORAGE_PATH_PARAM = OpenApiParameter(
@@ -64,21 +62,6 @@ STORAGE_DOWNLOAD_SWAGGER = {
     ),
     "parameters": [_STORAGE_PATH_PARAM],
     "responses": {200: OpenApiResponse(description="File content as binary stream")},
-}
-
-STORAGE_UPLOAD_SWAGGER = {
-    "summary": "Upload files",
-    "description": (
-        "Upload one or more files to the specified path. Send as "
-        "multipart/form-data with `files` (one or more files) and "
-        "`path` (target folder). Archives (ZIP/TAR) are automatically "
-        "extracted. Executable files are rejected."
-    ),
-    "request": StorageUploadSerializer,
-    "responses": {
-        201: StorageUploadResponseSerializer,
-        400: OpenApiResponse(description="Validation error (missing files or blocked extension)"),
-    },
 }
 
 STORAGE_DOWNLOAD_ZIP_SWAGGER = {

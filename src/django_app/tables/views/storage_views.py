@@ -1,9 +1,8 @@
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.decorators import action, parser_classes
+from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
@@ -26,7 +25,6 @@ from tables.serializers.storage_serializers import (
     StorageRenameSerializer,
     StorageSearchQuerySerializer,
     StorageTreeQuerySerializer,
-    StorageUploadSerializer,
 )
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.permissions import HasOrgPermission
@@ -48,7 +46,6 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
     STORAGE_TREE_SWAGGER,
-    STORAGE_UPLOAD_SWAGGER,
 )
 from tables.views.mixins import OrgScopedResolverMixin
 
@@ -66,7 +63,6 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "files_by_ids": Permission.READ,
         "search": Permission.READ,
         "download_zip": Permission.EXPORT,
-        "upload": Permission.CREATE,
         # Served by tables.asgi_upload (raw ASGI), gated through this viewset.
         "upload_stream": Permission.CREATE,
         "mkdir": Permission.CREATE,
@@ -153,27 +149,6 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         response = HttpResponse(file_bytes, content_type="application/octet-stream")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
-
-    @extend_schema(**STORAGE_UPLOAD_SWAGGER)
-    @action(detail=False, methods=["post"], url_path="upload")
-    @parser_classes([MultiPartParser])
-    def upload(self, request):
-        org_id = self.get_active_org_id()
-        raw = request.data.dict() if hasattr(request.data, "dict") else dict(request.data)
-        serializer = StorageUploadSerializer(data={**raw, "files": request.FILES.getlist("files")})
-        serializer.is_valid(raise_exception=True)
-        path = serializer.validated_data["path"]
-        files = serializer.validated_data["files"]
-
-        try:
-            results = [self.manager.upload_file(org_id, path, f) for f in files]
-        except ValueError as e:
-            raise ValidationError({"detail": str(e)}) from e
-
-        return Response(
-            {"uploaded": [r.to_dict() for r in results]},
-            status=status.HTTP_201_CREATED,
-        )
 
     @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     @action(detail=False, methods=["post"], url_path="download-zip")

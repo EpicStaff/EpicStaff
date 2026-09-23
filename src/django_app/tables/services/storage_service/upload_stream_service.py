@@ -7,10 +7,9 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import close_old_connections
 from rest_framework.exceptions import APIException, ValidationError
-from tables.services.storage_service.archive_formats import ARCHIVE_SUFFIXES
+from tables.services.storage_service.archive_formats import ARCHIVE_SUFFIXES, is_archive_content
 from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.services.storage_service.quota_service import (
     StorageQuotaExceeded,
@@ -198,11 +197,17 @@ async def ingest_archive(
                 spooled.write(chunk)
             spooled.seek(0)
 
-            # Thread-sensitive: its DB work lands on the request's own
-            # connection, which the request_finished signal then closes.
-            result = await sync_to_async(_process_archive_sync)(
-                org_id, path, filename, spooled, backend, validator
-            )
+            try:
+                # Thread-sensitive: its DB work lands on the request's own
+                # connection, which the request_finished signal then closes.
+                result = await sync_to_async(_process_archive_sync)(
+                    org_id, path, filename, spooled, backend, validator
+                )
+            except ValueError as exc:
+                # zip bomb, zip-slip, symlink member, encrypted or corrupt archive:
+                # the caller sent a bad archive, so answer 400 with the reason instead
+                # of letting it look like a server fault in the logs.
+                raise ValidationError({"filename": str(exc)}) from exc
 
             if result is _NOT_AN_ARCHIVE:
                 spooled.seek(0)
@@ -293,7 +298,7 @@ def _process_archive_sync(org_id, path, filename, spooled, backend, validator):
     # The archive/flat split is made on the file name before the body is read, so a
     # plain file carrying an archive extension (a text dump named .tar.gz, a truncated
     # download) lands here; it is stored as a file instead of failing the request.
-    if not StorageManager._is_archive(spooled, filename=filename):
+    if not is_archive_content(spooled, filename=filename):
         return _NOT_AN_ARCHIVE
     spooled.seek(0)
 

@@ -294,47 +294,63 @@ Downloads a single file as a binary stream.
 
 ---
 
-## Upload Files
+## Upload a File
 
-**POST** `/api/storage/upload/`
+**POST** `/api/storage/upload/stream`
 
-Uploads one or more files. ZIP and TAR archives are auto-extracted into a subfolder named after the archive stem. Document formats (`.xlsx`, `.docx`, `.pptx`, `.jar`, etc.) are uploaded as-is and not extracted.
+Streams one file into storage. The request body is the raw file — Django reads it
+in chunks and pipes it into object storage, so memory stays bounded by one part
+regardless of file size and **there is no per-file size limit**; the organization
+storage quota is the only ceiling.
+
+An archive (`.zip`, `.tar`, `.tgz`, `.taz`, `.tar.gz`, `.tar.bz2`, `.tbz`, `.tbz2`,
+`.tar.xz`, `.txz`) up to `DJANGO_MAX_ARCHIVE_FILE_SIZE` is unpacked into a new
+folder instead of being stored. A file that carries an archive extension without
+actually being one is stored as a plain file. Document formats (`.xlsx`, `.docx`,
+`.pptx`, `.jar`, etc.) are stored as-is and never extracted.
+
+Note the exact path: there is **no trailing slash**.
 
 **Request:**
-- Content-Type: `multipart/form-data`
+- Content-Type: `application/octet-stream`
+- Body: the raw file bytes (not `multipart/form-data`, one file per request)
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `path` | string | No | Destination directory path |
-| `files` | file[] | Yes | One or more files; must be non-empty |
+| Query param | Type | Required | Description |
+|-------------|------|----------|-------------|
+| `path` | string | No | Destination directory; omit for the storage root |
+| `filename` | string | Yes | Target file name; must not contain a path separator |
 
 **Validation rules:**
 - Blocks executable extensions (see [Blocked Extensions Reference](#blocked-extensions-reference))
 - Blocks unsupported archive formats (see [Archive Format Reference](#archive-format-reference))
-- Scans ZIP/TAR contents for executables before extraction
-- Rejects password-protected archives
+- Rejects names with control characters or blank segments (file name and `path`)
+- Checks the whole archive before anything is written: executables inside,
+  empty, password-protected or damaged archives, zip-slip and symlinked members,
+  bad member names, a file and a folder with the same name, more than
+  `DJANGO_MAX_ARCHIVE_ENTRIES` entries; empty folders inside are kept
+- The unpacked size has no cap of its own: an archive that would not fit the
+  organization's free storage quota is rejected with `413`
 
-**Response (regular file):** `201 Created`
+**Response (regular file):** `200 OK`
+```json
+{"status": "DONE", "path": "reports/data.csv", "size": 5120}
+```
+
+**Response (archive):** `200 OK`
 ```json
 {
-    "uploaded": [
-        {"type": "file", "path": "reports/data.csv", "size": 5120}
-    ]
+    "status": "DONE",
+    "path": "reports/dataset-3f2a9c1b",
+    "extracted": ["reports/dataset-3f2a9c1b/file1.csv", "reports/dataset-3f2a9c1b/file2.csv"]
 }
 ```
 
-**Response (auto-extracted archive):** `201 Created`
-```json
-{
-    "uploaded": [
-        {"type": "archive", "extracted": ["reports/dataset/file1.csv", "reports/dataset/file2.csv"]}
-    ]
-}
-```
+**Errors:** `400` blocked extension, malformed name or bad archive · `401` not
+authenticated · `403` missing `FILES:CREATE` in the active organization ·
+`413` over the archive cap or the organization storage quota.
 
-**Error:** `400 Bad Request`
 ```json
-{"detail": "Upload rejected. '.exe' has a blocked executable extension"}
+{"status_code": 400, "code": "invalid", "message": "'setup.exe' has a blocked executable extension"}
 ```
 
 ---

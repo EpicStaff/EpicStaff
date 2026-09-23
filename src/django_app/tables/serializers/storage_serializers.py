@@ -27,26 +27,6 @@ class StoragePathQuerySerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
-class StorageUploadSerializer(serializers.Serializer):
-    path = serializers.CharField(
-        required=False,
-        default="",
-        help_text="Target folder path",
-    )
-    files = serializers.ListField(
-        child=serializers.FileField(),
-        allow_empty=False,
-        help_text="Files to upload",
-    )
-
-    def validate_path(self, value: str) -> str:
-        return _normalize_path(value)
-
-    def validate(self, attrs):
-        FileValidator().validate(attrs["files"])
-        return attrs
-
-
 class StorageMkdirSerializer(serializers.Serializer):
     path = serializers.CharField(
         required=True,
@@ -196,33 +176,6 @@ class StorageInfoResponseSerializer(serializers.Serializer):
     graphs = serializers.ListField(
         child=serializers.CharField(),
         help_text="List of all graph names",
-    )
-
-
-class StorageUploadResultSerializer(serializers.Serializer):
-    type = serializers.ChoiceField(
-        choices=["file", "archive"],
-        help_text="Whether the file was uploaded as-is or extracted as an archive",
-    )
-    path = serializers.CharField(
-        required=False,
-        help_text="Relative path (regular files only)",
-    )
-    size = serializers.IntegerField(
-        required=False,
-        help_text="File size in bytes (regular files only)",
-    )
-    extracted = serializers.ListField(
-        child=serializers.CharField(),
-        required=False,
-        help_text="Extracted file paths (archives only)",
-    )
-
-
-class StorageUploadResponseSerializer(serializers.Serializer):
-    uploaded = StorageUploadResultSerializer(
-        many=True,
-        help_text="Results for each uploaded file",
     )
 
 

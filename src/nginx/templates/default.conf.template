@@ -88,9 +88,6 @@ server {
         proxy_read_timeout 86400;
     }
 
-    # Стриминг-заливка: тело идёт в Django чанками. Буферизация запроса ДОЛЖНА быть
-    # выключена (иначе nginx сложит весь файл на диск до проксирования), а общий
-    # client_max_body_size 50M снят — потолок задаёт Django (квота орг).
     location = /api/storage/upload/stream {
         proxy_pass http://backend_server;
         proxy_http_version 1.1;

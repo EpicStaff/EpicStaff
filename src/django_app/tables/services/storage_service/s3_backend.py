@@ -1,7 +1,7 @@
 import asyncio
-import io
 
 import boto3
+from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from tables.services.storage_service.base import AbstractStorageBackend
@@ -42,48 +42,44 @@ class S3StorageBackend(AbstractStorageBackend):
             config=Config(connect_timeout=10, read_timeout=300),
         )
 
-    async def stream_upload(self, path, chunk_aiter, *, part_size, size_guard=None) -> int:
-        """Stream chunks into S3 holding at most two parts: one filling, one in flight.
+    async def upload_chunks(
+        self, path, chunks, *, part_size, size_guard=None, before_commit=None
+    ) -> int:
+        """Upload an async stream of byte chunks to `path` as S3 multipart parts;
+        returns the byte count.
 
-        The next part is received while the previous one uploads, so the client and
-        MinIO legs overlap. A body that never fills a part goes up as one PutObject:
-        multipart can't carry an empty object and costs extra round-trips.
-        size_guard(total) raises to abort; any error aborts the multipart."""
+        Holds one part in RAM (handed to boto as is, not copied). A body smaller than one part goes up as a single
+        PutObject. size_guard(total) is called as bytes arrive and raises to stop.
+        `await before_commit(total)` runs once every byte is in MinIO but before
+        the object becomes visible: if it raises, the upload is aborted and an
+        object already at `path` stays untouched."""
         full_key = self._full_path(path)
         total = 0
         buffer = bytearray()
         upload_id: str | None = None
         parts: list[dict] = []
-        in_flight: asyncio.Future | None = None
 
-        def put_part(number: int, body: bytes) -> dict:
-            resp = self.client.upload_part(
+        async def send_buffer_as_part() -> None:
+            nonlocal upload_id, buffer
+            if upload_id is None:
+                mpu = await asyncio.to_thread(
+                    self.client.create_multipart_upload, Bucket=self.bucket_name, Key=full_key
+                )
+                upload_id = mpu["UploadId"]
+            number = len(parts) + 1
+            body, buffer = buffer, bytearray()
+            resp = await asyncio.to_thread(
+                self.client.upload_part,
                 Bucket=self.bucket_name,
                 Key=full_key,
                 UploadId=upload_id,
                 PartNumber=number,
                 Body=body,
             )
-            return {"ETag": resp["ETag"], "PartNumber": number}
-
-        async def ship() -> None:
-            nonlocal upload_id, in_flight, buffer
-            if upload_id is None:
-                mpu = await asyncio.to_thread(
-                    self.client.create_multipart_upload, Bucket=self.bucket_name, Key=full_key
-                )
-                upload_id = mpu["UploadId"]
-            # Settle the previous part before copying this one out, so a third
-            # part-sized buffer never exists.
-            if in_flight is not None:
-                parts.append(await in_flight)
-                in_flight = None
-            body = bytes(buffer)
-            buffer = bytearray()
-            in_flight = asyncio.ensure_future(asyncio.to_thread(put_part, len(parts) + 1, body))
+            parts.append({"ETag": resp["ETag"], "PartNumber": number})
 
         try:
-            async for chunk in chunk_aiter:
+            async for chunk in chunks:
                 if not chunk:
                     continue
                 total += len(chunk)
@@ -95,21 +91,18 @@ class S3StorageBackend(AbstractStorageBackend):
                     buffer += view[:room]
                     view = view[room:]
                     if len(buffer) == part_size:
-                        await ship()
+                        await send_buffer_as_part()
 
             if upload_id is None:
-                await asyncio.to_thread(
-                    self.client.put_object,
-                    Bucket=self.bucket_name,
-                    Key=full_key,
-                    Body=bytes(buffer),
-                )
+                if before_commit is not None:
+                    await before_commit(total)
+                await asyncio.to_thread(self.put_bytes, path, buffer)
                 return total
 
             if buffer:
-                await ship()
-            parts.append(await in_flight)
-            in_flight = None
+                await send_buffer_as_part()
+            if before_commit is not None:
+                await before_commit(total)
             await asyncio.to_thread(
                 self.client.complete_multipart_upload,
                 Bucket=self.bucket_name,
@@ -118,10 +111,6 @@ class S3StorageBackend(AbstractStorageBackend):
                 MultipartUpload={"Parts": parts},
             )
         except BaseException:
-            if in_flight is not None:
-                # A thread can't be cancelled: let the part land first, or it
-                # outlives the abort as an orphan part.
-                await asyncio.gather(in_flight, return_exceptions=True)
             if upload_id is not None:
                 await asyncio.to_thread(
                     self.client.abort_multipart_upload,
@@ -132,26 +121,23 @@ class S3StorageBackend(AbstractStorageBackend):
             raise
         return total
 
-    async def delete_object_async(self, path) -> None:
-        full_key = self._full_path(path)
-        await asyncio.to_thread(self.client.delete_object, Bucket=self.bucket_name, Key=full_key)
+    def upload_stream(self, path: str, file_object, *, part_size: int) -> None:
+        """Upload a readable of unknown size as multipart parts of `part_size`, one
+        at a time on this thread, so it holds about one part in RAM; upload()
+        uses boto's defaults (8 MB chunks on up to 10 threads)."""
+        config = TransferConfig(
+            multipart_threshold=part_size,
+            multipart_chunksize=part_size,
+            max_concurrency=1,
+            use_threads=False,
+        )
+        self.client.upload_fileobj(file_object, self.bucket_name, self._full_path(path), Config=config)
 
     def put_bytes(self, path: str, data: bytes) -> int:
-        """Single PutObject; unlike upload() it skips the head_object round-trip."""
+        """Store `data` at `path` in one PutObject; returns its size. Unlike upload()
+        it skips the extra head_object request."""
         self.client.put_object(Bucket=self.bucket_name, Key=self._full_path(path), Body=data)
         return len(data)
-
-    def promote_object(self, source_path: str, destination_path: str) -> None:
-        """Server-side replace of destination by source, then drop source.
-
-        The managed copy switches to UploadPartCopy past the 5 GB CopyObject limit."""
-        source_key = self._full_path(source_path)
-        self.client.copy(
-            {"Bucket": self.bucket_name, "Key": source_key},
-            self.bucket_name,
-            self._full_path(destination_path),
-        )
-        self.client.delete_object(Bucket=self.bucket_name, Key=source_key)
 
     def _full_path(self, path: str) -> str:
         """Prepend the organization prefix to a caller-provided path."""
@@ -633,27 +619,3 @@ class S3StorageBackend(AbstractStorageBackend):
             )
 
         return build(nodes_by_path[full_prefix]), truncated
-
-    def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
-        self._check_archive_password(archive_file, archive_name)
-
-        stem = archive_name
-        for ext in (".tar.gz", ".tar.bz2", ".tar.xz", ".zip", ".tar"):
-            if stem.lower().endswith(ext):
-                stem = stem[: -len(ext)]
-                break
-
-        safe_stem = sanitize_storage_path(stem, allow_empty=False)
-        folder_key = f"{prefix.rstrip('/')}/{safe_stem}" if prefix else safe_stem
-        full_folder_key = self._full_path(folder_key)
-        unique_full_key = self._unique_key(full_folder_key, is_folder=True)
-        unique_folder_path = self._strip_prefix(unique_full_key)
-
-        extracted_paths = []
-
-        for relative_path, file_bytes in self._iter_archive_entries(archive_file):
-            destination_path = unique_folder_path.rstrip("/") + "/" + relative_path
-            self.upload(destination_path, io.BytesIO(file_bytes))
-            extracted_paths.append(destination_path)
-
-        return extracted_paths

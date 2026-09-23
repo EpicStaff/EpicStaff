@@ -1,16 +1,11 @@
-import tarfile
-import zipfile
 from io import BytesIO
 
 import pytest
 
 from tables.models import StorageFile
 from tables.services.storage_service.dataclasses import (
-    ArchiveUploadResult,
     FileInfo,
     FolderInfo,
-    FileUploadResult,
-    TreeNode,
     UploadResult,
 )
 from tables.services.storage_service.manager import StorageManager
@@ -114,78 +109,6 @@ class TestDelegation:
         result = storage_manager.info(org.id, "docs/f.txt")
         assert isinstance(result, FileInfo)
         assert result.path == "docs/f.txt"
-
-
-# --- _is_archive ---
-
-
-class TestIsArchive:
-    def test_is_archive_true_for_zip(self):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("a.txt", "data")
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "archive.zip") is True
-
-    def test_is_archive_true_for_tar(self):
-        buf = BytesIO()
-        with tarfile.open(fileobj=buf, mode="w") as tf:
-            info = tarfile.TarInfo("a.txt")
-            info.size = 4
-            tf.addfile(info, BytesIO(b"data"))
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "archive.tar") is True
-
-    def test_is_archive_false_for_docx(self):
-        # .docx is actually a ZIP but should NOT be treated as archive
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("[Content_Types].xml", "<Types/>")
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "document.docx") is False
-
-    def test_is_archive_false_for_xlsx(self):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("sheet.xml", "<data/>")
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "spreadsheet.xlsx") is False
-
-    def test_is_archive_false_for_plain_text(self):
-        buf = BytesIO(b"just plain text")
-        assert StorageManager._is_archive(buf, "readme.txt") is False
-
-
-# --- upload_file dispatch ---
-
-
-@pytest.mark.django_db
-class TestUploadFile:
-    def test_upload_file_extracts_archive_when_detected(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("inner.txt", "content")
-        buf.seek(0)
-        buf.name = "bundle.zip"
-
-        mock_backend.upload_archive.return_value = [f"org_{org.id}/inner.txt"]
-        result = storage_manager.upload_file(org.id, "", buf)
-        assert isinstance(result, ArchiveUploadResult)
-        mock_backend.upload_archive.assert_called_once()
-
-    def test_upload_file_stores_regular_file_when_not_archive(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        buf = BytesIO(b"plain content")
-        buf.name = "notes.txt"
-        mock_backend.upload.return_value = UploadResult(
-            path=f"org_{org.id}/notes.txt", size=13
-        )
-        result = storage_manager.upload_file(org.id, "", buf)
-        assert isinstance(result, FileUploadResult)
-        assert result.path == "notes.txt"
 
 
 # --- Cross-org ---

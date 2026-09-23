@@ -48,102 +48,29 @@ class AbstractStorageBackend(ABC):
                 stem, counter = prefix, int(num)
         return f"{stem} ({counter + 1}){ext}"
 
-    def _check_archive_password(self, archive_file, archive_name: str) -> None:
-        """Raise ValueError if archive contains any password-protected entries."""
-        pos = archive_file.tell()
-        is_zip = zipfile.is_zipfile(archive_file)
-        archive_file.seek(pos)
-        if not is_zip:
-            return
-
-        msg = f"Archive '{archive_name}' contains protected files"
-        try:
-            with zipfile.ZipFile(archive_file, "r") as zf:
-                for entry in zf.infolist():
-                    if not entry.is_dir() and entry.flag_bits & 0x1:
-                        raise ValueError(msg)
-        except (RuntimeError, zipfile.BadZipFile) as e:
-            raise ValueError(msg) from e
-        finally:
-            archive_file.seek(pos)
-
     def _sanitize_archive_member_name(self, name: str) -> str:
         """Raise ValueError if an archive member name can escape the extraction folder."""
         return sanitize_storage_path(name, allow_empty=False)
-
-    def _iter_archive_entries(
-        self, archive_file, guard: ArchiveExtractionGuard | None = None
-    ) -> Iterator[tuple[str, bytes]]:
-        """Yield (relative_path, bytes) for every file inside a ZIP or TAR archive."""
-        pos = archive_file.tell()
-        guard = guard or default_guard()
-
-        if zipfile.is_zipfile(archive_file):
-            archive_file.seek(pos)
-
-            with zipfile.ZipFile(archive_file, "r") as zf:
-                for entry in zf.infolist():
-                    if not entry.is_dir():
-                        guard.account_entry()
-                        safe_name = self._sanitize_archive_member_name(entry.filename)
-                        with zf.open(entry, "r") as member_file:
-                            yield (
-                                safe_name,
-                                guard.read_member(member_file, entry.filename),
-                            )
-
-            return
-
-        archive_file.seek(pos)
-
-        try:
-            is_tar = tarfile.is_tarfile(archive_file)
-        except Exception:
-            is_tar = False
-
-        if is_tar:
-            archive_file.seek(pos)
-
-            with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
-                for member in tf.getmembers():
-                    if member.issym() or member.islnk():
-                        raise ValueError(
-                            f"Archive member is a symlink or hardlink: {member.name!r}"
-                        )
-                    if member.isfile():
-                        guard.account_entry()
-                        safe_name = self._sanitize_archive_member_name(member.name)
-                        fobj = tf.extractfile(member)
-                        if fobj:
-                            yield safe_name, guard.read_member(fobj, member.name)
-
-            return
-
-        archive_file.seek(pos)
-        raise ValueError("Unsupported archive format — expected ZIP or TAR")
 
     def iter_archive_members_streaming(
         self, archive_file, guard: ArchiveExtractionGuard | None = None
     ) -> Iterator[tuple[str, "GuardedMemberReader"]]:
         """Yield (safe_name, GuardedMemberReader) per file member, streaming.
 
-        Mirrors _iter_archive_entries (encrypted/symlink reject + name sanitize)
-        but does not read member bytes here — the caller streams each reader to
-        storage before advancing to the next member (member stays open during
-        the yield)."""
+        Rejects symlinked members and sanitizes names, but does
+        not read member bytes here — the caller streams each reader to storage
+        before advancing to the next member (member stays open during the
+        yield)."""
         pos = archive_file.tell()
         guard = guard or default_guard()
 
         if zipfile.is_zipfile(archive_file):
             archive_file.seek(pos)
+
             with zipfile.ZipFile(archive_file, "r") as zf:
                 for entry in zf.infolist():
                     if entry.is_dir():
                         continue
-                    if entry.flag_bits & 0x1:
-                        raise ValueError(
-                            f"Archive member is password-protected: {entry.filename!r}"
-                        )
                     guard.account_entry()
                     safe_name = self._sanitize_archive_member_name(entry.filename)
                     with zf.open(entry, "r") as member_file:
@@ -151,6 +78,7 @@ class AbstractStorageBackend(ABC):
             return
 
         archive_file.seek(pos)
+
         try:
             is_tar = tarfile.is_tarfile(archive_file)
         except Exception:
@@ -158,8 +86,10 @@ class AbstractStorageBackend(ABC):
 
         if is_tar:
             archive_file.seek(pos)
+
             with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
-                for member in tf.getmembers():
+                # Lazily, not getmembers(): that inflates the whole archive first.
+                for member in tf:
                     if member.issym() or member.islnk():
                         raise ValueError(
                             f"Archive member is a symlink or hardlink: {member.name!r}"
@@ -230,10 +160,6 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def list_all_keys(self, prefix: str) -> list[str]:
         """Recursively list all file keys under prefix (excludes folder markers)."""
-
-    @abstractmethod
-    def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
-        """Extract archive into prefix. Returns list of extracted paths."""
 
     @abstractmethod
     def list_tree(

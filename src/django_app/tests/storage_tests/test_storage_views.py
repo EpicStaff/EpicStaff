@@ -1,14 +1,12 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 
 from tables.models import Graph, GraphStorageFile, Organization, StorageFile
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
-    FileUploadResult,
     FolderInfo,
     TreeNode,
 )
@@ -87,32 +85,6 @@ class TestDownload:
 
         assert resp.status_code == status.HTTP_404_NOT_FOUND
 
-
-class TestUpload:
-    def test_upload_returns_201_with_results(self, auth_client, mock_manager):
-        mock_manager.upload_file.return_value = FileUploadResult(
-            type="file", path="notes.txt", size=5
-        )
-        uploaded_file = SimpleUploadedFile(
-            "notes.txt", b"hello", content_type="text/plain"
-        )
-
-        resp = auth_client.post("/api/storage/upload/", {"files": uploaded_file})
-
-        assert resp.status_code == status.HTTP_201_CREATED, resp.data
-        assert len(resp.data["uploaded"]) == 1
-
-    def test_upload_converts_value_error_to_validation_error(
-        self, auth_client, mock_manager
-    ):
-        mock_manager.upload_file.side_effect = ValueError("password protected")
-        uploaded_file = SimpleUploadedFile(
-            "bad.zip", b"data", content_type="application/zip"
-        )
-
-        resp = auth_client.post("/api/storage/upload/", {"files": uploaded_file})
-
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 class TestDownloadZip:

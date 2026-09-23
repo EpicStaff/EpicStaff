@@ -1,10 +1,13 @@
 import io
+import lzma
+import tarfile
 import zipfile
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.test import override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -28,8 +31,8 @@ def _client():
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stream_upload_happy(org_user, monkeypatch):
-    ingest = AsyncMock(return_value={"path": "docs/a.txt", "size": 3})
-    monkeypatch.setattr(svc, "ingest_flat", ingest)
+    upload = AsyncMock(return_value={"path": "docs/a.txt", "size": 3})
+    monkeypatch.setattr(svc, "upload_file", upload)
 
     token = await _token(org_user)
     async with _client() as client:
@@ -44,7 +47,7 @@ async def test_stream_upload_happy(org_user, monkeypatch):
         )
     assert resp.status_code == 200
     assert resp.json() == {"status": "DONE", "path": "docs/a.txt", "size": 3}
-    ingest.assert_awaited_once()
+    upload.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -60,8 +63,9 @@ async def test_stream_upload_no_token_401():
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stream_upload_exe_name_400(org_user, monkeypatch):
-    ingest = AsyncMock()
-    monkeypatch.setattr(svc, "ingest_flat", ingest)
+    # the name is checked by the service, before any of the body is stored
+    backend = InMemoryStorageBackend(organization_prefix="")
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
 
     token = await _token(org_user)
     async with _client() as client:
@@ -74,7 +78,8 @@ async def test_stream_upload_exe_name_400(org_user, monkeypatch):
             },
         )
     assert resp.status_code == 400
-    ingest.assert_not_awaited()
+    assert "blocked executable extension" in resp.json()["message"]
+    assert not backend._objects
 
 
 @pytest.mark.asyncio
@@ -82,7 +87,7 @@ async def test_stream_upload_exe_name_400(org_user, monkeypatch):
 @override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_stream_upload_end_to_end_flat(org_user, monkeypatch):
     backend = InMemoryStorageBackend(organization_prefix="")
-    monkeypatch.setattr(svc, "_default_backend", lambda: backend)
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
 
     token = await _token(org_user)
     async with _client() as client:
@@ -106,7 +111,7 @@ async def test_stream_upload_end_to_end_flat(org_user, monkeypatch):
 @override_settings(ORG_STORAGE_QUOTA=10, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_stream_upload_over_quota_413(org_user, monkeypatch):
     backend = InMemoryStorageBackend(organization_prefix="")
-    monkeypatch.setattr(svc, "_default_backend", lambda: backend)
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
 
     token = await _token(org_user)
     async with _client() as client:
@@ -128,7 +133,7 @@ async def test_stream_upload_over_quota_413(org_user, monkeypatch):
 @override_settings(ORG_STORAGE_QUOTA=10**9, MAX_ARCHIVE_UNCOMPRESSED_SIZE=10**6)
 async def test_stream_upload_end_to_end_archive(org_user, monkeypatch):
     backend = InMemoryStorageBackend(organization_prefix="")
-    monkeypatch.setattr(svc, "_default_backend", lambda: backend)
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -218,7 +223,7 @@ async def test_non_post_gets_json_405(org_user):
 async def test_allowed_origin_gets_cors_headers(org_user, monkeypatch):
     # bypassing the middleware chain also bypasses corsheaders, so the handler
     # has to echo the origin itself or a cross-origin frontend cannot read 200s
-    monkeypatch.setattr(svc, "ingest_flat", AsyncMock(return_value={"path": "a.txt", "size": 1}))
+    monkeypatch.setattr(svc, "upload_file", AsyncMock(return_value={"path": "a.txt", "size": 1}))
     token = await _token(org_user)
     async with _client() as client:
         resp = await _post(
@@ -237,7 +242,7 @@ async def test_allowed_origin_gets_cors_headers(org_user, monkeypatch):
 @pytest.mark.django_db(transaction=True)
 @override_settings(CORS_ALLOWED_ORIGINS=["http://localhost:4200"])
 async def test_disallowed_origin_gets_no_cors_headers(org_user, monkeypatch):
-    monkeypatch.setattr(svc, "ingest_flat", AsyncMock(return_value={"path": "a.txt", "size": 1}))
+    monkeypatch.setattr(svc, "upload_file", AsyncMock(return_value={"path": "a.txt", "size": 1}))
     token = await _token(org_user)
     async with _client() as client:
         resp = await _post(
@@ -252,25 +257,58 @@ async def test_disallowed_origin_gets_no_cors_headers(org_user, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=5 * 1024 * 1024)
+async def test_archive_unpacking_past_the_free_space_is_a_413_before_any_write(
+    org_user, monkeypatch
+):
+    # the unpacked size has no cap of its own: only the org's free space bounds it
+    backend = InMemoryStorageBackend(organization_prefix="")
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
+
+    payload = b"\0" * (6 * 1024 * 1024)
+    raw_tar = io.BytesIO()
+    with tarfile.open(fileobj=raw_tar, mode="w") as tf:
+        info = tarfile.TarInfo(name="big.bin")
+        info.size = len(payload)
+        tf.addfile(info, io.BytesIO(payload))
+    bomb = lzma.compress(raw_tar.getvalue())
+
+    token = await _token(org_user)
+    async with _client() as client:
+        resp = await _post(
+            client,
+            "filename=5-mb-example-file.tar.xz",
+            token=token,
+            org_id=org_user.org_id,
+            body=bomb,
+        )
+
+    assert resp.status_code == 413
+    assert resp.json()["code"] == "storage_quota_exceeded"
+    assert not backend._objects
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_bad_utf8_escape_in_query_is_a_400_not_a_mangled_name(org_user, monkeypatch):
-    ingest = AsyncMock()
-    monkeypatch.setattr(svc, "ingest_flat", ingest)
+    upload = AsyncMock()
+    monkeypatch.setattr(svc, "upload_file", upload)
     token = await _token(org_user)
     async with _client() as client:
         resp = await _post(client, "filename=a%FF.txt", token=token, org_id=org_user.org_id)
     assert resp.status_code == 400
     assert "UTF-8" in resp.json()["message"]
-    ingest.assert_not_awaited()
+    upload.assert_not_awaited()
 
 
 def test_raw_non_utf8_query_bytes_are_a_validation_error():
     from rest_framework.exceptions import ValidationError
 
-    from tables.asgi_upload import _assert_utf8_query
+    from tables.asgi_upload import _reject_non_utf8_query
 
     with pytest.raises(ValidationError):
-        _assert_utf8_query({"query_string": b"filename=a\xff.txt"})
-    _assert_utf8_query({"query_string": "filename=док.txt".encode()})
+        _reject_non_utf8_query({"query_string": b"filename=a\xff.txt"})
+    _reject_non_utf8_query({"query_string": "filename=док.txt".encode()})
 
 
 @pytest.mark.asyncio
@@ -280,7 +318,7 @@ async def test_request_lifecycle_signals_fire_like_a_django_view(org_user, monke
     # handler must not skip it, on success or on error
     from django.core import signals
 
-    monkeypatch.setattr(svc, "ingest_flat", AsyncMock(return_value={"path": "a.txt", "size": 1}))
+    monkeypatch.setattr(svc, "upload_file", AsyncMock(return_value={"path": "a.txt", "size": 1}))
     fired = []
 
     def _started(**_kwargs):
