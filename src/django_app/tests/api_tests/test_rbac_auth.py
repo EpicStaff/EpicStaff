@@ -140,9 +140,7 @@ def test_login_remember_me_true_sets_persistent_cookie(api_client, regular_user)
 
 @pytest.mark.django_db
 def test_login_remember_me_false_sets_30min_cookie(api_client, regular_user):
-    """Non-remembered logins get a 30-minute Max-Age cookie (not a session
-    cookie), so browsers that restore session cookies on relaunch cannot
-    revive the auth session past the intended window."""
+    """Non-remembered login -> 30-min Max-Age cookie + matching JWT exp."""
     r = api_client.post(
         reverse("login"),
         data={
@@ -160,8 +158,6 @@ def test_login_remember_me_false_sets_30min_cookie(api_client, regular_user):
     assert int(cookie["max-age"]) == expected
     token = RefreshToken(cookie.value)
     assert token.payload.get("remember_me") is False
-    # JWT ``exp`` is clamped to the same 30-minute window so a leaked
-    # cookie cannot outlive its Max-Age even if replayed out-of-band.
     now = int(timezone.now().timestamp())
     assert 0 < token.payload["exp"] - now <= expected
 
@@ -205,9 +201,7 @@ def test_refresh_preserves_remember_me_persistent(api_client, regular_user):
 
 @pytest.mark.django_db
 def test_refresh_preserves_remember_me_short(api_client, regular_user):
-    """A non-remembered login must keep its 30-minute Max-Age after
-    rotation — otherwise a client that refreshes just before the window
-    ends would silently gain a longer-lived session."""
+    """Non-remembered session keeps its 30-min window across rotation."""
     login = api_client.post(
         reverse("login"),
         data={
@@ -239,10 +233,7 @@ def test_refresh_without_cookie_returns_401(api_client):
 def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
     api_client, regular_user
 ):
-    """After the 30-minute non-remembered window elapses, /auth/refresh
-    must return 401 and clear the refresh cookie so the frontend
-    transitions to an unauthenticated state instead of silently rotating
-    into a fresh session."""
+    """Expired non-remember refresh -> 401 + cookie cleared."""
     login = api_client.post(
         reverse("login"),
         data={
@@ -254,10 +245,7 @@ def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
     )
     assert login.status_code == 200
 
-    # Fast-forward past the 30-minute window by re-signing the cookie's
-    # token with an ``exp`` in the past. This is functionally equivalent
-    # to waiting past the Max-Age and having the browser drop-then-re-send
-    # the token, but works within a single test run.
+    # Simulate the 30-min window elapsing by re-signing exp into the past.
     current = api_client.cookies[REFRESH_COOKIE_NAME].value
     token = RefreshToken(current)
     token.set_exp(

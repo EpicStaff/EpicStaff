@@ -173,10 +173,7 @@ class PasswordChangeConfirmView(APIView):
         tokens = self._service.password_change_confirm(
             request.user, cleaned["ticket"], cleaned["new_password"]
         )
-        # Carry the caller's original persistence intent onto the rotated
-        # cookie so a password change does not silently downgrade a
-        # persistent session to a session-only one. Missing/unreadable
-        # cookies fall through to the safe session-only default.
+        # Preserve remember-me across the rotated cookie.
         remember_me = read_remember_me_claim(get_refresh_from_cookie(request))
         response = Response({"access": tokens.access})
         set_refresh_cookie(response, tokens.refresh, remember_me=remember_me)

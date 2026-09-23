@@ -195,10 +195,7 @@ class FirstSetupView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-        # First-setup issues a session cookie (no max_age): the just-
-        # provisioned superadmin has not opted into "remember me", so the
-        # refresh cookie is cleared on browser close, matching the login
-        # flow's explicit-consent model.
+        # First-setup has no remember-me opt-in: default to the 30-min session.
         set_refresh_cookie(response, tokens.refresh, remember_me=False)
         return response
 
@@ -404,10 +401,7 @@ class CookieTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        # Read the persistence intent from the incoming refresh token BEFORE
-        # rotation. `read_remember_me_claim` returns False for an unreadable
-        # token; the serializer below will then produce the definitive 401
-        # so a False fallback here never ships a bad rotated cookie.
+        # Read persistence intent before rotation so it survives on the new token.
         remember_me = read_remember_me_claim(refresh_value)
 
         serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
@@ -424,8 +418,6 @@ class CookieTokenRefreshView(APIView):
         response = Response({"access": serializer.validated_data["access"]})
         new_refresh = serializer.validated_data.get("refresh")
         if new_refresh:
-            # Carry the persistence intent forward on the rotated token so
-            # the next rotation still knows the policy.
             set_refresh_cookie(response, new_refresh, remember_me=remember_me)
         return response
 
@@ -451,7 +443,5 @@ class ResetUserView(APIView):
             {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
-        # Reset-user is a superadmin bootstrap flow: default to persistent
-        # to match FirstSetupView's UX.
         set_refresh_cookie(response, tokens.refresh, remember_me=True)
         return response
