@@ -164,6 +164,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     );
     private readonly MIN_PANEL_WIDTH = 430;
     private readonly MAX_PANEL_WIDTH_RATIO = 0.7;
+    private readonly MIN_CANVAS_WIDTH = 560;
     private readonly routeParamMap;
     private readonly routeQueryParamMap;
     private isDeactivating = false;
@@ -904,6 +905,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onDragStart(event: MouseEvent): void {
         event.preventDefault();
         this.isDragging = true;
+        this.flowGraphComponent?.closeNodesSearch();
     }
 
     @HostListener('document:mousemove', ['$event'])
@@ -911,9 +913,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (!this.isDragging) return;
         const hostRect = this.elementRef.nativeElement.getBoundingClientRect();
         const versionHistoryWidth = this.getVersionHistoryWidth();
-        const maxWidth = (hostRect.width - versionHistoryWidth) * this.MAX_PANEL_WIDTH_RATIO;
+        const maxWidth = this.getMaxPanelWidth(hostRect.width, versionHistoryWidth);
         const newWidth = hostRect.right - versionHistoryWidth - event.clientX;
-        this.panelWidthPx = Math.max(this.MIN_PANEL_WIDTH, Math.min(newWidth, maxWidth));
+        this.panelWidthPx = this.clampPanelWidth(newWidth, maxWidth);
         this.cdr.markForCheck();
     }
 
@@ -930,11 +932,22 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return versionHistoryEl?.getBoundingClientRect().width ?? 0;
     }
 
+    private getMaxPanelWidth(hostWidth: number, versionHistoryWidth: number): number {
+        const remaining = hostWidth - versionHistoryWidth;
+        return Math.min(remaining * this.MAX_PANEL_WIDTH_RATIO, remaining - this.MIN_CANVAS_WIDTH);
+    }
+
+    private clampPanelWidth(value: number, maxWidth: number): number {
+        const upperBound = Math.max(maxWidth, 0);
+        const lowerBound = Math.min(this.MIN_PANEL_WIDTH, upperBound);
+        return Math.max(lowerBound, Math.min(value, upperBound));
+    }
+
     private clampPanelWidthToViewport(): void {
         const hostRect = this.elementRef.nativeElement.getBoundingClientRect();
         const versionHistoryWidth = this.getVersionHistoryWidth();
-        const maxWidth = (hostRect.width - versionHistoryWidth) * this.MAX_PANEL_WIDTH_RATIO;
-        this.panelWidthPx = Math.max(this.MIN_PANEL_WIDTH, Math.min(this.panelWidthPx, maxWidth));
+        const maxWidth = this.getMaxPanelWidth(hostRect.width, versionHistoryWidth);
+        this.panelWidthPx = this.clampPanelWidth(this.panelWidthPx, maxWidth);
     }
 
     public ngOnDestroy(): void {
@@ -1107,6 +1120,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public onViewVersionHistory(): void {
         if (!this.graph?.id) return;
+        this.flowGraphComponent?.closeNodesSearch();
         this.isVersionHistoryOpen.set(true);
         requestAnimationFrame(() => {
             this.clampPanelWidthToViewport();
