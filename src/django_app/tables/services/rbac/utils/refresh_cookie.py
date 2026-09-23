@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.conf import settings
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
@@ -9,11 +11,20 @@ REFRESH_COOKIE_NAME = "auth.refresh"
 REFRESH_COOKIE_PATH = "/api/auth/"
 REMEMBER_ME_CLAIM = "remember_me"
 
+# Ceiling on how long a *non-remembered* refresh session may live, in either
+# the cookie ``Max-Age`` or the JWT ``exp`` claim. Chosen so that:
+#   * browsers that restore session cookies on relaunch (Chrome's "Continue
+#     where you left off") cannot revive an old session indefinitely — the
+#     cookie is a real ``Max-Age`` cookie now, not a session cookie;
+#   * the server-side token authority matches the cookie, so a leaked cookie
+#     cannot outlive its Max-Age even if replayed out-of-band.
+NON_REMEMBER_REFRESH_LIFETIME = timedelta(minutes=30)
+
 
 def set_refresh_cookie(
     response: Response, refresh_token: str, *, remember_me: bool
 ) -> Response:
-    """Embed the `remember_me` claim on the refresh token and attach it to
+    """Embed the ``remember_me`` claim on the refresh token and attach it to
     ``response`` as the HttpOnly refresh cookie.
 
     Every view that issues a refresh token goes through this helper so the
@@ -22,8 +33,10 @@ def set_refresh_cookie(
 
     ``remember_me=True``  -> ``Max-Age`` is the configured
         ``REFRESH_TOKEN_LIFETIME`` (cookie survives browser restart).
-    ``remember_me=False`` -> no ``Max-Age`` / ``Expires`` => browser session
-        cookie, dropped when the browser session ends.
+    ``remember_me=False`` -> ``Max-Age`` and the JWT ``exp`` are both capped
+        at :data:`NON_REMEMBER_REFRESH_LIFETIME` (30 minutes) so an
+        unremembered session cannot be revived by browser session-restore
+        features and cannot be replayed past its cookie lifetime.
 
     ``refresh_token`` is expected to be one this process just minted (via
     ``TokenObtainPairSerializer`` / ``TokenRefreshSerializer`` /
@@ -34,13 +47,18 @@ def set_refresh_cookie(
     """
     token = RefreshToken(refresh_token)
     token[REMEMBER_ME_CLAIM] = remember_me
+    if remember_me:
+        max_age = int(
+            settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()
+        )
+    else:
+        # Shrink the JWT's own expiry to match the cookie so the server
+        # rejects the token past the 30-minute window even if the cookie
+        # somehow leaks past its Max-Age.
+        token.set_exp(lifetime=NON_REMEMBER_REFRESH_LIFETIME)
+        max_age = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
     encoded = str(token)
 
-    max_age = (
-        int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
-        if remember_me
-        else None
-    )
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=encoded,
@@ -65,7 +83,7 @@ def read_remember_me_claim(refresh_token: str | None) -> bool:
 
     The ``False`` fallback is deliberate and safe: on an unreadable token
     the caller either returns ``401`` (and the claim value is discarded)
-    or issues a session-only cookie on the rotated token, which is the
+    or issues a short-lived cookie on the rotated token, which is the
     least-privileged default.
     """
     if not refresh_token:

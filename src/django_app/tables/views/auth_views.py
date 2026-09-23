@@ -195,10 +195,11 @@ class FirstSetupView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-        # First-setup issues a persistent session by default so the just-
-        # provisioned superadmin does not get bounced back to the login
-        # screen after the first browser restart.
-        set_refresh_cookie(response, tokens.refresh, remember_me=True)
+        # First-setup issues a session cookie (no max_age): the just-
+        # provisioned superadmin has not opted into "remember me", so the
+        # refresh cookie is cleared on browser close, matching the login
+        # flow's explicit-consent model.
+        set_refresh_cookie(response, tokens.refresh, remember_me=False)
         return response
 
 

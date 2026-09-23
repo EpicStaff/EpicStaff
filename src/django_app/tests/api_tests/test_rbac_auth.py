@@ -44,7 +44,10 @@ from tables.models.rbac_models import (
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
-from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
+from tables.services.rbac.utils.refresh_cookie import (
+    NON_REMEMBER_REFRESH_LIFETIME,
+    REFRESH_COOKIE_NAME,
+)
 from tables.services.rbac.utils.password_reset_token_repository import (
     PasswordResetTokenRepository,
     hash_token,
@@ -136,7 +139,10 @@ def test_login_remember_me_true_sets_persistent_cookie(api_client, regular_user)
 
 
 @pytest.mark.django_db
-def test_login_remember_me_false_sets_session_cookie(api_client, regular_user):
+def test_login_remember_me_false_sets_30min_cookie(api_client, regular_user):
+    """Non-remembered logins get a 30-minute Max-Age cookie (not a session
+    cookie), so browsers that restore session cookies on relaunch cannot
+    revive the auth session past the intended window."""
     r = api_client.post(
         reverse("login"),
         data={
@@ -150,16 +156,18 @@ def test_login_remember_me_false_sets_session_cookie(api_client, regular_user):
     cookie = r.cookies[REFRESH_COOKIE_NAME]
     assert cookie.value
     assert cookie["httponly"]
-    # Session cookie -> no Max-Age / no Expires. Morsel keeps empty strings for
-    # attributes that were not set on the response.
-    assert cookie["max-age"] in ("", None)
-    assert cookie["expires"] in ("", None)
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
     token = RefreshToken(cookie.value)
     assert token.payload.get("remember_me") is False
+    # JWT ``exp`` is clamped to the same 30-minute window so a leaked
+    # cookie cannot outlive its Max-Age even if replayed out-of-band.
+    now = int(timezone.now().timestamp())
+    assert 0 < token.payload["exp"] - now <= expected
 
 
 @pytest.mark.django_db
-def test_login_omitting_remember_me_defaults_to_session_cookie(api_client, regular_user):
+def test_login_omitting_remember_me_defaults_to_30min_cookie(api_client, regular_user):
     r = api_client.post(
         reverse("login"),
         data={"email": regular_user.email, "password": "UserStrongPass123!"},
@@ -167,7 +175,8 @@ def test_login_omitting_remember_me_defaults_to_session_cookie(api_client, regul
     )
     assert r.status_code == 200
     cookie = r.cookies[REFRESH_COOKIE_NAME]
-    assert cookie["max-age"] in ("", None)
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
     token = RefreshToken(cookie.value)
     assert token.payload.get("remember_me") is False
 
@@ -195,8 +204,10 @@ def test_refresh_preserves_remember_me_persistent(api_client, regular_user):
 
 
 @pytest.mark.django_db
-def test_refresh_preserves_remember_me_session(api_client, regular_user):
-    """A session-only login must stay a session cookie after rotation."""
+def test_refresh_preserves_remember_me_short(api_client, regular_user):
+    """A non-remembered login must keep its 30-minute Max-Age after
+    rotation — otherwise a client that refreshes just before the window
+    ends would silently gain a longer-lived session."""
     login = api_client.post(
         reverse("login"),
         data={
@@ -210,16 +221,58 @@ def test_refresh_preserves_remember_me_session(api_client, regular_user):
     r = api_client.post(reverse("refresh"))
     assert r.status_code == 200
     cookie = r.cookies[REFRESH_COOKIE_NAME]
-    assert cookie["max-age"] in ("", None)
-    assert cookie["expires"] in ("", None)
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
     token = RefreshToken(cookie.value)
     assert token.payload.get("remember_me") is False
+    now = int(timezone.now().timestamp())
+    assert 0 < token.payload["exp"] - now <= expected
 
 
 @pytest.mark.django_db
 def test_refresh_without_cookie_returns_401(api_client):
     r = api_client.post(reverse("refresh"))
     assert r.status_code == 401
+
+
+@pytest.mark.django_db
+def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
+    api_client, regular_user
+):
+    """After the 30-minute non-remembered window elapses, /auth/refresh
+    must return 401 and clear the refresh cookie so the frontend
+    transitions to an unauthenticated state instead of silently rotating
+    into a fresh session."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+
+    # Fast-forward past the 30-minute window by re-signing the cookie's
+    # token with an ``exp`` in the past. This is functionally equivalent
+    # to waiting past the Max-Age and having the browser drop-then-re-send
+    # the token, but works within a single test run.
+    current = api_client.cookies[REFRESH_COOKIE_NAME].value
+    token = RefreshToken(current)
+    token.set_exp(
+        from_time=timezone.now()
+        - NON_REMEMBER_REFRESH_LIFETIME
+        - timedelta(seconds=1),
+        lifetime=timedelta(seconds=0),
+    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = str(token)
+
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 401
+    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    assert cleared.value == ""
+    assert int(cleared["max-age"]) == 0
 
 
 @pytest.mark.django_db
