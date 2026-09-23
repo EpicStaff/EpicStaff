@@ -389,8 +389,27 @@ export class CdtDecisionTreeDialogComponent {
 
     /** Centre a block, and open its window if it is one the design lets you open. */
     private revealBlock(blockId: string): void {
-        this.fCanvas()?.centerGroupOrNode(blockId, false);
+        this.focusBlock(blockId);
         this.openDetailFor(blockId);
+    }
+
+    /**
+     * Bring a block into view at a readable size.
+     *
+     * Centring alone is not enough from a zoomed-out canvas: the block lands in the
+     * middle too small to read. Below 1 the scale is reset on the way in; at or above
+     * it the user has deliberately zoomed closer, so the move only pans. Both paths
+     * animate, which is what reads as scrolling to the block rather than jumping.
+     */
+    private focusBlock(blockId: string): void {
+        const canvas = this.fCanvas();
+        if (!canvas) return;
+
+        if (canvas.getScale() < 1) {
+            canvas.resetScaleAndCenterGroupOrNode(blockId, true);
+        } else {
+            canvas.centerGroupOrNode(blockId, true);
+        }
     }
 
     /**
@@ -571,7 +590,7 @@ export class CdtDecisionTreeDialogComponent {
 
     private revealActiveMatch(): void {
         const id = this.matchIds()[this.activeMatch()];
-        if (id) this.fCanvas()?.centerGroupOrNode(id, true);
+        if (id) this.focusBlock(id);
     }
 
     // -- detail window -------------------------------------------------------
