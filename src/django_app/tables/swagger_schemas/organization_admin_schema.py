@@ -9,7 +9,7 @@ destroy are platform-level and superadmin-only.
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
 
-from tables.serializers.delete_serializers import DeleteReportSerializer
+from tables.serializers.delete_serializers import OrganizationDeleteReportSerializer
 from tables.serializers.organization_serializers import (
     OrganizationCreateRequestSerializer,
     OrganizationListResponseSerializer,
@@ -67,22 +67,19 @@ ORGANIZATIONS_REACTIVATE_POST = dict(
 )
 
 ORGANIZATIONS_DESTROY_DELETE = dict(
-    summary="Permanently delete an organization (superadmin)",
+    summary="Permanently delete an organization (superadmin) — or preview with ?dry_run=true",
     parameters=[
         OpenApiParameter(
             name="dry_run",
             type=OpenApiTypes.BOOL,
             location=OpenApiParameter.QUERY,
-            description="When true, report what would be deleted and delete nothing.",
+            description="If true, report what would be deleted and delete nothing.",
         )
     ],
     responses={
-        200: DeleteReportSerializer,
+        200: OrganizationDeleteReportSerializer,
         400: OpenApiResponse(
-            description=(
-                "default_organization_not_deletable, last_organization, "
-                "or an invalid dry_run value"
-            )
+            description="default_organization_not_deletable or last_organization"
         ),
         404: OpenApiResponse(description="Organization not found"),
     },

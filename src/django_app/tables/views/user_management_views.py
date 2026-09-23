@@ -1,16 +1,17 @@
+import dataclasses
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.serializers.delete_serializers import UserDeleteReportSerializer
 from tables.serializers.user_management_serializers import (
     UserCreateRequestSerializer,
     UserResponseSerializer,
 )
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.delete.dry_run import parse_dry_run
-from tables.services.rbac.delete.service import DeleteService
 from tables.services.rbac.permissions import DenyApiKeyAuth, IsSuperadmin
 from tables.services.rbac.user_management_service import UserManagementService
 from tables.services.rbac.user_validation_service import UserValidationService
@@ -63,7 +64,6 @@ class UserAdminViewSet(viewsets.ViewSet):
 
     _service = UserManagementService()
     _validator = UserValidationService()
-    _delete_service = DeleteService()
 
     def get_permissions(self):
         """Permanent deletion is JWT-only; a leaked key must not erase accounts."""
@@ -150,11 +150,12 @@ class UserAdminViewSet(viewsets.ViewSet):
     @extend_schema(**USERS_DESTROY_DELETE)
     def destroy(self, request, pk=None):
         """Permanently delete a user account, or preview the deletion."""
-        dry_run = parse_dry_run(request.query_params.get("dry_run"))
-        report = self._delete_service.delete(
-            target_type="user",
-            target_id=int(pk),
-            actor=request.user,
-            dry_run=dry_run,
-        )
-        return Response(report)
+        if self._is_truthy(request.query_params.get("dry_run")):
+            report = self._service.preview_delete(actor=request.user, target_user_id=int(pk))
+        else:
+            report = self._service.delete_user(actor=request.user, target_user_id=int(pk))
+        return Response(UserDeleteReportSerializer(dataclasses.asdict(report)).data)
+
+    @staticmethod
+    def _is_truthy(raw):
+        return str(raw).strip().lower() in ("true", "1") if raw is not None else False

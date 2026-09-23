@@ -9,7 +9,7 @@ use the X-Organization-Id header — organization is a query filter
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
 
-from tables.serializers.delete_serializers import DeleteReportSerializer
+from tables.serializers.delete_serializers import UserDeleteReportSerializer
 from tables.serializers.user_management_serializers import (
     UserCreateRequestSerializer,
     UserResponseSerializer,
@@ -158,22 +158,18 @@ USERS_REACTIVATE_POST = {
 }
 
 USERS_DESTROY_DELETE = {
-    "summary": "Permanently delete a user (superadmin)",
+    "summary": "Permanently delete a user (superadmin) — or preview with ?dry_run=true",
     "parameters": [
         OpenApiParameter(
             name="dry_run",
             type=OpenApiTypes.BOOL,
             location=OpenApiParameter.QUERY,
-            description="When true, report what would be deleted and delete nothing.",
+            description="If true, report what would be deleted and delete nothing.",
         )
     ],
     "responses": {
-        200: DeleteReportSerializer,
-        400: OpenApiResponse(
-            description=(
-                "cannot_delete_self, last_superadmin, or an invalid dry_run value"
-            )
-        ),
+        200: UserDeleteReportSerializer,
+        400: OpenApiResponse(description="cannot_delete_self or last_superadmin"),
         404: OpenApiResponse(description="User not found"),
     },
 }

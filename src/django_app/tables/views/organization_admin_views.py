@@ -1,14 +1,15 @@
+import dataclasses
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.serializers.delete_serializers import OrganizationDeleteReportSerializer
 from tables.serializers.organization_serializers import (
     OrganizationListResponseSerializer,
     OrganizationResponseSerializer,
 )
-from tables.services.rbac.delete.dry_run import parse_dry_run
-from tables.services.rbac.delete.service import DeleteService
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )
@@ -58,7 +59,6 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
 
     _service = OrganizationManagementService()
     _validator = OrganizationValidationService()
-    _delete_service = DeleteService()
 
     def get_permissions(self):
         """Permanent deletion is JWT-only; a leaked key must not erase a tenant."""
@@ -126,15 +126,12 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
 
     @extend_schema(**ORGANIZATIONS_DESTROY_DELETE)
     def destroy(self, request, pk=None):
-        """Permanently delete an organization and everything it owns."""
-        dry_run = parse_dry_run(request.query_params.get("dry_run"))
-        report = self._delete_service.delete(
-            target_type="organization",
-            target_id=int(pk),
-            actor=request.user,
-            dry_run=dry_run,
-        )
-        return Response(report)
+        """Permanently delete an organization and everything it owns, or preview the deletion."""
+        if self._is_truthy(request.query_params.get("dry_run")):
+            report = self._service.preview_delete(actor=request.user, org_id=int(pk))
+        else:
+            report = self._service.delete_organization(actor=request.user, org_id=int(pk))
+        return Response(OrganizationDeleteReportSerializer(dataclasses.asdict(report)).data)
 
     def _apply_ordering(self, qs, raw):
         if not raw:
@@ -156,3 +153,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
         if normalized in ("false", "0"):
             return False
         return None
+
+    @staticmethod
+    def _is_truthy(raw):
+        return str(raw).strip().lower() in ("true", "1") if raw is not None else False
