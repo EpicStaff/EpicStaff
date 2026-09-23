@@ -31,8 +31,8 @@ class BaseAuditWriter(ABC, Generic[T]):
     knows how to emit safely, and shuts it down. To add a domain writer:
     subclass BaseAuditWriter[YourEvent] and implement add_custom_message -
     see src/shared/audit/writers/session_writer.py for the worked example,
-    and src/auditor/app/domains/README.md for the consumer-side mirror of
-    this same per-domain-plugin shape.
+    and src/auditor/app/domains/base.py::AuditDomain for the consumer-side
+    mirror of this same per-domain-plugin shape.
     """
 
     def __init__(self, client: AuditClient[T]):

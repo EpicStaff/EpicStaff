@@ -67,18 +67,20 @@ class ExportCleanupService:
             key, "file_path", "org_id", "user_id", "domain"
         )
 
-        if org_id is None or user_id is None or domain is None:
-            logger.warning(
-                f"Job {job_id} hash missing during sweep; skipping index cleanup"
-            )
-            await self.redis_client.zrem(EXPIRY_ZSET_KEY, job_id)
-            return
-
         if file_path:
             pathlib.Path(file_path).unlink(missing_ok=True)
         elif self.export_data_dir:
             for stale_file in pathlib.Path(self.export_data_dir).glob(f"{job_id}.*"):
                 stale_file.unlink(missing_ok=True)
+
+        if org_id is None or user_id is None or domain is None:
+            logger.warning(
+                f"Job {job_id} hash missing or incomplete during sweep; file "
+                "cleaned up but its per-user index entry may be left orphaned"
+            )
+            await self.redis_client.zrem(EXPIRY_ZSET_KEY, job_id)
+            return
+
         async with self.redis_client.pipeline(transaction=True) as pipe:
             deregister_job(
                 pipe, domain=domain, job_id=job_id, org_id=org_id, user_id=user_id

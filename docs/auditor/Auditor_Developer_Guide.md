@@ -9,13 +9,15 @@ This guide is task-oriented: how to actually do things in the audit-trail system
 (`app/domains/base.py::AuditDomain`) — `sessions` (`app/domains/sessions/`)
 is the only domain today, but nothing under `app/filtering/`,
 `app/repositories/`, or `app/services/` is sessions-specific; a domain
-supplies its own field catalog, computed fields, match-scope expansion, and
-OpenSearch mapping. See `wiki/services/auditor.md` for the full code map and
-`app/domains/README.md` for how to add a new domain — this doc stays
+supplies its own field cat1alog, computed fields, match-scope expansion, and
+OpenSearch mapping. Every route is mounted under `/api/audit/{domain.name}/...`
+so a second domain's routes, repository, and export-job storage never collide
+with `sessions`'s (see "How to add a new `auditor` route" below). See
+`wiki/services/auditor.md` for the full code map — this doc stays
 task-oriented (how to actually do things), not a repeat of that map.
 
 ```
-crew / django_app → AuditClient → POST /api/audit/events (X-API-Key) → auditor → AuditRepository (OpenSearchAuditRepository) → OpenSearch
+crew / django_app → AuditClient → POST /api/audit/sessions/events (X-API-Key) → auditor → AuditRepository (OpenSearchAuditRepository) → OpenSearch
 frontend → django_app POST /api/audit/token/ (RBAC) → JWT → auditor GET/POST (Bearer)
 ```
 
@@ -56,7 +58,7 @@ Also re-derive the type-drift answer for `input`/`output`/`details`: these hold 
 
 1. Add the field to `src/shared/models/audit/session_audit.py`.
 2. Add it to the OpenSearch mapping (`app/domains/sessions/mappings/0001_audit_events.json`) — additive, so a live `PUT _mapping` is enough, no migration needed.
-3. Populate it from wherever it's sourced — most likely `SessionAuditWriter` (`src/shared/audit/session_audit_writer.py`) if it's a session/node-level field, or inline at `django_app`'s HITL call site if it's specific to that path.
+3. Populate it from wherever it's sourced — most likely `SessionAuditWriter` (`src/shared/audit/writers/session_writer.py`) if it's a session/node-level field, or inline at `django_app`'s HITL call site if it's specific to that path.
 4. If it should be exportable, it's already covered — `export_routes.py::_to_csv` derives its CSV columns from `SessionAuditEvent.model_fields`, not from the first row, so a new field appears in every export automatically (including an all-empty column on a zero-result export, rather than a broken zero-byte file).
 
 ---
@@ -78,35 +80,42 @@ This is domain-generic machinery — a second domain would follow the same steps
 ## How the export job lifecycle works
 
 Export is async (`export_routes.py`) because a full-org export can outlive a
-single request: `POST /api/audit/export` only creates a job and schedules the
-actual query/write as a `BackgroundTasks` task, returning `{"job_id": ...}`
-immediately.
+single request: `POST /api/audit/{domain.name}/export` only creates a job and
+schedules the actual query/write as a `BackgroundTasks` task, returning
+`{"job_id": ...}` immediately.
 
-- `POST /api/audit/export` — same `filters`/`query`/`match_scope` body shape as
-  the browse routes (`ExportRequest`, `filters` xor `query`), plus `format`
-  (`json`/`csv`, default `json`). Use `match_scope.full_session_history` (or
-  `ancestors`/`children`/`rows_before`) if the export needs more than just the
-  matched rows — same `MatchScope` toggles the search endpoint uses
-  (`app/domains/sessions/expansion.py`), there is no separate `detail` param.
-  Gated by `require_audit_action("export")`.
-- `GET /api/audit/export/{job_id}` — poll status; while pending/failed returns
-  `{"status": ...}` (`404` if the job isn't found or isn't yours, `500` if it
-  failed). Once `completed`, streams the file back as a `FileResponse`
-  (`410` if the file already expired off disk). CSV columns come from
+- `POST /api/audit/{domain.name}/export` — same `filters`/`query`/`match_scope`
+  body shape as the browse routes (`ExportRequest`, `filters` xor `query`),
+  plus `format` (`json`/`csv`, default `json`). Use
+  `match_scope.full_session_history` (or `ancestors`/`children`/`rows_before`)
+  if the export needs more than just the matched rows — same `MatchScope`
+  toggles the search endpoint uses (`app/domains/sessions/expansion.py`),
+  there is no separate `detail` param. Gated by
+  `require_audit_action(domain, "export")`.
+- `GET /api/audit/{domain.name}/export/{job_id}` — poll status; while
+  pending/failed returns `{"status": ...}` (`404` if the job isn't found,
+  isn't yours, or belongs to a different domain; `500` if it failed). Once
+  `completed`, streams the file back as a `FileResponse` (`410` if the file
+  already expired off disk). CSV columns come from
   `SessionAuditEvent.model_fields`, not from the first row, so an empty result
   set still produces a valid header-only file rather than a zero-byte one.
-- `GET /api/audit/export` — lists the caller's own jobs (pending, completed, or
-  failed), scoped to the `org_id`/`user_id` pair from the token's claims. Order
+- `GET /api/audit/{domain.name}/export` — lists the caller's own jobs
+  (pending, completed, or failed) for that domain, scoped to the
+  `domain`/`org_id`/`user_id` triple from the token's claims and route. Order
   is **not** guaranteed (backed by a Redis set, not a sorted list).
-- `DELETE /api/audit/export/{job_id}` — deletes the job's file (if any) and its
-  Redis bookkeeping immediately, instead of waiting for TTL expiry.
+- `DELETE /api/audit/{domain.name}/export/{job_id}` — deletes the job's file
+  (if any) and its Redis bookkeeping immediately, instead of waiting for TTL
+  expiry.
 
 All four routes enforce ownership the same way (`_get_owned_job` in
-`export_routes.py`): a job is only visible to the `user_id`+`org_id` pair from
-its own JWT claims — checked together, not `user_id` alone, so a user who lost
-`AUDIT:export` in org A can't still reach an org-A job via a token minted for
-org B. A non-owner and a missing job both get a `404`, never a `403`, so
-ownership can't be probed from the outside.
+`export_routes.py`): a job is only visible to the `user_id`+`org_id`+`domain`
+triple from its own JWT claims and its own route — org and user are checked
+together, not `user_id` alone, so a user who lost `AUDIT:export` in org A
+can't still reach an org-A job via a token minted for org B; domain is checked
+so a job created under one audit domain can never be downloaded/deleted
+through another domain's export routes. A non-owner, a wrong-domain job, and a
+missing job all get a `404`, never a `403`, so ownership can't be probed from
+the outside.
 
 ### Redis-backed job tracking
 
@@ -120,21 +129,26 @@ in sync — one job keeps **three** Redis keys alive together, staged onto a
 caller-supplied pipeline by `register_job`/`deregister_job` so all three are
 written or removed atomically:
 
-- `auditor:export_job:{job_id}` — hash: `status`, `org_id`, `user_id`,
-  `created_at`, `expires_at`, `file_path`, `format` (and `error` once failed).
-  TTL'd to `AUDITOR_EXPORT_FILE_TTL_SECONDS` plus a day of safety margin, so the hash
-  outlives the file long enough for `GET`/`DELETE` to still resolve ownership
-  and return a clean `410` instead of losing the job record before the sweep
-  even runs.
+- `auditor:export_job:{job_id}` — hash: `domain`, `status`, `org_id`,
+  `user_id`, `created_at`, `expires_at`, `file_path`, `format` (and `error`
+  once failed). TTL'd to `AUDITOR_EXPORT_FILE_TTL_SECONDS` plus a day of
+  safety margin, so the hash outlives the file long enough for `GET`/`DELETE`
+  to still resolve ownership and return a clean `410` instead of losing the
+  job record before the sweep even runs.
 - `auditor:export_jobs_by_expiry` — one sorted set, `job_id` scored by
   `expires_at` epoch seconds. This is what the TTL sweep scans
   (`zrangebyscore(..., max=now)`) instead of doing a Redis-wide key scan.
-- `auditor:export_jobs_by_user:{org_id}:{user_id}` — one set per
-  (`org_id`, `user_id`) pair of that user's own `job_id`s. This is what backs
-  `GET /api/audit/export` (`get_jobs_by_user` → `SMEMBERS` → batched
-  `HGETALL` pipeline, one round trip regardless of job count). TTL'd the same
-  as the job hash — an abandoned index key expires on its own even if a sweep
-  or delete is somehow missed.
+  Shared across domains — the sweep doesn't need to know which domain a job
+  belongs to, only its id, and the hash itself carries `domain` for
+  deregistration.
+- `auditor:export_jobs_by_user:{domain}:{org_id}:{user_id}` — one set per
+  (`domain`, `org_id`, `user_id`) triple of that user's own `job_id`s for that
+  domain. Namespaced by domain so one domain's job listing never surfaces
+  another domain's jobs. This is what backs `GET /api/audit/{domain.name}/export`
+  (`get_jobs_by_user` → `SMEMBERS` → batched `HGETALL` pipeline, one round
+  trip regardless of job count). TTL'd the same as the job hash — an
+  abandoned index key expires on its own even if a sweep or delete is somehow
+  missed.
 
 `ExportJobService` (`app/services/export_job_service.py`) is the only thing
 that reads/writes these keys from `auditor`'s side — `create_job` stages all
@@ -152,15 +166,20 @@ own background task competing over the same keys. Each sweep:
 
 1. `ZRANGEBYSCORE auditor:export_jobs_by_expiry 0 <now>` — every job whose
    `expires_at` has passed.
-2. For each due job: reads `file_path`/`org_id`/`user_id` off the job hash,
-   deletes the file (falling back to a glob on `{job_id}.*` under
-   `AUDITOR_EXPORT_DATA_DIR` if the hash itself already expired without `file_path`
-   surviving), then calls `deregister_job` to remove all three keys.
+2. For each due job: reads `file_path`/`org_id`/`user_id`/`domain` off the job
+   hash and **deletes the file first, unconditionally** (falling back to a
+   glob on `{job_id}.*` under `AUDITOR_EXPORT_DATA_DIR` if the hash itself
+   already expired without `file_path` surviving) — this must never be
+   skipped, since leaking the file on disk forever is exactly what the sweep
+   exists to prevent. Only *then*, if `org_id`/`user_id`/`domain` are all
+   present, calls `deregister_job` to remove the other two keys.
 
-If the job hash is already gone by sweep time (its own TTL fired first), the
-sweep still removes the now-orphaned entry from the expiry zset so it doesn't
-get rescanned forever, but can't clean up the per-user index key in that case
-(logged, not fatal — that key has its own TTL and will self-expire).
+If the job hash is already gone by sweep time (its own TTL fired first, or the
+hash somehow lacks `domain`/`org_id`/`user_id`), the sweep still deletes the
+file (via the glob fallback) and removes the now-orphaned entry from the
+expiry zset so it doesn't get rescanned forever, but can't clean up the
+per-user index key in that case (logged, not fatal — that key has its own TTL
+and will self-expire).
 
 ---
 
@@ -219,7 +238,7 @@ route on an *existing* domain's concern goes inside that concern's factory
 function; a genuinely new concern gets its own `build_<x>_router(domain)`
 factory following the same shape. Pick the right auth dependency:
 - Producer-only write path → `Depends(verify_ingest_api_key)` (`app/core/security.py`).
-- End-user read/export path → `Depends(require_audit_action("read"))` or `Depends(require_audit_action("export"))` — these are independently gated by the token's `actions` claim, so don't reuse one for the other. Always read `org_id`/`retention_days` off `claims`, never from a request parameter — those two must never be client-widenable.
+- End-user read/export path → `Depends(require_audit_action(domain, "read"))` or `Depends(require_audit_action(domain, "export"))` — these are independently gated by the token's `actions` claim, so don't reuse one for the other. Always read `org_id`/`retention_days` off `claims`, never from a request parameter — those two must never be client-widenable.
 - If you add a new tag/route group, add a matching entry to `OPENAPI_TAGS` in `app/swagger_schemas.py` (imported into `main.py`) so `/docs` documents which auth scheme it uses — that's the single least-obvious thing about this API (two schemes on different route groups).
 
 ---
@@ -229,11 +248,11 @@ factory following the same shape. Pick the right auth dependency:
 - `src/shared/models/audit/base.py` — `BaseAuditEvent` (every domain's event model inherits this).
 - `src/shared/models/audit/session_audit.py` — `SessionAuditEvent`, the `sessions` domain's event model.
 - `src/shared/audit/client.py` — `AuditClient` (batching/retry/drop).
-- `src/shared/audit/session_audit_writer.py` — `SessionAuditWriter` (session/node/event → `SessionAuditEvent` translation, write-once lifecycle).
+- `src/shared/audit/writers/{base.py,session_writer.py}` — `BaseAuditWriter` (shared `ABC`/`Generic[T]` base) and `SessionAuditWriter` (session/node/event → `SessionAuditEvent` translation, write-once lifecycle).
 - `src/crew/services/graph/session_audit_provider.py` — `crew`'s dispatch point.
 - `src/django_app/tables/views/audit_token_views.py` — token minting.
 - `src/auditor/app/main.py`, `controllers/*.py`, `core/security.py` — the service itself.
-- `src/auditor/app/domains/base.py`, `domains/registry.py`, `domains/README.md` — the audit-domain abstraction (see `wiki/services/auditor.md` for the full code map).
+- `src/auditor/app/domains/base.py`, `domains/registry.py` — the audit-domain abstraction (`AuditDomain`, `ApiSpec`, `ScopingPolicy`, the per-domain registry; see `wiki/services/auditor.md` for the full code map).
 - `src/auditor/app/domains/sessions/` — the `sessions` domain: `fields.py` (field catalog), `computed.py` (`duration`), `expansion.py` (match-scope), `index.py`/`mappings/` (OpenSearch index), `domain.py` (assembles the `AuditDomain`), `docs.py` (sessions-specific swagger content).
 - `src/auditor/app/repositories/{base,opensearch_repository,factory}.py` — the backend-swap seam.
 - `src/auditor/app/repositories/compiler.py` — `QueryCompiler`: FilterNode AST → OpenSearch DSL.
