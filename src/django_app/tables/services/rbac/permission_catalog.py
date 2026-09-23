@@ -153,6 +153,14 @@ RESOURCE_TYPE_METADATA = [
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
+    {
+        "code": ResourceType.PERSISTENT_DATA.value,
+        "label": "Persistent Data",
+        "group": "workspace",
+        "description": "Key-value tables that flows read and write across runs",
+        "applicable_actions": ["create", "read", "update", "delete", "use"],
+        "platform_actions": [],
+    },
 ]
 
 
@@ -274,6 +282,12 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("webhooks", "read"),),
         "update": (("webhooks", "read"),),
         "delete": (("webhooks", "read"),),
+    },
+    ResourceType.PERSISTENT_DATA.value: {
+        "create": (("persistent_data", "read"),),
+        "update": (("persistent_data", "read"),),
+        "delete": (("persistent_data", "read"),),
+        "use": (("persistent_data", "read"),),
     },
 }
 
