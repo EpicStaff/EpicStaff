@@ -67,6 +67,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "search": Permission.READ,
         "download_zip": Permission.EXPORT,
         "upload": Permission.CREATE,
+        # Served by tables.asgi_upload (raw ASGI), gated through this viewset.
+        "upload_stream": Permission.CREATE,
         "mkdir": Permission.CREATE,
         "add_to_graph": Permission.CREATE,
         "rename": Permission.UPDATE,

@@ -489,3 +489,23 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class StorageQuotaExceeded(CustomAPIExeption):
+    status_code = 413
+    default_detail = "Storage quota exceeded for this organization."
+    default_code = "storage_quota_exceeded"
+
+
+class UploadTooLarge(CustomAPIExeption):
+    status_code = 413
+    default_detail = "Uploaded file is too large."
+    default_code = "upload_too_large"
+
+
+class UploadFailedError(CustomAPIExeption):
+    """Catch-all for unexpected streaming-upload failures; 4xx so nothing 5xx reaches the wire."""
+
+    status_code = 400
+    default_detail = "Upload failed."
+    default_code = "upload_failed"

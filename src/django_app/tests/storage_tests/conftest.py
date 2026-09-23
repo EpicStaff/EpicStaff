@@ -36,6 +36,17 @@ def org_user(db, org):
 
 
 @pytest.fixture
+def viewer_org_user(db, org):
+    """Org member whose role grants FILES:READ but not FILES:CREATE."""
+    role = Role.objects.get(name="Viewer", is_built_in=True, org__isnull=True)
+    user = get_user_model().objects.create_user(
+        email="viewer@example.com",
+        password="TestPass123!",
+    )
+    return OrganizationUser.objects.create(user=user, org=org, role=role)
+
+
+@pytest.fixture
 def second_org(db):
     return Organization.objects.create(name="second-org")
 

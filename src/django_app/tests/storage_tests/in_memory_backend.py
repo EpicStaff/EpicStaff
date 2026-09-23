@@ -67,6 +67,31 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         self._objects[full_path] = (content, datetime.now(timezone.utc))
         return UploadResult(path=path, size=len(content))
 
+    async def stream_upload(self, path: str, chunk_aiter, *, part_size, size_guard=None) -> int:
+        """Async twin of S3StorageBackend.stream_upload; nothing is stored on abort."""
+        full_path = self._full_path(path)
+        buffer = bytearray()
+        for_guard = 0
+        async for chunk in chunk_aiter:
+            buffer.extend(chunk)
+            for_guard += len(chunk)
+            if size_guard is not None:
+                size_guard(for_guard)
+        self._objects[full_path] = (bytes(buffer), datetime.now(timezone.utc))
+        return len(buffer)
+
+    async def delete_object_async(self, path: str) -> None:
+        self._objects.pop(self._full_path(path), None)
+
+    def put_bytes(self, path: str, data: bytes) -> int:
+        self._objects[self._full_path(path)] = (bytes(data), datetime.now(timezone.utc))
+        return len(data)
+
+    def promote_object(self, source_path: str, destination_path: str) -> None:
+        self._objects[self._full_path(destination_path)] = self._objects.pop(
+            self._full_path(source_path)
+        )
+
     def download(self, path: str) -> bytes:
         full_path = self._full_path(path)
         if full_path not in self._objects:

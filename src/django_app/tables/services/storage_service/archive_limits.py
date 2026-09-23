@@ -22,6 +22,14 @@ class ArchiveExtractionGuard:
         if self.entries_seen > self.max_entries:
             raise ArchiveLimitExceeded(f"Archive contains more than {self.max_entries} entries")
 
+    def account_bytes(self, n: int, name: str) -> None:
+        """Account n decompressed bytes as they stream, rejecting past the cap."""
+        self.bytes_read += n
+        if self.bytes_read > self.max_total_bytes:
+            raise ArchiveLimitExceeded(
+                f"Archive member '{name}' pushes the extraction past {self.max_total_bytes} bytes"
+            )
+
     def read_member(self, member_file, name: str) -> bytes:
         """Read one member, stopping as soon as it would outgrow the remaining budget."""
         remaining = self.max_total_bytes - self.bytes_read
@@ -43,6 +51,24 @@ class ArchiveExtractionGuard:
             parts.append(chunk)
 
         return b"".join(parts)
+
+
+class GuardedMemberReader:
+    """File-like wrapper over one archive member; accrues guard bytes on read.
+
+    The member is streamed to storage chunk-by-chunk (never buffered), so a
+    zip-bomb member is rejected mid-read instead of after full extraction."""
+
+    def __init__(self, member_file, guard: ArchiveExtractionGuard, name: str):
+        self._f = member_file
+        self._guard = guard
+        self._name = name
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._f.read(size)
+        if chunk:
+            self._guard.account_bytes(len(chunk), self._name)
+        return chunk
 
 
 def default_guard() -> ArchiveExtractionGuard:

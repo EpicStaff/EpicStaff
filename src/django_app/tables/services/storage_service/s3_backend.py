@@ -1,6 +1,8 @@
+import asyncio
 import io
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -37,7 +39,119 @@ class S3StorageBackend(AbstractStorageBackend):
             endpoint_url=endpoint_url,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
+            config=Config(connect_timeout=10, read_timeout=300),
         )
+
+    async def stream_upload(self, path, chunk_aiter, *, part_size, size_guard=None) -> int:
+        """Stream chunks into S3 holding at most two parts: one filling, one in flight.
+
+        The next part is received while the previous one uploads, so the client and
+        MinIO legs overlap. A body that never fills a part goes up as one PutObject:
+        multipart can't carry an empty object and costs extra round-trips.
+        size_guard(total) raises to abort; any error aborts the multipart."""
+        full_key = self._full_path(path)
+        total = 0
+        buffer = bytearray()
+        upload_id: str | None = None
+        parts: list[dict] = []
+        in_flight: asyncio.Future | None = None
+
+        def put_part(number: int, body: bytes) -> dict:
+            resp = self.client.upload_part(
+                Bucket=self.bucket_name,
+                Key=full_key,
+                UploadId=upload_id,
+                PartNumber=number,
+                Body=body,
+            )
+            return {"ETag": resp["ETag"], "PartNumber": number}
+
+        async def ship() -> None:
+            nonlocal upload_id, in_flight, buffer
+            if upload_id is None:
+                mpu = await asyncio.to_thread(
+                    self.client.create_multipart_upload, Bucket=self.bucket_name, Key=full_key
+                )
+                upload_id = mpu["UploadId"]
+            # Settle the previous part before copying this one out, so a third
+            # part-sized buffer never exists.
+            if in_flight is not None:
+                parts.append(await in_flight)
+                in_flight = None
+            body = bytes(buffer)
+            buffer = bytearray()
+            in_flight = asyncio.ensure_future(asyncio.to_thread(put_part, len(parts) + 1, body))
+
+        try:
+            async for chunk in chunk_aiter:
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if size_guard is not None:
+                    size_guard(total)
+                view = memoryview(chunk)
+                while view:
+                    room = part_size - len(buffer)
+                    buffer += view[:room]
+                    view = view[room:]
+                    if len(buffer) == part_size:
+                        await ship()
+
+            if upload_id is None:
+                await asyncio.to_thread(
+                    self.client.put_object,
+                    Bucket=self.bucket_name,
+                    Key=full_key,
+                    Body=bytes(buffer),
+                )
+                return total
+
+            if buffer:
+                await ship()
+            parts.append(await in_flight)
+            in_flight = None
+            await asyncio.to_thread(
+                self.client.complete_multipart_upload,
+                Bucket=self.bucket_name,
+                Key=full_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        except BaseException:
+            if in_flight is not None:
+                # A thread can't be cancelled: let the part land first, or it
+                # outlives the abort as an orphan part.
+                await asyncio.gather(in_flight, return_exceptions=True)
+            if upload_id is not None:
+                await asyncio.to_thread(
+                    self.client.abort_multipart_upload,
+                    Bucket=self.bucket_name,
+                    Key=full_key,
+                    UploadId=upload_id,
+                )
+            raise
+        return total
+
+    async def delete_object_async(self, path) -> None:
+        full_key = self._full_path(path)
+        await asyncio.to_thread(self.client.delete_object, Bucket=self.bucket_name, Key=full_key)
+
+    def put_bytes(self, path: str, data: bytes) -> int:
+        """Single PutObject; unlike upload() it skips the head_object round-trip."""
+        self.client.put_object(Bucket=self.bucket_name, Key=self._full_path(path), Body=data)
+        return len(data)
+
+    def promote_object(self, source_path: str, destination_path: str) -> None:
+        """Server-side replace of destination by source, then drop source.
+
+        The managed copy switches to UploadPartCopy past the 5 GB CopyObject limit."""
+        source_key = self._full_path(source_path)
+        self.client.copy(
+            {"Bucket": self.bucket_name, "Key": source_key},
+            self.bucket_name,
+            self._full_path(destination_path),
+        )
+        self.client.delete_object(Bucket=self.bucket_name, Key=source_key)
 
     def _full_path(self, path: str) -> str:
         """Prepend the organization prefix to a caller-provided path."""

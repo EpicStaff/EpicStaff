@@ -5,6 +5,7 @@ from collections.abc import Iterator
 
 from tables.services.storage_service.archive_limits import (
     ArchiveExtractionGuard,
+    GuardedMemberReader,
     default_guard,
 )
 from tables.services.storage_service.dataclasses import (
@@ -116,6 +117,59 @@ class AbstractStorageBackend(ABC):
                         if fobj:
                             yield safe_name, guard.read_member(fobj, member.name)
 
+            return
+
+        archive_file.seek(pos)
+        raise ValueError("Unsupported archive format — expected ZIP or TAR")
+
+    def iter_archive_members_streaming(
+        self, archive_file, guard: ArchiveExtractionGuard | None = None
+    ) -> Iterator[tuple[str, "GuardedMemberReader"]]:
+        """Yield (safe_name, GuardedMemberReader) per file member, streaming.
+
+        Mirrors _iter_archive_entries (encrypted/symlink reject + name sanitize)
+        but does not read member bytes here — the caller streams each reader to
+        storage before advancing to the next member (member stays open during
+        the yield)."""
+        pos = archive_file.tell()
+        guard = guard or default_guard()
+
+        if zipfile.is_zipfile(archive_file):
+            archive_file.seek(pos)
+            with zipfile.ZipFile(archive_file, "r") as zf:
+                for entry in zf.infolist():
+                    if entry.is_dir():
+                        continue
+                    if entry.flag_bits & 0x1:
+                        raise ValueError(
+                            f"Archive member is password-protected: {entry.filename!r}"
+                        )
+                    guard.account_entry()
+                    safe_name = self._sanitize_archive_member_name(entry.filename)
+                    with zf.open(entry, "r") as member_file:
+                        yield safe_name, GuardedMemberReader(member_file, guard, entry.filename)
+            return
+
+        archive_file.seek(pos)
+        try:
+            is_tar = tarfile.is_tarfile(archive_file)
+        except Exception:
+            is_tar = False
+
+        if is_tar:
+            archive_file.seek(pos)
+            with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
+                for member in tf.getmembers():
+                    if member.issym() or member.islnk():
+                        raise ValueError(
+                            f"Archive member is a symlink or hardlink: {member.name!r}"
+                        )
+                    if member.isfile():
+                        guard.account_entry()
+                        safe_name = self._sanitize_archive_member_name(member.name)
+                        fobj = tf.extractfile(member)
+                        if fobj:
+                            yield safe_name, GuardedMemberReader(fobj, guard, member.name)
             return
 
         archive_file.seek(pos)

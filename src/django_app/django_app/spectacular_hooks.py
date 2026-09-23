@@ -1,3 +1,5 @@
+from tables.constants.storage_constants import UPLOAD_STREAM_PATH
+
 TAG_MAP = [
     # Authentication
     ("api/auth/", "Authentication"),
@@ -197,4 +199,57 @@ def add_org_header_postprocessing_hook(result, generator, request, public, **kwa
             if not any(ORG_HEADER_SCHEME in entry for entry in security):
                 security.append({ORG_HEADER_SCHEME: []})
 
+    return result
+
+
+def add_stream_upload_postprocessing_hook(result, generator, request, public, **kwargs):
+    """Inject the streaming-upload endpoint into the schema.
+
+    It is a raw ASGI handler mounted in asgi.py (Django buffers whole bodies
+    before a view, so it cannot be a DRF view) — the generator never sees it,
+    yet it must be testable from Swagger like any other endpoint."""
+    result.setdefault("paths", {})[UPLOAD_STREAM_PATH] = {
+        "post": {
+            "operationId": "storage_upload_stream",
+            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "description": (
+                "Stream one file straight into storage: the raw body is the file, "
+                "proxied to MinIO in bounded memory. An archive (.zip/.tar*) up to "
+                "MAX_ARCHIVE_FILE_SIZE is unpacked into a new folder instead. "
+                "Bounded only by the organization storage quota."
+            ),
+            "parameters": [
+                {
+                    "in": "query",
+                    "name": "path",
+                    "required": False,
+                    "schema": {"type": "string"},
+                    "description": "Target directory, empty for the storage root.",
+                },
+                {
+                    "in": "query",
+                    "name": "filename",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "Target file name (routes archive vs flat file).",
+                },
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+                },
+            },
+            "responses": {
+                "200": {
+                    "description": "Uploaded.",
+                    "content": {"application/json": {"schema": {"type": "object"}}},
+                },
+                "400": {"description": "Blocked extension, bad archive or missing filename."},
+                "401": {"description": "Not authenticated."},
+                "403": {"description": "Missing FILES:CREATE in the active organization."},
+                "413": {"description": "Over the file/archive cap or the org storage quota."},
+            },
+        }
+    }
     return result
