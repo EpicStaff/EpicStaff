@@ -1,8 +1,3 @@
-from rbac.serializers.model_serializers import (
-    OrganizationSerializer,
-    OrganizationUserSerializer,
-)
-
 from .embedding_serializers import (
     EmbeddingConfigSerializer,
     EmbeddingModelSerializer,
@@ -138,8 +133,6 @@ __all__ = [
     "LabelSerializer",
     "McpToolSerializer",
     "OpenAIRealtimeConfigSerializer",
-    "OrganizationSerializer",
-    "OrganizationUserSerializer",
     "ProviderSerializer",
     "PythonCodeResultSerializer",
     "PythonCodeSerializer",
