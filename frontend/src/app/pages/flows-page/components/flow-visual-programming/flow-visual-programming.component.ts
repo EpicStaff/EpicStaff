@@ -103,6 +103,7 @@ import {
     getNodeDiff,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
+    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
@@ -151,7 +152,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
+        const current = toDirtyComparableFlowState(this.currentFlowState());
+        const saved = toDirtyComparableFlowState(this.savedFlowState());
+        return JSON.stringify(current) !== JSON.stringify(saved);
     });
 
     public isSaving = signal(false);

@@ -403,6 +403,10 @@ describe('computeAutoArrangePositions', () => {
         // Verified against the pre-1b (all-or-nothing) function: child0/child2 would NOT match
         // their row centres there either, because a single infeasible pair (child1 vs its
         // neighbour) used to `return null` for the whole table, not just drop child1.
+        //
+        // CHANGED by the nearest-free-band fix: child1 (dropped) already overlapped child2's row
+        // pre-fix, just unasserted — child2 now relocates off it instead of drawing over it. See
+        // the hand-off report for the pre-fix values.
         const table = tableNode('table', NodeType.TABLE, 3);
         const nodes = [
             makeNode('start', NodeType.START),
@@ -417,13 +421,14 @@ describe('computeAutoArrangePositions', () => {
             conn('c2', 'table', tableRowRole(NodeType.TABLE, 1), 'child1'),
             conn('c3', 'table', tableRowRole(NodeType.TABLE, 2), 'child2'),
         ];
+        const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
         const positions = computeAutoArrangePositions(nodes, connections);
         const tableTop = positions.get('table')!.y;
 
         expect(positions.get('child0')!.y + 30).toBe(tableTop + getRowPortCenterYFromTop(0, 0, NodeType.TABLE));
-        expect(positions.get('child2')!.y + 30).toBe(tableTop + getRowPortCenterYFromTop(0, 2, NodeType.TABLE));
         expect(positions.get('child1')!.y + 100).not.toBe(tableTop + getRowPortCenterYFromTop(0, 1, NodeType.TABLE));
+        assertNoOverlapWithinAnyColumn(['child0', 'child1', 'child2'], positions, nodeMap);
     });
 
     it('drops a table child from row-pinning once rank repair pushes it past table+1', () => {
@@ -728,5 +733,44 @@ describe('computeAutoArrangePositions', () => {
             cdtTop + getRowPortCenterYFromTop(0, 0, NodeType.CLASSIFICATION_TABLE)
         );
         expect(cdtTop + CDT_INPUT_PORT_CENTER_Y_OFFSET).toBe(positions.get('p')!.y + 30);
+    });
+
+    it('relocates a pinned node to the nearest free band when it lands inside an unrelated settled table', () => {
+        // Regression (flow 6): cdt10 (dropped from cdt8's row pinning, too tall for the pitch)
+        // lands flush against pn11 with zero slack. python13, row-pinned from a DIFFERENT table
+        // into the same layer, lands inside cdt10's band — see the hand-off report for pre-fix values.
+        const cdt8 = tableNode('cdt8', NodeType.CLASSIFICATION_TABLE, 4);
+        const cdt10 = tableNode('cdt10', NodeType.CLASSIFICATION_TABLE, 5);
+        const tableY = tableNode('tableY', NodeType.CLASSIFICATION_TABLE, 3);
+        const nodes = [
+            makeNode('start', NodeType.START),
+            cdt8,
+            makeNode('pn12', NodeType.PYTHON, { height: 60 }),
+            makeNode('pn5', NodeType.PYTHON, { height: 60 }),
+            makeNode('pn11', NodeType.PYTHON, { height: 60 }),
+            cdt10,
+            tableY,
+            makeNode('python13', NodeType.PYTHON, { height: 60 }),
+        ];
+        const connections = [
+            conn('c1', 'start', 'out1', 'cdt8'),
+            conn('c2', 'cdt8', tableRowRole(NodeType.CLASSIFICATION_TABLE, 0), 'pn12'),
+            conn('c3', 'cdt8', tableRowRole(NodeType.CLASSIFICATION_TABLE, 1), 'pn5'),
+            conn('c4', 'cdt8', tableRowRole(NodeType.CLASSIFICATION_TABLE, 2), 'pn11'),
+            conn('c5', 'cdt8', tableRowRole(NodeType.CLASSIFICATION_TABLE, 3), 'cdt10'),
+            conn('c6', 'start', 'out2', 'tableY'),
+            conn('c7', 'tableY', tableRowRole(NodeType.CLASSIFICATION_TABLE, 0), 'python13'),
+        ];
+        const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+        const positions = computeAutoArrangePositions(nodes, connections);
+
+        assertNoOverlapWithinAnyColumn(
+            nodes.map((n) => n.id),
+            positions,
+            nodeMap
+        );
+        const cdt10Bottom = positions.get('cdt10')!.y + cdt10.size.height;
+        expect(positions.get('python13')!.y).toBe(cdt10Bottom + 50);
     });
 });

@@ -4,7 +4,35 @@ import { NodeType } from '../enums/node-type';
 import { ConnectionModel } from '../models/connection.model';
 import { NodeModel } from '../models/node.model';
 import { ViewPort } from '../models/port.model';
+import { getCollisionBounds } from './node-placement.utils';
 import { computeSegmentAvoidanceWaypoints, getPortPosition, pathSelfIntersects } from './segment-avoidance.helper';
+
+// Mirrors the module's private getNodeRect/segmentIntersectsRect (ROUTING_PAD=15) so tests can
+// assert against the real collision rect, not just the raw node body.
+const ROUTING_PAD = 15;
+
+function getNodeRect(n: NodeModel) {
+    const b = getCollisionBounds(n);
+    return {
+        left: n.position.x + b.offsetX - ROUTING_PAD,
+        top: n.position.y + b.offsetY - ROUTING_PAD,
+        right: n.position.x + b.offsetX + b.width + ROUTING_PAD,
+        bottom: n.position.y + b.offsetY + b.height + ROUTING_PAD,
+    };
+}
+
+function segmentIntersectsNodeRect(a: IPoint, b: IPoint, n: NodeModel): boolean {
+    const r = getNodeRect(n);
+    if (a.x === b.x) {
+        if (a.x < r.left || a.x > r.right) return false;
+        return Math.max(a.y, b.y) >= r.top && Math.min(a.y, b.y) <= r.bottom;
+    }
+    if (a.y === b.y) {
+        if (a.y < r.top || a.y > r.bottom) return false;
+        return Math.max(a.x, b.x) >= r.left && Math.min(a.x, b.x) <= r.right;
+    }
+    return false;
+}
 
 // Axis-aligned segment vs. a node's true (unpadded) body — used to assert the route never
 // visually cuts through a node, as opposed to grazing its routing-collision padding.
@@ -403,6 +431,21 @@ describe('computeSegmentAvoidanceWaypoints', () => {
     });
 });
 
+describe('getPortPosition — f-flow anchor offset (EST-3346)', () => {
+    it('offsets a table row output port +7 (port-circle radius) past the node edge', () => {
+        const ports = [{ id: 'cdt8_decision-default', role: 'decision-default', position: 'right' }];
+        const cdt8 = cdtTableNode('cdt8', 2180, 490, 540, ['a', 'b', 'c', 'd', 'e', 'f', 'g'], ports);
+
+        expect(getPortPosition(cdt8, ports[0] as unknown as ViewPort)).toEqual({ x: 2517, y: 1000 });
+    });
+
+    it('offsets a default-node left input port -5 (radius 7 minus the 2px wrapper inset)', () => {
+        const end = node('end', 3560, 596, 330, 60, [{ id: 'end_in', position: 'left' }]);
+
+        expect(getPortPosition(end, end.ports![0] as unknown as ViewPort)).toEqual({ x: 3555, y: 626 });
+    });
+});
+
 describe('getPortPosition — plain Decision Table row geometry', () => {
     it('resolves a DT output port by group_name after a reorder, not by its stored ports-array position', () => {
         // Ports were generated when 'alpha' was order 0 and 'beta' was order 1 — that array
@@ -428,7 +471,8 @@ describe('getPortPosition — plain Decision Table row geometry', () => {
 
         const inputPort = ports[0] as unknown as ViewPort;
 
-        expect(getPortPosition(dt, inputPort)).toEqual({ x: 100, y: 228 });
+        // x: 93 is f-flow's port-element anchor (7px left of the node edge for a table input port) — not a bug.
+        expect(getPortPosition(dt, inputPort)).toEqual({ x: 93, y: 228 });
     });
 });
 
@@ -493,6 +537,78 @@ describe('computeSegmentAvoidanceWaypoints — flow-4 regression (python #3 -> D
     );
 });
 
+describe('computeSegmentAvoidanceWaypoints — buildVDetour direction tie-break', () => {
+    it('prefers the forward-side bypass over a nearer backward one when both clear the blocker', () => {
+        const source = node('source', 0, 300, 100, 60, [{ id: 'source_out', position: 'right' }]);
+        const target = node('target', 400, 0, 100, 60, [{ id: 'target_in', position: 'left' }]);
+        // Blocker's x-span [190,350] straddles baseX=250 off-centre (span midpoint 270), so the
+        // left bypass (182) is nearer than the right bypass (358) even though both clear it.
+        const blocker = node('blocker', 220, 130, 100, 90);
+
+        const connection = {
+            id: 'conn-1',
+            sourceNodeId: 'source',
+            targetNodeId: 'target',
+            sourcePortId: 'source_out',
+            targetPortId: 'target_in',
+        } as unknown as ConnectionModel;
+
+        const sourcePt = pt(100, 330);
+        const targetPt = pt(400, 30);
+        const existingWaypoints: IPoint[] = [pt(250, 330), pt(250, 30)];
+
+        const waypoints = computeSegmentAvoidanceWaypoints(connection, [source, target, blocker], existingWaypoints);
+
+        expect(waypoints).not.toBeNull();
+
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+        const pathDir = Math.sign(targetPt.x - sourcePt.x) || 1;
+
+        // A buildVDetour bypass leaves a `baseX -> detourX -> detourX -> baseX` signature in the
+        // flattened path; the bump (detourX vs. baseX) must not run against pathDir.
+        for (let i = 0; i + 3 < fullPath.length; i++) {
+            const [p0, p1, p2, p3] = fullPath.slice(i, i + 4);
+            if (p0.x === p3.x && p1.x === p2.x && p1.x !== p0.x) {
+                expect((p1.x - p0.x) * pathDir).toBeGreaterThanOrEqual(0);
+            }
+        }
+    });
+
+    it('still returns the backward bypass when it is the only side that clears every blocker', () => {
+        const source = node('source', 0, 300, 100, 60, [{ id: 'source_out', position: 'right' }]);
+        const target = node('target', 400, 0, 100, 60, [{ id: 'target_in', position: 'left' }]);
+        const blocker = node('blocker', 220, 130, 100, 90);
+        // Two extra nodes wall off the right bypass column (x≈358) in two slices, so only the
+        // backward left bypass clears everything — the fix must not veto it to null.
+        const rightWallTop = node('right-wall-top', 340, 20, 60, 100);
+        const rightWallBottom = node('right-wall-bottom', 340, 200, 60, 80);
+
+        const connection = {
+            id: 'conn-1',
+            sourceNodeId: 'source',
+            targetNodeId: 'target',
+            sourcePortId: 'source_out',
+            targetPortId: 'target_in',
+        } as unknown as ConnectionModel;
+
+        const sourcePt = pt(100, 330);
+        const targetPt = pt(400, 30);
+        const existingWaypoints: IPoint[] = [pt(250, 330), pt(250, 30)];
+
+        const waypoints = computeSegmentAvoidanceWaypoints(
+            connection,
+            [source, target, blocker, rightWallTop, rightWallBottom],
+            existingWaypoints
+        );
+
+        expect(waypoints).not.toBeNull();
+
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+        const bump = fullPath.find((p, i) => i > 0 && i < fullPath.length - 1 && p.x === 182);
+        expect(bump).toBeDefined();
+    });
+});
+
 describe('computeSegmentAvoidanceWaypoints — CDT Default row to an End node below and right', () => {
     it('routes underneath the blockers instead of climbing back over the whole table', () => {
         const cdtPorts = [
@@ -545,6 +661,54 @@ describe('computeSegmentAvoidanceWaypoints — CDT Default row to an End node be
         for (let i = 1; i < fullPath.length; i++) {
             for (const n of otherNodes) {
                 expect(segmentEntersBody(fullPath[i - 1], fullPath[i], n)).toBe(false);
+            }
+        }
+    });
+});
+
+describe('computeSegmentAvoidanceWaypoints — flow-6 regression (CDT#8 Default -> End, lane hidden by two blockers)', () => {
+    it('clears a second node behind the nearest blocker instead of picking a lane that only clears the nearest one', () => {
+        // 7 route rows (not flow-6's exact row count) so the Default port sits at y=1000, right
+        // against cdt10's padded bottom — this is what makes the unfixed code's two single-blocker
+        // candidates (cdt10-only vs python13-only) ping-pong forever instead of ever settling.
+        const cdt8 = cdtTableNode(
+            'cdt8',
+            2180,
+            490,
+            540,
+            ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+            [{ id: 'cdt8_decision-default', role: 'decision-default', position: 'right' }]
+        );
+        const cdt10 = cdtTableNode('cdt10', 2860, 610, 360, ['a', 'b', 'c'], []);
+        const python13 = node('python13', 2860, 1020, 330, 60);
+        const end = node('end', 3560, 596, 330, 60, [{ id: 'end_in', position: 'left' }]);
+
+        const allNodes = [cdt8, cdt10, python13, end];
+
+        const connection = {
+            id: 'conn-default-end',
+            sourceNodeId: 'cdt8',
+            targetNodeId: 'end',
+            sourcePortId: 'cdt8_decision-default',
+            targetPortId: 'end_in',
+        } as unknown as ConnectionModel;
+
+        const waypoints = computeSegmentAvoidanceWaypoints(connection, allNodes, undefined);
+
+        expect(waypoints).not.toBeNull();
+
+        const sourcePt = getPortPosition(cdt8, cdt8.ports![0] as unknown as ViewPort);
+        const targetPt = getPortPosition(end, end.ports![0] as unknown as ViewPort);
+        // x values are f-flow's port-element anchors: +7 for a table row output, -5 for a default-node left input — not a bug.
+        expect(sourcePt).toEqual({ x: 2517, y: 1000 });
+        expect(targetPt).toEqual({ x: 3555, y: 626 });
+
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+
+        const otherNodes = allNodes.filter((n) => n.id !== 'cdt8' && n.id !== 'end');
+        for (let i = 1; i < fullPath.length; i++) {
+            for (const n of otherNodes) {
+                expect(segmentIntersectsNodeRect(fullPath[i - 1], fullPath[i], n)).toBe(false);
             }
         }
     });

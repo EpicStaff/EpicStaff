@@ -15,6 +15,9 @@ const ROUTING_PAD = 15;
 const TABLE_TOP_CLEARANCE = 68;
 const TABLE_TARGET_ENTRY_PAD = 10;
 const SOURCE_EXIT_CLEARANCE = 40;
+const PORT_ELEMENT_RADIUS = 7;
+const DEFAULT_NODE_PORT_INSET = 2;
+const DEFAULT_NODE_PORT_OFFSET = PORT_ELEMENT_RADIUS - DEFAULT_NODE_PORT_INSET;
 
 function getNodeRect(node: NodeModel) {
     const b = getCollisionBounds(node);
@@ -39,18 +42,17 @@ export function getPortPosition(node: NodeModel, port: ViewPort | undefined): IP
         if (port.role === 'table-in') {
             const inputOffset =
                 node.type === NodeType.TABLE ? DT_INPUT_PORT_CENTER_Y_OFFSET : CDT_INPUT_PORT_CENTER_Y_OFFSET;
-            result = { x, y: y + inputOffset };
+            result = { x: x - PORT_ELEMENT_RADIUS, y: y + inputOffset };
         } else {
             const rowIndex = resolveRowIndex(node, port.role);
+            const rowX = x + width + PORT_ELEMENT_RADIUS;
             result =
-                rowIndex !== null
-                    ? { x: x + width, y: getRowPortCenterY(node, rowIndex) }
-                    : { x: x + width, y: y + height / 2 };
+                rowIndex !== null ? { x: rowX, y: getRowPortCenterY(node, rowIndex) } : { x: rowX, y: y + height / 2 };
         }
     } else {
         switch (port?.position) {
             case 'right':
-                result = { x: x + width, y: y + height / 2 };
+                result = { x: x + width + DEFAULT_NODE_PORT_OFFSET, y: y + height / 2 };
                 break;
             case 'top':
                 result = { x: x + width / 2, y };
@@ -59,7 +61,7 @@ export function getPortPosition(node: NodeModel, port: ViewPort | undefined): IP
                 result = { x: x + width / 2, y: y + height };
                 break;
             default:
-                result = { x, y: y + height / 2 };
+                result = { x: x - DEFAULT_NODE_PORT_OFFSET, y: y + height / 2 };
                 break;
         }
     }
@@ -248,6 +250,35 @@ function pathCost(pts: IPoint[]): number {
     return bends * 10_000 + manhattan;
 }
 
+// Pushes a horizontal lane past every node it would still cross (not just the blocker that
+// picked it), moving further in the same direction each time. Bounded by node count; if it
+// can't converge, returns the original y unchanged and lets the caller's scoring reject it.
+function widenLaneClear(
+    routeY: number,
+    goingUp: boolean,
+    xMin: number,
+    xMax: number,
+    allNodes: NodeModel[],
+    excludeIds: string[]
+): number {
+    let y = routeY;
+
+    for (let i = 0; i < allNodes.length; i++) {
+        const hit = allNodes.find((n) => {
+            if (excludeIds.includes(n.id) || n.type === NodeType.NOTE) return false;
+            const r = getNodeRect(n);
+            return r.nLeft < xMax && r.nRight > xMin && y >= r.nTop && y <= r.nBottom;
+        });
+
+        if (!hit) return y;
+
+        const r = getNodeRect(hit);
+        y = goingUp ? r.nTop - GAP : r.nBottom + GAP;
+    }
+
+    return routeY;
+}
+
 function buildHDetour(
     path: IPoint[],
     segIdx: number,
@@ -290,8 +321,14 @@ function buildHDetour(
 
     const valid: IPoint[][] = [];
     const currentScore = countPathIntersections(path, allNodes, excludeIds);
+    const xMin = Math.min(left.x, right.x);
+    const xMax = Math.max(left.x, right.x);
 
-    for (const routeY of [br.nTop - GAP, br.nBottom + GAP]) {
+    for (const [initialRouteY, goingUp] of [
+        [br.nTop - GAP, true],
+        [br.nBottom + GAP, false],
+    ] as [number, boolean][]) {
+        const routeY = widenLaneClear(initialRouteY, goingUp, xMin, xMax, allNodes, excludeIds);
         const candidate = simplifyRoute([
             ...path.slice(0, replaceStart),
             { x: left.x, y: left.y },
@@ -381,11 +418,13 @@ function buildVDetour(
     // source/target, producing geometrically invalid near-port bypass legs.
     if (entryY < ya || entryY > yb || exitY < ya || exitY > yb) return null;
 
-    // Two candidates: just outside each side of the collision bounds.
-    // Always try right first so that multiple blockers on the same segment
-    // all bypass to the same side — prevents staircase from alternating directions.
+    // Two candidates: just outside each side of the collision bounds. Below, candidates are
+    // ranked by pathDir first (a bypass must not run against the connection's overall direction)
+    // then by distance — picking a consistent side still avoids an alternating staircase.
     const rightX = nRight + PAD;
     const leftX = nLeft - PAD;
+
+    const pathDir = Math.sign(path[path.length - 1].x - path[0].x) || 1;
 
     const currentScore = countPathIntersections(path, allNodes, excludeIds);
 
@@ -407,17 +446,20 @@ function buildVDetour(
             : null;
     };
 
-    const validCandidates: Array<{ result: IPoint[]; dist: number }> = [];
+    const validCandidates: Array<{ result: IPoint[]; dist: number; backward: boolean }> = [];
     for (const [detourX, dist] of [
         [rightX, Math.abs(rightX - baseX)],
         [leftX, Math.abs(leftX - baseX)],
     ] as [number, number][]) {
         const r = makeBypass(detourX);
-        if (r) validCandidates.push({ result: r, dist });
+        if (r) validCandidates.push({ result: r, dist, backward: (detourX - baseX) * pathDir < 0 });
     }
 
     if (validCandidates.length === 0) return null;
-    return validCandidates.sort((a, b) => a.dist - b.dist)[0].result;
+
+    // Rank direction-consistency first, distance second — a candidate that runs against the
+    // connection's overall direction is only used when it is the sole option that clears the blocker.
+    return validCandidates.sort((a, b) => Number(a.backward) - Number(b.backward) || a.dist - b.dist)[0].result;
 }
 
 function buildForwardVerticalStackRoute(
@@ -564,6 +606,9 @@ export function computeSegmentAvoidanceWaypoints(
         if (sourcePort?.position !== 'right') return true;
         if (points.length < 3) return true;
 
+        // Starting at 1 skips the segment attached to the port, so a wire can still drop flush
+        // along a source table's edge. Starting at 0 alone isn't the fix — it would reject those
+        // routes with no replacement (null here means "keep waypoints", which auto-arrange just cleared).
         for (let i = 1; i < points.length - 1; i++) {
             const a = points[i];
             const b = points[i + 1];
@@ -944,7 +989,10 @@ export function computeSegmentAvoidanceWaypoints(
         return computeSegmentAvoidanceWaypoints(connection, allNodes, undefined, false);
     }
 
-    return null; // no improvement — caller must keep existing waypoints unchanged
+    // No improvement. After auto-arrange there are no existing waypoints to keep (it clears them
+    // first) — null here means f-flow draws its own naive path straight through any obstacle, so
+    // a guard must never be added above without a guaranteed replacement route.
+    return null;
 }
 
 export function getConnectionRenderedPath(connection: ConnectionModel, allNodes: NodeModel[]): IPoint[] | null {

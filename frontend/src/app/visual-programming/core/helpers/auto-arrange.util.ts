@@ -748,6 +748,35 @@ function layoutSingleComponent(
         });
     };
 
+    // Used when neither a pin's/alignment's proposed nor swept slot is free: non-overlap is a hard
+    // rule, so drop the node into the nearest open band instead of drawing it over a settled
+    // sibling. `lowestBottom + SIBLING_GAP` is always free, guaranteeing the search terminates.
+    const findNearestFreeBand = (nodeId: string, layerIds: string[], proposedTop: number): number => {
+        const height = nHeight(nodeMap.get(nodeId));
+        const candidates = new Set<number>();
+        let lowestBottom = proposedTop;
+        for (const otherId of layerIds) {
+            if (otherId === nodeId) continue;
+            const other = positions.get(otherId);
+            if (!other) continue;
+            const otherBottom = other.y + nHeight(nodeMap.get(otherId));
+            lowestBottom = Math.max(lowestBottom, otherBottom);
+            if (proposedTop >= otherBottom || other.y >= proposedTop + height) continue;
+            candidates.add(otherBottom + SIBLING_GAP);
+            candidates.add(other.y - SIBLING_GAP - height);
+        }
+        candidates.add(lowestBottom + SIBLING_GAP);
+
+        let best: number | null = null;
+        for (const candidate of candidates) {
+            if (overlapsLayerSibling(nodeId, layerIds, candidate)) continue;
+            const dist = Math.abs(candidate - proposedTop);
+            const bestDist = best === null ? Infinity : Math.abs(best - proposedTop);
+            if (dist < bestDist || (dist === bestDist && candidate > best!)) best = candidate;
+        }
+        return best ?? lowestBottom + SIBLING_GAP;
+    };
+
     for (const layer of [...idsPerLayer.keys()].sort((a, b) => a - b)) {
         const layerIds = idsPerLayer.get(layer)!;
 
@@ -796,9 +825,12 @@ function layoutSingleComponent(
             for (const nodeId of revertOrder) {
                 const swept = sweptTop.get(nodeId);
                 if (swept === undefined || !overlapsLayerSibling(nodeId, layerIds, positions.get(nodeId)!.y)) continue;
-                // Nothing to gain when the sweep's own slot is occupied too — keep the straight wire.
-                if (overlapsLayerSibling(nodeId, layerIds, swept)) continue;
-                positions.set(nodeId, { ...positions.get(nodeId)!, y: swept });
+                // The sweep's own slot is occupied too — neither straight-wire option is free,
+                // so relocate rather than silently keep the overlap.
+                const target = overlapsLayerSibling(nodeId, layerIds, swept)
+                    ? findNearestFreeBand(nodeId, layerIds, positions.get(nodeId)!.y)
+                    : swept;
+                positions.set(nodeId, { ...positions.get(nodeId)!, y: target });
                 sweptTop.delete(nodeId);
                 reverted = true;
                 break;

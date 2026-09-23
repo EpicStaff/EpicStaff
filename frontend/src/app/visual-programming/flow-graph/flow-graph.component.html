@@ -141,7 +141,7 @@
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
-                    [fOffset]="connection.userAdjustedWaypoints ? 0 : 30"
+                    [fOffset]="connection.userAdjustedWaypoints || connection.waypoints?.length ? 0 : 30"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
