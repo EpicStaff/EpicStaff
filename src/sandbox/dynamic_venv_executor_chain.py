@@ -139,6 +139,7 @@ class CreateVenvHandler(AbstractHandler):
         predefined_libraries = {
             "/app/src/shared/dotdict",
             "/app/src/shared/epicstaff_secrets",
+            "/app/src/shared/epicstaff_common",
         }  # TODO: deal with hard coded path
         if context.get("use_storage"):
             predefined_libraries.add("/app/src/shared/epicstaff_storage")
