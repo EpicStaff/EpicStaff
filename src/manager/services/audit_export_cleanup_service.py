@@ -63,11 +63,11 @@ class ExportCleanupService:
 
     async def _delete_job(self, job_id: str):
         key = f"{JOB_KEY_PREFIX}{job_id}"
-        file_path, org_id, user_id = await self.redis_client.hmget(
-            key, "file_path", "org_id", "user_id"
+        file_path, org_id, user_id, domain = await self.redis_client.hmget(
+            key, "file_path", "org_id", "user_id", "domain"
         )
 
-        if org_id is None or user_id is None:
+        if org_id is None or user_id is None or domain is None:
             logger.warning(
                 f"Job {job_id} hash missing during sweep; skipping index cleanup"
             )
@@ -80,5 +80,7 @@ class ExportCleanupService:
             for stale_file in pathlib.Path(self.export_data_dir).glob(f"{job_id}.*"):
                 stale_file.unlink(missing_ok=True)
         async with self.redis_client.pipeline(transaction=True) as pipe:
-            deregister_job(pipe, job_id=job_id, org_id=org_id, user_id=user_id)
+            deregister_job(
+                pipe, domain=domain, job_id=job_id, org_id=org_id, user_id=user_id
+            )
             await pipe.execute()

@@ -25,11 +25,19 @@ class ExportJobService:
         self._redis = redis_client
 
     async def create_job(
-        self, *, job_id: str, org_id: int, user_id: int, ttl_seconds: int, format: str
+        self,
+        *,
+        domain: str,
+        job_id: str,
+        org_id: int,
+        user_id: int,
+        ttl_seconds: int,
+        format: str,
     ) -> None:
         now = time()
         expires_at = now + ttl_seconds
         mapping = {
+            "domain": domain,
             "status": JobStatus.PENDING.value,
             "org_id": org_id,
             "user_id": user_id,
@@ -41,6 +49,7 @@ class ExportJobService:
         async with self._redis.pipeline(transaction=True) as pipe:
             register_job(
                 pipe,
+                domain=domain,
                 job_id=job_id,
                 org_id=org_id,
                 user_id=user_id,
@@ -89,15 +98,21 @@ class ExportJobService:
             {"job_id": job_id} | job for job_id, job in zip(job_ids, results) if job
         ]
 
-    async def get_jobs_by_user(self, org_id: int, user_id: int) -> list[dict]:
-        key = user_jobs_key(org_id, user_id)
+    async def get_jobs_by_user(
+        self, domain: str, org_id: int, user_id: int
+    ) -> list[dict]:
+        key = user_jobs_key(domain, org_id, user_id)
         job_ids = await self._redis.smembers(key)
         jobs = await self.get_jobs(job_ids)
         return jobs
 
-    async def delete_job(self, job_id: str, org_id: int, user_id: int) -> None:
+    async def delete_job(
+        self, job_id: str, org_id: int, user_id: int, domain: str
+    ) -> None:
         async with self._redis.pipeline(transaction=True) as pipe:
-            deregister_job(pipe, job_id=job_id, org_id=org_id, user_id=user_id)
+            deregister_job(
+                pipe, domain=domain, job_id=job_id, org_id=org_id, user_id=user_id
+            )
             await pipe.execute()
 
     async def close(self) -> None:

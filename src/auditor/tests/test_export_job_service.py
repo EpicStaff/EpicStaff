@@ -15,11 +15,17 @@ async def job_service():
 @pytest.mark.asyncio
 async def test_create_job_writes_hash_fields(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=7, user_id=42, ttl_seconds=3600, format="csv"
+        domain="sessions",
+        job_id="job-1",
+        org_id=7,
+        user_id=42,
+        ttl_seconds=3600,
+        format="csv",
     )
     job = await job_service.get_job("job-1")
 
     assert job["status"] == JobStatus.PENDING.value
+    assert job["domain"] == "sessions"
     assert job["org_id"] == "7"
     assert job["user_id"] == "42"
     assert job["format"] == "csv"
@@ -29,11 +35,14 @@ async def test_create_job_writes_hash_fields(job_service):
 @pytest.mark.asyncio
 async def test_create_job_registers_expiry_in_sorted_set(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
-    score = await job_service._redis.zscore(
-        "auditor:export_jobs_by_expiry", "job-1"
-    )
+    score = await job_service._redis.zscore("auditor:export_jobs_by_expiry", "job-1")
     assert score is not None
     assert score > 0
 
@@ -41,7 +50,12 @@ async def test_create_job_registers_expiry_in_sorted_set(job_service):
 @pytest.mark.asyncio
 async def test_create_job_sets_native_ttl_backstop(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     ttl = await job_service._redis.ttl("auditor:export_job:job-1")
     assert ttl > 0
@@ -50,7 +64,12 @@ async def test_create_job_sets_native_ttl_backstop(job_service):
 @pytest.mark.asyncio
 async def test_mark_done_sets_status_and_file_path(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     was_recorded = await job_service.mark_done("job-1", "/app/export_data/job-1.json")
 
@@ -63,7 +82,12 @@ async def test_mark_done_sets_status_and_file_path(job_service):
 @pytest.mark.asyncio
 async def test_mark_failed_sets_status_and_error(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     was_recorded = await job_service.mark_failed("job-1", "boom")
 
@@ -79,9 +103,14 @@ async def test_mark_done_returns_false_for_deleted_job(job_service):
     # still-running export - must not resurrect the hash with no TTL and no
     # zset entry, which would leak it forever.
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
-    await job_service.delete_job("job-1", 1, 1)
+    await job_service.delete_job("job-1", 1, 1, "sessions")
 
     was_recorded = await job_service.mark_done("job-1", "/app/export_data/job-1.json")
 
@@ -92,9 +121,14 @@ async def test_mark_done_returns_false_for_deleted_job(job_service):
 @pytest.mark.asyncio
 async def test_mark_failed_returns_false_for_deleted_job(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
-    await job_service.delete_job("job-1", 1, 1)
+    await job_service.delete_job("job-1", 1, 1, "sessions")
 
     was_recorded = await job_service.mark_failed("job-1", "boom")
 
@@ -109,7 +143,12 @@ async def test_create_job_hash_ttl_outlives_the_expiry_ttl(job_service):
     # hash (and the job's downloadability) vanishes before the job's own
     # intended expiry.
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     hash_ttl = await job_service._redis.ttl("auditor:export_job:job-1")
     assert hash_ttl > 3600
@@ -123,14 +162,17 @@ async def test_get_job_returns_none_for_unknown_id(job_service):
 @pytest.mark.asyncio
 async def test_delete_job_removes_hash_and_zset_entry(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
-    await job_service.delete_job("job-1", 1, 1)
+    await job_service.delete_job("job-1", 1, 1, "sessions")
 
     assert await job_service.get_job("job-1") is None
-    score = await job_service._redis.zscore(
-        "auditor:export_jobs_by_expiry", "job-1"
-    )
+    score = await job_service._redis.zscore("auditor:export_jobs_by_expiry", "job-1")
     assert score is None
 
 
@@ -139,16 +181,26 @@ async def test_delete_job_is_idempotent_for_unknown_id(job_service):
     # Should not raise even though nothing was ever created for this id -
     # the manual-delete endpoint relies on this being a safe no-op path
     # after ownership has already been checked separately.
-    await job_service.delete_job("never-existed", 1, 1)
+    await job_service.delete_job("never-existed", 1, 1, "sessions")
 
 
 @pytest.mark.asyncio
 async def test_get_jobs_returns_hydrated_dicts_for_job_ids(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     await job_service.create_job(
-        job_id="job-2", org_id=1, user_id=1, ttl_seconds=3600, format="csv"
+        domain="sessions",
+        job_id="job-2",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="csv",
     )
 
     jobs = await job_service.get_jobs(["job-1", "job-2"])
@@ -162,7 +214,12 @@ async def test_get_jobs_returns_hydrated_dicts_for_job_ids(job_service):
 @pytest.mark.asyncio
 async def test_get_jobs_skips_ids_whose_hash_has_vanished(job_service):
     await job_service.create_job(
-        job_id="job-1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     # "job-missing" was never created (simulates an expired/swept hash).
     jobs = await job_service.get_jobs(["job-1", "job-missing"])
@@ -178,20 +235,90 @@ async def test_get_jobs_returns_empty_list_for_empty_input(job_service):
 @pytest.mark.asyncio
 async def test_get_jobs_by_user_returns_only_that_users_jobs(job_service):
     await job_service.create_job(
-        job_id="job-a1", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-a1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     await job_service.create_job(
-        job_id="job-a2", org_id=1, user_id=1, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-a2",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
     )
     await job_service.create_job(
-        job_id="job-b1", org_id=2, user_id=2, ttl_seconds=3600, format="json"
+        domain="sessions",
+        job_id="job-b1",
+        org_id=2,
+        user_id=2,
+        ttl_seconds=3600,
+        format="json",
     )
 
-    jobs = await job_service.get_jobs_by_user(org_id=1, user_id=1)
+    jobs = await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1)
 
     assert {j["job_id"] for j in jobs} == {"job-a1", "job-a2"}
 
 
 @pytest.mark.asyncio
+async def test_get_jobs_by_user_never_leaks_another_domains_jobs(job_service):
+    # Same org/user, two different audit domains - a second domain's job
+    # must never surface in the first domain's job listing, even though
+    # both share the same underlying Redis connection/service instance.
+    await job_service.create_job(
+        domain="sessions",
+        job_id="job-sessions-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
+    )
+    await job_service.create_job(
+        domain="billing",
+        job_id="job-billing-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
+    )
+
+    sessions_jobs = await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1)
+    billing_jobs = await job_service.get_jobs_by_user("billing", org_id=1, user_id=1)
+
+    assert {j["job_id"] for j in sessions_jobs} == {"job-sessions-1"}
+    assert {j["job_id"] for j in billing_jobs} == {"job-billing-1"}
+
+
+@pytest.mark.asyncio
+async def test_delete_job_only_removes_from_its_own_domain_index(job_service):
+    await job_service.create_job(
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
+    )
+    await job_service.create_job(
+        domain="billing",
+        job_id="job-2",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
+    )
+
+    await job_service.delete_job("job-1", 1, 1, "sessions")
+
+    assert await job_service.get_job("job-1") is None
+    billing_jobs = await job_service.get_jobs_by_user("billing", org_id=1, user_id=1)
+    assert {j["job_id"] for j in billing_jobs} == {"job-2"}
+
+
+@pytest.mark.asyncio
 async def test_get_jobs_by_user_returns_empty_list_when_no_jobs(job_service):
-    assert await job_service.get_jobs_by_user(org_id=1, user_id=1) == []
+    assert await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1) == []

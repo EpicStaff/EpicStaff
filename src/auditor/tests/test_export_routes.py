@@ -228,7 +228,12 @@ async def test_get_jobs_returns_only_the_callers_jobs(app_and_client):
     # A job owned by a different org/user combo must never leak into the
     # caller's listing.
     await app.state.export_job_service.create_job(
-        job_id="other-job", org_id=999, user_id=999, ttl_seconds=3600, format="json"
+        domain=SESSIONS.name,
+        job_id="other-job",
+        org_id=999,
+        user_id=999,
+        ttl_seconds=3600,
+        format="json",
     )
 
     resp = await client.get("/api/audit/sessions/export")

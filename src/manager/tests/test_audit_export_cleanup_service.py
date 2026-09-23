@@ -20,11 +20,19 @@ def cleanup_service(redis_client):
     return ExportCleanupService(redis_client=redis_client)
 
 
-async def _seed_job(redis_client, job_id: str, *, expires_at: float, file_path: str = ""):
+async def _seed_job(
+    redis_client, job_id: str, *, expires_at: float, file_path: str = ""
+):
     key = f"{JOB_KEY_PREFIX}{job_id}"
     await redis_client.hset(
         key,
-        mapping={"status": "completed", "org_id": 1, "user_id": 1, "file_path": file_path},
+        mapping={
+            "status": "completed",
+            "domain": "sessions",
+            "org_id": 1,
+            "user_id": 1,
+            "file_path": file_path,
+        },
     )
     await redis_client.zadd(EXPIRY_ZSET_KEY, {job_id: expires_at})
 
@@ -92,7 +100,7 @@ async def test_sweep_once_tolerates_hash_already_gone(redis_client, cleanup_serv
     await redis_client.zadd(EXPIRY_ZSET_KEY, {"orphaned-job": time.time() - 10})
     # Simulate the real per-user index entry that would have been created
     # when this job was registered.
-    index_key = user_jobs_key(1, 1)
+    index_key = user_jobs_key("sessions", 1, 1)
     await redis_client.sadd(index_key, "orphaned-job")
 
     await cleanup_service.sweep_once()
@@ -109,7 +117,7 @@ async def test_sweep_once_tolerates_hash_already_gone(redis_client, cleanup_serv
 async def test_sweep_once_removes_job_from_user_index(redis_client, cleanup_service):
     # _seed_job always writes org_id=1, user_id=1 into the hash mapping, so
     # the per-user index entry lives under that same (org_id, user_id) pair.
-    index_key = user_jobs_key(1, 1)
+    index_key = user_jobs_key("sessions", 1, 1)
     await _seed_job(redis_client, "job-idx", expires_at=time.time() - 10)
     await redis_client.sadd(index_key, "job-idx")
 
@@ -136,11 +144,15 @@ async def test_sweep_once_with_no_file_path_only_cleans_redis(
 
 
 @pytest.mark.asyncio
-async def test_sweep_once_handles_multiple_due_jobs(redis_client, cleanup_service, tmp_path):
+async def test_sweep_once_handles_multiple_due_jobs(
+    redis_client, cleanup_service, tmp_path
+):
     for i in range(3):
         f = tmp_path / f"job-{i}.json"
         f.write_text("[]")
-        await _seed_job(redis_client, f"job-{i}", expires_at=time.time() - 1, file_path=str(f))
+        await _seed_job(
+            redis_client, f"job-{i}", expires_at=time.time() - 1, file_path=str(f)
+        )
 
     await cleanup_service.sweep_once()
 

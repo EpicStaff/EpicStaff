@@ -21,18 +21,21 @@ from app.services.search_pipeline import SearchPipeline
 
 
 async def _get_owned_job(
-    job_service: ExportJobService, job_id: str, claims: dict
+    job_service: ExportJobService, job_id: str, claims: dict, domain_name: str
 ) -> dict:
     """Fetch a job and enforce ownership. 404 either way (missing, not yours,
-    or not your org) so a non-owner can't distinguish the cases. Org is
-    checked alongside user_id, not instead of it: a user in multiple orgs
-    could otherwise lose AUDIT:export in org A and still reach an org-A job
-    via a token minted for org B."""
+    not your org, or not this domain's) so a non-owner can't distinguish the
+    cases. Org is checked alongside user_id, not instead of it: a user in
+    multiple orgs could otherwise lose AUDIT:export in org A and still reach
+    an org-A job via a token minted for org B. Domain is checked so a job
+    created under one audit domain can't be downloaded/deleted through
+    another domain's export routes even if a job_id ever collided."""
     job = await job_service.get_job(job_id)
     if (
         job is None
         or str(job.get("user_id")) != str(claims["user_id"])
         or str(job.get("org_id")) != str(claims["org_id"])
+        or job.get("domain") != domain_name
     ):
         raise HTTPException(404, "Export job not found")
     return job
@@ -143,6 +146,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         job_id = str(uuid.uuid4())
 
         await job_service.create_job(
+            domain=domain.name,
             job_id=job_id,
             org_id=claims["org_id"],
             user_id=claims["user_id"],
@@ -167,7 +171,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         claims: dict = Depends(require_audit_action(domain, "export")),
     ):
         job_service = request.app.state.export_job_service
-        job = await _get_owned_job(job_service, job_id, claims)
+        job = await _get_owned_job(job_service, job_id, claims, domain.name)
         if job["status"] == JobStatus.FAILED.value:
             raise HTTPException(status_code=500, detail="Export job failed")
         if job["status"] != JobStatus.COMPLETED.value:
@@ -188,7 +192,9 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         request: Request, claims: dict = Depends(require_audit_action(domain, "export"))
     ):
         job_service = request.app.state.export_job_service
-        jobs = await job_service.get_jobs_by_user(claims["org_id"], claims["user_id"])
+        jobs = await job_service.get_jobs_by_user(
+            domain.name, claims["org_id"], claims["user_id"]
+        )
 
         return list(jobs)
 
@@ -199,12 +205,14 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         claims: dict = Depends(require_audit_action(domain, "export")),
     ):
         job_service = request.app.state.export_job_service
-        job = await _get_owned_job(job_service, job_id, claims)
+        job = await _get_owned_job(job_service, job_id, claims, domain.name)
 
         if job.get("file_path"):
             pathlib.Path(job["file_path"]).unlink(missing_ok=True)
 
-        await job_service.delete_job(job_id, claims["org_id"], claims["user_id"])
+        await job_service.delete_job(
+            job_id, claims["org_id"], claims["user_id"], domain.name
+        )
         return Response(status_code=204)
 
     return router
