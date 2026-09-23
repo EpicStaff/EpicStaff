@@ -1,4 +1,4 @@
-import { NodeType } from '../../../../../visual-programming/core/enums/node-type';
+import { NodeType } from '@shared/models';
 
 export const HIDDEN_ENTITY_TYPES = new Set(['LLMModelTag']);
 

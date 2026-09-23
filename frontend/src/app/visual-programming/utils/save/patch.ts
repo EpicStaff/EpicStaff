@@ -1,8 +1,9 @@
+import { NodeType } from '@shared/models';
+
 import { GraphDto } from '../../../features/flows/models/graph.model';
-import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
-import { NodeType } from '../../core/enums/node-type';
+import { AgentNode } from '../../core/models/agent-node.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../core/models/classification-decision-table-node.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { ClassificationDecisionTableNodeModel } from '../../core/models/node.model';

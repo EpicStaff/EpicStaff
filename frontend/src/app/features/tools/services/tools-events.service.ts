@@ -1,8 +1,6 @@
 import { Injectable } from '@angular/core';
+import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
 import { Subject } from 'rxjs';
-
-import { GetMcpToolRequest } from '../models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../models/python-code-tool.model';
 
 @Injectable({
     providedIn: 'root',

@@ -1,25 +1,25 @@
-import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
-import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
-import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import { Edge } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
-import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
-import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
-import { GraphNote } from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
-import { GetKnowledgeRetrieverNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/knowledge-retriever-node.model';
-import { GetLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
-import { PythonNode } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
+import { AgentNode } from '../../../visual-programming/core/models/agent-node.model';
+import { GetAudioToTextNodeRequest } from '../../../visual-programming/core/models/audio-to-text.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../visual-programming/core/models/classification-decision-table-node.model';
+import { ConditionalEdge } from '../../../visual-programming/core/models/conditional-edge.model';
+import { GetDecisionTableNodeRequest } from '../../../visual-programming/core/models/decision-table-node.model';
+import { Edge } from '../../../visual-programming/core/models/edge.model';
+import { EndNode } from '../../../visual-programming/core/models/end-node.model';
+import { GetFileExtractorNodeRequest } from '../../../visual-programming/core/models/file-extractor.model';
+import { FlowModel } from '../../../visual-programming/core/models/flow.model';
+import { GraphNote } from '../../../visual-programming/core/models/graph-note.model';
+import { GetKnowledgeRetrieverNodeRequest } from '../../../visual-programming/core/models/knowledge-retriever-node.model';
+import { GetLLMNodeRequest } from '../../../visual-programming/core/models/llm-node.model';
+import { PythonNode } from '../../../visual-programming/core/models/python-node.model';
 import {
     CreateScheduleTriggerNodeRequest,
     GetScheduleTriggerNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { StartNode } from '../../../pages/flows-page/components/flow-visual-programming/models/start-node.model';
-import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
-import { TaskNode } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
-import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
-import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
-import { FlowModel } from '../../../visual-programming/core/models/flow.model';
+} from '../../../visual-programming/core/models/schedule-trigger.model';
+import { StartNode } from '../../../visual-programming/core/models/start-node.model';
+import { SubGraphNode } from '../../../visual-programming/core/models/subgraph-node.model';
+import { TaskNode } from '../../../visual-programming/core/models/task-node.model';
+import { GetTelegramTriggerNodeRequest } from '../../../visual-programming/core/models/telegram-trigger.model';
+import { GetWebhookTriggerNodeRequest } from '../../../visual-programming/core/models/webhook-trigger';
 
 export interface SubflowLightDto {
     id: number;

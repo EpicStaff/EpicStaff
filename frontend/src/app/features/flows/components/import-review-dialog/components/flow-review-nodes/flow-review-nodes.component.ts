@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { FlowNodeListComponent } from '@shared/components';
+import { NodeType } from '@shared/models';
 
-import { NodeType } from '../../../../../../visual-programming/core/enums/node-type';
 import { FlowReviewNode } from '../../model/review-entry.model';
 import { ReviewSessionStore } from '../../review-session.store';
 import { ReviewStatusBadgeComponent } from '../review-status-badge/review-status-badge.component';

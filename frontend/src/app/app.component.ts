@@ -5,8 +5,7 @@ import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 
-import { ToastComponent } from './services/notifications/notification/toast.component';
-import { ToastPosition } from './services/notifications/toast.service';
+import { ToastComponent, ToastPosition } from './services/notifications';
 
 @Component({
     selector: 'app-root',

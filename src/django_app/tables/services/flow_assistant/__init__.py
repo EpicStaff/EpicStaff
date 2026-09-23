@@ -16,7 +16,11 @@ from .helpers import (
 )
 from .output_schema import FLOW_ASSISTANT_OUTPUT_SCHEMA
 from .partial_json import extract_message_field, try_parse_full
-from .service import FlowAssistantService
+from .service import (
+    FlowAssistantService,
+    LLMConfigInvalidError,
+    LLMConfigMissingError,
+)
 from .tools import (
     TOOL_SPECS,
     build_node_index,
@@ -39,6 +43,8 @@ __all__ = [
     "_MD_TABLE_PATTERN",
     "_TITLE_MAX_CHARS",
     "FlowAssistantService",
+    "LLMConfigInvalidError",
+    "LLMConfigMissingError",
     "_clear_cancel_flag",
     "_derive_title",
     "_is_cancel_requested",

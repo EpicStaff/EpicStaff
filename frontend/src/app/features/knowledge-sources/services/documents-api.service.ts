@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import {
     CopyDocumentsRequest,
     CopyDocumentsResponse,
