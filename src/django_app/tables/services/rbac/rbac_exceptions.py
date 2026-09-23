@@ -2,8 +2,9 @@ from tables.exceptions import CustomAPIExeption
 
 
 class FormValidationError(CustomAPIExeption):
-    """Raised by AuthValidationService when one or more submitted fields
-    fail validation. Carries a structured `errors` list (populated by the
+    """Raised when one or more submitted fields fail validation.
+
+    Carries a structured `errors` list (populated by the
     service) which `custom_exception_handler` surfaces under the `errors`
     key of the response body.
 
