@@ -109,41 +109,54 @@ organization.
 Superadmin only, and **JWT only**: API keys are refused (403).
 
 **Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
-absent/empty/`false`/`0` → perform the delete; anything else → **400
-`invalid`**).
+anything else, including absent, → perform the delete).
 
 Returns **200** in both modes:
 
 ```json
 {
-  "dry_run": true,
-  "target": {"type": "organization", "id": 7, "name": "Acme Inc"},
-  "database": {
-    "total": 1843,
-    "by_model": [{"model": "tables.Session", "count": 340}, {"model": "tables.Graph", "count": 12}]
-  },
-  "field_updates": [],
-  "external": [{"kind": "object_storage", "prefix": "org_7/", "objects": 219, "bytes": 5123400}]
+  "organization_id": 7,
+  "affected_resources": {
+    "sessions": 340,
+    "flow": 12,
+    "storage_files": 219
+  }
 }
 ```
 
-`by_model` is sorted largest first and `total` includes the organization row
-itself. The preview is built from Django's own deletion collector, so it
-lists exactly what the real call removes.
+`affected_resources` maps a short resource name to how many of that
+resource the delete removed (or would remove, under a preview). Only
+nonzero resources appear. The organization row itself is not listed — it
+is identified by `organization_id`. Most of the report is built from
+Django's own deletion collector, which counts exactly what the real call
+removes for every model it can reach by walking foreign keys from the
+organization. Four kinds of rows sit outside that walk and are swept
+separately, before the cascade runs: knowledge collection content
+(`SourceCollection`, its documents, and any `DocumentContent` left
+unreferenced elsewhere — the collector can see the first two but never the
+content, since that FK points the other way) and deprecated, non-org-scoped
+`Task`/`TemplateAgent`/`RealtimeAgentChat` rows currently linked to the
+organization (rather than left behind with their FKs nulled, which is what
+the collector alone would do). Their counts are folded into
+`affected_resources` identically whether `dry_run` is `true` or `false`, so
+for the resources these sweeps cover, a preview and the real delete always
+agree. `storage_files` is a single
+combined count: the MinIO objects under the organization's storage prefix,
+plus the `ConversationRecording` audio files orphaned by the swept
+`RealtimeAgentChat` rows.
 
-Running sessions in the organization are stopped as part of the delete;
-there is no need to stop them first, and no need to deactivate the
-organization first.
+Running sessions in the organization are asked to stop via the same
+best-effort, fire-and-forget mechanism used elsewhere in the platform (Redis
+pub/sub, no delivery confirmation); a session owned by a crew replica other
+than the one currently listening for it may keep running until that
+replica's own reconciliation catches up. This delete does not wait for or
+verify that sessions actually stopped, and there is no need to deactivate
+the organization first.
 
 - `400 default_organization_not_deletable` — the org carries the
   `is_default` flag. Promote another organization to default first.
-- `400 last_organization` — would leave the platform with no organizations.
+- `400 last_organization` — would leave the platform with no active organizations.
 - `404 organization_not_found` — unknown id.
-
-Unlike `deactivate`, delete does not preserve the "at least one **active**
-organization" invariant: it refuses only to remove the last organization of
-any kind, so deleting the last *active* org while an inactive one remains is
-allowed.
 
 Platform-wide default configs are global, not org-scoped. If a superadmin
 pointed a default (agent LLM, memory embedding, voice model, …) at a config

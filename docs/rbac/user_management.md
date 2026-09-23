@@ -252,28 +252,31 @@ Permanently removes an account. **Irreversible** — this is not the soft
 so a leaked credential cannot erase accounts.
 
 **Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
-absent/empty/`false`/`0` → perform the delete; anything else → **400
-`invalid`**).
+anything else, including absent, → perform the delete).
 
-Returns **200** in both modes with a report of what was (or would be)
-removed:
+Returns **200** in both modes:
 
 ```json
 {
-  "dry_run": true,
-  "target": {"type": "user", "id": 42, "email": "bob@acme.com"},
-  "database": {"total": 4, "by_model": [{"model": "tables.User", "count": 1}]},
-  "field_updates": [
-    {"model": "tables.Graph", "field": "created_by", "action": "SET_NULL", "count": 12}
-  ],
-  "external": [{"kind": "avatar", "path": "avatars/42/abc.png"}]
+  "user_id": 42,
+  "affected_resources": {
+    "memberships": 1,
+    "api_keys": 2
+  }
 }
 ```
 
+`affected_resources` maps a short resource name to how many of that
+resource the delete removed (or would remove, under a preview). Only
+nonzero resources appear. The user row itself is not listed — it is
+identified by `user_id`. An avatar file, if present, appears as
+`"avatar": 1`.
+
 **Deleting an account does not delete the content that account created.**
 Flows, agents, tools and secrets they authored stay in their organization
-with `created_by` set to null — that is the `field_updates` block. What goes
-with the account: its memberships, API keys, password-reset tokens, tool
+with `created_by` set to null — but since no rows are destroyed by this,
+it is not reported in `affected_resources` at all. What is destroyed, and
+does appear: memberships, API keys, password-reset tokens, tool
 favorites, and flow-assistant conversations. Their avatar file is deleted.
 Any refresh token they hold is blacklisted, so existing sessions cannot be
 renewed.
