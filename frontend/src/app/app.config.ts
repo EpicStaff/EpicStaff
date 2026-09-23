@@ -4,6 +4,7 @@ import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideMarkdown } from 'ngx-markdown';
 import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
+import { firstValueFrom } from 'rxjs';
 
 import { routes } from './app.routes';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
@@ -18,6 +19,7 @@ import { provideKnowledgeSourcesStorages } from './features/knowledge-sources/kn
 import { provideRoleBaseAccessStorages } from './features/role-base-access/role-base-access.providers';
 import { provideToolsStorages } from './features/tools/tools.providers';
 import { ActiveOrgService } from './services/auth/active-org.service';
+import { AuthService } from './services/auth/auth.service';
 import { PermissionsService } from './services/auth/permissions.service';
 import { ConfigService } from './services/config';
 import { APP_STORAGE } from './shared/services/app-storage.token';
@@ -41,9 +43,11 @@ export const appConfig: ApplicationConfig = {
         provideMarkdown(),
         provideMonacoEditor(),
 
-        provideAppInitializer(() => {
+        provideAppInitializer(async () => {
             const configService = inject(ConfigService);
-            return configService.loadConfig();
+            const authService = inject(AuthService);
+            await configService.loadConfig();
+            await firstValueFrom(authService.restoreSession());
         }),
         {
             provide: MAT_FORM_FIELD_DEFAULT_OPTIONS,
