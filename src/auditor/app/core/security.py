@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core import settings
+from app.domains.base import AuditDomain
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -44,17 +45,32 @@ async def verify_user_jwt(
         raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}")
 
 
-def require_audit_action(action: str):
+def require_audit_action(domain: AuditDomain, action: str):
     """
     Dependency factory: read vs export are independently gated by the
-    token's `actions` claim. Use Depends(require_audit_action("read")) on
-    query routes, Depends(require_audit_action("export")) on export routes.
+    token's `actions` claim. Use Depends(require_audit_action(domain, "read"))
+    on query routes, Depends(require_audit_action(domain, "export")) on
+    export routes. `domain.resource` (not a hardcoded "AUDIT" literal)
+    names the resource reported in the 403 detail, so a second domain with
+    a different `resource` value is reported correctly.
+
+    TODO: the check below is still a flat `action in claims["actions"]`
+    with no resource dimension - it does not actually restrict a token to
+    `domain.resource`. A token with "read" passes this check on every
+    registered domain's routes, not just the one its `resource` was granted
+    for. Closing this needs a cross-layer change: Django's audit token
+    (src/django_app/tables/views/audit_token_views.py) would need to emit a
+    resource-keyed claim (e.g. {"AUDIT": ["read","export"]}) instead of a
+    flat action list, and this check would need to look up
+    claims[domain.resource] instead of claims["actions"]. Out of scope while
+    only one domain ("sessions") is registered - no user-facing gap today.
     """
 
     async def _check(claims: dict = Depends(verify_user_jwt)) -> dict:
         if action not in claims.get("actions", []):
             raise HTTPException(
-                status_code=403, detail=f"Missing AUDIT:{action} permission"
+                status_code=403,
+                detail=f"Missing {domain.resource}:{action} permission",
             )
         claims["retention_days"] = claims.get("retention_days", 0)
         return claims

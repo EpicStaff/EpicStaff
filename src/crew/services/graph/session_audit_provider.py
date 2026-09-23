@@ -58,7 +58,7 @@ def get_session_audit_writer() -> SessionAuditWriter:
     """
     client: AuditClient[SessionAuditEvent] = AuditClient(
         base_url=AUDITOR_URL,
-        ingest_path="/api/audit/events",
+        ingest_path="/api/audit/sessions/events",
         api_key=AUDITOR_INGEST_API_KEY,
         enabled=AUDIT_TRAIL_ENABLED,
     )

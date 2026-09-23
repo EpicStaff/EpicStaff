@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar, Protocol
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from app.filtering.ast import FilterNode, FieldSpec
 
 
@@ -80,6 +82,21 @@ class NullExpander:
 
 
 @dataclass(frozen=True)
+class ApiSpec:
+    """Request/response shapes + OpenAPI decoration for a domain's search
+    and export endpoints. app/controllers/query_routes.py and
+    export_routes.py pull these off the domain instead of importing a
+    sessions-specific module directly - a second domain plugs in its own
+    values here without touching either controller's source."""
+
+    search_request_model: type[BaseModel]
+    search_response_model: type[BaseModel]
+    export_request_model: type[BaseModel]
+    search_description: str
+    search_examples: dict[str, dict]
+
+
+@dataclass(frozen=True)
 class AuditDomain(Generic[T]):
     name: str
     event_model: type[T]
@@ -89,6 +106,7 @@ class AuditDomain(Generic[T]):
     computed: tuple[ComputedField, ...]
     expander: MatchExpander
     resource: str
+    api: ApiSpec
 
 
 DEFAULT_SCOPING = ScopingPolicy()

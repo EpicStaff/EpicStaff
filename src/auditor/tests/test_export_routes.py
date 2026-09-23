@@ -60,7 +60,7 @@ def _make_event(session_id: int = 1, org_id: int = 7) -> SessionAuditEvent:
 def _build_app(events=None) -> FastAPI:
     app = FastAPI()
     app.include_router(build_export_router(SESSIONS))
-    app.state.session_audit_repository = FakeRepository(events)
+    app.state.repositories = {SESSIONS.name: FakeRepository(events)}
     app.state.export_job_service = ExportJobService(
         FakeAsyncRedis(decode_responses=True)
     )
@@ -81,11 +81,11 @@ async def app_and_client(tmp_path, monkeypatch):
 async def test_start_export_then_download_completed_job(app_and_client):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     assert resp.status_code == 200
     job_id = resp.json()["job_id"]
 
-    resp = await client.get(f"/api/audit/export/{job_id}")
+    resp = await client.get(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     assert len(body) == 1
@@ -96,7 +96,7 @@ async def test_start_export_then_download_completed_job(app_and_client):
 async def test_start_export_writes_file_under_export_data_dir(app_and_client, tmp_path):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "csv"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "csv"})
     job_id = resp.json()["job_id"]
 
     job = await app.state.export_job_service.get_job(job_id)
@@ -111,14 +111,14 @@ async def test_start_export_writes_file_under_export_data_dir(app_and_client, tm
 async def test_download_rejects_non_owner(app_and_client):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     job_id = resp.json()["job_id"]
 
     app.dependency_overrides[verify_user_jwt] = lambda: {
         **DEFAULT_CLAIMS,
         "user_id": 999,
     }
-    resp = await client.get(f"/api/audit/export/{job_id}")
+    resp = await client.get(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 404
 
 
@@ -129,14 +129,14 @@ async def test_download_rejects_wrong_org(app_and_client):
     # different org they also belong to.
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     job_id = resp.json()["job_id"]
 
     app.dependency_overrides[verify_user_jwt] = lambda: {
         **DEFAULT_CLAIMS,
         "org_id": 999,
     }
-    resp = await client.get(f"/api/audit/export/{job_id}")
+    resp = await client.get(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 404
 
 
@@ -144,20 +144,20 @@ async def test_download_rejects_wrong_org(app_and_client):
 async def test_download_returns_410_when_file_missing_after_completion(app_and_client):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     job_id = resp.json()["job_id"]
 
     job = await app.state.export_job_service.get_job(job_id)
     pathlib.Path(job["file_path"]).unlink()  # simulate the manager's sweep
 
-    resp = await client.get(f"/api/audit/export/{job_id}")
+    resp = await client.get(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 410
 
 
 @pytest.mark.asyncio
 async def test_download_unknown_job_is_404(app_and_client):
     _, client = app_and_client
-    resp = await client.get("/api/audit/export/does-not-exist")
+    resp = await client.get("/api/audit/sessions/export/does-not-exist")
     assert resp.status_code == 404
 
 
@@ -165,14 +165,14 @@ async def test_download_unknown_job_is_404(app_and_client):
 async def test_delete_export_removes_file_and_job(app_and_client):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     job_id = resp.json()["job_id"]
 
     job = await app.state.export_job_service.get_job(job_id)
     file_path = pathlib.Path(job["file_path"])
     assert file_path.exists()
 
-    resp = await client.delete(f"/api/audit/export/{job_id}")
+    resp = await client.delete(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 204
     assert not file_path.exists()
     assert await app.state.export_job_service.get_job(job_id) is None
@@ -182,14 +182,14 @@ async def test_delete_export_removes_file_and_job(app_and_client):
 async def test_delete_rejects_non_owner(app_and_client):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     job_id = resp.json()["job_id"]
 
     app.dependency_overrides[verify_user_jwt] = lambda: {
         **DEFAULT_CLAIMS,
         "user_id": 999,
     }
-    resp = await client.delete(f"/api/audit/export/{job_id}")
+    resp = await client.delete(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 404
 
 
@@ -200,7 +200,7 @@ async def test_export_missing_action_claim_is_403(app_and_client):
         **DEFAULT_CLAIMS,
         "actions": ["read"],
     }
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     assert resp.status_code == 403
 
 
@@ -208,7 +208,7 @@ async def test_export_missing_action_claim_is_403(app_and_client):
 async def test_conflicting_filters_and_query_is_rejected(app_and_client):
     _, client = app_and_client
     resp = await client.post(
-        "/api/audit/export",
+        "/api/audit/sessions/export",
         json={
             "format": "json",
             "filters": {"field": "status", "op": "equals", "value": "failed"},
@@ -222,7 +222,7 @@ async def test_conflicting_filters_and_query_is_rejected(app_and_client):
 async def test_get_jobs_returns_only_the_callers_jobs(app_and_client):
     app, client = app_and_client
 
-    resp = await client.post("/api/audit/export", json={"format": "json"})
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
     own_job_id = resp.json()["job_id"]
 
     # A job owned by a different org/user combo must never leak into the
@@ -231,7 +231,7 @@ async def test_get_jobs_returns_only_the_callers_jobs(app_and_client):
         job_id="other-job", org_id=999, user_id=999, ttl_seconds=3600, format="json"
     )
 
-    resp = await client.get("/api/audit/export")
+    resp = await client.get("/api/audit/sessions/export")
     assert resp.status_code == 200
     body = resp.json()
     assert [job["job_id"] for job in body] == [own_job_id]
@@ -241,7 +241,7 @@ async def test_get_jobs_returns_only_the_callers_jobs(app_and_client):
 async def test_get_jobs_returns_empty_list_when_caller_has_no_jobs(app_and_client):
     _, client = app_and_client
 
-    resp = await client.get("/api/audit/export")
+    resp = await client.get("/api/audit/sessions/export")
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -253,7 +253,7 @@ async def test_get_jobs_missing_action_claim_is_403(app_and_client):
         **DEFAULT_CLAIMS,
         "actions": ["read"],
     }
-    resp = await client.get("/api/audit/export")
+    resp = await client.get("/api/audit/sessions/export")
     assert resp.status_code == 403
 
 
@@ -296,7 +296,7 @@ def _tree_events(org_id: int = 7) -> list[SessionAuditEvent]:
 def _build_match_scope_app(events: list[SessionAuditEvent]) -> FastAPI:
     app = FastAPI()
     app.include_router(build_export_router(SESSIONS))
-    app.state.session_audit_repository = InMemoryFakeRepository(events)
+    app.state.repositories = {SESSIONS.name: InMemoryFakeRepository(events)}
     app.state.export_job_service = ExportJobService(
         FakeAsyncRedis(decode_responses=True)
     )
@@ -327,7 +327,7 @@ async def test_export_legacy_detail_field_is_silently_ignored_not_rejected(
     # behavior rather than asserting a 422 that would never actually happen.
     _, client = app_and_client
     resp = await client.post(
-        "/api/audit/export", json={"format": "json", "detail": "full"}
+        "/api/audit/sessions/export", json={"format": "json", "detail": "full"}
     )
     assert resp.status_code == 200
 
@@ -342,7 +342,7 @@ async def test_export_full_session_history_uses_expand_matches_and_sets_filter_m
     app, client = await match_scope_client(_tree_events())
     async with client:
         resp = await client.post(
-            "/api/audit/export",
+            "/api/audit/sessions/export",
             json={
                 "filters": {"field": "id", "op": "equals", "value": "evt-1"},
                 "match_scope": {"full_session_history": True},
@@ -350,7 +350,7 @@ async def test_export_full_session_history_uses_expand_matches_and_sets_filter_m
         )
         job_id = resp.json()["job_id"]
 
-        resp = await client.get(f"/api/audit/export/{job_id}")
+        resp = await client.get(f"/api/audit/sessions/export/{job_id}")
         body = json.loads(resp.content)
 
     by_id = {row["id"]: row["filter_matched"] for row in body}
@@ -362,12 +362,12 @@ async def test_export_no_match_scope_all_rows_filter_matched(match_scope_client)
     app, client = await match_scope_client(_tree_events())
     async with client:
         resp = await client.post(
-            "/api/audit/export",
+            "/api/audit/sessions/export",
             json={"filters": {"field": "session_id", "op": "equals", "value": 100}},
         )
         job_id = resp.json()["job_id"]
 
-        resp = await client.get(f"/api/audit/export/{job_id}")
+        resp = await client.get(f"/api/audit/sessions/export/{job_id}")
         body = json.loads(resp.content)
 
     assert {row["id"] for row in body} == {"sess-1", "node-1", "evt-1"}

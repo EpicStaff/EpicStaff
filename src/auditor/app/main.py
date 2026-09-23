@@ -11,13 +11,12 @@ from app.controllers import health_routes
 from app.controllers.domain_router import build_domain_router
 from app.core import settings
 from app.domains.registry import DOMAINS
-from app.domains.sessions.index import SESSIONS_INDEX
 from app.filtering.ast import FilterError
+from app.repositories.base import AuditRepository
 from app.repositories.factory import build_audit_repository
 from app.db.redis_client import build_redis_client
 from app.services.export_job_service import ExportJobService
 from app.swagger_schemas import OPENAPI_TAGS
-from src.shared.models import SessionAuditEvent
 
 
 def _extract_opensearch_reason(exc: OpenSearchRequestError) -> str:
@@ -57,15 +56,19 @@ def _extract_opensearch_reason(exc: OpenSearchRequestError) -> str:
 async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
 
-    app.state.session_audit_repository = build_audit_repository(
-        settings, index=SESSIONS_INDEX, model=SessionAuditEvent
-    )
+    app.state.repositories: dict[str, AuditRepository] = {
+        domain.name: build_audit_repository(
+            settings, index=domain.index, model=domain.event_model
+        )
+        for domain in DOMAINS.values()
+    }
     app.state.export_job_service = ExportJobService(build_redis_client(settings))
 
     yield
 
     logger.info("Application shutting down...")
-    await app.state.session_audit_repository.close()
+    for repository in app.state.repositories.values():
+        await repository.close()
     await app.state.export_job_service.close()
 
 

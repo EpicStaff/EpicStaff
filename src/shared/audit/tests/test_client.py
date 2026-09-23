@@ -58,7 +58,7 @@ def build_client(handler, **overrides) -> AuditClient:
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     kwargs = dict(
         base_url="http://auditor.test",
-        ingest_path="/api/audit/events",
+        ingest_path="/api/audit/sessions/events",
         api_key="test-key",
         http_client=http_client,
         max_retries=3,
@@ -103,7 +103,9 @@ async def test_batches_on_time():
 async def test_retries_then_succeeds():
     """A batch that fails twice then succeeds is delivered, not dropped."""
     transport = FlakyTransportHandler(fail_count=2)
-    client = build_client(transport, batch_size=1, batch_interval_seconds=10, max_retries=3)
+    client = build_client(
+        transport, batch_size=1, batch_interval_seconds=10, max_retries=3
+    )
 
     await client.emit(make_event("retry-me"))
     # real backoff delays total ~0.7s (0.2 + 0.5) across 2 retries before success
@@ -117,13 +119,17 @@ async def test_retries_then_succeeds():
 async def test_persistent_failure_drops_batch_without_raising():
     """A batch that always fails is dropped after max_retries, never raises, never retries forever."""
     transport = AlwaysFailingTransportHandler()
-    client = build_client(transport, batch_size=1, batch_interval_seconds=10, max_retries=3)
+    client = build_client(
+        transport, batch_size=1, batch_interval_seconds=10, max_retries=3
+    )
 
     await client.emit(make_event("doomed"))
     # real backoff delays total ~0.7s (0.2 + 0.5) across the 2 retries before giving up
     await asyncio.sleep(2)
 
-    assert transport.attempts == 3  # exhausted max_retries, gave up - didn't retry forever
+    assert (
+        transport.attempts == 3
+    )  # exhausted max_retries, gave up - didn't retry forever
     await client.shutdown()
 
 
@@ -131,14 +137,16 @@ async def test_persistent_failure_drops_batch_without_raising():
 async def test_disabled_client_never_sends_and_starts_no_background_task():
     client = AuditClient(
         base_url="http://auditor.test",
-        ingest_path="/api/audit/events",
+        ingest_path="/api/audit/sessions/events",
         api_key="test-key",
         enabled=False,
     )
 
     assert client._flush_task is None
 
-    await client.emit(make_event("should-not-send"))  # must not raise even though disabled
+    await client.emit(
+        make_event("should-not-send")
+    )  # must not raise even though disabled
     await client.shutdown()  # must not raise
 
 
@@ -153,7 +161,7 @@ def test_immediate_mode_construction_requires_no_running_event_loop():
     """
     client = AuditClient(
         base_url="http://auditor.test",
-        ingest_path="/api/audit/events",
+        ingest_path="/api/audit/sessions/events",
         api_key="test-key",
         enabled=True,
         immediate=True,

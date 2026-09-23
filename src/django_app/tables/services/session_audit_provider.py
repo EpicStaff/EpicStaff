@@ -17,7 +17,7 @@ def get_session_audit_writer() -> SessionAuditWriter:
     """
     client: AuditClient[SessionAuditEvent] = AuditClient(
         base_url=settings.AUDITOR_URL,
-        ingest_path="/api/audit/events",
+        ingest_path="/api/audit/sessions/events",
         api_key=settings.AUDITOR_INGEST_API_KEY,
         enabled=settings.AUDIT_TRAIL_ENABLED,
         # django_app has no persistent event loop (register_message runs

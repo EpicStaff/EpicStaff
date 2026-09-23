@@ -9,47 +9,15 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from loguru import logger
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 
 from app.core.security import require_audit_action
 from app.core import settings
 from app.domains.base import AuditDomain
-from app.domains.sessions.docs import (
-    FILTERS_FIELD_DESCRIPTION,
-    MATCH_SCOPE_FIELD_DESCRIPTION,
-)
-from app.domains.sessions.expansion import MatchScope
-from app.filtering.ast import FilterNode
-from app.filtering.query_language import parse_query
 from app.repositories.base import AuditRepository
 from app.repositories.compiler import QueryCompiler
 from app.services.export_job_service import ExportJobService, JobStatus
 from app.services.search_pipeline import SearchPipeline
-from app.swagger_schemas import QUERY_FIELD_DESCRIPTION
-
-
-class ExportRequest(BaseModel):
-    format: Literal["json", "csv"] = "json"
-    filters: dict | None = Field(default=None, description=FILTERS_FIELD_DESCRIPTION)
-    query: str | None = Field(default=None, description=QUERY_FIELD_DESCRIPTION)
-    match_scope: MatchScope = Field(
-        default_factory=MatchScope, description=MATCH_SCOPE_FIELD_DESCRIPTION
-    )
-
-    @model_validator(mode="after")
-    def _filters_xor_query(self):
-        if self.filters is not None and self.query is not None:
-            raise ValueError(
-                "'filters' and 'query' are mutually exclusive - send exactly one"
-            )
-        return self
-
-    def resolve_filter_node(self) -> FilterNode | None:
-        if self.filters is not None:
-            return self.filters
-        if self.query:
-            return parse_query(self.query)
-        return None
 
 
 async def _get_owned_job(
@@ -113,12 +81,18 @@ async def _write_export_output(
 
 
 def build_export_router(domain: AuditDomain) -> APIRouter:
-    """Mounts one domain's export endpoints. Deliberately NOT namespaced
-    under `/api/audit/{domain.name}/...` (unlike the search router) - the
-    export/ingest paths predate the domain abstraction and this refactor
-    must not move them. A future second domain would get its own
-    `/api/audit/{domain.name}/export...` paths; sessions keeps its current,
-    already-inconsistent, flat ones."""
+    """Mounts one domain's export endpoints, namespaced under
+    `/api/audit/{domain.name}/export...` - same reasoning as
+    build_search_router's `/api/audit/{domain.name}/search`. Without this
+    prefix, a second domain's export router would build the exact same
+    unparameterized `/api/audit/export` path as the first-registered
+    domain, so FastAPI would route every export request to whichever
+    domain mounted first regardless of which domain the caller meant, and
+    the second domain's export endpoints would be permanently unreachable.
+
+    Domain-generic: the request model type comes off `domain` (see
+    app/domains/base.py::ApiSpec.export_request_model) rather than a
+    hardcoded sessions-specific class."""
     router = APIRouter(tags=["Export"])
     pipeline = SearchPipeline(
         catalog=domain.fields,
@@ -127,6 +101,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         expander=domain.expander,
         event_model=domain.event_model,
     )
+    ExportRequest = domain.api.export_request_model
 
     async def _run_export(
         job_id: str,
@@ -156,14 +131,14 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
             logger.exception(f"Export job {job_id} failed: {e}")
             await job_service.mark_failed(job_id, str(e)[:500])
 
-    @router.post("/api/audit/export")
+    @router.post(f"/api/audit/{domain.name}/export")
     async def start_export(
         body: ExportRequest,
         background_tasks: BackgroundTasks,
         request: Request,
-        claims: dict = Depends(require_audit_action("export")),
+        claims: dict = Depends(require_audit_action(domain, "export")),
     ):
-        repository = request.app.state.session_audit_repository
+        repository = request.app.state.repositories[domain.name]
         job_service = request.app.state.export_job_service
         job_id = str(uuid.uuid4())
 
@@ -185,11 +160,11 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         )
         return {"job_id": job_id}
 
-    @router.get("/api/audit/export/{job_id}")
+    @router.get(f"/api/audit/{domain.name}/export/{{job_id}}")
     async def get_export(
         job_id: str,
         request: Request,
-        claims: dict = Depends(require_audit_action("export")),
+        claims: dict = Depends(require_audit_action(domain, "export")),
     ):
         job_service = request.app.state.export_job_service
         job = await _get_owned_job(job_service, job_id, claims)
@@ -208,20 +183,20 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
             path, media_type=media_type, filename=f"audit-export-{job_id}.{ext}"
         )
 
-    @router.get("/api/audit/export")
+    @router.get(f"/api/audit/{domain.name}/export")
     async def get_jobs(
-        request: Request, claims: dict = Depends(require_audit_action("export"))
+        request: Request, claims: dict = Depends(require_audit_action(domain, "export"))
     ):
         job_service = request.app.state.export_job_service
         jobs = await job_service.get_jobs_by_user(claims["org_id"], claims["user_id"])
 
         return list(jobs)
 
-    @router.delete("/api/audit/export/{job_id}")
+    @router.delete(f"/api/audit/{domain.name}/export/{{job_id}}")
     async def delete_export(
         job_id: str,
         request: Request,
-        claims: dict = Depends(require_audit_action("export")),
+        claims: dict = Depends(require_audit_action(domain, "export")),
     ):
         job_service = request.app.state.export_job_service
         job = await _get_owned_job(job_service, job_id, claims)

@@ -83,7 +83,7 @@ def _build_app(exc: Exception) -> FastAPI:
             status_code=400, content={"detail": _extract_opensearch_reason(exc)}
         )
 
-    app.state.session_audit_repository = RaisingRepository(exc)
+    app.state.repositories = {SESSIONS.name: RaisingRepository(exc)}
     app.dependency_overrides[verify_user_jwt] = lambda: dict(DEFAULT_CLAIMS)
     return app
 
@@ -210,7 +210,7 @@ def _tree_events() -> list[SessionAuditEvent]:
 def _build_search_app(events: list[SessionAuditEvent]) -> FastAPI:
     app = FastAPI()
     app.include_router(build_search_router(SESSIONS))
-    app.state.session_audit_repository = InMemoryFakeRepository(events)
+    app.state.repositories = {SESSIONS.name: InMemoryFakeRepository(events)}
     app.dependency_overrides[verify_user_jwt] = lambda: dict(DEFAULT_CLAIMS)
     return app
 

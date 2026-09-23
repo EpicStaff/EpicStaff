@@ -14,7 +14,7 @@ def build_export_redis_client() -> Redis:
         db=settings.AUDITOR_REDIS_DB,
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD or None,
+        password=settings.REDIS_PASSWORD,
         decode_responses=True,
     )
 
