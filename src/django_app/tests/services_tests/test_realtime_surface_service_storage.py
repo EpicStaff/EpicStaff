@@ -71,7 +71,7 @@ def _attach_default_surface(agent_definition, surface):
 @pytest.mark.django_db
 class TestResolveStorageGrants:
     def test_no_grants_returns_empty(self, resolver):
-        allowed_paths, org_prefix = resolver._resolve_storage_grants([])
+        allowed_paths, org_prefix = resolver._resolve_storage_grants([], org_id=None)
 
         assert allowed_paths == []
         assert org_prefix is None
@@ -82,7 +82,7 @@ class TestResolveStorageGrants:
         )
 
         allowed_paths, org_prefix = resolver._resolve_storage_grants(
-            [{"storage_file": storage_file.pk}]
+            [{"storage_file": storage_file.pk}], org_id=org.pk
         )
 
         assert allowed_paths == []
@@ -102,7 +102,8 @@ class TestResolveStorageGrants:
                     "can_edit": "unset",
                     "can_delete": "unset",
                 }
-            ]
+            ],
+            org_id=org.pk,
         )
 
         assert allowed_paths == ["notes/b.txt"]
@@ -114,11 +115,36 @@ class TestResolveStorageGrants:
         )
 
         allowed_paths, org_prefix = resolver._resolve_storage_grants(
-            [{"storage_file": storage_file.pk, "can_view": "deny"}]
+            [{"storage_file": storage_file.pk, "can_view": "deny"}], org_id=org.pk
         )
 
         assert allowed_paths == []
         assert org_prefix is None
+
+    def test_foreign_org_file_excluded_prefix_uses_requested_org(self, resolver, org):
+        """A StorageFile row belonging to a different org than the one passed as
+        `org_id` must never leak into `allowed_paths`, and `storage_org_prefix`
+        must always be derived from the requested `org_id` — never from a
+        cross-org StorageFile row that slipped through."""
+        foreign_org = Organization.objects.create(name="realtime-surface-storage-foreign-org")
+        own_file = StorageFile.objects.create(
+            org=org, name="own.txt", path="own/own.txt"
+        )
+        foreign_file = StorageFile.objects.create(
+            org=foreign_org, name="foreign.txt", path="foreign/foreign.txt"
+        )
+
+        allowed_paths, org_prefix = resolver._resolve_storage_grants(
+            [
+                {"storage_file": own_file.pk, "can_view": "allow"},
+                {"storage_file": foreign_file.pk, "can_view": "allow"},
+            ],
+            org_id=org.pk,
+        )
+
+        assert allowed_paths == ["own/own.txt"]
+        assert "foreign/foreign.txt" not in allowed_paths
+        assert org_prefix == f"org_{org.pk}"
 
 
 @pytest.mark.django_db

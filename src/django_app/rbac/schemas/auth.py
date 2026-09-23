@@ -205,14 +205,14 @@ TOKEN_INTROSPECT_POST = {
 LOGIN_POST = {
     "summary": "Log in and obtain JWT tokens",
     "description": (
-        "Accepts `email` and `password`. Validates both fields are present "
-        "and non-blank before delegating to simplejwt. Returns a short-lived "
-        "access token in the response body. The refresh token is set as an "
-        "HttpOnly cookie (`auth.refresh`, Path=/api/auth/, SameSite=Lax). "
-        "Wrong-credential errors are returned as a flat 401 (no per-field "
-        "detail) to avoid user-enumeration leaks. Throttled to 5 attempts "
-        "per minute per IP+email combination; the 6th attempt returns 429 "
-        "with a `Retry-After` header."
+        "Accepts `email`, `password`, and optional `remember_me` (bool, default "
+        "false). Returns a short-lived access token; the refresh token is set as "
+        "an HttpOnly cookie (`auth.refresh`, Path=/api/auth/, SameSite=Lax). "
+        "`remember_me=true` -> Max-Age = configured refresh lifetime; "
+        "`remember_me=false` -> Max-Age = 30 minutes. The intent is embedded as "
+        "a claim so it survives rotation. Wrong credentials return a flat 401. "
+        "Throttled to 5 attempts/min per IP+email; the 6th returns 429 with a "
+        "`Retry-After` header."
     ),
     "responses": {
         200: LoginResponseSerializer,

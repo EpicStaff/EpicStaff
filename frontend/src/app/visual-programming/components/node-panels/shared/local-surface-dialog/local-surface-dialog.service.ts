@@ -2,7 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { inject, Injectable, Injector } from '@angular/core';
 import { map, Observable } from 'rxjs';
 
-import { InlineSurface } from '../../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
+import { InlineSurface } from '../../../../core/models/task-node.model';
 import { LocalSurfaceDialogComponent, LocalSurfaceDialogData } from './local-surface-dialog.component';
 
 /**

@@ -1,4 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
+import { NodeType } from '@shared/models';
 
 import {
     FlowNodesByFile,
@@ -6,7 +7,6 @@ import {
     ReviewItem,
     ReviewPythonCode,
 } from '../../../../core/models/review-item.model';
-import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { CodeTab, FlowReviewNode, McpReviewableEntry, ReviewableEntry } from './model/review-entry.model';
 
 interface CodeField {

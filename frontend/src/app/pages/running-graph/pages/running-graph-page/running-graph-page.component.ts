@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
-import { RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { GraphSessionStatus } from '@shared/models';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { GraphSessionService, GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
+import { GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { ToastService } from '../../../../services/notifications';
 import { GraphMessagesComponent } from '../../components/graph-messages/graph-messages.component';
 import { RunningGraphHeaderComponent } from '../../components/header/run-graph-header.component';

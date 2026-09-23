@@ -7,7 +7,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
-from rbac.identity.refresh_cookie import set_refresh_cookie
+from rbac.identity.refresh_cookie import (
+    get_refresh_from_cookie,
+    read_remember_me_claim,
+    set_refresh_cookie,
+)
 from rbac.profile.service import UserProfileService
 from rbac.serializers.profile import (
     PasswordChangeConfirmRequestSerializer,
@@ -170,6 +174,8 @@ class PasswordChangeConfirmView(APIView):
         tokens = self._service.password_change_confirm(
             request.user, cleaned["ticket"], cleaned["new_password"]
         )
+        # Preserve remember-me across the rotated cookie.
+        remember_me = read_remember_me_claim(get_refresh_from_cookie(request))
         response = Response({"access": tokens.access})
-        set_refresh_cookie(response, tokens.refresh)
+        set_refresh_cookie(response, tokens.refresh, remember_me=remember_me)
         return response

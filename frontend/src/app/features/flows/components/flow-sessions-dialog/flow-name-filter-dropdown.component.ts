@@ -10,8 +10,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
+import { ClickOutsideDirective } from '@shared/directives';
 
 interface FlowOption {
     id: number;

@@ -1,6 +1,6 @@
+import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
+
 import { AgentSearchConfigs } from '../../../shared/models';
-import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.model';
 
 export type ToolUniqueName = `python-code-tool:${number}` | `mcp-tool:${number}`;
 
