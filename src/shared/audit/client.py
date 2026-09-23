@@ -4,7 +4,7 @@ from typing import Generic, Optional
 import httpx
 from loguru import logger
 
-from src.shared.audit.writer import T
+from src.shared.audit.protocols import T
 
 _DEFAULT_BATCH_SIZE = 200
 _DEFAULT_BATCH_INTERVAL_SECONDS = 1.5
@@ -139,7 +139,9 @@ class AuditClient(Generic[T]):
             if remaining <= 0:
                 break
             try:
-                batch.append(await asyncio.wait_for(self._queue.get(), timeout=remaining))
+                batch.append(
+                    await asyncio.wait_for(self._queue.get(), timeout=remaining)
+                )
             except asyncio.TimeoutError:
                 break
 

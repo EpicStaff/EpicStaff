@@ -15,6 +15,16 @@ from models.state import State
 
 
 class CustomSessionMessageWriter:
+    """
+    Upstream stream-message producer: builds GraphMessage objects onto the
+    LangGraph StreamWriter for the primary Redis-backed pipeline. Unrelated
+    to (and unaware of) src.shared.audit.writers.session_writer.SessionAuditWriter,
+    which fans these same messages out to the audit trail downstream, in
+    session_audit_provider.py::emit_session_audit_event - despite sharing
+    the method name `add_custom_message`, the two classes are different
+    concepts in series, not duplicates of each other.
+    """
+
     @classmethod
     def _convert_state(cls, state: State):
         return {

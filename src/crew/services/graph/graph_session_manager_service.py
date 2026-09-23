@@ -289,6 +289,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        name="Session Cancelled",
                         flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
@@ -309,6 +310,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        name="Session Stopped",
                         flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
@@ -331,6 +333,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        name="Session Failed",
                         flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",

@@ -310,7 +310,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 flow_name=session.graph.name,
                 node_name=graph_session_message_data.name,
                 execution_order=graph_session_message_data.execution_order,
-                message_data=graph_session_message_data.message_data,
+                details=graph_session_message_data.message_data,
                 event_id=str(graph_session_message_data.uuid),
             )
 

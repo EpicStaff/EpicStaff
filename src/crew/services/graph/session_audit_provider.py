@@ -6,13 +6,13 @@ from loguru import logger
 
 from settings import AUDIT_TRAIL_ENABLED, AUDITOR_INGEST_API_KEY, AUDITOR_URL
 from src.shared.audit.client import AuditClient
-from src.shared.audit.session_audit_writer import SessionAuditWriter
+from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import SessionAuditEvent
 
 # session_id -> org_id. Crew-only plumbing: SessionData carries org_id once,
 # at the top of run_session, but individual node handlers deep in the call
 # graph only have session_id. Not part of the shared SessionAuditWriter -
-# that class owns no per-caller state (see shared/audit/session_audit_writer.py).
+# that class owns no per-caller state (see shared/audit/writers/session_writer.py).
 # TTLCache, not a plain dict, as defensive insurance against a future
 # refactor accidentally skipping clear_session_org on some exit path - every
 # current exit path already clears it correctly, this is a backstop, not
@@ -176,7 +176,7 @@ def emit_session_audit_event(data: dict) -> None:
                 flow_name=flow_name,
                 node_name=node_name,
                 execution_order=execution_order,
-                message_data=message_data,
+                details=message_data,
                 event_id=event_id,
             )
         )

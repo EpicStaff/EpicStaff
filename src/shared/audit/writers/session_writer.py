@@ -6,7 +6,7 @@ from cachetools import TTLCache
 from loguru import logger
 
 from src.shared.audit.client import AuditClient
-from src.shared.audit.writer import derive_root_id, safe_emit
+from src.shared.audit.writers.base import BaseAuditWriter, derive_root_id
 from src.shared.models import SessionAuditEvent
 
 AUDIT_NAMESPACE = uuid.UUID("c6e6a7c0-6b3b-4c2b-9f2e-8e6a2a2b6b3a")
@@ -41,7 +41,7 @@ def _derive_node_id(session_id: int, node_name: str, execution_order: int) -> st
     )
 
 
-class SessionAuditWriter:
+class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
     """
     Domain-level writer for the session-audit domain: knows how to translate
     session/node/event vocabulary into a correctly-shaped SessionAuditEvent
@@ -69,10 +69,16 @@ class SessionAuditWriter:
     detail about a node's execution, not a top-level input/output/error -
     all of them route through add_custom_message, which stores the caller's
     dict as-is in `details`.
+
+    Its own add_custom_message shares a name with, but is unrelated to,
+    crew.services.graph.custom_message_writer.CustomSessionMessageWriter's
+    method of the same name - that one builds the upstream stream message,
+    this one audits it downstream (see session_audit_provider.py::
+    emit_session_audit_event, which fans one out to the other).
     """
 
     def __init__(self, client: AuditClient[SessionAuditEvent]):
-        self._client = client
+        super().__init__(client)
         self._start_cache: TTLCache = TTLCache(maxsize=5000, ttl=3600)
 
     async def add_start_message(
@@ -117,7 +123,7 @@ class SessionAuditWriter:
             status=None,
             event_time=datetime.now(timezone.utc),
         )
-        await safe_emit(self._client, wrapper)
+        await self._emit(wrapper)
 
         await self._emit_node_or_event(
             id=event_id,
@@ -233,7 +239,7 @@ class SessionAuditWriter:
         flow_name: str,
         node_name: str,
         execution_order: int,
-        message_data: dict,
+        details: dict,
         event_id: str,
     ) -> None:
         """
@@ -254,7 +260,7 @@ class SessionAuditWriter:
             status="completed",
             name=node_name,
             flow_name=flow_name,
-            details=message_data,
+            details=details,
         )
 
     async def _emit_node_or_event(
@@ -301,7 +307,7 @@ class SessionAuditWriter:
             error=error,
             details=details or {},
         )
-        await safe_emit(self._client, event)
+        await self._emit(event)
 
     async def add_session_start(
         self,
@@ -343,7 +349,7 @@ class SessionAuditWriter:
             status=None,
             event_time=datetime.now(timezone.utc),
         )
-        await safe_emit(self._client, identity_event)
+        await self._emit(identity_event)
         await self._emit_node_or_event(
             id=event_id,
             parent_id=session_audit_id,
@@ -361,6 +367,7 @@ class SessionAuditWriter:
         *,
         session_id: int,
         org_id: int,
+        name: str = "Session End",
         flow_name: str,
         event_id: str,
         status: str,
@@ -389,15 +396,11 @@ class SessionAuditWriter:
             parent_id=parent_id,
             session_id=session_id,
             session_message_id=session_message_id or event_id,
-            name="Session End",
+            name=name,
             run_type=run_type,
             status=status,
             event_time=datetime.now(timezone.utc),
             output=_as_object(output),
             details={**(details or {}), "message_type": "session_end"},
         )
-        await safe_emit(self._client, event)
-
-    async def shutdown(self) -> None:
-        """Delegates to the underlying AuditClient's best-effort drain-and-flush."""
-        await self._client.shutdown()
+        await self._emit(event)

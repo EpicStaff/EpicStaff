@@ -3,7 +3,7 @@ from functools import lru_cache
 from django.conf import settings
 
 from src.shared.audit.client import AuditClient
-from src.shared.audit.session_audit_writer import SessionAuditWriter
+from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import SessionAuditEvent
 
 
