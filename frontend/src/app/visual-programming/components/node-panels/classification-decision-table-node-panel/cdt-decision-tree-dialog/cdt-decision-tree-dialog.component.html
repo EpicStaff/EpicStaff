@@ -138,14 +138,7 @@
                         </span>
                     }
 
-                    <!--
-                        The same split control as the detail window's. The label is
-                        dropped while that window is docked: the one state where the
-                        toolbar has no room for it. A pass in flight keeps it anyway —
-                        the counter is the only place the progress of the whole table
-                        is readable, and hiding it exactly when a block is open hid it
-                        from the reader most likely to be waiting on it.
-                    -->
+                    <!-- The same split control as the detail window's. -->
                     <div class="cdt-tree__explain-all">
                         <button
                             class="cdt-tree__explain-all-run"
@@ -159,15 +152,13 @@
                                 icon="sparkles"
                                 size="12px"
                             />
-                            @if (!selectedBlock() || explainAllRunning()) {
-                                <span class="cdt-tree__explain-all-label">
-                                    @if (explainAllRunning()) {
-                                        {{ copy.explainAllBusy(explainAllDone(), explainAllTotal()) }}
-                                    } @else {
-                                        {{ copy.explainAll }}
-                                    }
-                                </span>
-                            }
+                            <span class="cdt-tree__explain-all-label">
+                                @if (explainAllRunning()) {
+                                    {{ copy.explainAllBusy(explainAllDone(), explainAllTotal()) }}
+                                } @else {
+                                    {{ copy.explainAll }}
+                                }
+                            </span>
                         </button>
 
                         <span class="cdt-tree__explain-all-divider"></span>

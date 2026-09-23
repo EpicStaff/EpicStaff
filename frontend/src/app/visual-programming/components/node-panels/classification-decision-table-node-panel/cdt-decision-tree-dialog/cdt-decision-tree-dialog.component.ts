@@ -393,14 +393,6 @@ export class CdtDecisionTreeDialogComponent {
         this.openDetailFor(blockId);
     }
 
-    /**
-     * Bring a block into view at a readable size.
-     *
-     * Centring alone is not enough from a zoomed-out canvas: the block lands in the
-     * middle too small to read. Below 1 the scale is reset on the way in; at or above
-     * it the user has deliberately zoomed closer, so the move only pans. Both paths
-     * animate, which is what reads as scrolling to the block rather than jumping.
-     */
     private focusBlock(blockId: string): void {
         const canvas = this.fCanvas();
         if (!canvas) return;
