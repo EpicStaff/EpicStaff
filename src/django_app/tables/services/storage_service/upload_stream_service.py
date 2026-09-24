@@ -3,16 +3,15 @@ import functools
 import lzma
 import tarfile
 import tempfile
-import uuid
 import zipfile
 import zlib
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.db import close_old_connections
+from django.db import close_old_connections, transaction
 from rest_framework.exceptions import ValidationError
 from tables.exceptions import StorageQuotaExceeded, UploadTooLarge
-from tables.models import StorageFile
+from tables.models import Organization, StorageFile
 from tables.services.storage_service.archive_formats import (
     inspect_archive,
     strip_archive_suffix,
@@ -227,7 +226,7 @@ def _restore_file_row(org_id: int, path: str, previous_row: list[int | None]) ->
 
 
 def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
-    """Validate the buffered archive and unpack it into a new "<name>-<uuid>" folder,
+    """Validate the buffered archive and unpack it into a new "<name> (n)" folder,
     then write the rows within the quota; on failure the folder is removed again."""
     free = org_free_bytes(org_id)
 
@@ -247,8 +246,8 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
     guard = ArchiveExtractionGuard(max_entries=settings.MAX_ARCHIVE_ENTRIES, max_total_bytes=free)
 
     stem = sanitize_storage_path(strip_archive_suffix(filename), allow_empty=False)
-    folder = _join(_clean_folder(path), f"{stem}-{uuid.uuid4().hex}")
-    folder_key = _storage_key(org_id, folder)
+    folder_key = _reserve_folder(org_id, _join(_clean_folder(path), stem), backend)
+    folder = folder_key.removeprefix(_storage_key(org_id, ""))
 
     try:
         sizes = upload_archive_members(
@@ -271,3 +270,13 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
         raise
 
     return {"path": folder, "extracted": [file_path for file_path, _ in files]}
+
+
+def _reserve_folder(org_id: int, folder: str, backend) -> str:
+    """Storage key of the first free "<folder>", "<folder> (1)", ..., claimed with a
+    marker under the org lock so two uploads of one archive never share a folder."""
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=org_id)
+        key = backend.unique_key(_storage_key(org_id, folder), is_folder=True)
+        backend.mkdir(key)
+    return key

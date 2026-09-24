@@ -2,6 +2,7 @@ import io
 import mimetypes
 from datetime import datetime, timezone
 
+from tables.exceptions import RangeNotSatisfiable
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
     FileInfo,
@@ -46,7 +47,7 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             return any(k.startswith(folder_prefix) for k in self._objects)
         return key in self._objects
 
-    def _unique_key(self, key: str, is_folder: bool = False) -> str:
+    def unique_key(self, key: str, is_folder: bool = False) -> str:
         """Increment the name segment of *key* until nothing exists at that path."""
         if not self._key_exists(key, is_folder):
             return key
@@ -92,6 +93,13 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         if full_path not in self._objects:
             raise FileNotFoundError(f"File does not exist: {path}")
         return self._objects[full_path][0]
+
+    def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
+        data = self.download(path)
+        if first >= len(data):
+            raise RangeNotSatisfiable(len(data))
+        last = len(data) - 1 if last is None else min(last, len(data) - 1)
+        return data[first : last + 1], f"bytes {first}-{last}/{len(data)}"
 
     def delete(self, path: str) -> None:
         full_path = self._full_path(path)
@@ -369,7 +377,7 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         if full_source in self._objects:
             source_name = full_source.rstrip("/").split("/")[-1]
             target_key = full_destination.rstrip("/") + "/" + source_name
-            target_key = self._unique_key(target_key)
+            target_key = self.unique_key(target_key)
             self._objects[target_key] = self._objects[full_source]
             return target_key, [target_key]
 
@@ -377,7 +385,7 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
         source_folder_name = full_source.rstrip("/").split("/")[-1]
         dest_base = full_destination.rstrip("/") + "/" + source_folder_name
-        dest_base = self._unique_key(dest_base, is_folder=True)
+        dest_base = self.unique_key(dest_base, is_folder=True)
 
         created_keys = []
         for key in [k for k in self._objects if k.startswith(source_prefix)]:

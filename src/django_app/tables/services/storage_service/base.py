@@ -118,6 +118,15 @@ class AbstractStorageBackend(ABC):
         """Return file content as bytes."""
 
     @abstractmethod
+    def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
+        """Bytes first..last (inclusive; None = to the end) and their Content-Range, taken
+        from the stored object itself. RangeNotSatisfiable if first is past its end."""
+
+    @abstractmethod
+    def unique_key(self, key: str, is_folder: bool = False) -> str:
+        """key, or its first "name (n)" variant that nothing exists at yet."""
+
+    @abstractmethod
     def delete(self, path: str) -> None:
         """Delete file or folder (folder = recursive)."""
 

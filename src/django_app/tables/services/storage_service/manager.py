@@ -1,5 +1,6 @@
 import io
 import mimetypes
+import re
 import zipfile
 from collections.abc import Iterator
 
@@ -8,6 +9,7 @@ from django.db.models.functions import Lower
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
+    FileDownload,
     FileInfo,
     FileListItem,
     FolderInfo,
@@ -16,6 +18,23 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import sanitize_storage_path
+
+# Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
+_BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
+
+
+def _parse_byte_range(header: str | None) -> tuple[int, int | None] | None:
+    """(first, last) of a single "bytes=first-[last]" Range; last None = to the end.
+    None means "send the whole file": RFC 9110 lets a server ignore a Range it
+    does not support (suffix and multi ranges included)."""
+    match = _BYTE_RANGE.fullmatch(header.strip()) if header else None
+    if not match:
+        return None
+    first = int(match[1])
+    last = int(match[2]) if match[2] else None
+    if last is not None and last < first:
+        return None
+    return first, last
 
 
 class StorageManager:
@@ -108,14 +127,21 @@ class StorageManager:
         StorageFileSync.on_upload(org_id, relative_path, size=result.size)
         return UploadResult(path=relative_path, size=result.size)
 
-    def download(self, org_id: int, path: str) -> bytes:
+    def download(self, org_id: int, path: str, range_header: str | None = None) -> FileDownload:
         clean_path = path.rstrip("/")
         file_exists = StorageFile.objects.filter(
             org_id=org_id, path=clean_path, item_type="file"
         ).exists()
         if not file_exists:
             raise FileNotFoundError(f"File does not exist: {path}")
-        return self._backend.download(self._build_storage_key(org_id, path))
+        key = self._build_storage_key(org_id, path)
+
+        # Offsets and length come from the object, not StorageFile.size: agent writes
+        # can overwrite a file without updating its row.
+        byte_range = _parse_byte_range(range_header)
+        if byte_range is None:
+            return FileDownload(self._backend.download(key))
+        return FileDownload(*self._backend.download_range(key, *byte_range))
 
     def delete(self, org_id: int, path: str) -> None:
         self._backend.delete(self._build_storage_key(org_id, path))

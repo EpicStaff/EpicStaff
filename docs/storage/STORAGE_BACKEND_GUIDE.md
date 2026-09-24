@@ -140,8 +140,10 @@ folder written so far is then removed. Their uploads to storage overlap
 (`archive_member_upload.upload_archive_members`, up to
 `DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` at a time).
 
-Archives extract into a subfolder named `<archive stem>-<uuid>`, so a repeated
-upload never collides with an earlier one. Empty folders in the archive are kept
+Archives extract into a subfolder named after the archive stem, deduped as
+`<stem> (1)`, `<stem> (2)`, …; the name is claimed with a folder marker under the
+org lock, so a repeated or concurrent archive upload never shares a folder
+(mkdir/move/copy do not take that lock). Empty folders in the archive are kept
 as folder markers. All rows of one archive are written with two bulk INSERTs
 (`StorageFileSync.on_bulk_upload`) while the org lock is held.
 

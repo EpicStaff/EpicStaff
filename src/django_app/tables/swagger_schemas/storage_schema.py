@@ -58,10 +58,15 @@ STORAGE_DOWNLOAD_SWAGGER = {
     "summary": "Download a file",
     "description": (
         "Downloads a single file by path. Returns the file content "
-        "with appropriate Content-Disposition header."
+        "with appropriate Content-Disposition header. A single "
+        "`Range: bytes=first-[last]` header returns only that part (206)."
     ),
     "parameters": [_STORAGE_PATH_PARAM],
-    "responses": {200: OpenApiResponse(description="File content as binary stream")},
+    "responses": {
+        200: OpenApiResponse(description="File content as binary stream"),
+        206: OpenApiResponse(description="The requested byte range, with Content-Range"),
+        416: OpenApiResponse(description="Range starts past the end of the file"),
+    },
 }
 
 STORAGE_DOWNLOAD_ZIP_SWAGGER = {

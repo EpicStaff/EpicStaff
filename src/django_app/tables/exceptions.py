@@ -503,6 +503,17 @@ class UploadTooLarge(CustomAPIExeption):
     default_code = "upload_too_large"
 
 
+class RangeNotSatisfiable(CustomAPIExeption):
+    status_code = 416
+    default_detail = "Requested range starts past the end of the file."
+    default_code = "range_not_satisfiable"
+
+    def __init__(self, file_size: int | None = None):
+        super().__init__()
+        # RFC 9110: a 416 names the current length, so the client can retry within it.
+        self.headers = {"Content-Range": f"bytes */{file_size}"} if file_size is not None else {}
+
+
 class UploadFailedError(CustomAPIExeption):
     """Catch-all for unexpected streaming-upload failures; 4xx so nothing 5xx reaches the wire."""
 

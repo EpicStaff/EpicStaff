@@ -141,13 +141,22 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         path = params.validated_data["path"]
 
         try:
-            file_bytes = self.manager.download(org_id, path)
+            download = self.manager.download(org_id, path, request.headers.get("Range"))
         except FileNotFoundError as e:
             raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         filename = path.rstrip("/").split("/")[-1] if path else "file"
-        response = HttpResponse(file_bytes, content_type="application/octet-stream")
+        response = HttpResponse(
+            download.content,
+            content_type="application/octet-stream",
+            status=status.HTTP_206_PARTIAL_CONTENT
+            if download.content_range
+            else status.HTTP_200_OK,
+        )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Accept-Ranges"] = "bytes"
+        if download.content_range:
+            response["Content-Range"] = download.content_range
         return response
 
     @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)

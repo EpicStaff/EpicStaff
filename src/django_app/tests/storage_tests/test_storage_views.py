@@ -3,8 +3,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rest_framework import status
 
+from tables.exceptions import RangeNotSatisfiable
 from tables.models import Graph, GraphStorageFile, Organization, StorageFile
 from tables.services.storage_service.dataclasses import (
+    FileDownload,
     FileInfo,
     FileListItem,
     FolderInfo,
@@ -70,13 +72,36 @@ class TestInfo:
 
 class TestDownload:
     def test_download_returns_octet_stream(self, auth_client, mock_manager):
-        mock_manager.download.return_value = b"file content"
+        mock_manager.download.return_value = FileDownload(b"file content")
 
         resp = auth_client.get("/api/storage/download/", {"path": "f.txt"})
 
         assert resp.status_code == status.HTTP_200_OK
         assert resp["Content-Type"] == "application/octet-stream"
+        assert resp["Accept-Ranges"] == "bytes"
         assert resp.content == b"file content"
+
+    def test_download_range_returns_partial_content(self, auth_client, mock_manager):
+        mock_manager.download.return_value = FileDownload(b"file", "bytes 0-3/12")
+
+        resp = auth_client.get(
+            "/api/storage/download/", {"path": "f.txt"}, HTTP_RANGE="bytes=0-3"
+        )
+
+        assert resp.status_code == status.HTTP_206_PARTIAL_CONTENT
+        assert resp["Content-Range"] == "bytes 0-3/12"
+        assert resp.content == b"file"
+        assert mock_manager.download.call_args.args[2] == "bytes=0-3"
+
+    def test_download_range_past_end_returns_416(self, auth_client, mock_manager):
+        mock_manager.download.side_effect = RangeNotSatisfiable(12)
+
+        resp = auth_client.get(
+            "/api/storage/download/", {"path": "f.txt"}, HTTP_RANGE="bytes=99-"
+        )
+
+        assert resp.status_code == status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE
+        assert resp["Content-Range"] == "bytes */12"
 
     def test_download_returns_error_for_missing_file(self, auth_client, mock_manager):
         mock_manager.download.side_effect = FileNotFoundError("gone")

@@ -4,6 +4,8 @@ import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from django.conf import settings
+from tables.exceptions import RangeNotSatisfiable
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
     FileInfo,
@@ -14,6 +16,13 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
+
+
+def _drop_expect_on_empty_body(request, **kwargs):
+    # MinIO answers an empty PUT sent with "Expect: 100-continue" in a way that
+    # stalls the next request on that pooled connection for ~30 s.
+    if request.headers.get("Content-Length") == "0":
+        request.headers.pop("Expect", None)
 
 
 class S3StorageBackend(AbstractStorageBackend):
@@ -39,8 +48,15 @@ class S3StorageBackend(AbstractStorageBackend):
             endpoint_url=endpoint_url,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(connect_timeout=10, read_timeout=300),
+            config=Config(
+                connect_timeout=10,
+                read_timeout=300,
+                # Every upload slot may run a full archive PUT pool plus one streamed member.
+                max_pool_connections=settings.UPLOAD_MAX_CONCURRENCY
+                * (settings.ARCHIVE_UPLOAD_CONCURRENCY + 1),
+            ),
         )
+        self.client.meta.events.register("before-send.s3.PutObject", _drop_expect_on_empty_body)
 
     async def upload_chunks(
         self, path, chunks, *, part_size, size_guard=None, before_commit=None
@@ -131,7 +147,9 @@ class S3StorageBackend(AbstractStorageBackend):
             max_concurrency=1,
             use_threads=False,
         )
-        self.client.upload_fileobj(file_object, self.bucket_name, self._full_path(path), Config=config)
+        self.client.upload_fileobj(
+            file_object, self.bucket_name, self._full_path(path), Config=config
+        )
 
     def put_bytes(self, path: str, data: bytes) -> int:
         """Store `data` at `path` in one PutObject; returns its size. Unlike upload()
@@ -238,6 +256,23 @@ class S3StorageBackend(AbstractStorageBackend):
         head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
         logger.info("Uploaded S3 object {}", full_path)
         return UploadResult(path=path, size=head["ContentLength"])
+
+    def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
+        full_path = self._full_path(path)
+        byte_range = f"bytes={first}-{'' if last is None else last}"
+        try:
+            response = self.client.get_object(
+                Bucket=self.bucket_name, Key=full_path, Range=byte_range
+            )
+        except ClientError as error:
+            code = error.response["Error"]["Code"]
+            if code == "NoSuchKey":
+                raise FileNotFoundError(f"File does not exist: {path}") from error
+            if code == "InvalidRange":
+                head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
+                raise RangeNotSatisfiable(head["ContentLength"]) from error
+            raise
+        return response["Body"].read(), response["ContentRange"]
 
     def download(self, path: str) -> bytes:
         full_path = self._full_path(path)
@@ -357,7 +392,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 return False
             raise
 
-    def _unique_key(self, key: str, is_folder: bool = False) -> str:
+    def unique_key(self, key: str, is_folder: bool = False) -> str:
         """Increment the name segment of *key* until nothing exists at that path."""
         if not self._key_exists(key, is_folder):
             return key
@@ -388,7 +423,7 @@ class S3StorageBackend(AbstractStorageBackend):
         if self.exists(source_path):
             source_name = full_source.rstrip("/").split("/")[-1]
             target_key = full_destination.rstrip("/") + "/" + source_name
-            target_key = self._unique_key(target_key)
+            target_key = self.unique_key(target_key)
             self.client.copy_object(
                 CopySource=copy_source,
                 Bucket=self.bucket_name,
@@ -400,7 +435,7 @@ class S3StorageBackend(AbstractStorageBackend):
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
         source_folder_name = full_source.rstrip("/").split("/")[-1]
         dest_base = full_destination.rstrip("/") + "/" + source_folder_name
-        dest_base = self._unique_key(dest_base, is_folder=True)
+        dest_base = self.unique_key(dest_base, is_folder=True)
 
         created_keys = []
         paginator = self.client.get_paginator("list_objects_v2")

@@ -101,7 +101,7 @@ async def test_upload_archive_happy():
     result = await svc.upload_archive(
         org.id, "", "bundle.zip", _aiter(archive.read()), backend=backend
     )
-    assert result["path"].startswith("bundle-")
+    assert result["path"] == "bundle"
     assert sorted(result["extracted"]) == sorted(
         [f"{result['path']}/a.txt", f"{result['path']}/sub/b.txt"]
     )
@@ -109,6 +109,19 @@ async def test_upload_archive_happy():
     assert await StorageFile.objects.filter(
         org=org, path=f"{result['path']}/a.txt"
     ).aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9)
+async def test_upload_archive_twice_dedupes_folder():
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+    archive = _zip({"a.txt": b"hello"}).read()
+    first = await svc.upload_archive(org.id, "", "bundle.zip", _aiter(archive), backend=backend)
+    second = await svc.upload_archive(org.id, "", "bundle.zip", _aiter(archive), backend=backend)
+    assert (first["path"], second["path"]) == ("bundle", "bundle (1)")
+    assert second["extracted"] == ["bundle (1)/a.txt"]
 
 
 @pytest.mark.asyncio
@@ -123,7 +136,7 @@ async def test_upload_archive_past_free_space_writes_nothing():
             org.id, "", "bundle.zip", _aiter(archive.read()), backend=backend
         )
     assert not backend._objects
-    assert not await StorageFile.objects.filter(org=org, path__startswith="bundle-").aexists()
+    assert not await StorageFile.objects.filter(org=org, path__startswith="bundle").aexists()
 
 
 @pytest.mark.asyncio

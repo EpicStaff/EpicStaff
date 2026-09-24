@@ -152,7 +152,7 @@ async def test_stream_upload_end_to_end_archive(org_user, monkeypatch):
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["path"].startswith("bundle-")
+    assert body["path"] == "bundle"
     assert len(body["extracted"]) == 2
     assert await StorageFile.objects.filter(
         org_id=org_user.org_id, path=f"{body['path']}/a.txt"
