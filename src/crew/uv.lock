@@ -231,6 +231,7 @@ version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "datamodel-code-generator" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "litellm" },
@@ -274,6 +275,7 @@ transitive-pins = [
 [package.metadata]
 requires-dist = [
     { name = "datamodel-code-generator", specifier = "==0.64.0" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "langchain-core", specifier = "==1.6.2" },
     { name = "langgraph", specifier = "==1.2.11" },
     { name = "litellm", specifier = "==1.92.0" },
