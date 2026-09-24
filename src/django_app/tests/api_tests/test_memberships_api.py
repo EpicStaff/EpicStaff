@@ -2,8 +2,8 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -210,8 +210,8 @@ def test_add_both_email_and_user_id_400(
 
 @pytest.mark.django_db
 def test_add_global_superadmin_role_400(client_as, admin_acme, acme, django_user_model):
-    from tables.models.rbac_models import Role
-    from tables.models.rbac_models.rbac_enums import BuiltInRole
+    from rbac.models import Role
+    from rbac.models.enums import BuiltInRole
 
     sa_role = Role.objects.get(
         name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True

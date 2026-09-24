@@ -7,8 +7,8 @@ from rest_framework.test import APIClient
 
 from tables.models import PythonCode
 from tables.models.graph_models import Graph, PythonNode
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_service
 
 

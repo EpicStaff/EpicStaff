@@ -11,6 +11,7 @@ from django.db.models import (
     Value,
 )
 from django.db.models.functions import Cast, Concat
+from rbac.scoping.fields import org_visible_queryset
 from tables.models import (
     ElevenLabsRealtimeConfig,
     EmbeddingConfig,
@@ -31,7 +32,6 @@ from tables.models.webhook_models import (
     TwilioChannel,
     WebhookTriggerAuth,
 )
-from tables.serializers.org_scoped_fields import org_visible_queryset
 
 # Shared with the declaration validator so the two features cannot drift on which
 # node types exist or what their wire values are.

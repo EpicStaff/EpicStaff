@@ -1,8 +1,7 @@
 from asgiref.sync import sync_to_async
 from channels.middleware import BaseMiddleware
 from django.contrib.auth.models import AnonymousUser
-
-from tables.services.rbac.ticket_service import ws_ticket_service
+from rbac.identity.tickets import ws_ticket_service
 
 
 class TicketAuthMiddleware(BaseMiddleware):

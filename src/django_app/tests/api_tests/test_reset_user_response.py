@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
-from tables.services.rbac.auth_service import TokenPair
+from rbac.identity.tokens import TokenPair
 
 
 @pytest.fixture

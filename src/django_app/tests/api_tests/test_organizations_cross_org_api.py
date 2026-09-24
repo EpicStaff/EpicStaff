@@ -1,7 +1,7 @@
 import pytest
 from rest_framework import status
 
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

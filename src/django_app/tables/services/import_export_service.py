@@ -1,5 +1,6 @@
 import json
 
+from rbac.access.resolver import PermissionResolver
 from rest_framework.exceptions import ValidationError
 from tables.import_export.constants import MAIN_ENTITY_KEY
 from tables.import_export.export_format_strategies import JsonExportFormatStrategy
@@ -8,7 +9,6 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService, ImportSettings
 from tables.import_export.services.inspect_service import InspectService
 from tables.import_export.version_conversions.base import VersionConverter
-from tables.services.rbac.permission_resolver import PermissionResolver
 
 
 class ViewSetImportExportService:
