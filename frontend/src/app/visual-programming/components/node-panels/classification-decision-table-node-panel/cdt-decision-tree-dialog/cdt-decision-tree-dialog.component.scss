@@ -604,9 +604,7 @@
 // ---------------------------------------------------------------------------
 
 :host ::ng-deep {
-    // A literal: `--color-divider-regular` is a 14%-alpha hairline meant for
-    // borders and is invisible as a connection stroke.
-    --cdt-tree-edge-color: #8a8f9c;
+    --cdt-tree-edge-color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
 
     f-flow {
         width: 100%;
@@ -640,9 +638,9 @@
         }
     }
 
-    // Everything on the error path is the one red: the boundary it leaves, the
-    // edge, its arrowhead and its label. Declared after the base rules, which it
-    // ties with on specificity, so source order is what makes it win.
+    // The error path is the one red: the boundary it leaves, the edge and its
+    // arrowhead. Declared after the base rules, which it ties with on specificity,
+    // so source order is what makes it win.
     .cdt-tree-edge--error {
         .f-connection-path {
             stroke: var(--cdt-tree-error);
@@ -651,10 +649,6 @@
 
         svg.f-marker path {
             fill: var(--cdt-tree-error);
-        }
-
-        .cdt-tree-edge__label {
-            color: var(--cdt-tree-error);
         }
     }
 
