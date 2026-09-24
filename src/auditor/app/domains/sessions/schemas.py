@@ -1,18 +1,6 @@
-"""
-Sessions-domain request/response Pydantic models for the search and export
-endpoints. Lives here (not in app/controllers/*.py) so those controllers
-stay domain-generic - they pull these types off the `AuditDomain` instance
-(see app/domains/base.py's `ApiSpec.search_request_model`/
-`search_response_model`/`export_request_model` fields, reached via
-`AuditDomain.api`) instead of importing sessions-specific classes
-directly. A second domain gets its own schemas.py sibling with the same
-shape, wired onto its own AuditDomain instance in its own domain.py -
-neither controller needs to change.
-"""
+"""Sessions-domain request/response models for the search and export endpoints."""
 
 from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domains.sessions.docs import (
     FILTERS_FIELD_DESCRIPTION,
@@ -23,7 +11,12 @@ from app.domains.sessions.docs import (
 from app.domains.sessions.expansion import MatchScope
 from app.filtering.ast import FilterNode
 from app.filtering.query_language import parse_query
-from app.swagger_schemas import QUERY_FIELD_DESCRIPTION
+from app.swagger_schemas import (
+    CURSOR_FIELD_DESCRIPTION,
+    QUERY_FIELD_DESCRIPTION,
+    SIZE_FIELD_DESCRIPTION,
+)
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SessionSearchRequest(BaseModel):
@@ -34,8 +27,8 @@ class SessionSearchRequest(BaseModel):
     match_scope: MatchScope = Field(
         default_factory=MatchScope, description=MATCH_SCOPE_FIELD_DESCRIPTION
     )
-    cursor: str | None = Field(default=None)
-    size: int = Field(default=50, le=1000)
+    cursor: str | None = Field(default=None, description=CURSOR_FIELD_DESCRIPTION)
+    size: int = Field(default=50, ge=1, le=1000, description=SIZE_FIELD_DESCRIPTION)
 
     model_config = ConfigDict(
         extra="forbid",
@@ -45,9 +38,7 @@ class SessionSearchRequest(BaseModel):
     @model_validator(mode="after")
     def _filters_xor_query(self):
         if self.filters is not None and self.query is not None:
-            raise ValueError(
-                "'filters' and 'query' are mutually exclusive - send exactly one"
-            )
+            raise ValueError("'filters' and 'query' are mutually exclusive - send exactly one")
         return self
 
     def resolve_filter_node(self) -> FilterNode | None:
@@ -75,9 +66,7 @@ class SessionExportRequest(BaseModel):
     @model_validator(mode="after")
     def _filters_xor_query(self):
         if self.filters is not None and self.query is not None:
-            raise ValueError(
-                "'filters' and 'query' are mutually exclusive - send exactly one"
-            )
+            raise ValueError("'filters' and 'query' are mutually exclusive - send exactly one")
         return self
 
     def resolve_filter_node(self) -> FilterNode | None:
