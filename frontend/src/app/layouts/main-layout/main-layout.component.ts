@@ -10,7 +10,7 @@ import { LeftSidebarComponent } from './sidenav/sidenav.component';
 const TABBED_ROUTES: Record<string, string[]> = {
     '/tools': ['/tools/custom', '/tools/mcp'],
     '/flows': ['/flows/my', '/flows/templates'],
-    '/files': ['/files/knowledge-sources', '/files/storage'],
+    '/files': ['/files/knowledge-sources', '/files/storage', '/files/persistent-data'],
 };
 
 @Component({

@@ -13,6 +13,9 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
+import { PersistenceTableDialogComponent } from '../../../persistent-data/components/persistence-table-dialog/persistence-table-dialog.component';
+import { PersistenceTable } from '../../../persistent-data/models/persistence-table.model';
+import { PersistenceTablesStorageService } from '../../../persistent-data/services/persistence-tables-storage.service';
 import {
     CreateFolderDialogComponent,
     CreateFolderDialogResult,
@@ -45,6 +48,7 @@ export class FilesListPageComponent {
     private readonly collectionsStorageService = inject(CollectionsStorageService);
     private readonly toastService = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
+    private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
     readonly filesSearchService = inject(FilesSearchService);
 
     public tabs = [
@@ -57,6 +61,11 @@ export class FilesListPageComponent {
             label: 'Storage',
             link: 'storage',
             isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+        },
+        {
+            label: 'Persistent Data',
+            link: 'persistent-data',
+            isPermitted: () => this.permissionService.can(ResourceCode.PersistentData, ActionCode.Read),
         },
     ];
 
@@ -91,6 +100,14 @@ export class FilesListPageComponent {
             };
         }
 
+        if (url?.includes('/persistent-data')) {
+            return {
+                label: 'Create table',
+                permitted: this.permissionService.can(ResourceCode.PersistentData, ActionCode.Create),
+                action: () => this.onCreatePersistenceTableClick(),
+            };
+        }
+
         return;
     });
 
@@ -117,6 +134,17 @@ export class FilesListPageComponent {
                 },
                 error: () => this.toastService.error('Failed to create collection'),
             });
+    }
+
+    public onCreatePersistenceTableClick(): void {
+        const dialogRef = this.dialog.open<PersistenceTable | null>(PersistenceTableDialogComponent, {
+            width: '480px',
+        });
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((table) => {
+            if (!table) return;
+            this.toastService.success(`Table "${table.name}" created`);
+            this.persistenceTablesStorage.triggerRefresh();
+        });
     }
 
     private openCreateCollectionModal(collectionId: number): void {

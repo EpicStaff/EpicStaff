@@ -1,0 +1,57 @@
+<div class="persistence-dialog">
+    <header class="persistence-dialog__header">
+        <span class="persistence-dialog__title">{{ isRename ? 'Rename table' : 'Create table' }}</span>
+        <app-svg-icon
+            class="persistence-dialog__close-btn"
+            icon="close"
+            size="16px"
+            matTooltip="Close"
+            matTooltipPosition="above"
+            (click)="cancel()"
+        />
+    </header>
+
+    <form
+        class="persistence-dialog__form"
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+    >
+        @if (errorMessage()) {
+            <div class="persistence-dialog__error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
+
+        <div>
+            <app-custom-input
+                label="Name"
+                formControlName="name"
+                [required]="true"
+                placeholder="e.g. customer_profiles"
+            />
+            <app-validation-errors [control]="form.controls.name" />
+        </div>
+
+        <app-custom-input
+            label="Description"
+            formControlName="description"
+            placeholder="What this table stores"
+        />
+    </form>
+
+    <div class="persistence-dialog__actions">
+        <app-button
+            type="outline-primary"
+            (click)="cancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary-white"
+            [disabled]="form.invalid || isSubmitting()"
+            (click)="submit()"
+        >
+            {{ isSubmitting() ? 'Saving...' : 'Save' }}
+        </app-button>
+    </div>
+</div>

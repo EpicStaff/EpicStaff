@@ -1,0 +1,35 @@
+<ul class="table-list">
+    @for (table of tables(); track table.id) {
+        <li
+            class="table-list__row"
+            [class.active]="table.id === selectedId()"
+        >
+            <button
+                type="button"
+                class="table-list__select"
+                (click)="selected.emit(table)"
+            >
+                <span class="table-list__name">{{ table.name }}</span>
+                <span class="table-list__count">{{ table.entry_count }} entries</span>
+            </button>
+            @if (canManage()) {
+                <div class="table-list__actions">
+                    <app-icon-button
+                        icon="edit"
+                        tooltip="Rename"
+                        ariaLabel="Rename table"
+                        (onClick)="renameRequested.emit(table)"
+                    />
+                    <app-icon-button
+                        icon="trash"
+                        tooltip="Delete"
+                        ariaLabel="Delete table"
+                        (onClick)="deleteRequested.emit(table)"
+                    />
+                </div>
+            }
+        </li>
+    } @empty {
+        <li class="table-list__empty">No tables yet</li>
+    }
+</ul>

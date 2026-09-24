@@ -1,0 +1,83 @@
+<section class="entries-grid">
+    <header class="entries-grid__header">
+        <h2 class="entries-grid__title">{{ table().name }}</h2>
+        <div class="entries-grid__header-actions">
+            <app-search
+                placeholder="Search keys..."
+                width="280px"
+                [(searchTerm)]="searchText"
+            />
+            @if (canEdit()) {
+                <app-button
+                    type="primary-white"
+                    leftIcon="plus"
+                    (click)="onAdd()"
+                >
+                    Add entry
+                </app-button>
+            }
+        </div>
+    </header>
+
+    <div class="entries-grid__body">
+        <app-table
+            [columns]="columns()"
+            [data]="rows()"
+            [hasExternalFilter]="!!search()"
+            rowId="id"
+        >
+            <ng-template
+                appTableCell="key"
+                let-row
+            >
+                <span class="entries-grid__key">{{ row['key'] }}</span>
+            </ng-template>
+
+            <ng-template
+                appTableCell="preview"
+                let-row
+            >
+                <span class="entries-grid__preview">{{ row['preview'] }}</span>
+            </ng-template>
+
+            <ng-template
+                appTableCell="updated_at"
+                let-row
+            >
+                <span class="entries-grid__updated">
+                    {{ row['updated_at'] | date: 'short' }}
+                    @if (row['updated_by_session']) {
+                        <a
+                            class="entries-grid__session-link"
+                            [routerLink]="['/graph', row['updated_by_graph'], 'session', row['updated_by_session']]"
+                        >
+                            run #{{ row['updated_by_session'] }}
+                        </a>
+                    }
+                </span>
+            </ng-template>
+
+            <div
+                tableNoResults
+                class="entries-grid__empty"
+            >
+                No entries match your search.
+            </div>
+            @if (!loading()) {
+                <p
+                    tableEmpty
+                    class="entries-grid__empty"
+                >
+                    No entries yet
+                </p>
+            }
+        </app-table>
+    </div>
+
+    <app-pagination-controls
+        [pageSize]="pageSize"
+        [totalCount]="totalCount()"
+        [currentPage]="page()"
+        (pageChange)="page.set($event)"
+    />
+</section>

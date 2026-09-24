@@ -241,6 +241,15 @@ export const routes: Routes = [
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
                             },
+                            {
+                                path: 'persistent-data',
+                                loadComponent: () =>
+                                    import('./features/persistent-data/pages/persistent-data-page/persistent-data-page.component').then(
+                                        (m) => m.PersistentDataPageComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.PersistentData, ActionCode.Read] },
+                            },
                         ],
                     },
                     {

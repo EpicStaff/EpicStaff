@@ -1,0 +1,66 @@
+.table-list {
+    list-style: none;
+    margin: 0;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    &__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+
+        &:hover {
+            background-color: var(--color-surface-card);
+        }
+
+        &.active {
+            background-color: var(--color-surface-card);
+            box-shadow: inset 2px 0 0 var(--accent-color);
+        }
+    }
+
+    &__select {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        flex: 1;
+        min-width: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    &__name {
+        font-size: var(--text-body-size);
+        color: var(--color-text-primary);
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__count {
+        font-size: 0.75rem;
+        color: var(--color-text-secondary);
+    }
+
+    &__actions {
+        display: flex;
+        gap: 4px;
+        flex-shrink: 0;
+    }
+
+    &__empty {
+        padding: 16px 12px;
+        font-size: var(--text-body-size);
+        color: var(--color-text-secondary);
+    }
+}
