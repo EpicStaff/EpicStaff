@@ -80,13 +80,19 @@ def _on_audit_task_done(task: asyncio.Task) -> None:
         return
     exc = task.exception()
     if exc is not None:
-        logger.warning(f"Audit task failed, event dropped: {exc}")
+        logger.warning("Audit task failed, event dropped: {}", exc)
 
 
 def track_audit_task(coro) -> None:
     task = asyncio.create_task(coro)
     _audit_tasks.add(task)
     task.add_done_callback(_on_audit_task_done)
+
+
+def _value_or_empty_dict(value):
+    # Only None means "absent": False, 0 and "" are real node inputs/outputs
+    # and must reach the audit trail as-is.
+    return {} if value is None else value
 
 
 def emit_session_audit_event(data: dict) -> None:
@@ -102,8 +108,9 @@ def emit_session_audit_event(data: dict) -> None:
     `data` must already carry a "uuid" - the same id used as the primary
     pipeline's dedup/identity key, reused here as the audit event id.
 
-    Never blocks the primary pipeline - fire-and-forget via create_task,
-    except add_start_message which is cache-only and synchronous.
+    Never blocks the primary pipeline: every message type, start included,
+    is dispatched as a fire-and-forget asyncio task (track_audit_task) that
+    only enqueues onto the shared AuditClient's background batch loop.
     """
     session_id = data.get("session_id")
     org_id, flow_name = None, None
@@ -131,7 +138,7 @@ def emit_session_audit_event(data: dict) -> None:
                 node_name=node_name,
                 node_type=node_type,
                 execution_order=execution_order,
-                input_=message_data.get("input") or {},
+                input_=_value_or_empty_dict(message_data.get("input")),
                 event_id=event_id,
             )
         )
@@ -144,7 +151,7 @@ def emit_session_audit_event(data: dict) -> None:
                 node_name=node_name,
                 node_type=node_type,
                 execution_order=execution_order,
-                output=message_data.get("output") or {},
+                output=_value_or_empty_dict(message_data.get("output")),
                 event_id=event_id,
                 additional_data=message_data.get("additional_data"),
             )

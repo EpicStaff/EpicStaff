@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from collections.abc import Callable, Coroutine
 from dataclasses import asdict, dataclass
 from types import CoroutineType
 from typing import Any
@@ -68,6 +69,19 @@ def _extract_finish_token_total(message_data: dict) -> int:
     return token_usage.get("total_tokens", 0) or 0
 
 
+def _dispatch_session_audit(build_audit_coroutine: Callable[[], Coroutine]) -> None:
+    """Schedule a session-level audit write without ever failing the session.
+
+    Building the coroutine resolves the audit writer, which can raise (e.g. a
+    misconfigured client); that failure is logged and the event dropped so the
+    session's own status and cleanup are unaffected.
+    """
+    try:
+        track_audit_task(build_audit_coroutine())
+    except Exception as audit_exc:
+        logger.warning("Session audit dispatch failed, dropping: {}", audit_exc)
+
+
 @dataclass
 class SessionCoroItem:
     coro: CoroutineType
@@ -120,8 +134,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_id = session_data.id
             register_session_org(session_id, session_data.org_id)
             register_session_flow_name(session_id, session_data.graph.name)
-            track_audit_task(
-                get_session_audit_writer().add_session_start(
+            _dispatch_session_audit(
+                lambda: get_session_audit_writer().add_session_start(
                     session_id=session_id,
                     org_id=session_data.org_id,
                     flow_name=session_data.graph.name,
@@ -205,7 +219,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         # Audit must never break the primary pipeline - this
                         # dispatch call must never propagate, no matter what
                         # goes wrong inside it.
-                        logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
+                        logger.warning("Audit dispatch failed, dropping: {}", audit_exc)
 
                     if token_budget is not None:
                         token_usage_total += _extract_finish_token_total(
@@ -255,8 +269,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             org_id = get_session_org(session_id)
             if org_id is not None:
-                track_audit_task(
-                    get_session_audit_writer().add_session_end(
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         flow_name=get_session_flow_name(session_id) or "",
@@ -283,8 +297,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             logger.warning(f"Session {session_id} was cancelled")
             org_id = get_session_org(session_id)
             if org_id is not None:
-                track_audit_task(
-                    get_session_audit_writer().add_session_end(
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         name="Session Cancelled",
@@ -303,16 +317,17 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 session_id=session_id, status=stop_event.status, **status_kwargs
             )
             org_id = get_session_org(session_id)
+            stop_details = {"reason": e.reason or "stopped"}
             if org_id is not None:
-                track_audit_task(
-                    get_session_audit_writer().add_session_end(
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         name="Session Stopped",
                         flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
-                        details={"reason": e.reason or "stopped"},
+                        details=stop_details,
                         run_type=session_data.run_type,
                     )
                 )
@@ -326,16 +341,17 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )
             org_id = get_session_org(session_id)
+            failure_details = {"error": str(e)}
             if org_id is not None:
-                track_audit_task(
-                    get_session_audit_writer().add_session_end(
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         name="Session Failed",
                         flow_name=get_session_flow_name(session_id) or "",
                         event_id=str(uuid.uuid4()),
                         status="failed",
-                        details={"error": str(e)},
+                        details=failure_details,
                         run_type=session_data.run_type,
                     )
                 )

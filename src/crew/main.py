@@ -3,10 +3,14 @@ import asyncio
 import settings
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
-from services.graph.session_audit_provider import get_session_audit_writer
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
 from services.run_python_code_service import RunPythonCodeService
+
+# Must match the `src.crew...` path every other caller uses: a second import path
+# creates a second module object with its own lru_cache singleton, so shutdown
+# would drain an empty client while the real one's queued events are dropped.
+from src.crew.services.graph.session_audit_provider import get_session_audit_writer
 from utils.logger import logger
 
 
