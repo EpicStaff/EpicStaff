@@ -44,11 +44,10 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
     session/node/event vocabulary into a correctly-shaped SessionAuditEvent
     and emit it via the shared AuditClient plumbing.
 
-    Used directly by both crew (node lifecycle, session end) and django_app
-    (HITL messages) - each caller supplies its own org_id and mints its own
-    event ids; this class owns no per-caller/per-service state beyond the
-    start-input cache, which exists so the eventual "Finish"/"Error" event
-    can carry the node's input too.
+    Used by crew (node lifecycle, session end) - each caller supplies its
+    own org_id and mints its own event ids; this class owns no per-caller/
+    per-service state beyond the start-input cache, which exists so the
+    eventual "Finish"/"Error" event can carry the node's input too.
 
     Both nodes and sessions follow the same write-once/append-only shape
     (audit_events is never edited - see _emit_node_or_event's docstring):
@@ -241,9 +240,9 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
     ) -> None:
         """
         kind='event' rows - every message type other than start/finish/error
-        (python, llm, agent, condition_group, subgraph_start/finish, django_app's
-        HITL register_message, etc.) lands here, verbatim in `details`.
-        Callable directly by any service, not just crew. Parented to the same
+        (python, llm, agent, condition_group, subgraph_start/finish, etc.)
+        lands here, verbatim in `details`. Callable directly by any service,
+        not just crew. Parented to the same
         deterministic node id as the start event - execution_order is what
         makes that possible without waiting for the node's outcome row.
         """

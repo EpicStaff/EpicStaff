@@ -3,7 +3,6 @@ from functools import lru_cache
 
 from cachetools import TTLCache
 from loguru import logger
-
 from settings import AUDIT_TRAIL_ENABLED, AUDITOR_INGEST_API_KEY, AUDITOR_URL
 from src.shared.audit.client import AuditClient
 from src.shared.audit.writers.session_writer import SessionAuditWriter
@@ -49,12 +48,10 @@ def clear_session_flow_name(session_id: int) -> None:
 def get_session_audit_writer() -> SessionAuditWriter:
     """
     Process-wide singleton, built lazily on first use. lru_cache (not a
-    manual None-check) for thread-safety - crew itself is single-threaded
-    asyncio so this specific race can't occur here, but the pattern is
-    shared with django_app's provider (session_audit_provider.py in
-    django_app), which genuinely needs it under multi-threaded gunicorn
-    workers - keeping both providers identical avoids a footgun if either
-    is ever copy-pasted into a new context.
+    manual None-check) for thread-safety: crew itself is single-threaded
+    asyncio so this specific race can't occur here, but the pattern would
+    matter under any multi-threaded caller, so it's kept even though it's
+    not strictly needed here.
     """
     client: AuditClient[SessionAuditEvent] = AuditClient(
         base_url=AUDITOR_URL,
@@ -160,9 +157,7 @@ def emit_session_audit_event(data: dict) -> None:
         # Real ErrorMessageData serializes to "details"; the chunk-cleaning
         # exception fallback (a few lines up in run_session) uses "error"
         # instead - handle both since they're both real shapes in this file.
-        error_detail = (
-            message_data.get("details") or message_data.get("error") or "unknown error"
-        )
+        error_detail = message_data.get("details") or message_data.get("error") or "unknown error"
         track_audit_task(
             writer.add_error_message(
                 session_id=session_id,
