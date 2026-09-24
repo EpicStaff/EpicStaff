@@ -4,6 +4,7 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
+    DestroyRef,
     EventEmitter,
     inject,
     Input,
@@ -12,6 +13,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { AppSvgIconComponent, GoToButtonComponent } from '@shared/components';
@@ -80,6 +82,7 @@ export class FlowBaseNodeComponent implements OnInit {
     private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
     private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
+    private readonly destroyRef = inject(DestroyRef);
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
@@ -125,7 +128,7 @@ export class FlowBaseNodeComponent implements OnInit {
 
     public ngOnInit(): void {
         if (this.node.type === NodeType.PERSISTENCE && this.persistenceTablesStorage.tables().length === 0) {
-            this.persistenceTablesStorage.loadTables().subscribe();
+            this.persistenceTablesStorage.loadTables().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         }
     }
 
