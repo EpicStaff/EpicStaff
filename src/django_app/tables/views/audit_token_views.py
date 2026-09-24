@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from django.conf import settings
@@ -7,15 +7,13 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from src.shared.audit.token import AUDIT_TOKEN_ISSUER
 from tables.models.rbac_models import OrganizationConfig
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.swagger_schemas.audit_schemas import AUDIT_TOKEN_CREATE
-
-AUDIT_TOKEN_ISSUER = "epicstaff-django-app"
 
 
 class AuditTokenView(APIView):
@@ -61,7 +59,7 @@ class AuditTokenView(APIView):
             except OrganizationConfig.DoesNotExist:
                 retention_days = 0
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = {
             "iss": AUDIT_TOKEN_ISSUER,
             "user_id": request.user.id,

@@ -6,6 +6,7 @@ from app.core import settings
 from app.domains.base import AuditDomain
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from src.shared.audit.token import AUDIT_TOKEN_ISSUER
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -36,7 +37,13 @@ async def verify_user_jwt(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        return jwt.decode(credentials.credentials, settings.AUDIT_JWT_SECRET, algorithms=["HS256"])
+        return jwt.decode(
+            credentials.credentials,
+            settings.AUDIT_JWT_SECRET,
+            algorithms=["HS256"],
+            issuer=AUDIT_TOKEN_ISSUER,
+            options={"require": ["exp", "iat", "iss", "org_id", "user_id"]},
+        )
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}") from e
 
