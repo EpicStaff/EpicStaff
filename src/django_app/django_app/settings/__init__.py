@@ -12,6 +12,7 @@ if not env.bool("RUN_IN_DOCKER", False):
 
 
 from .base import *
+from .audit import *
 from .caches import *
 from .communication import *
 from .cors import *
