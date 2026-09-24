@@ -5,8 +5,7 @@ version-restore path.
 two-pass sequence as the import path (``GraphStrategy.update_metadata`` then
 ``GraphStrategy.recreate_graph_children``), so it automatically inherits the
 fix already verified for import (see
-``tests/import_export_tests/test_graph_metadata_id_namespace.py``) and copy
-(see ``tests/services_tests/test_graph_copy_metadata_subgraph_ref.py``): a
+``tests/import_export_tests/test_graph_metadata_id_namespace.py``): a
 metadata node of type ``subgraph`` carries another Graph's PK in
 ``data["id"]``, not a node PK, and must never be remapped through the
 node-id namespace.

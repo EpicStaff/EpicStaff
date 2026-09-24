@@ -1,4 +1,3 @@
-from tables.import_export.constants import METADATA_TYPES_WITH_NON_NODE_DATA_ID
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
@@ -13,8 +12,8 @@ class GraphCopyService(BaseCopyService):
 
     Duplicates all scalar fields, then clones every node via NODE_COPY_HANDLERS,
     building a node_id_map. Edges and conditional edges are cloned with remapped
-    node IDs. Two post-processing passes fix internal node ID references in
-    DecisionTableNode fields and graph metadata JSON.
+    node IDs. Post-processing passes fix internal node ID references in
+    DecisionTableNode and ClassificationDecisionTableNode fields.
     """
 
     def copy(self, graph: Graph, name: str | None = None, org_id: int | None = None) -> Graph:
@@ -65,7 +64,6 @@ class GraphCopyService(BaseCopyService):
 
         self._remap_decision_table_references(new_graph, node_id_map)
         self._remap_classification_decision_table_references(new_graph, node_id_map)
-        self._remap_metadata_node_ids(new_graph, node_id_map)
 
         return new_graph
 
@@ -110,25 +108,3 @@ class GraphCopyService(BaseCopyService):
                 if group.next_node_id and group.next_node_id in node_id_map:
                     group.next_node_id = node_id_map[group.next_node_id]
                     group.save(update_fields=["next_node_id"])
-
-    def _remap_metadata_node_ids(self, graph: Graph, node_id_map: dict[int, int]) -> None:
-        metadata = graph.metadata
-        if not metadata:
-            return
-
-        nodes = metadata.get("nodes", [])
-        changed = False
-
-        for node in nodes:
-            if node.get("type") in METADATA_TYPES_WITH_NON_NODE_DATA_ID:
-                continue
-
-            data = node.get("data") or {}
-            node_id = data.get("id")
-            if node_id is not None and node_id in node_id_map:
-                data["id"] = node_id_map[node_id]
-                changed = True
-
-        if changed:
-            graph.metadata = metadata
-            graph.save(update_fields=["metadata"])
