@@ -1,13 +1,13 @@
 import pytest
 from django.contrib.auth import get_user_model
 
-from tables.models.rbac_models import Organization
-from tables.services.rbac.delete_collector import build_collector, summarize
-from tables.services.rbac.delete_resource_names import (
+from rbac.access.delete_collector import build_collector, summarize
+from rbac.access.delete_resource_names import (
     KNOWN_EXCLUDED_LABELS,
     RESOURCE_NAMES,
     resource_name,
 )
+from rbac.models import Organization
 
 
 def _cascade_closure(root_model):
@@ -36,7 +36,7 @@ def test_resource_name_returns_none_for_a_known_excluded_label():
 
 
 def test_resource_name_logs_and_returns_none_for_a_truly_unmapped_label(mocker):
-    warning = mocker.patch("tables.services.rbac.delete_resource_names.logger.warning")
+    warning = mocker.patch("rbac.access.delete_resource_names.logger.warning")
 
     result = resource_name("tables.NotARealModel")
 
@@ -55,7 +55,7 @@ def rich_org(default_org):
         SourceCollection,
     )
     from tables.models.llm_models import LLMConfig
-    from tables.models.rbac_models import Role
+    from rbac.models import Role
     from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentChat
     from tables.models.session_models import Session
     from tables.models.webhook_models import WebhookTrigger

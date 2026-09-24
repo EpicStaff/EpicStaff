@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
-from tables.models.rbac_models import Organization, OrganizationUser, Role, User
+from tables.models.user import User
 
 from rbac.access.delete_collector import (
     build_affected_resources,
@@ -24,6 +24,7 @@ from rbac.governance.guards import UserManagementGuards
 from rbac.identity.session_invalidation import (
     SessionInvalidationService,
 )
+from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, ResourceType
 
 
@@ -33,8 +34,6 @@ class UserDeleteReport:
 
     user_id: int
     affected_resources: dict[str, int] = field(default_factory=dict)
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole, ResourceType
 
 
 class UserManagementService(CrossOrgResourceService):

@@ -1,8 +1,8 @@
 import pytest
 
 from tables.models.graph_models import Graph
-from tables.models.rbac_models import Organization
-from tables.services.rbac.delete_collector import build_collector, summarize
+from rbac.models import Organization
+from rbac.access.delete_collector import build_collector, summarize
 
 
 @pytest.fixture

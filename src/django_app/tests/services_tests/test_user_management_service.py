@@ -254,7 +254,7 @@ def test_delete_user_report_passes_through_the_documented_serializer(actor, targ
     """UserDeleteReportSerializer must accept the real preview_delete output, not just a hand-written fixture."""
     import dataclasses
 
-    from tables.serializers.delete_serializers import UserDeleteReportSerializer
+    from rbac.serializers.delete import UserDeleteReportSerializer
 
     report = UserManagementService().preview_delete(
         actor=actor, target_user_id=target_user.pk
@@ -371,7 +371,7 @@ def test_delete_user_locked_recheck_takes_a_lock_on_the_target_row_even_when_not
     db, actor, target_user, mocker
 ):
     """delete_user's locked recheck always issues a locking query on the target's own row, not just when it's already flagged superadmin."""
-    from tables.models.rbac_models import User
+    from tables.models.user import User
 
     mock_select_for_update = mocker.patch.object(User.objects, "select_for_update")
     mock_select_for_update.return_value.get.return_value = target_user
@@ -444,7 +444,7 @@ def test_delete_user_registers_cleanup_via_on_commit_not_synchronously(
 ):
     """delete_user's real on_commit(...) call is what defers _cleanup_user_delete_external, not a direct call."""
     mock_on_commit = mocker.patch(
-        "tables.services.rbac.user_management_service.transaction.on_commit"
+        "rbac.governance.users.transaction.on_commit"
     )
     UserManagementService().delete_user(
         actor=actor, target_user_id=target_user.pk

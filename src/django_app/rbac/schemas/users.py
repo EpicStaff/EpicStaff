@@ -8,9 +8,9 @@ use the X-Organization-Id header — organization is a query filter
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
-from tables.serializers.delete_serializers import UserDeleteReportSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
+from rbac.serializers.delete import UserDeleteReportSerializer
 from rbac.serializers.users import (
     UserCreateRequestSerializer,
     UserResponseSerializer,

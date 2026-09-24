@@ -1,7 +1,7 @@
 from django.db import migrations
 
 
-# Bitmasks are built from tables.services.rbac.permissions.Permission flags:
+# Bitmasks are built from rbac.models.enums.Permission flags:
 #   CREATE=1, READ=2, UPDATE=4, DELETE=8, EXPORT=16
 #
 # EST-3207: tools gained an export/import feature. Built-in roles were seeded

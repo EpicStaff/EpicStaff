@@ -1,11 +1,11 @@
 from dataclasses import asdict
 
-from tables.serializers.delete_serializers import (
+from rbac.governance.organizations import OrganizationDeleteReport
+from rbac.governance.users import UserDeleteReport
+from rbac.serializers.delete import (
     OrganizationDeleteReportSerializer,
     UserDeleteReportSerializer,
 )
-from tables.services.rbac.organization_management_service import OrganizationDeleteReport
-from tables.services.rbac.user_management_service import UserDeleteReport
 
 # The tests proving these serializers accept the REAL delete_user/
 # delete_organization output (not just the hand-written fixtures below) live

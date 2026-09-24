@@ -8,8 +8,8 @@ destroy are platform-level and superadmin-only.
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
-from tables.serializers.delete_serializers import OrganizationDeleteReportSerializer
 
+from rbac.serializers.delete import OrganizationDeleteReportSerializer
 from rbac.serializers.organizations import (
     OrganizationCreateRequestSerializer,
     OrganizationListResponseSerializer,

@@ -4,8 +4,8 @@ from rest_framework.test import APIClient
 
 from tables.models.label_models import Label
 from tables.models.graph_models import Graph
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 @pytest.fixture(autouse=True)
@@ -13,7 +13,7 @@ def _stub_storage(mocker):
     backend = mocker.MagicMock()
     backend.list_all_objects.return_value = [("a.txt", 10, "")]
     return mocker.patch(
-        "tables.services.rbac.organization_management_service.get_storage_backend",
+        "rbac.governance.organizations.get_storage_backend",
         return_value=backend,
     )
 

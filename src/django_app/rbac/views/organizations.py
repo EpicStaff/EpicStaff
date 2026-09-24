@@ -4,7 +4,6 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from tables.serializers.delete_serializers import OrganizationDeleteReportSerializer
 
 from rbac.access.gates import DenyApiKeyAuth
 from rbac.governance.organizations import (
@@ -20,6 +19,7 @@ from rbac.schemas.organizations import (
     ORGANIZATIONS_RETRIEVE_GET,
     ORGANIZATIONS_UPDATE_PATCH,
 )
+from rbac.serializers.delete import OrganizationDeleteReportSerializer
 from rbac.serializers.organizations import (
     OrganizationListResponseSerializer,
     OrganizationResponseSerializer,

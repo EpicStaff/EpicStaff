@@ -171,7 +171,7 @@ def _no_storage_calls(mocker):
     backend = mocker.MagicMock()
     backend.list_all_objects.return_value = [("a.txt", 10, ""), ("b.txt", 5, "")]
     return mocker.patch(
-        "tables.services.rbac.organization_management_service.get_storage_backend",
+        "rbac.governance.organizations.get_storage_backend",
         return_value=backend,
     )
 
@@ -180,7 +180,7 @@ def _grouped_row_counts() -> dict[str, int]:
     """Count every installed model's rows through its base manager (so soft-delete filters cannot hide a row), folded under the same friendly resource name `affected_resources` reports under."""
     from django.apps import apps
 
-    from tables.services.rbac.delete_resource_names import resource_name
+    from rbac.access.delete_resource_names import resource_name
 
     counts: dict[str, int] = {}
     for model in apps.get_models():
@@ -244,7 +244,7 @@ def test_delete_organization_report_passes_through_the_documented_serializer(
     """OrganizationDeleteReportSerializer must accept the real preview_delete output, not just a hand-written fixture."""
     import dataclasses
 
-    from tables.serializers.delete_serializers import OrganizationDeleteReportSerializer
+    from rbac.serializers.delete import OrganizationDeleteReportSerializer
 
     report = OrganizationManagementService().preview_delete(
         actor=actor, org_id=populated_org.pk

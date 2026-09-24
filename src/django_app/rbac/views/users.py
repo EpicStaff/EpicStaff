@@ -6,7 +6,6 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tables.serializers.delete_serializers import UserDeleteReportSerializer
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.governance.users import UserManagementService
@@ -20,6 +19,7 @@ from rbac.schemas.users import (
     USERS_REACTIVATE_POST,
     USERS_REVOKE_SUPERADMIN_POST,
 )
+from rbac.serializers.delete import UserDeleteReportSerializer
 from rbac.serializers.users import (
     UserResponseSerializer,
 )
