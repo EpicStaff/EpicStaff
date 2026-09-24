@@ -1,17 +1,17 @@
 import asyncio
 import json
 
-from loguru import logger
-from opensearchpy import AsyncOpenSearch
-
 from app.core import settings
 from app.db.opensearch_client import build_opensearch_client
 from app.domains.base import IndexSpec
 from app.domains.registry import DOMAINS
-
+from loguru import logger
+from opensearchpy import AsyncOpenSearch
+from opensearchpy.exceptions import RequestError
 
 _OPENSEARCH_WAIT_ATTEMPTS = 60
 _OPENSEARCH_WAIT_DELAY_SECONDS = 5
+_INDEX_ALREADY_EXISTS_ERROR = "resource_already_exists_exception"
 
 
 async def wait_for_opensearch(client: AsyncOpenSearch) -> None:
@@ -22,9 +22,7 @@ async def wait_for_opensearch(client: AsyncOpenSearch) -> None:
                 logger.info(f"opensearch is {health['status']}, proceeding.")
                 return
         except Exception as e:
-            logger.info(
-                f"Waiting for opensearch ({attempt}/{_OPENSEARCH_WAIT_ATTEMPTS}): {e}"
-            )
+            logger.info(f"Waiting for opensearch ({attempt}/{_OPENSEARCH_WAIT_ATTEMPTS}): {e}")
         await asyncio.sleep(_OPENSEARCH_WAIT_DELAY_SECONDS)
 
     raise RuntimeError(
@@ -35,22 +33,26 @@ async def wait_for_opensearch(client: AsyncOpenSearch) -> None:
 
 async def ensure_index(client: AsyncOpenSearch, index: IndexSpec) -> None:
     """
-    Idempotent: creates `index` if it doesn't exist yet. Safe to run on
-    every boot - creating an already-existing index is a no-op, so no
-    advisory-lock/race concern even with multiple replicas.
+    Creates `index` if it doesn't exist yet; safe to run on every boot.
+    Replicas booting together can all pass the `exists` check before any of
+    them creates the index, so losing that race (OpenSearch answers
+    `resource_already_exists_exception`) is treated as success.
 
-    Additive mapping changes (PUT new fields onto an existing index,
-    hard-fail on type drift) are explicitly out of scope here - deferred to
-    its own follow-up piece of work, not part of this idempotent
-    create-if-absent behavior.
+    Additive mapping changes on an existing index are out of scope here.
     """
     if await client.indices.exists(index=index.name):
-        logger.info(f"Index '{index.name}' already exists, skipping creation.")
+        logger.info("Index {!r} already exists, skipping creation.", index.name)
         return
 
     mapping = json.loads(index.mapping_path.read_text())
-    await client.indices.create(index=index.name, body=mapping)
-    logger.info(f"Created index '{index.name}'.")
+    try:
+        await client.indices.create(index=index.name, body=mapping)
+    except RequestError as exc:
+        if exc.error != _INDEX_ALREADY_EXISTS_ERROR:
+            raise
+        logger.info("Index {!r} was created concurrently by another replica.", index.name)
+        return
+    logger.info("Created index {!r}.", index.name)
 
 
 async def main() -> None:
