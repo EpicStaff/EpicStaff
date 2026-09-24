@@ -80,6 +80,7 @@ class SubGraphNode:
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
             agent_task_service=self.session_graph_builder.agent_task_service,
+            persistence_client=self.session_graph_builder.persistence_client,
             stop_event=self.stop_event,
         )
 

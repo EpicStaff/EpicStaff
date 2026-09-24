@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from types import CoroutineType
 from typing import Any
 
+from clients.persistence import PersistenceClient
 from dotdict import DotDict
 from loguru import logger
 from models.graph_models import GraphMessage
@@ -73,6 +74,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         agent_task_service: AgentTaskService | None = None,
+        persistence_client: PersistenceClient | None = None,
         max_concurrent_sessions: int = 20,
     ):
         """
@@ -84,6 +86,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_schema_channel (str): The Redis channel for listening to session schema messages.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice.
+            persistence_client (PersistenceClient | None): The client used by PersistenceNode to read/write/delete
+                persistence table entries.
         """
 
         self.redis_service = redis_service
@@ -93,6 +97,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
+        self.persistence_client = persistence_client
         self.session_graph_pool: dict[int, SessionCoroItem] = {}
         self.session_queue = asyncio.Queue()
         self._worker_task: asyncio.Task | None = None
@@ -132,6 +137,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
                 agent_task_service=self.agent_task_service,
+                persistence_client=self.persistence_client,
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)

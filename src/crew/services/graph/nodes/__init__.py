@@ -3,4 +3,5 @@ from .base_node import BaseNode as BaseNode
 from .end_node import EndNode as EndNode
 from .file_extractor_node import FileContentExtractorNode as FileContentExtractorNode
 from .knowledge_node import KnowledgeNode as KnowledgeNode
+from .persistence_node import PersistenceNode as PersistenceNode
 from .python_node import PythonNode as PythonNode

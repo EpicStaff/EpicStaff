@@ -4,6 +4,9 @@ class ReturnCodeError(Exception): ...
 class KnowledgeSearchError(Exception): ...
 
 
+class PersistenceNodeError(Exception): ...
+
+
 class StopSession(Exception):  # noqa: N818
     def __init__(self, *args, status: str | None = None, reason: str | None = None):
         self.status = status
