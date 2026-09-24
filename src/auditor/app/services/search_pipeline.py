@@ -161,7 +161,7 @@ class SearchPipeline:
             if page:
                 yield page
 
-            if cursor is None or not page:
+            if cursor is None:
                 break
 
     async def _scan_matching(
@@ -177,13 +177,11 @@ class SearchPipeline:
             page, cursor = await repository.query(
                 compiled_query, cursor=cursor, size=SCAN_PAGE_SIZE
             )
-            if not page:
-                break
-            values = await computed_field.resolve(repository, page, query_builder)
-
-            kept = [c for c in page if condition.matches(values.get(c.id))]
-            if kept:
-                yield kept
+            if page:
+                values = await computed_field.resolve(repository, page, query_builder)
+                kept = [c for c in page if condition.matches(values.get(c.id))]
+                if kept:
+                    yield kept
 
             if cursor is None:
                 break
