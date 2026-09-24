@@ -1,0 +1,422 @@
+:host {
+    // 600px per the design, and the target the slide-in animates `width: 0 → *` to.
+    --cdt-detail-width: 37.5rem;
+
+    // Fallbacks so this component renders standalone; inside the dialog they
+    // resolve to the aliases on its `:host`.
+    --cdt-detail-surface: var(--cdt-tree-surface, var(--color-background-body));
+    --cdt-detail-raised: var(--cdt-tree-raised, var(--color-nodes-background));
+
+    display: block;
+    width: var(--cdt-detail-width);
+    // Load-bearing for the slide-in: the host narrows, and without this the
+    // content spills over the canvas instead of being revealed by it.
+    overflow: hidden;
+    // The design specifies Inter throughout this panel. `@fontsource/inter` (300,
+    // 400, 500) is imported in `styles.scss`; the app's body font is Roboto, so
+    // Inter is opted into per component — as `cdt-decision-tree-search` does.
+    font-family: Inter, Roboto, sans-serif;
+    background: var(--cdt-detail-surface);
+    border-left: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree-detail {
+    display: flex;
+    flex-direction: column;
+    // Fixed, not 100%: a percentage would track the host mid-animation and rewrap
+    // every line on the way. Minus the divider, because `box-sizing: border-box` is
+    // global and the host's border comes out of its own width.
+    width: calc(var(--cdt-detail-width) - 1px);
+    height: 100%;
+    color: var(--color-text-primary);
+}
+
+// ---------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------
+
+.cdt-tree-detail__header {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 11px 30px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+// The pair takes the header's slack, so the controls stay at the right edge while
+// the marker stays 16px from the end of the name. The title itself must not grow —
+// growing is what used to push the marker all the way across.
+.cdt-tree-detail__heading-group {
+    display: flex;
+    flex: 1 1 auto;
+    gap: 16px;
+    align-items: center;
+    min-width: 0;
+}
+
+.cdt-tree-detail__title {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    // 14px / 400 / 130%. Lighter than the modal's own title on purpose — this
+    // names a block, not the window.
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// The frame belongs to the pair, not to either half: one border around both is
+// what makes them read as one control, and it keeps the divider a hairline
+// between them rather than two borders meeting.
+.cdt-tree-detail__explain-group {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: stretch;
+    overflow: hidden;
+    background: var(--cdt-detail-raised);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
+
+    &:hover:has(button:not(:disabled)) {
+        border-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent);
+    }
+}
+
+.cdt-tree-detail__explain,
+.cdt-tree-detail__explain-menu {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    font-family: inherit;
+    // 12px / 500 / 100%
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+
+    &:hover:not(:disabled) {
+        background: var(--color-secondary-btn-background-hover);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.5;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+.cdt-tree-detail__explain {
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+
+    &:hover:not(:disabled) {
+        // `--color-divider-strong` does not exist in this project — it fell back to
+        // `--color-divider-regular`, which is the resting border, so this hover did
+        // nothing at all. Mixed from a real token instead; the divider tokens are
+        // low-alpha hairlines with no stronger sibling to reach for.
+        // Kept as a no-op override of the shared rule above: the frame draws the
+        // hover, and a background on the label half would only make the pair look
+        // like two controls again.
+        background: transparent;
+    }
+}
+
+.cdt-tree-detail__explain-menu {
+    padding: 0.4rem 0.45rem;
+    color: var(--color-text-secondary);
+
+    &:hover:not(:disabled) {
+        color: var(--color-text-primary);
+    }
+}
+
+.cdt-tree-detail__explain-divider {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 1px;
+    background: var(--color-divider-regular);
+}
+
+.cdt-tree-detail__close {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-radius: 4px;
+
+    &:hover {
+        color: var(--color-text-primary);
+        background: var(--cdt-detail-raised);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Body
+//
+// One scroll container for the whole panel, not one per section: `grid-collapsible`
+// interpolates the row between `0fr` and `1fr`, and `1fr` resolves against the
+// container's own height — so a section given a height of its own would have
+// nothing left to animate.
+//
+// A flex column so the last section can claim the leftover height; every other
+// section stays content-sized, which is what keeps its collapse animating.
+// ---------------------------------------------------------------------------
+
+.cdt-tree-detail__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+// One block of the window: 24px top and bottom, the window's 30px sides.
+// The padding sits here rather than on the header and body — `height: 0` does not
+// collapse padding, so a padded body would leave a band behind when shut.
+//
+// The design gives every block a top *and* bottom rule, so adjacent blocks would
+// draw a 2px seam; each one after the first is pulled up a pixel to overlap.
+.cdt-tree-detail__section {
+    display: flex;
+    flex-direction: column;
+    padding: 24px 30px;
+    border-top: 1px solid var(--color-divider-subtle);
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    & + & {
+        margin-top: -1px;
+    }
+}
+
+// Everything about the code section that must not change while its collapse runs:
+// `grid-collapsible` resolves its `1fr` row against the body in that frame, so
+// anything re-sizing the body at the click re-bases the animation under itself.
+// Only the grow and the floor are toggled, by `--fill`.
+.cdt-tree-detail__section--data {
+    // Shut, this section is its heading and holds that size — otherwise a long
+    // explanation squeezes it and the bottom rule climbs into the heading.
+    flex-shrink: 0;
+
+    // Zero rather than a flex item's `auto`: it is what `--fill`'s floor animates
+    // out of.
+    min-height: 0;
+
+    transition:
+        flex-grow var(--collapse-duration) var(--collapse-easing),
+        min-height var(--collapse-duration) var(--collapse-easing);
+
+    // `flex-basis: 0`, not `auto`, and load-bearing: a body measured from its own
+    // content measures the whole of the code, so the collapse started from that and
+    // painted the entire block for a frame before sweeping shut. At zero the section
+    // is its heading and the block is whatever the grow leaves.
+    > .cdt-tree-detail__section-body {
+        flex: 1 1 0;
+        min-height: 0;
+    }
+}
+
+// Open, the section takes every pixel the ones above leave, so the block's bottom
+// edge sits on the bottom of the window and its top rises as space frees up. Driven
+// by `dataOpen()` rather than `:last-child`, or a collapsed section would hold the
+// column open as an empty band. The floor is what a long explanation cannot take;
+// past it the body scrolls instead.
+.cdt-tree-detail__section--fill {
+    flex: 1 1 auto;
+    min-height: 12rem;
+}
+
+// Right end of the Explanation heading line: the heading takes `flex: 1 1 auto`,
+// so nothing else is needed to push it there. Same tint and radius as the
+// `Outdated` badge, so the window keeps one badge idiom.
+.cdt-tree-detail__note-tag {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent-color);
+    white-space: nowrap;
+    cursor: default;
+    background: color-mix(in srgb, var(--accent-color) 6%, transparent);
+    border-radius: 4px;
+}
+
+.cdt-tree-detail__section-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+// A real heading, so a screen reader can navigate into the two sections. It
+// carries no type of its own — the button inside it does.
+.cdt-tree-detail__section-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font: inherit;
+}
+
+.cdt-tree-detail__section-header {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    gap: 0.5rem;
+    align-items: center;
+    min-width: 0;
+    padding: 0;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.cdt-tree-detail__section-title {
+    overflow: hidden;
+    // 18px / 500 / 130%
+    font-size: 1.125rem;
+    font-weight: 500;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree-detail__caret {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+    // Turned rather than swapped for a second icon, so it moves with the section
+    // it controls instead of jumping when the section is halfway open.
+    transition: transform 180ms ease-in-out;
+
+    &--collapsed {
+        transform: rotate(-90deg);
+    }
+}
+
+// Collapsing itself is the global `grid-collapsible` helper, whose defaults
+// (180ms ease-in-out, matching the caret above) already apply.
+//
+// The space under a heading rides on the content, not the section: as a `gap` it
+// stayed behind when the section was shut. Only while open, and that is not
+// cosmetic — `0fr` floors the row at the item's min-content height and padding
+// counts towards it, so left on it held the collapsed row 16px tall.
+.cdt-tree-detail__section-body.expanded > * {
+    padding-top: 1rem;
+}
+
+.cdt-tree-detail__explanation {
+    margin: 0;
+    // 14px / 400 / 130%
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.3;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+// Inside the section header, after the title, so it reads as part of the heading.
+// 28px with 4px/8px/4px/4px padding per the design: the left inset is smaller
+// because the icon carries its own optical margin.
+.cdt-tree-detail__outdated {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 9px;
+    align-items: center;
+    min-height: 28px;
+    padding: 8px;
+    font-size: 12px;
+    // The same value the canvas marker uses, aliased on the dialog's `:host`.
+    color: var(--cdt-tree-outdated);
+    white-space: nowrap;
+    // The design's #EFD6160F: the marker's colour at 6%.
+    background: color-mix(in srgb, var(--cdt-tree-outdated) 6%, transparent);
+    border-radius: 4px;
+}
+
+.cdt-tree-detail__explanation--muted {
+    color: var(--color-text-secondary);
+}
+
+// Stand-in for the paragraph that is about to arrive. Line height and gap match
+// `__explanation` (0.875rem at 1.3) so the section is close to its final height
+// before the text lands and barely moves when it does.
+.cdt-tree-detail__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cdt-tree-detail__skeleton-line {
+    height: 12px;
+    background: var(--color-divider-subtle);
+    border-radius: 3px;
+    // Opacity, not a travelling gradient: the window sits over a canvas the user
+    // can still pan, and a background-position animation on three bars repaints
+    // far more than a compositor-only fade.
+    animation: cdt-tree-skeleton-pulse 1.4s ease-in-out infinite;
+
+    &:nth-child(2) {
+        animation-delay: 0.15s;
+    }
+
+    &:nth-child(3) {
+        animation-delay: 0.3s;
+    }
+}
+
+// The last line of a paragraph rarely fills the column; a full-width one reads as
+// a block, not as text.
+.cdt-tree-detail__skeleton-line--short {
+    width: 60%;
+}
+
+@keyframes cdt-tree-skeleton-pulse {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+// Honour a reader who asked for stillness: the bars stay, the pulse stops.
+@media (prefers-reduced-motion: reduce) {
+    .cdt-tree-detail__skeleton-line {
+        animation: none;
+    }
+}
+
+.cdt-tree-detail__explanation--error {
+    color: var(--color-error);
+}
+
+.cdt-tree-detail__generated {
+    margin: 1rem 0 0;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+// The model name after the colon is the design's #D9D9DE — the primary text token,
+// so the label stays secondary and only the value reads as the answer.
+.cdt-tree-detail__generated-model {
+    color: var(--color-text-primary);
+}

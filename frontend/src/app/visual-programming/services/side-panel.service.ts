@@ -18,6 +18,14 @@ export class SidePanelService {
     private readonly saveNodeRequestSubject = new Subject<NodeModel>();
     public readonly saveNodeRequest$: Observable<NodeModel> = this.saveNodeRequestSubject.asObservable();
 
+    /**
+     * Unattended saves of a single node, debounced and serialised by the page.
+     * Separate from `saveNodeRequest$`, a button press that reports its outcome:
+     * this one can fire dozens of times in a burst and must stay quiet.
+     */
+    private readonly autosaveNodeRequestSubject = new Subject<NodeModel>();
+    public readonly autosaveNodeRequest$: Observable<NodeModel> = this.autosaveNodeRequestSubject.asObservable();
+
     private readonly graphSavedSubject = new Subject<void>();
     public readonly graphSaved$: Observable<void> = this.graphSavedSubject.asObservable();
 
@@ -88,6 +96,10 @@ export class SidePanelService {
 
     public requestSaveNode(node: NodeModel): void {
         this.saveNodeRequestSubject.next(node);
+    }
+
+    public requestNodeAutosave(node: NodeModel): void {
+        this.autosaveNodeRequestSubject.next(node);
     }
 
     public notifyGraphSaved(): void {

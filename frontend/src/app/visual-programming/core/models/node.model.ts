@@ -3,7 +3,7 @@ import { CustomPythonCode, GetLlmConfigRequest, NodeType, WebhookTriggerWrite } 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from './agent-node.model';
-import { ClassificationDecisionTableData } from './classification-decision-table.model';
+import { CdtExplanations, ClassificationDecisionTableData } from './classification-decision-table.model';
 import { CustomConditionalEdgeModelForNode } from './conditional-edge.model';
 import { DecisionTableNode } from './decision-table.model';
 import { GetKnowledgeRetrieverNodeRequest } from './knowledge-retriever-node.model';
@@ -123,6 +123,14 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
         name?: string;
         table: ClassificationDecisionTableData;
     };
+    /**
+     * Generated step explanations, persisted in the node's `metadata`.
+     *
+     * At the root and not inside `data` on purpose: the panel's `createUpdatedNode`
+     * rebuilds `data` from the form on every edit, so anything kept there would be
+     * dropped the first time a user touched the grid.
+     */
+    explanations?: CdtExplanations;
 }
 
 export interface EndNodeData {

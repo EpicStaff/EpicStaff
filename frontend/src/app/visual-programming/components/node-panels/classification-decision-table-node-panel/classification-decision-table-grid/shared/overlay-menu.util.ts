@@ -35,12 +35,45 @@ export interface OverlayMenuConfig {
      * original components.
      */
     scrollStrategy?: () => ScrollStrategy;
+    /**
+     * Whether the panel gets CDK's transparent backdrop. Defaults to true, which is
+     * what a menu over inert content wants.
+     *
+     * Set to false when the panel opens over content that stays interactive: the
+     * transparent backdrop is invisible but still swallows pointer events across
+     * the whole overlay container, so the first click on anything behind it only
+     * closes the panel. Without one the controller closes on an outside pointer
+     * event instead, and that click reaches its target.
+     */
+    hasBackdrop?: boolean;
+    /**
+     * Which horizontal edge of the anchor the panel lines up with. Defaults to
+     * 'end'. Use 'start' when the anchor can be clipped on its right: an 'end'
+     * alignment then lines the panel up with an edge the user cannot see.
+     */
+    alignX?: 'start' | 'end';
+    /**
+     * Gap kept between the panel and the viewport edge. CDK's flexible dimensions
+     * shrink the panel to fit within it, so a non-zero value is what keeps a tall
+     * panel's footer on screen. Defaults to 0.
+     */
+    viewportMargin?: number;
+    /**
+     * Elements an outside pointer event may come from without closing the panel,
+     * on top of the anchor itself. Needed for a toggle button that owns its own
+     * open/close: without it the panel closes on pointerdown and the click
+     * handler can no longer tell whether it was open.
+     */
+    ignoreOutsideFor?: readonly HTMLElement[];
 }
 
-const DEFAULT_CONFIG: Required<Omit<OverlayMenuConfig, 'panelClass' | 'scrollStrategy'>> = {
+const DEFAULT_CONFIG: Required<Omit<OverlayMenuConfig, 'panelClass' | 'scrollStrategy' | 'ignoreOutsideFor'>> = {
     offsetY: 4,
     withFlipFallback: true,
     withPush: true,
+    hasBackdrop: true,
+    alignX: 'end',
+    viewportMargin: 0,
 };
 
 /**
@@ -95,24 +128,27 @@ export class OverlayMenuController {
         // Default is true to match column-header-menu / params-group-header.
         // enable-filter-header passes false to preserve its original omission of withPush.
         const disablePush = cfg?.withPush ?? DEFAULT_CONFIG.withPush;
+        const alignX = cfg?.alignX ?? DEFAULT_CONFIG.alignX;
+        const viewportMargin = cfg?.viewportMargin ?? DEFAULT_CONFIG.viewportMargin;
 
         let posBuilder = this.overlay
             .position()
             .flexibleConnectedTo(anchor)
+            .withViewportMargin(viewportMargin)
             .withPositions([
                 {
-                    originX: 'end',
+                    originX: alignX,
                     originY: 'bottom',
-                    overlayX: 'end',
+                    overlayX: alignX,
                     overlayY: 'top',
                     offsetY,
                 },
                 ...(withFlip
                     ? [
                           {
-                              originX: 'end' as const,
+                              originX: alignX,
                               originY: 'top' as const,
-                              overlayX: 'end' as const,
+                              overlayX: alignX,
                               overlayY: 'bottom' as const,
                               offsetY: -offsetY,
                           },
@@ -125,16 +161,28 @@ export class OverlayMenuController {
         }
 
         const scrollStrategy = cfg?.scrollStrategy ? cfg.scrollStrategy() : this.overlay.scrollStrategies.close();
+        const hasBackdrop = cfg?.hasBackdrop ?? DEFAULT_CONFIG.hasBackdrop;
 
         this.overlayRef = this.overlay.create({
             positionStrategy: posBuilder,
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-transparent-backdrop',
+            hasBackdrop,
+            ...(hasBackdrop ? { backdropClass: 'cdk-overlay-transparent-backdrop' } : {}),
             scrollStrategy,
             ...(cfg?.panelClass ? { panelClass: cfg.panelClass } : {}),
         });
 
-        this.backdropSub = this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.backdropSub = hasBackdrop
+            ? this.overlayRef.backdropClick().subscribe(() => this.close())
+            : this.overlayRef.outsidePointerEvents().subscribe((event) => {
+                  // The anchor and `ignoreOutsideFor` are excluded because callers
+                  // open the panel from a click on them: closing here would fight
+                  // the reopen and leave the panel flickering on its own trigger.
+                  const target = event.target as Node | null;
+                  if (target && anchor.contains(target)) return;
+                  if (target && cfg?.ignoreOutsideFor?.some((element) => element.contains(target))) return;
+                  this.close();
+              });
+
         this.overlayRef.attach(new TemplatePortal(template, this.vcr));
     }
 

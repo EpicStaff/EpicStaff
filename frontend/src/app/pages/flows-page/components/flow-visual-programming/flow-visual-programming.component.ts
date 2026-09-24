@@ -25,7 +25,10 @@ import { LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import {
     catchError,
+    concatMap,
+    debounceTime,
     defaultIfEmpty,
+    defer,
     EMPTY,
     filter,
     finalize,
@@ -101,6 +104,13 @@ import { isValidOutputSchema } from '../../../../visual-programming/utils/valida
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+
+/**
+ * How long a burst of autosave requests has to go quiet before one save is sent.
+ * Long enough to collapse a table-wide explain pass into a few saves, short enough
+ * to catch a dialog closed right after a single one.
+ */
+const NODE_AUTOSAVE_DEBOUNCE_MS = 1500;
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -253,6 +263,27 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.saveNodeRequest$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((node) => this.handleNodeSaveRequest(node));
+
+        // Subscribed here, not by whatever asked for the save: a dialog that requests
+        // one is usually closed moments later, and its POST would be aborted
+        // mid-flight, leaving `save_version` behind the server's and 409ing after.
+        //
+        // `concatMap` over `defer`, never `switchMap`: a cancelled request may have
+        // committed anyway, and the payload must be built after the previous response
+        // to carry the `save_version` it returned. The node is re-read there too, so
+        // a collapsed burst sends the latest state.
+        this.sidePanelService.autosaveNodeRequest$
+            .pipe(
+                debounceTime(NODE_AUTOSAVE_DEBOUNCE_MS),
+                concatMap((node) =>
+                    defer(() => {
+                        const live = this.flowService.nodes().find((candidate) => candidate.id === node.id);
+                        return this.saveNodeToBackend(live ?? node, { silent: true });
+                    })
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
 
         this.sidePanelService.reloadRequested$
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -635,9 +666,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
-    private saveNodeToBackend(node: NodeModel): Observable<void> {
+    /**
+     * `silent` is for saves the user did not ask for — no toast either way. A failed
+     * one leaves `savedFlowState` untouched, so the canvas stays dirty and the
+     * unsaved-changes chip reports it; a toast per attempt would fire on every
+     * explanation.
+     */
+    private saveNodeToBackend(node: NodeModel, options?: { silent?: boolean }): Observable<void> {
         if (!this.graph?.id) return EMPTY;
         const graphId = this.graph.id;
+        const silent = options?.silent ?? false;
 
         this.flowService.updateNode(node);
 
@@ -649,12 +687,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const singleNodeFlow: FlowModel = { nodes: [node], connections: [] };
         const nodeDiff = getNodeDiff(previousForDiff, singleNodeFlow);
         const connectionDiff = { toCreate: [], toUpdate: [], toDelete: [] };
-        const idMap = buildUuidToBackendIdMap([node]);
+
+        // The diff stays single-node — only this node is sent — but the payload needs
+        // the whole canvas to resolve the node's references to its neighbours. Given
+        // just this node, `resolveNodeRef` finds none of them and emits `*_temp_id`
+        // for nodes that already exist on the server, which the backend rejects.
+        const wholeFlow = this.currentFlowState();
+        const idMap = buildUuidToBackendIdMap(wholeFlow.nodes);
         const payload = buildBulkSavePayload(
             graphId,
             nodeDiff,
             connectionDiff,
-            singleNodeFlow,
+            wholeFlow,
             idMap,
             this.graphState()!.save_version
         );
@@ -670,7 +714,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 );
                 this.flowService.setFlow(patchedFlow);
 
-                const savedNode = patchedFlow.nodes.find((n) => n.id === node.id);
+                // The baseline records what was *sent*, patched with what the server
+                // assigned it. Reading the node back off the canvas would bake in
+                // whatever arrived mid-flight and mark as saved what was never sent;
+                // patching only `backendId` would drop `python_code_id`, agent task
+                // ids and the schedule-trigger fields, leaving those nodes dirty
+                // forever after a successful save.
+                const savedNode = patchFlowStateWithBackendIds(
+                    { nodes: [node], connections: [] },
+                    previous,
+                    nodeDiff,
+                    responseGraph
+                ).nodes[0];
                 if (savedNode) {
                     const prev = this.savedFlowState();
                     const exists = prev.nodes.some((n) => n.id === node.id);
@@ -680,10 +735,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.savedFlowState.set(cloneFlowState({ nodes: nextNodes, connections: prev.connections }));
                 }
 
-                this.toastService.success('Node saved');
+                if (!silent) this.toastService.success('Node saved');
             }),
             map(() => void 0),
             catchError((err: HttpErrorResponse) => {
+                if (silent) return EMPTY;
+
                 if (err.status === 409) {
                     this.toastService.warning(
                         'This graph was modified by another user. Please refresh to see the latest changes.'
