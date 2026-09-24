@@ -174,7 +174,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
 class OrganizationSelfServiceViewSet(viewsets.ViewSet):
     """Active-context self-service settings for the caller's own organization.
 
-    PATCH /api/organizations/me/settings/ (X-Organization-Id header) — an
+    PATCH /api/admin/organizations/settings/ (X-Organization-Id header) — an
     Org Admin managing their own org's settings, distinct from
     OrganizationAdminViewSet's superadmin-only org CRUD above.
     """

@@ -15,6 +15,8 @@ from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.swagger_schemas.audit_schemas import AUDIT_TOKEN_CREATE
 
+AUDIT_TOKEN_ISSUER = "epicstaff-django-app"
+
 
 class AuditTokenView(APIView):
     """
@@ -55,14 +57,13 @@ class AuditTokenView(APIView):
             retention_days = 0
         else:
             try:
-                retention_days = OrganizationConfig.objects.get(
-                    org_id=org_id
-                ).audit_retention_days
+                retention_days = OrganizationConfig.objects.get(org_id=org_id).audit_retention_days
             except OrganizationConfig.DoesNotExist:
                 retention_days = 0
 
         now = datetime.now(timezone.utc)
         payload = {
+            "iss": AUDIT_TOKEN_ISSUER,
             "user_id": request.user.id,
             "org_id": org_id,
             "actions": actions,
@@ -72,6 +73,4 @@ class AuditTokenView(APIView):
         }
         token = jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
-        return Response(
-            {"token": token, "expires_in": settings.AUDIT_TOKEN_TTL_SECONDS}
-        )
+        return Response({"token": token, "expires_in": settings.AUDIT_TOKEN_TTL_SECONDS})
