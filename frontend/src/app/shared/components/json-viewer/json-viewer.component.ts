@@ -71,12 +71,16 @@ type SegmentType =
             }
 
             .segment-main {
-                word-wrap: break-word;
+                overflow-wrap: anywhere;
             }
 
             .segment-type-object > .segment-main,
             .segment-type-array > .segment-main {
                 white-space: nowrap;
+                overflow-x: auto;
+                overflow-y: hidden;
+                contain: inline-size;
+                scrollbar-width: thin;
             }
 
             .toggler {
