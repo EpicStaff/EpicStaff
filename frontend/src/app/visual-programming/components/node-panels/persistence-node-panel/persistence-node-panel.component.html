@@ -1,0 +1,148 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            <div class="field-isolated">
+                <app-custom-input
+                    label="Node Name"
+                    tooltipText="The unique identifier used to reference this Persistence node. This name must be unique within the flow."
+                    formControlName="node_name"
+                    placeholder="Enter node name"
+                    [activeColor]="activeColor"
+                ></app-custom-input>
+                <app-validation-errors [control]="form.get('node_name')!" />
+            </div>
+
+            <div class="field-isolated">
+                <app-select
+                    label="Table"
+                    tooltipText="The persistent data table this node reads from, writes to or deletes from."
+                    placeholder="Select a table"
+                    formControlName="persistence_table"
+                    [items]="tableItems()"
+                    [loading]="loadingTables()"
+                />
+                @if (form.get('persistence_table')?.value === null) {
+                    <div class="table-warning">Select a table — this node fails at run time without one</div>
+                }
+            </div>
+
+            <app-select
+                label="Mode"
+                tooltipText="Read returns stored values, Write upserts values from the input map, Delete removes keys."
+                formControlName="mode"
+                [items]="modeItems"
+            />
+
+            <div class="entries">
+                <span class="entries-label">Keys</span>
+                <div
+                    formArrayName="entries"
+                    class="entries-list"
+                >
+                    @for (entry of entries.controls; let i = $index; track entry) {
+                        <div
+                            class="entry-row"
+                            [formGroupName]="i"
+                        >
+                            @if (mode() === 'read') {
+                                <input
+                                    type="text"
+                                    class="entry-input"
+                                    formControlName="alias"
+                                    placeholder="Alias"
+                                    autocomplete="off"
+                                />
+                            }
+                            <div class="entry-key">
+                                <input
+                                    type="text"
+                                    class="entry-input"
+                                    formControlName="key"
+                                    placeholder="Key, e.g. profile_{user_id}"
+                                    autocomplete="off"
+                                    [attr.list]="keySuggestionsListId()"
+                                    (input)="onKeyInput($event)"
+                                />
+                                @if (canReadData()) {
+                                    @let badge = badgeFor(i);
+                                    @if (badge.kind !== 'unknown') {
+                                        <span
+                                            class="badge badge-{{ badge.kind }}"
+                                            [attr.title]="badge.tooltip"
+                                            >{{ badge.label }}</span
+                                        >
+                                    }
+                                }
+                                @if (missingPlaceholderHints()[i]; as missing) {
+                                    <div class="entry-hint">Not in input map: {{ missing.join(', ') }}</div>
+                                }
+                            </div>
+                            @if (mode() === 'read') {
+                                <input
+                                    type="text"
+                                    class="entry-input"
+                                    formControlName="default"
+                                    placeholder="Default (JSON or text)"
+                                    autocomplete="off"
+                                />
+                            }
+                            @if (mode() === 'write') {
+                                <input
+                                    type="text"
+                                    class="entry-input"
+                                    formControlName="value"
+                                    placeholder="Input map alias"
+                                    autocomplete="off"
+                                />
+                            }
+                            <button
+                                type="button"
+                                class="remove-entry"
+                                title="Remove"
+                                (click)="removeEntry(i)"
+                            >
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="1rem"
+                                />
+                            </button>
+                        </div>
+                    }
+                </div>
+                <datalist [id]="keySuggestionsListId()">
+                    @for (suggestion of keySuggestions(); track suggestion) {
+                        <option [value]="suggestion"></option>
+                    }
+                </datalist>
+                <button
+                    type="button"
+                    class="btn-secondary add-entry"
+                    (click)="addEntry()"
+                >
+                    <app-svg-icon
+                        icon="plus"
+                        size="16px"
+                    />
+                    Add key
+                </button>
+            </div>
+
+            <div class="input-map">
+                <app-input-map [activeColor]="activeColor"></app-input-map>
+            </div>
+
+            @if (mode() !== 'delete') {
+                <app-custom-input
+                    label="Output Variable Path"
+                    tooltipText="Where the node output is stored, e.g. variables.customer. Read stores each alias under it; Write stores the written values."
+                    formControlName="output_variable_path"
+                    placeholder="Enter output variable path (leave empty for null)"
+                    [activeColor]="activeColor"
+                ></app-custom-input>
+            }
+        </form>
+    </div>
+</div>

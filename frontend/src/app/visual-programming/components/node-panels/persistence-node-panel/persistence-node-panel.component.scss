@@ -1,0 +1,145 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+}
+
+.form-container {
+    @include mixins.form-container;
+}
+
+@include mixins.field-isolated-spacing;
+
+.btn-secondary {
+    @include mixins.secondary-button;
+}
+
+.table-warning {
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: var(--color-status-warning);
+}
+
+.entries {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.entries-label {
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    color: var(--color-text-secondary);
+}
+
+.entries-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.entry-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.entry-key {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.entry-input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s ease;
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+
+    &.ng-invalid.ng-touched {
+        border-color: var(--color-status-error);
+    }
+
+    &::placeholder {
+        color: var(--color-text-tertiary);
+    }
+}
+
+.badge {
+    align-self: flex-start;
+    padding: 0 6px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.badge-recorded {
+    color: var(--success-color);
+
+    &::before {
+        content: '✓ ';
+    }
+}
+
+.badge-missing {
+    color: var(--color-text-secondary);
+
+    &::before {
+        content: '○ ';
+    }
+}
+
+.badge-dynamic {
+    color: var(--color-status-info);
+}
+
+.entry-hint {
+    font-size: 0.75rem;
+    color: var(--color-status-warning);
+}
+
+.remove-entry {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 34px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--color-status-error);
+    }
+}
+
+.add-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    align-self: flex-start;
+}

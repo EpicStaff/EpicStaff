@@ -9,6 +9,7 @@ import { DecisionTableNodePanelComponent } from '../../components/node-panels/de
 import { EndNodePanelComponent } from '../../components/node-panels/end-node-panel/end-node-panel.component';
 import { FileExtractorNodePanelComponent } from '../../components/node-panels/file-extractor-node-panel/file-extractor-node-panel.component';
 import { KnowledgeRetrieverNodePanelComponent } from '../../components/node-panels/knowledge-retriever-node-panel/knowledge-retriever-node-panel.component';
+import { PersistenceNodePanelComponent } from '../../components/node-panels/persistence-node-panel/persistence-node-panel.component';
 import { PythonNodePanelComponent } from '../../components/node-panels/python-node-panel/python-node-panel.component';
 import { ScheduleTriggerNodePanelComponent } from '../../components/node-panels/schedule-trigger-node-panel/schedule-trigger-node-panel.component';
 import { SubGraphNodePanelComponent } from '../../components/node-panels/subgraph-node-panel/subgraph-node-panel.component';
@@ -36,4 +37,5 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     [NodeType.TASK]: asNodePanelComponent(TaskNodePanelComponent),
     [NodeType.AGENT]: asNodePanelComponent(AgentNodePanelComponent),
     [NodeType.KNOWLEDGE_RETRIEVER]: asNodePanelComponent(KnowledgeRetrieverNodePanelComponent),
+    [NodeType.PERSISTENCE]: asNodePanelComponent(PersistenceNodePanelComponent),
 };
