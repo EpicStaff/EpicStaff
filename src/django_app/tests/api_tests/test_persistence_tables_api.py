@@ -204,9 +204,38 @@ def test_entry_for_foreign_table_is_rejected(admin_client, table_b):
 
 
 @pytest.mark.django_db
-def test_entry_cross_org_detail_is_404(admin_client, table_b):
+@pytest.mark.parametrize("method", ["get", "patch", "delete"])
+def test_entry_cross_org_detail_is_404(admin_client, table_b, method):
     entry = PersistenceTableEntry.objects.create(table=table_b, key="k", value=1)
-    assert admin_client.get(f"{ENTRIES_URL}{entry.id}/").status_code == 404
+    response = getattr(admin_client, method)(f"{ENTRIES_URL}{entry.id}/", {"value": 2}, format="json")
+    assert response.status_code == 404
+    entry.refresh_from_db()
+    assert entry.value == 1
+
+
+@pytest.mark.django_db
+def test_entry_cannot_be_moved_to_another_table(admin_client, org_a, table_a):
+    other_table = PersistenceTable.objects.create(org=org_a, name="Other")
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="k", value=1)
+
+    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"table": other_table.id}, format="json")
+
+    assert response.status_code == 400
+    entry.refresh_from_db()
+    assert entry.table_id == table_a.id
+
+
+@pytest.mark.django_db
+def test_entry_put_with_its_own_table_is_allowed(admin_client, table_a):
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="k", value=1)
+
+    response = admin_client.put(
+        f"{ENTRIES_URL}{entry.id}/", {"table": table_a.id, "key": "k", "value": 2}, format="json"
+    )
+
+    assert response.status_code == 200, response.content
+    entry.refresh_from_db()
+    assert entry.value == 2
 
 
 @pytest.mark.django_db

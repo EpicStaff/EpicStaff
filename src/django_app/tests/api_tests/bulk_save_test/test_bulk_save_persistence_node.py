@@ -87,6 +87,8 @@ def test_table_requires_use_permission(flows_only_client, graph, table):
     payload = {"save_version": graph.save_version, "persistence_node_list": [_node_payload(graph, table)]}
     response = flows_only_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.data["code"] == "persistence_table_use_denied"
+    assert "'Customers'" in response.data["message"]
     assert not PersistenceNode.objects.filter(graph=graph).exists()
 
 
@@ -105,6 +107,8 @@ def test_update_without_table_key_still_requires_use_permission(flows_only_clien
     response = flows_only_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.data["code"] == "persistence_table_use_denied"
+    assert "'Customers'" in response.data["message"]
     node.refresh_from_db()
     assert node.mode == "read"
     assert node.entries == [{"alias": "a", "key": "k"}]

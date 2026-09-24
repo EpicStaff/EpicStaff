@@ -295,8 +295,8 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
 _ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
 
 # The bits a role can actually be granted, **per resource**. Grantability is a
-# per-resource property -- `use` is an action of `secrets` and of nothing else --
-# so a global union over ACTION_METADATA is the wrong granularity: enabling an
+# per-resource property -- `use` is an action of `secrets` and `persistent_data`
+# only -- so a global union over ACTION_METADATA is the wrong granularity: enabling an
 # action for one resource would admit its bit on every other resource, where it
 # is neither applicable nor enforced. A code that is not a rendered action
 # (`list`, today) contributes nothing.

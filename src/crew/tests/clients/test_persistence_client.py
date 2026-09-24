@@ -3,7 +3,12 @@ import json
 import httpx
 import pytest
 
-from clients.errors import ClientBadGatewayError, ClientTimeoutError, ClientValidationError
+from clients.errors import (
+    ClientBadGatewayError,
+    ClientNotAvailableError,
+    ClientTimeoutError,
+    ClientValidationError,
+)
 from clients.persistence import PersistenceClient
 
 BASE_URL = "http://django:8000/api/"
@@ -87,3 +92,30 @@ async def test_timeout_raises_client_timeout():
     client = await _started(handler)
     with pytest.raises(ClientTimeoutError):
         await client.read(7, 3, ["a"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda client: client.read(7, 3, ["a"]),
+        lambda client: client.write(7, 3, {"a": 1}),
+        lambda client: client.delete(7, 3, ["a"]),
+    ],
+    ids=["read", "write", "delete"],
+)
+async def test_missing_api_key_starts_and_fails_calls_without_sending(call):
+    sent = []
+
+    def handler(request):
+        sent.append(request)
+        return httpx.Response(200, json={"values": {}})
+
+    client = PersistenceClient(BASE_URL, api_key=None, timeout=5.0, transport=httpx.MockTransport(handler))
+    await client.start()
+
+    with pytest.raises(ClientNotAvailableError, match="DJANGO_API_KEY is not configured"):
+        await call(client)
+    await client.stop()
+
+    assert sent == []

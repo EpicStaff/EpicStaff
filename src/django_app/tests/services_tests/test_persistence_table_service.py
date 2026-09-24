@@ -2,9 +2,12 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from tables.exceptions import PersistenceKeyInvalidError, PersistenceValueTooLargeError
+from tables.exceptions import (
+    PersistenceKeyInvalidError,
+    PersistenceTableUseDeniedError,
+    PersistenceValueTooLargeError,
+)
 from tables.models import PersistenceTable, PersistenceTableEntry, Session
-from rest_framework.exceptions import PermissionDenied
 
 from rbac.models import OrganizationUser
 from tables.services.persistence_table_service import PersistenceTableService
@@ -109,7 +112,7 @@ def test_assert_can_use_denies_viewer(service, acme_table, acme, role_viewer, dj
     )
     OrganizationUser.objects.create(user=viewer, org=acme, role=role_viewer)
 
-    with pytest.raises(PermissionDenied):
+    with pytest.raises(PersistenceTableUseDeniedError, match="'Acme customers'"):
         service.assert_can_use(viewer, acme_table)
 
 

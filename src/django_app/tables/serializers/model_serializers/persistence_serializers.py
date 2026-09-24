@@ -56,6 +56,11 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_at", "updated_at", "updated_by_session"]
 
+    def validate_table(self, table: PersistenceTable) -> PersistenceTable:
+        if self.instance is not None and table.pk != self.instance.table_id:
+            raise serializers.ValidationError("An entry can't be moved to another table.")
+        return table
+
     def validate_key(self, key: str) -> str:
         PersistenceTableService().validate_key(key)
         return key

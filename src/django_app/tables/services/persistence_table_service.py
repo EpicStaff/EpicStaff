@@ -15,6 +15,7 @@ from tables.constants.persistence_constants import (
 from tables.exceptions import (
     PersistenceKeyInvalidError,
     PersistenceTableInUseError,
+    PersistenceTableUseDeniedError,
     PersistenceValueTooLargeError,
 )
 from tables.models import (
@@ -83,13 +84,21 @@ class PersistenceTableService:
         }
 
     def assert_can_use(self, user, table: PersistenceTable) -> None:
-        """Raise PermissionDenied (403) unless `user` holds persistent_data:USE in the table's org."""
-        assert_org_permission(
-            user=user,
-            org_id=table.org_id,
-            resource_type=ResourceType.PERSISTENT_DATA,
-            action=Permission.USE,
-        )
+        """Assert `user` holds persistent_data:USE in the table's org.
+
+        Raises:
+            PersistenceTableUseDeniedError (403): the user's role lacks USE.
+            OrgMembershipRequiredError (403): the user is not a member of the table's org.
+        """
+        try:
+            assert_org_permission(
+                user=user,
+                org_id=table.org_id,
+                resource_type=ResourceType.PERSISTENT_DATA,
+                action=Permission.USE,
+            )
+        except PermissionDenied as error:
+            raise PersistenceTableUseDeniedError(table.name) from error
 
     def assert_not_in_use(self, table: PersistenceTable) -> None:
         flow_names = list(
@@ -155,7 +164,7 @@ class PersistenceTableService:
     def _can_use(self, user, table: PersistenceTable) -> bool:
         try:
             self.assert_can_use(user, table)
-        except (PermissionDenied, OrgMembershipRequiredError):
+        except (PersistenceTableUseDeniedError, OrgMembershipRequiredError):
             return False
         return True
 

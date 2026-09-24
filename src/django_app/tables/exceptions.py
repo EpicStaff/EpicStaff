@@ -509,6 +509,23 @@ class PersistenceTableInUseError(CustomAPIExeption):
         )
 
 
+class PersistenceTableUseDeniedError(CustomAPIExeption):
+    """Raised when the caller lacks persistent_data:USE on a table a node binds.
+
+    Its own code keeps the frontend from treating this business-rule 403 as a
+    changed-permissions 403, which reloads the app.
+    """
+
+    status_code = 403
+    default_code = "persistence_table_use_denied"
+
+    def __init__(self, table_name: str):
+        super().__init__(
+            f"You don't have permission to use the persistence table '{table_name}'.",
+            code=self.default_code,
+        )
+
+
 class PersistenceSessionNotActiveError(CustomAPIExeption):
     status_code = 409
     default_code = "persistence_session_not_active"

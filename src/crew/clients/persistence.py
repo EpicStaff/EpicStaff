@@ -19,7 +19,7 @@ class PersistenceClient:
     def __init__(
         self,
         base_url: str,
-        api_key: str,
+        api_key: str | None,
         timeout: float,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -31,12 +31,17 @@ class PersistenceClient:
 
     async def start(self) -> None:
         if self._client is None:
+            # Same Host override realtime uses, so Django's ALLOWED_HOSTS accepts the call.
+            headers = {"Host": "localhost"}
+            # DJANGO_API_KEY is optional in local dev: crew must still start without it, and
+            # only persistence calls fail (see _post).
+            if self._api_key:
+                headers["X-API-Key"] = self._api_key
             self._client = httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 transport=self._transport,
-                # Same Host override realtime uses, so Django's ALLOWED_HOSTS accepts the call.
-                headers={"X-API-Key": self._api_key, "Host": "localhost"},
+                headers=headers,
             )
             logger.info("PersistenceClient started, base_url={}", self._base_url)
 
@@ -60,6 +65,10 @@ class PersistenceClient:
         self, session_id: int, table_id: int, operation: Operation, payload: dict
     ) -> dict:
         assert self._client is not None, "PersistenceClient.start() must be called first"
+        if not self._api_key:
+            raise ClientNotAvailableError(
+                "DJANGO_API_KEY is not configured; persistence nodes can't reach Django."
+            )
         url = f"internal/sessions/{session_id}/persistence-tables/{table_id}/{operation}/"
         try:
             response = await self._client.post(url, json=payload)
