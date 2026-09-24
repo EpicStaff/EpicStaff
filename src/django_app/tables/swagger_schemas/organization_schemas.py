@@ -22,7 +22,10 @@ ORGANIZATION_SETTINGS_UPDATE = dict(
         200: OrganizationResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
-            description="Validation error — audit_retention_days missing or negative.",
+            description=(
+                "Validation error — audit_retention_days missing, negative, "
+                "or above the storable maximum."
+            ),
         ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
