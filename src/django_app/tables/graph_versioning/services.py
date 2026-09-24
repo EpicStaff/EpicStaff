@@ -32,7 +32,7 @@ class GraphVersioningService:
         )
 
     @transaction.atomic
-    def create_graph_from_version(self, version: GraphVersion) -> dict:
+    def create_graph_from_version(self, version: GraphVersion, user=None) -> dict:
         """
         Create a brand-new Graph from a version snapshot.
         The new graph is fully independent — own id/uuid, zero GraphVersion rows.
@@ -53,6 +53,7 @@ class GraphVersioningService:
             graph_name=graph_name,
             version_name=version.name,
             org_id=source_graph.org_id,
+            user=user,
         )
 
         # Copy labels from source graph
@@ -81,6 +82,7 @@ class GraphVersioningService:
         *,
         expected_save_version: int,
         backup: bool = False,
+        user=None,
     ) -> dict:
         """
         Restore a graph to the state captured in ``version``.
@@ -98,6 +100,9 @@ class GraphVersioningService:
             When ``True``, a named ``GraphVersion`` snapshot of the *current*
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
+        user:
+            The acting user. Permission-gated node references (persistence
+            tables) are re-bound only if this user may use them.
 
         Returns
         -------
@@ -136,7 +141,7 @@ class GraphVersioningService:
             auto_backup_id = backup_version.id
 
         node_mapper = self._manager.apply_snapshot_to_graph(
-            graph, filtered_snapshot, deps_validation["available"]
+            graph, filtered_snapshot, deps_validation["available"], user=user
         )
 
         warnings.extend(

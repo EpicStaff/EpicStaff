@@ -16,7 +16,13 @@ class GraphCopyService(BaseCopyService):
     DecisionTableNode fields and graph metadata JSON.
     """
 
-    def copy(self, graph: Graph, name: str | None = None, org_id: int | None = None) -> Graph:
+    def copy(
+        self,
+        graph: Graph,
+        name: str | None = None,
+        org_id: int | None = None,
+        user=None,
+    ) -> Graph:
         existing_names = Graph.objects.values_list("name", flat=True)
         new_name = ensure_unique_identifier(
             base_name=name if name else graph.name,
@@ -41,7 +47,7 @@ class GraphCopyService(BaseCopyService):
         node_id_map: dict[int, int] = {}
         for relation_name, handler in NODE_COPY_HANDLERS.values():
             for node in getattr(graph, relation_name).all():
-                new_node = handler(new_graph, node)
+                new_node = handler(new_graph, node, user=user)
                 node_id_map[node.id] = new_node.id
 
         for edge in graph.edge_list.all():

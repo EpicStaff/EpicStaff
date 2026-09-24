@@ -169,6 +169,7 @@ class GraphStrategy(EntityImportExportStrategy):
             },
             id_mapper,
             old_graph_id=old_id,
+            user=kwargs.get("user"),
         )
 
         if import_labels and labels_data:
@@ -183,7 +184,14 @@ class GraphStrategy(EntityImportExportStrategy):
         id_mapper: IDMapper,
         is_partial: bool = False,
         old_graph_id: int | None = None,
+        user=None,
     ) -> IDMapper:
+        """Create a graph's nodes and edges from exported data.
+
+        `user` is the acting user, handed to every node strategy so references that
+        need a permission check (e.g. a persistence table) can gate on it. `None` means
+        there is no acting user.
+        """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
         conditional_edges_data = data.get("conditional_edge_list", [])
@@ -191,7 +199,7 @@ class GraphStrategy(EntityImportExportStrategy):
         node_mapper = IDMapper()
 
         # Pass 1: create all nodes and build the old→new node ID mapping
-        self._create_nodes(nodes_data, graph, node_mapper, id_mapper, old_graph_id)
+        self._create_nodes(nodes_data, graph, node_mapper, id_mapper, old_graph_id, user)
 
         # Pass 2: create edges/conditional-edges with remapped node IDs,
         # then fix stale node-ID references in decision tables and metadata
@@ -235,6 +243,7 @@ class GraphStrategy(EntityImportExportStrategy):
         node_mapper: IDMapper,
         id_mapper: IDMapper,
         old_graph_id: int | None = None,
+        user=None,
     ) -> None:
         # Mirror the frontend's node numbering: a single graph-wide counter that
         # starts above the highest metadata["nodeNumber"] already present in the
@@ -283,7 +292,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
             strategy = entity_registry.get_strategy(entity_type)
-            node = strategy.create_entity(node_data, id_mapper)
+            node = strategy.create_entity(node_data, id_mapper, user=user)
 
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)

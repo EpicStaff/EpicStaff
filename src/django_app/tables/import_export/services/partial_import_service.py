@@ -88,6 +88,7 @@ class PartialImportService:
                 },
                 id_mapper,
                 is_partial=True,
+                user=user,
             )
 
         return id_mapper

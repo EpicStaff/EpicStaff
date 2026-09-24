@@ -30,5 +30,7 @@ class PersistenceNodeStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         # Node strategies receive no org kwargs; the org is the imported graph's.
         org_id = serializer.validated_data["graph"].org_id
-        table = PersistenceTableService().resolve_reference(org_id, table_id, table_name)
+        table = PersistenceTableService().resolve_reference(
+            org_id, table_id, table_name, user=kwargs.get("user")
+        )
         return serializer.save(persistence_table=table)

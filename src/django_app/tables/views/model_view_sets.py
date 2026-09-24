@@ -1134,6 +1134,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             version,
             expected_save_version=expected_save_version,
             backup=backup,
+            user=request.user,
         )
 
         graph_id = result["graph_id"]
@@ -1151,7 +1152,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="create-graph")
     def create_graph(self, request, *args, **kwargs):
         version = self.get_object()
-        result = GraphVersioningService().create_graph_from_version(version)
+        result = GraphVersioningService().create_graph_from_version(version, user=request.user)
         return Response(result, status=status.HTTP_201_CREATED)
 
 

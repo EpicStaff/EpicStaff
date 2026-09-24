@@ -4,7 +4,9 @@ from datetime import datetime
 from typing import Any
 
 from rbac.access.asserts import assert_org_permission
+from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
+from rest_framework.exceptions import PermissionDenied
 from tables.constants.persistence_constants import (
     MAX_KEY_LENGTH,
     MAX_VALUE_BYTES,
@@ -113,15 +115,33 @@ class PersistenceTableService:
         return PersistenceTable.objects.filter(org_id=org_id, name__iexact=name).first()
 
     def resolve_reference(
-        self, org_id: int, table_id: int | None, table_name: str | None
+        self,
+        org_id: int,
+        table_id: int | None,
+        table_name: str | None,
+        user=None,
     ) -> PersistenceTable | None:
-        """Re-bind a copied or imported node's table reference inside `org_id`.
+        """Re-bind a copied, imported or restored node's table reference inside `org_id`.
 
         The table with `table_id` wins only if it is in `org_id` and still carries
         `table_name`; otherwise any table of `org_id` with that name; otherwise `None`.
         A table id alone is never trusted, so a foreign-org id is never kept, and
         nothing is created.
+
+        Args:
+            user: The acting user. When given, the table is bound only if they hold
+                persistent_data:USE in `org_id`; otherwise `None`, so the node shows
+                "No table" instead of failing the whole operation. `None` means the
+                caller has no acting user and skips the check.
         """
+        table = self._find_reference(org_id, table_id, table_name)
+        if table is None or user is None or self._can_use(user, table):
+            return table
+        return None
+
+    def _find_reference(
+        self, org_id: int, table_id: int | None, table_name: str | None
+    ) -> PersistenceTable | None:
         if not table_name:
             return None
         if table_id is not None:
@@ -131,6 +151,13 @@ class PersistenceTableService:
             if same_table is not None:
                 return same_table
         return self.find_by_name(org_id, table_name)
+
+    def _can_use(self, user, table: PersistenceTable) -> bool:
+        try:
+            self.assert_can_use(user, table)
+        except (PermissionDenied, OrgMembershipRequiredError):
+            return False
+        return True
 
     def validate_key(self, key: str) -> None:
         if not key or len(key) > MAX_KEY_LENGTH:

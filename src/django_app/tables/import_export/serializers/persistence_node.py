@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from tables.models import Graph, PersistenceNode
+from tables.validators.persistence_entries_validator import PersistenceEntriesValidator
 
 
 class PersistenceNodeImportSerializer(serializers.ModelSerializer):
@@ -16,3 +17,9 @@ class PersistenceNodeImportSerializer(serializers.ModelSerializer):
 
     def get_persistence_table_name(self, node: PersistenceNode) -> str | None:
         return node.persistence_table.name if node.persistence_table else None
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        mode = attrs.get("mode", PersistenceNode.Mode.READ)
+        attrs["entries"] = PersistenceEntriesValidator().validate(mode, attrs.get("entries", []))
+        return attrs

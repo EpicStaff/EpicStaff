@@ -673,7 +673,7 @@ class GraphVersioningManager:
         return filtered_snapshot, warnings
 
     def apply_snapshot_to_graph(
-        self, graph: Graph, filtered_snapshot: dict, available_deps: dict
+        self, graph: Graph, filtered_snapshot: dict, available_deps: dict, user=None
     ) -> IDMapper:
         self._wipe_graph_children(graph)
         self._update_graph_scalars(graph, filtered_snapshot)
@@ -684,6 +684,7 @@ class GraphVersioningManager:
             graph,
             filtered_snapshot,
             id_mapper,
+            user=user,
         )
 
         return node_mapper
@@ -743,6 +744,7 @@ class GraphVersioningManager:
         graph_name: str,
         version_name: str,
         org_id: int,
+        user=None,
     ) -> tuple[Graph, IDMapper]:
         """
         Create a brand-new Graph from a filtered snapshot.
@@ -792,6 +794,7 @@ class GraphVersioningManager:
                 "conditional_edge_list": cond_edges_data,
             },
             id_mapper,
+            user=user,
         )
 
         return graph, node_mapper
