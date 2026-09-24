@@ -45,6 +45,10 @@ export const OPERATOR_LABELS: Record<string, string> = {
     key_exists: 'has key',
     key_not_exists: 'has no key',
     key_not_equals: 'does not equal',
+    gt: 'greater than',
+    lt: 'less than',
+    gte: 'greater or equal',
+    lte: 'less or equal',
 };
 
 export const FLOW_OPERATORS: AuditFilterOp[] = ['in', 'not_in'];
@@ -85,3 +89,20 @@ export const JSON_OPERATORS: AuditFilterOp[] = [
     'lt',
     'lte',
 ];
+
+export const DEEP_TEXT_OPERATORS: AuditFilterOp[] = [
+    'contains',
+    'not_contains',
+    'starts_with',
+    'ends_with',
+    'equals',
+    'not_equal',
+];
+
+export const TOKEN_OPERATORS: AuditFilterOp[] = ['gt', 'lt', 'equals', 'is_empty'];
+
+export const TOKEN_OPERATOR_LABELS: Record<string, string> = {
+    equals: 'equals',
+};
+
+export const TOKEN_STEP = 100;

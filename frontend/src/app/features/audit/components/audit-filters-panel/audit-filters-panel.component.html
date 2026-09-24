@@ -65,7 +65,7 @@
 
                 <app-audit-filter-group label="Flow">
                     <app-audit-flow-filter
-                        [flowNames]="flowNames()"
+                        [options]="flowOptions()"
                         [filter]="filter().flow"
                         (filterChange)="setFlow($event)"
                     />
@@ -173,6 +173,102 @@
                     <app-audit-date-filter
                         [range]="dateRange()"
                         (rangeChange)="setDateRange($event)"
+                    />
+                </app-audit-filter-group>
+
+                <p class="filters-panel__section">Deep filters</p>
+
+                <app-audit-filter-group
+                    label="Agent"
+                    [disabled]="!isAgentEnabled()"
+                    [class.is-disabled]="!isAgentEnabled()"
+                    [hint]="agentHint()"
+                >
+                    <app-audit-flow-filter
+                        [options]="agentOptions()"
+                        [filter]="filter().agent"
+                        (filterChange)="setAgent($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Tool"
+                    [disabled]="!isToolEnabled()"
+                    [class.is-disabled]="!isToolEnabled()"
+                    [hint]="toolHint()"
+                >
+                    <app-audit-flow-filter
+                        [options]="toolOptions()"
+                        [filter]="filter().tool"
+                        (filterChange)="setTool($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Tokens"
+                    [disabled]="!isTokensEnabled()"
+                    [class.is-disabled]="!isTokensEnabled()"
+                    [hint]="isTokensEnabled() ? '' : 'Only events carry token usage'"
+                >
+                    <app-audit-tokens-filter
+                        [filter]="filter().tokens"
+                        (filterChange)="setTokens($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Task"
+                    [disabled]="!isTaskEnabled()"
+                    [class.is-disabled]="!isTaskEnabled()"
+                    [hint]="isTaskEnabled() ? '' : 'Only events carry a task'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().task"
+                        (conditionsChange)="setTask($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Prompt"
+                    [disabled]="!isPromptEnabled()"
+                    [class.is-disabled]="!isPromptEnabled()"
+                    [hint]="isPromptEnabled() ? '' : 'Only events carry a prompt'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().prompt"
+                        (conditionsChange)="setPrompt($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Message text"
+                    [disabled]="!isMessageTextEnabled()"
+                    [class.is-disabled]="!isMessageTextEnabled()"
+                    [hint]="isMessageTextEnabled() ? '' : 'Only events carry a message'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().messageText"
+                        (conditionsChange)="setMessageText($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Message thought"
+                    [disabled]="!isMessageThoughtEnabled()"
+                    [class.is-disabled]="!isMessageThoughtEnabled()"
+                    [hint]="isMessageThoughtEnabled() ? '' : 'Only events carry a message'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().messageThought"
+                        (conditionsChange)="setMessageThought($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
                     />
                 </app-audit-filter-group>
             </div>

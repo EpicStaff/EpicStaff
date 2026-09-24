@@ -15,13 +15,14 @@ import { AuditSelectComponent } from '../audit-select/audit-select.component';
 export class AuditOperatorSelectComponent {
     public operators = input<AuditFilterOp[]>([]);
     public selectedOperator = model.required<AuditFilterOp>();
+    public labels = input<Record<string, string>>({});
 
     protected readonly options = computed<AuditEnumOption[]>(() =>
         this.operators().map((operator) => ({ value: operator, label: this.labelFor(operator) }))
     );
 
     public labelFor(operator: string): string {
-        return OPERATOR_LABELS[operator] ?? operator;
+        return this.labels()[operator] ?? OPERATOR_LABELS[operator] ?? operator;
     }
 
     protected onValueChange(value: string): void {

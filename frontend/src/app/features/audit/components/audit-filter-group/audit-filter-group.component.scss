@@ -1,4 +1,4 @@
-$padding-x: 12px;
+$padding-x: 10px;
 
 :host {
     display: block;
@@ -9,7 +9,7 @@ $padding-x: 12px;
 }
 
 .filter-group {
-    padding: 10px 0;
+    padding: 4px 0;
     border-radius: 6px;
     background-color: var(--color-flow-card-bg);
     box-shadow: var(--shadow-card-subtle);
@@ -29,6 +29,7 @@ $padding-x: 12px;
     align-items: center;
     gap: 8px;
     width: 100%;
+    min-height: 20px;
     padding: 0 $padding-x;
     border: none;
     background: none;
@@ -42,6 +43,10 @@ $padding-x: 12px;
         outline-offset: 2px;
         border-radius: 3px;
     }
+
+    &:disabled {
+        cursor: default;
+    }
 }
 
 .filter-group__chevron {
@@ -54,9 +59,11 @@ $padding-x: 12px;
 }
 
 .filter-group__title {
+    flex: none;
     color: var(--color-text-secondary);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
+    line-height: 20px;
 }
 
 .filter-group__body {
@@ -82,8 +89,12 @@ $padding-x: 12px;
 }
 
 .filter-group__hint {
+    min-width: 0;
+    overflow: hidden;
     color: var(--color-input-text-placeholder);
-    font-size: 12px;
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 @media (prefers-reduced-motion: reduce) {

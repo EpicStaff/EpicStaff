@@ -9,6 +9,9 @@ import { AuditMatchScope, AuditRunBucket, AuditRunType } from '../models/audit-s
 
 const MATCH_SCOPE: AuditMatchScope = { children: true };
 
+const TOOL_NAME_FIELD = 'details.data.name';
+const TOKENS_FIELD = 'details.token_usage.total_tokens';
+
 const RUN_TYPES_BY_BUCKET: Record<AuditRunBucket, AuditRunType[]> = {
     manual: ['manual'],
     api: ['schedule', 'webhook', 'telegram', 'parent_flow'],
@@ -51,6 +54,20 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: 'flow_name', op: state.flow.op, value: state.flow.values });
     }
 
+    if (state.agent.values.length > 0) {
+        leaves.push({ field: 'agent', op: state.agent.op, value: state.agent.values.map(Number) });
+    }
+
+    if (state.tool.values.length > 0) {
+        const toolLeaves: AuditFilterNode[] = state.tool.values.map((value) => ({
+            field: TOOL_NAME_FIELD,
+            op: 'equals',
+            value,
+        }));
+        const toolNode: AuditFilterNode = toolLeaves.length === 1 ? toolLeaves[0] : { op: 'or', children: toolLeaves };
+        leaves.push(state.tool.op === 'not_in' ? { op: 'not', child: toolNode } : toolNode);
+    }
+
     const id = state.id;
     if (id.mode === 'range') {
         if (id.from !== '') {
@@ -88,6 +105,13 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: 'run_type', op: 'in', value: runTypes });
     }
 
+    const tokens = state.tokens;
+    if (tokens.op === 'is_empty') {
+        leaves.push({ field: TOKENS_FIELD, op: 'key_not_exists', value: null });
+    } else if (tokens.value !== '') {
+        leaves.push({ field: TOKENS_FIELD, op: tokens.op, value: Number(tokens.value) });
+    }
+
     const errorNode = compileConditions('error', state.error);
     if (errorNode !== null) {
         leaves.push(errorNode);
@@ -106,6 +130,26 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     const detailsNode = compileConditions('details', state.details);
     if (detailsNode !== null) {
         leaves.push(detailsNode);
+    }
+
+    const taskNode = compileConditions('task', state.task);
+    if (taskNode !== null) {
+        leaves.push(taskNode);
+    }
+
+    const promptNode = compileConditions('prompt', state.prompt);
+    if (promptNode !== null) {
+        leaves.push(promptNode);
+    }
+
+    const messageTextNode = compileConditions('message_text', state.messageText);
+    if (messageTextNode !== null) {
+        leaves.push(messageTextNode);
+    }
+
+    const messageThoughtNode = compileConditions('message_thought', state.messageThought);
+    if (messageThoughtNode !== null) {
+        leaves.push(messageThoughtNode);
     }
 
     if (leaves.length === 0) {

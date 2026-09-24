@@ -4,6 +4,7 @@ import {
     AuditFilterState,
     AuditIdFilter,
     AuditIdMode,
+    AuditNumberFilter,
     createAuditCondition,
     isUsableCondition,
 } from '../models/audit-filter.models';
@@ -14,6 +15,7 @@ import {
     OPERATOR_LABELS,
     RUN_TYPE_OPTIONS,
     STATUS_OPTIONS,
+    TOKEN_OPERATOR_LABELS,
 } from '../models/audit-filter-options';
 import { formatAuditDay } from './format-audit-day.util';
 
@@ -89,7 +91,26 @@ function describeDate(from: string | null, to: string | null): string | null {
     return null;
 }
 
-export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] {
+function describeTokens(tokens: AuditNumberFilter): string | null {
+    if (tokens.op === 'is_empty') {
+        return 'is empty';
+    }
+    if (tokens.value === '') {
+        return null;
+    }
+    const operator = TOKEN_OPERATOR_LABELS[tokens.op] ?? OPERATOR_LABELS[tokens.op] ?? tokens.op;
+    return `${operator} ${tokens.value}`;
+}
+
+export interface AuditFilterVocabularies {
+    agents?: AuditEnumOption[];
+    tools?: AuditEnumOption[];
+}
+
+export function describeAuditFilter(
+    state: AuditFilterState,
+    vocabularies: AuditFilterVocabularies = {}
+): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
 
     if (state.kinds.length > 0) {
@@ -121,6 +142,22 @@ export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] 
         chips.push({ key: 'run', label: 'Run', value: labelsFor(state.runTypes, RUN_TYPE_OPTIONS) });
     }
 
+    if (state.agent.values.length > 0) {
+        chips.push({
+            key: 'agent',
+            label: 'Agent',
+            value: `${OPERATOR_LABELS[state.agent.op]} ${labelsFor(state.agent.values, vocabularies.agents ?? [])}`,
+        });
+    }
+
+    if (state.tool.values.length > 0) {
+        chips.push({
+            key: 'tool',
+            label: 'Tool',
+            value: `${OPERATOR_LABELS[state.tool.op]} ${labelsFor(state.tool.values, vocabularies.tools ?? [])}`,
+        });
+    }
+
     const inputText = describeConditions(state.input);
     if (inputText !== null) {
         chips.push({ key: 'input', label: 'Input', value: inputText });
@@ -144,6 +181,30 @@ export function describeAuditFilter(state: AuditFilterState): AuditFilterChip[] 
     const dateValue = describeDate(state.dateFrom, state.dateTo);
     if (dateValue !== null) {
         chips.push({ key: 'date', label: 'Date', value: dateValue });
+    }
+    const taskText = describeConditions(state.task);
+    if (taskText !== null) {
+        chips.push({ key: 'task', label: 'Task', value: taskText });
+    }
+
+    const promptText = describeConditions(state.prompt);
+    if (promptText !== null) {
+        chips.push({ key: 'prompt', label: 'Prompt', value: promptText });
+    }
+
+    const messageTextText = describeConditions(state.messageText);
+    if (messageTextText !== null) {
+        chips.push({ key: 'messageText', label: 'Message text', value: messageTextText });
+    }
+
+    const messageThoughtText = describeConditions(state.messageThought);
+    if (messageThoughtText !== null) {
+        chips.push({ key: 'messageThought', label: 'Message thought', value: messageThoughtText });
+    }
+
+    const tokensValue = describeTokens(state.tokens);
+    if (tokensValue !== null) {
+        chips.push({ key: 'tokens', label: 'Tokens', value: tokensValue });
     }
 
     return chips;
@@ -173,6 +234,20 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
             return { ...state, details: [createAuditCondition()] };
         case 'date':
             return { ...state, dateFrom: null, dateTo: null };
+        case 'agent':
+            return { ...state, agent: { op: 'in', values: [] } };
+        case 'tool':
+            return { ...state, tool: { op: 'in', values: [] } };
+        case 'task':
+            return { ...state, task: [createAuditCondition()] };
+        case 'prompt':
+            return { ...state, prompt: [createAuditCondition()] };
+        case 'messageText':
+            return { ...state, messageText: [createAuditCondition()] };
+        case 'messageThought':
+            return { ...state, messageThought: [createAuditCondition()] };
+        case 'tokens':
+            return { ...state, tokens: { op: 'gt', value: '' } };
         default:
             return state;
     }

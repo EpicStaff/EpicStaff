@@ -4,12 +4,15 @@ import { DateRangeFilter } from 'src/app/shared/models';
 
 import {
     AuditCondition,
+    AuditEnumOption,
     AuditFilterState,
     AuditIdFilter,
+    AuditNumberFilter,
     AuditValuesFilter,
     EMPTY_AUDIT_FILTER,
 } from '../../models/audit-filter.models';
 import {
+    DEEP_TEXT_OPERATORS,
     ERROR_OPERATORS,
     JSON_OPERATORS,
     KIND_OPTIONS,
@@ -18,13 +21,19 @@ import {
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from '../../models/audit-session.models';
-import { allowedKinds, isFieldEnabled } from '../../utils/audit-filter-compatibility.util';
+import {
+    allowedKinds,
+    AUDIT_FILTER_FIELDS,
+    isFieldAvailable,
+    isFieldEnabled,
+} from '../../utils/audit-filter-compatibility.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditConditionFilterComponent } from '../audit-condition-filter/audit-condition-filter.component';
 import { AuditDateFilterComponent } from '../audit-date-filter/audit-date-filter.component';
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
+import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | 'presets';
 
@@ -39,6 +48,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
         AuditIdFilterComponent,
         AuditConditionFilterComponent,
         AuditDateFilterComponent,
+        AuditTokensFilterComponent,
     ],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
@@ -50,6 +60,12 @@ export class AuditFiltersPanelComponent {
     public readonly cleared = output<void>();
 
     public readonly flowNames = input<string[]>([]);
+    public readonly agentOptions = input<AuditEnumOption[]>([]);
+    public readonly toolOptions = input<AuditEnumOption[]>([]);
+
+    public readonly flowOptions = computed<AuditEnumOption[]>(() =>
+        this.flowNames().map((name) => ({ value: name, label: name }))
+    );
 
     public activeTab = signal<AuditFilterTab>('builder');
     public filter = model<AuditFilterState>(EMPTY_AUDIT_FILTER);
@@ -60,6 +76,7 @@ export class AuditFiltersPanelComponent {
     public readonly nodeTypeOptions = NODE_TYPE_OPTIONS;
     public readonly errorOperators = ERROR_OPERATORS;
     public readonly jsonOperators = JSON_OPERATORS;
+    public readonly deepTextOperators = DEEP_TEXT_OPERATORS;
 
     public setActiveTab(tab: AuditFilterTab): void {
         this.activeTab.set(tab);
@@ -72,13 +89,36 @@ export class AuditFiltersPanelComponent {
             .filter((kind) => !allowed.includes(kind as AuditEventKind));
     });
 
-    public isStatusEnabled = computed(() => isFieldEnabled('status', this.filter()));
-    public isNodeTypeEnabled = computed(() => isFieldEnabled('nodeType', this.filter()));
-    public isRunTypeEnabled = computed(() => isFieldEnabled('run', this.filter()));
-    public isErrorEnabled = computed(() => isFieldEnabled('error', this.filter()));
-    public isInputEnabled = computed(() => isFieldEnabled('input', this.filter()));
-    public isOutputEnabled = computed(() => isFieldEnabled('output', this.filter()));
-    public isDetailsEnabled = computed(() => isFieldEnabled('details', this.filter()));
+    public isStatusEnabled = computed(() => isFieldAvailable('status', this.filter()));
+    public isNodeTypeEnabled = computed(() => isFieldAvailable('nodeType', this.filter()));
+    public isRunTypeEnabled = computed(() => isFieldAvailable('run', this.filter()));
+    public isErrorEnabled = computed(() => isFieldAvailable('error', this.filter()));
+    public isInputEnabled = computed(() => isFieldAvailable('input', this.filter()));
+    public isOutputEnabled = computed(() => isFieldAvailable('output', this.filter()));
+    public isDetailsEnabled = computed(() => isFieldAvailable('details', this.filter()));
+    public isAgentEnabled = computed(() => isFieldAvailable('agent', this.filter()));
+    public isToolEnabled = computed(() => isFieldAvailable('tool', this.filter()));
+    public isTaskEnabled = computed(() => isFieldAvailable('task', this.filter()));
+    public isPromptEnabled = computed(() => isFieldAvailable('prompt', this.filter()));
+    public isMessageTextEnabled = computed(() => isFieldAvailable('messageText', this.filter()));
+    public isMessageThoughtEnabled = computed(() => isFieldAvailable('messageThought', this.filter()));
+    public isTokensEnabled = computed(() => isFieldAvailable('tokens', this.filter()));
+
+    public agentHint = computed(() => {
+        const state = this.filter();
+        if (AUDIT_FILTER_FIELDS['tool'].isActive(state)) {
+            return 'Not available together with Tool';
+        }
+        return isFieldEnabled('agent', state) ? '' : 'Only events carry an agent';
+    });
+
+    public toolHint = computed(() => {
+        const state = this.filter();
+        if (AUDIT_FILTER_FIELDS['agent'].isActive(state)) {
+            return 'Not available together with Agent';
+        }
+        return isFieldEnabled('tool', state) ? '' : 'Only events carry a tool';
+    });
 
     public disabledStatuses = computed(() =>
         this.isStatusEnabled() ? [] : this.statusOptions.map((option) => option.value)
@@ -139,5 +179,33 @@ export class AuditFiltersPanelComponent {
 
     public setDetails(details: AuditCondition[]): void {
         this.filter.update((current) => ({ ...current, details }));
+    }
+
+    public setAgent(agent: AuditValuesFilter): void {
+        this.filter.update((current) => ({ ...current, agent }));
+    }
+
+    public setTool(tool: AuditValuesFilter): void {
+        this.filter.update((current) => ({ ...current, tool }));
+    }
+
+    public setTask(task: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, task }));
+    }
+
+    public setPrompt(prompt: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, prompt }));
+    }
+
+    public setMessageText(messageText: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, messageText }));
+    }
+
+    public setMessageThought(messageThought: AuditCondition[]): void {
+        this.filter.update((current) => ({ ...current, messageThought }));
+    }
+
+    public setTokens(tokens: AuditNumberFilter): void {
+        this.filter.update((current) => ({ ...current, tokens }));
     }
 }
