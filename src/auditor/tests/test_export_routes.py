@@ -7,6 +7,7 @@ os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
 os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
 os.environ.setdefault("AUDIT_JWT_SECRET", "test-secret")
 os.environ.setdefault("REDIS_HOST", "localhost")
+os.environ.setdefault("REDIS_USER", "test")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "")
 os.environ.setdefault("AUDITOR_REDIS_DB", "1")
@@ -29,6 +30,7 @@ from app.core.security import verify_user_jwt
 from app.core import settings
 from app.domains.sessions.domain import SESSIONS
 from app.services.export_job_service import ExportJobService
+from src.shared.audit.export_jobs import JOB_KEY_PREFIX
 from src.shared.models import SessionAuditEvent
 from tests._fakes import InMemoryFakeRepository
 
@@ -196,6 +198,46 @@ async def test_download_returns_410_when_file_missing_after_completion(app_and_c
 
     resp = await client.get(f"/api/audit/sessions/export/{job_id}")
     assert resp.status_code == 410
+
+
+@pytest.mark.asyncio
+async def test_download_ignores_forged_file_path_outside_export_dir(app_and_client, tmp_path):
+    # Redis (where job hashes live) is reachable from sandbox-network, so a
+    # job's file_path must never be trusted as-is - the route rebuilds it
+    # from job_id + format instead. Simulates a hash with a file_path
+    # rewritten to point outside the export directory.
+    app, client = app_and_client
+
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
+    job_id = resp.json()["job_id"]
+
+    secret_file = tmp_path.parent / "secret.txt"
+    secret_file.write_text("do-not-serve-me")
+    await app.state.export_job_service._redis.hset(
+        f"{JOB_KEY_PREFIX}{job_id}", "file_path", str(secret_file)
+    )
+
+    resp = await client.get(f"/api/audit/sessions/export/{job_id}")
+    assert resp.status_code == 200
+    assert resp.content != b"do-not-serve-me"
+
+
+@pytest.mark.asyncio
+async def test_delete_ignores_forged_file_path_outside_export_dir(app_and_client, tmp_path):
+    app, client = app_and_client
+
+    resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
+    job_id = resp.json()["job_id"]
+
+    secret_file = tmp_path.parent / "secret.txt"
+    secret_file.write_text("do-not-delete-me")
+    await app.state.export_job_service._redis.hset(
+        f"{JOB_KEY_PREFIX}{job_id}", "file_path", str(secret_file)
+    )
+
+    resp = await client.delete(f"/api/audit/sessions/export/{job_id}")
+    assert resp.status_code == 204
+    assert secret_file.exists()
 
 
 @pytest.mark.asyncio

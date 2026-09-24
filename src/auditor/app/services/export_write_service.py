@@ -47,12 +47,13 @@ class ExportWriteService:
     @staticmethod
     async def run_export(
         job_id: str,
-        body: type[BaseModel],
+        body: BaseModel,
         claims: dict,
         pipeline: SearchPipeline,
         repository: AuditRepository,
         job_service: ExportJobService,
     ) -> None:
+        file_path: str | None = None
         try:
             org_id = claims["org_id"]
             retention_days = claims["retention_days"]
@@ -124,7 +125,7 @@ class ExportWriteService:
 
         except Exception:
             logger.exception("Export job {} failed", job_id)
-            if "file_path" in locals():
+            if file_path is not None:
                 try:
                     await asyncio.to_thread(Path(file_path).unlink, missing_ok=True)
                 except Exception:

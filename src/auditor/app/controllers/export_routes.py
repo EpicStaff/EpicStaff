@@ -24,6 +24,23 @@ class ExportJobSummary(BaseModel):
     truncated: bool = False
 
 
+def _resolve_export_file_path(job_id: str, fmt: str) -> pathlib.Path:
+    """Rebuilds the export file's path from the job id and format instead of
+    trusting the `file_path` stored in Redis: that hash is writable by
+    anything on sandbox-network, so a forged `file_path` (e.g.
+    `/proc/self/environ`, or a path outside the export directory) must
+    never reach `FileResponse`/`unlink()` regardless of what the hash says.
+    """
+    if fmt not in ("csv", "json"):
+        raise HTTPException(404, "Export job not found")
+
+    export_dir = pathlib.Path(settings.AUDITOR_EXPORT_DATA_DIR).resolve()
+    path = (export_dir / f"{job_id}.{fmt}").resolve()
+    if not path.is_relative_to(export_dir):
+        raise HTTPException(404, "Export job not found")
+    return path
+
+
 async def _get_owned_job(
     job_service: ExportJobService, job_id: str, claims: dict, domain_name: str
 ) -> dict:
@@ -95,7 +112,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         if job["status"] != JobStatus.COMPLETED.value:
             return {"status": job["status"]}
 
-        path = pathlib.Path(job["file_path"])
+        path = _resolve_export_file_path(job_id, job["format"])
         if not path.exists():
             raise HTTPException(status_code=410, detail="Export file has expired")
         ext = path.suffix.lstrip(".")
@@ -121,7 +138,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         job = await _get_owned_job(job_service, job_id, claims, domain.name)
 
         if job.get("file_path"):
-            pathlib.Path(job["file_path"]).unlink(missing_ok=True)
+            _resolve_export_file_path(job_id, job["format"]).unlink(missing_ok=True)
 
         await job_service.delete_job(job_id, claims["org_id"], claims["user_id"], domain.name)
         return Response(status_code=204)
