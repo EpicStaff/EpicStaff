@@ -19,6 +19,10 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
 }
 
+upstream auditor_server {
+    server ${AUDITOR_HOST}:${AUDITOR_PORT};
+}
+
 underscores_in_headers on;
 
 server {
@@ -141,6 +145,20 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ~ ^/auditor/api/audit/[^/]+/events/?$ {
+        return 404;
+    }
+
+    location /auditor/ {
+        proxy_pass http://auditor_server/;
+        proxy_http_version 1.1;
+        proxy_set_header Authorization $http_authorization;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

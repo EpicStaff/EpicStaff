@@ -120,7 +120,7 @@ services:
 
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
-      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
       JWT_SECRET: ${JWT_SECRET:?}
     volumes:
@@ -285,7 +285,7 @@ services:
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
-      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
     networks:
       - backend-network
     tty: true
@@ -390,6 +390,7 @@ services:
     environment:
       API_URL: ${API_URL:?}
       REALTIME_API_URL: ${REALTIME_API_URL:?}
+      AUDITOR_API_URL: ${AUDITOR_API_URL:?}
     networks:
       - frontend-network
 
@@ -444,6 +445,8 @@ services:
       REALTIME_PORT: ${REALTIME_PORT:?}
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
+      AUDITOR_HOST: ${AUDITOR_HOST:?}
+      AUDITOR_PORT: ${AUDITOR_PORT:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -457,6 +460,8 @@ services:
       frontend:
         condition: service_started
       realtime:
+        condition: service_started
+      auditor:
         condition: service_started
     restart: always
 
@@ -551,14 +556,14 @@ services:
       OPENSEARCH_PORT: ${OPENSEARCH_PORT:?}
       OPENSEARCH_USER: ${OPENSEARCH_USER:?}
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:?}
-      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       JWT_SECRET: ${JWT_SECRET:?}
       CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
       AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
       AUDITOR_EXPORT_DATA_DIR: ${AUDITOR_EXPORT_DATA_DIR:?}
       AUDITOR_EXPORT_FILE_TTL_SECONDS: ${AUDITOR_EXPORT_FILE_TTL_SECONDS:?}
-    ports:
-      - "${AUDITOR_PORT}:${AUDITOR_PORT}"
+      AUDITOR_EXPORT_MAX_ROWS: ${AUDITOR_EXPORT_MAX_ROWS:?}
+    # No host port: the browser reaches the auditor through nginx at /auditor/.
     networks:
       - backend-network
     volumes:
@@ -607,7 +612,7 @@ volumes:
     external: true
   media_data:
     external: true
-  opensearch_data: 
+  opensearch_data:
     external: true
   redis_data: {}
   code_instances: {}
