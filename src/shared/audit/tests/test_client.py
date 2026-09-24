@@ -47,12 +47,14 @@ class FlakyTransportHandler:
 
 class PartialFailureTransportHandler:
     """Simulates the ingest route's 207 response: fails a specific set of
-    event ids `fail_ids_first_n_attempts` times each, then reports them as
+    event ids `fail_count` times each (at the given per-event OpenSearch
+    status, 500 by default - i.e. retryable), then reports them as
     succeeded. Tracks every payload it actually received."""
 
-    def __init__(self, always_failing_ids: set[str], fail_count: int):
+    def __init__(self, always_failing_ids: set[str], fail_count: int, status: int = 500):
         self.always_failing_ids = always_failing_ids
         self.fail_count = fail_count
+        self.status = status
         self.attempts = 0
         self.payloads: list[list[dict]] = []
 
@@ -62,14 +64,18 @@ class PartialFailureTransportHandler:
         self.payloads.append(payload)
 
         if self.attempts <= self.fail_count:
-            failed_ids = [e["id"] for e in payload if e["id"] in self.always_failing_ids]
+            failed = [
+                {"id": e["id"], "status": self.status}
+                for e in payload
+                if e["id"] in self.always_failing_ids
+            ]
         else:
-            failed_ids = []
+            failed = []
 
-        if failed_ids:
+        if failed:
             return httpx.Response(
                 207,
-                json={"received": len(payload) - len(failed_ids), "failed_ids": failed_ids},
+                json={"received": len(payload) - len(failed), "failed": failed},
             )
         return httpx.Response(200, json={"received": len(payload)})
 
@@ -160,7 +166,8 @@ async def test_retries_then_succeeds():
 async def test_207_partial_failure_retries_only_the_failed_ids():
     """A 207 response (partial bulk-write failure) is not treated as
     success - the client retries just the events the server reported as
-    failed_ids, not the whole batch and not nothing."""
+    failed with a retryable (5xx) status, not the whole batch and not
+    nothing."""
     transport = PartialFailureTransportHandler(
         always_failing_ids={"bad-1"}, fail_count=1
     )
@@ -193,6 +200,47 @@ async def test_207_persistent_partial_failure_drops_remaining_ids_without_raisin
     await asyncio.sleep(2)
 
     assert transport.attempts == 3  # exhausted max_retries, gave up
+    await client.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_207_per_event_4xx_is_dropped_without_retry_5xx_still_retries():
+    """A 207 response can report a mix: one event permanently rejected
+    (400, e.g. a mapping conflict) and one event transiently rejected
+    (500). Only the 500 one should be resent."""
+    attempts = 0
+    seen_payloads: list[list[dict]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        payload = json.loads(request.content)
+        seen_payloads.append(payload)
+
+        if attempts == 1:
+            return httpx.Response(
+                207,
+                json={
+                    "received": 0,
+                    "failed": [
+                        {"id": "permanent-400", "status": 400},
+                        {"id": "transient-500", "status": 500},
+                    ],
+                },
+            )
+        return httpx.Response(200, json={"received": len(payload)})
+
+    client = build_client(handler, batch_size=2, batch_interval_seconds=10)
+
+    await client.emit(make_event("permanent-400"))
+    await client.emit(make_event("transient-500"))
+    await asyncio.sleep(2)
+
+    assert attempts == 2
+    assert [e["id"] for e in seen_payloads[0]] == ["permanent-400", "transient-500"]
+    # only the retryable (5xx) event is resent - the 4xx one is dropped for good
+    assert [e["id"] for e in seen_payloads[1]] == ["transient-500"]
+
     await client.shutdown()
 
 
@@ -281,39 +329,3 @@ async def test_disabled_client_never_sends_and_starts_no_background_task():
         make_event("should-not-send")
     )  # must not raise even though disabled
     await client.shutdown()  # must not raise
-
-
-def test_immediate_mode_construction_requires_no_running_event_loop():
-    """
-    Regression test: __init__ used to unconditionally call asyncio.create_task,
-    which raises RuntimeError with no running loop - exactly django_app's
-    situation (register_message runs via asgiref.sync.async_to_sync, a
-    per-call temporary loop; get_session_audit_writer() itself is called as
-    plain sync code before that wrapper ever starts). Deliberately NOT an
-    async test - this must work with zero event loop in play at all.
-    """
-    client = AuditClient(
-        base_url="http://auditor.test",
-        ingest_path="/api/audit/sessions/events",
-        api_key="test-key",
-        enabled=True,
-        immediate=True,
-    )
-    assert client._flush_task is None
-
-
-@pytest.mark.asyncio
-async def test_immediate_mode_sends_synchronously_without_a_background_task():
-    transport = RecordingTransportHandler()
-    client = build_client(transport, immediate=True)
-
-    assert client._flush_task is None
-
-    await client.emit(make_event("sent-immediately"))
-
-    # no need to sleep/wait for a background loop - immediate mode sends
-    # inline within emit() itself
-    assert len(transport.calls) == 1
-    assert transport.calls[0][0]["id"] == "sent-immediately"
-
-    await client.shutdown()

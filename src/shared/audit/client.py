@@ -1,19 +1,19 @@
 import asyncio
-from typing import Generic, Optional
+import contextlib
 
 import httpx
 from loguru import logger
-
-from src.shared.audit.protocols import T
+from src.shared.audit.protocols import AuditEventLike
 
 _DEFAULT_BATCH_SIZE = 200
 _DEFAULT_BATCH_INTERVAL_SECONDS = 1.5
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_MAX_QUEUE_SIZE = 10_000
 _RETRY_BACKOFFS_SECONDS = (0.2, 0.5, 1.0)
+_LOG_EVERY_NTH_DROP = 100
 
 
-class AuditClient(Generic[T]):
+class AuditClient[T: AuditEventLike]:
     """
     Async, batching, best-effort client for sending audit-domain events to
     their ingest endpoint. Generic over the event type (SessionAuditEvent
@@ -33,29 +33,16 @@ class AuditClient(Generic[T]):
         ingest_path: str,
         api_key: str,
         enabled: bool = True,
-        immediate: bool = False,
         batch_size: int = _DEFAULT_BATCH_SIZE,
         batch_interval_seconds: float = _DEFAULT_BATCH_INTERVAL_SECONDS,
         max_retries: int = _DEFAULT_MAX_RETRIES,
         max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
-        http_client: Optional[httpx.AsyncClient] = None,
+        http_client: httpx.AsyncClient | None = None,
     ):
         """
         http_client: inject a pre-built httpx.AsyncClient (e.g. one backed
         by httpx.MockTransport) for testing. Production callers should leave
         this unset - a real client is built automatically.
-
-        immediate: send each event synchronously within its own emit() call
-        instead of enqueueing for a background batch loop. Required for
-        callers with no persistent event loop (e.g. django_app's HITL call
-        site via asgiref.sync.async_to_sync, which spins up a temporary loop
-        per call and tears it down right after - a background task started
-        there would be abandoned before ever running). __init__ itself must
-        stay safe to call with no running loop at all: asyncio.create_task
-        requires one, so it's only ever called when NOT immediate, and even
-        then only from a caller (crew) that's already inside a persistent
-        loop. crew should leave this False (it benefits from real batching
-        across many concurrent node events).
 
         max_queue_size: upper bound on events waiting for the flush loop.
         During an auditor outage the loop stalls in retries while emit()
@@ -65,21 +52,19 @@ class AuditClient(Generic[T]):
         self._url = f"{base_url.rstrip('/')}{ingest_path}"
         self._api_key = api_key
         self._enabled = enabled
-        self._immediate = immediate
         self._batch_size = batch_size
         self._batch_interval_seconds = batch_interval_seconds
         self._max_retries = max_retries
 
-        self._queue: "asyncio.Queue[T]" = asyncio.Queue(maxsize=max_queue_size)
+        self._queue: asyncio.Queue[T] = asyncio.Queue(maxsize=max_queue_size)
         self._dropped_on_full_queue_count = 0
-        self._flush_task: Optional[asyncio.Task] = None
-        self._http_client: Optional[httpx.AsyncClient] = None
+        self._flush_task: asyncio.Task | None = None
+        self._http_client: httpx.AsyncClient | None = None
 
         if self._enabled:
             self._http_client = http_client or httpx.AsyncClient()
-            if not self._immediate:
-                self._flush_task = asyncio.create_task(self._flush_loop())
-                self._flush_task.add_done_callback(self._on_flush_task_done)
+            self._flush_task = asyncio.create_task(self._flush_loop())
+            self._flush_task.add_done_callback(self._on_flush_task_done)
         else:
             logger.warning(
                 "AuditClient for {} constructed with enabled=False - "
@@ -88,25 +73,29 @@ class AuditClient(Generic[T]):
             )
 
     async def emit(self, event: T) -> None:
-        """Never raises - enqueues for background flush (or sends immediately
-        in immediate mode), or no-ops if disabled."""
+        """Never raises - enqueues for background flush, or no-ops if disabled."""
         if not self._enabled:
-            return
-        if self._immediate:
-            await self._send_batch([event])
             return
         try:
             self._queue.put_nowait(event)
         except asyncio.QueueFull:
             self._dropped_on_full_queue_count += 1
-            logger.warning(
-                "Audit queue for {} is full ({} event(s)), dropping event {}; "
-                "{} event(s) dropped on a full queue so far",
-                self._url,
-                self._queue.maxsize,
-                event.id,
-                self._dropped_on_full_queue_count,
-            )
+            # An outage drops at event rate, not batch rate - logging every
+            # single drop would flood the logs for as long as it lasts. Log
+            # the first one immediately (so it's not missed) and then only
+            # every _LOG_EVERY_NTH_DROP after that.
+            if (
+                self._dropped_on_full_queue_count == 1
+                or self._dropped_on_full_queue_count % _LOG_EVERY_NTH_DROP == 0
+            ):
+                logger.warning(
+                    "Audit queue for {} is full ({} event(s)), dropping event {}; "
+                    "{} event(s) dropped on a full queue so far",
+                    self._url,
+                    self._queue.maxsize,
+                    event.id,
+                    self._dropped_on_full_queue_count,
+                )
 
     def _on_flush_task_done(self, task: asyncio.Task) -> None:
         """
@@ -158,10 +147,8 @@ class AuditClient(Generic[T]):
             if remaining <= 0:
                 break
             try:
-                batch.append(
-                    await asyncio.wait_for(self._queue.get(), timeout=remaining)
-                )
-            except asyncio.TimeoutError:
+                batch.append(await asyncio.wait_for(self._queue.get(), timeout=remaining))
+            except TimeoutError:
                 break
 
         return batch
@@ -179,9 +166,7 @@ class AuditClient(Generic[T]):
             try:
                 payload.append(event.model_dump(mode="json"))
             except Exception as e:
-                logger.warning(
-                    "Dropping unserializable audit event {}: {}", event.id, e
-                )
+                logger.warning("Dropping unserializable audit event {}: {}", event.id, e)
         if not payload:
             return
 
@@ -197,8 +182,19 @@ class AuditClient(Generic[T]):
                 response.raise_for_status()
 
                 if response.status_code == 207:
-                    failed_ids = set(response.json().get("failed_ids", []))
-                    payload = [e for e in payload if e.get("id") in failed_ids]
+                    failed = response.json().get("failed", [])
+                    retryable_ids = {f["id"] for f in failed if (f.get("status") or 500) >= 500}
+                    permanent = [f for f in failed if f["id"] not in retryable_ids]
+                    if permanent:
+                        logger.error(
+                            "Audit batch to {} had {} event(s) permanently "
+                            "rejected, dropping without retry: {}",
+                            self._url,
+                            len(permanent),
+                            permanent,
+                        )
+
+                    payload = [e for e in payload if e.get("id") in retryable_ids]
                     if not payload:
                         return
                     if attempt < self._max_retries - 1:
@@ -276,10 +272,8 @@ class AuditClient(Generic[T]):
 
         if self._flush_task:
             self._flush_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._flush_task
-            except asyncio.CancelledError:
-                pass
 
         remaining: list[T] = []
         while not self._queue.empty():

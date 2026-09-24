@@ -5,14 +5,18 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 
-def _extract_failed_ids(errors: list[dict]) -> list[str]:
-    failed_ids = []
+def _extract_failures(errors: list[dict]) -> list[dict]:
+    """Keeps each failed document's OpenSearch status alongside its id, so
+    the client can retry a transient 5xx (e.g. a rejected bulk request under
+    load) without also retrying a permanent 4xx (e.g. a mapping conflict)
+    that will never succeed."""
+    failures = []
     for error in errors:
         for item in error.values():
             doc_id = item.get("_id")
             if doc_id is not None:
-                failed_ids.append(doc_id)
-    return failed_ids
+                failures.append({"id": doc_id, "status": item.get("status")})
+    return failures
 
 
 def build_ingest_router(domain: AuditDomain) -> APIRouter:
@@ -29,16 +33,16 @@ def build_ingest_router(domain: AuditDomain) -> APIRouter:
         if not errors:
             return {"received": len(events)}
 
-        failed_ids = _extract_failed_ids(errors)
+        failures = _extract_failures(errors)
         logger.error(
-            "Audit bulk write to {!r} partially failed: {}/{} event(s) not indexed - failed_ids={}",
+            "Audit bulk write to {!r} partially failed: {}/{} event(s) not indexed - {}",
             domain.name,
-            len(failed_ids),
+            len(failures),
             len(events),
-            failed_ids,
+            failures,
         )
         return JSONResponse(
-            {"received": len(events) - len(errors), "failed_ids": failed_ids},
+            {"received": len(events) - len(failures), "failed": failures},
             status_code=207,
         )
 

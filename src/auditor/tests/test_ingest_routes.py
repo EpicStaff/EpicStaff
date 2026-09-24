@@ -7,6 +7,7 @@ os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
 os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
 os.environ.setdefault("AUDIT_JWT_SECRET", "test-secret")
 os.environ.setdefault("REDIS_HOST", "localhost")
+os.environ.setdefault("REDIS_USER", "test")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "")
 os.environ.setdefault("AUDITOR_REDIS_DB", "1")
@@ -100,7 +101,7 @@ async def test_ingest_empty_error_list_is_treated_as_full_success(client_factory
 
 
 @pytest.mark.asyncio
-async def test_ingest_partial_bulk_failure_returns_207_with_failed_ids(client_factory):
+async def test_ingest_partial_bulk_failure_returns_207_with_failed_ids_and_status(client_factory):
     # Shape matches opensearchpy's async_bulk error entries with
     # raise_on_error=False: {op_type: {..., "_id": ..., "error": {...}}}.
     errors = [
@@ -125,7 +126,7 @@ async def test_ingest_partial_bulk_failure_returns_207_with_failed_ids(client_fa
     assert resp.status_code == 207
     body = resp.json()
     assert body["received"] == 1
-    assert body["failed_ids"] == ["evt-2"]
+    assert body["failed"] == [{"id": "evt-2", "status": 400}]
 
 
 @pytest.mark.asyncio
