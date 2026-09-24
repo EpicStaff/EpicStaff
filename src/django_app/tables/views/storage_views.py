@@ -1,5 +1,9 @@
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
+from rbac.access.gates import HasOrgPermission
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
 from rest_framework.decorators import action, parser_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -9,7 +13,6 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -28,8 +31,6 @@ from tables.serializers.storage_serializers import (
     StorageTreeQuerySerializer,
     StorageUploadSerializer,
 )
-from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.permissions import HasOrgPermission
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
@@ -50,7 +51,6 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_SWAGGER,
 )
-from tables.views.mixins import OrgScopedResolverMixin
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):

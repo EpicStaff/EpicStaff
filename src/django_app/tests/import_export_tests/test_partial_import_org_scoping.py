@@ -6,9 +6,9 @@ from rest_framework.test import APIClient
 
 from tables.models import Graph, LLMConfig, LLMModel, Provider
 from tables.models.graph_models import ClassificationDecisionTableNode
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
-from tables.models.rbac_models.role import RolePermission
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.models.role import RolePermission
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (

@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from tables.models import Organization
+from rbac.models import Organization
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.reconciler import StorageReconciler
 

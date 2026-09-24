@@ -2,7 +2,8 @@ from io import BytesIO
 
 import pytest
 
-from tables.models import Organization, StorageFile
+from rbac.models import Organization
+from tables.models import StorageFile
 from tables.services.storage_service.reconciler import StorageReconciler
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 

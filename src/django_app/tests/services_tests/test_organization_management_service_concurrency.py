@@ -26,11 +26,11 @@ import time
 import pytest
 from django.db import connection
 
-from tables.models.rbac_models import Organization
-from tables.services.rbac.organization_management_service import (
+from rbac.models import Organization
+from rbac.governance.organizations import (
     OrganizationManagementService,
 )
-from tables.services.rbac.rbac_exceptions import LastActiveOrganizationError
+from rbac.exceptions import LastActiveOrganizationError
 
 
 # ---------------------------------------------------------------------------
