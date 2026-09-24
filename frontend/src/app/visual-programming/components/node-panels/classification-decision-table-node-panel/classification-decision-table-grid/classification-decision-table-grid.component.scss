@@ -441,11 +441,6 @@ $group-gutter-width: 28px;
     fill: currentColor;
 }
 
-.group-overlay-chevron.active {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-}
-
 .group-overlay-bracket {
     position: absolute;
     left: 13px;
@@ -455,11 +450,6 @@ $group-gutter-width: 28px;
     border-bottom-left-radius: 8px;
     box-sizing: border-box;
     pointer-events: none;
-}
-
-.group-overlay-bracket.active {
-    border-left-color: var(--accent-color);
-    border-bottom-color: var(--accent-color);
 }
 
 .row-drop-indicator {

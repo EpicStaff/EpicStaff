@@ -77,9 +77,8 @@
                             <button
                                 type="button"
                                 class="group-overlay-chevron collapsed"
-                                [class.active]="groupMenuSectionId() === item.sectionId"
-                                [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
-                                [style.color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                [style.border-color]="item.color"
+                                [style.color]="item.color"
                                 (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
                                 title="Group options"
                             >
@@ -133,10 +132,9 @@
                             <button
                                 type="button"
                                 class="group-overlay-chevron"
-                                [class.active]="groupMenuSectionId() === item.sectionId"
                                 [style.top.px]="item.chevronTop"
-                                [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
-                                [style.color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                [style.border-color]="item.color"
+                                [style.color]="item.color"
                                 (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
                                 title="Group options"
                             >
@@ -148,10 +146,9 @@
                             @if (item.bracketHeight > 0) {
                                 <div
                                     class="group-overlay-bracket"
-                                    [class.active]="groupMenuSectionId() === item.sectionId"
                                     [style.top.px]="item.bracketTop"
                                     [style.height.px]="item.bracketHeight"
-                                    [style.border-color]="groupMenuSectionId() === item.sectionId ? null : item.color"
+                                    [style.border-color]="item.color"
                                 ></div>
                             }
                         </div>
