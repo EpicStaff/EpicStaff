@@ -97,6 +97,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerViewSet,
 )
 from tables.views.organization_admin_views import OrganizationAdminViewSet
+from tables.views.persistence_runtime_views import PersistenceRuntimeAPIView
 from tables.views.role_admin_views import RoleAdminViewSet
 from tables.views.sse_views import (
     RunSessionSSEView,
@@ -245,6 +246,15 @@ urlpatterns = [
         InitRealtimeAPIView.as_view(),
         name="init-realtime",
     ),
+    *[
+        path(
+            f"internal/sessions/<int:session_id>/persistence-tables/<int:table_id>/{operation}/",
+            PersistenceRuntimeAPIView.as_view(),
+            {"operation": operation},
+            name=f"persistence-runtime-{operation}",
+        )
+        for operation in ("read", "write", "delete")
+    ],
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
     path("quickstart/", QuickstartView.as_view(), name="quickstart"),

@@ -13,7 +13,13 @@ from tables.exceptions import (
     PersistenceTableInUseError,
     PersistenceValueTooLargeError,
 )
-from tables.models import PersistenceNode, PersistenceTable, PersistenceTableEntry, Session
+from tables.models import (
+    PersistenceNode,
+    PersistenceTable,
+    PersistenceTableEntry,
+    Session,
+    SubGraphNode,
+)
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_assert import assert_org_permission
 
@@ -93,6 +99,16 @@ class PersistenceTableService:
         if flow_names:
             raise PersistenceTableInUseError(flow_names)
 
+    def session_can_access(self, session: Session, table: PersistenceTable) -> bool:
+        """Access is granted by saved configuration, never by the runtime caller.
+
+        v1 source: a PersistenceNode referencing the table in the session's graph or in any
+        subgraph it reaches (crew runs subgraph nodes under the parent session id).
+        """
+        return PersistenceNode.objects.filter(
+            graph_id__in=self._session_graph_ids(session), persistence_table=table
+        ).exists()
+
     def validate_key(self, key: str) -> None:
         if not key or len(key) > MAX_KEY_LENGTH:
             raise PersistenceKeyInvalidError(key, MAX_KEY_LENGTH)
@@ -104,3 +120,16 @@ class PersistenceTableService:
 
     def _preview(self, value: Any) -> str:
         return json.dumps(value, ensure_ascii=False)[:VALUE_PREVIEW_CHARS]
+
+    def _session_graph_ids(self, session: Session) -> set[int]:
+        graph_ids = {session.graph_id}
+        frontier = {session.graph_id}
+        while frontier:
+            children = set(
+                SubGraphNode.objects.filter(
+                    graph_id__in=frontier, subgraph_id__isnull=False
+                ).values_list("subgraph_id", flat=True)
+            )
+            frontier = children - graph_ids
+            graph_ids |= frontier
+        return graph_ids
