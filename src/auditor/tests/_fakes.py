@@ -31,9 +31,12 @@ class InMemoryFakeRepository:
     full_session_history follow-up queries (all of which are simple
     term/terms lookups), without needing real OpenSearch.
 
-    Always returns a single page (cursor=None) - every existing fake
-    repository in this test suite does the same, and the event counts used
-    in these tests never need pagination.
+    Paginates like the real repository: a `cursor` is just the string form
+    of an offset into the sorted match list, and a page hands back a
+    non-None `next_cursor` whenever more matches remain past `size`. Every
+    test that only ever seeds fewer rows than `size` still sees the old
+    single-page behavior (`cursor=None` immediately) for free - pagination
+    only kicks in once a test actually seeds more rows than one page.
 
     Returns fresh `model_copy()` instances on every query, never the
     stored objects themselves - this mirrors real deserialization (each
@@ -55,4 +58,10 @@ class InMemoryFakeRepository:
             e for e in self._events if all(_clause_matches(e, c) for c in clauses)
         ]
         matches.sort(key=lambda e: (e.event_time, e.id), reverse=True)
-        return [e.model_copy(deep=True) for e in matches[:size]], None
+
+        offset = int(cursor) if cursor is not None else 0
+        page = matches[offset : offset + size]
+        next_offset = offset + size
+        next_cursor = str(next_offset) if next_offset < len(matches) else None
+
+        return [e.model_copy(deep=True) for e in page], next_cursor

@@ -1,6 +1,6 @@
 import pytest
 import pytest_asyncio
-from fakeredis import FakeAsyncRedis
+from fakeredis import FakeAsyncRedis, FakeServer
 
 from app.services.export_job_service import ExportJobService, JobStatus
 
@@ -71,12 +71,34 @@ async def test_mark_done_sets_status_and_file_path(job_service):
         ttl_seconds=3600,
         format="json",
     )
-    was_recorded = await job_service.mark_done("job-1", "/app/export_data/job-1.json")
+    was_recorded = await job_service.mark_done(
+        "job-1", "/app/export_data/job-1.json", truncated=False
+    )
 
     assert was_recorded is True
     job = await job_service.get_job("job-1")
     assert job["status"] == JobStatus.COMPLETED.value
     assert job["file_path"] == "/app/export_data/job-1.json"
+    assert job["truncated"] == "False"
+
+
+@pytest.mark.asyncio
+async def test_mark_done_records_truncated_true(job_service):
+    await job_service.create_job(
+        domain="sessions",
+        job_id="job-1",
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
+    )
+    was_recorded = await job_service.mark_done(
+        "job-1", "/app/export_data/job-1.json", truncated=True
+    )
+
+    assert was_recorded is True
+    job = await job_service.get_job("job-1")
+    assert job["truncated"] == "True"
 
 
 @pytest.mark.asyncio
@@ -89,12 +111,12 @@ async def test_mark_failed_sets_status_and_error(job_service):
         ttl_seconds=3600,
         format="json",
     )
-    was_recorded = await job_service.mark_failed("job-1", "boom")
+    was_recorded = await job_service.mark_failed("job-1")
 
     assert was_recorded is True
     job = await job_service.get_job("job-1")
     assert job["status"] == JobStatus.FAILED.value
-    assert job["error"] == "boom"
+    assert "error" not in job
 
 
 @pytest.mark.asyncio
@@ -112,7 +134,9 @@ async def test_mark_done_returns_false_for_deleted_job(job_service):
     )
     await job_service.delete_job("job-1", 1, 1, "sessions")
 
-    was_recorded = await job_service.mark_done("job-1", "/app/export_data/job-1.json")
+    was_recorded = await job_service.mark_done(
+        "job-1", "/app/export_data/job-1.json", truncated=False
+    )
 
     assert was_recorded is False
     assert await job_service.get_job("job-1") is None
@@ -130,7 +154,7 @@ async def test_mark_failed_returns_false_for_deleted_job(job_service):
     )
     await job_service.delete_job("job-1", 1, 1, "sessions")
 
-    was_recorded = await job_service.mark_failed("job-1", "boom")
+    was_recorded = await job_service.mark_failed("job-1")
 
     assert was_recorded is False
     assert await job_service.get_job("job-1") is None
@@ -322,3 +346,69 @@ async def test_delete_job_only_removes_from_its_own_domain_index(job_service):
 @pytest.mark.asyncio
 async def test_get_jobs_by_user_returns_empty_list_when_no_jobs(job_service):
     assert await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1) == []
+
+
+async def _job_service_with_delete_racing_the_write(job_id: str):
+    """Deletes the job hash from a second connection right after the
+    existence check inside the update transaction, i.e. exactly inside the
+    window a non-atomic check-then-write would lose."""
+    server = FakeServer()
+    redis_client = FakeAsyncRedis(server=server, decode_responses=True)
+    racing_client = FakeAsyncRedis(server=server, decode_responses=True)
+    service = ExportJobService(redis_client)
+    await service.create_job(
+        domain="sessions",
+        job_id=job_id,
+        org_id=1,
+        user_id=1,
+        ttl_seconds=3600,
+        format="json",
+    )
+
+    open_pipeline = redis_client.pipeline
+    race_state = {"deleted": False}
+
+    def pipeline_with_racing_delete(*args, **kwargs):
+        pipe = open_pipeline(*args, **kwargs)
+        check_exists = pipe.exists
+
+        async def exists_then_delete(*keys):
+            result = await check_exists(*keys)
+            if not race_state["deleted"]:
+                race_state["deleted"] = True
+                await racing_client.delete(f"auditor:export_job:{job_id}")
+            return result
+
+        pipe.exists = exists_then_delete
+        return pipe
+
+    redis_client.pipeline = pipeline_with_racing_delete
+    return service, redis_client, racing_client
+
+
+@pytest.mark.asyncio
+async def test_mark_done_does_not_resurrect_a_job_deleted_mid_update():
+    service, redis_client, racing_client = await _job_service_with_delete_racing_the_write(
+        "job-1"
+    )
+
+    was_recorded = await service.mark_done("job-1", "/app/export_data/job-1.json", truncated=False)
+
+    assert was_recorded is False
+    assert await racing_client.exists("auditor:export_job:job-1") == 0
+    await redis_client.aclose()
+    await racing_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_mark_failed_does_not_resurrect_a_job_deleted_mid_update():
+    service, redis_client, racing_client = await _job_service_with_delete_racing_the_write(
+        "job-1"
+    )
+
+    was_recorded = await service.mark_failed("job-1")
+
+    assert was_recorded is False
+    assert await racing_client.exists("auditor:export_job:job-1") == 0
+    await redis_client.aclose()
+    await racing_client.aclose()
