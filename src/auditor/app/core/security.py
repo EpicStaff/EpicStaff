@@ -29,14 +29,14 @@ async def verify_user_jwt(
     """
     FastAPI dependency gating query/export routes. Decodes the short-lived
     JWT minted by django_app's POST /api/audit/token/ locally with the
-    same JWT_SECRET - no callback to Django per request. Returns the
+    same AUDIT_JWT_SECRET - no callback to Django per request. Returns the
     decoded claims (user_id, org_id, retention_days, and one action list per
     resource).
     """
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        return jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"])
+        return jwt.decode(credentials.credentials, settings.AUDIT_JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}") from e
 

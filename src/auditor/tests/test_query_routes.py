@@ -5,7 +5,7 @@ import os
 # is runnable on its own without a real .env file (mirrors what docker-compose injects).
 os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
 os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
-os.environ.setdefault("JWT_SECRET", "test-secret")
+os.environ.setdefault("AUDIT_JWT_SECRET", "test-secret")
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "")
