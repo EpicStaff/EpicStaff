@@ -4049,8 +4049,8 @@ Identified from `// node_modules/<pkg>/` bundler comments and `@license` banners
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-09-24T08:01:20Z UTC -->
-<!-- commit: 24d3f4de90421e358165626c9d0d00c9ee881587 -->
+<!-- generated: 2026-09-24T14:10:58Z UTC -->
+<!-- commit: ef7fc9fba35d2e69aee6dbab7be5d7b5f4f23456 -->
 <!-- lock-hashes: django_app:7e539ae062e4e132, crew:5193b67275a4237c, agent:5afc52e1395b5668, manager:6e9b0bb84d89e706, knowledge:no-lock, realtime:a50b3192cefe88d1, sandbox:8a9a40fc0b39d589, webhook:74291d202daa2b3f, auditor:54c5e21e5f6f4d8b -->
 
 ## Backend (Python)
