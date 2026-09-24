@@ -6,11 +6,8 @@ import pytest
 
 from tests.fixtures import *  # noqa: F401,F403
 
-from tables.models import (
-    Organization,
-    McpTool,
-    LLMConfig,
-)
+from rbac.models import Organization
+from tables.models import McpTool, LLMConfig
 from agents.models import (
     AgentDefinition,
     AgentDefaultSurface,

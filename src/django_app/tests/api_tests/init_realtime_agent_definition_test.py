@@ -21,7 +21,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from agents.models import AgentDefaultSurface, AgentDefinition, Surface, SurfacePlace
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from agents.models.surface_models import (
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,

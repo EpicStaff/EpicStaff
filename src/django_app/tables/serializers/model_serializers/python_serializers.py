@@ -1,4 +1,11 @@
 from django.db import transaction
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
+    resolve_active_org_id,
+)
 from rest_framework import serializers
 from tables.exceptions import (
     BuiltInToolModificationError,
@@ -14,13 +21,6 @@ from tables.models.python_models import (
 from tables.models.secret_models import Secret
 from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgScopedUniqueTogetherValidator,
-    OrgScopedUniqueValidator,
-    OrgVisiblePrimaryKeyRelatedField,
-    resolve_active_org_id,
-)
 from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,

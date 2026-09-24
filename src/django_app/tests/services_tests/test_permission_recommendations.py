@@ -7,7 +7,7 @@ frontend can catch it.
 
 import pytest
 
-from tables.services.rbac.permission_catalog import (
+from rbac.access.catalog import (
     RECOMMENDED_WITH,
     RESOURCE_TYPE_METADATA,
     build_catalog,

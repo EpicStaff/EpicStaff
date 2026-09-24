@@ -5,8 +5,8 @@ from django.apps import apps as django_apps
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- shared fixtures ----

@@ -1,6 +1,9 @@
 from drf_spectacular.utils import extend_schema
 from loguru import logger
 from pydantic import ValidationError
+from rbac.access.asserts import assert_org_permission
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import OrgScopedServiceViewSetMixin
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,7 +20,6 @@ from tables.exceptions import (
     NoNaiveRagForCollectionException,
 )
 from tables.models import SourceCollection
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.search_config_serializers import (
     GraphRagSuggestInputSerializer,
     NaiveRagSuggestInputSerializer,
@@ -33,13 +35,11 @@ from tables.services.knowledge_services.search_config_service import (
     resolve_effective_budget,
     safe_budget,
 )
-from tables.services.rbac.permission_assert import assert_org_permission
 from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
 from tables.utils.litellm_model_info import resolve_context_window
-from tables.views.mixins import OrgScopedServiceViewSetMixin
 
 
 def _validation_error_response(exc: ValidationError) -> Response:

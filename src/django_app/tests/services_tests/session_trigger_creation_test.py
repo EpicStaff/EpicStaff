@@ -149,7 +149,7 @@ def test_telegram_trigger_omits_chat_id_when_absent(default_org, monkeypatch):
 def test_manual_run_session_creates_manual_trigger_with_resolved_graph_user(
     default_org, regular_user, monkeypatch
 ):
-    from tables.models.rbac_models import OrganizationUser
+    from rbac.models import OrganizationUser
     from tables.models.graph_models import GraphOrganizationUser
 
     graph = Graph.objects.create(name="manual", org=default_org)

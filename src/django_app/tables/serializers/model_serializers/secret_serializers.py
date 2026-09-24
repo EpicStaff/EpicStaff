@@ -1,11 +1,11 @@
 from django.utils.functional import SimpleLazyObject
-from rest_framework import serializers
-from tables.models import Secret
-from tables.serializers.org_scoped_fields import (
+from rbac.access.resolver import PermissionResolver
+from rbac.scoping.fields import (
     OrgScopedUniqueTogetherValidator,
     resolve_active_org_id,
 )
-from tables.services.rbac.permission_resolver import PermissionResolver
+from rest_framework import serializers
+from tables.models import Secret
 from tables.services.secrets import secret_service, secret_usage_service
 
 _permission_resolver = PermissionResolver()
