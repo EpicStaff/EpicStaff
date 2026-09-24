@@ -16,6 +16,7 @@ import { validationErrorsInterceptor } from './core/interceptors/validation-erro
 import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
 import { provideFlowsStorages } from './features/flows/flows.providers';
 import { provideKnowledgeSourcesStorages } from './features/knowledge-sources/knowledge-sources.providers';
+import { providePersistentDataStorages } from './features/persistent-data/persistent-data.providers';
 import { provideRoleBaseAccessStorages } from './features/role-base-access/role-base-access.providers';
 import { provideToolsStorages } from './features/tools/tools.providers';
 import { ActiveOrgService } from './services/auth/active-org.service';
@@ -63,6 +64,7 @@ export const appConfig: ApplicationConfig = {
         ...provideFlowsStorages(),
         ...provideToolsStorages(),
         ...provideKnowledgeSourcesStorages(),
+        ...providePersistentDataStorages(),
         ...provideSharedStorages(),
     ],
 };

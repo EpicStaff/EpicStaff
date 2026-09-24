@@ -23,11 +23,15 @@ describe('PersistenceTablesApiService', () => {
 
     afterEach(() => httpMock.verify());
 
-    it('loads tables and caches them in the tables signal', () => {
-        service.loadTables().subscribe();
+    it('sends the limit param and returns results when getting tables', () => {
+        let result: unknown;
+        service.getTables().subscribe((tables) => (result = tables));
+
         const request = httpMock.expectOne((r) => r.url === '/api/persistence-tables/');
+        expect(request.request.params.get('limit')).toBe('1000');
         request.flush({ count: 1, next: null, previous: null, results: [{ id: 1, name: 'Customers' }] });
-        expect(service.tables().map((t) => t.name)).toEqual(['Customers']);
+
+        expect(result).toEqual([{ id: 1, name: 'Customers' }]);
     });
 
     it('sends table, paging and search params when listing entries', () => {

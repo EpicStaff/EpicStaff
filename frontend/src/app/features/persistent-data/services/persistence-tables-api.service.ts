@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { map, Observable, tap } from 'rxjs';
+import { map, Observable } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
@@ -22,12 +22,6 @@ export class PersistenceTablesApiService {
     private readonly http: HttpClient = inject(HttpClient);
     private readonly configService: ConfigService = inject(ConfigService);
 
-    private readonly tablesSignal = signal<PersistenceTable[]>([]);
-    public readonly tables = this.tablesSignal.asReadonly();
-
-    private readonly refreshTickSignal = signal(0);
-    public readonly refreshTick = this.refreshTickSignal.asReadonly();
-
     private get tablesUrl(): string {
         return `${this.configService.apiUrl}persistence-tables/`;
     }
@@ -36,12 +30,7 @@ export class PersistenceTablesApiService {
         return `${this.configService.apiUrl}persistence-table-entries/`;
     }
 
-    triggerRefresh(): void {
-        this.refreshTickSignal.update((tick) => tick + 1);
-    }
-
-    /** Fetches persistence tables fresh and publishes them into the shared `tables` signal. */
-    loadTables(): Observable<PersistenceTable[]> {
+    getTables(): Observable<PersistenceTable[]> {
         const params = new HttpParams().set('limit', '1000');
         return this.http
             .get<ApiGetRequest<PersistenceTable>>(this.tablesUrl, {
@@ -53,10 +42,7 @@ export class PersistenceTablesApiService {
                     results: [],
                 }),
             })
-            .pipe(
-                map((response) => response.results),
-                tap((tables) => this.tablesSignal.set(tables))
-            );
+            .pipe(map((response) => response.results));
     }
 
     createTable(body: CreatePersistenceTableRequest): Observable<PersistenceTable> {
