@@ -8,8 +8,12 @@ from tables.constants.persistence_constants import (
     MAX_VALUE_BYTES,
     VALUE_PREVIEW_CHARS,
 )
-from tables.exceptions import PersistenceKeyInvalidError, PersistenceValueTooLargeError
-from tables.models import PersistenceTable, PersistenceTableEntry, Session
+from tables.exceptions import (
+    PersistenceKeyInvalidError,
+    PersistenceTableInUseError,
+    PersistenceValueTooLargeError,
+)
+from tables.models import PersistenceNode, PersistenceTable, PersistenceTableEntry, Session
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permission_assert import assert_org_permission
 
@@ -78,6 +82,16 @@ class PersistenceTableService:
             resource_type=ResourceType.PERSISTENT_DATA,
             action=Permission.USE,
         )
+
+    def assert_not_in_use(self, table: PersistenceTable) -> None:
+        flow_names = list(
+            PersistenceNode.objects.filter(persistence_table=table, graph__is_soft_deleted=False)
+            .values_list("graph__name", flat=True)
+            .distinct()
+            .order_by("graph__name")
+        )
+        if flow_names:
+            raise PersistenceTableInUseError(flow_names)
 
     def validate_key(self, key: str) -> None:
         if not key or len(key) > MAX_KEY_LENGTH:

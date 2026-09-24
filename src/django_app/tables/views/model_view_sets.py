@@ -1,11 +1,13 @@
 import json
 import uuid
+from dataclasses import asdict
 
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.node_surface_service import NodeSurfaceService
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import NOT_PROVIDED, Exists, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Count, Exists, OuterRef, Prefetch, Q
+from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.utils import timezone
 from django_filters import rest_framework as filters
@@ -89,6 +91,8 @@ from tables.models import (
     LLMConfig,
     LLMModel,
     PersistenceNode,
+    PersistenceTable,
+    PersistenceTableEntry,
     Provider,
     PythonCodeResult,
     PythonCodeTool,
@@ -203,6 +207,11 @@ from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
 )
+from tables.serializers.model_serializers.persistence_serializers import (
+    PersistenceKeysSerializer,
+    PersistenceTableEntrySerializer,
+    PersistenceTableSerializer,
+)
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.serializers.serializers import (
     BulkExportSerializer,
@@ -221,6 +230,7 @@ from tables.services.copy_services import (
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.persistence_table_service import PersistenceTableService
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.permissions import (
@@ -2462,6 +2472,53 @@ class SecretViewSet(
         secret = self.get_object()
         effective = PermissionResolver().resolve(user=request.user, org_id=self.get_active_org_id())
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
+
+
+class PersistenceTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.PERSISTENT_DATA
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "lookup_entries": Permission.READ}
+    queryset = PersistenceTable.objects.annotate(entry_count=Count("entries")).order_by(
+        Lower("name")
+    )
+    serializer_class = PersistenceTableSerializer
+
+    def perform_destroy(self, instance: PersistenceTable) -> None:
+        # Row lock: a node save referencing this table takes FOR KEY SHARE on it,
+        # so it waits for this delete (then fails the FK) or we wait for it (then see it).
+        with transaction.atomic():
+            PersistenceTable.objects.select_for_update().get(pk=instance.pk)
+            PersistenceTableService().assert_not_in_use(instance)
+            instance.delete()
+
+    @action(detail=True, methods=["post"], url_path="entries/lookup")
+    def lookup_entries(self, request, pk=None):
+        table = self.get_object()
+        serializer = PersistenceKeysSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = PersistenceTableService().lookup(table, serializer.validated_data["keys"])
+        return Response({key: asdict(item) for key, item in result.items()})
+
+
+class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.PERSISTENT_DATA
+    org_filter_path = "table__org_id"
+    queryset = PersistenceTableEntry.objects.select_related("updated_by_session").order_by("key")
+    serializer_class = PersistenceTableEntrySerializer
+    filter_backends = [DjangoFilterBackend, drf_filters.SearchFilter]
+    search_fields = ["key"]
+
+    class PersistenceTableEntryFilter(FilterSet):
+        # Plain number, not ModelChoiceFilter: that validates against every org's
+        # tables, so a foreign id (200, empty) would be distinguishable from a missing one (400).
+        table = NumberFilter(field_name="table_id")
+
+    filterset_class = PersistenceTableEntryFilter
+
+    def perform_update(self, serializer) -> None:
+        # A hand edit is no longer "written by run N".
+        serializer.save(updated_by_session=None)
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):

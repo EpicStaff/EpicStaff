@@ -68,6 +68,8 @@ from tables.views.model_view_sets import (
     LLMModelReadWriteViewSet,
     McpToolViewSet,
     OpenAIRealtimeConfigViewSet,
+    PersistenceTableEntryViewSet,
+    PersistenceTableViewSet,
     ProviderReadWriteViewSet,
     PythonCodeResultReadViewSet,
     PythonCodeToolConfigViewSet,
@@ -185,6 +187,10 @@ router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 router.register(r"labels", LabelViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
+router.register(r"persistence-tables", PersistenceTableViewSet, basename="persistence-tables")
+router.register(
+    r"persistence-table-entries", PersistenceTableEntryViewSet, basename="persistence-table-entries"
+)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 admin_router = DefaultRouter()
