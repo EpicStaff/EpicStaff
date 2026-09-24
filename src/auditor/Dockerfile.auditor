@@ -28,10 +28,12 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 
 COPY --from=builder /app /app
 
+# Code and venv stay root-owned (read-only for the runtime user); only the
+# export directory (AUDITOR_EXPORT_DATA_DIR) is writable.
 RUN groupadd --system --gid 1000 app \
  && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
  && mkdir -p /app/export_data \
- && chown -R app:app /app
+ && chown app:app /app/export_data
 
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
