@@ -145,80 +145,67 @@ def test_compile_numeric_deeply_nested_flattened_filter_has_no_full_path_exists_
     assert scripted["script"]["script"]["params"]["value"] == 100.0
 
 
-def test_compile_key_exists_deep_path_uses_script_not_native_exists():
-    """`key_exists`/`not_null` must not compile to native `exists` on a
-    2+-level path (same flat_object exists-depth bug, no script fallback
-    here) - must use the depth-agnostic `doc[path].size() != 0` script."""
+def test_compile_key_exists_deep_path_uses_wildcard_not_native_exists():
+    """`key_exists`/`not_null` must resolve the actual sub-path. Native
+    `exists` sees only one level below the root, and `doc[path]` in Painless
+    hands back the root's whole value list - so both answer "is the root
+    object non-empty?" for every path alike. A wildcard on the sub-field is
+    the only form that distinguishes one key from another."""
     node = {"field": "output.token_usage.completion_tokens", "op": "key_exists"}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = _scripted_clause(clauses)
 
     assert not any("exists" in c for c in clauses)
-    assert "script" in scripted
-    source = scripted["script"]["script"]["source"]
-    assert "doc[params.path]" in source
-    assert "!= 0" in source
-    assert (
-        scripted["script"]["script"]["params"]["path"]
-        == "output.token_usage.completion_tokens"
-    )
+    assert not any("script" in c for c in clauses)
+    assert {
+        "wildcard": {"output.token_usage.completion_tokens": {"value": "*"}}
+    } in clauses
 
 
-def test_compile_key_not_exists_deep_path_uses_script_not_native_must_not_exists():
-    """Negated direction: `must_not`-wrapped native `exists` on a 2+-level
-    path used to match every doc, not just ones missing the key - must use
-    the same script, checking `== 0` instead of `!= 0`."""
+def test_compile_key_not_exists_deep_path_negates_the_same_wildcard():
+    """Negated direction is the same clause under `must_not` - never a
+    different mechanism, so the two directions cannot drift apart."""
     node = {"field": "output.token_usage.completion_tokens", "op": "key_not_exists"}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
-    scripted = _scripted_clause(clauses)
 
     assert not any("exists" in c for c in clauses)
-    assert not any("must_not" in c.get("bool", {}) for c in clauses)
-    assert "script" in scripted
-    source = scripted["script"]["script"]["source"]
-    assert "doc[params.path]" in source
-    assert "== 0" in source
-    assert (
-        scripted["script"]["script"]["params"]["path"]
-        == "output.token_usage.completion_tokens"
-    )
+    assert not any("script" in c for c in clauses)
+    assert {
+        "bool": {
+            "must_not": [
+                {"wildcard": {"output.token_usage.completion_tokens": {"value": "*"}}}
+            ]
+        }
+    } in clauses
 
 
-def test_compile_not_null_and_null_aliases_use_same_key_existence_script():
+def test_compile_not_null_and_null_aliases_use_same_key_existence_clause():
     """`not_null`/`null` are aliases for `key_exists`/`key_not_exists` -
     must compile identically, not a separate path that could drift."""
-    exists_via_alias = compile_filters(
+    assert compile_filters(
         {"field": "details.a.b", "op": "not_null"}, org_id=1, retention_days=0
-    )
-    exists_via_canonical = compile_filters(
+    ) == compile_filters(
         {"field": "details.a.b", "op": "key_exists"}, org_id=1, retention_days=0
     )
-    assert _scripted_clause(_filter_clauses(exists_via_alias)) == _scripted_clause(
-        _filter_clauses(exists_via_canonical)
-    )
 
-    not_exists_via_alias = compile_filters(
+    assert compile_filters(
         {"field": "details.a.b", "op": "null"}, org_id=1, retention_days=0
-    )
-    not_exists_via_canonical = compile_filters(
+    ) == compile_filters(
         {"field": "details.a.b", "op": "key_not_exists"}, org_id=1, retention_days=0
     )
-    assert _scripted_clause(_filter_clauses(not_exists_via_alias)) == _scripted_clause(
-        _filter_clauses(not_exists_via_canonical)
-    )
 
 
-def test_compile_key_exists_shallow_path_also_uses_script():
-    """Script-based check applies at every depth, even 0/1 where native
-    `exists` happens to work - one code path, not depth-branching."""
+def test_compile_key_exists_shallow_path_also_uses_wildcard():
+    """One code path at every depth, even at 0/1 where native `exists`
+    happens to work - no depth-branching."""
     node = {"field": "output.iterations", "op": "key_exists"}
     query = compile_filters(node, org_id=1, retention_days=0)
     clauses = _filter_clauses(query)
 
     assert not any("exists" in c for c in clauses)
-    assert "script" in _scripted_clause(clauses)
+    assert not any("script" in c for c in clauses)
+    assert {"wildcard": {"output.iterations": {"value": "*"}}} in clauses
 
 
 def test_compile_numeric_flattened_filter_script_semantics_simulated():
