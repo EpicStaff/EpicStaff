@@ -89,10 +89,14 @@
                             </button>
                         </div>
                     } @else if (hoveredSectionId() === item.sectionId) {
-                        <div
-                            class="group-overlay-border"
-                            [style.border-color]="item.color"
-                        ></div>
+                        @for (segment of item.segments; track segment.top) {
+                            <div
+                                class="group-overlay-border"
+                                [style.top.px]="segment.top"
+                                [style.height.px]="segment.height"
+                                [style.border-color]="item.color"
+                            ></div>
+                        }
                         <div
                             class="group-overlay-chip"
                             [style.background]="item.color"

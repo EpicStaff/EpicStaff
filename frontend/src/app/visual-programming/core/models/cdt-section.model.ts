@@ -100,6 +100,44 @@ export function reconcileCdtSections(
     return [...sections, ...synthesised];
 }
 
+/** Index range of the first and last row of each section, keyed by section id, in row order. */
+export function getCdtSectionRanges(
+    rowSections: readonly (string | null | undefined)[]
+): Map<string, { firstIdx: number; lastIdx: number }> {
+    const ranges = new Map<string, { firstIdx: number; lastIdx: number }>();
+    rowSections.forEach((sectionId, idx) => {
+        if (!sectionId) return;
+        const existing = ranges.get(sectionId);
+        if (existing) {
+            existing.lastIdx = idx;
+        } else {
+            ranges.set(sectionId, { firstIdx: idx, lastIdx: idx });
+        }
+    });
+    return ranges;
+}
+
+/**
+ * Sections nested inside a collapsed section: every row of theirs lies strictly between the
+ * collapsed section's first and last row, so they are hidden along with it. Interleaved
+ * sections — neither inside the other — are left out and collapse independently.
+ */
+export function getCdtSectionsInsideCollapsed(
+    rowSections: readonly (string | null | undefined)[],
+    collapsed: ReadonlySet<string>
+): Set<string> {
+    const ranges = getCdtSectionRanges(rowSections);
+    const inside = new Set<string>();
+    for (const collapsedId of collapsed) {
+        const outer = ranges.get(collapsedId);
+        if (!outer) continue;
+        ranges.forEach((inner, sectionId) => {
+            if (inner.firstIdx > outer.firstIdx && inner.lastIdx < outer.lastIdx) inside.add(sectionId);
+        });
+    }
+    return inside;
+}
+
 /** Drops sections no longer referenced by any row (Ungroup / delete rows / cross-group move). */
 export function pruneCdtSections(
     sections: readonly CdtSection[],

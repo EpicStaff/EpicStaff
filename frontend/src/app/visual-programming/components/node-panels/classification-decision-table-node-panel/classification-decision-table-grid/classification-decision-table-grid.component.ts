@@ -54,6 +54,8 @@ import {
     createCdtSection,
     findCdtSection,
     getCdtSectionColor,
+    getCdtSectionRanges,
+    getCdtSectionsInsideCollapsed,
     pruneCdtSections,
 } from '../../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
@@ -187,6 +189,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     // Row group collapse state
     public collapsedGroups = signal<Set<string>>(new Set());
+    // Groups nested inside a collapsed group: hidden with it, whatever their own collapse state.
+    private readonly sectionsInsideCollapsed = computed<Set<string>>(() =>
+        getCdtSectionsInsideCollapsed(
+            this.rowData().map((row) => row.section),
+            this.collapsedGroups()
+        )
+    );
 
     // Working copy of the named/coloured sections, seeded from the `sections` input.
     public sectionsState = signal<CdtSection[]>([]);
@@ -205,6 +214,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             chevronTop: number;
             bracketTop: number;
             bracketHeight: number;
+            segments: Array<{ top: number; height: number }>;
         }>
     >([]);
 
@@ -217,10 +227,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public displayedRowData = computed<ConditionGroup[]>(() => {
         const rows = this.rowData();
         const collapsed = this.collapsedGroups();
+        const insideCollapsed = this.sectionsInsideCollapsed();
         const mode = this.enableFilterMode();
         return rows.filter((row) => {
             const section = row.section ?? null;
-            if (section && collapsed.has(section)) return false;
+            if (section && (collapsed.has(section) || insideCollapsed.has(section))) return false;
             if (mode === 'enabled' && row.dock_visible !== true) return false;
             if (mode === 'disabled' && row.dock_visible === true) return false;
             return true;
@@ -277,24 +288,14 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
         const scrollTop = bodyEl.scrollTop;
         const collapsed = this.collapsedGroups();
+        const insideCollapsed = this.sectionsInsideCollapsed();
 
         const rawRows = this.rowData() ?? [];
-        const sectionRange = new Map<string, { firstIdx: number; lastIdx: number }>();
-        rawRows.forEach((row, idx) => {
-            const section = (row as { section?: string | null }).section;
-            if (!section) return;
-            const existing = sectionRange.get(section);
-            if (existing) {
-                existing.firstIdx = Math.min(existing.firstIdx, idx);
-                existing.lastIdx = Math.max(existing.lastIdx, idx);
-            } else {
-                sectionRange.set(section, { firstIdx: idx, lastIdx: idx });
-            }
-        });
+        const sectionRange = getCdtSectionRanges(rawRows.map((row) => row.section));
 
         const isRowVisible = (row: ConditionGroup): boolean => {
             const section = row.section ?? null;
-            if (section && collapsed.has(section)) return false;
+            if (section && (collapsed.has(section) || insideCollapsed.has(section))) return false;
             const mode = this.enableFilterMode();
             if (mode === 'enabled' && row.dock_visible !== true) return false;
             if (mode === 'disabled' && row.dock_visible === true) return false;
@@ -320,11 +321,16 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             chevronTop: number;
             bracketTop: number;
             bracketHeight: number;
+            segments: Array<{ top: number; height: number }>;
         }> = [];
         const expandedFirstLast = new Map<
             string,
             { firstTop: number; firstHeight: number; lastBottom: number; lastHeight: number }
         >();
+        // Rendered rows of each section in display order. Rows of another section can sit
+        // between them (a group nested inside another), so each section is highlighted as
+        // separate runs of adjacent rows rather than one box spanning first to last.
+        const renderedRowsBySection = new Map<string, Array<{ top: number; bottom: number }>>();
         const sections = this.sectionsState();
 
         const idxByRow = new Map<unknown, number>(rawRows.map((row, idx) => [row, idx]));
@@ -340,6 +346,12 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const section = data?.section ?? null;
             if (!section) return;
             const bottom = top + height;
+            const renderedRows = renderedRowsBySection.get(section);
+            if (renderedRows) {
+                renderedRows.push({ top, bottom });
+            } else {
+                renderedRowsBySection.set(section, [{ top, bottom }]);
+            }
             const existing = expandedFirstLast.get(section);
             if (existing) {
                 if (top < existing.firstTop) {
@@ -372,7 +384,31 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return { chevronTop, bracketTop, bracketHeight: Math.max(0, lastRowMid - bracketTop) };
         };
 
+        // Merges visually adjacent rows into runs, positioned relative to the overlay's top.
+        const computeSegments = (
+            renderedRows: Array<{ top: number; bottom: number }>,
+            overlayTop: number
+        ): Array<{ top: number; height: number }> => {
+            const runs: Array<{ top: number; bottom: number }> = [];
+            for (const row of [...renderedRows].sort((a, b) => a.top - b.top)) {
+                const lastRun = runs[runs.length - 1];
+                if (lastRun && row.top <= lastRun.bottom) {
+                    lastRun.bottom = Math.max(lastRun.bottom, row.bottom);
+                } else {
+                    runs.push({ ...row });
+                }
+            }
+            return runs.map((run) => ({ top: run.top - overlayTop, height: run.bottom - run.top }));
+        };
+
+        // Collapsed chevrons keyed by the seam they anchor on. Interleaved groups can collapse onto
+        // the same seam; their chevrons are stacked there instead of drawn over each other.
+        const collapsedBySeam = new Map<number, Array<(typeof items)[number]>>();
+
         sectionRange.forEach((range, sectionId) => {
+            // Nested inside a collapsed group: its chevron would sit on the outer group's seam.
+            if (insideCollapsed.has(sectionId)) return;
+
             let filteredMembers = 0;
             for (let i = range.firstIdx; i <= range.lastIdx; i++) {
                 if (passesEnableFilter(rawRows[i] as ConditionGroup)) filteredMembers++;
@@ -405,9 +441,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     }
                     seam = visibleBefore * rowHeight;
                 }
-                items.push({
+                const stack = collapsedBySeam.get(seam) ?? [];
+                collapsedBySeam.set(seam, stack);
+                stack.push({
                     sectionId,
-                    top: rowsOffsetY + seam - scrollTop - chevronHeight / 2,
+                    top: 0, // set when the seam's stack is laid out below
                     height: 22,
                     isCollapsed: true,
                     name,
@@ -417,6 +455,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     chevronTop: 0,
                     bracketTop: 0,
                     bracketHeight: 0,
+                    segments: [],
                 });
                 return;
             }
@@ -440,6 +479,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     firstRowMid,
                     lastRowMid,
                     ...computeChevronBracket(firstRowMid, lastRowMid),
+                    segments: [{ top: 0, height: rowsCount * rowHeight }],
                 });
                 return;
             }
@@ -456,6 +496,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 firstRowMid,
                 lastRowMid,
                 ...computeChevronBracket(firstRowMid, lastRowMid),
+                segments: computeSegments(renderedRowsBySection.get(sectionId) ?? [], positions.firstTop),
+            });
+        });
+
+        // Centre each seam's stack of chevrons on the seam, in row order.
+        const chevronStackGap = 2;
+        collapsedBySeam.forEach((stack, seam) => {
+            const stackHeight = stack.length * chevronHeight + (stack.length - 1) * chevronStackGap;
+            const stackTop = rowsOffsetY + seam - scrollTop - stackHeight / 2;
+            stack.forEach((item, position) => {
+                items.push({ ...item, top: stackTop + position * (chevronHeight + chevronStackGap) });
             });
         });
 
