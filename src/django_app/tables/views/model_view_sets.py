@@ -59,6 +59,7 @@ from rest_framework.exceptions import (
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
 )
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -2503,10 +2504,17 @@ class PersistenceTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         return Response({key: asdict(item) for key, item in result.items()})
 
 
+class PersistenceTableEntryPagination(LimitOffsetPagination):
+    """Caps `?limit=` so one request can't force a worker to load every entry of a table."""
+
+    max_limit = 100
+
+
 class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.PERSISTENT_DATA
     org_filter_path = "table__org_id"
+    pagination_class = PersistenceTableEntryPagination
     queryset = PersistenceTableEntry.objects.select_related("updated_by_session").order_by("key")
     serializer_class = PersistenceTableEntrySerializer
     filter_backends = [DjangoFilterBackend, drf_filters.SearchFilter]

@@ -198,6 +198,18 @@ def test_entry_search_and_pagination(admin_client, table_a):
 
 
 @pytest.mark.django_db
+def test_entry_list_limit_is_capped(admin_client, table_a):
+    PersistenceTableEntry.objects.bulk_create(
+        [PersistenceTableEntry(table=table_a, key=f"k{index}", value=index) for index in range(101)]
+    )
+
+    response = admin_client.get(ENTRIES_URL, {"table": table_a.id, "limit": 1000})
+
+    assert response.data["count"] == 101
+    assert len(response.data["results"]) == 100
+
+
+@pytest.mark.django_db
 def test_entry_for_foreign_table_is_rejected(admin_client, table_b):
     response = admin_client.post(ENTRIES_URL, {"table": table_b.id, "key": "k", "value": 1}, format="json")
     assert response.status_code == 400

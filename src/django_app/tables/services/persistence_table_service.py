@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from django.db.models import TextField
+from django.db.models.functions import Cast, Left
 from rbac.access.asserts import assert_org_permission
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
@@ -70,13 +72,17 @@ class PersistenceTableService:
         return deleted
 
     def lookup(self, table: PersistenceTable, keys: list[str]) -> dict[str, EntryLookup]:
+        # Preview is computed in the database (truncated jsonb-as-text) so a lookup of up
+        # to MAX_KEYS_PER_REQUEST keys never pulls full values into Python.
         found = {
-            entry.key: entry
-            for entry in PersistenceTableEntry.objects.filter(table=table, key__in=keys)
+            row["key"]: row
+            for row in PersistenceTableEntry.objects.filter(table=table, key__in=keys)
+            .annotate(preview=Left(Cast("value", TextField()), VALUE_PREVIEW_CHARS))
+            .values("key", "preview", "updated_at")
         }
         return {
             key: (
-                EntryLookup(True, self._preview(found[key].value), found[key].updated_at)
+                EntryLookup(True, found[key]["preview"], found[key]["updated_at"])
                 if key in found
                 else EntryLookup(False, None, None)
             )
@@ -176,9 +182,6 @@ class PersistenceTableService:
         size_bytes = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
         if size_bytes > MAX_VALUE_BYTES:
             raise PersistenceValueTooLargeError(size_bytes, MAX_VALUE_BYTES)
-
-    def _preview(self, value: Any) -> str:
-        return json.dumps(value, ensure_ascii=False)[:VALUE_PREVIEW_CHARS]
 
     def _session_graph_ids(self, session: Session) -> set[int]:
         graph_ids = {session.graph_id}
