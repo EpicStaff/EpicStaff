@@ -1,6 +1,5 @@
 from dataclasses import replace
 
-from asgiref.sync import async_to_sync
 from django.db import transaction
 from src.shared.models import (
     AgentNodeData,
@@ -54,7 +53,6 @@ from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
 )
-from tables.services.session_audit_provider import get_session_audit_writer
 from tables.services.surface_knowledge_warning_service import (
     SurfaceKnowledgeWarningService,
 )
@@ -302,16 +300,6 @@ class SessionManagerService(metaclass=SingletonMeta):
                 message_data=graph_session_message_data.message_data,
                 uuid=graph_session_message_data.uuid,
                 created_at=created_at_dt,
-            )
-
-            async_to_sync(get_session_audit_writer().add_custom_message)(
-                session_id=session.id,
-                org_id=session.graph.org_id,
-                flow_name=session.graph.name,
-                node_name=graph_session_message_data.name,
-                execution_order=graph_session_message_data.execution_order,
-                details=graph_session_message_data.message_data,
-                event_id=str(graph_session_message_data.uuid),
             )
 
             self.redis_service.publish_user_graph_message(
