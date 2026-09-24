@@ -4,21 +4,20 @@ import {
     Component,
     EventEmitter,
     HostListener,
+    inject,
     Input,
     OnDestroy,
     OnInit,
     Output,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
 import { forkJoin, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
-import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
-import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
-import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
+import { TOOLS_SOURCE } from './tools-source.token';
 
 @Component({
     selector: 'app-tools-selector',
@@ -532,11 +531,8 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
 
     private readonly destroy$ = new Subject<void>();
 
-    constructor(
-        private pythonCodeToolService: CustomToolsService,
-        private mcpToolsService: McpToolsService,
-        private cdr: ChangeDetectorRef
-    ) {}
+    private readonly toolsSource = inject(TOOLS_SOURCE);
+    private readonly cdr = inject(ChangeDetectorRef);
 
     ngOnInit(): void {
         this.loadTools();
@@ -555,8 +551,8 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         this.isLoadingTools = true;
 
         forkJoin({
-            pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
-            mcpTools: this.mcpToolsService.getMcpTools(),
+            pythonTools: this.toolsSource.getPythonCodeTools(),
+            mcpTools: this.toolsSource.getMcpTools(),
         })
             .pipe(takeUntil(this.destroy$))
             .subscribe({

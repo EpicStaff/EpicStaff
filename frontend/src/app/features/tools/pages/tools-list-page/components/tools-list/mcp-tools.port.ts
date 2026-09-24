@@ -1,11 +1,11 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { GetMcpToolRequest } from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { McpToolDialogComponent } from '../../../../components/mcp-tool-dialog/mcp-tool-dialog.component';
-import { GetMcpToolRequest } from '../../../../models/mcp-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { McpToolsService } from '../../../../services/mcp-tools/mcp-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';

@@ -12,9 +12,9 @@ import {
     ViewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
 import { ImportResult } from '../../../../../../core/models/import-result.model';
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { getEntityTypeLabel, getIconColorForEntityType } from '../../utils/entity-icon.util';
 import { getEntityTypeCount } from '../../utils/entity-result.util';
 import { EntityIconComponent } from '../entity-icon/entity-icon.component';

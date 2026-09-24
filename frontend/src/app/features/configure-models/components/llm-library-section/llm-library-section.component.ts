@@ -14,19 +14,24 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    ButtonComponent,
     ConfirmationDialogData,
     ConfirmationDialogService,
     EmbeddingModelConfigDialogComponent,
+    FetchErrorStateComponent,
     LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
+    SearchComponent,
     SelectComponent,
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, LlmLibraryProviderGroup, ModelTypes, ResourceCode } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
-import { Observable } from 'rxjs';
+import { forkJoin, Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
+import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -55,6 +60,8 @@ interface VoiceProvider {
     };
 }
 
+type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeProvider;
+
 @Component({
     selector: 'app-llm-library-section',
     imports: [
@@ -64,6 +71,9 @@ interface VoiceProvider {
         LoadingSpinnerComponent,
         SelectComponent,
         HasPermissionDirective,
+        ButtonComponent,
+        SearchComponent,
+        FetchErrorStateComponent,
     ],
     templateUrl: './llm-library-section.component.html',
     styleUrls: ['./llm-library-section.component.scss'],
@@ -92,11 +102,20 @@ export class LlmLibrarySectionComponent implements OnInit {
     public configs = this.llmConfigStorageService.configs;
     public searchQuery = signal('');
     public selectedCapability = signal<unknown>(null);
-    public configsLoaded = signal<boolean>(false);
+    public status = signal<LoadingState>(LoadingState.IDLE);
+    public sectionErrors = signal<Record<SectionKey, boolean>>({
+        llm: false,
+        embedding: false,
+        realtime: false,
+        transcription: false,
+        openai: false,
+        elevenlabs: false,
+        gemini: false,
+    });
 
-    readonly configTypeSections: { type: ModelTypes; label: string }[] = [
-        { type: ModelTypes.LLM, label: 'LLM' },
-        { type: ModelTypes.EMBEDDING, label: 'Embedding' },
+    readonly configTypeSections: { type: ModelTypes; label: string; key: SectionKey }[] = [
+        { type: ModelTypes.LLM, label: 'LLM', key: 'llm' },
+        { type: ModelTypes.EMBEDDING, label: 'Embedding', key: 'embedding' },
     ];
 
     filteredGroups = computed<LlmLibraryProviderGroup[]>(() => {
@@ -124,8 +143,10 @@ export class LlmLibrarySectionComponent implements OnInit {
 
     filteredVoiceProviders = computed(() => {
         const query = this.searchQuery().toLowerCase();
+        const errors = this.sectionErrors();
         return this.voiceProviders.map((provider) => ({
             ...provider,
+            hasError: errors[provider.key],
             configs: provider.storage.configs().filter((c) => {
                 if (!query) return true;
                 return (
@@ -139,14 +160,16 @@ export class LlmLibrarySectionComponent implements OnInit {
 
     groupedByType = computed(() => {
         const all = this.filteredGroups();
+        const errors = this.sectionErrors();
         return this.configTypeSections
             .map((section) => ({
                 ...section,
+                hasError: errors[section.key],
                 groups: all
                     .filter((g) => g.configType === section.type)
                     .sort((a, b) => a.providerName.localeCompare(b.providerName)),
             }))
-            .filter((section) => section.groups.length > 0);
+            .filter((section) => section.hasError || section.groups.length > 0);
     });
 
     public capabilities = computed<SelectItem[]>(() => [
@@ -155,14 +178,68 @@ export class LlmLibrarySectionComponent implements OnInit {
     ]);
 
     ngOnInit() {
-        this.llmLibraryService
-            .loadConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.configsLoaded.set(true));
+        this.loadAll();
+    }
 
-        for (const p of this.voiceProviders) {
-            p.storage.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    public retrySection(key: SectionKey): void {
+        this.sourceFor(key)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => this.sectionErrors.update((e) => ({ ...e, [key]: false })),
+                error: () => this.sectionErrors.update((e) => ({ ...e, [key]: true })),
+            });
+    }
+
+    private sourceFor(key: SectionKey): Observable<unknown> {
+        switch (key) {
+            case 'llm':
+                return this.llmLibraryService.loadLlmData();
+            case 'embedding':
+                return this.llmLibraryService.loadEmbeddingData();
+            case 'realtime':
+                return this.llmLibraryService.loadRealtimeData();
+            case 'transcription':
+                return this.llmLibraryService.loadTranscriptionData();
+            default:
+                return this.voiceProviders.find((p) => p.key === key)!.storage.getAllConfigs();
         }
+    }
+
+    private loadAll(): void {
+        this.status.set(LoadingState.LOADING);
+
+        const keys: SectionKey[] = [
+            'llm',
+            'embedding',
+            'realtime',
+            'transcription',
+            ...this.voiceProviders.map((p) => p.key),
+        ];
+        const errors: Record<SectionKey, boolean> = {
+            llm: false,
+            embedding: false,
+            realtime: false,
+            transcription: false,
+            openai: false,
+            elevenlabs: false,
+            gemini: false,
+        };
+
+        const tracked = keys.map((key) =>
+            this.sourceFor(key).pipe(
+                catchError(() => {
+                    errors[key] = true;
+                    return of(null);
+                })
+            )
+        );
+
+        forkJoin(tracked)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                this.sectionErrors.set(errors);
+                this.status.set(LoadingState.LOADED);
+            });
     }
 
     onAddConfig(provider: VoiceProvider): void {

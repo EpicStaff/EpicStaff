@@ -74,7 +74,7 @@ export class NaiveRagDocumentsCatalogService {
 
     /**
      * Unchecks + clears per-row errors. Used when the user fully reverts
-     * pending edits via the row-level Revert affordance.
+     * pending edits via the row-level Ctrl+Z undo.
      */
     public uncheckAndClearErrors(ids: Iterable<number>): void {
         const idSet = new Set(ids);
