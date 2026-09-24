@@ -1,7 +1,7 @@
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
 from tables.models.llm_models import LLMConfig
-from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 
 
 class FlowAssistantSerializer(serializers.ModelSerializer):

@@ -16,7 +16,7 @@ from tables.models.graph_models import (
     PythonNode,
     WebhookTriggerNode,
 )
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.secrets import secret_service
 from tables.services.secrets.declaration_validator import (
     secret_declaration_validator,

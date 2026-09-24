@@ -22,12 +22,12 @@ What is NOT duplicated here:
 
 import pytest
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
-from tables.services.rbac.organization_management_service import (
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
+from rbac.governance.organizations import (
     OrganizationManagementService,
 )
-from tables.services.rbac.rbac_exceptions import (
+from rbac.exceptions import (
     DefaultOrganizationNotDeletableError,
     LastActiveOrganizationError,
     LastOrganizationError,

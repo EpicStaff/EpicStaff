@@ -1,7 +1,8 @@
 import pytest
 from django.utils import timezone
 
-from tables.models import Organization, StorageFile
+from rbac.models import Organization
+from tables.models import StorageFile
 from tables.services.storage_service.db_sync import StorageFileSync, _parent_of
 
 

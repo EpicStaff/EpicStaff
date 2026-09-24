@@ -22,12 +22,8 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-)
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- shared fixtures ----
@@ -658,7 +654,7 @@ def test_profile_valid_header_returns_active_permissions(
 
 @pytest.mark.django_db
 def test_profile_invalid_header_soft_fails(api_client, regular_user, jwt_tokens, db):
-    from tables.models.rbac_models import Organization
+    from rbac.models import Organization
 
     # Auth only, then pass an org the caller is not a member of as a per-request
     # header (auth_client's sticky default would otherwise override it).

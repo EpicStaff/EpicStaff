@@ -4,13 +4,13 @@ from typing import Protocol
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
     EnabledToggleFields,
     SoftDeleteFields,
     soft_delete_consistency_constraint,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class ProviderType(models.TextChoices):

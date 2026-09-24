@@ -1,5 +1,6 @@
 from django.db import transaction
 from loguru import logger
+from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from tables.import_export.constants import DEPENDENCY_ORDER
@@ -9,7 +10,6 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.models import Graph
-from tables.models.rbac_models.rbac_enums import Permission
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every

@@ -11,6 +11,7 @@ from tables.models.webhook_models import (
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
+from tables.services.redis_service import RedisService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
@@ -175,7 +176,6 @@ def twilio_channel_post_delete_handler(sender, instance: TwilioChannel, **_):
 
 def _invalidate_realtime_channel_cache(token) -> None:
     """Publish a cache-invalidation event for `token` so `realtime`'s per-channel config cache stops serving a changed or removed RealtimeChannel."""
-    from tables.services.redis_service import RedisService
 
     RedisService().publish_channel_invalidation(token)
 

@@ -19,14 +19,14 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from tables.models.graph_models import Graph
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
-from tables.services.rbac.rbac_exceptions import (
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
+from rbac.exceptions import (
     LastSuperadminError,
     SelfAccountDeletionError,
     UserNotFoundError,
 )
-from tables.services.rbac.user_management_service import UserManagementService
+from rbac.governance.users import UserManagementService
 
 UserModel = get_user_model()
 

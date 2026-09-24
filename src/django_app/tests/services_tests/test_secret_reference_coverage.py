@@ -9,8 +9,8 @@ from rest_framework.test import APIClient
 from tables.models import Secret
 from tables.models.graph_models import Graph, PythonNode
 from tables.models.python_models import PythonCode
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
 from tables.services.secrets.reference_guard import secret_reference_guard

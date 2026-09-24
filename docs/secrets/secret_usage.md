@@ -80,7 +80,7 @@ secret, identical for every caller in the org.
 ### 2.2 `UsageSource.rbac_resource_types` — the static case
 
 Every source declares which RBAC resource types grant visibility of it, as a
-`frozenset[str]` of `ResourceType` values (`tables/models/rbac_models/rbac_enums.py`):
+`frozenset[str]` of `ResourceType` values (`rbac/models/enums.py`):
 
 ```python
 UsageSource(
@@ -150,7 +150,7 @@ is produced as both readable and hidden. Rule: **a key present in both buckets c
 as readable** —
 
 ```python
-hidden=len(hidden_keys[secret_id] - readable_keys[secret_id])
+hidden = len(hidden_keys[secret_id] - readable_keys[secret_id])
 ```
 
 — so `readable + hidden` equals the distinct-key total exactly, never double-counting a
@@ -178,9 +178,7 @@ bucket the caller's flow access puts it in.
 
 ```python
 def count_for(self, *, secret: Secret, effective) -> UsageCounts:
-    return self.counts(
-        org_id=secret.org_id, effective=effective, secret_ids={secret.pk}
-    )[secret.pk]
+    return self.counts(org_id=secret.org_id, effective=effective, secret_ids={secret.pk})[secret.pk]
 ```
 
 `UsageCounts` is a frozen dataclass — `readable: int`, `hidden: int`. There is no
