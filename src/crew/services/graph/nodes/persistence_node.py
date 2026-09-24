@@ -75,10 +75,10 @@ class PersistenceNode(BaseNode):
         for entry in self.entries:
             key = self._render_key(entry["key"], variables)
             value_alias = entry["value"]
-            if value_alias not in variables:
+            if variables.get(value_alias) is None:
                 raise PersistenceNodeError(
-                    f"Persistence node '{self.node_name}': value '{value_alias}' is not in the "
-                    "input map or did not resolve."
+                    f"Persistence node '{self.node_name}': value '{value_alias}' is missing "
+                    "from the input or resolved to null."
                 )
             written[key] = variables[value_alias]
         await self.persistence_client.write(self.session_id, self.persistence_table_id, written)

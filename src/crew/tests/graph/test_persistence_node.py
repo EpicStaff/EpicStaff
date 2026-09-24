@@ -1,18 +1,25 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from dotdict import DotDict
 
 from clients.errors import ClientValidationError
 from services.graph.exceptions import PersistenceNodeError
 from services.graph.nodes.persistence_node import PersistenceNode
 
 
-def make_node(mode: str, entries: list[dict], client=None, table_id: int | None = 3) -> PersistenceNode:
+def make_node(
+    mode: str,
+    entries: list[dict],
+    client=None,
+    table_id: int | None = 3,
+    input_map: dict | None = None,
+) -> PersistenceNode:
     return PersistenceNode(
         session_id=7,
         node_name="persist_1",
         stop_event=MagicMock(),
-        input_map={},
+        input_map=input_map if input_map is not None else {},
         output_variable_path="variables.out",
         persistence_table_id=table_id,
         mode=mode,
@@ -68,6 +75,36 @@ async def test_write_with_missing_value_alias_raises():
     node = make_node("write", [{"key": "k", "value": "profile"}], client)
     with pytest.raises(PersistenceNodeError, match="profile"):
         await run(node, {})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_raises_when_mapped_value_does_not_resolve():
+    """Regression: an input_map path that doesn't resolve (typo'd variable, e.g.
+
+    `variables.profile` when the state has no `profile`) makes `map_variables_to_input`
+    set the alias to `None` and only log a warning (see `utils/map_variables.py`), rather
+    than raising. `execute()`'s own `variables.get(value_alias) is None` check is what
+    catches this before the node ever writes a null over a previously-stored value.
+    Goes through the real `get_input()`/`run()` path instead of calling `execute()`
+    directly with a hand-built input dict, so it actually exercises that gap.
+    """
+    client = AsyncMock()
+    node = make_node(
+        "write",
+        [{"key": "k", "value": "profile"}],
+        client,
+        input_map={"profile": "variables.profile"},
+    )
+    state = {
+        "state_history": [],
+        "variables": DotDict({}),
+        "system_variables": {},
+    }
+
+    with pytest.raises(PersistenceNodeError, match="profile"):
+        await node.run(state, MagicMock())
+
     client.write.assert_not_awaited()
 
 
