@@ -38,6 +38,9 @@ $DC pull
 
 FAILED=0
 
+echo ">> ensuring external volumes exist"
+docker volume inspect opensearch_data >/dev/null 2>&1 || docker volume create opensearch_data
+
 echo ">> docker compose up"
 $DC up -d --remove-orphans || FAILED=1
 
