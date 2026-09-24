@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0211_grant_org_admin_organizations_update'),
+        ('tables', '0210_create_organization_config'),
     ]
 
     operations = [
