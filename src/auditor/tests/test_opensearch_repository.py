@@ -101,3 +101,14 @@ async def test_query_disables_exact_total_hit_tracking():
     await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
 
     assert client.last_body["track_total_hits"] is False
+
+
+@pytest.mark.asyncio
+async def test_query_with_no_hits_and_size_zero_does_not_raise():
+    client = _FakeOpenSearchClient([])
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
+
+    events, next_cursor = await repository.query({"bool": {"filter": []}}, cursor=None, size=0)
+
+    assert events == []
+    assert next_cursor is None

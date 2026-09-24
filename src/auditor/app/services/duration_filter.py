@@ -3,16 +3,10 @@ Over-fetch/pagination machinery for a computed-field post-filter (e.g.
 `duration`) applied in Python on top of an already-compiled OpenSearch
 query. Domain-free: works against any ComputedField (see
 app/domains/base.py) and whatever condition object its own `combine()`
-returned - the AST splitting lives in app/filtering/computed.py, and the
-domain-specific value resolution (e.g. DurationField) lives under
-app/domains/<domain>/computed.py.
-
-Used by app/services/search_pipeline.py::SearchPipeline.search() - the one
-shared place both the search and export flows reach this through now,
-instead of each importing it directly.
+returned.
 """
 
-from app.domains.base import ComputedField
+from app.domains.base import ComputedField, ScopedQueryBuilder
 from app.repositories.base import AuditRepository
 from src.shared.models import BaseAuditEvent
 
@@ -25,9 +19,8 @@ async def apply_duration_filter(
     base_query: dict,
     computed_field: ComputedField,
     condition,
+    query_builder: ScopedQueryBuilder,
     *,
-    org_id: int,
-    retention_days: int,
     size: int,
     cursor: str | None,
 ) -> tuple[list[BaseAuditEvent], str | None, bool]:
@@ -61,9 +54,7 @@ async def apply_duration_filter(
             next_cursor = None
             break
 
-        values = await computed_field.resolve(
-            repository, page, org_id=org_id, retention_days=retention_days
-        )
+        values = await computed_field.resolve(repository, page, query_builder)
         kept.extend(c for c in page if condition.matches(values.get(c.id)))
         next_cursor = page_cursor
 

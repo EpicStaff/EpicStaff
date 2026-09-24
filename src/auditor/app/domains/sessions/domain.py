@@ -14,7 +14,7 @@ from app.domains.sessions.schemas import (
 )
 from src.shared.models import SessionAuditEvent
 
-SESSIONS = AuditDomain(
+SESSIONS: AuditDomain[SessionAuditEvent] = AuditDomain(
     name="sessions",
     event_model=SessionAuditEvent,
     index=SESSIONS_INDEX,

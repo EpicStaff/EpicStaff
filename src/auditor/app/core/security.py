@@ -30,7 +30,8 @@ async def verify_user_jwt(
     FastAPI dependency gating query/export routes. Decodes the short-lived
     JWT minted by django_app's POST /api/audit/token/ locally with the
     same JWT_SECRET - no callback to Django per request. Returns the
-    decoded claims (org_id, actions, retention_days).
+    decoded claims (user_id, org_id, retention_days, and one action list per
+    resource).
     """
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
@@ -40,29 +41,21 @@ async def verify_user_jwt(
         raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}") from e
 
 
+def _granted_actions(claims: dict, resource: str) -> list:
+    granted = claims.get(resource, [])
+    return granted if isinstance(granted, list) else []
+
+
 def require_audit_action(domain: AuditDomain, action: str):
     """
-    Dependency factory: read vs export are independently gated by the
-    token's `actions` claim. Use Depends(require_audit_action(domain, "read"))
-    on query routes, Depends(require_audit_action(domain, "export")) on
-    export routes. `domain.resource` (not a hardcoded "AUDIT" literal)
-    names the resource reported in the 403 detail, so a second domain with
-    a different `resource` value is reported correctly.
-
-    TODO: the check below is still a flat `action in claims["actions"]`
-    with no resource dimension - it does not actually restrict a token to
-    `domain.resource`. A token with "read" passes this check on every
-    registered domain's routes, not just the one its `resource` was granted
-    for. Closing this needs a cross-layer change: Django's audit token
-    (src/django_app/tables/views/audit_token_views.py) would need to emit a
-    resource-keyed claim (e.g. {"AUDIT": ["read","export"]}) instead of a
-    flat action list, and this check would need to look up
-    claims[domain.resource] instead of claims["actions"]. Out of scope while
-    only one domain ("sessions") is registered - no user-facing gap today.
+    Dependency factory gating a domain's route on `action` being granted for
+    that domain's own resource: the token carries one claim per resource,
+    keyed by `domain.resource` (e.g. `{"AUDIT": ["read", "export"]}`), so a
+    grant on one resource never opens another domain's routes.
     """
 
     async def _check(claims: dict = Depends(verify_user_jwt)) -> dict:
-        if action not in claims.get("actions", []):
+        if action not in _granted_actions(claims, domain.resource):
             raise HTTPException(
                 status_code=403,
                 detail=f"Missing {domain.resource}:{action} permission",

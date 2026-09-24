@@ -14,7 +14,7 @@ import pytest_asyncio
 
 from app.core import settings
 from app.db.opensearch_client import build_opensearch_client
-from app.domains.base import DEFAULT_SCOPING
+from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs, ScopedQueryBuilder
 from app.domains.sessions.computed import SESSIONS_COMPUTED
 from app.domains.sessions.fields import SESSIONS_FIELDS
 from app.domains.sessions.index import SESSIONS_INDEX
@@ -162,8 +162,7 @@ async def test_duration_filter_includes_and_excludes_correctly(
         query,
         _DURATION_FIELD,
         duration_cond,
-        org_id=ORG_A,
-        retention_days=0,
+        ScopedQueryBuilder(DEFAULT_SCOPING, BaseScopeArgs(org_id=ORG_A, retention_days=0)),
         size=50,
         cursor=None,
     )
@@ -178,8 +177,7 @@ async def test_duration_filter_includes_and_excludes_correctly(
         query2,
         _DURATION_FIELD,
         duration_cond2,
-        org_id=ORG_A,
-        retention_days=0,
+        ScopedQueryBuilder(DEFAULT_SCOPING, BaseScopeArgs(org_id=ORG_A, retention_days=0)),
         size=50,
         cursor=None,
     )

@@ -18,20 +18,23 @@ FilterNode shape:
 
 from __future__ import annotations
 
-from typing import Any, Iterator, NamedTuple, TYPE_CHECKING
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     from app.domains.base import FieldCatalog
 
 FilterNode = dict[str, Any]
 
+# AST leaf field produced for a free-text term (bare word or `text:` prefix).
+FREE_TEXT_FIELD = "__text__"
+
 
 class FieldSpec(NamedTuple):
     allowed_ops: frozenset[str]
-    # True only for `duration` - not translatable to OpenSearch DSL at all;
-    # split_computed_leaves() (app/filtering/computed.py) must remove every
-    # leaf using this field before the remainder AST reaches the OpenSearch
-    # compiler.
+    # Not translatable to OpenSearch DSL at all; must match one of the
+    # domain's ComputedField implementations (asserted by AuditDomain) so
+    # split_computed_leaves() removes the leaf before compilation.
     computed: bool = False
     allowed_values: frozenset[str] | None = None
 
@@ -48,59 +51,42 @@ class FilterParseError(FilterError):
     pass
 
 
-def _resolve_field_spec(catalog: "FieldCatalog", field: str, *, path: str) -> FieldSpec:
+def _resolve_field_spec(catalog: FieldCatalog, field: str, *, path: str) -> FieldSpec:
     specs = catalog.field_spec(field)
     if specs is None:
-        raise FilterValidationError(
-            f"{path}: {field!r} is not a known filterable field"
-        )
+        raise FilterValidationError(f"{path}: {field!r} is not a known filterable field")
     return specs
 
 
 def validate_filter_node(
-    catalog: "FieldCatalog",
+    catalog: FieldCatalog,
     node: FilterNode,
     *,
-    allow_computed: bool = True,
     _path: str = "filters",
 ) -> None:
     """
     Recursive structural + field/op whitelist check. Raises
     FilterValidationError on the first problem found, with a path-qualified
-    message. `allow_computed=False` is used by the OpenSearch-compiler entry
-    point to assert no `duration` leaves reach it after split_computed_leaves
-    (app/filtering/computed.py) has run - defensive, since the splitter is
-    what actually removes them.
+    message.
     """
     if not isinstance(node, dict):
-        raise FilterValidationError(
-            f"{_path}: expected an object, got {type(node).__name__}"
-        )
+        raise FilterValidationError(f"{_path}: expected an object, got {type(node).__name__}")
 
     op = node.get("op")
 
     if op in ("and", "or"):
         children = node.get("children")
         if not isinstance(children, list) or not children:
-            raise FilterValidationError(
-                f"{_path}: '{op}' requires a non-empty 'children' list"
-            )
+            raise FilterValidationError(f"{_path}: '{op}' requires a non-empty 'children' list")
         for i, child in enumerate(children):
-            validate_filter_node(
-                catalog,
-                child,
-                allow_computed=allow_computed,
-                _path=f"{_path}.children[{i}]",
-            )
+            validate_filter_node(catalog, child, _path=f"{_path}.children[{i}]")
         return
 
     if op == "not":
         child = node.get("child")
         if child is None:
             raise FilterValidationError(f"{_path}: 'not' requires a 'child'")
-        validate_filter_node(
-            catalog, child, allow_computed=allow_computed, _path=f"{_path}.child"
-        )
+        validate_filter_node(catalog, child, _path=f"{_path}.child")
         return
 
     field = node.get("field")
@@ -111,11 +97,6 @@ def validate_filter_node(
         raise FilterValidationError(f"{_path}: leaf node missing an 'op' string")
 
     spec = _resolve_field_spec(catalog, field, path=_path)
-    if spec.computed and not allow_computed:
-        raise FilterValidationError(
-            f"{_path}: field {field!r} is computed and cannot reach the OpenSearch "
-            "compiler directly - it must be extracted by split_computed_leaves first"
-        )
     if leaf_op not in spec.allowed_ops:
         raise FilterValidationError(
             f"{_path}: op {leaf_op!r} is not valid for field {field!r} "

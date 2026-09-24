@@ -1,8 +1,7 @@
 from typing import Any
 
-from app.domains.base import FieldCatalog, ScopingPolicy, BaseScopeArgs
-from app.filtering.ast import FilterNode, FilterError
-
+from app.domains.base import BaseScopeArgs, FieldCatalog, FreeTextFields, ScopingPolicy
+from app.filtering.ast import FREE_TEXT_FIELD, FilterError, FilterNode
 
 _WILDCARD_PATTERN_BUILDERS = {
     "contains": lambda v: f"*{v}*",
@@ -40,29 +39,25 @@ def _wildcard_clause(field: str, op: str, value: Any) -> dict:
     return clause
 
 
-def _free_text_clause(term: str) -> dict:
-    """Lifted verbatim from the pre-AST `search` param in
-    opensearch_repository.py: wildcard over the keyword identity fields,
-    query_string relevance search over the flat_object blobs."""
-    return {
-        "bool": {
-            "should": [
-                {"wildcard": {field: {"value": f"*{term}*", "case_insensitive": True}}}
-                for field in ("name", "node_type", "flow_name")
-            ]
-            + [
-                {
-                    "query_string": {
-                        "query": term,
-                        "fields": ["input.*", "output.*", "details.*"],
-                        "default_operator": "AND",
-                        "lenient": True,
-                    }
+def _free_text_clause(term: str, free_text: FreeTextFields) -> dict:
+    should: list[dict] = [
+        {"wildcard": {field: {"value": f"*{term}*", "case_insensitive": True}}}
+        for field in free_text.wildcard_fields
+    ]
+    if free_text.query_string_fields:
+        should.append(
+            {
+                "query_string": {
+                    "query": term,
+                    "fields": list(free_text.query_string_fields),
+                    "default_operator": "AND",
+                    "lenient": True,
                 }
-            ],
-            "minimum_should_match": 1,
-        }
-    }
+            }
+        )
+    if not should:
+        raise FilterCompileError("Free-text search is not supported for this audit domain")
+    return {"bool": {"should": should, "minimum_should_match": 1}}
 
 
 def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
@@ -71,6 +66,10 @@ def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
     `fv == null` check; a root-only `exists` is kept as a safe pre-filter.
     """
     comparator = _PAINLESS_COMPARATORS[op]
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError) as exc:
+        raise FilterCompileError(f"op {op!r} on {path!r} requires a numeric value") from exc
     root = path.split(".", 1)[0]
     source = (
         "def fv = doc[params.path]; "
@@ -99,7 +98,7 @@ def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
                             "params": {
                                 "path": path,
                                 "root": root,
-                                "value": float(value),
+                                "value": threshold,
                             },
                         }
                     }
@@ -109,23 +108,12 @@ def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
     }
 
 
-def _compile_error_leaf(op: str, value: Any) -> dict:
-    """Always targets `error.raw` (wildcard subfield), never analyzed
-    `error` text - the standard analyzer tokenizes '.' as a word-joiner, so
-    a `match` on "AuthenticationError" inside a dotted stack-trace string
-    finds nothing (documented in index_setup/README.md, verified against
-    real litellm errors)."""
-    if op == "is_empty":
-        return {"bool": {"must_not": [{"exists": {"field": "error"}}]}}
-    if op == "is_not_empty":
-        return {"exists": {"field": "error"}}
-    if op in _WILDCARD_PATTERN_BUILDERS:
-        return _wildcard_clause("error.raw", op, value)
-    raise FilterCompileError(f"Unsupported op {op!r} for field 'error'")
-
-
-def _compile_structured_leaf(field: str, op: str, value: Any) -> dict:
+def _compile_structured_leaf(
+    field: str, op: str, value: Any, *, wildcard_subfield: str | None
+) -> dict:
     field = field.lower()
+    if wildcard_subfield is not None and op in _WILDCARD_PATTERN_BUILDERS:
+        return _wildcard_clause(wildcard_subfield, op, value)
     if op == "equals":
         return {"term": {field: value}}
     if op == "not_equal":
@@ -243,14 +231,14 @@ class QueryCompiler:
         return flat
 
     def _compile_leaf(self, field: str, op: str, value: Any) -> dict:
-        if field == "__text__":
-            return _free_text_clause(value)
-        if field.lower() == "error":
-            return _compile_error_leaf(op, value)
+        if field == FREE_TEXT_FIELD:
+            return _free_text_clause(value, self._catalog.free_text_fields())
         resolved = self._catalog.resolve_alias(field)
         if self._catalog.is_flattened_path(resolved):
             return self._compile_flattened_leaf(field, op, value)
-        return _compile_structured_leaf(field, op, value)
+        return _compile_structured_leaf(
+            field, op, value, wildcard_subfield=self._catalog.wildcard_subfield(field)
+        )
 
     def _compile_flattened_leaf(self, field: str, op: str, value: Any) -> dict:
         path = _normalize_flattened_path(self._catalog.resolve_alias(field))

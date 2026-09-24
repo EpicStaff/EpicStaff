@@ -25,8 +25,9 @@ OPENAPI_TAGS = [
         "name": "Browse",
         "description": (
             "Read the audit trail. **Auth: `HTTPBearer`** - the short-lived (5 min) "
-            "JWT from django_app's `POST /api/audit/token/`, which requires the "
-            "`read` action in its `actions` claim. Results are always scoped to "
+            "JWT from django_app's `POST /api/audit/token/`, which requires `read` "
+            "in the claim named after the domain's resource (e.g. "
+            '`"AUDIT": ["read"]`). Results are always scoped to '
             "the token's `org_id` and clipped to its `retention_days` window; "
             "neither can be widened by any request parameter."
         ),
@@ -94,7 +95,5 @@ see the per-op pairs in this request's own `openapi_examples`):
     text: "timeout"
 """
 
-CURSOR_FIELD_DESCRIPTION = (
-    "Opaque pagination cursor from a previous response's `next_cursor`."
-)
-SIZE_FIELD_DESCRIPTION = "Max rows per page (<=1000)."
+CURSOR_FIELD_DESCRIPTION = "Opaque pagination cursor from a previous response's `next_cursor`."
+SIZE_FIELD_DESCRIPTION = "Max rows per page (1-1000)."

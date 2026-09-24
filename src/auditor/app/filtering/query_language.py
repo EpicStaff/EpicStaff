@@ -24,8 +24,8 @@ Notes settled during design:
 - `==` is accepted as an alias for `=`.
 - Field names are matched case-insensitively (`Error`, `ID` in the examples
   below) - the original casing is preserved in the emitted AST leaf, and
-  the domain's own FieldCatalog (e.g. SessionFieldCatalog.field_spec in
-  app/domains/sessions/fields.py) lowercases when resolving a field spec.
+  the domain's own FieldCatalog (e.g. DictFieldCatalog.field_spec in
+  app/domains/base.py) lowercases when resolving a field spec.
 - Free text is a single token (bare word or quoted string) - this project's
   examples never combine multiple bare words into one free-text term, so
   supporting that (and its ambiguity against "and"/"or" as content words) is
@@ -41,7 +41,7 @@ Verified against the spec's own examples:
 import re
 from dataclasses import dataclass
 
-from app.filtering.ast import FilterNode, FilterParseError
+from app.filtering.ast import FREE_TEXT_FIELD, FilterNode, FilterParseError
 
 _TOKEN_SPEC = [
     ("WS", r"\s+"),
@@ -55,9 +55,7 @@ _TOKEN_SPEC = [
     ("COMMA", r","),
     ("IDENT", r"[A-Za-z_][A-Za-z0-9_.]*"),
 ]
-_MASTER_RE = re.compile(
-    "|".join(f"(?P<{name}>{pattern})" for name, pattern in _TOKEN_SPEC)
-)
+_MASTER_RE = re.compile("|".join(f"(?P<{name}>{pattern})" for name, pattern in _TOKEN_SPEC))
 
 _OP_ALIASES = {
     "==": "equals",
@@ -88,9 +86,7 @@ def tokenize(text: str) -> list[Token]:
     while pos < length:
         m = _MASTER_RE.match(text, pos)
         if not m:
-            raise FilterParseError(
-                f"Unexpected character {text[pos]!r} at position {pos}"
-            )
+            raise FilterParseError(f"Unexpected character {text[pos]!r} at position {pos}")
         kind = m.lastgroup
         value = m.group()
         if kind != "WS":
@@ -128,17 +124,13 @@ class _Parser:
     def _expect_keyword(self, keyword: str) -> None:
         if self._match_keyword(keyword) is None:
             tok = self._peek()
-            raise FilterParseError(
-                f"Expected {keyword!r} at position {tok.pos}, got {tok.value!r}"
-            )
+            raise FilterParseError(f"Expected {keyword!r} at position {tok.pos}, got {tok.value!r}")
 
     def parse(self) -> FilterNode:
         node = self._or_expr()
         if self._peek().kind != "EOF":
             tok = self._peek()
-            raise FilterParseError(
-                f"Unexpected trailing input {tok.value!r} at position {tok.pos}"
-            )
+            raise FilterParseError(f"Unexpected trailing input {tok.value!r} at position {tok.pos}")
         return node
 
     def _or_expr(self) -> FilterNode:
@@ -151,9 +143,7 @@ class _Parser:
         children = [self._unary()]
         while self._match_keyword("and"):
             children.append(self._unary())
-        return (
-            children[0] if len(children) == 1 else {"op": "and", "children": children}
-        )
+        return children[0] if len(children) == 1 else {"op": "and", "children": children}
 
     def _unary(self) -> FilterNode:
         if self._match_keyword("not"):
@@ -180,7 +170,7 @@ class _Parser:
             nxt = self._peek()
             if nxt.kind == "OP" and nxt.value == ":":
                 self._advance()
-                return {"field": "__text__", "op": "contains", "value": self._value()}
+                return {"field": FREE_TEXT_FIELD, "op": "contains", "value": self._value()}
             self._i = save  # "text" wasn't the `text:` prefix - fall through
 
         if tok.kind == "IDENT":
@@ -204,9 +194,7 @@ class _Parser:
                         "op": "not_in",
                         "value": self._bracketed_list(),
                     }
-                raise FilterParseError(
-                    f"Expected 'in' after 'not' at position {self._peek().pos}"
-                )
+                raise FilterParseError(f"Expected 'in' after 'not' at position {self._peek().pos}")
 
             if self._match_keyword("is"):
                 negate = self._match_keyword("not") is not None
@@ -223,11 +211,9 @@ class _Parser:
     def _free_text_bare(self) -> FilterNode:
         tok = self._advance()
         if tok.kind not in ("IDENT", "STRING", "NUMBER"):
-            raise FilterParseError(
-                f"Unexpected token {tok.value!r} at position {tok.pos}"
-            )
+            raise FilterParseError(f"Unexpected token {tok.value!r} at position {tok.pos}")
         term = _unquote(tok.value) if tok.kind == "STRING" else tok.value
-        return {"field": "__text__", "op": "contains", "value": term}
+        return {"field": FREE_TEXT_FIELD, "op": "contains", "value": term}
 
     def _bracketed_list(self) -> list:
         open_tok = self._peek()
@@ -254,9 +240,7 @@ class _Parser:
             return float(tok.value) if "." in tok.value else int(tok.value)
         if tok.kind == "IDENT":
             return tok.value
-        raise FilterParseError(
-            f"Expected a value at position {tok.pos}, got {tok.value!r}"
-        )
+        raise FilterParseError(f"Expected a value at position {tok.pos}, got {tok.value!r}")
 
 
 def parse_query(text: str) -> FilterNode:
@@ -291,7 +275,7 @@ def _serialize(node: FilterNode, *, top: bool = False) -> str:
     field = node["field"]
     leaf_op = node["op"]
 
-    if field == "__text__":
+    if field == FREE_TEXT_FIELD:
         return f"text: {_quote(node['value'])}"
 
     if leaf_op in ("in", "not_in"):

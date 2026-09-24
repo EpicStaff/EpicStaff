@@ -1,10 +1,10 @@
+from app.domains.base import DictFieldCatalog, FreeTextFields
 from app.filtering.ast import FieldSpec
 from app.filtering.constants import (
+    DURATION_OPS,
     RANGE_OPS,
     SELECT_OPS,
     TEXT_CONDITION_OPS,
-    DURATION_OPS,
-    FLATTENED_OPS,
 )
 
 FLAT_OBJECT_ROOTS = frozenset({"input", "output", "details"})
@@ -33,7 +33,6 @@ KNOWN_FIELDS: dict[str, FieldSpec] = {
     # special fields
     "__text__": FieldSpec(frozenset({"contains"})),
 }
-FLATTENED_PATH_SPEC = FieldSpec(FLATTENED_OPS)
 
 DEEP_FILTER_ALIASES: dict[str, str] = {
     "agent": "details.agent_id",
@@ -44,25 +43,20 @@ DEEP_FILTER_ALIASES: dict[str, str] = {
     "message_thought": "details.thought",
 }
 
+# `error` is analyzed text: the standard analyzer treats '.' as a word-joiner, so
+# a match on "AuthenticationError" inside a dotted stack trace finds nothing.
+# Pattern ops therefore run against the `error.raw` wildcard sub-field instead.
+WILDCARD_SUBFIELDS: dict[str, str] = {"error": "error.raw"}
 
-class SessionFieldCatalog:
-    def is_flattened_path(self, field: str) -> bool:
-        return field.lower().split(".", 1)[0] in FLAT_OBJECT_ROOTS
+FREE_TEXT_FIELDS = FreeTextFields(
+    wildcard_fields=("name", "node_type", "flow_name"),
+    query_string_fields=("input.*", "output.*", "details.*"),
+)
 
-    def resolve_alias(self, field: str) -> str:
-        return DEEP_FILTER_ALIASES.get(field.lower(), field)
-
-    def field_spec(self, field: str):
-        lower = field.lower()
-        if lower in KNOWN_FIELDS:
-            return KNOWN_FIELDS[lower]
-        root = lower.split(".", 1)[0]
-        if root in FLAT_OBJECT_ROOTS:
-            return FLATTENED_PATH_SPEC
-        return None
-
-    def computed_field_names(self):
-        return frozenset(name for name, spec in KNOWN_FIELDS.items() if spec.computed)
-
-
-SESSIONS_FIELDS = SessionFieldCatalog()
+SESSIONS_FIELDS = DictFieldCatalog(
+    known_fields=KNOWN_FIELDS,
+    aliases=DEEP_FILTER_ALIASES,
+    flat_roots=FLAT_OBJECT_ROOTS,
+    free_text=FREE_TEXT_FIELDS,
+    wildcard_subfields=WILDCARD_SUBFIELDS,
+)

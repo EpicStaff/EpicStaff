@@ -13,7 +13,7 @@ already narrowed down to.
 
 from typing import Any, NamedTuple
 
-from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs
+from app.domains.base import ScopedQueryBuilder
 from app.filtering.ast import FilterNode, FilterValidationError
 from src.shared.models import SessionAuditEvent
 
@@ -45,9 +45,7 @@ class DurationCondition(NamedTuple):
             return False
         if self.lt is not None and not (duration < self.lt):
             return False
-        if self.lte is not None and not (duration <= self.lte):
-            return False
-        return True
+        return self.lte is None or duration <= self.lte
 
 
 def _combine_duration_leaves(leaves: list[FilterNode]) -> DurationCondition:
@@ -60,10 +58,13 @@ def _combine_duration_leaves(leaves: list[FilterNode]) -> DurationCondition:
             kwargs["is_not_empty"] = True
         elif op in ("equals", "gt", "gte", "lt", "lte"):
             if op in kwargs:
+                raise FilterValidationError(f"duration: op {op!r} specified more than once")
+            try:
+                kwargs[op] = float(leaf["value"])
+            except (KeyError, TypeError, ValueError) as exc:
                 raise FilterValidationError(
-                    f"duration: op {op!r} specified more than once"
-                )
-            kwargs[op] = float(leaf["value"])
+                    f"duration: op {op!r} requires a numeric value"
+                ) from exc
         else:
             raise FilterValidationError(f"duration: unsupported op {op!r}")
     if ("is_empty" in kwargs or "is_not_empty" in kwargs) and len(kwargs) > 1:
@@ -87,12 +88,12 @@ def compute_duration(events: list[SessionAuditEvent]) -> float | None:
     end_time = None
     for event in events:
         message_type = (event.details or {}).get("message_type")
-        if message_type in _START_MARKERS:
-            if start_time is None or event.event_time < start_time:
-                start_time = event.event_time
-        elif message_type in _TERMINAL_MARKERS:
-            if end_time is None or event.event_time > end_time:
-                end_time = event.event_time
+        is_earlier_start = start_time is None or event.event_time < start_time
+        is_later_end = end_time is None or event.event_time > end_time
+        if message_type in _START_MARKERS and is_earlier_start:
+            start_time = event.event_time
+        elif message_type in _TERMINAL_MARKERS and is_later_end:
+            end_time = event.event_time
     if start_time is None or end_time is None:
         return None
     return (end_time - start_time).total_seconds()
@@ -101,9 +102,7 @@ def compute_duration(events: list[SessionAuditEvent]) -> float | None:
 async def _resolve_durations(
     repository,
     candidates: list[SessionAuditEvent],
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> dict[str, float | None]:
     """Batch-resolves every candidate's duration in one query (not N+1). A
     candidate that is itself a kind="event" row belongs to some node/session
@@ -116,13 +115,8 @@ async def _resolve_durations(
     if not parent_ids:
         return {c.id: None for c in candidates}
 
-    query = DEFAULT_SCOPING(
-        [{"terms": {"parent_id": parent_ids}}],
-        BaseScopeArgs(org_id=org_id, retention_days=retention_days),
-    )
-    events_by_parent: dict[str, list[SessionAuditEvent]] = {
-        pid: [] for pid in parent_ids
-    }
+    query = query_builder.build([{"terms": {"parent_id": parent_ids}}])
+    events_by_parent: dict[str, list[SessionAuditEvent]] = {pid: [] for pid in parent_ids}
     cursor: str | None = None
     while True:
         page, cursor = await repository.query(query, cursor=cursor, size=1000)
@@ -134,10 +128,7 @@ async def _resolve_durations(
     duration_cache: dict[str, float | None] = {
         pid: compute_duration(events) for pid, events in events_by_parent.items()
     }
-    return {
-        cid: duration_cache.get(target_id)
-        for cid, target_id in target_id_by_candidate.items()
-    }
+    return {cid: duration_cache.get(target_id) for cid, target_id in target_id_by_candidate.items()}
 
 
 class DurationField:
@@ -150,11 +141,9 @@ class DurationField:
         return _combine_duration_leaves(leaves)
 
     async def resolve(
-        self, repository, candidates, *, org_id: int, retention_days: int
+        self, repository, candidates, query_builder: ScopedQueryBuilder
     ) -> dict[str, float | None]:
-        return await _resolve_durations(
-            repository, candidates, org_id=org_id, retention_days=retention_days
-        )
+        return await _resolve_durations(repository, candidates, query_builder)
 
 
 SESSIONS_COMPUTED = (DurationField(),)

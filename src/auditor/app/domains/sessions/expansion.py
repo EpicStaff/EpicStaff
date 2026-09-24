@@ -6,10 +6,9 @@ semantics) - not a generic concept, hence living under
 app/domains/sessions/ rather than app/services/.
 """
 
-from pydantic import BaseModel, Field
-
-from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs
+from app.domains.base import ScopedQueryBuilder
 from app.repositories.base import AuditRepository
+from pydantic import BaseModel, Field
 from src.shared.models import SessionAuditEvent
 
 _MAX_ROWS_BEFORE = 20
@@ -42,19 +41,14 @@ class MatchScope(BaseModel):
 
     def is_noop(self) -> bool:
         return not (
-            self.ancestors
-            or self.children
-            or self.rows_before
-            or self.full_session_history
+            self.ancestors or self.children or self.rows_before or self.full_session_history
         )
 
 
 async def _fetch_all(
     repository: AuditRepository,
     clauses: list[dict],
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
     """Paginates a follow-up query to exhaustion - these are internal,
     server-built queries (terms/range on ids the base search already
@@ -63,13 +57,9 @@ async def _fetch_all(
     actually has."""
     events: list[SessionAuditEvent] = []
     cursor: str | None = None
-    query = DEFAULT_SCOPING(
-        clauses, BaseScopeArgs(org_id=org_id, retention_days=retention_days)
-    )
+    query = query_builder.build(clauses)
     while True:
-        page, cursor = await repository.query(
-            query, cursor=cursor, size=_FETCH_PAGE_SIZE
-        )
+        page, cursor = await repository.query(query, cursor=cursor, size=_FETCH_PAGE_SIZE)
         events.extend(page)
         if cursor is None or not page:
             break
@@ -79,9 +69,7 @@ async def _fetch_all(
 async def _expand_full_session_history(
     repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
     session_ids = sorted({e.session_id for e in matched_events})
     if not session_ids:
@@ -89,17 +77,14 @@ async def _expand_full_session_history(
     return await _fetch_all(
         repository,
         [{"terms": {"session_id": session_ids}}],
-        org_id=org_id,
-        retention_days=retention_days,
+        query_builder,
     )
 
 
 async def _expand_ancestors(
     repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
     """Walks parent_id upward, batched (not N+1). Session -> node -> event
     is only 2 hops max, so this never needs to recurse arbitrarily deep."""
@@ -109,16 +94,14 @@ async def _expand_ancestors(
     wrappers = await _fetch_all(
         repository,
         [{"terms": {"id": parent_ids}}],
-        org_id=org_id,
-        retention_days=retention_days,
+        query_builder,
     )
     grandparent_ids = sorted({w.parent_id for w in wrappers if w.parent_id})
     grandparents = (
         await _fetch_all(
             repository,
             [{"terms": {"id": grandparent_ids}}],
-            org_id=org_id,
-            retention_days=retention_days,
+            query_builder,
         )
         if grandparent_ids
         else []
@@ -129,9 +112,7 @@ async def _expand_ancestors(
 async def _expand_children(
     repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
     """A matched session's children are its whole tree (session_id scan);
     a matched node's children are its own event rows (parent_id scan). A
@@ -146,8 +127,7 @@ async def _expand_children(
             await _fetch_all(
                 repository,
                 [{"terms": {"session_id": session_ids}}],
-                org_id=org_id,
-                retention_days=retention_days,
+                query_builder,
             )
         )
 
@@ -158,8 +138,7 @@ async def _expand_children(
             await _fetch_all(
                 repository,
                 [{"terms": {"parent_id": node_ids}}],
-                org_id=org_id,
-                retention_days=retention_days,
+                query_builder,
             )
         )
 
@@ -170,9 +149,7 @@ async def _expand_rows_before(
     repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     rows_before: int,
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
     """One extra query per match (OpenSearch has no native "N rows before X"
     primitive) - same session, event_time <= the match's own, same fixed
@@ -186,9 +163,7 @@ async def _expand_rows_before(
             {"term": {"session_id": event.session_id}},
             {"range": {"event_time": {"lte": event.event_time.isoformat()}}},
         ]
-        query = DEFAULT_SCOPING(
-            clauses, BaseScopeArgs(org_id=org_id, retention_days=retention_days)
-        )
+        query = query_builder.build(clauses)
         page, _ = await repository.query(query, cursor=None, size=rows_before + 1)
         extra.extend(row for row in page if row.id != event.id)
     return extra
@@ -198,9 +173,7 @@ async def expand_matches(
     repository: AuditRepository,
     matched_events: list[SessionAuditEvent],
     match_scope: MatchScope,
-    *,
-    org_id: int,
-    retention_days: int,
+    query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
     if not matched_events or match_scope.is_noop():
         return matched_events
@@ -210,32 +183,21 @@ async def expand_matches(
         # matches, the whole session's tree is the answer; rows_before/
         # ancestors/children would all be redundant subsets of this.
         return _dedupe_and_sort(
-            await _expand_full_session_history(
-                repository, matched_events, org_id=org_id, retention_days=retention_days
-            )
+            await _expand_full_session_history(repository, matched_events, query_builder)
         )
 
     extra: list[SessionAuditEvent] = []
     if match_scope.ancestors:
-        extra.extend(
-            await _expand_ancestors(
-                repository, matched_events, org_id=org_id, retention_days=retention_days
-            )
-        )
+        extra.extend(await _expand_ancestors(repository, matched_events, query_builder))
     if match_scope.children:
-        extra.extend(
-            await _expand_children(
-                repository, matched_events, org_id=org_id, retention_days=retention_days
-            )
-        )
+        extra.extend(await _expand_children(repository, matched_events, query_builder))
     if match_scope.rows_before > 0:
         extra.extend(
             await _expand_rows_before(
                 repository,
                 matched_events,
                 match_scope.rows_before,
-                org_id=org_id,
-                retention_days=retention_days,
+                query_builder,
             )
         )
 
@@ -256,8 +218,6 @@ class SessionTreeExpander:
     sessions domain."""
 
     async def expand(
-        self, repository, events, scope, *, org_id: int, retention_days: int
+        self, repository, events, match_scope: MatchScope, query_builder: ScopedQueryBuilder
     ) -> list[SessionAuditEvent]:
-        return await expand_matches(
-            repository, events, scope, org_id=org_id, retention_days=retention_days
-        )
+        return await expand_matches(repository, events, match_scope, query_builder)

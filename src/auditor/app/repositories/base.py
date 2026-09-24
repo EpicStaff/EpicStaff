@@ -6,7 +6,7 @@ from src.shared.models import BaseAuditEvent
 T = TypeVar("T", bound=BaseAuditEvent)
 
 
-class AuditRepository(ABC, Generic[T]):
+class AuditRepository(ABC, Generic[T]):  # noqa: UP046 - T is imported by implementations
     """
     Base interface for audit-event storage backends, generic over the event
     model (bounded to BaseAuditEvent - see src/shared/models/audit/base.py).
@@ -20,18 +20,15 @@ class AuditRepository(ABC, Generic[T]):
     """
 
     @abstractmethod
-    async def write_batch(self, events: list[T]) -> None:
+    async def write_batch(self, events: list[T]) -> list[dict] | None:
         """
-        Persist a batch of audit events.
+        Persist a batch of audit events. Returns the per-document error
+        entries for any event that failed to persist, or None if all did.
 
         Must be idempotent: re-sending a batch that includes an event with
         an `id` already stored must overwrite that event in place, not
         create a duplicate.
-
-        Args:
-            events: The audit events to persist.
         """
-        pass
 
     @abstractmethod
     async def query(
@@ -41,7 +38,7 @@ class AuditRepository(ABC, Generic[T]):
         size: int = 50,
     ) -> tuple[list[T], str | None]:
         """
-        Query session-audit events using a fully-compiled, backend-native
+        Query audit events using a fully-compiled, backend-native
         query clause (see repositories/compiler.py) - the
         output of compiling a FilterNode AST plus the always-injected
         org_id/retention_days clauses.
@@ -49,9 +46,7 @@ class AuditRepository(ABC, Generic[T]):
         Paginated by cursor/size: returns (events for this page, next
         cursor or None if there are no more pages).
         """
-        pass
 
     @abstractmethod
     async def close(self) -> None:
         """Release any underlying connection/client resources on shutdown."""
-        pass

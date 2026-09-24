@@ -22,12 +22,11 @@ from opensearchpy.exceptions import RequestError as OpenSearchRequestError
 from app.controllers.query_routes import build_search_router
 from app.core.security import verify_user_jwt
 from app.domains.sessions.domain import SESSIONS
-from app.filtering.ast import FilterError
-from app.main import _extract_opensearch_reason
+from app.main import register_exception_handlers
 from src.shared.models import SessionAuditEvent
 from tests._fakes import InMemoryFakeRepository
 
-DEFAULT_CLAIMS = {"org_id": 7, "user_id": 42, "actions": ["read"], "retention_days": 0}
+DEFAULT_CLAIMS = {"org_id": 7, "user_id": 42, "AUDIT": ["read"], "retention_days": 0}
 
 # Shape OpenSearch actually returns for a rejected date-format query on
 # `event_time < "2026.09.09"` (dots instead of dashes) - a
@@ -68,21 +67,7 @@ class RaisingRepository:
 def _build_app(exc: Exception) -> FastAPI:
     app = FastAPI()
     app.include_router(build_search_router(SESSIONS))
-
-    @app.exception_handler(FilterError)
-    async def _filter_error_handler(request, exc):
-        from fastapi.responses import JSONResponse
-
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
-
-    @app.exception_handler(OpenSearchRequestError)
-    async def _opensearch_request_error_handler(request, exc):
-        from fastapi.responses import JSONResponse
-
-        return JSONResponse(
-            status_code=400, content={"detail": _extract_opensearch_reason(exc)}
-        )
-
+    register_exception_handlers(app)
     app.state.repositories = {SESSIONS.name: RaisingRepository(exc)}
     app.dependency_overrides[verify_user_jwt] = lambda: dict(DEFAULT_CLAIMS)
     return app
@@ -143,9 +128,11 @@ async def test_opensearch_error_without_caused_by_falls_back_to_root_cause(
 
 
 @pytest.mark.asyncio
-async def test_opensearch_error_with_malformed_info_falls_back_to_str(client_with_exc):
-    # info missing entirely / not a dict - extraction must degrade safely
-    # rather than raise while building the error message.
+async def test_opensearch_error_with_unattributable_info_is_500_without_leaking(
+    client_with_exc,
+):
+    # No parseable error body means nothing ties the failure to client input,
+    # so it must not be blamed on the caller - and the raw text must not leak.
     exc = OpenSearchRequestError(400, "some_error", None)
     async with await client_with_exc(exc) as client:
         resp = await client.post(
@@ -153,8 +140,59 @@ async def test_opensearch_error_with_malformed_info_falls_back_to_str(client_wit
             json={"filters": {"field": "status", "op": "equals", "value": "failed"}},
         )
 
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
+@pytest.mark.asyncio
+async def test_opensearch_dsl_parsing_error_is_500_not_400(client_with_exc):
+    # A malformed DSL body is something this service's compiler produced, not
+    # the caller - even when OpenSearch nests an illegal_argument_exception.
+    body = {
+        "error": {
+            "root_cause": [{"type": "parsing_exception", "reason": "unknown query [wildcrd]"}],
+            "type": "x_content_parse_exception",
+            "reason": "[1:10] [bool] failed to parse field [filter]",
+            "caused_by": {"type": "illegal_argument_exception", "reason": "internal detail"},
+        },
+        "status": 400,
+    }
+    exc = OpenSearchRequestError(400, "x_content_parse_exception", body)
+    async with await client_with_exc(exc) as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={"filters": {"field": "status", "op": "equals", "value": "failed"}},
+        )
+
+    assert resp.status_code == 500
+    assert "internal detail" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_opensearch_number_format_error_from_client_value_is_400(client_with_exc):
+    body = {
+        "error": {
+            "root_cause": [
+                {"type": "query_shard_exception", "reason": "failed to create query"}
+            ],
+            "type": "search_phase_execution_exception",
+            "reason": "all shards failed",
+            "caused_by": {
+                "type": "number_format_exception",
+                "reason": 'For input string: "abc"',
+            },
+        },
+        "status": 400,
+    }
+    exc = OpenSearchRequestError(400, "search_phase_execution_exception", body)
+    async with await client_with_exc(exc) as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={"filters": {"field": "session_id", "op": "equals", "value": "abc"}},
+        )
+
     assert resp.status_code == 400
-    assert resp.json()["detail"] == str(exc)
+    assert resp.json()["detail"] == 'For input string: "abc"'
 
 
 # --- filter_matched (mark_filter_matched wired through /sessions/search) ---
@@ -334,3 +372,60 @@ async def test_full_session_history_flags_original_matches_despite_refetch(
     assert resp.status_code == 200
     items = {i["id"]: i["filter_matched"] for i in resp.json()["items"]}
     assert items == {"sess-1": False, "node-1": False, "evt-1": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [0, -1, 1001])
+async def test_search_rejects_out_of_range_size_with_422(search_client, size):
+    async with await search_client(_tree_events()) as client:
+        resp = await client.post("/api/audit/sessions/search", json={"size": size})
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_token_granting_read_on_another_resource_only():
+    app = _build_search_app(_tree_events())
+    app.dependency_overrides[verify_user_jwt] = lambda: {
+        "org_id": ORG_ID,
+        "user_id": 42,
+        "retention_days": 0,
+        "BILLING": ["read"],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/audit/sessions/search", json={})
+
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_legacy_flat_actions_claim():
+    app = _build_search_app(_tree_events())
+    app.dependency_overrides[verify_user_jwt] = lambda: {
+        "org_id": ORG_ID,
+        "user_id": 42,
+        "retention_days": 0,
+        "actions": ["read"],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/audit/sessions/search", json={})
+
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_malformed_resource_claim():
+    app = _build_search_app(_tree_events())
+    app.dependency_overrides[verify_user_jwt] = lambda: {
+        "org_id": ORG_ID,
+        "user_id": 42,
+        "retention_days": 0,
+        "AUDIT": "read",
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/audit/sessions/search", json={})
+
+    assert resp.status_code == 403
