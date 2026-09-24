@@ -50,6 +50,9 @@ export function getDefaultNodeSize(type: NodeType, data?: unknown): { width: num
         case NodeType.SCHEDULE_TRIGGER:
             return { width: 330, height: 60 };
 
+        case NodeType.PERSISTENCE:
+            return { width: 330, height: 76 };
+
         default:
             return { width: 330, height: 60 };
     }

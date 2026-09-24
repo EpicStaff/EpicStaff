@@ -25,6 +25,7 @@ export interface PartialExportRequest {
     schedule_trigger_node_list: number[];
     edge_list: number[];
     knowledge_node_list: number[];
+    persistence_node_list: number[];
 }
 
 interface ExportAllBody {

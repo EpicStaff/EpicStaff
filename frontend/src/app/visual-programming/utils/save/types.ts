@@ -9,6 +9,7 @@ import {
     GraphNoteModel,
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
+    PersistenceNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -41,6 +42,7 @@ export interface NodeDiffByType {
     noteNodes: NodeDiff<GraphNoteModel>;
     classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
     knowledgeRetrieverNodes: NodeDiff<KnowledgeRetrieverNodeModel>;
+    persistenceNodes: NodeDiff<PersistenceNodeModel>;
 }
 
 export interface ConnectionDiff {

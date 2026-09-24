@@ -346,6 +346,7 @@ export function buildBulkSavePayload(
         knowledge_node_ids: nodeDiff.knowledgeRetrieverNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
+        persistence_node_ids: nodeDiff.persistenceNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         edge_ids: connectionDiff.toDelete.map((c) => c.data?.id).filter((id): id is number => id != null),
     };
 
@@ -476,6 +477,16 @@ export function buildBulkSavePayload(
             query: n.data?.query ?? '',
             search_method: n.data?.search_method ?? null,
             search_configs: n.data?.search_configs ?? null,
+            metadata: toNodeMetadata(n),
+        })),
+        persistence_node_list: nodeItems(nodeDiff.persistenceNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            persistence_table: n.data?.persistence_table ?? null,
+            mode: n.data?.mode ?? 'read',
+            entries: n.data?.entries ?? [],
             metadata: toNodeMetadata(n),
         })),
         edge_list: [...edgeList, ...edgeUpdateList],

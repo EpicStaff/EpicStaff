@@ -19,6 +19,7 @@ export const DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS: BasePort[] = [
             'task-in',
             'agent-in',
             'knowledge-retriever-in',
+            'persistence-in',
         ],
         position: 'right',
         color: '#21f367ff',

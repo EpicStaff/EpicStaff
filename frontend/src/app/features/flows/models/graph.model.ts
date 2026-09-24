@@ -10,6 +10,7 @@ import { FlowModel } from '../../../visual-programming/core/models/flow.model';
 import { GraphNote } from '../../../visual-programming/core/models/graph-note.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../visual-programming/core/models/knowledge-retriever-node.model';
 import { GetLLMNodeRequest } from '../../../visual-programming/core/models/llm-node.model';
+import { GetPersistenceNodeRequest } from '../../../visual-programming/core/models/persistence-node.model';
 import { PythonNode } from '../../../visual-programming/core/models/python-node.model';
 import {
     CreateScheduleTriggerNodeRequest,
@@ -66,6 +67,7 @@ export interface GraphDto extends GetGraphLightRequest {
     graph_note_list: GraphNote[];
     schedule_trigger_node_list: GetScheduleTriggerNodeRequest[];
     knowledge_node_list: GetKnowledgeRetrieverNodeRequest[];
+    persistence_node_list: GetPersistenceNodeRequest[];
 }
 
 export interface CreateGraphDtoRequest {
@@ -87,6 +89,7 @@ export interface CreateGraphDtoRequest {
     decision_table_node_list?: GetDecisionTableNodeRequest[];
     schedule_trigger_node_list?: CreateScheduleTriggerNodeRequest[];
     knowledge_node_list?: GetKnowledgeRetrieverNodeRequest[];
+    persistence_node_list?: GetPersistenceNodeRequest[];
 }
 
 export interface UpdateGraphDtoRequest {

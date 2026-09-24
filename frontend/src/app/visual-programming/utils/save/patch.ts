@@ -182,6 +182,11 @@ function buildCreatedNodeIdMap(
         existingIdsByType(NodeType.FILE_EXTRACTOR)
     );
     mapByNewIds(
+        nodeDiff.persistenceNodes.toCreate,
+        responseGraph.persistence_node_list ?? [],
+        existingIdsByType(NodeType.PERSISTENCE)
+    );
+    mapByNewIds(
         nodeDiff.audioToTextNodes.toCreate,
         responseGraph.audio_transcription_node_list ?? [],
         existingIdsByType(NodeType.AUDIO_TO_TEXT)

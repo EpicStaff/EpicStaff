@@ -14,6 +14,7 @@ import {
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
+    PersistenceNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -286,6 +287,18 @@ function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unkn
     };
 }
 
+function toPersistenceComparable(node: PersistenceNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        persistence_table: node.data?.persistence_table ?? null,
+        mode: node.data?.mode ?? 'read',
+        entries: node.data?.entries ?? [],
+        metadata: toNodeMetadata(node),
+    };
+}
+
 interface CdtConditionGroupUi {
     group_name: string;
     order?: number;
@@ -441,6 +454,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<KnowledgeRetrieverNodeModel>(previous.nodes, NodeType.KNOWLEDGE_RETRIEVER),
             nodesByType<KnowledgeRetrieverNodeModel>(current.nodes, NodeType.KNOWLEDGE_RETRIEVER),
             toKnowledgeRetrieverComparable
+        ),
+        persistenceNodes: diffNodesByBackendId(
+            nodesByType<PersistenceNodeModel>(previous.nodes, NodeType.PERSISTENCE),
+            nodesByType<PersistenceNodeModel>(current.nodes, NodeType.PERSISTENCE),
+            toPersistenceComparable
         ),
     };
 }

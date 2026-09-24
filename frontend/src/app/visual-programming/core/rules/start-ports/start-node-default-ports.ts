@@ -19,6 +19,7 @@ export const DEFAULT_START_NODE_PORTS: BasePort[] = [
             'task-in',
             'agent-in',
             'knowledge-retriever-in',
+            'persistence-in',
         ],
         position: 'right',
         color: '#d3d3d3',

@@ -7,6 +7,7 @@ import { ClassificationDecisionTableData } from './classification-decision-table
 import { CustomConditionalEdgeModelForNode } from './conditional-edge.model';
 import { DecisionTableNode } from './decision-table.model';
 import { GetKnowledgeRetrieverNodeRequest } from './knowledge-retriever-node.model';
+import { PersistenceNodeData } from './persistence-node.model';
 import { ViewPort } from './port.model';
 import { ScheduleTriggerNodeData } from './schedule-trigger.model';
 import { TaskNodeData } from './task-node.model';
@@ -144,6 +145,11 @@ export interface KnowledgeRetrieverNodeModel extends BaseNodeModel {
     data: GetKnowledgeRetrieverNodeRequest;
 }
 
+export interface PersistenceNodeModel extends BaseNodeModel {
+    type: NodeType.PERSISTENCE;
+    data: PersistenceNodeData;
+}
+
 export type NodeModel =
     | AgentNodeModel
     | TaskNodeModel
@@ -162,4 +168,5 @@ export type NodeModel =
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
     | KnowledgeRetrieverNodeModel
+    | PersistenceNodeModel
     | EndNodeModel;
