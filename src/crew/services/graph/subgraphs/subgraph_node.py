@@ -24,10 +24,10 @@ class SubGraphNode:
         subgraph_node_data: SubGraphNodeData,
         unique_subgraph_list: list[SubGraphData],
         graph_builder: StateGraph,
+        org_id: int,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
-        org_id: int | None = None,
     ):
         self.unique_subgraph_list = unique_subgraph_list
         self.subgraph_node_data = subgraph_node_data

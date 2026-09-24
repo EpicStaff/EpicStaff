@@ -84,6 +84,7 @@ def mock_llm_data():
 def mock_session_data() -> SessionData:
     return SessionData(
         id=123,
+        org_id=1,
         initial_state={"input": "Hello"},
         graph=GraphData(
             name="example_graph",
@@ -248,6 +249,7 @@ def test_run_decision_table_node_with_error(mock_services, mock_session_data):
 def _task_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=456,
+        org_id=1,
         initial_state={},
         graph=GraphData(
             name="task_node_graph",
@@ -305,6 +307,7 @@ def test_compile_from_schema_with_task_node_raises_without_service(
 def _agent_node_session_data(mock_llm_data) -> SessionData:
     return SessionData(
         id=789,
+        org_id=1,
         initial_state={},
         graph=GraphData(
             name="agent_node_graph",

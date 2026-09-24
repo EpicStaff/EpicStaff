@@ -393,7 +393,7 @@ class TestSessionDataRoundTrip:
         wire_entrypoint(graph, task_node)
 
         graph_data = SessionManagerService()._build_graph_data(graph)
-        session_data = SessionData(id=1, graph=graph_data)
+        session_data = SessionData(id=1, org_id=1, graph=graph_data)
 
         parsed = SessionData.model_validate_json(session_data.model_dump_json())
 
@@ -894,7 +894,7 @@ class TestPoolsContractCrossCheck:
         wire_entrypoint(graph, task_node)
 
         graph_data = SessionManagerService()._build_graph_data(graph)
-        session_data = SessionData(id=1, graph=graph_data)
+        session_data = SessionData(id=1, org_id=1, graph=graph_data)
 
         parsed = SessionData.model_validate_json(session_data.model_dump_json())
 
