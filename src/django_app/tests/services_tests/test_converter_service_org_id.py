@@ -13,7 +13,7 @@ input) so it can be injected into the sandbox as `globals()["org_id"]`.
 import pytest
 
 from tables.models import PythonCode, PythonCodeTool, PythonCodeToolConfig, Graph
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 
 

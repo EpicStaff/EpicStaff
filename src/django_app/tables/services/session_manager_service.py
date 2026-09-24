@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from django.db import transaction
+from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.models import (
     AgentNodeData,
     ConditionalEdgeData,
@@ -47,7 +48,6 @@ from tables.models.session_models import (
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
-from tables.services.rbac.api_key.principals import SystemServicePrincipal
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
     UndeclaredSecretError,

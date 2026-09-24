@@ -2,7 +2,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from tables.models import Secret
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.secrets import secret_encryption
 
 

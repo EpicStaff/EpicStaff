@@ -16,8 +16,7 @@ import secrets as secrets_module
 
 from django.conf import settings
 from loguru import logger
-
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 from storage_credentials.clients.minio_admin_client import MinioAdminGateway
 from storage_credentials.constants import ORG_USER_POLICY_NAME_PREFIX
@@ -79,9 +78,7 @@ class OrgStorageProvisioningService:
         (retention policy is out of scope -- see plan section 1)."""
         access_key = _org_access_key(org.id)
         try:
-            asyncio.run(
-                self._deprovision_in_minio(org_id=org.id, access_key=access_key)
-            )
+            asyncio.run(self._deprovision_in_minio(org_id=org.id, access_key=access_key))
         except Exception as error:
             raise OrgStorageProvisioningError(
                 f"Failed to deprovision MinIO storage user for org_id={org.id}: {error}"
@@ -90,9 +87,7 @@ class OrgStorageProvisioningService:
         org_credential_store.mark_revoked(org_id=org.id)
         logger.info("Deprovisioned org-level MinIO storage user for org_id={}", org.id)
 
-    async def _provision_in_minio(
-        self, *, org_id: int, access_key: str, secret_key: str
-    ) -> None:
+    async def _provision_in_minio(self, *, org_id: int, access_key: str, secret_key: str) -> None:
         # Each public method here runs its own one-off `asyncio.run()`
         # (see the module docstring), so there is no long-lived event loop
         # to cache a gateway/aiohttp session against across calls the way
@@ -107,9 +102,7 @@ class OrgStorageProvisioningService:
         )
         try:
             await gateway.add_user(access_key, secret_key)
-            policy = build_org_user_policy(
-                bucket=self._bucket, org_prefix=_org_prefix(org_id)
-            )
+            policy = build_org_user_policy(bucket=self._bucket, org_prefix=_org_prefix(org_id))
             await gateway.create_named_policy(_org_policy_name(org_id), policy)
             await gateway.attach_named_policy(_org_policy_name(org_id), access_key)
         finally:

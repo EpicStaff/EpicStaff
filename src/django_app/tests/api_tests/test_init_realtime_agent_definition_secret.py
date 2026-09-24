@@ -24,7 +24,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.models.realtime_models import RealtimeAgentDefinition
 from tables.services.secrets import secret_service
 from tests.fixtures import *  # noqa: F401,F403

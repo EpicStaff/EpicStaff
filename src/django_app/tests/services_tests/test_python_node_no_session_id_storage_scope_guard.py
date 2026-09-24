@@ -21,7 +21,7 @@ from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.redis import keys
 from storage_credentials.services.scope_validator import CredentialScopeValidator
 from tables.models import Graph, PythonCode, PythonNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 
 

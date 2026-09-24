@@ -5,13 +5,8 @@ from rest_framework.test import APIClient
 
 from tables.models import PythonCode
 from tables.models.graph_models import Graph, PythonNode
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-    RolePermission,
-)
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.services.secrets import secret_service
 
 NEUTRAL_CODE = "def main(**kwargs):\n    return 1\n"

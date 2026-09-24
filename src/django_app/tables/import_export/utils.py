@@ -1,10 +1,11 @@
 import re
 
 from django.conf import settings
+from rbac.models import Organization
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.models import Organization, PythonCode
+from tables.models import PythonCode
 from tables.models.label_models import Label
 
 

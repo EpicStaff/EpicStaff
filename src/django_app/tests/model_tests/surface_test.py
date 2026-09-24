@@ -39,7 +39,7 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from agents.serializers.surface_serializers import (
     SurfaceWriteSerializer,
 )
@@ -60,7 +60,7 @@ def org_request(org, superadmin_user):
     """Authenticated request scoped to `org`, for `SurfaceWriteSerializer`
     context. Its FK fields (owner_agent, python_tool, mcp_tool, storage_file,
     collection) resolve org scope from `request` via `OrgContextService` (see
-    `tables/serializers/org_scoped_fields.py`) — without a request they deny
+    `rbac/scoping/fields.py`) — without a request they deny
     every pk. `superadmin_user` bypasses the membership check so this fixture
     doesn't need an `OrganizationUser` row wired up.
 
@@ -919,7 +919,7 @@ def test_reject_storage_item_from_other_org(org, storage_file_other_org, org_req
 
     Rejected by the `storage_file` field itself (`OrgScopedPrimaryKeyRelatedField`
     narrows its queryset to the active org, so a cross-org pk looks like a
-    non-existent one — see `tables/serializers/org_scoped_fields.py`), before
+    non-existent one — see `rbac/scoping/fields.py`), before
     `SurfaceValidator.validate_storage_items`'s own wrong-org check ever runs.
     That makes this a plain DRF `ValidationError`, not `SurfaceValidationError`.
     """

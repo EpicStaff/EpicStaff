@@ -16,8 +16,7 @@ from contextlib import contextmanager
 from django.core.management.base import BaseCommand
 from django.db import connection
 from loguru import logger
-
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 from storage_credentials.exceptions import OrgStorageProvisioningError
 from storage_credentials.services.org_credential_store import org_credential_store
@@ -67,8 +66,7 @@ class Command(BaseCommand):
                 if not acquired:
                     skipped += 1
                     self.stdout.write(
-                        f"[org={org.id}] skipped (already being provisioned "
-                        f"by another process)"
+                        f"[org={org.id}] skipped (already being provisioned by another process)"
                     )
                     continue
 
@@ -92,6 +90,4 @@ class Command(BaseCommand):
                     )
                     self.stderr.write(f"[org={org.id}] FAILED: {error}")
 
-        self.stdout.write(
-            f"Done: provisioned={provisioned} skipped={skipped} failed={failed}"
-        )
+        self.stdout.write(f"Done: provisioned={provisioned} skipped={skipped} failed={failed}")

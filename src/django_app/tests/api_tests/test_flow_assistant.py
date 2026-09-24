@@ -17,15 +17,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models import (
-    Graph,
-    LLMConfig,
-    LLMModel,
-    Organization,
-    OrganizationUser,
-    Provider,
-    Role,
-)
+from rbac.models import Organization, OrganizationUser, Role
+from tables.models import Graph, LLMConfig, LLMModel, Provider
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,

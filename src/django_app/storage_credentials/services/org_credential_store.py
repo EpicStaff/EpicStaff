@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
-from tables.models import Organization, Secret
+from rbac.models import Organization
+from tables.models import Secret
 from tables.services.secrets.encryption import secret_encryption
 from tables.services.secrets.secret_service import secret_service
 
@@ -28,9 +29,7 @@ class OrgCredentialStore:
         marked revoked by `mark_revoked`) is deleted first: `Secret` enforces
         one row per (org, name), and reactivation always mints a brand new
         MinIO user rather than resurrecting the deprovisioned one."""
-        Secret.all_objects.filter(
-            org=org, name=SECRET_NAME_ORG_MINIO_USER, system=True
-        ).delete()
+        Secret.all_objects.filter(org=org, name=SECRET_NAME_ORG_MINIO_USER, system=True).delete()
         text = f"{access_key}{_CREDENTIAL_SEPARATOR}{secret_key}"
         return secret_service.create(
             text=text,

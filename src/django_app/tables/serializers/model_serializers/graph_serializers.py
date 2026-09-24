@@ -1,4 +1,8 @@
 from django.db import transaction
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 from rest_framework import serializers
 from tables.models.graph_models import (
     Graph,
@@ -32,10 +36,6 @@ from tables.serializers.model_serializers.node_serializers.trigger_serializers i
     WebhookTriggerNodeSerializer,
 )
 from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgScopedUniqueValidator,
-)
 
 
 class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):

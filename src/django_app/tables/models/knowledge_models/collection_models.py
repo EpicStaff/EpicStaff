@@ -3,6 +3,7 @@ import ntpath
 from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
 from loguru import logger
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
     ActiveManager,
@@ -10,7 +11,6 @@ from tables.models.base_models import (
     SoftDeleteMixin,
     soft_delete_consistency_constraint,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 def _is_bare_file_name(file_name: str) -> bool:

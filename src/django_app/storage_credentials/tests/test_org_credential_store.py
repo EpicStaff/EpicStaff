@@ -9,7 +9,8 @@ to `OrgCredentialStore`. `get()`/`exists()` must instead select the single
 
 import pytest
 
-from tables.models import Organization, Secret
+from rbac.models import Organization
+from tables.models import Secret
 from tables.services.secrets.secret_service import secret_service
 
 from storage_credentials.constants import SECRET_NAME_ORG_MINIO_USER
