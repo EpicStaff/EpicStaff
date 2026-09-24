@@ -1,3 +1,4 @@
+import copy
 from collections.abc import Callable
 
 from agents.models.surface_models import AgentInlineSurface, InlineSurface
@@ -20,6 +21,7 @@ from tables.models.graph_models import (
     FileExtractorNode,
     GraphNote,
     KnowledgeNode,
+    PersistenceNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -35,6 +37,7 @@ from tables.services.copy_services.inline_surface_copy_helpers import (
     copy_agent_node_tasks,
     copy_node_inline_surface,
 )
+from tables.services.persistence_table_service import PersistenceTableService
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
@@ -60,6 +63,20 @@ def copy_graph_note(graph: Graph, node: GraphNote) -> GraphNote:
 def copy_file_extractor_node(graph: Graph, node: FileExtractorNode) -> FileExtractorNode:
     return FileExtractorNode.objects.create(
         graph=graph,
+        **get_base_node_fields(node),
+    )
+
+
+def copy_persistence_node(graph: Graph, node: PersistenceNode) -> PersistenceNode:
+    # A cross-org copy must re-bind by name in the target org, never keep the source id.
+    table = node.persistence_table
+    return PersistenceNode.objects.create(
+        graph=graph,
+        persistence_table=PersistenceTableService().resolve_reference(
+            graph.org_id, node.persistence_table_id, table.name if table else None
+        ),
+        mode=node.mode,
+        entries=copy.deepcopy(node.entries),
         **get_base_node_fields(node),
     )
 
@@ -286,6 +303,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.FILE_EXTRACTOR_NODE: (
         "file_extractor_node_list",
         copy_file_extractor_node,
+    ),
+    NodeType.PERSISTENCE_NODE: (
+        "persistence_node_list",
+        copy_persistence_node,
     ),
     NodeType.AUDIO_TRANSCRIPTION_NODE: (
         "audio_transcription_node_list",

@@ -784,6 +784,32 @@ def test_restore_does_not_duplicate_task_node(manager, graph):
 
 
 @pytest.mark.django_db
+def test_restore_recreates_persistence_node_with_its_table(manager, graph):
+    from tables.models import PersistenceNode, PersistenceTable
+
+    table = PersistenceTable.objects.create(org=graph.org, name="Customers")
+    node = PersistenceNode.objects.create(
+        graph=graph,
+        node_name="persistence_node",
+        persistence_table=table,
+        mode="write",
+        entries=[{"alias": "a", "key": "k"}],
+    )
+    snapshot = manager.create_snapshot(graph)
+    # Edit after the snapshot, so only a real wipe-and-rebuild restores the old state.
+    node.mode = "delete"
+    node.persistence_table = None
+    node.save()
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    restored = graph.persistence_node_list.get()
+    assert restored.persistence_table_id == table.id
+    assert restored.mode == "write"
+    assert restored.entries == [{"alias": "a", "key": "k"}]
+
+
+@pytest.mark.django_db
 def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
     """
     Guard against regression: every reverse relation on Graph that

@@ -21,6 +21,7 @@ NODE_RELATIONS: dict[str, str] = {
     NodeType.PYTHON_NODE: "python_node_list",
     NodeType.WEBHOOK_TRIGGER_NODE: "webhook_trigger_node_list",
     NodeType.FILE_EXTRACTOR_NODE: "file_extractor_node_list",
+    NodeType.PERSISTENCE_NODE: "persistence_node_list",
     NodeType.AUDIO_TRANSCRIPTION_NODE: "audio_transcription_node_list",
     NodeType.START_NODE: "start_node_list",
     NodeType.DECISION_TABLE_NODE: "decision_table_node_list",

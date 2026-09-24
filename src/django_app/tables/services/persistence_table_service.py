@@ -109,6 +109,29 @@ class PersistenceTableService:
             graph_id__in=self._session_graph_ids(session), persistence_table=table
         ).exists()
 
+    def find_by_name(self, org_id: int, name: str) -> PersistenceTable | None:
+        return PersistenceTable.objects.filter(org_id=org_id, name__iexact=name).first()
+
+    def resolve_reference(
+        self, org_id: int, table_id: int | None, table_name: str | None
+    ) -> PersistenceTable | None:
+        """Re-bind a copied or imported node's table reference inside `org_id`.
+
+        The table with `table_id` wins only if it is in `org_id` and still carries
+        `table_name`; otherwise any table of `org_id` with that name; otherwise `None`.
+        A table id alone is never trusted, so a foreign-org id is never kept, and
+        nothing is created.
+        """
+        if not table_name:
+            return None
+        if table_id is not None:
+            same_table = PersistenceTable.objects.filter(
+                pk=table_id, org_id=org_id, name__iexact=table_name
+            ).first()
+            if same_table is not None:
+                return same_table
+        return self.find_by_name(org_id, table_name)
+
     def validate_key(self, key: str) -> None:
         if not key or len(key) > MAX_KEY_LENGTH:
             raise PersistenceKeyInvalidError(key, MAX_KEY_LENGTH)

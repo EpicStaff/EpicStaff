@@ -43,6 +43,7 @@ _GRAPH_RELATION_NAMES = (
     "python_node_list",
     "webhook_trigger_node_list",
     "file_extractor_node_list",
+    "persistence_node_list",
     "audio_transcription_node_list",
     "start_node_list",
     "decision_table_node_list",

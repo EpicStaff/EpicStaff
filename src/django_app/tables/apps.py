@@ -44,6 +44,7 @@ class TablesConfig(AppConfig):
             file_extractor_node,
             knowledge_node,
             note_node,
+            persistence_node,
             python_node,
             schedule_trigger_node,
             start_node,
@@ -126,6 +127,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(python_node.PythonNodeStrategy())
         entity_registry.register(audio_transcription_node.AudioTranscriptionNodeStrategy())
         entity_registry.register(file_extractor_node.FileExtractorNodeStrategy())
+        entity_registry.register(persistence_node.PersistenceNodeStrategy())
         entity_registry.register(telegram_trigger_node.TelegramTriggerNodeStrategy())
         entity_registry.register(webhook_trigger_node.WebhookTriggerNodeStrategy())
         entity_registry.register(decision_table_node.DecisionTableNodeStrategy())
