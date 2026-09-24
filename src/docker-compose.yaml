@@ -190,6 +190,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # ScheduleService polls tables_scheduletriggernode as soon as it starts. On a
+      # fresh volume django_app is still migrating then, and the column it selects
+      # (is_soft_deleted) only arrives at migration 0238 — so the query fails until
+      # migrations pass that point. django_app's healthcheck hits /ht/, which is only
+      # served once entrypoint.sh reaches `exec gunicorn` after `migrate`, so waiting
+      # for it guarantees the schema is complete.
+      django_app:
+        condition: service_healthy
 
   crewdb:
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:-latest}
@@ -476,6 +484,7 @@ services:
       AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
+      AGENT_RESULT_STREAM_TTL: ${AGENT_RESULT_STREAM_TTL:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}

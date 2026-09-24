@@ -2,6 +2,7 @@ from collections import defaultdict
 
 from django.db import transaction
 from loguru import logger
+from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied
 
 from tables.import_export.constants import DEPENDENCY_ORDER
@@ -10,7 +11,6 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
-from tables.models.rbac_models.rbac_enums import Permission
 
 
 class ImportService:

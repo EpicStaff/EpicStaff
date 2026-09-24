@@ -24,7 +24,7 @@ from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,
 )
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 def _make_naive_collection(name, org):

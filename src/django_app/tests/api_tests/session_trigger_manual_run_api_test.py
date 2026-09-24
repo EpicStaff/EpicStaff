@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.models.graph_models import GraphOrganizationUser
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 from tables.models.session_models import Session, SessionTrigger
 from tests.fixtures import *  # noqa: F401,F403
 

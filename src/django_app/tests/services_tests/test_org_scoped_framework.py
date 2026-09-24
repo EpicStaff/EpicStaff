@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from tables.views.mixins import (
+from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedViewSetMixin,
 )

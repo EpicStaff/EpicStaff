@@ -22,21 +22,8 @@ from tables.models.crew_models import (
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
-from tables.models import (
-    LLMConfig,
-    EmbeddingConfig,
-    EmbeddingModel,
-    LLMModel,
-    Provider,
-    Agent,
-    Session,
-    Graph,
-    StartNode,
-    PythonCodeTool,
-    PythonCode,
-    Organization,
-    Secret,
-)
+from rbac.models import Organization
+from tables.models import LLMConfig, EmbeddingConfig, EmbeddingModel, LLMModel, Provider, Agent, Session, Graph, StartNode, PythonCodeTool, PythonCode, Secret
 from tables.services.secrets import secret_encryption
 
 from tests.helpers import data_to_json_file

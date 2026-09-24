@@ -1,8 +1,8 @@
 from collections import defaultdict
 from dataclasses import dataclass
 
+from rbac.models.enums import Permission, ResourceType
 from tables.models import Secret
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.secrets.usage_sources import (
     CATEGORY_FLOWS,
     CATEGORY_ORDER,

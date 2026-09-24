@@ -7,7 +7,7 @@ import json
 import pytest
 
 from tables.models import PythonCode, PythonCodeResult, Secret
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import (
