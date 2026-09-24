@@ -16,7 +16,12 @@ let refresh$: Observable<unknown> | null = null;
  * These must not trigger the session refresh/reload below — the caller's own error
  * handling shows the message instead.
  */
-const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>(['built_in_model_immutable', 'permission_escalation_denied']);
+const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
+    'built_in_model_immutable',
+    'permission_escalation_denied',
+    // A flow save binding a persistent data table without persistent_data:USE; the save's own error handling shows it.
+    'persistence_table_use_denied',
+]);
 
 /**
  * Extracts the server `message` field from an HttpErrorResponse.

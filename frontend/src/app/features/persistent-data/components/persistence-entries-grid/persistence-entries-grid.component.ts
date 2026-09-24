@@ -70,8 +70,9 @@ export class PersistenceEntriesGridComponent {
         this.search();
         return 1;
     });
-    readonly entries = signal<PersistenceTableEntry[]>([]);
-    readonly totalCount = signal(0);
+    // Reset on a table switch, so the old table's rows (and their entry ids) never sit under the new heading.
+    readonly entries = linkedSignal<number, PersistenceTableEntry[]>({ source: this.tableId, computation: () => [] });
+    readonly totalCount = linkedSignal({ source: this.tableId, computation: () => 0 });
     readonly loading = signal(false);
     readonly rows = computed<TableRow[]>(() =>
         this.entries().map((entry) => ({ ...entry, preview: previewValue(entry.value) }))

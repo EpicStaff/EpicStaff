@@ -1,6 +1,7 @@
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { normalizeEntry } from '../../../core/helpers/persistence-node.helpers';
 import { PersistenceNodeModel } from '../../../core/models/node.model';
 import { GetPersistenceNodeRequest } from '../../../core/models/persistence-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -16,7 +17,11 @@ export function mapPersistenceNodeToModel(dto: GetPersistenceNodeRequest): Persi
         type: NodeType.PERSISTENCE,
         node_name: dto.node_name,
         nodeNumber: ui.nodeNumber,
-        data: { persistence_table: dto.persistence_table, mode: dto.mode, entries: dto.entries ?? [] },
+        data: {
+            persistence_table: dto.persistence_table,
+            mode: dto.mode,
+            entries: (dto.entries ?? []).map((entry) => normalizeEntry(entry, dto.mode)),
+        },
         position: ui.position,
         ports: null,
         color: ui.color,

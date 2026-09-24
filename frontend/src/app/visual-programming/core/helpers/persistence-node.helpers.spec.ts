@@ -1,8 +1,10 @@
 import {
     existenceBadge,
     extractPlaceholders,
+    isSameLookupRequest,
     isStaticKey,
     missingPlaceholders,
+    normalizeEntry,
     parseDefaultValue,
     reshapeEntriesForMode,
 } from './persistence-node.helpers';
@@ -47,5 +49,31 @@ describe('persistence node helpers', () => {
         expect(existenceBadge('delete', 'k', missing).label).toBe('not recorded — no-op');
         expect(existenceBadge('read', 'p_{id}', undefined).kind).toBe('dynamic');
         expect(existenceBadge('read', 'k', undefined).kind).toBe('unknown');
+    });
+
+    it('normalises entries to one key order per mode', () => {
+        // jsonb returns object keys sorted (shorter first), so a stored read entry loads as {key, alias, default}.
+        const fromDatabase = normalizeEntry({ key: 'k', alias: 'a', default: 1 }, 'read');
+        const fromPanel = normalizeEntry({ alias: 'a', key: 'k', default: 1 }, 'read');
+
+        expect(JSON.stringify(fromDatabase)).toBe(JSON.stringify(fromPanel));
+        expect(JSON.stringify(fromDatabase)).toBe('{"alias":"a","key":"k","default":1}');
+        expect(normalizeEntry({ key: 'k', alias: 'a', default: undefined }, 'read')).toStrictEqual({
+            alias: 'a',
+            key: 'k',
+        });
+        expect(normalizeEntry({ key: 'k', alias: 'a', default: null }, 'read')).toStrictEqual({
+            alias: 'a',
+            key: 'k',
+            default: null,
+        });
+        expect(JSON.stringify(normalizeEntry({ value: 'v', key: 'k' }, 'write'))).toBe('{"key":"k","value":"v"}');
+        expect(normalizeEntry({ alias: 'a', key: 'k', default: 1 }, 'delete')).toStrictEqual({ key: 'k' });
+    });
+
+    it('compares lookup requests by table and keys', () => {
+        expect(isSameLookupRequest({ table: 1, staticKeys: ['a'] }, { table: 1, staticKeys: ['a'] })).toBe(true);
+        expect(isSameLookupRequest({ table: 1, staticKeys: ['a'] }, { table: 2, staticKeys: ['a'] })).toBe(false);
+        expect(isSameLookupRequest({ table: 1, staticKeys: ['a'] }, { table: 1, staticKeys: ['a', 'b'] })).toBe(false);
     });
 });

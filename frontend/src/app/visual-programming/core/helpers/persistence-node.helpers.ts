@@ -1,5 +1,5 @@
 import { PersistenceEntryLookup } from '../../../features/persistent-data/models/persistence-table.model';
-import { PersistenceEntry, PersistenceMode } from '../models/persistence-node.model';
+import { PersistenceEntry, PersistenceMode, PersistenceReadEntry } from '../models/persistence-node.model';
 
 // Must stay identical to crew's key-template regex, so the panel flags exactly what crew rejects.
 const PLACEHOLDER = /\{([^{}]+)\}/g;
@@ -8,6 +8,18 @@ export interface ExistenceBadge {
     kind: 'recorded' | 'missing' | 'dynamic' | 'unknown';
     label: string;
     tooltip: string | null;
+}
+
+export interface LookupRequest {
+    table: number | null;
+    staticKeys: string[];
+}
+
+interface EntryFields {
+    key: string;
+    alias?: string;
+    value?: string;
+    default?: unknown;
 }
 
 const RECORDED_LABEL: Record<PersistenceMode, string> = {
@@ -35,12 +47,31 @@ export function missingPlaceholders(template: string, inputMapKeys: string[]): s
     return extractPlaceholders(template).filter((name) => !known.has(name));
 }
 
+/**
+ * Builds the canonical entry for a mode, with a fixed key order. Save diffs compare entries with
+ * JSON.stringify, and jsonb hands object keys back sorted, so the loader and the panel must both
+ * go through here or an unchanged node reads as changed.
+ */
+export function normalizeEntry(entry: EntryFields, mode: PersistenceMode): PersistenceEntry {
+    if (mode === 'read') {
+        const readEntry: PersistenceReadEntry = { alias: entry.alias ?? '', key: entry.key };
+        if (entry.default !== undefined) readEntry.default = entry.default;
+        return readEntry;
+    }
+    if (mode === 'write') return { key: entry.key, value: entry.value ?? '' };
+    return { key: entry.key };
+}
+
 export function reshapeEntriesForMode(entries: PersistenceEntry[], mode: PersistenceMode): PersistenceEntry[] {
-    return entries.map(({ key }) => {
-        if (mode === 'read') return { alias: '', key };
-        if (mode === 'write') return { key, value: '' };
-        return { key };
-    });
+    return entries.map(({ key }) => normalizeEntry({ key }, mode));
+}
+
+export function isSameLookupRequest(previous: LookupRequest, current: LookupRequest): boolean {
+    return (
+        previous.table === current.table &&
+        previous.staticKeys.length === current.staticKeys.length &&
+        previous.staticKeys.every((key, index) => key === current.staticKeys[index])
+    );
 }
 
 export function parseDefaultValue(text: string): unknown {

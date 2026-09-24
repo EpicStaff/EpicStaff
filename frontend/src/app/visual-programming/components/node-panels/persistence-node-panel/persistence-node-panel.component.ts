@@ -16,6 +16,7 @@ import {
     map,
     Observable,
     of,
+    skip,
     startWith,
     Subject,
     switchMap,
@@ -28,31 +29,31 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import {
     ExistenceBadge,
     existenceBadge,
+    isSameLookupRequest,
     isStaticKey,
+    LookupRequest,
     missingPlaceholders,
+    normalizeEntry,
     parseDefaultValue,
     reshapeEntriesForMode,
 } from '../../../core/helpers/persistence-node.helpers';
 import { PersistenceNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { PersistenceEntry, PersistenceMode, PersistenceReadEntry } from '../../../core/models/persistence-node.model';
+import { PersistenceEntry, PersistenceMode } from '../../../core/models/persistence-node.model';
+import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 
 // Mirrors MAX_KEY_LENGTH in tables/constants/persistence_constants.py.
 const PERSISTENCE_KEY_MAX_LENGTH = 512;
 const KEY_SUGGESTION_LIMIT = 20;
+const CANVAS_SYNC_DEBOUNCE_MS = 300;
 
 interface EntryFormValue {
     alias?: string;
     key: string;
     value?: string;
     default?: string;
-}
-
-interface LookupRequest {
-    table: number | null;
-    staticKeys: string[];
 }
 
 @Component({
@@ -91,6 +92,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private readonly persistenceTablesApi = inject(PersistenceTablesApiService);
     private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
     private readonly permissions = inject(PermissionsService);
+    private readonly sidePanelService = inject(SidePanelService);
     private readonly keySearch$ = new Subject<string>();
 
     constructor() {
@@ -159,6 +161,19 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             )
             .subscribe((lookups) => this.lookups.set(lookups));
 
+        // The canvas badge and subtitle show mode, table and key count, and read the node from the flow,
+        // so push those edits there now instead of on panel close. Autosave skips an invalid form.
+        form.valueChanges
+            .pipe(
+                startWith(null),
+                map(() => canvasSummary(form)),
+                distinctUntilChanged(),
+                skip(1),
+                debounceTime(CANVAS_SYNC_DEBOUNCE_MS),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.sidePanelService.triggerAutosave());
+
         return form;
     }
 
@@ -174,7 +189,9 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             data: {
                 persistence_table: this.form.value.persistence_table ?? null,
                 mode,
-                entries: entryValues.map((entryValue) => toEntry(entryValue, mode)),
+                entries: entryValues.map((entryValue) =>
+                    normalizeEntry({ ...entryValue, default: parseDefaultValue(entryValue.default ?? '') }, mode)
+                ),
             },
         };
     }
@@ -265,23 +282,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     }
 }
 
-function isSameLookupRequest(previous: LookupRequest, current: LookupRequest): boolean {
-    return (
-        previous.table === current.table &&
-        previous.staticKeys.length === current.staticKeys.length &&
-        previous.staticKeys.every((key, index) => key === current.staticKeys[index])
-    );
-}
-
-function toEntry(entryValue: EntryFormValue, mode: PersistenceMode): PersistenceEntry {
-    if (mode === 'read') {
-        const entry: PersistenceReadEntry = { alias: entryValue.alias ?? '', key: entryValue.key };
-        const parsedDefault = parseDefaultValue(entryValue.default ?? '');
-        if (parsedDefault !== undefined) entry.default = parsedDefault;
-        return entry;
-    }
-    if (mode === 'write') {
-        return { key: entryValue.key, value: entryValue.value ?? '' };
-    }
-    return { key: entryValue.key };
+function canvasSummary(form: FormGroup): string {
+    const { mode, persistence_table } = form.getRawValue();
+    return JSON.stringify([mode, persistence_table, (form.get('entries') as FormArray).length]);
 }

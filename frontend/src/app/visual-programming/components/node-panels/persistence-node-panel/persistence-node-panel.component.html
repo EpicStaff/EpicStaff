@@ -53,6 +53,7 @@
                                     class="entry-input"
                                     formControlName="alias"
                                     placeholder="Alias"
+                                    aria-label="Alias"
                                     autocomplete="off"
                                 />
                             }
@@ -62,6 +63,7 @@
                                     class="entry-input"
                                     formControlName="key"
                                     placeholder="Key, e.g. profile_{user_id}"
+                                    aria-label="Key"
                                     autocomplete="off"
                                     [attr.list]="keySuggestionsListId()"
                                     (input)="onKeyInput($event)"
@@ -86,6 +88,7 @@
                                     class="entry-input"
                                     formControlName="default"
                                     placeholder="Default (JSON or text)"
+                                    aria-label="Default value"
                                     autocomplete="off"
                                 />
                             }
@@ -95,6 +98,7 @@
                                     class="entry-input"
                                     formControlName="value"
                                     placeholder="Input map alias"
+                                    aria-label="Value alias"
                                     autocomplete="off"
                                 />
                             }
