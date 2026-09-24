@@ -4,9 +4,9 @@ import settings
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.graph.session_audit_provider import get_session_audit_writer
-from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
+from services.run_python_code_service import RunPythonCodeService
 from utils.logger import logger
 
 
@@ -16,14 +16,14 @@ async def main():
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         user=settings.REDIS_USER,
-        password=settings.REDIS_PASSWORD
+        password=settings.REDIS_PASSWORD,
     )
     python_code_executor_service = RunPythonCodeService(redis_service=redis_service)
     knowledge_search_service = KnowledgeSearchService(redis_service=redis_service)
     agent_task_service = AgentTaskService(
         redis_service=redis_service,
         request_stream=settings.AGENT_REQUEST_STREAM,
-        result_stream=settings.AGENT_RESULT_STREAM,
+        result_stream_prefix=settings.AGENT_RESULT_STREAM,
         default_timeout=settings.AGENT_RESULT_TIMEOUT,
     )
     session_manager_service = GraphSessionManagerService(

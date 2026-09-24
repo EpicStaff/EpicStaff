@@ -4,8 +4,7 @@ import socket
 import sys
 from uuid import uuid4
 
-from loguru import logger
-
+import settings
 from app.data_loader import DataLoader
 from app.enums import RunType
 from app.factory import RunnerFactory
@@ -14,15 +13,16 @@ from app.llm.litellm_client import LiteLLMClient
 from app.loop.agent_loop import DefaultAgentLoop
 from app.request_handler import RequestHandler
 from app.resources.resolver import AgentResolver
-from app.tools.mcp.client_factory import FastMCPClientFactory
-from app.tools.mcp.gateway import McpToolGateway
 from app.runners.deps import RunnerDependencies
 from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
 from app.sandbox.client import SandboxClient
-import settings
-from shared.redis_streams import RedisStreamClient, StreamEnvelope
+from app.tools.mcp.client_factory import FastMCPClientFactory
+from app.tools.mcp.gateway import McpToolGateway
+from loguru import logger
+
 from shared.knowledge.client import KnowledgeClient
+from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 
 async def main() -> None:
@@ -79,7 +79,8 @@ async def main() -> None:
         loader=loader,
         factory=factory,
         redis_client=client,
-        result_stream=settings.AGENT_RESULT_STREAM,
+        result_stream_prefix=settings.AGENT_RESULT_STREAM,
+        result_stream_ttl_s=settings.AGENT_RESULT_STREAM_TTL,
         request_stream=settings.AGENT_REQUEST_STREAM,
         consumer_group=settings.AGENT_CONSUMER_GROUP,
     )

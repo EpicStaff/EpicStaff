@@ -7,6 +7,7 @@ import {
     Injector,
     input,
     signal,
+    viewChild,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -23,6 +24,7 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
     SelectItem,
+    ToggleSwitchComponent,
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
@@ -40,12 +42,11 @@ import {
 } from '../../../../features/agent-definitions/pages/agent-definitions-page/components/surface-summary-dialog/surface-summary-dialog.component';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
-import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
-import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { InlineSurface } from '../../../core/models/task-node.model';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import {
@@ -61,6 +62,7 @@ import {
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
     InstructionsView,
     InstructionsViewToggleComponent,
@@ -89,6 +91,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         InstructionsViewToggleComponent,
         MarkdownComponent,
         ColumnResizeDividerComponent,
+        InputsYouCanUseComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -113,6 +116,15 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly instructionsView = signal<InstructionsView>('preview');
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
+
+    private readonly instructionsTextareaSchemaView = viewChild<VariableHighlightTextareaComponent>(
+        'instructionsTextareaSchemaView'
+    );
+    private readonly instructionsTextareaMainPane =
+        viewChild<VariableHighlightTextareaComponent>('instructionsTextareaMainPane');
+    private readonly instructionsTextareaCollapsed = viewChild<VariableHighlightTextareaComponent>(
+        'instructionsTextareaCollapsed'
+    );
 
     outputSchemaText = '{}';
     outputSchemaError = '';
@@ -387,6 +399,19 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     copyInstructions(): void {
         this.copyToClipboard(this.form.get('instructions')?.value || '');
+    }
+
+    insertInputToInstructions(name: string): void {
+        if (this.mainView() === 'instructions' && this.instructionsView() === 'preview') {
+            this.setInstructionsView('edit');
+        }
+        setTimeout(() => {
+            const target =
+                this.instructionsTextareaSchemaView() ??
+                this.instructionsTextareaMainPane() ??
+                this.instructionsTextareaCollapsed();
+            target?.insertAtCursor(name);
+        });
     }
 
     copySchema(): void {

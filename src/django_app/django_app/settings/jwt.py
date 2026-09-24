@@ -1,9 +1,8 @@
 from datetime import timedelta
 
-from django_app.settings import env
-from django_app.settings import SECRET_KEY
 from src.shared import humanize
 
+from django_app.settings import SECRET_KEY, env
 
 SIMPLE_JWT = {
     "SIGNING_KEY": SECRET_KEY,

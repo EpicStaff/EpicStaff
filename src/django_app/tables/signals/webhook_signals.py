@@ -1,9 +1,8 @@
-from loguru import logger
 from django.db import transaction
-from django.db.models.signals import post_save, post_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
-
-from tables.services.webhook_trigger_service import WebhookTriggerService
+from loguru import logger
+from tables.models.graph_models import WebhookTriggerNode
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -11,7 +10,7 @@ from tables.models.webhook_models import (
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
-from tables.models.graph_models import WebhookTriggerNode
+from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
 def _re_register_webhooks(model_name: str, id_: int) -> None:
@@ -115,9 +114,7 @@ def _cleanup_orphaned_twilio_auth(trigger_id: int | None) -> None:
     _cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.TWILIO,
-        still_claimed=TwilioChannel.objects.filter(
-            webhook_trigger_id=trigger_id
-        ).exists(),
+        still_claimed=TwilioChannel.objects.filter(webhook_trigger_id=trigger_id).exists(),
     )
 
 
@@ -125,9 +122,7 @@ def _cleanup_orphaned_webhook_node_auth(trigger_id: int | None) -> None:
     _cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.WEBHOOK,
-        still_claimed=WebhookTriggerNode.objects.filter(
-            webhook_trigger_id=trigger_id
-        ).exists(),
+        still_claimed=WebhookTriggerNode.objects.filter(webhook_trigger_id=trigger_id).exists(),
     )
 
 
@@ -175,4 +170,3 @@ def twilio_channel_post_save_handler(sender, instance: TwilioChannel, **_):
 def twilio_channel_post_delete_handler(sender, instance: TwilioChannel, **_):
     trigger_id = instance.webhook_trigger_id
     _cleanup_orphaned_twilio_auth(trigger_id)
-

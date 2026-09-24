@@ -1,7 +1,7 @@
-from django.db import models
 import uuid
-from pgvector.django import VectorField
-from pgvector.django import HnswIndex
+
+from django.db import models
+from pgvector.django import HnswIndex, VectorField
 
 
 class MemoryDatabase(models.Model):

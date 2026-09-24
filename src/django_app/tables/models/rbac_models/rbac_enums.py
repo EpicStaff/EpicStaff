@@ -20,6 +20,7 @@ class ResourceType(models.TextChoices):
     AUDIT = "audit", "Audit"
     VOICE = "voice", "Voice"
     SURFACES = "surfaces", "Surfaces"
+    WEBHOOKS = "webhooks", "Webhooks"
 
 
 class Permission(IntFlag):

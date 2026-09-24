@@ -4,7 +4,6 @@ from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from PIL import Image, UnidentifiedImageError
-
 from tables.services.rbac.rbac_exceptions import (
     AvatarTooLargeError,
     InvalidAvatarError,
@@ -69,9 +68,7 @@ class UserAvatarStorageService:
         if size is None or size > settings.AVATAR_MAX_SIZE:
             max_mb = settings.AVATAR_MAX_SIZE // (1024 * 1024)
             raise AvatarTooLargeError(
-                detail=(
-                    f"Avatar file exceeds the maximum allowed size " f"({max_mb} MB)."
-                )
+                detail=(f"Avatar file exceeds the maximum allowed size ({max_mb} MB).")
             )
 
         # 2. Pillow real-image verify. verify() consumes the file pointer

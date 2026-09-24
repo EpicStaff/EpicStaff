@@ -21,7 +21,7 @@ Hierarchy
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,7 +46,7 @@ class AgentTaskSpec(BaseModel):
     context: list[str] = []
 
 
-class RunType(str, Enum):
+class RunType(StrEnum):
     """Execution mode for an agent request.
 
     ``SINGLE_TASK`` — one prompt, one ``AgentLoop`` invocation.
@@ -58,7 +58,7 @@ class RunType(str, Enum):
     LIST_OF_TASKS = "LIST_OF_TASKS"
 
 
-class StopReason(str, Enum):
+class StopReason(StrEnum):
     """Terminal reason for one AgentLoop run; travels on LoopResult.stop_reason to crew/FE."""
 
     COMPLETED = "completed"  # agent returned a final answer, stopped calling tools
@@ -266,7 +266,7 @@ class LoopResult(BaseModel):
     """Summary returned by ``AgentLoop.run`` after the tool-use cycle ends.
 
     Consumed by ``Emitter.on_final`` to build the outbound result envelope
-    published to ``agent.results``.
+    published to the run's own result stream (``agent_result_stream``).
     """
 
     model_config = ConfigDict(frozen=True)

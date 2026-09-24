@@ -46,37 +46,37 @@
         border-radius: 10px;
         row-gap: 1.5rem;
         background-color: var(--color-line);
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: max-content calc(16px + 2.875rem) minmax(0, 1fr);
+        align-items: center;
     }
 
     &__config-title {
+        grid-column: 1 / -1;
         font-size: 1.125rem;
         color: var(--color-text-primary);
     }
 
     &__config-row {
-        display: flex;
-        align-items: center;
+        display: contents;
     }
 
     &__config-label {
-        width: 75px;
-        flex-shrink: 0;
-        text-align: right;
+        grid-column: 1;
+        white-space: nowrap;
         font-size: 0.875rem;
         line-height: 130%;
-        color: var(--color-text-primary);
+        color: var(--color-text-secondary);
     }
 
     &__config-tooltip {
-        flex-shrink: 0;
+        grid-column: 2;
         margin-left: 1rem;
         color: var(--accent-color);
         margin-right: 1.875rem;
     }
 
     &__config-select {
-        flex: 1;
+        grid-column: 3;
     }
 }

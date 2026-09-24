@@ -35,9 +35,7 @@ class Role(models.Model):
 
 
 class RolePermission(models.Model):
-    role = models.ForeignKey(
-        "Role", on_delete=models.CASCADE, related_name="permissions_set"
-    )
+    role = models.ForeignKey("Role", on_delete=models.CASCADE, related_name="permissions_set")
     resource_type = models.CharField(max_length=32, choices=ResourceType.choices)
     permissions = models.IntegerField(default=0)
 

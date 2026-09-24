@@ -8,11 +8,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import AgentRequest, LoopResult, RunType, TokenUsage
-
+from shared.redis_streams import agent_result_stream
 
 # ---------------------------------------------------------------------------
 # The canonical example request blob (no correlation_id — DataLoader injects it)
@@ -233,15 +232,22 @@ async def test_agent_result_payload_key_set_includes_tasks():
 
     fake_client = MagicMock()
 
-    async def capture_publish(stream: str, fields: dict) -> None:
+    async def capture_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
         published.append(fields)
 
     fake_client.publish = capture_publish
 
     emitter = RedisStreamBatchEmitter(
         client=fake_client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="corr-1",
+        result_stream_ttl_s=3600,
     )
     result = LoopResult(
         final_text="done",
@@ -290,10 +296,22 @@ def test_live_event_types_include_knowledge_search():
     """Pins 'agent.knowledge_search' as a recognized live envelope type
     alongside the existing tool-call/tool-result/task-start/task-finish set."""
     assert "agent.knowledge_search" in LIVE_EVENT_TYPES
-    assert LIVE_EVENT_TYPES == {
+    assert {
         "agent.tool_call",
         "agent.tool_result",
         "agent.task_start",
         "agent.task_finish",
         "agent.knowledge_search",
-    }
+    } == LIVE_EVENT_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Per-run result stream name (crew <-> agent wire contract)
+# ---------------------------------------------------------------------------
+
+
+def test_agent_result_stream_name_is_prefix_colon_correlation_id():
+    """Crew reads, and the agent publishes to, ``<prefix>:<correlation_id>``.
+    Both sides call ``agent_result_stream``; pin the format so a change to it
+    is a visible contract change."""
+    assert agent_result_stream("agent.results", "corr-1") == "agent.results:corr-1"

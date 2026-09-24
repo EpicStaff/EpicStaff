@@ -49,14 +49,8 @@
                     LLM Model
                 </label>
 
-                <app-help-tooltip
-                    class="select-rag__config-tooltip"
-                    text="Select LLM Model"
-                    position="right"
-                    tooltipClass="dialog__label-tooltip"
-                />
-
                 <app-llm-model-selector
+                    class="select-rag__config-select"
                     [placeholder]="'Select LLM config'"
                     [(ngModel)]="selectedLLM"
                 />

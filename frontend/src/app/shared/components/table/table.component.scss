@@ -30,21 +30,21 @@
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
-.table-header-cell {
-    display: flex;
-    align-items: center;
-    font-size: var(--text-body-bold-size);
-    font-weight: var(--text-body-bold-weight);
-    color: var(--text-secondary-60);
-    text-transform: uppercase;
-    padding: 0 0.5rem;
-
+.cell {
     &.center {
         justify-content: center;
+
+        .col-label {
+            text-align: center;
+        }
     }
 
     &.end {
         justify-content: flex-end;
+
+        .col-label {
+            text-align: end;
+        }
     }
 }
 
@@ -167,6 +167,24 @@
             flex: none;
         }
     }
+
+    // Positions content a custom appTableCell template left unstretched (cross-scope, so `> *` above doesn't reach it).
+    &.center {
+        justify-content: center;
+    }
+
+    &.end {
+        justify-content: flex-end;
+    }
+
+    // The built-in actions cell IS stretched by `> *` above, so it needs its own justify-content instead.
+    &.center ::ng-deep .actions-cell {
+        justify-content: center;
+    }
+
+    &.end ::ng-deep .actions-cell {
+        justify-content: flex-end;
+    }
 }
 
 // ===== SHARED CELL PATTERNS =====
@@ -188,7 +206,7 @@
     .actions-cell {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 8px;
     }
 
     .action-btn {

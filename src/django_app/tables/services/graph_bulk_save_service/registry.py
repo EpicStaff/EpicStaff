@@ -38,12 +38,11 @@ from tables.serializers.graph_bulk_save_serializers import (
 )
 from tables.services.graph_bulk_save_service.factories import (
     ClassificationDecisionTableNodeSaveableFactory,
-    DefaultNodeSaveableFactory,
     DecisionTableNodeSaveableFactory,
+    DefaultNodeSaveableFactory,
     KnowledgeNodeSaveableFactory,
     NodeSaveableFactory,
 )
-
 
 # Singletons — factories are stateless.
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()

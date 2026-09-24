@@ -9,15 +9,6 @@
 }
 
 .panel-header {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--color-divider-subtle);
-    flex-shrink: 0;
-    min-height: 48px;
-    gap: 10px;
-
     .header-naming-container {
         display: flex;
         align-items: center;
@@ -26,44 +17,15 @@
         min-width: 0;
     }
 
-    .text {
-        min-width: 0;
-        margin: 0;
-        font-weight: var(--text-body-medium-weight);
-        font-size: var(--text-body-medium-size);
-        line-height: 1.2;
-        letter-spacing: -0.03em;
-    }
-
-    .btn-switch-session {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        min-width: 28px;
-        min-height: 28px;
+    .panel-header__close {
         border: 1px solid var(--graphite-650);
         transition:
             border-color 0.2s ease,
             background-color 0.2s ease,
             color 0.2s ease;
-        background-color: transparent;
-        border-radius: 4px;
-        padding: 0;
-        color: var(--fog-alpha-60);
-        cursor: pointer;
-
-        &:hover,
-        &:focus {
-            background-color: var(--graphite-700);
-            color: var(--color-text-primary);
-        }
 
         &:active,
         &[aria-pressed='true'] {
-            background-color: var(--accent-color);
-            color: var(--color-text-primary);
             border-color: var(--accent-color);
         }
 
@@ -74,11 +36,6 @@
             cursor: not-allowed;
             opacity: 0.5;
         }
-
-        app-svg-icon {
-            display: block;
-            flex-shrink: 0;
-        }
     }
 
     .icon {
@@ -87,11 +44,6 @@
         justify-content: center;
         flex-shrink: 0;
         color: var(--accent-color);
-    }
-
-    .icon app-svg-icon {
-        display: block;
-        flex-shrink: 0;
     }
 
     .btn-go-to-arrow {
@@ -124,11 +76,6 @@
             background-color: transparent;
             color: var(--accent-color);
             border-color: var(--accent-color);
-        }
-
-        app-svg-icon {
-            display: block;
-            flex-shrink: 0;
         }
 
         .arrow-up-custom {

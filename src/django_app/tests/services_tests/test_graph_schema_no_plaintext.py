@@ -15,6 +15,7 @@ from tables.models.graph_models import AgentNode, Edge, StartNode
 from tables.models.rbac_models import Organization
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 
 SENTINEL = "sk-SENTINEL-must-never-be-persisted-9f3a"
 
@@ -68,7 +69,9 @@ class TestGraphSchemaNeverHoldsPlaintext:
             lambda channel, message: published.append((channel, message)) or 2,
         )
 
-        session_id = service.run_session(graph_id=graph.pk, variables={})
+        session_id = service.run_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
         session = Session.objects.get(pk=session_id)
 
         stored = json.dumps(session.graph_schema)
@@ -91,7 +94,9 @@ class TestGraphSchemaNeverHoldsPlaintext:
             service.redis_service.redis_client, "publish", lambda channel, message: 2
         )
 
-        session = service.create_session(graph_id=graph.pk, variables={})
+        session = service.create_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
         session_data = service.create_session_data(session=session)
 
         service.redis_service.publish_session_data(
@@ -122,7 +127,9 @@ class TestUnresolvableSecretFailsTheSession:
         )
 
         with pytest.raises(Exception):
-            service.run_session(graph_id=graph.pk, variables={})
+            service.run_session(
+                graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            )
 
         session = Session.objects.filter(graph_id=graph.pk).latest("pk")
         assert session.status == Session.SessionStatus.ERROR
@@ -182,7 +189,9 @@ class TestDeclaredNodeSecretsNeverPersist:
             lambda channel, message: published.append((channel, message)) or 2,
         )
 
-        session_id = service.run_session(graph_id=graph.pk, variables={})
+        session_id = service.run_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
         session = Session.objects.get(pk=session_id)
 
         stored = json.dumps(session.graph_schema)

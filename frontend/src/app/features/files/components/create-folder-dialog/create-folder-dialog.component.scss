@@ -362,7 +362,7 @@
     &__label {
         font-size: var(--text-body-size);
         font-weight: var(--text-body-weight);
-        color: var(--color-text-primary);
+        color: var(--color-text-secondary);
     }
 
     &__label-group {
@@ -387,7 +387,7 @@
         overflow: hidden;
         background-color: var(--color-input-background);
         border: 1px solid var(--color-divider-regular);
-        border-radius: 0.375rem;
+        border-radius: 4px;
         cursor: pointer;
         flex-shrink: 1;
         transition: border-color 0.15s ease;
@@ -575,7 +575,7 @@
     &__input {
         padding: 0.5rem 0.75rem;
         border: 1px solid var(--color-divider-regular);
-        border-radius: 0.375rem;
+        border-radius: 4px;
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
         font-size: 0.875rem;

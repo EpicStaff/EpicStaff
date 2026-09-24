@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.rbac_models import Organization, OrganizationConfig, User
 
 
@@ -90,5 +89,5 @@ class OrganizationListResponseSerializer(OrganizationResponseSerializer):
     admins = OrganizationAdminUserSerializer(many=True, read_only=True)
 
     class Meta(OrganizationResponseSerializer.Meta):
-        fields = OrganizationResponseSerializer.Meta.fields + ["admins"]
+        fields = [*OrganizationResponseSerializer.Meta.fields, "admins"]
         read_only_fields = fields

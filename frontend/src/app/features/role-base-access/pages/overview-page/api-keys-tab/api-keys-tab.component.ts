@@ -7,13 +7,14 @@ import {
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
-    AppTableRowAction,
     ConfirmationDialogService,
+    DeleteButtonComponent,
     LoadingSpinnerComponent,
     MultiSelectComponent,
     MultiSelectTriggerDirective,
     SearchComponent,
     SelectItem,
+    StopButtonComponent,
     TableRow,
 } from '@shared/components';
 import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
@@ -37,8 +38,8 @@ import {
     getAdminRevokeConfirmationData,
     getBulkDeleteConfirmationData,
     getBulkRevokeConfirmationData,
+    rbacErrorMessage,
 } from '../../../utils';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'All', value: null },
@@ -64,6 +65,8 @@ const STATUS_ITEMS: SelectItem[] = [
         StatusBadgeComponent,
         UserAvatarComponent,
         DatePipe,
+        DeleteButtonComponent,
+        StopButtonComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -112,23 +115,6 @@ export class ApiKeysTabComponent {
         return [{ name: 'All', value: null }, ...items];
     });
 
-    private readonly rowActions: AppTableRowAction[] = [
-        {
-            icon: 'x',
-            tooltip: 'Revoke key',
-            variant: 'warning',
-            hidden: (row) => row['status'] !== ApiKeyStatus.ACTIVE || !this.canRetireRow(row),
-            onClick: (row) => this.onRevokeKey(row),
-        },
-        {
-            icon: 'trash',
-            tooltip: 'Delete key',
-            variant: (row) => (row['status'] === ApiKeyStatus.ACTIVE ? 'danger' : 'default'),
-            hidden: (row) => !this.canRetireRow(row),
-            onClick: (row) => this.onDeleteKey(row),
-        },
-    ];
-
     protected readonly columns = computed<AppTableColumnDef[]>(() => [
         {
             key: 'owner',
@@ -153,8 +139,13 @@ export class ApiKeysTabComponent {
             filterServerSide: true,
             align: 'center',
         },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'center', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
     ]);
+
+    /** Revoke is offered only for active keys the caller can retire. */
+    canRevokeRow(row: TableRow): boolean {
+        return row['status'] === ApiKeyStatus.ACTIVE && this.canRetireRow(row);
+    }
 
     protected readonly tableData = computed<TableRow[]>(() =>
         this.keys()
@@ -224,7 +215,7 @@ export class ApiKeysTabComponent {
         this.organizationsService.getOrganizations().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
-    private canRetireRow(row: TableRow): boolean {
+    canRetireRow(row: TableRow): boolean {
         if (this.permissionsService.isSuperadmin) {
             return true;
         }

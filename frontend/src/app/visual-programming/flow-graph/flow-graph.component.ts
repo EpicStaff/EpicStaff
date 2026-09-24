@@ -39,13 +39,13 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
+import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
-import { ToastService } from '../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
@@ -61,7 +61,6 @@ import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edi
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
-import { NodeType } from '../core/enums/node-type';
 import { computeAutoArrangePositions } from '../core/helpers/auto-arrange.util';
 import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
@@ -160,6 +159,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private nodePanelShell?: NodePanelShellComponent;
 
     @ViewChild('arrangeBtnRef') private arrangeBtnRef?: ElementRef<HTMLButtonElement>;
+
+    @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
+
+    public closeNodesSearch(): void {
+        this.nodesSearchComponent?.closeSearch();
+    }
 
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
@@ -783,34 +788,33 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    public commitSidePanelToFlow(): void {
-        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
-        if (updatedNode) {
+    public commitSidePanelToFlow(): boolean {
+        if (!this.nodePanelShell?.hasPanelInstance()) {
+            return true;
+        }
+        // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+        // get a node back here — even when their form is invalid — so their own invalid
+        // state can be reported by a flow-wide validation + blocking toast further down
+        // the save pipeline instead of a hard client-side abort. A panel with its own hard
+        // client-side validation that must never reach the backend (e.g. the
+        // schedule-trigger panel's date/timezone checks) can override
+        // `captureForValidation()` to return `null` on failure — which aborts the entire
+        // save right here (no request sent), matching this panel's pre-existing behavior.
+        const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
+        if (updatedNode === null) {
+            return false;
+        }
+        // Skip the writeback if the captured node was removed from the flow
+        // (e.g. during DT→CDT conversion the old panel instance lingers briefly
+        //  before the outlet swaps to the newly-selected node's panel).
+        if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
             this.flowService.updateNode(updatedNode);
         }
+        return true;
     }
 
     public emitSave(): void {
-        if (this.nodePanelShell?.hasPanelInstance()) {
-            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
-            // get a node back here — even when their form is invalid — so their own invalid
-            // state can be reported by a flow-wide validation + blocking toast further down
-            // the save pipeline instead of a hard client-side abort. A panel with its own hard
-            // client-side validation that must never reach the backend (e.g. the
-            // schedule-trigger panel's date/timezone checks) can override
-            // `captureForValidation()` to return `null` on failure — which aborts the entire
-            // save right here (no request sent), matching this panel's pre-existing behavior.
-            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
-            if (updatedNode === null) {
-                return;
-            }
-            // Skip the writeback if the captured node was removed from the flow
-            // (e.g. during DT→CDT conversion the old panel instance lingers briefly
-            //  before the outlet swaps to the newly-selected node's panel).
-            if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
-                this.flowService.updateNode(updatedNode);
-            }
-        }
+        if (!this.commitSidePanelToFlow()) return;
         this.save.emit(this.flowService.getFlowState());
     }
 

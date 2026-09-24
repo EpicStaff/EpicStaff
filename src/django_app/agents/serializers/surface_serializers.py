@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 from rest_framework import serializers
+from tables.models.graph_models import StorageFile
+from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeTool
+from tables.serializers.org_scoped_fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+    OrgVisiblePrimaryKeyRelatedField,
+)
 
 from agents.models.surface_models import (
+    StorageAccess,
     Surface,
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphDriftSearchConfig,
@@ -13,20 +23,10 @@ from agents.models.surface_models import (
     SurfaceNaiveSearchConfig,
     SurfacePythonTool,
     SurfaceStorageItem,
-    StorageAccess,
     ToolMode,
 )
-from tables.models.knowledge_models.collection_models import SourceCollection
-from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeTool
-from tables.models.graph_models import StorageFile
 from agents.services.surface_service import SurfaceService
 from agents.validators.surface_validator import SurfaceValidator
-from tables.serializers.org_scoped_fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-    OrgVisiblePrimaryKeyRelatedField,
-)
 
 
 class SurfacePythonToolReadSerializer(serializers.ModelSerializer):
@@ -127,18 +127,10 @@ class SurfaceGraphDriftSearchConfigReadSerializer(serializers.ModelSerializer):
 
 class SurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
     naive_search_config = SurfaceNaiveSearchConfigReadSerializer(read_only=True)
-    graph_basic_search_config = SurfaceGraphBasicSearchConfigReadSerializer(
-        read_only=True
-    )
-    graph_local_search_config = SurfaceGraphLocalSearchConfigReadSerializer(
-        read_only=True
-    )
-    graph_global_search_config = SurfaceGraphGlobalSearchConfigReadSerializer(
-        read_only=True
-    )
-    graph_drift_search_config = SurfaceGraphDriftSearchConfigReadSerializer(
-        read_only=True
-    )
+    graph_basic_search_config = SurfaceGraphBasicSearchConfigReadSerializer(read_only=True)
+    graph_local_search_config = SurfaceGraphLocalSearchConfigReadSerializer(read_only=True)
+    graph_global_search_config = SurfaceGraphGlobalSearchConfigReadSerializer(read_only=True)
+    graph_drift_search_config = SurfaceGraphDriftSearchConfigReadSerializer(read_only=True)
 
     class Meta:
         model = SurfaceKnowledge
@@ -153,9 +145,7 @@ class SurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
 
 
 class SurfacePythonToolWriteSerializer(serializers.Serializer):
-    python_tool = OrgVisiblePrimaryKeyRelatedField(
-        queryset=PythonCodeTool.objects.all()
-    )
+    python_tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
     mode = serializers.ChoiceField(choices=ToolMode.choices)
 
 
@@ -166,18 +156,10 @@ class SurfaceMcpToolWriteSerializer(serializers.Serializer):
 
 class SurfaceStorageItemWriteSerializer(serializers.Serializer):
     storage_file = OrgScopedPrimaryKeyRelatedField(queryset=StorageFile.objects.all())
-    can_list = serializers.ChoiceField(
-        choices=StorageAccess.choices, default=StorageAccess.UNSET
-    )
-    can_view = serializers.ChoiceField(
-        choices=StorageAccess.choices, default=StorageAccess.UNSET
-    )
-    can_edit = serializers.ChoiceField(
-        choices=StorageAccess.choices, default=StorageAccess.UNSET
-    )
-    can_delete = serializers.ChoiceField(
-        choices=StorageAccess.choices, default=StorageAccess.UNSET
-    )
+    can_list = serializers.ChoiceField(choices=StorageAccess.choices, default=StorageAccess.UNSET)
+    can_view = serializers.ChoiceField(choices=StorageAccess.choices, default=StorageAccess.UNSET)
+    can_edit = serializers.ChoiceField(choices=StorageAccess.choices, default=StorageAccess.UNSET)
+    can_delete = serializers.ChoiceField(choices=StorageAccess.choices, default=StorageAccess.UNSET)
 
 
 class SurfaceNaiveSearchConfigWriteSerializer(serializers.Serializer):
@@ -209,9 +191,7 @@ class SurfaceGraphLocalSearchConfigWriteSerializer(serializers.Serializer):
 class SurfaceGraphGlobalSearchConfigWriteSerializer(serializers.Serializer):
     map_prompt = serializers.CharField(required=False, allow_null=True, default=None)
     reduce_prompt = serializers.CharField(required=False, allow_null=True, default=None)
-    knowledge_prompt = serializers.CharField(
-        required=False, allow_null=True, default=None
-    )
+    knowledge_prompt = serializers.CharField(required=False, allow_null=True, default=None)
     max_context_tokens = serializers.IntegerField(default=12000)
     data_max_tokens = serializers.IntegerField(default=12000)
     map_max_length = serializers.IntegerField(default=1000)
@@ -229,9 +209,7 @@ class SurfaceGraphDriftSearchConfigWriteSerializer(serializers.Serializer):
     prompt = serializers.CharField(required=False, allow_null=True, default=None)
     reduce_prompt = serializers.CharField(required=False, allow_null=True, default=None)
     data_max_tokens = serializers.IntegerField(default=12000)
-    reduce_max_tokens = serializers.IntegerField(
-        required=False, allow_null=True, default=None
-    )
+    reduce_max_tokens = serializers.IntegerField(required=False, allow_null=True, default=None)
     reduce_temperature = serializers.FloatField(default=0.0)
     reduce_max_completion_tokens = serializers.IntegerField(
         required=False, allow_null=True, default=None
@@ -260,9 +238,7 @@ class SurfaceGraphDriftSearchConfigWriteSerializer(serializers.Serializer):
 
 
 class SurfaceKnowledgeWriteSerializer(serializers.Serializer):
-    collection = OrgScopedPrimaryKeyRelatedField(
-        queryset=SourceCollection.objects.all()
-    )
+    collection = OrgScopedPrimaryKeyRelatedField(queryset=SourceCollection.objects.all())
     naive_search_config = SurfaceNaiveSearchConfigWriteSerializer(
         required=False, allow_null=True, default=None
     )
@@ -307,13 +283,9 @@ class SurfaceReadSerializer(serializers.ModelSerializer):
 class SurfaceWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
-    python_tools = SurfacePythonToolWriteSerializer(
-        many=True, required=False, default=list
-    )
+    python_tools = SurfacePythonToolWriteSerializer(many=True, required=False, default=list)
     mcp_tools = SurfaceMcpToolWriteSerializer(many=True, required=False, default=list)
-    storage_items = SurfaceStorageItemWriteSerializer(
-        many=True, required=False, default=list
-    )
+    storage_items = SurfaceStorageItemWriteSerializer(many=True, required=False, default=list)
     knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
 
     def __init__(self, *args, **kwargs):

@@ -1,5 +1,6 @@
 from django.conf import settings
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from django.contrib.auth import get_user_model
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -8,12 +9,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-
-from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.first_setup_mode import FirstSetupMode
-from tables.services.rbac.permissions import IsSuperadmin
 from tables.models.rbac_models import ApiKey, OrganizationUser
-from django.contrib.auth import get_user_model
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
@@ -25,8 +21,11 @@ from tables.serializers.rbac_serializers import (
 )
 from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.auth_validation_service import AuthValidationService
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
+from tables.services.rbac.permissions import IsSuperadmin
 from tables.services.rbac.rbac_exceptions import (
     FirstSetupDisabledError,
     InvalidRefreshTokenError,
@@ -36,6 +35,7 @@ from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_se
 from tables.services.rbac.utils.refresh_cookie import (
     clear_refresh_cookie,
     get_refresh_from_cookie,
+    read_remember_me_claim,
     set_refresh_cookie,
 )
 from tables.swagger_schemas.auth_schema import (
@@ -75,7 +75,8 @@ class LoginView(TokenObtainPairView):
         if response.status_code == 200:
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
-                set_refresh_cookie(response, refresh_token)
+                remember_me = bool(request.data.get("remember_me", False))
+                set_refresh_cookie(response, refresh_token, remember_me=remember_me)
         return response
 
 
@@ -194,7 +195,8 @@ class FirstSetupView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-        set_refresh_cookie(response, tokens.refresh)
+        # First-setup has no remember-me opt-in: default to the 30-min session.
+        set_refresh_cookie(response, tokens.refresh, remember_me=False)
         return response
 
 
@@ -204,10 +206,7 @@ class TokenIntrospectView(APIView):
 
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
-        if (
-            not isinstance(request.auth, ApiKey)
-            or request.auth.key_type != ApiKey.KeyType.SYSTEM
-        ):
+        if not isinstance(request.auth, ApiKey) or request.auth.key_type != ApiKey.KeyType.SYSTEM:
             return Response(
                 {"detail": "System API key required"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -224,13 +223,9 @@ class TokenIntrospectView(APIView):
 
         user_id = access.get("user_id")
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user_id).values_list(
-                "org_id", flat=True
-            )
+            OrganizationUser.objects.filter(user_id=user_id).values_list("org_id", flat=True)
         )
-        is_superadmin = (
-            get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
-        )
+        is_superadmin = get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
 
         return Response(
             {
@@ -341,9 +336,7 @@ class PasswordResetConfirmView(APIView):
         request=PasswordResetConfirmSerializer,
         responses={
             200: PasswordResetConfirmResponseSerializer,
-            400: OpenApiResponse(
-                description="Token invalid/expired/used or weak password"
-            ),
+            400: OpenApiResponse(description="Token invalid/expired/used or weak password"),
         },
     )
     def post(self, request):
@@ -408,6 +401,9 @@ class CookieTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # Read persistence intent before rotation so it survives on the new token.
+        remember_me = read_remember_me_claim(refresh_value)
+
         serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
         try:
             serializer.is_valid(raise_exception=True)
@@ -422,7 +418,7 @@ class CookieTokenRefreshView(APIView):
         response = Response({"access": serializer.validated_data["access"]})
         new_refresh = serializer.validated_data.get("refresh")
         if new_refresh:
-            set_refresh_cookie(response, new_refresh)
+            set_refresh_cookie(response, new_refresh, remember_me=remember_me)
         return response
 
 
@@ -447,5 +443,5 @@ class ResetUserView(APIView):
             {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
-        set_refresh_cookie(response, tokens.refresh)
+        set_refresh_cookie(response, tokens.refresh, remember_me=True)
         return response

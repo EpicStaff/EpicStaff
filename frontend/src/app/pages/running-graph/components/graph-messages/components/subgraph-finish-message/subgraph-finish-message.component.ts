@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
-import { JsonViewerComponent } from '@shared/components';
+import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
     FinishSubflowMessageData,
     GraphMessage,
@@ -21,10 +19,12 @@ import {
                 (click)="toggleMessage()"
             >
                 <div class="play-arrow">
-                    <app-svg-icon
-                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                        size="1rem"
-                    />
+                    @if (hasContent()) {
+                        <app-svg-icon
+                            [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1rem"
+                        />
+                    }
                 </div>
                 <div class="icon-container">
                     <app-svg-icon
@@ -319,6 +319,7 @@ export class SubgraphFinishMessageComponent {
     }
 
     toggleMessage(): void {
+        if (!this.hasContent()) return;
         this.isMessageExpanded = !this.isMessageExpanded;
     }
 
@@ -335,6 +336,10 @@ export class SubgraphFinishMessageComponent {
     toggleStateHistory(event: Event): void {
         event.stopPropagation();
         this.isStateHistoryExpanded = !this.isStateHistoryExpanded;
+    }
+
+    hasContent(): boolean {
+        return this.hasOutput() || this.hasVariables();
     }
 
     hasOutput(): boolean {

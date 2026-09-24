@@ -8,7 +8,6 @@ LLM calling the tool), or do nothing (simulating the LLM not calling the tool).
 from __future__ import annotations
 
 import pytest
-
 from app.emitters.base import Emitter
 from app.exceptions import (
     AgentServiceError,
@@ -24,7 +23,6 @@ from app.tools.registry import ToolRegistry
 from app.tools.system_tools.structured_output import ANSWER_TOOL
 from shared.models.agent_service import AgentSpec, LoopResult, TokenUsage, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
-
 
 # ---------------------------------------------------------------------------
 # Test doubles

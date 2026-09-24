@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     LLM_MODEL = "LLMModel"
     LLM_CONFIG = "LLMConfig"
     EMBEDDING_MODEL = "EmbeddingModel"
@@ -51,7 +51,7 @@ class EntityType(str, Enum):
     TASK_NODE = "TaskNode"
 
 
-class NodeType(str, Enum):
+class NodeType(StrEnum):
     START_NODE = "StartNode"
     CREW_NODE = "CrewNode"
     PYTHON_NODE = "PythonNode"

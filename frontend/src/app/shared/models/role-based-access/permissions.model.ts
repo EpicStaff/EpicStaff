@@ -23,6 +23,7 @@ export enum ResourceCode {
     Secrets = 'secrets',
     Audit = 'audit',
     Voice = 'voice',
+    Webhooks = 'webhooks',
 }
 
 export interface ActivePermissions {

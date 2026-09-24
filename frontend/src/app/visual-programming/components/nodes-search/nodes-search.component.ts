@@ -13,8 +13,8 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NodeModel } from '../../core/models/node.model';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
 
@@ -99,9 +99,10 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 flex-direction: column;
                 align-items: flex-start;
                 width: fit-content;
+                min-width: 0;
 
                 &--expanded {
-                    width: 350px;
+                    width: min(350px, 100%);
                 }
             }
 
@@ -157,7 +158,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 position: relative;
                 flex-grow: 1;
                 width: 100%;
-                width: 17rem;
+                min-width: 0;
             }
 
             .search-input {
@@ -165,7 +166,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 height: 38px;
                 background-color: var(--gray-850, #1a1a1a);
                 border: 1px solid var(--gray-750, #2f2f2f);
-                border-radius: 6px;
+                border-radius: 4px;
                 padding: 0 32px 0 12px;
                 color: var(--gray-200, #e3e3e3);
                 font-size: 0.8125rem;
@@ -368,6 +369,12 @@ export class NodesSearchComponent implements OnInit, OnChanges {
     public clearSearch(): void {
         this.searchQuery = '';
         this.filteredNodes = [];
+    }
+
+    public closeSearch(): void {
+        if (this.isSearchVisible()) {
+            this.toggleSearchInput();
+        }
     }
 
     public onNodeSelected(node: NodeModel): void {

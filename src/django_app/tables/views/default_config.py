@@ -1,16 +1,13 @@
-from tables.models.default_models import DefaultModels
-
-from drf_spectacular.utils import extend_schema
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
 from django.shortcuts import get_object_or_404
-
-from tables.services.rbac.permissions import IsSuperadminOrReadOnly
-
+from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from tables.models.default_models import DefaultModels
 from tables.serializers.default_config_serializers import (
     DefaultModelsSerializer,
 )
+from tables.services.rbac.permissions import IsSuperadminOrReadOnly
 from tables.swagger_schemas.default_config_schemas import (
     DEFAULT_MODELS_GET,
     DEFAULT_MODELS_PUT,

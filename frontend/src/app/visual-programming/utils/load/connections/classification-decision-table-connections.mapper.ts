@@ -1,4 +1,5 @@
-import { NodeType } from '../../../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { ConnectionModel } from '../../../core/models/connection.model';
 import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';

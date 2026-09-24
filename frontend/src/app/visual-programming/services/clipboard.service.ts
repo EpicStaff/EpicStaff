@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { ICurrentSelection } from '@foblex/flow';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { NodeType } from '../core/enums/node-type';
 import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';

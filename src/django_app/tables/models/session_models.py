@@ -1,8 +1,9 @@
-from django.utils import timezone
-from django.db import models
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import models
+from django.utils import timezone
 
-from tables.models import CrewSessionMessage, GraphOrganizationUser
+from tables.models.base_models import CrewSessionMessage
+from tables.models.graph_models import GraphOrganizationUser
 
 
 class Session(models.Model):
@@ -79,9 +80,7 @@ class UserSessionMessage(CrewSessionMessage):
 
 
 class AgentSessionMessage(CrewSessionMessage):
-    agent = models.ForeignKey(
-        "Agent", on_delete=models.SET_NULL, null=True, default=None
-    )
+    agent = models.ForeignKey("Agent", on_delete=models.SET_NULL, null=True, default=None)
     thought = models.TextField(blank=True, default="")
     tool = models.TextField(blank=True, default=None, null=True)
     tool_input = models.TextField(blank=True, default=None, null=True)
@@ -99,9 +98,7 @@ class TaskSessionMessage(CrewSessionMessage):
 
 
 class SessionWarningMessage(models.Model):
-    session = models.OneToOneField(
-        Session, on_delete=models.CASCADE, related_name="warnings"
-    )
+    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="warnings")
     messages = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -114,12 +111,8 @@ class SessionTrigger(models.Model):
         TELEGRAM = "telegram"
         PARENT_FLOW = "parent_flow"
 
-    session = models.OneToOneField(
-        Session, on_delete=models.CASCADE, related_name="trigger"
-    )
-    trigger_type = models.CharField(
-        max_length=32, choices=TriggerType.choices, db_index=True
-    )
+    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="trigger")
+    trigger_type = models.CharField(max_length=32, choices=TriggerType.choices, db_index=True)
 
     # snapshot — survives node/graph deletion, which the FKs do not
     node_name = models.CharField(max_length=255, null=True, default=None)
@@ -177,3 +170,32 @@ class SessionTrigger(models.Model):
         if attname is None:
             return None
         return getattr(self, attname, None)
+
+
+class SessionPrincipal(models.Model):
+    class ActionKind(models.TextChoices):
+        USER = "user"
+        API_KEY_USER = "api_key_user"
+        API_KEY_SYSTEM = "api_key_system"
+        TRIGGER = "trigger"
+        UNKNOWN = "unknown"
+
+    session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="principal")
+
+    kind = models.CharField(choices=ActionKind.choices, max_length=32, db_index=True)
+
+    user = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    api_key = models.ForeignKey(
+        "ApiKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    email = models.CharField(max_length=256, default=None, blank=True, null=True)

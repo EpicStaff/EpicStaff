@@ -1,5 +1,7 @@
-# Makefile for managing Docker volume backups, image tags, and environments
-# Use cmd.exe as the shell for executing .bat files on Windows
+# Makefile for local backend development: uv lockfiles/venvs, Django management
+# commands, and per-service test suites. The Docker stack is driven directly with
+# `docker compose` from src/ -- see docs/makefile_commands.md.
+# Use cmd.exe as the shell on Windows
 ifeq ($(OS),Windows_NT)
 	SHELL := cmd.exe
 else
@@ -9,14 +11,6 @@ endif
 # IMPORTANT: This Makefile must be run from the project's root directory
 # (the same directory this file is in).
 
-# Single compose file + single env file for every environment.
-COMPOSE := docker compose -f docker-compose.yaml --env-file ./.env
-
-# Guard for single-service targets: warn (but still proceed) when s=<service>
-# is missing, in which case docker compose acts on ALL services. A make
-# function (not shell `test`) so it also works under cmd.exe on Windows.
-warn-no-s = $(if $(strip $(s)),,$(warning no s=<service> given - applying to ALL services))
-
 .DEFAULT_GOAL := help
 
 # Every backend service that uv manages, derived from the pyproject files so a
@@ -24,14 +18,14 @@ warn-no-s = $(if $(strip $(s)),,$(warning no s=<service> given - applying to ALL
 uv_services := $(patsubst src/%/pyproject.toml,%,$(wildcard src/*/pyproject.toml))
 uv_lock_targets := $(addprefix uv-lock-,$(uv_services))
 
+# django_app keeps its own django-tests name (next to the other django-* targets).
+test_targets := $(addsuffix -tests,$(filter-out django_app,$(uv_services)))
+
 .PHONY: help \
-        backup apply-backup stash-tags apply-tags switch \
-        init ensure-env up down build rebuild rebuild-s restart logs logs-s \
-        clean docker-generate-certs \
-        gen-env check-env \
         uv-lock \
         uv-sync \
-        django-makemigrations django-migrate django-manage django-tests crew-tests agent-tests sandbox-tests
+        django-makemigrations django-migrate django-manage django-tests \
+        $(test_targets)
 
 # --- Help ---
 
@@ -43,121 +37,7 @@ else
 endif
 
 # ==========================================
-# BRANCH SWITCHING
-# ==========================================
-
-backup:
-	@echo "--- Creating Volume Backup ---"
-ifeq ($(OS),Windows_NT)
-	@.\make_scripts\backup.bat
-else
-	@./make_scripts/backup.sh
-endif
-
-apply-backup:
-	@echo "--- Applying Volume Backup ---"
-ifeq ($(OS),Windows_NT)
-	@.\make_scripts\apply_backup.bat
-else
-	@./make_scripts/apply_backup.sh
-endif
-
-stash-tags:
-	@echo "--- Stashing Image Tags ---"
-ifeq ($(OS),Windows_NT)
-	@.\make_scripts\stash_tag_images.bat
-else
-	@./make_scripts/stash_tag_images.sh
-endif
-
-apply-tags:
-	@echo "--- Applying Stashed Image Tags ---"
-ifeq ($(OS),Windows_NT)
-	@.\make_scripts\apply_tag_images.bat
-else
-	@./make_scripts/apply_tag_images.sh
-endif
-
-switch:
-	@echo "--- Switching Full Branch Environment ---"
-ifeq ($(OS),Windows_NT)
-	@.\make_scripts\switch_branch.bat $(b)
-else
-	@./make_scripts/switch_branch.sh $(b)
-endif
-
-# ==========================================
-# ENVIRONMENT
-# ==========================================
-
-init:
-	@echo "--- Creating external volumes and networks ---"
-	@docker volume create sandbox_venvs      || true
-	@docker volume create crew_pgdata        || true
-	@docker volume create media_data         || true
-	@docker volume create graph_data         || true
-	@docker volume create opensearch_data    || true
-	@docker network create mcp-network       || true
-	@echo "--- Done ---"
-
-# Create src/.env from the tracked template on first run. src/.env is gitignored,
-# so a fresh clone has none; every target that starts containers depends on this.
-ensure-env:
-ifeq ($(OS),Windows_NT)
-	@if not exist src\.env ( echo --- Creating src\.env from src\.env.example --- & copy src\.env.example src\.env >NUL )
-else
-	@test -f src/.env || (echo "--- Creating src/.env from src/.env.example ---" && cp src/.env.example src/.env)
-endif
-
-up: init ensure-env
-	@echo "--- Starting services ---"
-	@cd src && $(COMPOSE) up -d
-
-down:
-	@echo "--- Stopping services ---"
-	@cd src && $(COMPOSE) down
-
-build: init ensure-env
-	@echo "--- Building images ---"
-	@cd src && $(COMPOSE) build
-
-rebuild: init ensure-env
-	@echo "--- Rebuilding all services (no cache) ---"
-	@cd src && $(COMPOSE) build --no-cache
-	@cd src && $(COMPOSE) up -d
-
-rebuild-s: ensure-env
-	$(warn-no-s)
-	@echo "--- Rebuilding and restarting a single service (uses cache) ---"
-	@cd src && $(COMPOSE) up --build -d $(s)
-
-restart:
-	$(warn-no-s)
-	@cd src && $(COMPOSE) restart $(s)
-
-logs:
-	@cd src && $(COMPOSE) logs -f
-
-logs-s:
-	$(warn-no-s)
-	@cd src && $(COMPOSE) logs -f $(s)
-
-# ==========================================
-# UTILITIES
-# ==========================================
-
-clean:
-	@echo "--- Stopping services and removing volumes. WARNING: wipes DB data. ---"
-	@cd src && $(COMPOSE) down -v --remove-orphans
-
-docker-generate-certs:
-	@test -n "$(domain)" || (echo "ERROR: domain is required. Usage: make docker-generate-certs domain=example.com" && exit 1)
-	docker run --rm -v "$(CURDIR)/src/nginx/certs:/certs" -w /certs alpine \
-		sh -c "apk add openssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout privkey.pem -out fullchain.pem -subj '/CN=$(domain)'"
-	@echo "SSL certificates generated for domain: $(domain)"
-
-# ==========================================
-# LOCAL DJANGO DEVELOPMENT
+# UV DEPENDENCY MANAGEMENT
 # ==========================================
 
 # Use each service's own uv-managed venv interpreter explicitly so these
@@ -189,9 +69,15 @@ uv-lock-%:
 	@uv lock --project src/$*
 
 # --no-install-project keeps this target in lockstep with the Docker builders.
+# The svc guard is a make function (not shell `test`) so it also works under
+# cmd.exe on Windows.
 uv-sync:
-	@test -n "$(svc)" || (echo "ERROR: svc is required. Usage: make uv-sync svc=<service>" && exit 1)
+	$(if $(strip $(svc)),,$(error svc is required. Usage: make uv-sync svc=<service>))
 	@cd src/$(svc) && uv sync --frozen --no-install-project --all-groups
+
+# ==========================================
+# LOCAL DJANGO DEVELOPMENT
+# ==========================================
 
 django-makemigrations django-migrate django-manage django-tests: export PYTHONPATH = $(CURDIR)
 
@@ -208,20 +94,13 @@ django-tests:
 	@cd src/django_app && $(VENV_PY) -m pytest $(ARGS)
 
 # ==========================================
-# LOCAL CREW DEVELOPMENT
+# SERVICE TESTS
 # ==========================================
 
-crew-tests: export PYTHONPATH = $(CURDIR)
+# One <service>-tests target per uv service (crew-tests, agent-tests,
+# sandbox-tests, ...). A static pattern rule, so these are explicit targets and
+# listing them in .PHONY above is safe -- unlike the uv-lock-% implicit rule.
+$(test_targets): export PYTHONPATH = $(CURDIR)
 
-crew-tests:
-	@cd src/crew && $(VENV_PY) -m pytest $(ARGS)
-
-agent-tests: export PYTHONPATH = $(CURDIR)
-
-agent-tests:
-	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)
-
-sandbox-tests: export PYTHONPATH = $(CURDIR)
-
-sandbox-tests:
-	@cd src/sandbox && $(VENV_PY) -m pytest $(ARGS)
+$(test_targets): %-tests:
+	@cd src/$* && $(VENV_PY) -m pytest $(ARGS)

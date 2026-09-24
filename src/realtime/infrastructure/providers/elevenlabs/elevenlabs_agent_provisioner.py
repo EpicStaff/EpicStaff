@@ -1,12 +1,12 @@
 import hashlib
 import json
-from typing import List, Optional
 
 import httpx
-from loguru import logger
 from domain.models.realtime_tool import RealtimeTool
-from infrastructure.messaging.redis_service import RedisService
+from loguru import logger
 from utils.singleton_meta import SingletonMeta
+
+from infrastructure.messaging.redis_service import RedisService
 
 _EL_API_BASE = "https://api.elevenlabs.io/v1"
 _DEFAULT_LLM = "gemini-2.5-flash"
@@ -45,11 +45,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         existing_tools = data.get("tools", [])
 
         existing_tool = next(
-            (
-                t
-                for t in existing_tools
-                if t.get("tool_config", {}).get("name") == search_name
-            ),
+            (t for t in existing_tools if t.get("tool_config", {}).get("name") == search_name),
             None,
         )
 
@@ -74,9 +70,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
             update_resp.raise_for_status()
             return t_id
         else:
-            logger.info(
-                f"EL Provisioner: Tool '{search_name}' not found. Creating new..."
-            )
+            logger.info(f"EL Provisioner: Tool '{search_name}' not found. Creating new...")
             create_resp = await client.post(
                 f"{_EL_API_BASE}/convai/tools", headers=headers, json=payload
             )
@@ -89,18 +83,12 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         api_key: str,
         instructions: str,
         voice: str,
-        rt_tools: List[RealtimeTool],
+        rt_tools: list[RealtimeTool],
         llm_model: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> str:
-        tools_repr = sorted(
-            f"{t.name}:{t.parameters.model_dump_json()}" for t in rt_tools
-        )
-        tts_model = (
-            _TTS_MODEL_EN
-            if not language or language == "en"
-            else _TTS_MODEL_MULTILINGUAL
-        )
+        tools_repr = sorted(f"{t.name}:{t.parameters.model_dump_json()}" for t in rt_tools)
+        tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
         raw = json.dumps(
             {
                 "api_key": api_key,
@@ -120,13 +108,11 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         api_key: str,
         instructions: str,
         voice: str,
-        rt_tools: List[RealtimeTool],
+        rt_tools: list[RealtimeTool],
         llm_model: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> None:
-        cache_key = self._cache_key(
-            api_key, instructions, voice, rt_tools, llm_model, language
-        )
+        cache_key = self._cache_key(api_key, instructions, voice, rt_tools, llm_model, language)
         redis = self.redis_service.aioredis_client
         if redis:
             await redis.delete(cache_key)
@@ -137,17 +123,15 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         api_key: str,
         instructions: str,
         voice: str,
-        rt_tools: List[RealtimeTool],
+        rt_tools: list[RealtimeTool],
         llm_model: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> str:
         voice = voice or "21m00Tcm4TlvDq8ikWAM"  # default to Rachel if empty/None
         logger.info(
             f"EL Provisioner: get_or_create_agent | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
         )
-        cache_key = self._cache_key(
-            api_key, instructions, voice, rt_tools, llm_model, language
-        )
+        cache_key = self._cache_key(api_key, instructions, voice, rt_tools, llm_model, language)
         redis = self.redis_service.aioredis_client
         if redis:
             cached = await redis.get(cache_key)
@@ -164,9 +148,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 tid = await self._get_or_create_tool(client, api_key, rt_tool)
                 tool_ids.append(tid)
 
-            agents_resp = await client.get(
-                f"{_EL_API_BASE}/convai/agents", headers=headers
-            )
+            agents_resp = await client.get(f"{_EL_API_BASE}/convai/agents", headers=headers)
             agents_resp.raise_for_status()
             existing_agents = agents_resp.json().get("agents", [])
 
@@ -177,9 +159,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
 
             if agent:
                 agent_id = agent["agent_id"]
-                logger.info(
-                    f"EL Provisioner: Found existing agent '{agent_name}'. Updating..."
-                )
+                logger.info(f"EL Provisioner: Found existing agent '{agent_name}'. Updating...")
                 res = await client.patch(
                     f"{_EL_API_BASE}/convai/agents/{agent_id}",
                     headers=headers,
@@ -190,9 +170,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                         f"EL Provisioner: PATCH agent failed ({res.status_code}): {res.text} — using existing agent as-is"
                     )
             else:
-                logger.info(
-                    f"EL Provisioner: Agent '{agent_name}' not found. Creating..."
-                )
+                logger.info(f"EL Provisioner: Agent '{agent_name}' not found. Creating...")
                 res = await client.post(
                     f"{_EL_API_BASE}/convai/agents/create",
                     headers=headers,
@@ -214,10 +192,10 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         name: str,
         instructions: str,
         voice: str,
-        rt_tools: List[RealtimeTool],
-        tool_ids: List[str],
+        rt_tools: list[RealtimeTool],
+        tool_ids: list[str],
         llm_model: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> dict:
         """Build the agent payload for the ElevenLabs API."""
         tools_config = []
@@ -230,8 +208,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                     "type": "client",
                     "tool_id": tid,
                     "name": tool_meta.name.replace(" ", "_"),
-                    "description": tool_meta.description
-                    or f"Executes {tool_meta.name}",
+                    "description": tool_meta.description or f"Executes {tool_meta.name}",
                     "expects_response": True,
                     "parameters": {
                         "type": "object",
@@ -241,18 +218,10 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 }
             )
 
-        _DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel
-        voice_id = (
-            voice
-            if voice and voice.lower() not in _OPENAI_VOICE_NAMES
-            else _DEFAULT_VOICE_ID
-        )
+        default_voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel
+        voice_id = voice if voice and voice.lower() not in _OPENAI_VOICE_NAMES else default_voice_id
 
-        tts_model = (
-            _TTS_MODEL_EN
-            if not language or language == "en"
-            else _TTS_MODEL_MULTILINGUAL
-        )
+        tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
 
         return {
             "name": name,

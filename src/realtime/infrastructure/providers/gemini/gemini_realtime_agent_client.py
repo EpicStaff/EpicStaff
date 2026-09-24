@@ -2,13 +2,15 @@ import asyncio
 import audioop
 import base64
 from collections import deque
-from typing import Any, Callable, Awaitable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
+from application.tool_manager_service import ToolManagerService
+from domain.models.realtime_tool import RealtimeTool
 from google import genai
 from google.genai import types
 from loguru import logger
 
-from domain.models.realtime_tool import RealtimeTool
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.gemini.event_handlers.gemini_client_event_handler import (
     GeminiClientEventHandler,
@@ -16,7 +18,6 @@ from infrastructure.providers.gemini.event_handlers.gemini_client_event_handler 
 from infrastructure.providers.gemini.event_handlers.gemini_server_event_handler import (
     GeminiServerEventHandler,
 )
-from application.tool_manager_service import ToolManagerService
 
 
 class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
@@ -36,15 +37,15 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         self,
         api_key: str,
         connection_key: str,
-        on_server_event: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_server_event: Callable[[dict], Awaitable[None]] | None = None,
         tool_manager_service: ToolManagerService = None,
-        rt_tools: Optional[List[RealtimeTool]] = None,
+        rt_tools: list[RealtimeTool] | None = None,
         model: str = "gemini-2.0-flash-live-001",
         voice: str = "Puck",
         instructions: str = "You are a helpful assistant",
         temperature: float = 1.0,
-        org_id: Optional[int] = None,
-        user_id: Optional[int] = None,
+        org_id: int | None = None,
+        user_id: int | None = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -54,7 +55,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             user_id=user_id,
         )
 
-        _VALID_GEMINI_VOICES = {
+        valid_gemini_voices = {
             "Puck",
             "Charon",
             "Kore",
@@ -66,7 +67,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         }
         self.tool_manager_service = tool_manager_service
         self.model = model
-        self.voice = voice if voice in _VALID_GEMINI_VOICES else "Puck"
+        self.voice = voice if voice in valid_gemini_voices else "Puck"
         if self.voice != voice:
             logger.warning(f"Gemini: invalid voice '{voice}', falling back to 'Puck'")
         self.instructions = instructions
@@ -84,13 +85,13 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         self._resample_state_in = None  # µ-law 8kHz → PCM 16kHz
         self._resample_state_out = None  # PCM 24kHz → µ-law 8kHz
 
-        # Rolling buffer: always keeps the last _ROLLING_BUFFER_SECS seconds of user audio.
+        # Rolling buffer: always keeps the last `rolling_buffer_secs` seconds of user audio.
         # On reconnect after session close, the buffer is replayed to the new session so
         # Gemini hears the user's speech that happened during the interruption window.
         # 16kHz 16-bit mono = 32 000 B/s → 5 s ≈ 160 KB, negligible overhead.
-        _ROLLING_BUFFER_SECS = 5.0
+        rolling_buffer_secs = 5.0
         self._audio_rolling_buffer: deque[tuple[float, bytes]] = deque()
-        self._rolling_buffer_secs: float = _ROLLING_BUFFER_SECS
+        self._rolling_buffer_secs: float = rolling_buffer_secs
 
         # Conversation history for context injection on reconnect.
         # Each entry: {"role": "user" | "model", "text": str}
@@ -101,7 +102,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
 
         self.tools = self._build_tools(rt_tools or [])
 
-    def _build_tools(self, rt_tools: List[RealtimeTool]) -> list:
+    def _build_tools(self, rt_tools: list[RealtimeTool]) -> list:
         """Convert RealtimeTool list to Gemini function_declarations format."""
         if not rt_tools:
             return []
@@ -148,9 +149,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             response_modalities=[types.Modality.AUDIO],
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name=self.voice
-                    )
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voice)
                 )
             ),
             system_instruction=types.Content(
@@ -169,17 +168,13 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             f"Gemini: connecting model={self.model}, voice={self.voice}, "
             f"tools={[d['name'] for t in self.tools for d in t.get('function_declarations', [])]}"
         )
-        self._session_cm = self._genai_client.aio.live.connect(
-            model=self.model, config=config
-        )
+        self._session_cm = self._genai_client.aio.live.connect(model=self.model, config=config)
         try:
             self._session = await self._session_cm.__aenter__()
         except Exception as e:
             reason = getattr(getattr(e, "rcvd", None), "reason", None)
             code = getattr(getattr(e, "rcvd", None), "code", None)
-            logger.error(
-                f"Gemini: connection failed — code={code}, reason={reason}, exc={e}"
-            )
+            logger.error(f"Gemini: connection failed — code={code}, reason={reason}, exc={e}")
             raise
         logger.info(f"Gemini Live connected: model={self.model}, voice={self.voice}")
 
@@ -229,14 +224,10 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
                     f"Gemini: receive() loop ended after {msg_count} messages — server closed connection, reconnecting"
                 )
             except asyncio.CancelledError:
-                logger.info(
-                    f"Gemini: handle_messages cancelled after {msg_count} messages"
-                )
+                logger.info(f"Gemini: handle_messages cancelled after {msg_count} messages")
                 break
             except Exception as e:
-                logger.exception(
-                    f"Gemini: handle_messages error after {msg_count} messages: {e}"
-                )
+                logger.exception(f"Gemini: handle_messages error after {msg_count} messages: {e}")
                 break
 
             try:
@@ -271,9 +262,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             audio=types.Blob(data=pcm_16k, mime_type="audio/pcm;rate=16000")
         )
 
-    async def process_message(
-        self, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    async def process_message(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Process incoming message from the frontend WebSocket."""
         return await self.client_event_handler.handle_event(data=message)
 
@@ -296,11 +285,9 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
 
     async def request_response(self, data: dict | None = None) -> None:
         """Gemini operates with automatic VAD — no explicit response trigger needed."""
-        pass
 
     async def on_stream_start(self) -> None:
         """Twilio stream started — Gemini starts automatically, no action needed."""
-        pass
 
     async def replay_audio_buffer(self) -> None:
         """Replay the rolling audio buffer to the new session after a reconnect.
@@ -312,18 +299,14 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         if not self._audio_rolling_buffer or self._session is None:
             return
         chunks = [chunk for _, chunk in self._audio_rolling_buffer]
-        logger.info(
-            f"Gemini: replaying {len(chunks)} buffered audio chunks to new session"
-        )
+        logger.info(f"Gemini: replaying {len(chunks)} buffered audio chunks to new session")
         for chunk in chunks:
             await self._session.send_realtime_input(
                 audio=types.Blob(data=chunk, mime_type="audio/pcm;rate=16000")
             )
         self._audio_rolling_buffer.clear()
 
-    async def call_tool(
-        self, call_id: str, tool_name: str, tool_arguments: Dict[str, Any]
-    ) -> None:
+    async def call_tool(self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]) -> None:
         """Execute a tool via ToolManagerService and send the result back to Gemini.
 
         Spawned as a background task by _handle_tool_call so the receive loop

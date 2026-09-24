@@ -1,113 +1,9 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from tables.views.model_view_sets import (
-    AgentNodeViewSet,
-    AgentNodeTaskViewSet,
-    ClassificationDecisionTableNodeModelViewSet,
-    ConditionalEdgeViewSet,
-    DecisionTableNodeModelViewSet,
-    EdgeViewSet,
-    EndNodeModelViewSet,
-    GraphNoteViewSet,
-    SubGraphNodeModelViewSet,
-    GraphLightViewSet,
-    GraphViewSet,
-    GraphVersionViewSet,
-    McpToolViewSet,
-    PythonCodeToolConfigViewSet,
-    PythonNodeViewSet,
-    FileExtractorNodeViewSet,
-    KnowledgeNodeViewSet,
-    AudioTranscriptionNodeViewSet,
-    StartNodeModelViewSet,
-    RealtimeConfigModelViewSet,
-    RealtimeSessionItemViewSet,
-    RealtimeTranscriptionConfigModelViewSet,
-    RealtimeTranscriptionModelViewSet,
-    TaskNodeViewSet,
-    TelegramTriggerNodeViewSet,
-    LLMConfigReadWriteViewSet,
-    ProviderReadWriteViewSet,
-    LLMModelReadWriteViewSet,
-    EmbeddingModelReadWriteViewSet,
-    EmbeddingConfigReadWriteViewSet,
-    PythonCodeToolViewSet,
-    PythonCodeResultReadViewSet,
-    GraphSessionMessageReadOnlyViewSet,
-    RealtimeModelViewSet,
-    RealtimeAgentDefinitionViewSet,
-    RealtimeAgentChatViewSet,
-    OpenAIRealtimeConfigViewSet,
-    ElevenLabsRealtimeConfigViewSet,
-    GeminiRealtimeConfigViewSet,
-    RealtimeChannelViewSet,
-    TwilioChannelViewSet,
-    ConversationRecordingViewSet,
-    RealtimeVoicesView,
-    GraphOrganizationViewSet,
-    GraphOrganizationUserViewSet,
-    TwilioConfigureWebhookView,
-    WebhookTriggerNodeViewSet,
-    WebhookTriggerViewSet,
-    LabelViewSet,
-    AuditFilterPresetViewSet,
-    ToolLabelViewSet,
-    SecretViewSet,
-    ScheduleTriggerNodeViewSet,
-)
-
-from tables.views.views import (
-    NotifyEmailView,
-    InitRealtimeAPIView,
-    ProcessRagIndexingView,
-    CancelRagIndexingView,
-    RunPythonCodeAPIView,
-    TelegramTriggerNodeAvailableFieldsView,
-    SessionViewSet,
-    RunSession,
-    GetUpdates,
-    StopSession,
-    QuickstartView,
-    QuickstartApplyView,
-    PythonNodeLastTestInputView,
-)
-
+from tables.views.api_key_admin_views import ApiKeyAdminViewSet
 from tables.views.default_config import (
     DefaultModelsAPIView,
-)
-
-from tables.views.knowledge_views.collection_management_views import (
-    SourceCollectionViewSet,
-)
-from tables.views.knowledge_views.document_management_views import (
-    DocumentManagementViewSet,
-    DocumentViewSet,
-    CollectionDocumentsViewSet,
-)
-from tables.views.knowledge_views.naive_rag_views import (
-    NaiveRagViewSet,
-    NaiveRagDocumentConfigViewSet,
-    ProcessNaiveRagDocumentChunkingView,
-    CancelNaiveRagDocumentChunkingView,
-    NaiveRagChunkViewSet,
-    NaiveRagChunkPreviewView,
-    NaiveRagChunkSearchView,
-    NaiveRagPreviewChunkBulkByIdsView,
-)
-from tables.views.knowledge_views.graph_rag_views import (
-    GraphRagViewSet,
-)
-from tables.views.knowledge_views.search_config_views import (
-    GraphRagSuggestParamsView,
-    NaiveRagSuggestParamsView,
-)
-
-
-from tables.views.storage_views import StorageAPIView
-from tables.views.sse_views import (
-    RunSessionSSEView,
-    RunSessionSSEViewSwagger,
 )
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -118,15 +14,113 @@ from tables.views.flow_assistant_views import (
     FlowAssistantSendMessageView,
     FlowAssistantStreamView,
 )
-
+from tables.views.knowledge_views.collection_management_views import (
+    SourceCollectionViewSet,
+)
+from tables.views.knowledge_views.document_management_views import (
+    CollectionDocumentsViewSet,
+    DocumentManagementViewSet,
+    DocumentViewSet,
+)
+from tables.views.knowledge_views.graph_rag_views import (
+    GraphRagViewSet,
+)
+from tables.views.knowledge_views.naive_rag_views import (
+    CancelNaiveRagDocumentChunkingView,
+    NaiveRagChunkPreviewView,
+    NaiveRagChunkSearchView,
+    NaiveRagChunkViewSet,
+    NaiveRagDocumentConfigViewSet,
+    NaiveRagPreviewChunkBulkByIdsView,
+    NaiveRagViewSet,
+    ProcessNaiveRagDocumentChunkingView,
+)
+from tables.views.knowledge_views.search_config_views import (
+    GraphRagSuggestParamsView,
+    NaiveRagSuggestParamsView,
+)
+from tables.views.membership_admin_views import MembershipAdminViewSet
+from tables.views.model_view_sets import (
+    AgentNodeTaskViewSet,
+    AgentNodeViewSet,
+    AudioTranscriptionNodeViewSet,
+    AuditFilterPresetViewSet,
+    ClassificationDecisionTableNodeModelViewSet,
+    ConditionalEdgeViewSet,
+    ConversationRecordingViewSet,
+    DecisionTableNodeModelViewSet,
+    EdgeViewSet,
+    ElevenLabsRealtimeConfigViewSet,
+    EmbeddingConfigReadWriteViewSet,
+    EmbeddingModelReadWriteViewSet,
+    EndNodeModelViewSet,
+    FileExtractorNodeViewSet,
+    GeminiRealtimeConfigViewSet,
+    GraphLightViewSet,
+    GraphNoteViewSet,
+    GraphOrganizationUserViewSet,
+    GraphOrganizationViewSet,
+    GraphSessionMessageReadOnlyViewSet,
+    GraphVersionViewSet,
+    GraphViewSet,
+    KnowledgeNodeViewSet,
+    LabelViewSet,
+    LLMConfigReadWriteViewSet,
+    LLMModelReadWriteViewSet,
+    McpToolViewSet,
+    OpenAIRealtimeConfigViewSet,
+    ProviderReadWriteViewSet,
+    PythonCodeResultReadViewSet,
+    PythonCodeToolConfigViewSet,
+    PythonCodeToolViewSet,
+    PythonNodeViewSet,
+    RealtimeAgentChatViewSet,
+    RealtimeAgentDefinitionViewSet,
+    RealtimeChannelViewSet,
+    RealtimeConfigModelViewSet,
+    RealtimeModelViewSet,
+    RealtimeSessionItemViewSet,
+    RealtimeTranscriptionConfigModelViewSet,
+    RealtimeTranscriptionModelViewSet,
+    RealtimeVoicesView,
+    ScheduleTriggerNodeViewSet,
+    SecretViewSet,
+    StartNodeModelViewSet,
+    SubGraphNodeModelViewSet,
+    TaskNodeViewSet,
+    TelegramTriggerNodeViewSet,
+    ToolLabelViewSet,
+    TwilioChannelViewSet,
+    TwilioConfigureWebhookView,
+    WebhookTriggerNodeViewSet,
+    WebhookTriggerViewSet,
+)
 from tables.views.organization_admin_views import (
     OrganizationAdminViewSet,
     OrganizationSelfServiceViewSet,
 )
-from tables.views.api_key_admin_views import ApiKeyAdminViewSet
 from tables.views.role_admin_views import RoleAdminViewSet
-from tables.views.membership_admin_views import MembershipAdminViewSet
+from tables.views.sse_views import (
+    RunSessionSSEView,
+    RunSessionSSEViewSwagger,
+)
+from tables.views.storage_views import StorageAPIView
 from tables.views.user_management_views import UserAdminViewSet
+from tables.views.views import (
+    CancelRagIndexingView,
+    GetUpdates,
+    InitRealtimeAPIView,
+    NotifyEmailView,
+    ProcessRagIndexingView,
+    PythonNodeLastTestInputView,
+    QuickstartApplyView,
+    QuickstartView,
+    RunPythonCodeAPIView,
+    RunSession,
+    SessionViewSet,
+    StopSession,
+    TelegramTriggerNodeAvailableFieldsView,
+)
 
 router = DefaultRouter()
 router.register(r"providers", ProviderReadWriteViewSet)
@@ -136,12 +130,8 @@ router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
 # DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
 router.register(r"python-code-tool", PythonCodeToolViewSet)
-router.register(
-    r"python-code-result", PythonCodeResultReadViewSet, basename="python-code-result"
-)
-router.register(
-    r"source-collections", SourceCollectionViewSet, basename="sourcecollection"
-)
+router.register(r"python-code-result", PythonCodeResultReadViewSet, basename="python-code-result")
+router.register(r"source-collections", SourceCollectionViewSet, basename="sourcecollection")
 
 router.register(r"documents", DocumentViewSet, basename="document")
 collection_documents_viewset = CollectionDocumentsViewSet.as_view({"get": "list"})
@@ -170,9 +160,7 @@ router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions
 router.register(r"realtime-models", RealtimeModelViewSet)
 router.register(r"realtime-model-configs", RealtimeConfigModelViewSet)
 router.register(r"realtime-transcription-models", RealtimeTranscriptionModelViewSet)
-router.register(
-    r"realtime-transcription-model-configs", RealtimeTranscriptionConfigModelViewSet
-)
+router.register(r"realtime-transcription-model-configs", RealtimeTranscriptionConfigModelViewSet)
 router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
 router.register(r"realtime-agent-definitions", RealtimeAgentDefinitionViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
@@ -184,9 +172,7 @@ router.register(r"twilio-channels", TwilioChannelViewSet)
 router.register(r"conversation-recordings", ConversationRecordingViewSet)
 
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)
-router.register(
-    r"classification-decision-table-node", ClassificationDecisionTableNodeModelViewSet
-)
+router.register(r"classification-decision-table-node", ClassificationDecisionTableNodeModelViewSet)
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
@@ -207,9 +193,7 @@ router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 admin_router = DefaultRouter()
-admin_router.register(
-    r"organizations", OrganizationAdminViewSet, basename="admin-organization"
-)
+admin_router.register(r"organizations", OrganizationAdminViewSet, basename="admin-organization")
 admin_router.register(r"users", UserAdminViewSet, basename="admin-user")
 admin_router.register(r"roles", RoleAdminViewSet, basename="admin-role")
 admin_router.register(r"api-keys", ApiKeyAdminViewSet, basename="admin-api-key")
@@ -232,9 +216,7 @@ urlpatterns = [
     ),
     path(
         "admin/memberships/<int:pk>/",
-        MembershipAdminViewSet.as_view(
-            {"patch": "partial_update", "delete": "destroy"}
-        ),
+        MembershipAdminViewSet.as_view({"patch": "partial_update", "delete": "destroy"}),
         name="admin-membership-detail",
     ),
     path(
@@ -329,9 +311,7 @@ urlpatterns = [
     # NaiveRag endpoints
     path(
         "naive-rag/collections/<str:collection_id>/naive-rag/",
-        NaiveRagViewSet.as_view(
-            {"post": "create_or_update", "get": "get_by_collection"}
-        ),
+        NaiveRagViewSet.as_view({"post": "create_or_update", "get": "get_by_collection"}),
         name="naive-rag-collection",
     ),
     path(
@@ -369,9 +349,7 @@ urlpatterns = [
     # GraphRag endpoints
     path(
         "graph-rag/collections/<str:collection_id>/graph-rag/",
-        GraphRagViewSet.as_view(
-            {"post": "create_or_update", "get": "get_by_collection"}
-        ),
+        GraphRagViewSet.as_view({"post": "create_or_update", "get": "get_by_collection"}),
         name="graph-rag-collection",
     ),
     path(

@@ -4,6 +4,7 @@ import {
     AfterViewInit,
     ChangeDetectionStrategy,
     Component,
+    computed,
     CUSTOM_ELEMENTS_SCHEMA,
     DestroyRef,
     ElementRef,
@@ -11,20 +12,24 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { AppSvgIconComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { filter, map } from 'rxjs/operators';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
+import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
-import { ConfigService } from '../../../services/config/config.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ConfigService } from '../../../services/config';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
@@ -49,8 +54,10 @@ interface NavItem {
         OverlayModule,
         PortalModule,
         UserMenuComponent,
+        OrganizationsMenuComponent,
         AppSvgIconComponent,
         UserAvatarComponent,
+        OrgAvatarComponent,
         ClickOutsideDirective,
     ],
     templateUrl: './sidenav.component.html',
@@ -130,7 +137,25 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
+    public isOrgMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
+    public showOrgTooltip = false;
+
+    private router = inject(Router);
+    public isWorkspaceRoute = toSignal(
+        this.router.events.pipe(
+            filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+            map(() => this.router.url.startsWith('/workspace'))
+        ),
+        { initialValue: this.router.url.startsWith('/workspace') }
+    );
+
+    public activeMembership = computed(() => {
+        const user = this.user();
+        if (!user) return null;
+        const orgId = this.activeOrgService.activeOrgId();
+        return user.memberships.find((m) => m.organization.id === orgId) ?? null;
+    });
 
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
@@ -224,9 +249,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     }
 
     public ngAfterViewInit(): void {
-        // COMMIT_COMMENTS: Widget's internal syncAgentsFromApi does not reliably fire in
-        // custom-element mode. Instead, we use AGENT_REMOVE + AGENT_CREATE per flow —
-        // idempotent sync that works on every load without creating duplicates.
         if (this.isEpicChatEnabled) {
             setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
         }
@@ -247,6 +269,15 @@ export class LeftSidebarComponent implements AfterViewInit {
     public toggleUserMenu(event: MouseEvent): void {
         event.stopPropagation();
         this.isUserMenuOpen.update((prev) => !prev);
+    }
+
+    public closeOrgMenu(): void {
+        this.isOrgMenuOpen.set(false);
+    }
+
+    public toggleOrgMenu(event: MouseEvent): void {
+        event.stopPropagation();
+        this.isOrgMenuOpen.update((prev) => !prev);
     }
 
     public onEpChatCommandResult(event: Event): void {

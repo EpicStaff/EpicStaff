@@ -93,12 +93,11 @@ These steps start the dev stack with Docker Compose directly. If you prefer `mak
     cd src
     docker compose -f docker-compose.yaml --env-file ./.env up -d
     ```
-    From the repo root, `make up` does the same thing and also creates the external volumes and network for you.
 7.  Open **http://localhost** in your browser. The Angular live-reload dev server is also directly accessible at **http://localhost:4200**.
 8.  **Make your changes and run tests.**
 9.  **Commit and push your changes**, then **submit a Pull Request.**
 
-To tail logs, run (from `src/`) `docker compose -f docker-compose.yaml --env-file ./.env logs -f`. To stop the stack, replace `logs -f` with `down`. (`make logs` and `make down` from the repo root are equivalent.)
+To tail logs, run (from `src/`) `docker compose -f docker-compose.yaml --env-file ./.env logs -f`. To stop the stack, replace `logs -f` with `down`. The repo-root `Makefile` covers local backend tests and Django commands only — see [docs/makefile_commands.md](docs/makefile_commands.md).
 
 ### Pull Request Process
 

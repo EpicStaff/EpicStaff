@@ -1,9 +1,8 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-
+from rest_framework.response import Response
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.organization_serializers import (
     OrganizationCreateRequestSerializer,
@@ -79,18 +78,14 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
             include_superadmin_fallback=getattr(request.user, "is_superadmin", False),
         )
         return paginator.get_paginated_response(
-            OrganizationListResponseSerializer(
-                page, many=True, context={"request": request}
-            ).data
+            OrganizationListResponseSerializer(page, many=True, context={"request": request}).data
         )
 
     @extend_schema(
         summary="Get one organization (settings surface)",
         responses={
             200: OrganizationResponseSerializer,
-            404: OpenApiResponse(
-                description="Organization not found or not accessible"
-            ),
+            404: OpenApiResponse(description="Organization not found or not accessible"),
         },
     )
     def retrieve(self, request, pk=None):
@@ -119,9 +114,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
         responses={
             200: OrganizationResponseSerializer,
             400: OpenApiResponse(description="Validation error or duplicate name"),
-            404: OpenApiResponse(
-                description="Organization not found or not accessible"
-            ),
+            404: OpenApiResponse(description="Organization not found or not accessible"),
         },
     )
     def partial_update(self, request, pk=None):
@@ -136,9 +129,7 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
         summary="Deactivate an organization (superadmin)",
         responses={
             200: OrganizationResponseSerializer,
-            400: OpenApiResponse(
-                description="Cannot deactivate the last active organization"
-            ),
+            400: OpenApiResponse(description="Cannot deactivate the last active organization"),
             404: OpenApiResponse(description="Organization not found"),
         },
     )

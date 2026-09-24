@@ -5,7 +5,9 @@
             <p class="tab__subtitle">Manage realtime voice channels and their Twilio configuration.</p>
         </div>
         <app-button
+            *appHasPermission="[ResourceCode.Voice, ActionCode.Create]"
             type="primary"
+            [disabled]="status() === 'error'"
             (click)="onAddChannel()"
             >Add Channel</app-button
         >
@@ -16,9 +18,10 @@
             <app-loading-spinner />
         </div>
     } @else if (status() === 'error') {
-        <div class="tab__loading-state tab__loading-state--error">
-            <p>Failed to load channels.</p>
-        </div>
+        <app-fetch-error-state
+            title="Failed to load channels"
+            (retry)="retry()"
+        />
     } @else if (channels().length === 0) {
         <div class="tab__empty-state">
             <p>No channels configured. Click <strong>Add Channel</strong> to create one.</p>
@@ -39,6 +42,7 @@
                         </div>
                         <div class="channel-card__actions">
                             <button
+                                *appHasPermission="[ResourceCode.Voice, ActionCode.Update]"
                                 type="button"
                                 class="channel-card__action"
                                 title="Edit"
@@ -50,6 +54,7 @@
                                 ></i>
                             </button>
                             <button
+                                *appHasPermission="[ResourceCode.Voice, ActionCode.Delete]"
                                 type="button"
                                 class="channel-card__action channel-card__action--delete"
                                 title="Delete"

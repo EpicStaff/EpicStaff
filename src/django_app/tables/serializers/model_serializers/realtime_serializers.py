@@ -1,16 +1,5 @@
-from rest_framework import serializers
-
-from tables.models.secret_models import Secret
-from tables.models.webhook_models import (
-    LOCAL_ONLY_PROVIDERS,
-    RealtimeChannel,
-    TwilioChannel,
-    WebhookTrigger,
-    WebhookTriggerAuthKind,
-)
-from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from agents.models.agent_models import AgentDefinition
-from tables.models.llm_models import RealtimeConfig, RealtimeTranscriptionConfig
+from rest_framework import serializers
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -21,12 +10,21 @@ from tables.models.realtime_models import (
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
+from tables.models.secret_models import Secret
+from tables.models.webhook_models import (
+    LOCAL_ONLY_PROVIDERS,
+    RealtimeChannel,
+    TwilioChannel,
+    WebhookTrigger,
+    WebhookTriggerAuthKind,
+)
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
 )
-from tables.services.secrets import secret_resolver
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.services.secrets import secret_resolver
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -69,15 +67,11 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
                     }
                 )
 
-        openai_config = attrs.get(
-            "openai_config", getattr(self.instance, "openai_config", None)
-        )
+        openai_config = attrs.get("openai_config", getattr(self.instance, "openai_config", None))
         elevenlabs_config = attrs.get(
             "elevenlabs_config", getattr(self.instance, "elevenlabs_config", None)
         )
-        gemini_config = attrs.get(
-            "gemini_config", getattr(self.instance, "gemini_config", None)
-        )
+        gemini_config = attrs.get("gemini_config", getattr(self.instance, "gemini_config", None))
 
         set_count = sum(
             [
@@ -108,9 +102,7 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class OpenAIRealtimeConfigSerializer(
-    SecretReferenceGuardMixin, serializers.ModelSerializer
-):
+class OpenAIRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -143,9 +135,7 @@ class OpenAIRealtimeConfigSerializer(
         read_only_fields = ["org", "created_by"]
 
 
-class ElevenLabsRealtimeConfigSerializer(
-    SecretReferenceGuardMixin, serializers.ModelSerializer
-):
+class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -169,9 +159,7 @@ class ElevenLabsRealtimeConfigSerializer(
         read_only_fields = ["org", "created_by"]
 
 
-class GeminiRealtimeConfigSerializer(
-    SecretReferenceGuardMixin, serializers.ModelSerializer
-):
+class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -235,9 +223,7 @@ class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerial
             )
 
         auth = getattr(wt, "auth", None) if wt else None
-        if auth is not None and auth.kind not in (
-            WebhookTriggerAuthKind.TWILIO,
-        ):
+        if auth is not None and auth.kind not in (WebhookTriggerAuthKind.TWILIO,):
             raise serializers.ValidationError(
                 {
                     "webhook_trigger": (
@@ -320,7 +306,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     auth_token = serializers.SerializerMethodField()
 
     class Meta(_TwilioChannelReadSerializer.Meta):
-        fields = _TwilioChannelReadSerializer.Meta.fields + ["auth_token"]
+        fields = [*_TwilioChannelReadSerializer.Meta.fields, "auth_token"]
 
     def get_auth_token(self, obj) -> str | None:
         if obj.auth_token_secret_id is None:
@@ -391,15 +377,11 @@ class RealtimeAgentWriteSerializer(serializers.ModelSerializer):
         exclude = ["agent"]
 
     def validate(self, attrs):
-        openai_config = attrs.get(
-            "openai_config", getattr(self.instance, "openai_config", None)
-        )
+        openai_config = attrs.get("openai_config", getattr(self.instance, "openai_config", None))
         elevenlabs_config = attrs.get(
             "elevenlabs_config", getattr(self.instance, "elevenlabs_config", None)
         )
-        gemini_config = attrs.get(
-            "gemini_config", getattr(self.instance, "gemini_config", None)
-        )
+        gemini_config = attrs.get("gemini_config", getattr(self.instance, "gemini_config", None))
 
         set_count = sum(
             [

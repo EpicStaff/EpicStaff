@@ -27,9 +27,10 @@
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link) {
+                @for (tab of tabs; track tab.link; let last = $last) {
                     @if (tab.isPermitted()) {
                         <app-tab-button
+                            mod="sm"
                             routerLink="{{ tab.link }}"
                             routerLinkActive="active"
                             #rla="routerLinkActive"
@@ -37,6 +38,9 @@
                         >
                             {{ tab.label }}
                         </app-tab-button>
+                        @if (!last) {
+                            <span class="tab-sep">/</span>
+                        }
                     }
                 }
             </div>

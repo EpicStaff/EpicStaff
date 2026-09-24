@@ -1,6 +1,5 @@
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
-
 from tables.models.rbac_models import (
     Organization,
     OrganizationConfig,
@@ -92,9 +91,7 @@ class OrganizationManagementService(CrossOrgResourceService):
         self.assert_can(effective, Permission.READ)
         return self._get_organization_with_member_count(org_id)
 
-    def _list_organizations(
-        self, is_active: bool | None = None
-    ) -> QuerySet[Organization]:
+    def _list_organizations(self, is_active: bool | None = None) -> QuerySet[Organization]:
         qs = (
             Organization.objects.annotate(member_count=Count("members"))
             .select_related("config")
@@ -142,12 +139,7 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def deactivate_organization(self, org_id: int) -> Organization:
-        orgs = (
-            Organization.objects
-            .filter(is_active=True)
-            .order_by("pk")
-            .select_for_update()
-        )
+        orgs = Organization.objects.filter(is_active=True).order_by("pk").select_for_update()
         orgs_map = {o.pk: o for o in orgs}
         if org_id in orgs_map:
             if len(orgs_map) <= 1:
