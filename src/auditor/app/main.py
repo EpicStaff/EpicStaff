@@ -164,6 +164,7 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if settings.AUDITOR_DEBUG else None,
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
+        root_path="/auditor",
     )
 
     app.add_middleware(
