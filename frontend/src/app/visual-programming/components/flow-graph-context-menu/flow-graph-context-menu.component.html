@@ -36,6 +36,12 @@
                         (nodeSelected)="onNodeSelected($event)"
                     ></app-flows-menu>
                 }
+                @case (menuTab.PERSISTENCE) {
+                    <app-persistence-menu
+                        [searchTerm]="searchTerm()"
+                        (nodeSelected)="onNodeSelected($event)"
+                    ></app-persistence-menu>
+                }
             }
         </div>
     </div>

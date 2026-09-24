@@ -151,6 +151,35 @@
                         <span>No LLM</span>
                     </div>
                 }
+                @if (persistenceVisual; as visual) {
+                    <div
+                        class="persistence-mode-badge"
+                        [style.--persistence-accent]="'var(' + visual.accentVar + ')'"
+                    >
+                        <i [class]="visual.icon"></i>
+                        <span>{{ visual.label }}</span>
+                    </div>
+                }
+                @if (hasMissingPersistenceTable) {
+                    <div
+                        class="llm-warning-badge"
+                        title="Select a table in the node panel"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="0.875rem"
+                        ></app-svg-icon>
+                        <span>No table</span>
+                    </div>
+                }
+            </div>
+        }
+        @if (persistenceSubtitle; as subtitle) {
+            <div
+                class="persistence-subtitle"
+                [title]="subtitle"
+            >
+                {{ subtitle }}
             </div>
         }
     </div>

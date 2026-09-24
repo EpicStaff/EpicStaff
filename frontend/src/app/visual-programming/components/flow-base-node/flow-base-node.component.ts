@@ -8,6 +8,7 @@ import {
     inject,
     Input,
     input,
+    OnInit,
     Output,
     signal,
 } from '@angular/core';
@@ -19,6 +20,12 @@ import { LlmConfigStorageService } from '@shared/services';
 import { flowUrl } from '@shared/utils';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
+import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
+import {
+    PERSISTENCE_MODE_VISUALS,
+    PersistenceModeVisual,
+    persistenceSubtitle as formatPersistenceSubtitle,
+} from '../../core/constants/persistence-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import {
@@ -30,6 +37,7 @@ import {
     GraphNoteModel,
     LLMNodeModel,
     NodeModel,
+    PersistenceNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -68,9 +76,10 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         '[class]': 'getNodeClass()',
     },
 })
-export class FlowBaseNodeComponent {
+export class FlowBaseNodeComponent implements OnInit {
     private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
+    private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
@@ -113,6 +122,12 @@ export class FlowBaseNodeComponent {
         public flowService: FlowService,
         private cdr: ChangeDetectorRef
     ) {}
+
+    public ngOnInit(): void {
+        if (this.node.type === NodeType.PERSISTENCE && this.persistenceTablesStorage.tables().length === 0) {
+            this.persistenceTablesStorage.loadTables().subscribe();
+        }
+    }
 
     public onDeleteClick(event: MouseEvent): void {
         event.preventDefault();
@@ -208,6 +223,26 @@ export class FlowBaseNodeComponent {
     }
     public get isBlockedSubgraph(): boolean {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
+    }
+
+    public get persistenceNode(): PersistenceNodeModel | null {
+        return this.node.type === NodeType.PERSISTENCE ? (this.node as PersistenceNodeModel) : null;
+    }
+
+    public get persistenceVisual(): PersistenceModeVisual | null {
+        const node = this.persistenceNode;
+        return node ? PERSISTENCE_MODE_VISUALS[node.data.mode] : null;
+    }
+
+    public get persistenceSubtitle(): string | null {
+        const node = this.persistenceNode;
+        if (!node) return null;
+        const table = this.persistenceTablesStorage.tables().find((t) => t.id === node.data.persistence_table);
+        return formatPersistenceSubtitle(node.data.mode, table?.name ?? null, node.data.entries.length);
+    }
+
+    public get hasMissingPersistenceTable(): boolean {
+        return !!this.persistenceNode && this.persistenceNode.data.persistence_table === null;
     }
 
     private get assignedAgentDefinitionId(): number | null {

@@ -194,6 +194,29 @@
                 border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
                 white-space: nowrap;
             }
+
+            .persistence-mode-badge {
+                margin-left: auto;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 0.6875rem;
+                padding: 2px 6px;
+                border-radius: 10px;
+                background: color-mix(in srgb, var(--persistence-accent) 15%, transparent);
+                color: var(--persistence-accent);
+                border: 1px solid color-mix(in srgb, var(--persistence-accent) 60%, transparent);
+                white-space: nowrap;
+            }
+        }
+
+        .persistence-subtitle {
+            padding: 0 12px 8px;
+            font-size: 0.75rem;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .node-details {

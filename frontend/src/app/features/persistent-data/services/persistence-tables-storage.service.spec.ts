@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { PersistenceTable } from '../models/persistence-table.model';
 import { PersistenceTablesApiService } from './persistence-tables-api.service';
@@ -46,5 +46,34 @@ describe('PersistenceTablesStorageService', () => {
         service.clear();
 
         expect(service.tables()).toEqual([]);
+    });
+
+    it('shares one in-flight request across concurrent callers (e.g. several canvas nodes)', () => {
+        const tables: PersistenceTable[] = [
+            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+        ];
+        const response$ = new Subject<PersistenceTable[]>();
+        apiService.getTables.mockReturnValue(response$);
+
+        service.loadTables().subscribe();
+        service.loadTables().subscribe();
+        expect(apiService.getTables).toHaveBeenCalledTimes(1);
+
+        response$.next(tables);
+        response$.complete();
+
+        expect(service.tables().map((t) => t.name)).toEqual(['Customers']);
+    });
+
+    it('issues a fresh request once the previous one has completed', () => {
+        const tables: PersistenceTable[] = [
+            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+        ];
+        apiService.getTables.mockReturnValue(of(tables));
+
+        service.loadTables().subscribe();
+        service.loadTables().subscribe();
+
+        expect(apiService.getTables).toHaveBeenCalledTimes(2);
     });
 });
