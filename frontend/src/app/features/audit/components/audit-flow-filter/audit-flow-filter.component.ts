@@ -1,7 +1,7 @@
 import { Component, computed, input, model, signal } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
-import { AuditValuesFilter } from '../../models/audit-filter.models';
+import { AuditEnumOption, AuditValuesFilter } from '../../models/audit-filter.models';
 import { FLOW_OPERATORS } from '../../models/audit-filter-options';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditOperatorSelectComponent } from '../audit-operator-select/audit-operator-select.component';
@@ -13,15 +13,13 @@ import { AuditOperatorSelectComponent } from '../audit-operator-select/audit-ope
     styleUrl: './audit-flow-filter.component.scss',
 })
 export class AuditFlowFilterComponent {
-    public flowNames = input<string[]>([]);
+    public options = input<AuditEnumOption[]>([]);
     public filter = model.required<AuditValuesFilter>();
     public searchText = signal('');
 
     readonly visibleOptions = computed(() => {
         const query = this.searchText().toLowerCase();
-        return this.flowNames()
-            .map((name) => ({ value: name, label: name }))
-            .filter((option) => option.label.toLowerCase().includes(query));
+        return this.options().filter((option) => option.label.toLowerCase().includes(query));
     });
 
     protected readonly FLOW_OPERATORS = FLOW_OPERATORS;

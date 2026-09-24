@@ -2,16 +2,21 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent } from '@shared/components';
+import { catchError, forkJoin, of } from 'rxjs';
 
+import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
+import { CustomToolsService } from '../tools/services/custom-tools/custom-tools.service';
+import { McpToolsService } from '../tools/services/mcp-tools/mcp-tools.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
-import { AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
+import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditSessionEvent } from './models/audit-session.models';
 import { AuditApiService } from './services/audit-api.service';
 import { buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
+import { sanitizeToolName } from './utils/sanitize-tool-name.util';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
@@ -26,6 +31,9 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 export class AuditSessionsBrowserComponent implements OnInit {
     private auditApiService = inject(AuditApiService);
     private flowApiService = inject(FlowsApiService);
+    private agentService = inject(AgentDefinitionsApiService);
+    private customToolsService = inject(CustomToolsService);
+    private mcpToolsService = inject(McpToolsService);
     private destroyRef = inject(DestroyRef);
     public readonly timeZoneLabel = buildTimeZoneLabel();
 
@@ -72,7 +80,9 @@ export class AuditSessionsBrowserComponent implements OnInit {
         return this.allRows().filter((row) => !row.parentIds.some((id) => collapsed.has(id)));
     });
 
-    public appliedChips = computed(() => describeAuditFilter(this.appliedFilter()));
+    public appliedChips = computed(() =>
+        describeAuditFilter(this.appliedFilter(), { agents: this.agentOptions(), tools: this.toolOptions() })
+    );
     public activeFilterCount = computed(() => this.appliedChips().length);
     public canGoNewer = computed(() => this.cursorStack().length > 1);
     public canGoOlder = computed(() => this.nextCursor() !== null);
@@ -104,6 +114,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public ngOnInit(): void {
         this.loadSessions();
         this.loadFlowNames();
+        this.loadAgents();
+        this.loadTools();
     }
 
     public stepPageSize(delta: number): void {
@@ -220,6 +232,41 @@ export class AuditSessionsBrowserComponent implements OnInit {
                 error: () => {
                     this.flowNames.set([]);
                 },
+            });
+    }
+
+    public agentOptions = signal<AuditEnumOption[]>([]);
+    public toolOptions = signal<AuditEnumOption[]>([]);
+
+    public loadTools(): void {
+        forkJoin({
+            python: this.customToolsService.getPythonCodeTools().pipe(catchError(() => of([]))),
+            mcp: this.mcpToolsService.getMcpTools().pipe(catchError(() => of([]))),
+        })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: ({ python, mcp }) => {
+                    const names = [...python.map((tool) => tool.name), ...mcp.map((tool) => tool.name)];
+                    const byValue = new Map(names.map((name) => [sanitizeToolName(name), name]));
+                    this.toolOptions.set(
+                        Array.from(byValue, ([value, label]) => ({ value, label })).sort((a, b) =>
+                            a.label.localeCompare(b.label)
+                        )
+                    );
+                },
+                error: () => this.toolOptions.set([]),
+            });
+    }
+
+    public loadAgents(): void {
+        this.agentService
+            .getAgentDefinitions()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (agents) => {
+                    this.agentOptions.set(agents.map((agent) => ({ value: String(agent.id), label: agent.name })));
+                },
+                error: () => this.agentOptions.set([]),
             });
     }
 }

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
@@ -15,7 +15,12 @@ export class AuditFilterGroupComponent {
     public disabled = input<boolean>(false);
     public expanded = model<boolean>(false);
 
+    public isOpen = computed(() => this.expanded() && !this.disabled());
+
     public toggle(): void {
+        if (this.disabled()) {
+            return;
+        }
         this.expanded.update((isExpanded) => !isExpanded);
     }
 }

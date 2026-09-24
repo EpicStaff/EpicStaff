@@ -1,31 +1,33 @@
 <div
     class="filter-group"
-    [class.filter-group--expanded]="expanded()"
+    [class.filter-group--expanded]="isOpen()"
 >
     <button
         class="filter-group__header"
         type="button"
-        [attr.aria-expanded]="expanded()"
+        [attr.aria-expanded]="isOpen()"
+        [disabled]="disabled()"
         (click)="toggle()"
     >
         <app-svg-icon
             class="filter-group__chevron"
-            [class.filter-group__chevron--collapsed]="!expanded()"
+            [class.filter-group__chevron--collapsed]="!isOpen()"
             icon="chevron-down-filled"
             size="8px"
         />
         <span class="filter-group__title">{{ label() }}</span>
+        @if (hint()) {
+            <span class="filter-group__hint">{{ hint() }}</span>
+        }
     </button>
 
     <div
         class="filter-group__body"
-        [class.is-collapsed]="!expanded()"
+        [class.is-collapsed]="!isOpen()"
+        [attr.inert]="isOpen() ? null : ''"
     >
         <div class="filter-group__clip">
             <div class="filter-group__content">
-                @if (hint()) {
-                    <span class="filter-group__hint">{{ hint() }}</span>
-                }
                 <ng-content />
             </div>
         </div>

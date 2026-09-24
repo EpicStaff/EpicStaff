@@ -265,6 +265,10 @@ async def test_key_exists_matches_docs_with_deeply_nested_key_present(
         _event(name="missing-leaf", output={"token_usage": {}}),
         # the whole `output` root is absent from the document
         _event(name="missing-root"),
+        # the root carries other leaf values but not this key - the only
+        # fixture that tells a real per-key check apart from "is the root
+        # object non-empty?", which is what a doc[path]-based check answers
+        _event(name="other-keys-only", output={"summary": "done", "retries": 2}),
     ]
     await repository.write_batch(fixtures)
     await opensearch_client.indices.refresh(index="audit_events")
@@ -277,6 +281,7 @@ async def test_key_exists_matches_docs_with_deeply_nested_key_present(
     assert "present" in names
     assert "missing-leaf" not in names
     assert "missing-root" not in names
+    assert "other-keys-only" not in names
 
 
 @pytest.mark.integration
@@ -291,6 +296,9 @@ async def test_key_not_exists_matches_only_docs_missing_the_deeply_nested_key(
         _event(name="present", output={"token_usage": {"completion_tokens": 42}}),
         _event(name="missing-leaf", output={"token_usage": {}}),
         _event(name="missing-root"),
+        # see the sibling key_exists test - a non-empty root missing this one
+        # key is the case a doc[path]-based check gets wrong
+        _event(name="other-keys-only", output={"summary": "done", "retries": 2}),
     ]
     await repository.write_batch(fixtures)
     await opensearch_client.indices.refresh(index="audit_events")
@@ -303,6 +311,7 @@ async def test_key_not_exists_matches_only_docs_missing_the_deeply_nested_key(
     assert "present" not in names
     assert "missing-leaf" in names
     assert "missing-root" in names
+    assert "other-keys-only" in names
 
 
 @pytest.mark.integration

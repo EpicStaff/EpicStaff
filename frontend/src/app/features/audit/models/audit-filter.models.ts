@@ -27,6 +27,11 @@ export interface AuditEnumOption {
     icon?: string;
 }
 
+export interface AuditNumberFilter {
+    op: AuditFilterOp;
+    value: string;
+}
+
 export interface AuditFilterLeaf {
     field: string;
     op: AuditFilterOp;
@@ -81,6 +86,13 @@ export interface AuditFilterState {
     input: AuditCondition[];
     output: AuditCondition[];
     details: AuditCondition[];
+    agent: AuditValuesFilter;
+    tool: AuditValuesFilter;
+    task: AuditCondition[];
+    prompt: AuditCondition[];
+    messageText: AuditCondition[];
+    messageThought: AuditCondition[];
+    tokens: AuditNumberFilter;
 }
 
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
@@ -98,6 +110,13 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     input: [createAuditCondition()],
     output: [createAuditCondition()],
     details: [createAuditCondition()],
+    agent: { op: 'in', values: [] },
+    tool: { op: 'in', values: [] },
+    task: [createAuditCondition()],
+    prompt: [createAuditCondition()],
+    messageText: [createAuditCondition()],
+    messageThought: [createAuditCondition()],
+    tokens: { op: 'gt', value: '' },
 };
 
 export function createAuditCondition(): AuditCondition {

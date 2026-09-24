@@ -78,13 +78,22 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 14px 16px;
+    padding: 10px 14px;
 }
 
 .filters-panel__groups {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
+}
+
+.filters-panel__section {
+    margin: 8px 0 2px;
+    color: var(--color-input-text-placeholder);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .filters-panel__footer {

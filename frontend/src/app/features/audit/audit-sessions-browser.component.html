@@ -267,6 +267,8 @@
             <aside class="audit-browser__panel">
                 <app-audit-filters-panel
                     [flowNames]="flowNames()"
+                    [agentOptions]="agentOptions()"
+                    [toolOptions]="toolOptions()"
                     [(filter)]="draftFilter"
                     (closed)="closeFiltersPanel()"
                     (applied)="applyFilters()"

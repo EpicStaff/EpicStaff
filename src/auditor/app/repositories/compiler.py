@@ -134,32 +134,19 @@ def _compile_structured_leaf(
 
 
 def _compile_key_existence_filter(path: str, *, negate: bool) -> dict:
-    """flat_object `exists`-depth bug, but here `exists` IS the
-    correctness check (no fallback script) - so presence is read via
-    `doc[path].size()` instead, at every depth, for both directions.
+    """A flat_object subfield is invisible to both ways of asking directly:
+    native `exists` resolves only one level below the root, and `doc[path]`
+    in Painless hands back the root's entire value list, so every subpath
+    answers identically ("is `details` non-empty?" rather than "is this key
+    present?"). Measured against the dev index: the script answered 774 for
+    `details.token_usage.total_tokens`, for `details.message_type` and for a
+    path that exists nowhere. A wildcard on the subfield does resolve it -
+    same three paths give 22 / 774 / 0.
     """
-    comparator = "==" if negate else "!="
-    empty_result = "true" if negate else "false"
-    source = (
-        "def fv = doc[params.path]; "
-        f"if (fv == null) {{ return {empty_result}; }} "
-        f"return fv.size() {comparator} 0;"
-    )
-    return {
-        "bool": {
-            "filter": [
-                {
-                    "script": {
-                        "script": {
-                            "lang": "painless",
-                            "source": source,
-                            "params": {"path": path},
-                        }
-                    }
-                },
-            ]
-        }
-    }
+    clause = {"wildcard": {path: {"value": "*"}}}
+    if negate:
+        return {"bool": {"must_not": [clause]}}
+    return clause
 
 
 def _is_pure_filter_conjunction(compiled: dict) -> bool:
