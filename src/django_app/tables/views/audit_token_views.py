@@ -23,7 +23,7 @@ class AuditTokenView(APIView):
     POST /api/audit/token/ — mints a short-lived JWT for the caller's
     active organization, consumed directly by `auditor` (the frontend
     never talks to Django again for audit reads/exports after this one
-    call). `auditor` verifies locally with the same JWT_SECRET - no
+    call). `auditor` verifies locally with the same AUDIT_JWT_SECRET - no
     callback to Django per request.
     """
 
@@ -66,11 +66,11 @@ class AuditTokenView(APIView):
             "iss": AUDIT_TOKEN_ISSUER,
             "user_id": request.user.id,
             "org_id": org_id,
-            "actions": actions,
+            ResourceType.AUDIT.name: actions,
             "retention_days": retention_days,
             "iat": now,
             "exp": now + timedelta(seconds=settings.AUDIT_TOKEN_TTL_SECONDS),
         }
-        token = jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+        token = jwt.encode(payload, settings.AUDIT_JWT_SECRET, algorithm="HS256")
 
         return Response({"token": token, "expires_in": settings.AUDIT_TOKEN_TTL_SECONDS})
