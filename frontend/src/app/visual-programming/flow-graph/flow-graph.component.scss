@@ -360,15 +360,28 @@
     stroke-width: 2;
 }
 
-.top-left-actions {
+.canvas-toolbar-row {
     position: absolute;
     top: 1rem;
     left: 1rem;
+    right: 1rem;
     z-index: 10;
     display: flex;
     flex-direction: row;
     align-items: flex-start;
+    justify-content: space-between;
     gap: 1rem;
+    max-height: calc(100vh - 2rem);
+    pointer-events: none;
+}
+
+.top-left-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 1rem;
+    min-width: 0;
+    flex-shrink: 1;
     max-height: calc(100vh - 2rem);
     pointer-events: none;
 }
@@ -378,6 +391,10 @@
     flex-direction: column;
     max-height: calc(100vh - 3rem);
     pointer-events: auto;
+}
+
+app-nodes-search {
+    min-width: 0;
 }
 
 .top-left-actions__column {
@@ -447,14 +464,15 @@
     }
 }
 
+.top-right-controls {
+    flex-shrink: 0;
+    pointer-events: auto;
+}
+
 .top-right-actions {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
     display: flex;
     align-items: flex-start;
     gap: 1rem;
-    z-index: 10;
 }
 
 .show-inputs-btn {

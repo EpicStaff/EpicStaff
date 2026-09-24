@@ -44,7 +44,10 @@ from tables.models.rbac_models import (
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
-from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
+from tables.services.rbac.utils.refresh_cookie import (
+    NON_REMEMBER_REFRESH_LIFETIME,
+    REFRESH_COOKIE_NAME,
+)
 from tables.services.rbac.utils.password_reset_token_repository import (
     PasswordResetTokenRepository,
     hash_token,
@@ -110,6 +113,167 @@ def test_login_returns_access_and_sets_refresh_cookie(api_client, regular_user):
     cookie = r.cookies[REFRESH_COOKIE_NAME]
     assert cookie.value
     assert cookie["httponly"]
+
+
+@pytest.mark.django_db
+def test_login_remember_me_true_sets_persistent_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": True,
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
+    # Persistent cookie -> Max-Age is set to the configured lifetime.
+    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+    assert int(cookie["max-age"]) == expected
+    # remember_me claim baked into the token so rotation preserves persistence.
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is True
+
+
+@pytest.mark.django_db
+def test_login_remember_me_false_sets_30min_cookie(api_client, regular_user):
+    """Non-remembered login -> 30-min Max-Age cookie + matching JWT exp."""
+    r = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+    now = int(timezone.now().timestamp())
+    assert 0 < token.payload["exp"] - now <= expected
+
+
+@pytest.mark.django_db
+def test_login_omitting_remember_me_defaults_to_30min_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={"email": regular_user.email, "password": "UserStrongPass123!"},
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+
+
+@pytest.mark.django_db
+def test_refresh_preserves_remember_me_persistent(api_client, regular_user):
+    """A persistent session must stay persistent across refresh rotation."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": True,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is True
+
+
+@pytest.mark.django_db
+def test_refresh_preserves_remember_me_short(api_client, regular_user):
+    """Non-remembered session keeps its 30-min window across rotation."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+    now = int(timezone.now().timestamp())
+    assert 0 < token.payload["exp"] - now <= expected
+
+
+@pytest.mark.django_db
+def test_refresh_without_cookie_returns_401(api_client):
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 401
+
+
+@pytest.mark.django_db
+def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
+    api_client, regular_user
+):
+    """Expired non-remember refresh -> 401 + cookie cleared."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+
+    # Simulate the 30-min window elapsing by re-signing exp into the past.
+    current = api_client.cookies[REFRESH_COOKIE_NAME].value
+    token = RefreshToken(current)
+    token.set_exp(
+        from_time=timezone.now()
+        - NON_REMEMBER_REFRESH_LIFETIME
+        - timedelta(seconds=1),
+        lifetime=timedelta(seconds=0),
+    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = str(token)
+
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 401
+    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    assert cleared.value == ""
+    assert int(cleared["max-age"]) == 0
+
+
+@pytest.mark.django_db
+def test_logout_clears_refresh_cookie(api_client, regular_user, jwt_tokens):
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+
+    r = api_client.post(reverse("logout"))
+    assert r.status_code == status.HTTP_205_RESET_CONTENT
+    # Cookie is cleared: value emptied and Max-Age=0.
+    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    assert cleared.value == ""
+    assert int(cleared["max-age"]) == 0
 
 
 @pytest.mark.django_db

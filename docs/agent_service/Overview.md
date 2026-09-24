@@ -20,16 +20,22 @@ K/V key.
 | | value | env |
 |---|---|---|
 | Request stream | `agent.requests` | `AGENT_REQUEST_STREAM` |
-| Result stream  | `agent.results`  | `AGENT_RESULT_STREAM` |
+| Result stream prefix | `agent.results` → per run `agent.results:<correlation_id>` | `AGENT_RESULT_STREAM` |
+| Result stream TTL | `1h`, refreshed on every publish | `AGENT_RESULT_STREAM_TTL` |
 | Consumer group | `agent-executors` | `AGENT_CONSUMER_GROUP` |
 
 Flow: crew `SET agent:request:{correlation_id} <AgentRequest JSON>` then `XADD`
 a `StreamEnvelope{type:"agent.run", correlation_id, payload:{request_key}}` to
 `agent.requests`. The service reads via consumer group, hydrates the request
-from the K/V key, runs it, and publishes result envelopes to `agent.results`
-(`agent.result` / `agent.error`, plus live `agent.tool_call` / `agent.tool_result`
-when the runner uses the tool-events emitter). Crew filters `agent.results` by
-`correlation_id`.
+from the K/V key, runs it, and publishes result envelopes to the run's own
+stream `agent.results:<correlation_id>` (`agent.result` / `agent.error`, plus live
+`agent.tool_call` / `agent.tool_result` when the runner uses the tool-events
+emitter). Both sides derive the stream name with
+`shared.redis_streams.agent_result_stream(prefix, correlation_id)`; the agent never
+takes a reply-stream name from the request payload. Crew `XREAD`s only its own
+stream from `0` and deletes it (with the request key) when the wait ends. Every
+agent publish also sets an `EXPIRE` on the stream, so a stream crew never deleted
+(crash, or a late publish after crew timed out) is cleaned up by Redis.
 
 Envelope: `shared.redis_streams.StreamEnvelope{type, correlation_id, payload}`.
 
@@ -75,7 +81,7 @@ Redis Streams (agent.requests)
   → Runner            # owns emitter lifecycle on_start→on_final|on_error
       → AgentResolver # AgentSpec refs → ResolvedAgent(tools, ctx)  (app/resources/resolver.py)
       → DefaultAgentLoop  # LLM tool-use loop                       (app/loop/agent_loop.py)
-      → Emitter       # publishes to agent.results                  (app/emitters/)
+      → Emitter       # publishes to agent.results:<correlation_id> (app/emitters/)
 ```
 
 `RequestHandler` always `ack`s in `finally`. On a pre-emitter failure
@@ -230,7 +236,8 @@ boot.
 
 | env | default | meaning |
 |---|---|---|
-| `AGENT_REQUEST_STREAM` / `AGENT_RESULT_STREAM` / `AGENT_CONSUMER_GROUP` | `agent.requests` / `agent.results` / `agent-executors` | streams |
+| `AGENT_REQUEST_STREAM` / `AGENT_RESULT_STREAM` / `AGENT_CONSUMER_GROUP` | `agent.requests` / `agent.results` / `agent-executors` | streams (`AGENT_RESULT_STREAM` is the per-run stream prefix) |
+| `AGENT_RESULT_STREAM_TTL` | `1h` | expiry set on a per-run result stream at every publish |
 | `AGENT_DEFAULT_MAX_ITER` | `25` | fallback tool-turn cap |
 | `AGENT_SCHEMA_MAX_RETRIES` | `2` | structured-output correction retries |
 | `AGENT_DEFAULT_MAX_RETRIES` | `5` | LLM retry policy |

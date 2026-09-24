@@ -35,6 +35,7 @@ from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_se
 from tables.services.rbac.utils.refresh_cookie import (
     clear_refresh_cookie,
     get_refresh_from_cookie,
+    read_remember_me_claim,
     set_refresh_cookie,
 )
 from tables.swagger_schemas.auth_schema import (
@@ -74,7 +75,8 @@ class LoginView(TokenObtainPairView):
         if response.status_code == 200:
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
-                set_refresh_cookie(response, refresh_token)
+                remember_me = bool(request.data.get("remember_me", False))
+                set_refresh_cookie(response, refresh_token, remember_me=remember_me)
         return response
 
 
@@ -193,7 +195,8 @@ class FirstSetupView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-        set_refresh_cookie(response, tokens.refresh)
+        # First-setup has no remember-me opt-in: default to the 30-min session.
+        set_refresh_cookie(response, tokens.refresh, remember_me=False)
         return response
 
 
@@ -398,6 +401,9 @@ class CookieTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # Read persistence intent before rotation so it survives on the new token.
+        remember_me = read_remember_me_claim(refresh_value)
+
         serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
         try:
             serializer.is_valid(raise_exception=True)
@@ -412,7 +418,7 @@ class CookieTokenRefreshView(APIView):
         response = Response({"access": serializer.validated_data["access"]})
         new_refresh = serializer.validated_data.get("refresh")
         if new_refresh:
-            set_refresh_cookie(response, new_refresh)
+            set_refresh_cookie(response, new_refresh, remember_me=remember_me)
         return response
 
 
@@ -437,5 +443,5 @@ class ResetUserView(APIView):
             {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
-        set_refresh_cookie(response, tokens.refresh)
+        set_refresh_cookie(response, tokens.refresh, remember_me=True)
         return response

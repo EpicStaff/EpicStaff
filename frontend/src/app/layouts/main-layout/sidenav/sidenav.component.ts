@@ -241,9 +241,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     }
 
     public ngAfterViewInit(): void {
-        // COMMIT_COMMENTS: Widget's internal syncAgentsFromApi does not reliably fire in
-        // custom-element mode. Instead, we use AGENT_REMOVE + AGENT_CREATE per flow —
-        // idempotent sync that works on every load without creating duplicates.
         if (this.isEpicChatEnabled) {
             setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
         }

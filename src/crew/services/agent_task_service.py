@@ -7,20 +7,25 @@ Protocol (see src/agent/tests/test_contract.py):
    at key ``agent:request:<uuid>``.
 2. XADD a ``StreamEnvelope{type: "agent.run", correlation_id, payload:
    {"request_key"}}`` to ``agent.requests``.
-3. Await the matching result on ``agent.results``: ``agent.result`` payload
-   or ``agent.error`` payload, both keyed by ``correlation_id``. Along the
-   way, live envelopes whose ``type`` is in ``LIVE_EVENT_TYPES`` (currently
-   ``agent.tool_call`` / ``agent.tool_result`` / ``agent.task_start`` /
-   ``agent.task_finish`` / ``agent.knowledge_search``) are forwarded to the
-   caller's ``on_event`` callback
-   and otherwise skipped; envelopes of any other unrecognized type sharing
-   the correlation_id are silently skipped too (old-crew compatibility).
+3. Await the result on the run's own stream
+   ``agent_result_stream(result_stream_prefix, correlation_id)`` (e.g.
+   ``agent.results:<uuid>``): an ``agent.result`` or ``agent.error``
+   envelope ends the wait. Along the way, live envelopes whose ``type`` is
+   in ``LIVE_EVENT_TYPES`` (currently ``agent.tool_call`` /
+   ``agent.tool_result`` / ``agent.task_start`` / ``agent.task_finish`` /
+   ``agent.knowledge_search``) are forwarded to the caller's ``on_event``
+   callback; envelopes of any other type are skipped.
+4. DELETE the request key and the per-run stream once the wait ends, however
+   it ends. The agent sets a TTL on the stream at every publish, so a stream
+   left behind by a crashed crew — or recreated by a late agent publish after
+   crew gave up — still expires.
 
-Consumption is a plain ``XREAD`` from a private pre-publish tail offset,
-NOT a consumer group — consumer groups compete-consume, so concurrent task
-nodes would steal each other's results. Every waiter sees all results and
-filters by ``correlation_id``, mirroring ``RunPythonCodeService``'s
-per-call subscribe pattern but with server-side blocking.
+One stream per run keeps runs of different organizations out of each
+other's reads by construction: a waiter never receives, parses, or has to
+filter out another run's payload. Consumption is a plain ``XREAD`` from
+``"0"`` — the stream is new and private to this run, so no tail offset is
+needed, and no consumer group, which would only add ack bookkeeping for a
+single reader.
 """
 
 import json
@@ -39,7 +44,7 @@ from src.shared.models.agent_service import (
     AgentTaskSpec,
     RunType,
 )
-from src.shared.redis_streams import StreamEnvelope
+from src.shared.redis_streams import StreamEnvelope, agent_result_stream
 
 LIVE_EVENT_TYPES = frozenset(
     {
@@ -64,7 +69,7 @@ class AgentTaskService:
         self,
         redis_service: RedisService,
         request_stream: str = "agent.requests",
-        result_stream: str = "agent.results",
+        result_stream_prefix: str = "agent.results",
         default_timeout: float = 600.0,
         timeout_buffer_s: float = 60.0,
         poll_block_ms: int = 1000,
@@ -72,7 +77,7 @@ class AgentTaskService:
     ):
         self.redis_service = redis_service
         self.request_stream = request_stream
-        self.result_stream = result_stream
+        self.result_stream_prefix = result_stream_prefix
         self.default_timeout_s = default_timeout
         self.timeout_buffer_s = timeout_buffer_s
         self.poll_block_ms = poll_block_ms
@@ -109,8 +114,8 @@ class AgentTaskService:
         client = self.redis_service.aioredis_client
         correlation_id = str(uuid.uuid4())
         request_key = f"agent:request:{correlation_id}"
+        result_stream = agent_result_stream(self.result_stream_prefix, correlation_id)
 
-        last_id = await self._tail_result_id(client)
         await client.set(request_key, blob, ex=self.request_key_ttl_s)
 
         envelope = StreamEnvelope(
@@ -127,13 +132,13 @@ class AgentTaskService:
             return await self._await_result(
                 client=client,
                 correlation_id=correlation_id,
-                last_id=last_id,
+                result_stream=result_stream,
                 deadline=deadline,
                 stop_event=stop_event,
                 on_event=on_event,
             )
         finally:
-            await client.delete(request_key)
+            await client.delete(request_key, result_stream)
 
     def _resolve_timeout_s(
         self, agent_definition: AgentDefinitionData | None, task_count: int = 1
@@ -143,22 +148,16 @@ class AgentTaskService:
             return max_execution_time * task_count + self.timeout_buffer_s
         return self.default_timeout_s * task_count
 
-    async def _tail_result_id(self, client) -> str:
-        entries = await client.xrevrange(self.result_stream, count=1)
-        if not entries:
-            return "0"
-        latest_id, _fields = entries[0]
-        return latest_id
-
     async def _await_result(
         self,
         client,
         correlation_id: str,
-        last_id: str,
+        result_stream: str,
         deadline: float,
         stop_event: StopEvent,
         on_event: Callable[[StreamEnvelope], None] | None = None,
     ) -> dict:
+        last_id = "0"
         while True:
             stop_event.check_stop()
 
@@ -169,7 +168,7 @@ class AgentTaskService:
                 )
 
             block_ms = min(self.poll_block_ms, max(int(remaining_s * 1000), 1))
-            response = await client.xread({self.result_stream: last_id}, block=block_ms)
+            response = await client.xread({result_stream: last_id}, block=block_ms)
             if not response:
                 continue
 
@@ -177,8 +176,6 @@ class AgentTaskService:
                 for message_id, fields in entries:
                     last_id = message_id
                     envelope = StreamEnvelope.from_fields(fields)
-                    if envelope.correlation_id != correlation_id:
-                        continue
 
                     if envelope.type in LIVE_EVENT_TYPES:
                         if on_event is not None:

@@ -18,7 +18,7 @@ import {
             <div class="memory-header">
                 <span class="memory-type">{{ memory.payload.type }}</span>
                 <div class="memory-header-right">
-                    <span class="memory-date">{{ memory.payload.created_at | date: 'short' }}</span>
+                    <span class="memory-date">{{ memory.payload.created_at | date: 'M/d/yy, HH:mm' }}</span>
                     <button
                         class="delete-button"
                         matTooltip="Delete memory"

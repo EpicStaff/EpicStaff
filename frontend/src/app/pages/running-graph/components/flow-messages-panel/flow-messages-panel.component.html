@@ -6,7 +6,7 @@
                 size="20px"
             />
         </div>
-        <p class="text">Session execution</p>
+        <p class="panel-header__title">Session execution</p>
     </div>
 
     @if (canStopSelectedSession) {
@@ -28,26 +28,22 @@
         matTooltip="Open full session page"
         class="btn-go-to-arrow"
     >
-        <div>
-            <app-svg-icon
-                icon="arrow-up"
-                size="15px"
-                class="arrow-up-custom"
-            />
-        </div>
+        <app-svg-icon
+            icon="arrow-up"
+            size="15px"
+            class="arrow-up-custom"
+        />
     </button>
 
     <button
         (click)="close.emit()"
         matTooltip="Close"
-        class="btn-switch-session"
+        class="panel-header__close"
     >
-        <div>
-            <app-svg-icon
-                icon="x"
-                size="20px"
-            />
-        </div>
+        <app-svg-icon
+            icon="x"
+            size="20px"
+        />
     </button>
 </div>
 

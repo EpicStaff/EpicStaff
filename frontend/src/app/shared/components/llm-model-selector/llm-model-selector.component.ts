@@ -56,6 +56,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 class="selected-model"
                 [class.placeholder]="!selectedConfig()"
                 [class.loading]="isLoading"
+                [class.open]="isDropdownOpen()"
                 (click)="!isLoading && toggleDropdown($event)"
             >
                 @if (isLoading) {
@@ -85,7 +86,10 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                         </div>
                     }
                 }
-                <div class="dropdown-icon">
+                <div
+                    class="dropdown-icon"
+                    [class.open]="isDropdownOpen()"
+                >
                     <svg
                         width="16"
                         height="16"
@@ -173,19 +177,23 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .selected-model {
+                position: relative;
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
+                gap: 0.5rem;
+                height: 40px;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
                 border-radius: 4px;
-                padding: 0.625rem 0.75rem;
+                padding: 0.5rem 2rem 0.5rem 1rem;
+                font-size: 0.875rem;
+                line-height: var(--text-body-line-height);
                 cursor: pointer;
                 transition: border-color 0.2s ease;
-                min-height: 42px;
             }
 
-            .selected-model:hover:not(.loading) {
+            .selected-model:hover:not(.loading),
+            .selected-model.open {
                 border-color: var(--accent-color);
             }
 
@@ -214,7 +222,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .selected-model.placeholder {
-                color: rgba(255, 255, 255, 0.3);
+                color: var(--color-input-text-placeholder);
             }
 
             .model-info {
@@ -253,14 +261,26 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .placeholder-text {
-                color: rgba(255, 255, 255, 0.3);
-                font-size: 0.875rem;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                color: var(--color-input-text-placeholder);
             }
 
             .dropdown-icon {
-                margin-left: 8px;
-                color: var(--color-text-secondary);
+                position: absolute;
+                top: 50%;
+                right: 10px;
+                display: flex;
+                color: var(--color-input-text-placeholder);
+                transform: translateY(-50%);
                 transition: transform 0.2s ease;
+            }
+
+            .dropdown-icon.open {
+                transform: translateY(-50%) rotate(180deg);
             }
 
             .dropdown-menu {

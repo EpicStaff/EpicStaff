@@ -33,9 +33,6 @@ else
   echo ">> Skipping database reset (data preserved)."
 fi
 
-echo ">> ensure external volumes"
-docker volume inspect graph_data >/dev/null 2>&1 || docker volume create graph_data >/dev/null
-
 echo ">> docker compose pull"
 $DC pull
 

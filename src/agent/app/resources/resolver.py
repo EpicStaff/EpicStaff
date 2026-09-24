@@ -17,15 +17,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from loguru import logger
-from shared.knowledge.client import KnowledgeClient
-from shared.models.agent_service import (
-    AgentRequest,
-    AgentSpec,
-    CollectionSpec,
-    ContextAttachment,
-    S3FileSpec,
-)
-from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
 
 from app.exceptions import (
     AgentServiceError,
@@ -40,6 +31,15 @@ from app.sandbox.client import SandboxClient
 from app.tools.mcp.gateway import McpToolGateway
 from app.tools.registry import ToolRegistry
 from app.tools.registry_builder import ToolRegistryBuilder
+from shared.knowledge.client import KnowledgeClient
+from shared.models.agent_service import (
+    AgentRequest,
+    AgentSpec,
+    CollectionSpec,
+    ContextAttachment,
+    S3FileSpec,
+)
+from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
 
 
 @dataclass
@@ -143,6 +143,8 @@ class AgentResolver:
         collection_pool: dict[str, CollectionSpec],
         knowledge_sink: KnowledgeEventSink | None = None,
     ) -> ToolRegistry:
+        # System tools go onto every agent unconditionally, by design — see
+        # the contract on _system_registry in app/tools/system_registry.py.
         builder = ToolRegistryBuilder(
             self._sandbox,
             self._mcp_gateway,

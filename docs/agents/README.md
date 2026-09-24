@@ -25,8 +25,8 @@ At execution, the django/crew side serializes a definition plus its resolved
 surface into an `AgentSpec` wrapped in an `AgentRequest`, and dispatches it
 over the Redis Stream `agent.requests` to the **agent service**
 (`src/agent/`), which runs a streaming LiteLLM ReAct loop — calling Sandbox,
-MCP, and Knowledge tools as needed — and streams results back on the Redis
-Stream `agent.results`.
+MCP, and Knowledge tools as needed — and streams results back on a Redis
+Stream dedicated to that run, `agent.results:<correlation_id>`.
 
 ## Docs
 
@@ -69,7 +69,7 @@ flowchart LR
 
     REQ --> RUNNER
 
-    RES[["Redis Stream\nagent.results"]]
+    RES[["Redis Stream\nagent.results:correlation_id"]]
     LOOP --> RES
 
     RES --> CLIENT["Client / session\n(back through crew + django)"]

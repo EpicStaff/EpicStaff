@@ -1,4 +1,5 @@
-import { ActivePermissions, FullMembership } from '@shared/models';
+import { FullMembership } from '../role-based-access';
+import { ActivePermissions } from '../role-based-access';
 
 export interface GetMeResponse {
     id: number;

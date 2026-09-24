@@ -14,22 +14,6 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import {
-    AppSvgIconComponent,
-    DualSliderComponent,
-    InputNumberComponent,
-    KnowledgeSelectorCollection,
-    KnowledgeSelectorComponent,
-    RadioButtonComponent,
-    RagSelectorComponent,
-    RagSelectorItem,
-    SelectItem,
-    SliderWithStepperComponent,
-    SuggestedValueComponent,
-    TextareaComponent,
-    ToggleSwitchComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
 import { RAG_SUGGEST_API } from '@shared/services';
 import { Subscription } from 'rxjs';
 
@@ -42,6 +26,21 @@ import {
     GraphSearchMethod,
     SuggestResponse,
 } from '../../models';
+import { InputNumberComponent } from '../app-input-number/input-number.component';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { ValidationErrorsComponent } from '../app-validation-errors/validation-errors.component';
+import { DualSliderComponent } from '../dual-slider/dual-slider.component';
+import { ToggleSwitchComponent } from '../form-controls';
+import {
+    KnowledgeSelectorCollection,
+    KnowledgeSelectorComponent,
+} from '../knowledge-selector/knowledge-selector.component';
+import { RadioButtonComponent } from '../radio-button/radio-button.component';
+import { RagSelectorComponent, RagSelectorItem } from '../rag-selector/rag-selector.component';
+import { SelectItem } from '../select/select.component';
+import { SliderWithStepperComponent } from '../slider-with-stepper/slider-with-stepper.component';
+import { SuggestedValueComponent } from '../suggested-value/suggested-value.component';
+import { TextareaComponent } from '../textarea/textarea.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 type SuggestKey = GraphSearchMethod | 'naive';

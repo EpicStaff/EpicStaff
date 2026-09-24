@@ -14,9 +14,6 @@ their collaborators.
 
 from __future__ import annotations
 
-from shared.models.agent_service import AgentRequest
-from shared.redis_streams import RedisStreamClient
-
 from app.emitters.base import Emitter
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
@@ -24,6 +21,8 @@ from app.enums import EmitterMode, RunType
 from app.exceptions import UnknownRunTypeError
 from app.runners.base import Runner
 from app.runners.deps import RunnerDependencies
+from shared.models.agent_service import AgentRequest
+from shared.redis_streams import RedisStreamClient
 
 
 class RunnerFactory:
@@ -55,7 +54,8 @@ class RunnerFactory:
         self,
         request: AgentRequest,
         redis_client: RedisStreamClient,
-        result_stream: str,
+        result_stream_prefix: str,
+        result_stream_ttl_s: int,
     ) -> tuple[Runner, Emitter]:
         """Build a ``Runner`` and its matching ``Emitter`` for ``request``.
 
@@ -74,7 +74,11 @@ class RunnerFactory:
 
         runner = runner_cls(self._deps)
         emitter = self._build_emitter(
-            runner_cls.emitter_mode, redis_client, result_stream, request.correlation_id
+            runner_cls.emitter_mode,
+            redis_client,
+            result_stream_prefix,
+            request.correlation_id,
+            result_stream_ttl_s,
         )
         return runner, emitter
 
@@ -82,13 +86,18 @@ class RunnerFactory:
         self,
         mode: EmitterMode,
         redis_client: RedisStreamClient,
-        result_stream: str,
+        result_stream_prefix: str,
         correlation_id: str,
+        result_stream_ttl_s: int,
     ) -> Emitter:
         if mode == EmitterMode.BATCH:
-            return RedisStreamBatchEmitter(redis_client, result_stream, correlation_id)
+            return RedisStreamBatchEmitter(
+                redis_client, result_stream_prefix, correlation_id, result_stream_ttl_s
+            )
 
         if mode == EmitterMode.TOOL_EVENTS:
-            return RedisStreamToolEventEmitter(redis_client, result_stream, correlation_id)
+            return RedisStreamToolEventEmitter(
+                redis_client, result_stream_prefix, correlation_id, result_stream_ttl_s
+            )
 
         raise NotImplementedError(f"Emitter mode '{mode}' is not yet implemented")

@@ -10,19 +10,18 @@ import {
     RealtimeModel,
     Tag,
 } from '@shared/models';
-import {
-    EmbeddingConfigStorageService,
-    EmbeddingModelsStorageService,
-    LlmConfigStorageService,
-    LlmModelsStorageService,
-    LlmProvidersStorageService,
-    RealtimeConfigStorageService,
-    RealtimeModelsStorageService,
-    TranscriptionConfigStorageService,
-    TranscriptionModelsStorageService,
-} from '@shared/services';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+
+import { EmbeddingConfigStorageService } from '../embeddings/embedding-config-storage.service';
+import { EmbeddingModelsStorageService } from '../embeddings/embedding-models-storage.service';
+import { RealtimeConfigStorageService } from '../realtime-llms/realtime-config-storage.service';
+import { RealtimeModelsStorageService } from '../realtime-llms/realtime-models-storage.service';
+import { TranscriptionConfigStorageService } from '../transcription-llms/transcription-config-storage.service';
+import { TranscriptionModelsStorageService } from '../transcription-llms/transcription-models-storage.service';
+import { LlmConfigStorageService } from './llm-config-storage.service';
+import { LlmModelsStorageService } from './llm-models-storage.service';
+import { LlmProvidersStorageService } from './llm-providers-storage.service';
 
 type AnyModel = LLMModel | EmbeddingModel | RealtimeModel | GetRealtimeTranscriptionModelRequest;
 

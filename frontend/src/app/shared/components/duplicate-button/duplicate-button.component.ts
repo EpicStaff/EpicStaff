@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-duplicate-button',
