@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import ConfigDict
+from pydantic import Field
 
 from .base import BaseAuditEvent
 
@@ -25,6 +25,4 @@ class SessionAuditEvent(BaseAuditEvent):
     input: dict[str, Any] | None = None
     output: dict[str, Any] | None = None
     error: str | None = None
-    details: dict[str, Any] = {}
-
-    model_config = ConfigDict(from_attributes=True)
+    details: dict[str, Any] = Field(default_factory=dict)

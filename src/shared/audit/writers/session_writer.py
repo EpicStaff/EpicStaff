@@ -1,10 +1,9 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from cachetools import TTLCache
 from loguru import logger
-
 from src.shared.audit.client import AuditClient
 from src.shared.audit.writers.base import BaseAuditWriter, derive_root_id
 from src.shared.models import SessionAuditEvent
@@ -36,9 +35,7 @@ def _derive_node_id(session_id: int, node_name: str, execution_order: int) -> st
     one level down: (session_id, node_name, execution_order) uniquely
     identifies one node execution within one session.
     """
-    return derive_root_id(
-        AUDIT_NAMESPACE, f"{session_id}:{node_name}:{execution_order}"
-    )
+    return derive_root_id(AUDIT_NAMESPACE, f"{session_id}:{node_name}:{execution_order}")
 
 
 class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
@@ -121,12 +118,12 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             flow_name=flow_name,
             node_type=node_type,
             status=None,
-            event_time=datetime.now(timezone.utc),
+            event_time=datetime.now(UTC),
         )
         await self._emit(wrapper)
 
         await self._emit_node_or_event(
-            id=event_id,
+            event_id=event_id,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -180,7 +177,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         input_ = self._pop_start_input(session_id, node_name, execution_order)
         node_audit_id = _derive_node_id(session_id, node_name, execution_order)
         await self._emit_node_or_event(
-            id=event_id,
+            event_id=event_id,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -217,7 +214,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         input_ = self._pop_start_input(session_id, node_name, execution_order)
         node_audit_id = _derive_node_id(session_id, node_name, execution_order)
         await self._emit_node_or_event(
-            id=event_id,
+            event_id=event_id,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -252,7 +249,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         """
         node_audit_id = _derive_node_id(session_id, node_name, execution_order)
         await self._emit_node_or_event(
-            id=event_id,
+            event_id=event_id,
             parent_id=node_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -266,7 +263,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
     async def _emit_node_or_event(
         self,
         *,
-        id: str,
+        event_id: str,
         parent_id: str,
         session_id: int,
         org_id: int,
@@ -282,26 +279,24 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         details: dict | None = None,
     ) -> None:
         """
-        id/parent_id are always supplied by the caller now, never derived
+        event_id/parent_id are always supplied by the caller now, never derived
         here - node-level rows/events parent to the node's deterministic id
         (_derive_node_id), session-level ones parent to the session's
         (derive_root_id(session_id)); the two are no longer interchangeable
         the way a single internal derivation could imply.
         """
         event = SessionAuditEvent(
-            id=id,
+            id=event_id,
             org_id=org_id,
             kind=kind,
             parent_id=parent_id,
             session_id=session_id,
-            session_message_id=session_message_id
-            if session_message_id is not None
-            else id,
+            session_message_id=session_message_id if session_message_id is not None else event_id,
             name=name,
             flow_name=flow_name,
             node_type=node_type,
             status=status,
-            event_time=datetime.now(timezone.utc),
+            event_time=datetime.now(UTC),
             input=_as_object(input_),
             output=_as_object(output),
             error=error,
@@ -347,11 +342,11 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             flow_name=flow_name,
             run_type=run_type,
             status=None,
-            event_time=datetime.now(timezone.utc),
+            event_time=datetime.now(UTC),
         )
         await self._emit(identity_event)
         await self._emit_node_or_event(
-            id=event_id,
+            event_id=event_id,
             parent_id=session_audit_id,
             session_id=session_id,
             org_id=org_id,
@@ -399,7 +394,7 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
             name=name,
             run_type=run_type,
             status=status,
-            event_time=datetime.now(timezone.utc),
+            event_time=datetime.now(UTC),
             output=_as_object(output),
             details={**(details or {}), "message_type": "session_end"},
         )
