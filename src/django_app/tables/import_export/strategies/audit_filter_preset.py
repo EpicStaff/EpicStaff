@@ -89,9 +89,9 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
     def create_entity(
         self, data: dict, id_mapper: IDMapper, **kwargs
     ) -> AuditFilterPreset:
-        return AuditFilterPreset.objects.create(
+        serializer = self.serializer_class(data=data)
+        serializer.is_valid(raise_exception=True)
+        return serializer.save(
             org_id=kwargs.get("org_id"),
             created_by=kwargs.get("created_by"),
-            name=data["name"],
-            filter_body=data.get("filter_body") or {},
         )

@@ -1,9 +1,11 @@
+from django.conf import settings
 from django.db import models
 
+from tables.models.base_models import TimestampMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class AuditFilterPreset(OrgScopedModel):
+class AuditFilterPreset(OrgScopedModel, TimestampMixin):
     """
     A user's saved audit-search filter - owner-only (see created_by), never
     shared/visible across users, even to an Org Admin. `filter_body` is the
@@ -14,10 +16,13 @@ class AuditFilterPreset(OrgScopedModel):
     to grow one just for this).
     """
 
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
     name = models.CharField(max_length=150)
     filter_body = models.JSONField(default=dict)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

@@ -61,6 +61,39 @@ class TestAuditFilterPresetExport:
 
         assert response.status_code == 400
 
+    def test_bulk_export_repeated_id_exports_it_once(self, auth_client, preset):
+        url = reverse("auditfilterpreset-bulk-export")
+        response = auth_client.post(
+            url, {"ids": [preset.id, preset.id]}, format="json"
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.content)
+        assert [item["id"] for item in data[EntityType.AUDIT_FILTER_PRESET]] == [
+            preset.id
+        ]
+
+    def test_export_of_another_orgs_preset_404s(
+        self, auth_client, django_user_model
+    ):
+        from tables.models.rbac_models import Organization
+
+        other_org = Organization.objects.create(name="Other org for presets")
+        other_owner = django_user_model.objects.create_user(
+            email="preset-owner-other-org@example.com", password="StrongPass123!"
+        )
+        foreign_preset = AuditFilterPreset.objects.create(
+            org=other_org,
+            created_by=other_owner,
+            name="foreign",
+            filter_body={"query": ""},
+        )
+
+        url = reverse("auditfilterpreset-export", kwargs={"pk": foreign_preset.id})
+        response = auth_client.get(url)
+
+        assert response.status_code == 404
+
 
 @pytest.mark.django_db
 class TestAuditFilterPresetImport:
@@ -144,6 +177,24 @@ class TestAuditFilterPresetImport:
         assert response.status_code == 400
         assert not AuditFilterPreset.objects.exists()
 
+    def test_import_rejects_filter_body_the_create_endpoint_would_reject(
+        self, auth_client
+    ):
+        payload = _envelope(
+            [{"id": 1, "name": "bad body", "filter_body": {"not_a_key": 1}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 400
+        assert not AuditFilterPreset.objects.filter(name="bad body").exists()
+
+    def test_import_rejects_name_over_max_length(self, auth_client):
+        payload = _envelope([{"id": 1, "name": "n" * 151, "filter_body": {}}])
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 400
+        assert not AuditFilterPreset.objects.exists()
+
     def test_import_ignores_org_and_created_by_from_file(
         self, auth_client, regular_user, default_org
     ):
@@ -172,6 +223,11 @@ class TestAuditFilterPresetImport:
         }
         response = self._import(auth_client, payload)
         assert response.status_code == 400
+
+    def test_deleting_the_owner_deletes_their_presets(self, preset, regular_user):
+        regular_user.delete()
+
+        assert not AuditFilterPreset.objects.filter(pk=preset.pk).exists()
 
     def test_import_invalid_json_400s_not_500(self, auth_client):
         from io import BytesIO
