@@ -1,22 +1,21 @@
-from fastapi.concurrency import asynccontextmanager
-
+from app.controllers import health_routes
+from app.controllers.domain_router import build_domain_router
+from app.core import settings
+from app.db.redis_client import build_redis_client
+from app.domains.base import MissingScopeError
+from app.domains.registry import DOMAINS
+from app.filtering.ast import FilterError
+from app.repositories.base import AuditRepository
+from app.repositories.factory import build_audit_repository
+from app.services.export_job_service import ExportJobService
+from app.swagger_schemas import OPENAPI_TAGS
 from fastapi import FastAPI, Request
+from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from opensearchpy.exceptions import RequestError as OpenSearchRequestError
-
-from app.controllers import health_routes
-from app.controllers.domain_router import build_domain_router
-from app.core import settings
-from app.domains.registry import DOMAINS
-from app.filtering.ast import FilterError
-from app.repositories.base import AuditRepository
-from app.repositories.factory import build_audit_repository
-from app.db.redis_client import build_redis_client
-from app.services.export_job_service import ExportJobService
-from app.swagger_schemas import OPENAPI_TAGS
 
 
 def _extract_opensearch_reason(exc: OpenSearchRequestError) -> str:
@@ -57,9 +56,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
 
     app.state.repositories: dict[str, AuditRepository] = {
-        domain.name: build_audit_repository(
-            settings, index=domain.index, model=domain.event_model
-        )
+        domain.name: build_audit_repository(settings, index=domain.index, model=domain.event_model)
         for domain in DOMAINS.values()
     }
     app.state.export_job_service = ExportJobService(build_redis_client(settings))
@@ -103,9 +100,7 @@ def create_app() -> FastAPI:
     async def _opensearch_request_error_handler(
         request: Request, exc: OpenSearchRequestError
     ) -> JSONResponse:
-        return JSONResponse(
-            status_code=400, content={"detail": _extract_opensearch_reason(exc)}
-        )
+        return JSONResponse(status_code=400, content={"detail": _extract_opensearch_reason(exc)})
 
     @app.exception_handler(OpenSearchConnectionError)
     async def _opensearch_connection_error_handler(
@@ -116,6 +111,13 @@ def create_app() -> FastAPI:
             status_code=503,
             content={"detail": "Audit search backend is temporarily unavailable"},
         )
+
+    @app.exception_handler(MissingScopeError)
+    async def _missing_scope_error_handler(
+        request: Request, exc: MissingScopeError
+    ) -> JSONResponse:
+        logger.exception("MissingScopeError (tenancy gate failure):")
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     app.include_router(health_routes.router)
     for domain in DOMAINS.values():

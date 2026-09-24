@@ -2,11 +2,10 @@ import secrets
 from typing import Any
 
 import jwt
-from fastapi import Depends, HTTPException, Security
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
-
 from app.core import settings
 from app.domains.base import AuditDomain
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -20,9 +19,7 @@ async def verify_ingest_api_key(
     X-API-Key against AUDITOR_INGEST_API_KEY using a constant-time
     comparison to avoid a timing side-channel on the check itself.
     """
-    if api_key is None or not secrets.compare_digest(
-        api_key, settings.AUDITOR_INGEST_API_KEY
-    ):
+    if api_key is None or not secrets.compare_digest(api_key, settings.AUDITOR_INGEST_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
@@ -38,11 +35,9 @@ async def verify_user_jwt(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        return jwt.decode(
-            credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"]
-        )
+        return jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}") from e
 
 
 def require_audit_action(domain: AuditDomain, action: str):
@@ -72,7 +67,12 @@ def require_audit_action(domain: AuditDomain, action: str):
                 status_code=403,
                 detail=f"Missing {domain.resource}:{action} permission",
             )
-        claims["retention_days"] = claims.get("retention_days", 0)
+
+        if "retention_days" not in claims:
+            raise HTTPException(
+                status_code=401,
+                detail="Token missing retention_days claim",
+            )
         return claims
 
     return _check

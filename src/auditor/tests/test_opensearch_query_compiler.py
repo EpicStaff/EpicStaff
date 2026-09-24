@@ -1,4 +1,6 @@
-from app.domains.base import DEFAULT_SCOPING
+import pytest
+
+from app.domains.base import DEFAULT_SCOPING, BaseScopeArgs, MissingScopeError
 from app.domains.sessions.fields import SESSIONS_FIELDS
 from app.repositories.compiler import QueryCompiler
 
@@ -399,3 +401,27 @@ def test_compile_session_message_id_in_op_uses_structured_terms():
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {"terms": {"session_message_id": [1, 2, 3]}}
+
+
+# --- ScopingPolicy fails closed instead of compiling an unscoped query ---
+
+
+def test_scoping_policy_raises_when_called_without_base_args():
+    with pytest.raises(TypeError):
+        # base_args is a required positional argument now - a call site that
+        # forgets to supply it must fail loudly (TypeError) rather than
+        # silently compile an org-unscoped query.
+        DEFAULT_SCOPING([])  # type: ignore[call-arg]
+
+
+def test_scoping_policy_raises_when_base_args_is_none():
+    with pytest.raises(MissingScopeError):
+        DEFAULT_SCOPING([], None)
+
+
+def test_scoping_policy_raises_when_org_id_is_none():
+    with pytest.raises(MissingScopeError):
+        # A malformed caller could still build a BaseScopeArgs with
+        # org_id=None at runtime (dataclasses don't enforce type hints) -
+        # the policy itself must refuse to compile in that case too.
+        DEFAULT_SCOPING([], BaseScopeArgs(org_id=None, retention_days=0))

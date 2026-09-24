@@ -1,11 +1,9 @@
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Protocol
 from pathlib import Path
+from typing import Generic, Protocol, TypeVar
 
+from app.filtering.ast import FieldSpec, FilterNode
 from pydantic import BaseModel
-
-from app.filtering.ast import FilterNode, FieldSpec
-
 
 T = TypeVar("T")
 
@@ -35,8 +33,17 @@ class ComputedField(Protocol):
 
 @dataclass
 class BaseScopeArgs:
-    org_id: int | None = None
-    retention_days: int | None = None
+    org_id: int
+    retention_days: int
+
+
+class MissingScopeError(RuntimeError):
+    """Raised instead of silently compiling an unscoped query. BaseAuditEvent.org_id
+    is a required field on every event this service stores, so a query compiled
+    without an org_id filter term would return every organization's rows. This is
+    the single tenancy gate in the service - it must fail closed, not skip the
+    filter, whenever org_id is missing (no base_args at all, or a base_args built
+    with org_id=None)."""
 
 
 class ScopingPolicy:
@@ -51,26 +58,22 @@ class ScopingPolicy:
     def __call__(
         self,
         extra_clauses: list[dict],
-        base_args: BaseScopeArgs | None = None,
+        base_args: BaseScopeArgs,
         **kwargs,
     ) -> dict:
+        if base_args is None or base_args.org_id is None:
+            raise MissingScopeError("Refusing to compile an audit query with no org_id scope.")
         filter_clauses: list[dict] = list(extra_clauses)
-        if base_args:
-            if base_args.org_id is not None:
-                filter_clauses.append(ScopingPolicy._get_org_scope(base_args.org_id))
-            if base_args.retention_days is not None and base_args.retention_days > 0:
-                filter_clauses.append(
-                    ScopingPolicy._get_retention_days_scope(base_args.retention_days)
-                )
+        filter_clauses.append(ScopingPolicy._get_org_scope(base_args.org_id))
+        if base_args.retention_days and base_args.retention_days > 0:
+            filter_clauses.append(ScopingPolicy._get_retention_days_scope(base_args.retention_days))
         for field, value in kwargs.items():
             filter_clauses.append({"term": {field: value}})
         return {"bool": {"filter": filter_clauses}}
 
 
 class MatchExpander(Protocol):
-    async def expand(
-        self, repository, events, scope, *, org_id, retention_days
-    ) -> list[dict]: ...
+    async def expand(self, repository, events, scope, *, org_id, retention_days) -> list[dict]: ...
 
 
 class NullExpander:
@@ -97,7 +100,8 @@ class ApiSpec:
 
 
 @dataclass(frozen=True)
-class AuditDomain(Generic[T]):
+class AuditDomain(Generic[T]):  # noqa: UP046 - consistent with Generic[T] usage in
+    # app/repositories/base.py and shared/audit/{client,writers/base}.py
     name: str
     event_model: type[T]
     index: IndexSpec

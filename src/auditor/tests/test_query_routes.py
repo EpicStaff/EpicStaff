@@ -261,6 +261,58 @@ async def test_children_expansion_flags_only_originally_matched_rows(search_clie
 
 
 @pytest.mark.asyncio
+async def test_search_never_returns_another_orgs_events(search_client):
+    """Positive assertion that the token's real org_id is actually compiled
+    into the query and enforced - not just that a missing org_id fails.
+    InMemoryFakeRepository evaluates the compiled `bool.filter` clauses
+    against every stored event, so an event belonging to a different org
+    only stays out of the results if ScopingPolicy actually injected a
+    `{"term": {"org_id": 7}}` clause (DEFAULT_CLAIMS.org_id) into the query."""
+    events = _tree_events() + [
+        SessionAuditEvent(
+            id="evt-other-org",
+            parent_id="",
+            session_id=100,
+            kind="event",
+            status="failed",
+            event_time=NOW,
+            org_id=999,
+        )
+    ]
+    async with await search_client(events) as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={"filters": {"field": "session_id", "op": "equals", "value": 100}},
+        )
+
+    assert resp.status_code == 200
+    ids = {i["id"] for i in resp.json()["items"]}
+    assert ids == {"sess-1", "node-1", "evt-1"}
+    assert "evt-other-org" not in ids
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_token_missing_retention_days_claim(search_client):
+    """A malformed/incomplete token (missing the retention_days claim
+    entirely) must be rejected with 401, not silently treated as
+    retention_days=0 (which this service's convention reads as "unlimited
+    retention" - the maximally permissive interpretation)."""
+    app = _build_search_app(_tree_events())
+    claims_without_retention = {
+        k: v for k, v in DEFAULT_CLAIMS.items() if k != "retention_days"
+    }
+    app.dependency_overrides[verify_user_jwt] = lambda: dict(claims_without_retention)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/audit/sessions/search",
+            json={"filters": {"field": "session_id", "op": "equals", "value": 100}},
+        )
+
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_full_session_history_flags_original_matches_despite_refetch(
     search_client,
 ):
