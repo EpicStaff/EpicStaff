@@ -22,6 +22,7 @@ from src.shared.models import (
     McpToolData,
     NaiveRagSearchConfig,
     NgrokConfigData,
+    PersistenceNodeData,
     PromptConfigData,
     PythonCodeData,
     PythonCodeToolData,
@@ -51,6 +52,7 @@ from tables.models.graph_models import (
     Graph,
     GraphStorageFile,
     KnowledgeNode,
+    PersistenceNode,
     PythonNode,
     ScheduleTriggerNode,
     SubGraphNode,
@@ -798,6 +800,20 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+        )
+
+    def convert_persistence_node_to_pydantic(
+        self,
+        persistence_node: PersistenceNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> PersistenceNodeData:
+        return PersistenceNodeData(
+            node_name=resolver(persistence_node.id),
+            persistence_table_id=persistence_node.persistence_table_id,
+            mode=persistence_node.mode,
+            entries=persistence_node.entries,
+            input_map=persistence_node.input_map,
+            output_variable_path=persistence_node.output_variable_path,
         )
 
     def convert_audio_transcription_node_to_pydantic(
