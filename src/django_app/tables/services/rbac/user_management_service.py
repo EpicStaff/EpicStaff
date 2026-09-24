@@ -7,8 +7,11 @@ from loguru import logger
 from tables.models.rbac_models import Organization, OrganizationUser, Role, User
 from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
-from tables.services.rbac.delete_collector import ModelCount, build_collector, summarize
-from tables.services.rbac.delete_resource_names import resource_name
+from tables.services.rbac.delete_collector import (
+    build_affected_resources,
+    build_collector,
+    summarize,
+)
 from tables.services.rbac.rbac_exceptions import (
     EmailAlreadyExistsError,
     LastSuperadminError,
@@ -286,7 +289,7 @@ class UserManagementService(CrossOrgResourceService):
         self._assert_deletable_user(actor=actor, instance=instance)
 
         by_model = summarize(build_collector(instance))
-        affected = self._build_affected_resources(by_model, self._user_external_artifacts(instance))
+        affected = build_affected_resources(by_model, self._user_external_artifacts(instance))
         payload = UserDeleteReport(user_id=instance.pk, affected_resources=affected)
         logger.info(
             "UserManagementService.preview_delete actor={a} target={t} resources={r}",
@@ -338,7 +341,7 @@ class UserManagementService(CrossOrgResourceService):
         # from User -- is never part of this cascade's closure.
         collector = build_collector(instance)
         by_model = summarize(collector)
-        affected = self._build_affected_resources(by_model, external)
+        affected = build_affected_resources(by_model, external)
         payload = UserDeleteReport(user_id=instance.pk, affected_resources=affected)
         collector.delete()
         transaction.on_commit(lambda: self._cleanup_user_delete_external(snapshot))
@@ -350,22 +353,6 @@ class UserManagementService(CrossOrgResourceService):
             r=affected,
         )
         return payload
-
-    @staticmethod
-    def _build_affected_resources(
-        by_model: list[ModelCount], external_counts: dict[str, int] | None = None
-    ) -> dict[str, int]:
-        """Fold raw per-model row counts and external artifact counts into the friendly, summed resource-count map the API reports."""
-        counts: dict[str, int] = {}
-        for row in by_model:
-            name = resource_name(row.model)
-            if name is None:
-                continue
-            counts[name] = counts.get(name, 0) + row.count
-        for name, count in (external_counts or {}).items():
-            if count:
-                counts[name] = counts.get(name, 0) + count
-        return counts
 
     @staticmethod
     def _user_external_artifacts(instance: User) -> dict[str, int]:

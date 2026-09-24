@@ -120,50 +120,10 @@ def test_deactivate_nonexistent_org_raises_not_found(service):
 
 # ---------------------------------------------------------------------------
 # delete_organization
+#
+# build_affected_resources unit tests live in test_delete_collector.py --
+# it's shared with UserManagementService, not specific to this service.
 # ---------------------------------------------------------------------------
-
-
-def test_build_affected_resources_sums_two_labels_mapping_to_the_same_name():
-    from tables.services.rbac.delete_collector import ModelCount
-
-    by_model = [
-        ModelCount(model="tables.PythonCodeTool", count=2),
-        ModelCount(model="tables.McpTool", count=3),
-    ]
-    result = OrganizationManagementService._build_affected_resources(by_model)
-    assert result == {"tools": 5}
-
-
-def test_build_affected_resources_excludes_a_known_excluded_label():
-    from tables.services.rbac.delete_collector import ModelCount
-
-    by_model = [ModelCount(model="tables.StartNode", count=4)]
-    result = OrganizationManagementService._build_affected_resources(by_model)
-    assert result == {}
-
-
-def test_build_affected_resources_folds_in_a_nonzero_external_count():
-    result = OrganizationManagementService._build_affected_resources(
-        [], external_counts={"storage_files": 1}
-    )
-    assert result == {"storage_files": 1}
-
-
-def test_build_affected_resources_drops_a_zero_value_external_count():
-    result = OrganizationManagementService._build_affected_resources(
-        [], external_counts={"storage_files": 0}
-    )
-    assert result == {}
-
-
-def test_build_affected_resources_merges_external_count_into_existing_db_key():
-    from tables.services.rbac.delete_collector import ModelCount
-
-    by_model = [ModelCount(model="tables.OrganizationUser", count=2)]
-    result = OrganizationManagementService._build_affected_resources(
-        by_model, external_counts={"memberships": 3}
-    )
-    assert result == {"memberships": 5}
 
 
 def test_default_organization_not_deletable_error_shape():

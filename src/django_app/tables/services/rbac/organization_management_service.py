@@ -15,8 +15,12 @@ from tables.models.rbac_models import Organization, OrganizationUser, User
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.models.realtime_models import ConversationRecording, RealtimeAgentChat
 from tables.services.rbac.cross_org_service import CrossOrgResourceService
-from tables.services.rbac.delete_collector import ModelCount, build_collector, summarize
-from tables.services.rbac.delete_resource_names import resource_name
+from tables.services.rbac.delete_collector import (
+    ModelCount,
+    build_affected_resources,
+    build_collector,
+    summarize,
+)
 from tables.services.rbac.rbac_exceptions import (
     DefaultOrganizationNotDeletableError,
     LastActiveOrganizationError,
@@ -195,7 +199,7 @@ class OrganizationManagementService(CrossOrgResourceService):
         external_counts = {
             "storage_files": (storage_count or 0) + recording_count,
         }
-        affected = self._build_affected_resources(by_model, external_counts)
+        affected = build_affected_resources(by_model, external_counts)
         payload = OrganizationDeleteReport(organization_id=instance.pk, affected_resources=affected)
         logger.info(
             "OrganizationManagementService.preview_delete actor={actor} target={target} resources={resources}",
@@ -251,7 +255,7 @@ class OrganizationManagementService(CrossOrgResourceService):
         external_counts = {
             "storage_files": (storage_count or 0) + recording_count,
         }
-        affected = self._build_affected_resources(by_model, external_counts)
+        affected = build_affected_resources(by_model, external_counts)
         payload = OrganizationDeleteReport(organization_id=instance.pk, affected_resources=affected)
         collector.delete()
         transaction.on_commit(lambda: self._cleanup_org_delete_external(snapshot))
@@ -263,22 +267,6 @@ class OrganizationManagementService(CrossOrgResourceService):
             resources=affected,
         )
         return payload
-
-    @staticmethod
-    def _build_affected_resources(
-        by_model: list[ModelCount], external_counts: dict[str, int] | None = None
-    ) -> dict[str, int]:
-        """Fold raw per-model row counts and external artifact counts into the friendly, summed resource-count map the API reports."""
-        counts: dict[str, int] = {}
-        for row in by_model:
-            name = resource_name(row.model)
-            if name is None:
-                continue
-            counts[name] = counts.get(name, 0) + row.count
-        for name, count in (external_counts or {}).items():
-            if count:
-                counts[name] = counts.get(name, 0) + count
-        return counts
 
     @staticmethod
     def _org_storage_prefix(instance: Organization) -> str:

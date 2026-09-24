@@ -179,46 +179,11 @@ def test_set_user_active_false_on_plain_user_does_not_raise_last_superadmin(
 
 # ---------------------------------------------------------------------------
 # delete_user
+#
+# build_affected_resources unit tests live in test_delete_collector.py --
+# it's shared with OrganizationManagementService, not specific to this
+# service.
 # ---------------------------------------------------------------------------
-
-
-def test_build_affected_resources_sums_two_labels_mapping_to_the_same_name():
-    from tables.services.rbac.delete_collector import ModelCount
-
-    by_model = [
-        ModelCount(model="tables.PythonCodeTool", count=2),
-        ModelCount(model="tables.McpTool", count=3),
-    ]
-    result = UserManagementService._build_affected_resources(by_model)
-    assert result == {"tools": 5}
-
-
-def test_build_affected_resources_excludes_a_known_excluded_label():
-    from tables.services.rbac.delete_collector import ModelCount
-
-    by_model = [ModelCount(model="tables.StartNode", count=4)]
-    result = UserManagementService._build_affected_resources(by_model)
-    assert result == {}
-
-
-def test_build_affected_resources_folds_in_a_nonzero_external_count():
-    result = UserManagementService._build_affected_resources([], external_counts={"avatar": 1})
-    assert result == {"avatar": 1}
-
-
-def test_build_affected_resources_drops_a_zero_value_external_count():
-    result = UserManagementService._build_affected_resources([], external_counts={"avatar": 0})
-    assert result == {}
-
-
-def test_build_affected_resources_merges_external_count_into_existing_db_key():
-    from tables.services.rbac.delete_collector import ModelCount
-
-    by_model = [ModelCount(model="tables.OrganizationUser", count=2)]
-    result = UserManagementService._build_affected_resources(
-        by_model, external_counts={"memberships": 3}
-    )
-    assert result == {"memberships": 5}
 
 
 def test_self_account_deletion_error_shape():

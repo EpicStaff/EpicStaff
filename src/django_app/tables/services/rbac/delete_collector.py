@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from django.db import router
 from django.db.models import Model
 from django.db.models.deletion import Collector
+from tables.services.rbac.delete_resource_names import resource_name
 
 
 @dataclass
@@ -35,3 +36,19 @@ def summarize(collector: Collector) -> list[ModelCount]:
     by_model = [ModelCount(model=label, count=count) for label, count in counts.items() if count]
     by_model.sort(key=lambda row: (-row.count, row.model))
     return by_model
+
+
+def build_affected_resources(
+    by_model: list[ModelCount], external_counts: dict[str, int] | None = None
+) -> dict[str, int]:
+    """Fold raw per-model row counts and external artifact counts into the friendly, summed resource-count map the API reports."""
+    counts: dict[str, int] = {}
+    for row in by_model:
+        name = resource_name(row.model)
+        if name is None:
+            continue
+        counts[name] = counts.get(name, 0) + row.count
+    for name, count in (external_counts or {}).items():
+        if count:
+            counts[name] = counts.get(name, 0) + count
+    return counts
