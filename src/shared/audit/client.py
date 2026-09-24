@@ -9,6 +9,7 @@ from src.shared.audit.protocols import T
 _DEFAULT_BATCH_SIZE = 200
 _DEFAULT_BATCH_INTERVAL_SECONDS = 1.5
 _DEFAULT_MAX_RETRIES = 3
+_DEFAULT_MAX_QUEUE_SIZE = 10_000
 _RETRY_BACKOFFS_SECONDS = (0.2, 0.5, 1.0)
 
 
@@ -36,6 +37,7 @@ class AuditClient(Generic[T]):
         batch_size: int = _DEFAULT_BATCH_SIZE,
         batch_interval_seconds: float = _DEFAULT_BATCH_INTERVAL_SECONDS,
         max_retries: int = _DEFAULT_MAX_RETRIES,
+        max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
         http_client: Optional[httpx.AsyncClient] = None,
     ):
         """
@@ -53,7 +55,12 @@ class AuditClient(Generic[T]):
         requires one, so it's only ever called when NOT immediate, and even
         then only from a caller (crew) that's already inside a persistent
         loop. crew should leave this False (it benefits from real batching
-        across many concurrent node events); django_app should set it True.
+        across many concurrent node events).
+
+        max_queue_size: upper bound on events waiting for the flush loop.
+        During an auditor outage the loop stalls in retries while emit()
+        keeps enqueueing, so an unbounded queue would grow without limit;
+        once full, new events are dropped and counted instead.
         """
         self._url = f"{base_url.rstrip('/')}{ingest_path}"
         self._api_key = api_key
@@ -63,7 +70,8 @@ class AuditClient(Generic[T]):
         self._batch_interval_seconds = batch_interval_seconds
         self._max_retries = max_retries
 
-        self._queue: "asyncio.Queue[T]" = asyncio.Queue()
+        self._queue: "asyncio.Queue[T]" = asyncio.Queue(maxsize=max_queue_size)
+        self._dropped_on_full_queue_count = 0
         self._flush_task: Optional[asyncio.Task] = None
         self._http_client: Optional[httpx.AsyncClient] = None
 
@@ -74,8 +82,9 @@ class AuditClient(Generic[T]):
                 self._flush_task.add_done_callback(self._on_flush_task_done)
         else:
             logger.warning(
-                f"AuditClient for {self._url} constructed with enabled=False - "
-                "every emit() call will silently no-op."
+                "AuditClient for {} constructed with enabled=False - "
+                "every emit() call will silently no-op.",
+                self._url,
             )
 
     async def emit(self, event: T) -> None:
@@ -88,8 +97,16 @@ class AuditClient(Generic[T]):
             return
         try:
             self._queue.put_nowait(event)
-        except Exception as e:
-            logger.warning(f"Failed to enqueue audit event {event.id}: {e}")
+        except asyncio.QueueFull:
+            self._dropped_on_full_queue_count += 1
+            logger.warning(
+                "Audit queue for {} is full ({} event(s)), dropping event {}; "
+                "{} event(s) dropped on a full queue so far",
+                self._url,
+                self._queue.maxsize,
+                event.id,
+                self._dropped_on_full_queue_count,
+            )
 
     def _on_flush_task_done(self, task: asyncio.Task) -> None:
         """
@@ -109,9 +126,11 @@ class AuditClient(Generic[T]):
         exc = task.exception()
         if exc is not None:
             logger.error(
-                f"Audit flush loop for {self._url} died unexpectedly - all "
-                f"further emit() calls will silently no-op for the rest of "
-                f"this process's life. Error: {exc!r}"
+                "Audit flush loop for {} died unexpectedly - all further "
+                "emit() calls will silently no-op for the rest of this "
+                "process's life. Error: {!r}",
+                self._url,
+                exc,
             )
 
     async def _flush_loop(self) -> None:
@@ -126,7 +145,7 @@ class AuditClient(Generic[T]):
                 # Never let one bad iteration kill the loop permanently -
                 # see _on_flush_task_done's docstring for why that's so much
                 # worse here than in a typical background task.
-                logger.warning(f"Audit flush loop iteration failed, continuing: {e}")
+                logger.warning("Audit flush loop iteration failed, continuing: {}", e)
 
     async def _collect_batch(self) -> list[T]:
         """Batches by size-or-time, whichever hits first."""
@@ -160,10 +179,13 @@ class AuditClient(Generic[T]):
             try:
                 payload.append(event.model_dump(mode="json"))
             except Exception as e:
-                logger.warning(f"Dropping unserializable audit event {event.id}: {e}")
+                logger.warning(
+                    "Dropping unserializable audit event {}: {}", event.id, e
+                )
         if not payload:
             return
 
+        last_error: Exception | None = None
         for attempt in range(self._max_retries):
             try:
                 response = await self._http_client.post(
@@ -173,24 +195,79 @@ class AuditClient(Generic[T]):
                     timeout=5.0,
                 )
                 response.raise_for_status()
+
+                if response.status_code == 207:
+                    failed_ids = set(response.json().get("failed_ids", []))
+                    payload = [e for e in payload if e.get("id") in failed_ids]
+                    if not payload:
+                        return
+                    if attempt < self._max_retries - 1:
+                        logger.warning(
+                            "Audit batch to {} partially failed: {} event(s) "
+                            "not indexed, retrying: {}",
+                            self._url,
+                            len(payload),
+                            [e.get("id") for e in payload],
+                        )
+                        await asyncio.sleep(_retry_backoff_seconds(attempt))
+                        continue
+                    else:
+                        event_ids = [e.get("id") for e in payload]
+                        logger.warning(
+                            "Audit batch to {} still had {} event(s) failing "
+                            "after {} attempt(s), dropping: {}",
+                            self._url,
+                            len(payload),
+                            self._max_retries,
+                            event_ids,
+                        )
+                        return
+
                 logger.info(
-                    f"Audit batch sent to {self._url}: {len(payload)} event(s), "
-                    f"status={response.status_code}"
+                    "Audit batch sent to {}: {} event(s), status={}",
+                    self._url,
+                    len(payload),
+                    response.status_code,
                 )
                 return
-            except Exception as e:
-                if attempt < self._max_retries - 1:
-                    backoff = _RETRY_BACKOFFS_SECONDS[
-                        min(attempt, len(_RETRY_BACKOFFS_SECONDS) - 1)
-                    ]
-                    await asyncio.sleep(backoff)
-                else:
-                    event_ids = [event.get("id") for event in payload]
-                    logger.warning(
-                        f"Audit batch send to {self._url} failed after "
-                        f"{self._max_retries} attempt(s), dropping {len(payload)} "
-                        f"event(s): {event_ids}. Error: {e}"
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code < 500:
+                    logger.error(
+                        "Audit batch to {} rejected with status {}, dropping {} "
+                        "event(s) without retry: {}. Response: {}",
+                        self._url,
+                        e.response.status_code,
+                        len(payload),
+                        [event.get("id") for event in payload],
+                        e.response.text,
                     )
+                    return
+                last_error = e
+            except httpx.TransportError as e:
+                last_error = e
+            except Exception as e:
+                logger.error(
+                    "Audit batch to {} failed with a non-retryable error, "
+                    "dropping {} event(s): {}. Error: {!r}",
+                    self._url,
+                    len(payload),
+                    [event.get("id") for event in payload],
+                    e,
+                )
+                return
+
+            if attempt < self._max_retries - 1:
+                await asyncio.sleep(_retry_backoff_seconds(attempt))
+            else:
+                logger.warning(
+                    "Audit batch send to {} failed after {} attempt(s), "
+                    "dropping {} event(s): {}. Error: {}",
+                    self._url,
+                    self._max_retries,
+                    len(payload),
+                    [event.get("id") for event in payload],
+                    last_error,
+                )
 
     async def shutdown(self) -> None:
         """Best-effort bounded drain-and-flush on graceful process exit."""
@@ -213,8 +290,14 @@ class AuditClient(Generic[T]):
                 await asyncio.wait_for(self._send_batch(remaining), timeout=5.0)
             except Exception as e:
                 logger.warning(
-                    f"Failed to flush {len(remaining)} audit event(s) on shutdown: {e}"
+                    "Failed to flush {} audit event(s) on shutdown: {}",
+                    len(remaining),
+                    e,
                 )
 
         if self._http_client:
             await self._http_client.aclose()
+
+
+def _retry_backoff_seconds(attempt: int) -> float:
+    return _RETRY_BACKOFFS_SECONDS[min(attempt, len(_RETRY_BACKOFFS_SECONDS) - 1)]
