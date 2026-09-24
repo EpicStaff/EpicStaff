@@ -1,4 +1,5 @@
 import time
+import uuid
 
 import pytest
 import pytest_asyncio
@@ -16,8 +17,15 @@ async def redis_client():
 
 
 @pytest.fixture
-def cleanup_service(redis_client):
-    return ExportCleanupService(redis_client=redis_client)
+def export_dir(tmp_path):
+    directory = tmp_path / "export_data"
+    directory.mkdir()
+    yield directory
+
+
+@pytest.fixture
+def cleanup_service(redis_client, export_dir):
+    return ExportCleanupService(redis_client=redis_client, export_data_dir=str(export_dir))
 
 
 async def _seed_job(
@@ -39,9 +47,9 @@ async def _seed_job(
 
 @pytest.mark.asyncio
 async def test_sweep_once_deletes_expired_job_and_its_file(
-    redis_client, cleanup_service, tmp_path
+    redis_client, cleanup_service, export_dir
 ):
-    export_file = tmp_path / "job-1.json"
+    export_file = export_dir / "job-1.json"
     export_file.write_text("[]")
     await _seed_job(
         redis_client, "job-1", expires_at=time.time() - 10, file_path=str(export_file)
@@ -56,9 +64,9 @@ async def test_sweep_once_deletes_expired_job_and_its_file(
 
 @pytest.mark.asyncio
 async def test_sweep_once_leaves_unexpired_job_untouched(
-    redis_client, cleanup_service, tmp_path
+    redis_client, cleanup_service, export_dir
 ):
-    export_file = tmp_path / "job-2.json"
+    export_file = export_dir / "job-2.json"
     export_file.write_text("[]")
     await _seed_job(
         redis_client, "job-2", expires_at=time.time() + 3600, file_path=str(export_file)
@@ -73,23 +81,74 @@ async def test_sweep_once_leaves_unexpired_job_untouched(
 
 @pytest.mark.asyncio
 async def test_sweep_once_falls_back_to_glob_when_hash_already_gone(
-    redis_client, tmp_path
+    redis_client, cleanup_service, export_dir
 ):
     # The hash's native TTL backstop fired before this sweep ran (manager was
     # down a while) - file_path is unrecoverable from Redis, but the file is
     # still deterministically named "{job_id}.<ext>" under export_data_dir,
     # so the sweep must still find and delete it rather than leaking it.
-    service = ExportCleanupService(
-        redis_client=redis_client, export_data_dir=str(tmp_path)
-    )
-    export_file = tmp_path / "orphaned-job.json"
+    job_id = str(uuid.uuid4())
+    export_file = export_dir / f"{job_id}.json"
     export_file.write_text("[]")
-    await redis_client.zadd(EXPIRY_ZSET_KEY, {"orphaned-job": time.time() - 10})
+    await redis_client.zadd(EXPIRY_ZSET_KEY, {job_id: time.time() - 10})
 
-    await service.sweep_once()
+    await cleanup_service.sweep_once()
 
     assert not export_file.exists()
-    assert await redis_client.zscore(EXPIRY_ZSET_KEY, "orphaned-job") is None
+    assert await redis_client.zscore(EXPIRY_ZSET_KEY, job_id) is None
+
+
+@pytest.mark.asyncio
+async def test_sweep_once_refuses_to_delete_file_path_outside_export_dir(
+    redis_client, cleanup_service, tmp_path
+):
+    outside_file = tmp_path / "not-an-export.txt"
+    outside_file.write_text("keep me")
+    traversal_path = f"{cleanup_service.export_data_dir}/../not-an-export.txt"
+    await _seed_job(
+        redis_client, "job-evil", expires_at=time.time() - 10, file_path=traversal_path
+    )
+
+    await cleanup_service.sweep_once()
+
+    assert outside_file.exists()
+    # the job record is still deregistered so the sweep does not retry it forever
+    assert await redis_client.zscore(EXPIRY_ZSET_KEY, "job-evil") is None
+
+
+@pytest.mark.asyncio
+async def test_sweep_once_refuses_symlink_escaping_export_dir(
+    redis_client, cleanup_service, export_dir, tmp_path
+):
+    outside_file = tmp_path / "secret.txt"
+    outside_file.write_text("keep me")
+    link = export_dir / "job-link.json"
+    try:
+        link.symlink_to(outside_file)
+    except OSError:
+        pytest.skip("symlinks not permitted on this platform")
+    await _seed_job(
+        redis_client, "job-link", expires_at=time.time() - 10, file_path=str(link)
+    )
+
+    await cleanup_service.sweep_once()
+
+    assert outside_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_sweep_once_with_wildcard_job_id_deletes_no_files(
+    redis_client, cleanup_service, export_dir
+):
+    other_exports = [export_dir / f"{uuid.uuid4()}.json" for _ in range(3)]
+    for export_file in other_exports:
+        export_file.write_text("[]")
+    await redis_client.zadd(EXPIRY_ZSET_KEY, {"*": time.time() - 10})
+
+    await cleanup_service.sweep_once()
+
+    assert all(export_file.exists() for export_file in other_exports)
+    assert await redis_client.zscore(EXPIRY_ZSET_KEY, "*") is None
 
 
 @pytest.mark.asyncio
@@ -145,10 +204,10 @@ async def test_sweep_once_with_no_file_path_only_cleans_redis(
 
 @pytest.mark.asyncio
 async def test_sweep_once_handles_multiple_due_jobs(
-    redis_client, cleanup_service, tmp_path
+    redis_client, cleanup_service, export_dir
 ):
     for i in range(3):
-        f = tmp_path / f"job-{i}.json"
+        f = export_dir / f"job-{i}.json"
         f.write_text("[]")
         await _seed_job(
             redis_client, f"job-{i}", expires_at=time.time() - 1, file_path=str(f)
@@ -157,13 +216,15 @@ async def test_sweep_once_handles_multiple_due_jobs(
     await cleanup_service.sweep_once()
 
     for i in range(3):
-        assert not (tmp_path / f"job-{i}.json").exists()
+        assert not (export_dir / f"job-{i}.json").exists()
         assert await redis_client.zscore(EXPIRY_ZSET_KEY, f"job-{i}") is None
 
 
 @pytest.mark.asyncio
-async def test_start_and_stop_run_sweep_loop_without_error(redis_client):
-    service = ExportCleanupService(redis_client=redis_client, sweep_interval_seconds=60)
+async def test_start_and_stop_run_sweep_loop_without_error(redis_client, export_dir):
+    service = ExportCleanupService(
+        redis_client=redis_client, export_data_dir=str(export_dir), sweep_interval_seconds=60
+    )
     await service.start()
     assert service._task is not None
     await service.stop()

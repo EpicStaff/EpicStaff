@@ -109,9 +109,8 @@ async def shutdown():
         schedule_service.scheduler.shutdown(wait=False)
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
-    if redis_export_service:
-        await export_cleanup_service.stop()
-        await redis_export_service.aclose()
+    await export_cleanup_service.stop()
+    await redis_export_service.aclose()
 
 
 if __name__ == "__main__":
