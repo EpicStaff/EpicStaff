@@ -1,3 +1,7 @@
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 from rest_framework import serializers
 from tables.constants.persistence_constants import (
     MAX_KEY_LENGTH,
@@ -5,10 +9,6 @@ from tables.constants.persistence_constants import (
     MAX_TABLE_NAME_LENGTH,
 )
 from tables.models import PersistenceTable, PersistenceTableEntry
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgScopedUniqueValidator,
-)
 from tables.services.persistence_table_service import PersistenceTableService
 
 

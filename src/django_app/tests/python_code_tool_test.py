@@ -8,7 +8,7 @@ from tables.serializers.model_serializers import (
     PythonCodeToolSerializer,
 )
 from tables.models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 def _org_request(org_id: int):

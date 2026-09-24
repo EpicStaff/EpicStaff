@@ -9,7 +9,7 @@ from tables.models import (
     Session,
     SubGraphNode,
 )
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 def _url(session_id: int, table_id: int, operation: str) -> str:

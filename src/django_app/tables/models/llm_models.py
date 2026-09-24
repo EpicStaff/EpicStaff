@@ -1,9 +1,9 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.provider import Provider
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.models.tag_models import (
     LLMConfigTag,
     LLMModelTag,

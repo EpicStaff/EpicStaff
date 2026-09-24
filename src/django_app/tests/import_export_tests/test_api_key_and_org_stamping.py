@@ -9,12 +9,8 @@ from copy import deepcopy
 
 from tests.fixtures import *  # noqa: F401,F403
 
-from tables.models import (
-    LLMConfig,
-    Graph,
-    Organization,
-    GraphOrganization,
-)
+from rbac.models import Organization
+from tables.models import LLMConfig, Graph, GraphOrganization
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService

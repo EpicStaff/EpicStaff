@@ -2,7 +2,7 @@ import pytest
 
 from tables.models.embedding_models import DefaultEmbeddingConfig
 from tables.models.llm_models import DefaultLLMConfig, LLMConfig, LLMModel
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.mark.django_db

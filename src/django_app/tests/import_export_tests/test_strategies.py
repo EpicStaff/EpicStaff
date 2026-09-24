@@ -1,16 +1,8 @@
 import pytest
 from copy import deepcopy
 
-from tables.models import (
-    AgentNode,
-    Graph,
-    LLMConfig,
-    McpTool,
-    PythonCodeTool,
-    PythonCode,
-    Organization,
-    WebhookTrigger,
-)
+from rbac.models import Organization
+from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,

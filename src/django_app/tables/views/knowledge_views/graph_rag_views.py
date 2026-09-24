@@ -1,4 +1,8 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.gates import HasOrgPermission
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import OrgScopedServiceViewSetMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -17,7 +21,6 @@ from tables.models import SourceCollection
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import GraphRag
 from tables.models.llm_models import LLMConfig
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.graph_rag_serializers import (
     GraphRagCreateSerializer,
     GraphRagDetailSerializer,
@@ -27,9 +30,6 @@ from tables.serializers.graph_rag_serializers import (
     GraphRagSerializer,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permissions import HasOrgPermission
-from tables.views.mixins import OrgScopedServiceViewSetMixin
 
 # ORM path from a GraphRag up to the owning collection's org.
 _GRAPH_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"

@@ -2,9 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.permissions import HasResourcePermissionAnywhere
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.access.gates import HasResourcePermissionAnywhere
 
 
 def _view(action):

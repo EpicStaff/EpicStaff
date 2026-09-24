@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from tables.models import PersistenceNode, PersistenceTable
-from tables.models.rbac_models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from tests.fixtures import *  # noqa: F401,F403
 
 

@@ -1,8 +1,8 @@
 import pytest
 
-from tables.models.rbac_models import RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permission_catalog import grantable_bits_for
+from rbac.models import RolePermission
+from rbac.models.enums import Permission, ResourceType
+from rbac.access.catalog import grantable_bits_for
 
 
 def test_catalog_grants_crud_and_use_on_persistent_data():

@@ -1,3 +1,4 @@
+from rbac.access.gates import IsSystemApiKeyAuthenticated
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,7 +9,6 @@ from tables.serializers.model_serializers.persistence_serializers import (
     PersistenceWriteSerializer,
 )
 from tables.services.persistence_table_service import PersistenceTableService
-from tables.services.rbac.permissions import IsSystemApiKeyAuthenticated
 
 _ACTIVE_STATUSES = (
     Session.SessionStatus.PENDING,

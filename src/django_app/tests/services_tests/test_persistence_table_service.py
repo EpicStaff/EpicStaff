@@ -6,9 +6,9 @@ from tables.exceptions import PersistenceKeyInvalidError, PersistenceValueTooLar
 from tables.models import PersistenceTable, PersistenceTableEntry, Session
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 from tables.services.persistence_table_service import PersistenceTableService
-from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
+from rbac.exceptions import OrgMembershipRequiredError
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 

@@ -11,7 +11,7 @@ import pytest
 
 from tables.models import EmbeddingConfig, LLMConfig, Provider, RealtimeConfig
 from tables.models.graph_models import Graph, TelegramTriggerNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.quickstart_service import QuickstartService
 from tables.services.secrets import secret_encryption
 from tables.services.telegram_trigger_service import TelegramTriggerService

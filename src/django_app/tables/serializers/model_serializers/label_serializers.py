@@ -1,9 +1,9 @@
-from rest_framework import serializers
-from tables.models.label_models import Label
-from tables.serializers.org_scoped_fields import (
+from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
+from rest_framework import serializers
+from tables.models.label_models import Label
 
 
 class LabelSerializer(serializers.ModelSerializer):

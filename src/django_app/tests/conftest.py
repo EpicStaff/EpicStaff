@@ -8,11 +8,37 @@ from django.core.management import call_command
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import ApiKey, Organization, OrganizationUser, Role
-from tables.services.rbac.api_key.generator import ApiKeyGenerator
+from rbac.models import ApiKey, Organization, OrganizationUser, Role
+from rbac.identity.api_keys.generator import ApiKeyGenerator
 
 # Import shared fixtures (graph, agent, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403
+
+
+class _MovedModelApps:
+    """Lets migration seed functions, written when these models lived in `tables`,
+    resolve them now that they live in `rbac`.
+
+    The migrations themselves are correct: during a real replay `apps` is the
+    historical ProjectState, where these models really were in `tables`. Only this
+    out-of-band replay against the live registry needs the redirect.
+    """
+
+    _MOVED = frozenset(
+        {
+            "role",
+            "rolepermission",
+            "organization",
+            "organizationuser",
+            "apikey",
+            "passwordresettoken",
+        }
+    )
+
+    def get_model(self, app_label, model_name):
+        if app_label == "tables" and model_name.lower() in self._MOVED:
+            app_label = "rbac"
+        return django_apps.get_model(app_label, model_name)
 
 
 def seed_builtin_roles_and_permissions() -> None:
@@ -36,7 +62,7 @@ def seed_builtin_roles_and_permissions() -> None:
       0242  re-seed all three roles to the masks the code enforces
       0245  grant Org Admin knowledge_sources:EXPORT (for document download)
       0246  seed the `webhooks` resource permissions
-      0251  seed the `persistent_data` resource permissions
+      rbac 0004  seed the `persistent_data` resource permissions
 
     Order is load-bearing twice over. The rename must precede 0242, which
     writes `memberships` rows directly -- running it first would leave both a
@@ -91,12 +117,13 @@ def seed_builtin_roles_and_permissions() -> None:
             "seed_webhooks_permissions",
         ),
         (
-            "tables.migrations.0251_seed_persistent_data_permissions",
+            "rbac.migrations.0004_seed_persistent_data_permissions",
             "seed_persistent_data_permissions",
         ),
     ]
+    moved_model_apps = _MovedModelApps()
     for module_path, func_name in steps:
-        getattr(import_module(module_path), func_name)(django_apps, None)
+        getattr(import_module(module_path), func_name)(moved_model_apps, None)
 
 
 @pytest.fixture(scope="session", autouse=True)

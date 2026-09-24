@@ -2,7 +2,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from tables.models import PersistenceTable, PersistenceTableEntry
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.fixture

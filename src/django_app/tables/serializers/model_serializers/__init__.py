@@ -58,10 +58,6 @@ from .python_serializers import (
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
 )
-from .rbac_serializers import (
-    OrganizationSerializer,
-    OrganizationUserSerializer,
-)
 from .realtime_serializers import (
     ConversationRecordingSerializer,
     ElevenLabsRealtimeConfigSerializer,
@@ -138,8 +134,6 @@ __all__ = [
     "LabelSerializer",
     "McpToolSerializer",
     "OpenAIRealtimeConfigSerializer",
-    "OrganizationSerializer",
-    "OrganizationUserSerializer",
     "PersistenceNodeSerializer",
     "ProviderSerializer",
     "PythonCodeResultSerializer",

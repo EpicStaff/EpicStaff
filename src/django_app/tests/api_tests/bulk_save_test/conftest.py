@@ -11,7 +11,7 @@ from tables.models.graph_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.fixture

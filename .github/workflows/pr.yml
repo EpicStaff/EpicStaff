@@ -162,6 +162,35 @@ jobs:
       - name: Check for runtime CDN / external URL references
         run: node scripts/check-external-urls.mjs
 
+  # The rbac app was extracted out of tables specifically to stop
+  # rbac reaching back into tables. Two imports are structural and stay
+  # allowed: tables.models.user (AUTH_USER_MODEL cannot move -- it is
+  # re-resolved on every migration-graph build, so pointing it at rbac.User
+  # would retroactively change the dependencies of every applied migration)
+  # and tables.swagger_schemas.common_schemas (a shared constants module with
+  # no behaviour of its own). Anything else from tables is exactly the
+  # coupling this job exists to catch before it comes back.
+  check-rbac-boundary:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: rbac must not import tables
+        run: |
+          violations=$(grep -rnE "^from tables|^import tables|^[[:space:]]+from tables" \
+            src/django_app/rbac --include=*.py \
+            | grep -v "tables\.models\.user" \
+            | grep -v "tables\.swagger_schemas\.common_schemas" \
+            || true)
+          if [ -n "$violations" ]; then
+            echo "$violations"
+            echo "ERROR: rbac must not import tables (only tables.models.user and tables.swagger_schemas.common_schemas are allowed)"
+            exit 1
+          fi
+
   # This is the repository's only required status check (ruleset "Main PR"). A job
   # skipped by `if:` reports conclusion `skipped`, and required status checks treat
   # `skipped` as passing -- a workflow-level `paths:` filter would instead leave the
@@ -376,7 +405,7 @@ jobs:
   # This is meant to be temporary.
 
   build:
-    needs: [changes, check-cla, check-external-urls, frontend-checks]
+    needs: [changes, check-cla, check-external-urls, check-rbac-boundary, frontend-checks]
     # `!cancelled() && !failure()` is mandatory, not defensive. frontend-checks can
     # now be skipped, and a skipped dependency skips its dependants by default;
     # overriding the default job condition with an explicit `if:` is the only way to

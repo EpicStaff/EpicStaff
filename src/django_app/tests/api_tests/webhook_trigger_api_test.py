@@ -5,8 +5,8 @@ import pytest
 from django.urls import reverse
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
-from tables.models.rbac_models import Organization, OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole, ResourceType
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,

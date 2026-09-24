@@ -1,4 +1,5 @@
 from django.db import models
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
     ActiveManager,
@@ -8,7 +9,6 @@ from tables.models.base_models import (
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class PythonCode(ContentHashMixin, models.Model):

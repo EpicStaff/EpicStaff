@@ -1,15 +1,15 @@
 from django.db import models
 from django.db.models.functions import Lower
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.constants.persistence_constants import MAX_KEY_LENGTH, MAX_TABLE_NAME_LENGTH
 from tables.models.base_models import TimestampMixin
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class PersistenceTable(OrgScopedModel, TimestampMixin):
     # Overrides the nullable OrgScopedModel.org: a brand-new table has nothing to backfill.
     org = models.ForeignKey(
-        "Organization",
+        "rbac.Organization",
         on_delete=models.CASCADE,
         related_name="persistence_tables",
     )

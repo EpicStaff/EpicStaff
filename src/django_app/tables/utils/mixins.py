@@ -14,7 +14,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
 from loguru import logger
-from tables.services.rbac.ticket_service import sse_ticket_service
+from rbac.identity.tickets import sse_ticket_service
 from tables.services.redis_service import RedisService
 
 redis_service = RedisService()

@@ -7,7 +7,7 @@ regression guard for the change.
 import pytest
 
 from tables.models import PythonCode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 from tables.services.secrets import secret_service
 

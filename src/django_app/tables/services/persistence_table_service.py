@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from rbac.access.asserts import assert_org_permission
+from rbac.models.enums import Permission, ResourceType
 from tables.constants.persistence_constants import (
     MAX_KEY_LENGTH,
     MAX_VALUE_BYTES,
@@ -20,8 +22,6 @@ from tables.models import (
     Session,
     SubGraphNode,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permission_assert import assert_org_permission
 
 
 @dataclass(frozen=True)
