@@ -12,7 +12,8 @@ import { PersistenceTable } from '../../models/persistence-table.model';
 export class PersistenceTableListComponent {
     readonly tables = input.required<PersistenceTable[]>();
     readonly selectedId = input<number | null>(null);
-    readonly canManage = input(false);
+    readonly canRename = input(false);
+    readonly canDelete = input(false);
 
     readonly selected = output<PersistenceTable>();
     readonly renameRequested = output<PersistenceTable>();

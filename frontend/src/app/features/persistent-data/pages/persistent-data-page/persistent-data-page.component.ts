@@ -36,8 +36,10 @@ export class PersistentDataPageComponent {
     readonly selectedTable = computed(
         () => this.persistenceTablesStorage.tables().find((table) => table.id === this.selectedTableId()) ?? null
     );
-    readonly canManage = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Delete));
-    readonly canEdit = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Update));
+    // Each action is gated on the exact verb the backend checks (rbac DEFAULT_ACTION_MAP).
+    readonly canCreate = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Create));
+    readonly canUpdate = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Update));
+    readonly canDelete = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Delete));
 
     readonly loadTablesOnRefresh = effect((onCleanup) => {
         this.persistenceTablesStorage.refreshTick();

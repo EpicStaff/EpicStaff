@@ -8,6 +8,7 @@ import {
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
+    AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
     PaginationControlsComponent,
@@ -46,7 +47,9 @@ const SEARCH_DEBOUNCE_MS = 300;
 })
 export class PersistenceEntriesGridComponent {
     readonly table = input.required<PersistenceTable>();
-    readonly canEdit = input(false);
+    readonly canCreate = input(false);
+    readonly canUpdate = input(false);
+    readonly canDelete = input(false);
 
     readonly changed = output<void>();
 
@@ -73,30 +76,29 @@ export class PersistenceEntriesGridComponent {
     readonly rows = computed<TableRow[]>(() =>
         this.entries().map((entry) => ({ ...entry, preview: previewValue(entry.value) }))
     );
-    readonly columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'key', label: 'Key', width: '1fr' },
-        { key: 'preview', label: 'Value', width: '2fr' },
-        { key: 'updated_at', label: 'Updated', width: '200px' },
-        ...(this.canEdit()
-            ? [
-                  {
-                      key: 'actions',
-                      label: 'Actions',
-                      width: '96px',
-                      align: 'end' as const,
-                      actions: [
-                          { icon: 'edit', tooltip: 'Edit entry', onClick: (row: TableRow) => this.onEdit(row) },
-                          {
-                              icon: 'trash',
-                              tooltip: 'Delete entry',
-                              variant: 'danger' as const,
-                              onClick: (row: TableRow) => this.onDelete(row),
-                          },
-                      ],
-                  },
-              ]
-            : []),
-    ]);
+    readonly columns = computed<AppTableColumnDef[]>(() => {
+        const actions: AppTableRowAction[] = [];
+        if (this.canUpdate()) {
+            actions.push({ icon: 'edit', tooltip: 'Edit entry', onClick: (row) => this.onEdit(row) });
+        }
+        if (this.canDelete()) {
+            actions.push({
+                icon: 'trash',
+                tooltip: 'Delete entry',
+                variant: 'danger',
+                onClick: (row) => this.onDelete(row),
+            });
+        }
+        const columns: AppTableColumnDef[] = [
+            { key: 'key', label: 'Key', width: '1fr' },
+            { key: 'preview', label: 'Value', width: '2fr' },
+            { key: 'updated_at', label: 'Updated', width: '200px' },
+        ];
+        if (actions.length) {
+            columns.push({ key: 'actions', label: 'Actions', width: '96px', align: 'end', actions });
+        }
+        return columns;
+    });
 
     readonly loadEntries = effect((onCleanup) => {
         const page = this.page();

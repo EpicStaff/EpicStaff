@@ -3,7 +3,8 @@
         <app-persistence-table-list
             [tables]="visibleTables()"
             [selectedId]="selectedTableId()"
-            [canManage]="canManage()"
+            [canRename]="canUpdate()"
+            [canDelete]="canDelete()"
             (selected)="selectedTableId.set($event.id)"
             (renameRequested)="onRename($event)"
             (deleteRequested)="onDelete($event)"
@@ -14,7 +15,9 @@
         @if (selectedTable(); as table) {
             <app-persistence-entries-grid
                 [table]="table"
-                [canEdit]="canEdit()"
+                [canCreate]="canCreate()"
+                [canUpdate]="canUpdate()"
+                [canDelete]="canDelete()"
                 (changed)="persistenceTablesStorage.triggerRefresh()"
             />
         }
