@@ -207,16 +207,12 @@
                 color: var(--persistence-accent);
                 border: 1px solid color-mix(in srgb, var(--persistence-accent) 60%, transparent);
                 white-space: nowrap;
-            }
-        }
 
-        .persistence-subtitle {
-            padding: 0 12px 8px;
-            font-size: 0.75rem;
-            color: var(--color-text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+                // The "No table" warning follows this badge; only this one pushes the pair to the right.
+                & + .llm-warning-badge {
+                    margin-left: 6px;
+                }
+            }
         }
 
         .node-details {

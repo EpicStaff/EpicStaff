@@ -155,6 +155,8 @@
                     <div
                         class="persistence-mode-badge"
                         [style.--persistence-accent]="'var(' + visual.accentVar + ')'"
+                        [matTooltip]="persistenceSubtitle"
+                        matTooltipPosition="above"
                     >
                         <i [class]="visual.icon"></i>
                         <span>{{ visual.label }}</span>
@@ -172,14 +174,6 @@
                         <span>No table</span>
                     </div>
                 }
-            </div>
-        }
-        @if (persistenceSubtitle; as subtitle) {
-            <div
-                class="persistence-subtitle"
-                [title]="subtitle"
-            >
-                {{ subtitle }}
             </div>
         }
     </div>
