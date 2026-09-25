@@ -37,9 +37,9 @@ import { PersistenceEntryLookupResponse } from '../../../../features/persistent-
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
 import { PersistenceTablesStorageService } from '../../../../features/persistent-data/services/persistence-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
 import {
-    ExistenceBadge,
-    existenceBadge,
+    existenceHint,
     isEmptyEntry,
     isSameLookupRequest,
     isStatePath,
@@ -62,6 +62,7 @@ import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-t
 const PERSISTENCE_KEY_MAX_LENGTH = 512;
 const KEY_SUGGESTION_LIMIT = 20;
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
+const DUPLICATE_ALIAS_HINT = 'Use a different alias';
 
 interface KeySearch {
     entryIndex: number;
@@ -119,6 +120,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
     private readonly permissions = inject(PermissionsService);
     private readonly sidePanelService = inject(SidePanelService);
+    private readonly toastService = inject(ToastService);
     private readonly overlay = inject(Overlay);
     private readonly viewContainerRef = inject(ViewContainerRef);
     private readonly keySearch$ = new Subject<KeySearch>();
@@ -158,6 +160,22 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         this.destroyRef.onDestroy(() => this.closeSuggestionOverlay());
     }
 
+    /**
+     * The flow save writes whatever the open panel returns here, and only task and agent nodes are
+     * validated further down, so an invalid persistence form would reach the backend. Returning null
+     * aborts the save, as the schedule-trigger panel does. Empty rows are never invalid.
+     */
+    public override captureForValidation(): PersistenceNodeModel | null {
+        if (!this.form) return null;
+        this.form.markAllAsTouched();
+        if (this.form.invalid) {
+            const nodeName: string = this.form.value.node_name?.trim() || this.node().node_name;
+            this.toastService.error(`Fix the highlighted fields in "${nodeName}" to save the flow.`);
+            return null;
+        }
+        return super.captureForValidation();
+    }
+
     protected get entries(): FormArray {
         return this.form.get('entries') as FormArray;
     }
@@ -175,6 +193,14 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             entries: this.fb.array<FormGroup>(entries.map((entry) => this.createEntryGroup(entry, mode))),
             output_variable_path: [node.output_variable_path ?? ''],
         });
+
+        // An alias's validity depends on the other rows' aliases, which its own row doesn't see change.
+        const entriesArray = form.controls.entries;
+        entriesArray.valueChanges
+            .pipe(startWith(null), takeUntilDestroyed(this.destroyRef))
+            .subscribe(() =>
+                entriesArray.controls.forEach((row) => row.get('alias')?.updateValueAndValidity({ emitEvent: false }))
+            );
 
         form.controls.mode.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -294,9 +320,13 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return writeValueHint(value.value);
     }
 
-    protected badgeFor(index: number): ExistenceBadge {
+    protected aliasHintFor(index: number): string | null {
+        return this.entries.at(index).get('alias')?.hasError('duplicateAlias') ? DUPLICATE_ALIAS_HINT : null;
+    }
+
+    protected existenceHintFor(index: number): string | null {
         const key: string = this.entries.at(index).value.key ?? '';
-        return existenceBadge(this.mode(), key, this.lookups()[key]);
+        return existenceHint(this.mode(), this.lookups()[key]);
     }
 
     private onModeChange(form: FormGroup, newMode: PersistenceMode): void {
@@ -324,12 +354,12 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private entryControls(entry: PersistenceEntry, mode: PersistenceMode): Record<string, unknown[]> {
         const key = [
             entry.key,
-            unlessEmptyEntry(Validators.required, Validators.maxLength(PERSISTENCE_KEY_MAX_LENGTH)),
+            unlessEmptyEntry(trimmedRequired, Validators.maxLength(PERSISTENCE_KEY_MAX_LENGTH), keyTemplateValidator),
         ];
         if (mode === 'read') {
             const defaultValue = 'default' in entry && entry.default !== undefined ? JSON.stringify(entry.default) : '';
             return {
-                alias: ['alias' in entry ? entry.alias : '', unlessEmptyEntry(Validators.required)],
+                alias: ['alias' in entry ? entry.alias : '', unlessEmptyEntry(trimmedRequired, uniqueAliasValidator)],
                 key,
                 default: [defaultValue],
             };
@@ -419,7 +449,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         if (request.table === null || !this.canReadData() || request.staticKeys.length === 0) {
             return of({});
         }
-        // The existence badges are a hint; a failed lookup just hides them.
+        // Existence is advisory; a failed lookup just hides the hints.
         return this.persistenceTablesApi
             .lookupEntries(request.table, request.staticKeys)
             .pipe(catchError(() => of({})));
@@ -449,6 +479,24 @@ function unlessEmptyEntry(...validators: ValidatorFn[]): ValidatorFn {
         if (validate === null || (row !== null && isEmptyEntry(row.getRawValue()))) return null;
         return validate(control);
     };
+}
+
+function trimmedRequired(control: AbstractControl<string | null>): ValidationErrors | null {
+    return (control.value ?? '').trim() === '' ? { required: true } : null;
+}
+
+// Mirrors keyTemplateHint: malformed braces, or a placeholder that is not a state path. Empty is left to trimmedRequired.
+function keyTemplateValidator(control: AbstractControl<string | null>): ValidationErrors | null {
+    return keyTemplateHint(control.value ?? '') === null ? null : { keyTemplate: true };
+}
+
+// Read results are stored per alias, so two rows with one alias would overwrite each other.
+// Compares exactly, as the backend does. Empty is left to trimmedRequired.
+function uniqueAliasValidator(control: AbstractControl<string | null>): ValidationErrors | null {
+    const rows = control.parent?.parent;
+    if (!control.value || !(rows instanceof FormArray)) return null;
+    const sameAlias = rows.controls.filter((row) => row.get('alias')?.value === control.value);
+    return sameAlias.length > 1 ? { duplicateAlias: true } : null;
 }
 
 // Empty is left to Validators.required.

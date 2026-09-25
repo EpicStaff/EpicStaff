@@ -26,7 +26,7 @@
                         [loading]="loadingTables()"
                     />
                     @if (form.get('persistence_table')?.value === null) {
-                        <div class="table-warning">Select a table for this node to run</div>
+                        <div class="table-hint">Select a table for this node to run</div>
                     }
                 </div>
 
@@ -53,14 +53,19 @@
                             [formGroupName]="i"
                         >
                             @if (mode() === 'read') {
-                                <input
-                                    type="text"
-                                    class="entry-input"
-                                    formControlName="alias"
-                                    placeholder="Alias"
-                                    aria-label="Alias"
-                                    autocomplete="off"
-                                />
+                                <div class="entry-field">
+                                    <input
+                                        type="text"
+                                        class="entry-input"
+                                        formControlName="alias"
+                                        placeholder="Alias"
+                                        aria-label="Alias"
+                                        autocomplete="off"
+                                    />
+                                    @if (aliasHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                </div>
                             }
                             <div class="entry-field">
                                 <input
@@ -77,17 +82,10 @@
                                     (keydown)="onKeyKeydown($event)"
                                     (blur)="onKeyBlur()"
                                 />
-                                @if (canReadData()) {
-                                    @let badge = badgeFor(i);
-                                    @if (badge.kind !== 'unknown') {
-                                        <span
-                                            class="badge badge-{{ badge.kind }}"
-                                            [attr.title]="badge.tooltip"
-                                            >{{ badge.label }}</span
-                                        >
-                                    }
-                                }
                                 @if (placeholderHints()[i]; as hint) {
+                                    <div class="entry-hint">{{ hint }}</div>
+                                }
+                                @if (existenceHintFor(i); as hint) {
                                     <div class="entry-hint">{{ hint }}</div>
                                 }
                             </div>
@@ -132,7 +130,7 @@
                 </div>
                 <button
                     type="button"
-                    class="btn-secondary add-entry"
+                    class="add-entry"
                     (click)="addEntry()"
                 >
                     <app-svg-icon

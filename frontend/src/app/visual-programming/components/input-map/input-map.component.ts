@@ -225,6 +225,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
+            @use '../../styles/node-panel-controls.scss' as controls;
+
             .input-map-container {
                 display: flex;
                 flex-direction: column;
@@ -340,25 +342,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .add-pair-btn {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 6px 12px;
-                background: var(--color-action-btn-background);
-                border: 1px solid var(--color-divider-subtle);
-                border-radius: 4px;
-                color: var(--color-text-primary);
-                transition: background-color 0.2s;
-                cursor: pointer;
-                font-size: 0.875rem;
-
-                &:hover {
-                    background: var(--color-action-btn-background-hover);
-                }
-
-                app-svg-icon {
-                    flex-shrink: 0;
-                }
+                @include controls.add-row-button;
 
                 i {
                     font-size: 1rem;

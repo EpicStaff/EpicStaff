@@ -4,8 +4,9 @@ import { PersistenceEntry, PersistenceMode, PersistenceReadEntry } from '../mode
 // Mirrors crew's key-template parsing: placeholders match this regex, and a key with braces left over
 // once they are removed is malformed. Keep both identical to crew so the panel flags what crew rejects.
 const PLACEHOLDER = /\{([^{}]+)\}/g;
-// Key placeholders and write values are flow state paths: `variables` plus at least one segment.
-export const STATE_PATH = /^variables(\.\w|\[\d)/;
+// Key placeholders and write values are flow state paths: `variables.` plus at least one segment.
+// Flow variables are a dict in crew, so `variables[0]` can never resolve.
+export const STATE_PATH = /^variables\.\w/;
 const KEY_PLACEHOLDER_HINT = 'Write placeholders as {variables.user.id}';
 const WRITE_VALUE_HINT = 'Use a state path like variables.user.name';
 // A bare path such as `user.id` or `items[0]`, which only lacks the `variables.` root.
@@ -13,12 +14,6 @@ const ROOTLESS_PATH = /^[A-Za-z_]\w*(\.\w+|\[\d+\])*$/;
 
 /** A write value starts as this so the user only types the rest of the path. */
 export const WRITE_VALUE_PREFILL = 'variables.';
-
-export interface ExistenceBadge {
-    kind: 'recorded' | 'missing' | 'dynamic' | 'unknown';
-    label: string;
-    tooltip: string | null;
-}
 
 export interface LookupRequest {
     table: number | null;
@@ -40,16 +35,16 @@ interface EntryText {
     default?: string | null;
 }
 
-const RECORDED_LABEL: Record<PersistenceMode, string> = {
-    read: 'recorded',
-    write: 'exists — will overwrite',
-    delete: 'recorded',
+const RECORDED_HINT: Record<PersistenceMode, string> = {
+    read: 'Recorded',
+    write: 'Exists — will overwrite',
+    delete: 'Recorded',
 };
 
-const MISSING_LABEL: Record<PersistenceMode, string> = {
-    read: 'not recorded — returns default',
-    write: 'new key',
-    delete: 'not recorded — no-op',
+const MISSING_HINT: Record<PersistenceMode, string> = {
+    read: 'Not recorded — returns default',
+    write: 'New key',
+    delete: 'Not recorded — no-op',
 };
 
 export function extractPlaceholders(template: string): string[] {
@@ -144,21 +139,8 @@ export function parseDefaultValue(text: string): unknown {
     }
 }
 
-export function existenceBadge(
-    mode: PersistenceMode,
-    template: string,
-    lookup: PersistenceEntryLookup | undefined
-): ExistenceBadge {
-    if (isMalformedKey(template)) {
-        return { kind: 'unknown', label: '', tooltip: null };
-    }
-    if (!isStaticKey(template)) {
-        return { kind: 'dynamic', label: 'resolved at run time', tooltip: null };
-    }
-    if (!lookup) {
-        return { kind: 'unknown', label: '', tooltip: null };
-    }
-    return lookup.exists
-        ? { kind: 'recorded', label: RECORDED_LABEL[mode], tooltip: lookup.value_preview }
-        : { kind: 'missing', label: MISSING_LABEL[mode], tooltip: null };
+/** Whether a looked-up key is stored. Only static keys are looked up, so any other key gets null. */
+export function existenceHint(mode: PersistenceMode, lookup: PersistenceEntryLookup | undefined): string | null {
+    if (!lookup) return null;
+    return lookup.exists ? RECORDED_HINT[mode] : MISSING_HINT[mode];
 }

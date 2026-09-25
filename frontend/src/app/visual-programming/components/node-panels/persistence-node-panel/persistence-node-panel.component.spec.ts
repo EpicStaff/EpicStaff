@@ -10,10 +10,14 @@ import {
 import { NEVER, Observable, of, Subject } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
-import { PersistenceTableEntry } from '../../../../features/persistent-data/models/persistence-table.model';
+import {
+    PersistenceEntryLookupResponse,
+    PersistenceTableEntry,
+} from '../../../../features/persistent-data/models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
 import { PersistenceTablesStorageService } from '../../../../features/persistent-data/services/persistence-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
 import { FlowModel } from '../../../core/models/flow.model';
 import { PersistenceNodeModel } from '../../../core/models/node.model';
 import { GetPersistenceNodeRequest, PersistenceMode } from '../../../core/models/persistence-node.model';
@@ -57,22 +61,26 @@ function createPanel(
         renderTemplate = false,
         canRead = false,
         getEntries = () => NEVER,
+        lookupEntries = () => of({}),
     }: {
         renderTemplate?: boolean;
         canRead?: boolean;
         getEntries?: () => Observable<ApiGetRequest<PersistenceTableEntry>>;
+        lookupEntries?: () => Observable<PersistenceEntryLookupResponse>;
     } = {}
 ): {
     panel: PersistenceNodePanelComponent;
     fixture: ComponentFixture<PersistenceNodePanelComponent>;
     triggerAutosave: ReturnType<typeof vi.fn>;
+    toastError: ReturnType<typeof vi.fn>;
 } {
     const triggerAutosave = vi.fn();
+    const toastError = vi.fn();
     TestBed.configureTestingModule({
         providers: [
             {
                 provide: PersistenceTablesApiService,
-                useValue: { lookupEntries: () => of({}), getEntries },
+                useValue: { lookupEntries, getEntries },
             },
             { provide: PersistenceTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
             { provide: PermissionsService, useValue: { can: () => canRead } },
@@ -81,6 +89,7 @@ function createPanel(
                 useValue: { createSyncUniqueNameValidator: () => () => null, getValidationErrorMessage: () => '' },
             },
             { provide: SidePanelService, useValue: { triggerAutosave } },
+            { provide: ToastService, useValue: { error: toastError } },
         ],
     });
     TestBed.overrideComponent(PersistenceNodePanelComponent, {
@@ -91,7 +100,7 @@ function createPanel(
     const fixture = TestBed.createComponent(PersistenceNodePanelComponent);
     fixture.componentRef.setInput('node', node);
     fixture.detectChanges();
-    return { panel: fixture.componentInstance, fixture, triggerAutosave };
+    return { panel: fixture.componentInstance, fixture, triggerAutosave, toastError };
 }
 
 function flowOf(node: PersistenceNodeModel): FlowModel {
@@ -159,11 +168,11 @@ describe('PersistenceNodePanelComponent', () => {
         );
         const value = (panel.form.get('entries') as FormArray).at(0).get('value')!;
 
-        for (const path of ['variables.a.b', 'variables.x|0', 'variables[0]', ' variables.a ']) {
+        for (const path of ['variables.a.b', 'variables.x|0', 'variables.items[0]', ' variables.a ']) {
             value.setValue(path);
             expect(value.valid).toBe(true);
         }
-        for (const path of ['name', 'variables', 'variables.', '   ']) {
+        for (const path of ['name', 'variables', 'variables.', 'variables[0]', '   ']) {
             value.setValue(path);
             expect(value.hasError('pattern')).toBe(true);
         }
@@ -250,6 +259,165 @@ describe('PersistenceNodePanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.entry-hint').textContent.trim()).toBe(
             'Use a state path like variables.user.name'
         );
+    });
+
+    it('says whether a static key is stored as a plain hint, and nothing for a key built at run time', () => {
+        vi.useFakeTimers();
+        const lookupEntries = vi.fn(() => of({ plan: { exists: false, value_preview: null, updated_at: null } }));
+        const { fixture } = createPanel(
+            mapPersistenceNodeToModel({
+                ...DTO,
+                mode: 'write',
+                entries: [
+                    { key: 'plan', value: 'variables.plan' },
+                    { key: 'profile_{variables.user.id}', value: 'variables.user' },
+                ],
+            }),
+            { renderTemplate: true, canRead: true, lookupEntries }
+        );
+
+        vi.advanceTimersByTime(300);
+        fixture.detectChanges();
+
+        expect(lookupEntries).toHaveBeenCalledWith(3, ['plan']);
+        const hints = Array.from(fixture.nativeElement.querySelectorAll('.entry-hint'), (hint: Element) =>
+            hint.textContent!.trim()
+        );
+        expect(hints).toEqual(['New key']);
+        expect(fixture.nativeElement.querySelector('.badge')).toBeNull();
+    });
+
+    describe('flow save', () => {
+        const writeNode = (value: string): PersistenceNodeModel =>
+            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value }] });
+
+        it('blocks the flow save and says why when a write value is not a state path', () => {
+            const { panel, toastError } = createPanel(writeNode('value'));
+
+            expect(panel.captureForValidation()).toBeNull();
+            expect(toastError).toHaveBeenCalledWith('Fix the highlighted fields in "Persistence #1" to save the flow.');
+            // Touched, so the invalid field renders its error.
+            expect((panel.form.get('entries') as FormArray).at(0).get('value')!.touched).toBe(true);
+        });
+
+        it('passes a valid node through', () => {
+            const { panel, toastError } = createPanel(writeNode('variables.user'));
+
+            expect(panel.captureForValidation()!.data.entries).toEqual([{ key: 'profile', value: 'variables.user' }]);
+            expect(toastError).not.toHaveBeenCalled();
+        });
+
+        it('is not blocked by an empty row', () => {
+            const { panel, fixture, toastError } = createPanel(writeNode('variables.user'), { renderTemplate: true });
+
+            fixture.nativeElement.querySelector('.add-entry').click();
+            fixture.detectChanges();
+
+            expect(panel.captureForValidation()!.data.entries).toEqual([{ key: 'profile', value: 'variables.user' }]);
+            expect(toastError).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('entry validation', () => {
+        const hints = (fixture: ComponentFixture<PersistenceNodePanelComponent>): string[] =>
+            Array.from(fixture.nativeElement.querySelectorAll('.entry-hint'), (hint: Element) =>
+                hint.textContent!.trim()
+            );
+
+        it('blocks the flow save when a key is typed but the value is left at the prefill, hinting once touched', () => {
+            const { panel, fixture } = createPanel(
+                mapPersistenceNodeToModel({
+                    ...DTO,
+                    mode: 'write',
+                    entries: [{ key: 'profile', value: 'variables.a' }],
+                }),
+                { renderTemplate: true }
+            );
+            fixture.nativeElement.querySelector('.add-entry').click();
+            (panel.form.get('entries') as FormArray).at(1).patchValue({ key: 'plan' });
+            fixture.detectChanges();
+            expect(hints(fixture)).toEqual([]);
+
+            expect(panel.captureForValidation()).toBeNull();
+            fixture.detectChanges();
+            expect(hints(fixture)).toEqual(['Use a state path like variables.user.name']);
+        });
+
+        it('blocks the flow save for a malformed key or a placeholder that is not a state path', () => {
+            const { panel } = createPanel(
+                mapPersistenceNodeToModel({
+                    ...DTO,
+                    mode: 'write',
+                    entries: [{ key: 'profile', value: 'variables.a' }],
+                })
+            );
+            const key = (panel.form.get('entries') as FormArray).at(0).get('key')!;
+
+            for (const template of ['p_{', 'p_{}', 'p_{user_id}', 'p_{variables[0]}']) {
+                key.setValue(template);
+                expect(key.hasError('keyTemplate')).toBe(true);
+                expect(panel.captureForValidation()).toBeNull();
+            }
+            key.setValue('p_{ variables.user.id }');
+            expect(panel.captureForValidation()).not.toBeNull();
+        });
+
+        it('blocks the flow save for a key or alias of only spaces', () => {
+            const { panel } = createPanel(mapPersistenceNodeToModel(DTO));
+            const row = (panel.form.get('entries') as FormArray).at(0);
+
+            row.patchValue({ key: '   ' });
+            expect(row.get('key')!.hasError('required')).toBe(true);
+            expect(panel.captureForValidation()).toBeNull();
+
+            row.patchValue({ key: 'profile', alias: '  ' });
+            expect(row.get('alias')!.hasError('required')).toBe(true);
+            expect(panel.captureForValidation()).toBeNull();
+        });
+
+        it('blocks the flow save for a duplicate read alias, on every row that has it', () => {
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+            const entries = panel.form.get('entries') as FormArray;
+
+            entries.at(1).patchValue({ alias: 'user' });
+            fixture.detectChanges();
+            expect(hints(fixture)).toEqual(['Use a different alias', 'Use a different alias']);
+            expect(panel.captureForValidation()).toBeNull();
+
+            // Fixing one row clears the other, which did not change.
+            entries.at(1).patchValue({ alias: 'plan' });
+            fixture.detectChanges();
+            expect(hints(fixture)).toEqual([]);
+            expect(panel.captureForValidation()).not.toBeNull();
+        });
+
+        it('flags duplicate aliases a node is loaded with', () => {
+            const { panel } = createPanel(
+                mapPersistenceNodeToModel({
+                    ...DTO,
+                    entries: [
+                        { key: 'a', alias: 'same' },
+                        { key: 'b', alias: 'same' },
+                    ],
+                })
+            );
+
+            expect(panel.form.valid).toBe(false);
+        });
+
+        it('names the node by its saved name in the toast when the typed name is blank', () => {
+            const { panel, toastError } = createPanel(
+                mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'value' }] })
+            );
+
+            for (const name of ['', '   ']) {
+                panel.form.get('node_name')!.setValue(name);
+                expect(panel.captureForValidation()).toBeNull();
+                expect(toastError).toHaveBeenLastCalledWith(
+                    'Fix the highlighted fields in "Persistence #1" to save the flow.'
+                );
+            }
+        });
     });
 
     describe('empty entries', () => {
