@@ -26,7 +26,7 @@
                         [loading]="loadingTables()"
                     />
                     @if (form.get('persistence_table')?.value === null) {
-                        <div class="table-warning">Select a table — this node fails at run time without one</div>
+                        <div class="table-warning">Select a table for this node to run</div>
                     }
                 </div>
 
@@ -70,8 +70,12 @@
                                     placeholder="Key, e.g. profile_{variables.user.id}"
                                     aria-label="Key"
                                     autocomplete="off"
-                                    [attr.list]="keySuggestionsListId()"
-                                    (input)="onKeyInput($event)"
+                                    role="combobox"
+                                    aria-autocomplete="list"
+                                    [attr.aria-expanded]="isSuggestionListOpen(i)"
+                                    (input)="onKeyInput(i, $event)"
+                                    (keydown)="onKeyKeydown($event)"
+                                    (blur)="onKeyBlur()"
                                 />
                                 @if (canReadData()) {
                                     @let badge = badgeFor(i);
@@ -107,8 +111,8 @@
                                         aria-label="Value path"
                                         autocomplete="off"
                                     />
-                                    @if (entry.get('value')?.hasError('pattern')) {
-                                        <div class="entry-hint">Must be a state path, e.g. variables.user.name</div>
+                                    @if (valueHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
                                     }
                                 </div>
                             }
@@ -126,11 +130,6 @@
                         </div>
                     }
                 </div>
-                <datalist [id]="keySuggestionsListId()">
-                    @for (suggestion of keySuggestions(); track suggestion) {
-                        <option [value]="suggestion"></option>
-                    }
-                </datalist>
                 <button
                     type="button"
                     class="btn-secondary add-entry"

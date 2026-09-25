@@ -11,6 +11,8 @@ import {
     parseDefaultValue,
     reshapeEntriesForMode,
     STATE_PATH,
+    suggestStatePath,
+    writeValueHint,
 } from './persistence-node.helpers';
 
 describe('persistence node helpers', () => {
@@ -56,16 +58,37 @@ describe('persistence node helpers', () => {
         expect(nonStatePathPlaceholders('p_{ variables.id }_{variables.}')).toEqual(['variables.']);
     });
 
-    it('builds one hint per key template', () => {
+    it('suggests the state path a rootless path meant', () => {
+        expect(suggestStatePath(' user_id ')).toBe('variables.user_id');
+        expect(suggestStatePath('user.tags[0].name')).toBe('variables.user.tags[0].name');
+        for (const text of ['variables', 'variables.', 'Variables.user.name', 'user id', '.id', '[0]', '']) {
+            expect(suggestStatePath(text)).toBeNull();
+        }
+    });
+
+    it('builds one key hint that says how to write the placeholders, from what was typed', () => {
         expect(keyTemplateHint('p_{variables.id}')).toBeNull();
-        expect(keyTemplateHint('p_{user_id}')).toBe('Not a state path: {user_id}. Use e.g. {variables.user.id}');
-        expect(keyTemplateHint('p_{}_{user_id}')).toBe('Empty or unbalanced placeholder. Use e.g. {variables.user.id}');
+        expect(keyTemplateHint('p_{user_id}')).toBe('Use {variables.user_id}');
+        expect(keyTemplateHint('p_{user.id}_{items[0]}')).toBe('Use {variables.user.id}, {variables.items[0]}');
+        expect(keyTemplateHint('{user_id}_{user_id}')).toBe('Use {variables.user_id}');
+        expect(keyTemplateHint('p_{}_{user_id}')).toBe('Write placeholders as {variables.user.id}');
+        expect(keyTemplateHint('p_{variables.}')).toBe('Write placeholders as {variables.user.id}');
+        expect(keyTemplateHint('p_{user id}')).toBe('Write placeholders as {variables.user.id}');
+    });
+
+    it('builds a write value hint from what was typed', () => {
+        expect(writeValueHint('variables.user.name')).toBeNull();
+        expect(writeValueHint('')).toBeNull();
+        expect(writeValueHint('user.name')).toBe('Use variables.user.name');
+        expect(writeValueHint('variables.')).toBe('Use a state path like variables.user.name');
+        expect(writeValueHint('Variables.user.name')).toBe('Use a state path like variables.user.name');
+        expect(writeValueHint('user name')).toBe('Use a state path like variables.user.name');
     });
 
     it('keeps only keys when switching modes, so a read alias never lands in a write value path', () => {
         const entries = [{ alias: 'a', key: 'k1', default: 1 }];
         expect(reshapeEntriesForMode(entries, 'delete')).toEqual([{ key: 'k1' }]);
-        expect(reshapeEntriesForMode(entries, 'write')).toEqual([{ key: 'k1', value: '' }]);
+        expect(reshapeEntriesForMode(entries, 'write')).toEqual([{ key: 'k1', value: 'variables.' }]);
         expect(reshapeEntriesForMode([{ key: 'k1', value: 'variables.a' }], 'read')).toEqual([
             { alias: '', key: 'k1' },
         ]);

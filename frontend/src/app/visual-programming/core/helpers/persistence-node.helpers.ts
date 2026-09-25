@@ -6,6 +6,13 @@ import { PersistenceEntry, PersistenceMode, PersistenceReadEntry } from '../mode
 const PLACEHOLDER = /\{([^{}]+)\}/g;
 // Key placeholders and write values are flow state paths: `variables` plus at least one segment.
 export const STATE_PATH = /^variables(\.\w|\[\d)/;
+const KEY_PLACEHOLDER_HINT = 'Write placeholders as {variables.user.id}';
+const WRITE_VALUE_HINT = 'Use a state path like variables.user.name';
+// A bare path such as `user.id` or `items[0]`, which only lacks the `variables.` root.
+const ROOTLESS_PATH = /^[A-Za-z_]\w*(\.\w+|\[\d+\])*$/;
+
+/** A write value starts as this so the user only types the rest of the path. */
+export const WRITE_VALUE_PREFILL = 'variables.';
 
 export interface ExistenceBadge {
     kind: 'recorded' | 'missing' | 'dynamic' | 'unknown';
@@ -59,11 +66,26 @@ export function nonStatePathPlaceholders(template: string): string[] {
     return extractPlaceholders(template).filter((placeholder) => !isStatePath(placeholder));
 }
 
+/** The state path the user most likely meant, or null when it can't be guessed. */
+export function suggestStatePath(text: string): string | null {
+    const path = text.trim();
+    if (path.toLowerCase().startsWith('variables') || !ROOTLESS_PATH.test(path)) return null;
+    return `variables.${path}`;
+}
+
 export function keyTemplateHint(template: string): string | null {
-    if (isMalformedKey(template)) return 'Empty or unbalanced placeholder. Use e.g. {variables.user.id}';
-    const invalid = nonStatePathPlaceholders(template);
+    if (isMalformedKey(template)) return KEY_PLACEHOLDER_HINT;
+    const invalid = Array.from(new Set(nonStatePathPlaceholders(template)));
     if (invalid.length === 0) return null;
-    return `Not a state path: ${invalid.map((placeholder) => `{${placeholder}}`).join(', ')}. Use e.g. {variables.user.id}`;
+    const fixes = invalid.map(suggestStatePath);
+    if (!fixes.every((fix): fix is string => fix !== null)) return KEY_PLACEHOLDER_HINT;
+    return `Use ${fixes.map((fix) => `{${fix}}`).join(', ')}`;
+}
+
+export function writeValueHint(value: string): string | null {
+    if (value.trim() === '' || isStatePath(value)) return null;
+    const fix = suggestStatePath(value);
+    return fix === null ? WRITE_VALUE_HINT : `Use ${fix}`;
 }
 
 /**
@@ -82,7 +104,7 @@ export function normalizeEntry(entry: EntryFields, mode: PersistenceMode): Persi
 }
 
 export function reshapeEntriesForMode(entries: PersistenceEntry[], mode: PersistenceMode): PersistenceEntry[] {
-    return entries.map(({ key }) => normalizeEntry({ key }, mode));
+    return entries.map(({ key }) => normalizeEntry({ key, value: WRITE_VALUE_PREFILL }, mode));
 }
 
 export function isSameLookupRequest(previous: LookupRequest, current: LookupRequest): boolean {

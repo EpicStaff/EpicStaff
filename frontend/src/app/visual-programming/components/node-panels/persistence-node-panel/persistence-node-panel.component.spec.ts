@@ -1,8 +1,10 @@
 import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, FormArray, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
-import { NEVER, of } from 'rxjs';
+import { NEVER, Observable, of, Subject } from 'rxjs';
 
+import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { PersistenceTableEntry } from '../../../../features/persistent-data/models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
 import { PersistenceTablesStorageService } from '../../../../features/persistent-data/services/persistence-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -45,7 +47,15 @@ class FormControlStubComponent implements ControlValueAccessor {
 
 function createPanel(
     node: PersistenceNodeModel,
-    { renderTemplate = false }: { renderTemplate?: boolean } = {}
+    {
+        renderTemplate = false,
+        canRead = false,
+        getEntries = () => NEVER,
+    }: {
+        renderTemplate?: boolean;
+        canRead?: boolean;
+        getEntries?: () => Observable<ApiGetRequest<PersistenceTableEntry>>;
+    } = {}
 ): {
     panel: PersistenceNodePanelComponent;
     fixture: ComponentFixture<PersistenceNodePanelComponent>;
@@ -56,10 +66,10 @@ function createPanel(
         providers: [
             {
                 provide: PersistenceTablesApiService,
-                useValue: { lookupEntries: () => of({}), getEntries: () => NEVER },
+                useValue: { lookupEntries: () => of({}), getEntries },
             },
             { provide: PersistenceTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
-            { provide: PermissionsService, useValue: { can: () => false } },
+            { provide: PermissionsService, useValue: { can: () => canRead } },
             {
                 provide: UniqueNodeNameValidatorService,
                 useValue: { createSyncUniqueNameValidator: () => () => null, getValidationErrorMessage: () => '' },
@@ -155,7 +165,7 @@ describe('PersistenceNodePanelComponent', () => {
         expect(value.hasError('required')).toBe(true);
     });
 
-    it('shows an inline error for a write value that is not a state path, and saves it trimmed', () => {
+    it('says how to fix a write value that is not a state path, and saves it trimmed', () => {
         const { panel, fixture } = createPanel(
             mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'variables.a' }] }),
             { renderTemplate: true }
@@ -164,9 +174,13 @@ describe('PersistenceNodePanelComponent', () => {
         const hintText = (): string | undefined =>
             fixture.nativeElement.querySelector('.entry-hint')?.textContent.trim();
 
-        value.setValue('name');
+        value.setValue('user.name');
         fixture.detectChanges();
-        expect(hintText()).toBe('Must be a state path, e.g. variables.user.name');
+        expect(hintText()).toBe('Use variables.user.name');
+
+        value.setValue('user name');
+        fixture.detectChanges();
+        expect(hintText()).toBe('Use a state path like variables.user.name');
 
         value.setValue('  variables.user.name ');
         fixture.detectChanges();
@@ -174,7 +188,7 @@ describe('PersistenceNodePanelComponent', () => {
         expect(panel.onSave()!.data.entries).toEqual([{ key: 'profile', value: 'variables.user.name' }]);
     });
 
-    it('hints at key placeholders that are not state paths', () => {
+    it('says how to write key placeholders, building the fix from what was typed', () => {
         const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
         const entries = panel.form.get('entries') as FormArray;
         const hints = (): string[] =>
@@ -186,28 +200,210 @@ describe('PersistenceNodePanelComponent', () => {
         entries.at(1).patchValue({ key: 'plan_{ variables.user.id }' });
         fixture.detectChanges();
 
-        expect(hints()).toEqual(['Not a state path: {user_id}. Use e.g. {variables.user.id}']);
+        expect(hints()).toEqual(['Use {variables.user_id}']);
 
         entries.at(1).patchValue({ key: 'plan_{}' });
         fixture.detectChanges();
 
-        expect(hints()).toEqual([
-            'Not a state path: {user_id}. Use e.g. {variables.user.id}',
-            'Empty or unbalanced placeholder. Use e.g. {variables.user.id}',
-        ]);
+        expect(hints()).toEqual(['Use {variables.user_id}', 'Write placeholders as {variables.user.id}']);
     });
 
-    it('drops read aliases when switching to write, leaving the value path empty', () => {
-        const { panel } = createPanel(mapPersistenceNodeToModel(DTO));
+    it('drops read aliases when switching to write, prefilling the value path without an error yet', () => {
+        const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
 
         panel.form.get('mode')!.setValue('write');
+        fixture.detectChanges();
 
         const entries = panel.form.get('entries') as FormArray;
         expect(entries.getRawValue()).toEqual([
-            { key: 'profile', value: '' },
-            { key: 'plan', value: '' },
+            { key: 'profile', value: 'variables.' },
+            { key: 'plan', value: 'variables.' },
         ]);
-        expect(entries.at(0).get('value')!.hasError('required')).toBe(true);
+        expect(entries.at(0).get('value')!.hasError('pattern')).toBe(true);
+        expect(fixture.nativeElement.querySelector('.entry-hint')).toBeNull();
+    });
+
+    it('prefills the value of a new write entry and shows its hint only once touched', () => {
+        const { panel, fixture } = createPanel(
+            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'variables.a' }] }),
+            { renderTemplate: true }
+        );
+
+        fixture.nativeElement.querySelector('.add-entry').click();
+        fixture.detectChanges();
+
+        const added = (panel.form.get('entries') as FormArray).at(1);
+        expect(added.value).toEqual({ key: '', value: 'variables.' });
+        expect(fixture.nativeElement.querySelector('.entry-hint')).toBeNull();
+
+        added.get('value')!.markAsTouched();
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.entry-hint').textContent.trim()).toBe(
+            'Use a state path like variables.user.name'
+        );
+    });
+
+    describe('key suggestions', () => {
+        const page = (keys: string[]): ApiGetRequest<PersistenceTableEntry> => ({
+            count: keys.length,
+            next: null,
+            previous: null,
+            results: keys.map((key) => ({ key }) as PersistenceTableEntry),
+        });
+        const typeKey = (fixture: ComponentFixture<PersistenceNodePanelComponent>, text: string): HTMLInputElement => {
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+            input.value = text;
+            input.dispatchEvent(new Event('input'));
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+            return input;
+        };
+        const suggestionItems = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>('.vdo-item'));
+        const firstKey = (panel: PersistenceNodePanelComponent): string =>
+            (panel.form.get('entries') as FormArray).at(0).get('key')!.value;
+
+        beforeEach(() => vi.useFakeTimers());
+
+        it('searches the selected table and fills the key with the clicked suggestion', () => {
+            const getEntries = vi.fn(() => of(page(['greeting', 'greeting_formal'])));
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries,
+            });
+
+            typeKey(fixture, 'gre');
+
+            expect(getEntries).toHaveBeenCalledWith({ table: 3, search: 'gre', limit: 20, offset: 0 });
+            expect(suggestionItems().map((item) => item.textContent!.trim())).toEqual(['greeting', 'greeting_formal']);
+
+            suggestionItems()[1].click();
+            fixture.detectChanges();
+
+            expect(firstKey(panel)).toBe('greeting_formal');
+            expect(suggestionItems()).toEqual([]);
+        });
+
+        it('marks the key input as a combobox that is expanded while the list is open', () => {
+            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries: () => of(page(['greeting'])),
+            });
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+            expect(input.getAttribute('role')).toBe('combobox');
+            expect(input.getAttribute('aria-expanded')).toBe('false');
+
+            typeKey(fixture, 'gre');
+            expect(input.getAttribute('aria-expanded')).toBe('true');
+        });
+
+        it('picks the hovered suggestion on Enter', () => {
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries: () => of(page(['greeting', 'greeting_formal', 'greeting_short'])),
+            });
+
+            const input = typeKey(fixture, 'gre');
+            suggestionItems()[2].dispatchEvent(new MouseEvent('mouseenter'));
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+            fixture.detectChanges();
+
+            expect(firstKey(panel)).toBe('greeting_short');
+        });
+
+        it('keeps Escape on an open list from reaching the window shortcut listener', () => {
+            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries: () => of(page(['greeting'])),
+            });
+            const windowKeydown = vi.fn();
+            window.addEventListener('keydown', windowKeydown);
+
+            try {
+                const input = typeKey(fixture, 'gre');
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                fixture.detectChanges();
+
+                expect(windowKeydown).not.toHaveBeenCalled();
+                expect(suggestionItems()).toEqual([]);
+
+                // With the list closed, Escape goes on to the panel as before.
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                expect(windowKeydown).toHaveBeenCalledTimes(1);
+            } finally {
+                window.removeEventListener('keydown', windowKeydown);
+            }
+        });
+
+        it('drops a response that arrives after a pick, Escape or blur', () => {
+            const responses = new Subject<ApiGetRequest<PersistenceTableEntry>>();
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries: () => responses,
+            });
+            const respond = (): void => {
+                responses.next(page(['greeting', 'greeting_formal']));
+                fixture.detectChanges();
+            };
+
+            typeKey(fixture, 'gre');
+            respond();
+            suggestionItems()[1].click();
+            respond();
+            expect(firstKey(panel)).toBe('greeting_formal');
+            expect(suggestionItems()).toEqual([]);
+
+            let input = typeKey(fixture, 'greet');
+            respond();
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+            respond();
+            expect(suggestionItems()).toEqual([]);
+
+            input = typeKey(fixture, 'greeti');
+            input.dispatchEvent(new FocusEvent('blur'));
+            respond();
+            expect(suggestionItems()).toEqual([]);
+        });
+
+        it('picks with the arrow keys and Enter, and closes on Escape', () => {
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries: () => of(page(['greeting', 'greeting_formal'])),
+            });
+            const press = (input: HTMLInputElement, key: string): void => {
+                input.dispatchEvent(new KeyboardEvent('keydown', { key }));
+                fixture.detectChanges();
+            };
+
+            let input = typeKey(fixture, 'gre');
+            press(input, 'Escape');
+            expect(suggestionItems()).toEqual([]);
+
+            input = typeKey(fixture, 'gree');
+            press(input, 'ArrowDown');
+            press(input, 'Enter');
+            expect(firstKey(panel)).toBe('greeting_formal');
+            expect(suggestionItems()).toEqual([]);
+        });
+
+        it('does not search a key built from placeholders', () => {
+            const getEntries = vi.fn(() => of(page(['profile_1'])));
+            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries,
+            });
+
+            typeKey(fixture, 'profile_{');
+
+            expect(getEntries).not.toHaveBeenCalled();
+            expect(suggestionItems()).toEqual([]);
+        });
     });
 
     describe('output variable path', () => {

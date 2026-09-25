@@ -1,4 +1,6 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { Component, computed, effect, inject, signal, untracked, ViewContainerRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     AbstractControl,
@@ -45,16 +47,29 @@ import {
     normalizeEntry,
     parseDefaultValue,
     reshapeEntriesForMode,
+    WRITE_VALUE_PREFILL,
+    writeValueHint,
 } from '../../../core/helpers/persistence-node.helpers';
 import { PersistenceNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PersistenceEntry, PersistenceMode } from '../../../core/models/persistence-node.model';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
 // Mirrors MAX_KEY_LENGTH in tables/constants/persistence_constants.py.
 const PERSISTENCE_KEY_MAX_LENGTH = 512;
 const KEY_SUGGESTION_LIMIT = 20;
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
+
+interface KeySearch {
+    entryIndex: number;
+    search: string;
+}
+
+interface KeySearchResult {
+    entryIndex: number;
+    keys: string[];
+}
 
 interface EntryFormValue {
     alias?: string;
@@ -81,13 +96,15 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected readonly loadingTables = signal(false);
     protected readonly lookups = signal<PersistenceEntryLookupResponse>({});
     protected readonly placeholderHints = signal<Record<number, string>>({});
-    protected readonly keySuggestions = signal<string[]>([]);
+    private readonly keySuggestions = signal<string[]>([]);
+    private readonly activeSuggestionIndex = signal(0);
+    // The key input the suggestions belong to; null once they are dismissed, so a late response is dropped.
+    private readonly suggestionTarget = signal<{ entryIndex: number; input: HTMLInputElement } | null>(null);
     protected readonly canReadData = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Read));
     protected readonly tableItems = computed<SelectItem<number | null>[]>(() => [
         { name: 'Select a table', value: null },
         ...this.persistenceTablesStorage.tables().map((table) => ({ name: table.name, value: table.id })),
     ]);
-    protected readonly keySuggestionsListId = computed(() => `persistence-key-suggestions-${this.node().id}`);
 
     protected readonly activeColor = 'var(--accent-color)';
     protected readonly modeItems: SelectItem<PersistenceMode>[] = [
@@ -100,7 +117,11 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
     private readonly permissions = inject(PermissionsService);
     private readonly sidePanelService = inject(SidePanelService);
-    private readonly keySearch$ = new Subject<string>();
+    private readonly overlay = inject(Overlay);
+    private readonly viewContainerRef = inject(ViewContainerRef);
+    private readonly keySearch$ = new Subject<KeySearch>();
+    private suggestionOverlay: OverlayRef | null = null;
+    private suggestionDropdown: VariableDropdownOverlayComponent | null = null;
 
     constructor() {
         super();
@@ -121,7 +142,18 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
                 switchMap((search) => this.fetchKeySuggestions(search)),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe((keys) => this.keySuggestions.set(keys));
+            .subscribe((result) => this.showKeySuggestions(result));
+
+        effect(() => {
+            const suggestions = this.keySuggestions();
+            const activeIndex = this.activeSuggestionIndex();
+            if (suggestions.length === 0) {
+                this.closeSuggestionOverlay();
+                return;
+            }
+            this.openSuggestionOverlay()?.updateItems(suggestions, activeIndex);
+        });
+        this.destroyRef.onDestroy(() => this.closeSuggestionOverlay());
     }
 
     protected get entries(): FormArray {
@@ -205,15 +237,57 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     }
 
     protected addEntry(): void {
-        this.entries.push(this.createEntryGroup({ key: '' }, this.mode()));
+        this.entries.push(this.createEntryGroup({ key: '', value: WRITE_VALUE_PREFILL }, this.mode()));
     }
 
     protected removeEntry(index: number): void {
         this.entries.removeAt(index);
     }
 
-    protected onKeyInput(event: Event): void {
-        this.keySearch$.next((event.target as HTMLInputElement).value);
+    protected onKeyInput(entryIndex: number, event: Event): void {
+        const input = event.target as HTMLInputElement;
+        this.suggestionTarget.set({ entryIndex, input });
+        this.keySearch$.next({ entryIndex, search: input.value });
+    }
+
+    protected onKeyKeydown(event: KeyboardEvent): void {
+        const count = this.keySuggestions().length;
+        if (count === 0) return;
+        switch (event.key) {
+            case 'ArrowDown':
+            case 'ArrowUp': {
+                event.preventDefault();
+                const step = event.key === 'ArrowDown' ? 1 : -1;
+                this.activeSuggestionIndex.update((index) => (index + step + count) % count);
+                break;
+            }
+            case 'Enter':
+                event.preventDefault();
+                this.pickKeySuggestion(this.keySuggestions()[this.activeSuggestionIndex()]);
+                break;
+            case 'Escape':
+                // Keeps the shortcut listener from closing the whole panel.
+                event.preventDefault();
+                event.stopPropagation();
+                this.dismissSuggestions();
+                break;
+        }
+    }
+
+    protected onKeyBlur(): void {
+        this.dismissSuggestions();
+    }
+
+    protected isSuggestionListOpen(entryIndex: number): boolean {
+        return this.suggestionTarget()?.entryIndex === entryIndex && this.keySuggestions().length > 0;
+    }
+
+    /** The untouched `variables.` prefill is not an error yet; the user is about to type the rest. */
+    protected valueHintFor(index: number): string | null {
+        const value = this.entries.at(index).get('value');
+        if (!value?.hasError('pattern')) return null;
+        if (value.value === WRITE_VALUE_PREFILL && value.pristine && value.untouched) return null;
+        return writeValueHint(value.value);
     }
 
     protected badgeFor(index: number): ExistenceBadge {
@@ -251,6 +325,61 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return this.fb.group({ key });
     }
 
+    private pickKeySuggestion(key: string): void {
+        const target = this.suggestionTarget();
+        if (target === null) return;
+        const keyControl = this.entries.at(target.entryIndex).get('key');
+        keyControl?.setValue(key);
+        keyControl?.markAsDirty();
+        this.dismissSuggestions();
+    }
+
+    private dismissSuggestions(): void {
+        this.suggestionTarget.set(null);
+        this.keySuggestions.set([]);
+    }
+
+    private showKeySuggestions(result: KeySearchResult): void {
+        if (this.suggestionTarget()?.entryIndex !== result.entryIndex) return;
+        this.activeSuggestionIndex.set(0);
+        this.keySuggestions.set(result.keys);
+    }
+
+    private openSuggestionOverlay(): VariableDropdownOverlayComponent | null {
+        if (this.suggestionDropdown !== null) return this.suggestionDropdown;
+        const target = untracked(this.suggestionTarget);
+        if (target === null) return null;
+
+        const positionStrategy = this.overlay
+            .position()
+            .flexibleConnectedTo(target.input)
+            .withPositions([
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(true)
+            .withViewportMargin(8)
+            .withFlexibleDimensions(false);
+        this.suggestionOverlay = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+        });
+        const dropdown = this.suggestionOverlay.attach(
+            new ComponentPortal(VariableDropdownOverlayComponent, this.viewContainerRef)
+        ).instance;
+        // Disposing the overlay destroys the dropdown, which ends these subscriptions.
+        dropdown.itemSelected.subscribe((key) => this.pickKeySuggestion(key));
+        dropdown.activeIndexChange.subscribe((index) => this.activeSuggestionIndex.set(index));
+        this.suggestionDropdown = dropdown;
+        return dropdown;
+    }
+
+    private closeSuggestionOverlay(): void {
+        this.suggestionOverlay?.dispose();
+        this.suggestionOverlay = null;
+        this.suggestionDropdown = null;
+    }
+
     private refreshPlaceholderHints(form: FormGroup): void {
         const hints: Record<number, string> = {};
         (form.get('entries') as FormArray).controls.forEach((entry, index) => {
@@ -278,14 +407,18 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             .pipe(catchError(() => of({})));
     }
 
-    private fetchKeySuggestions(search: string): Observable<string[]> {
+    private fetchKeySuggestions({ entryIndex, search }: KeySearch): Observable<KeySearchResult> {
         const table: number | null = this.form.get('persistence_table')?.value ?? null;
-        if (table === null || !this.canReadData()) {
-            return of([]);
+        // Stored keys are static text, so a key built from placeholders has nothing to match.
+        if (table === null || !this.canReadData() || search.includes('{')) {
+            return of({ entryIndex, keys: [] });
         }
         return this.persistenceTablesApi.getEntries({ table, search, limit: KEY_SUGGESTION_LIMIT, offset: 0 }).pipe(
-            map((page) => page.results.map((entry) => entry.key)),
-            catchError(() => of([]))
+            map((page) => ({
+                entryIndex,
+                keys: page.results.map((entry) => entry.key).filter((key) => key !== search),
+            })),
+            catchError(() => of({ entryIndex, keys: [] }))
         );
     }
 }
