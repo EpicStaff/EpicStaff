@@ -179,3 +179,81 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
         len(recorded_exec_calls) >= 1
     ), "Expected at least one create_subprocess_exec call (code execution)"
     assert fake_client.requested_execution_ids == []
+
+
+@pytest.mark.asyncio
+async def test_chain_run_propagates_cancelled_error(tmp_path, monkeypatch):
+    """DynamicVenvExecutorChain.run() raises asyncio.CancelledError when cancelled.
+
+    Assertions:
+    - When a task running chain.run() is cancelled, asyncio.CancelledError
+      propagates out (not suppressed by the except Exception handler).
+    - The except asyncio.CancelledError: raise clause before except Exception
+      ensures cancellation semantics are correct.
+    """
+    import asyncio
+
+    output_path = tmp_path / "output"
+    base_venv_path = tmp_path / "venvs"
+    output_path.mkdir()
+    base_venv_path.mkdir()
+
+    execution_id = "test-chain-cancel-001"
+
+    # Create a handler that hangs indefinitely so we can cancel it
+    async def _fake_slow_shell(cmd: str, **kwargs):
+        recorded_shell_calls.append(cmd)
+        venv_path_str = cmd.strip().split()[-1]
+        Path(venv_path_str).mkdir(parents=True, exist_ok=True)
+        return _FakeProcess()
+
+    async def _fake_slow_exec(*args, **kwargs):
+        recorded_exec_calls.append(args)
+        # Hang indefinitely so the task can be cancelled
+        await asyncio.sleep(float("inf"))
+
+    recorded_shell_calls: list = []
+    recorded_exec_calls: list = []
+
+    monkeypatch.setattr(
+        dynamic_venv_executor_chain.asyncio,
+        "create_subprocess_shell",
+        _fake_slow_shell,
+    )
+    monkeypatch.setattr(
+        dynamic_venv_executor_chain.asyncio,
+        "create_subprocess_exec",
+        _fake_slow_exec,
+    )
+
+    fake_client = FakeStorageCredentialClient()
+
+    chain = DynamicVenvExecutorChain(
+        output_path=output_path,
+        base_venv_path=base_venv_path,
+        storage_credential_client=fake_client,
+    )
+
+    # Create a task and cancel it while chain.run() is executing
+    task = asyncio.create_task(
+        chain.run(
+            libraries=[],
+            venv_name="test-venv",
+            execution_id=execution_id,
+            code="def main(**kwargs):\n    return {'answer': 42}",
+            entrypoint="main",
+            func_kwargs={},
+            global_kwargs={},
+            use_storage=False,
+        )
+    )
+
+    # Give the task time to start executing
+    await asyncio.sleep(0.1)
+
+    # Cancel the task
+    task.cancel()
+
+    # Verify that CancelledError is raised (not suppressed)
+    with pytest.raises(asyncio.CancelledError):
+        await task
