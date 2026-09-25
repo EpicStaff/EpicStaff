@@ -152,6 +152,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     private exprParamsAfter = signal<string>(CDT_COLUMN_KIND.EXPRESSION);
     private manipParamsAfter = signal<string>(CDT_COLUMN_KIND.MANIPULATION);
+    private manipParamsFirst = signal(false);
+    private columnMovedDuringDrag = false;
     private preDragExprAnchor: string | null = null;
     private preDragManipAnchor: string | null = null;
 
@@ -725,6 +727,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         sortable: false,
         resizable: true,
         minWidth: 30,
+        lockPinned: true,
     };
 
     private savedColumnWidths = new Map<string, number>();
@@ -758,6 +761,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 enableFilterMode: this.enableFilterMode(),
                 exprParamsAfter: this.exprParamsAfter(),
                 manipParamsAfter: this.manipParamsAfter(),
+                manipParamsFirst: this.manipParamsFirst(),
             };
             try {
                 localStorage.setItem(this.storageKey, JSON.stringify(state));
@@ -804,6 +808,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
             if (typeof state.manipParamsAfter === 'string') {
                 this.manipParamsAfter.set(this.clampParamsAnchor(state.manipParamsAfter));
+            }
+            if (typeof state.manipParamsFirst === 'boolean') {
+                this.manipParamsFirst.set(state.manipParamsFirst);
             }
             if (typeof state.freezeAnchor === 'string') {
                 this.freezeAnchorColId.set(state.freezeAnchor);
@@ -860,66 +867,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         },
         onColumnMoved: (event: ColumnMovedEvent) => {
             if (this.isRebuilding) return;
-            if (!event.finished) return;
-            const colState = this.gridApi?.getColumnState();
-            if (!colState) return;
-            const allVisible = colState.map((s) => s.colId!);
-
-            // Update expression column order
-            const exprResult = allVisible.filter(
-                (id) => id?.startsWith(CDT_FIELD_PREFIX) || id === CDT_COLUMN_KIND.EXPRESSION
-            );
-            this.movableColumnOrder.set(exprResult);
-
-            // Update manipulation column order
-            const manipResult = allVisible.filter(
-                (id) => id?.startsWith(CDT_MANIP_PREFIX) || id === CDT_COLUMN_KIND.MANIPULATION
-            );
-            this.manipColumnOrder.set(manipResult);
-
-            const fixedIds = ClassificationDecisionTableGridComponent.PARAMS_GROUP_FIXED_ORDER;
-            const deriveAnchor = (prefix: string): { hasGroup: boolean; anchor: string | null } => {
-                let lastFixedSeen: string | null = null;
-                for (const id of allVisible) {
-                    if (id == null) continue;
-                    if (fixedIds.includes(id)) {
-                        lastFixedSeen = id;
-                    } else if (id.startsWith(prefix)) {
-                        return { hasGroup: true, anchor: lastFixedSeen };
-                    }
-                }
-                return { hasGroup: false, anchor: null };
-            };
-            const allowedAnchors = ClassificationDecisionTableGridComponent.PARAMS_GROUP_ALLOWED_ANCHORS;
-            const resolveAnchor = (
-                result: { hasGroup: boolean; anchor: string | null },
-                setAnchor: (value: string) => void,
-                preDragAnchor: string | null,
-                fallback: string
-            ): void => {
-                if (!result.hasGroup) return; // no columns of this group are currently visible
-                if (result.anchor !== null && allowedAnchors.has(result.anchor)) {
-                    setAnchor(result.anchor);
-                } else {
-                    setAnchor(preDragAnchor ?? fallback);
-                }
-            };
-
-            resolveAnchor(
-                deriveAnchor(CDT_FIELD_PREFIX),
-                (v) => this.exprParamsAfter.set(v),
-                this.preDragExprAnchor,
-                CDT_COLUMN_KIND.EXPRESSION
-            );
-            resolveAnchor(
-                deriveAnchor(CDT_MANIP_PREFIX),
-                (v) => this.manipParamsAfter.set(v),
-                this.preDragManipAnchor,
-                CDT_COLUMN_KIND.MANIPULATION
-            );
-
-            this.saveGridState();
-            setTimeout(() => this.updateAddButtonPositions(), 0);
+            if (!event.finished) {
+                this.columnMovedDuringDrag = true;
+                return;
+            }
+            this.syncColumnOrderFromGrid();
         },
         onColumnResized: (event: ColumnResizedEvent) => {
             if (event.finished) {
@@ -938,6 +890,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         },
         onDragStopped: () => {
             this.clearMovingColumnBodyCells();
+            if (this.columnMovedDuringDrag) this.syncColumnOrderFromGrid();
         },
         onCellMouseOver: (event) => {
             const data = event.data as { section?: string | null } | undefined;
@@ -1170,6 +1123,75 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         'route_code',
         'continue_flag',
     ]);
+
+    private syncColumnOrderFromGrid(): void {
+        this.columnMovedDuringDrag = false;
+        const colState = this.gridApi?.getColumnState();
+        if (!colState) return;
+        const allVisible = colState.map((s) => s.colId!);
+
+        // Update expression column order
+        const exprResult = allVisible.filter(
+            (id) => id?.startsWith(CDT_FIELD_PREFIX) || id === CDT_COLUMN_KIND.EXPRESSION
+        );
+        this.movableColumnOrder.set(exprResult);
+
+        // Update manipulation column order
+        const manipResult = allVisible.filter(
+            (id) => id?.startsWith(CDT_MANIP_PREFIX) || id === CDT_COLUMN_KIND.MANIPULATION
+        );
+        this.manipColumnOrder.set(manipResult);
+
+        const fixedIds = ClassificationDecisionTableGridComponent.PARAMS_GROUP_FIXED_ORDER;
+        const deriveAnchor = (prefix: string): { hasGroup: boolean; anchor: string | null } => {
+            let lastFixedSeen: string | null = null;
+            for (const id of allVisible) {
+                if (id == null) continue;
+                if (fixedIds.includes(id)) {
+                    lastFixedSeen = id;
+                } else if (id.startsWith(prefix)) {
+                    return { hasGroup: true, anchor: lastFixedSeen };
+                }
+            }
+            return { hasGroup: false, anchor: null };
+        };
+        const allowedAnchors = ClassificationDecisionTableGridComponent.PARAMS_GROUP_ALLOWED_ANCHORS;
+        const resolveAnchor = (
+            result: { hasGroup: boolean; anchor: string | null },
+            setAnchor: (value: string) => void,
+            preDragAnchor: string | null,
+            fallback: string
+        ): void => {
+            if (!result.hasGroup) return; // no columns of this group are currently visible
+            if (result.anchor !== null && allowedAnchors.has(result.anchor)) {
+                setAnchor(result.anchor);
+            } else {
+                setAnchor(preDragAnchor ?? fallback);
+            }
+        };
+
+        resolveAnchor(
+            deriveAnchor(CDT_FIELD_PREFIX),
+            (v) => this.exprParamsAfter.set(v),
+            this.preDragExprAnchor,
+            CDT_COLUMN_KIND.EXPRESSION
+        );
+        resolveAnchor(
+            deriveAnchor(CDT_MANIP_PREFIX),
+            (v) => this.manipParamsAfter.set(v),
+            this.preDragManipAnchor,
+            CDT_COLUMN_KIND.MANIPULATION
+        );
+
+        const firstExprParam = allVisible.findIndex((id) => id?.startsWith(CDT_FIELD_PREFIX));
+        const firstManipParam = allVisible.findIndex((id) => id?.startsWith(CDT_MANIP_PREFIX));
+        if (firstExprParam !== -1 && firstManipParam !== -1) {
+            this.manipParamsFirst.set(firstManipParam < firstExprParam);
+        }
+
+        this.saveGridState();
+        setTimeout(() => this.updateAddButtonPositions(), 0);
+    }
 
     private clampParamsAnchor(anchor: string): string {
         const order = ClassificationDecisionTableGridComponent.PARAMS_GROUP_FIXED_ORDER;
@@ -1747,6 +1769,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             minWidth: 60,
             maxWidth: 60,
             suppressMovable: true,
+            lockPosition: 'right',
             cellStyle: {
                 display: 'flex',
                 alignItems: 'center',
@@ -1777,8 +1800,12 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         for (const col of fixedCols) {
             result.push(col);
             const id = (col.colId || col.field) as string;
-            if (exprGroupDef && id === exprAnchor) result.push(exprGroupDef);
-            if (manipGroupDef && id === manipAnchor) result.push(manipGroupDef);
+            const groupsAfterCol = [
+                exprGroupDef && id === exprAnchor ? exprGroupDef : null,
+                manipGroupDef && id === manipAnchor ? manipGroupDef : null,
+            ].filter((group): group is ColGroupDef => group !== null);
+            if (this.manipParamsFirst()) groupsAfterCol.reverse();
+            result.push(...groupsAfterCol);
         }
         return result;
     }
