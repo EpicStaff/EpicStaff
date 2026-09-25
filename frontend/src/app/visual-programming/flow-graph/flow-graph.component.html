@@ -1,6 +1,7 @@
 <div
     class="editor-wrapper"
     [class.panel-open]="!!sidePanelService.selectedNode()"
+    [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
         appMouseTracker
@@ -119,6 +120,7 @@
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
+                    [fNodeDraggingDisabled]="flowReadOnly.isReadOnly()"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
@@ -147,6 +149,8 @@
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
+                    [fReassignDisabled]="flowReadOnly.isReadOnly()"
+                    [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
@@ -208,22 +212,24 @@
                             stroke="none"
                         ></path>
                     </svg>
-                    <div
-                        fConnectionContent
-                        class="connection-center"
-                        [position]="CONNECTION_DELETE_BUTTON_POSITION"
-                    >
-                        <button
-                            type="button"
-                            class="icon-button delete-icon"
-                            matTooltip="Delete connection"
-                            matTooltipPosition="above"
-                            aria-label="Delete connection"
-                            (click)="onDeleteConnection($event, connection.id)"
+                    @if (!flowReadOnly.isReadOnly()) {
+                        <div
+                            fConnectionContent
+                            class="connection-center"
+                            [position]="CONNECTION_DELETE_BUTTON_POSITION"
                         >
-                            <i class="ti ti-trash"></i>
-                        </button>
-                    </div>
+                            <button
+                                type="button"
+                                class="icon-button delete-icon"
+                                matTooltip="Delete connection"
+                                matTooltipPosition="above"
+                                aria-label="Delete connection"
+                                (click)="onDeleteConnection($event, connection.id)"
+                            >
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </div>
+                    }
 
                     <f-connection-waypoints
                         appWaypointTooltip

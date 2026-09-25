@@ -86,6 +86,7 @@ import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -286,6 +287,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
+    protected readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly undoRedoService = inject(UndoRedoService);
     private readonly clipboardService = inject(ClipboardService);
     private readonly nodeFactory = inject(NodeFactoryService);

@@ -17,6 +17,15 @@
             fill: var(--vp-line-alignment-color);
         }
     }
+    .editor-wrapper.readonly {
+        .f-connection {
+            .f-connection-selection {
+                cursor: default;
+                pointer-events: none;
+            }
+        }
+    }
+
     .f-connection {
         z-index: 2;
         .f-connection-drag-handle {
