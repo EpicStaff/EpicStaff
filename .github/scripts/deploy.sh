@@ -54,7 +54,7 @@ sleep 60
 
 echo ">> checking for crashed containers"
 CRASHED=$($DC ps --status exited --format json \
-  | python3 -c "import sys,json; services=[c['Service'] for c in json.load(sys.stdin) if c['Service'] != 'minio-init']; print('\n'.join(services))" 2>/dev/null || true)
+  | python3 -c "import sys,json; services=[c['Service'] for c in json.load(sys.stdin) if c['Service'] != 'storage-init']; print('\n'.join(services))" 2>/dev/null || true)
 if [ -n "$CRASHED" ]; then
   echo "Crashed services: $CRASHED"
   FAILED=1

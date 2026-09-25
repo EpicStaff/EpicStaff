@@ -23,14 +23,14 @@ def _check_dependency():
             raise ImportError("minio package is not installed. Use `pip install minio`.") from e
 
 
-class MinioStorage(AbstractStorage):
-    """MinIO implementation of storage.
+class S3Storage(AbstractStorage):
+    """S3-compatible implementation of storage (uses the `minio` client).
 
     Args:
-        host: MinIO server hostname or IP address.
-        port: MinIO server port.
-        access_key: MinIO access key (username).
-        secret_key: MinIO secret key (password).
+        host: S3 server hostname or IP address.
+        port: S3 server port.
+        access_key: S3 access key (username).
+        secret_key: S3 secret key (password).
         bucket: Bucket name to store objects in. Created automatically if it
             does not exist.
         secure: Whether to use TLS. Defaults to ``False``.

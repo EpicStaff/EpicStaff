@@ -16,9 +16,9 @@ from utils.logger import logger
 
 class S3StorageBackend(AbstractStorageBackend):
     """
-    Storage backend for S3-compatible services (MinIO, AWS S3, etc.).
+    Storage backend for S3-compatible services (RustFS, AWS S3, etc.).
 
-    Pass endpoint_url for MinIO or any non-AWS S3-compatible service.
+    Pass endpoint_url for RustFS or any non-AWS S3-compatible service.
     Leave endpoint_url as None to connect to AWS S3 directly.
     """
 

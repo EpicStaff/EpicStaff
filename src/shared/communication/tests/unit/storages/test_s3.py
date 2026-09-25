@@ -6,7 +6,7 @@ import pytest
 from minio.error import S3Error
 
 from communication.errors import StorageOperationError
-from communication.storages.minio_storage import MinioStorage
+from communication.storages.s3_storage import S3Storage
 
 
 def _make_s3_error(code: str, key: str = "test-key") -> S3Error:
@@ -19,31 +19,31 @@ def _make_s3_error(code: str, key: str = "test-key") -> S3Error:
 
 
 @contextmanager
-def _patched_minio(bucket_exists: bool = True):
+def _patched_s3(bucket_exists: bool = True):
     """Patch the lazily-imported `minio` module with a mock client.
 
-    `MinioStorage` reads `minio.Minio` and `minio.S3Error` from a module-level
+    `S3Storage` reads `minio.Minio` and `minio.S3Error` from a module-level
     global at call time, so the patch must stay active for the whole `with`
     block — including during put/get/remove. Yields the mock Minio client.
     """
-    fake_minio = MagicMock()
-    fake_minio.S3Error = S3Error  # real class so `except` / handle_error work
+    fake_s3 = MagicMock()
+    fake_s3.S3Error = S3Error  # real class so `except` / handle_error work
     client = MagicMock()
     client.bucket_exists.return_value = bucket_exists
-    fake_minio.Minio.return_value = client
-    with patch("communication.storages.minio_storage.minio", fake_minio):
+    fake_s3.Minio.return_value = client
+    with patch("communication.storages.s3_storage.minio", fake_s3):
         yield client
 
 
 @pytest.fixture
 def storage_and_client():
-    """MinioStorage backed by a mock client, with the `minio` patch held active."""
-    with _patched_minio() as client:
-        storage = MinioStorage(
+    """S3Storage backed by a mock client, with the `minio` patch held active."""
+    with _patched_s3() as client:
+        storage = S3Storage(
             host="localhost",
             port=9000,
-            access_key="minioadmin",
-            secret_key="minioadmin",
+            access_key="storageadmin",
+            secret_key="storageadmin",
             bucket="test-bucket",
         )
         yield storage, client
@@ -51,14 +51,14 @@ def storage_and_client():
 
 class TestBucketInit:
     def test_bucket_exists_skips_make_bucket(self):
-        with _patched_minio(bucket_exists=True) as client:
-            MinioStorage("localhost", 9000, "k", "s", "bucket")
+        with _patched_s3(bucket_exists=True) as client:
+            S3Storage("localhost", 9000, "k", "s", "bucket")
 
         client.make_bucket.assert_not_called()
 
     def test_bucket_missing_calls_make_bucket(self):
-        with _patched_minio(bucket_exists=False) as client:
-            MinioStorage("localhost", 9000, "k", "s", "bucket")
+        with _patched_s3(bucket_exists=False) as client:
+            S3Storage("localhost", 9000, "k", "s", "bucket")
 
         client.make_bucket.assert_called_once_with("bucket")
 

@@ -4,31 +4,31 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-from communication.storages.minio_storage import MinioStorage
+from communication.storages.s3_storage import S3Storage
 
 
 @pytest.fixture
-def storage(minio_params):
+def storage(s3_params):
     bucket = f"test-bucket-{uuid.uuid4().hex[:8]}"
-    return MinioStorage(
-        host=minio_params["host"],
-        port=minio_params["port"],
-        access_key=minio_params["access_key"],
-        secret_key=minio_params["secret_key"],
+    return S3Storage(
+        host=s3_params["host"],
+        port=s3_params["port"],
+        access_key=s3_params["access_key"],
+        secret_key=s3_params["secret_key"],
         bucket=bucket,
         secure=False,
     )
 
 
 class TestSyncRoundtrip:
-    def test_bucket_auto_created_on_init(self, minio_params):
-        """MinioStorage creates the bucket automatically if it does not exist."""
+    def test_bucket_auto_created_on_init(self, s3_params):
+        """S3Storage creates the bucket automatically if it does not exist."""
         bucket = f"auto-bucket-{uuid.uuid4().hex[:8]}"
-        s = MinioStorage(
-            host=minio_params["host"],
-            port=minio_params["port"],
-            access_key=minio_params["access_key"],
-            secret_key=minio_params["secret_key"],
+        s = S3Storage(
+            host=s3_params["host"],
+            port=s3_params["port"],
+            access_key=s3_params["access_key"],
+            secret_key=s3_params["secret_key"],
             bucket=bucket,
             secure=False,
         )
@@ -37,7 +37,7 @@ class TestSyncRoundtrip:
         assert s.get("probe") == b"probe"
 
     def test_put_get_roundtrip_returns_exact_bytes(self, storage):
-        payload = b"minio integration payload"
+        payload = b"s3 integration payload"
         storage.put("obj-1", payload)
         result = storage.get("obj-1")
         assert result == payload
@@ -56,7 +56,7 @@ class TestSyncRoundtrip:
 class TestAsyncRoundtrip:
     @pytest.mark.asyncio
     async def test_aput_aget_roundtrip_returns_exact_bytes(self, storage):
-        payload = b"async minio payload"
+        payload = b"async s3 payload"
         await storage.aput("aobj-1", payload)
         result = await storage.aget("aobj-1")
         assert result == payload

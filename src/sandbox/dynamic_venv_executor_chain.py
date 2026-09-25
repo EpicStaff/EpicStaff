@@ -334,7 +334,7 @@ def __sys_network_block_message():
     if __sys_network_block_mode == "storage_only":
         return (
             "Network access denied: the sandbox network policy allows outbound "
-            "network access only to the MinIO storage endpoint."
+            "network access only to the storage endpoint."
         )
     return "Network access denied: the sandbox network policy blocks all outbound network access."
 
