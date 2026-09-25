@@ -14,7 +14,7 @@ dependencies = [
     "granian==2.8.2",
     "graphrag==3.1.1",
     "langchain-text-splitters==1.1.2",
-    "litellm==1.92.0",
+    "litellm==1.92.2",
     "litestar==2.24.0",
     "loguru==0.7.3",
     "minio==7.2.20",
@@ -103,3 +103,5 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+# graphrag 3.1.1 pins litellm==1.92.0 exactly; force the patch bump until graphrag releases a compatible pin.
+override-dependencies = ["litellm==1.92.2"]
