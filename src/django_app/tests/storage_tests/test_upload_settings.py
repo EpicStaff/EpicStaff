@@ -7,7 +7,6 @@ from django.core.exceptions import ImproperlyConfigured
 
 from django_app.spectacular_hooks import add_stream_upload_postprocessing_hook
 from src.shared import humanize
-from tables.constants.storage_constants import UPLOAD_STREAM_PATH
 from tables.validators.upload_settings_validator import (
     parse_minio_duration,
     validate_upload_settings,
@@ -25,14 +24,14 @@ def test_new_settings_present():
 
 def test_stream_endpoint_is_in_the_schema():
     result = add_stream_upload_postprocessing_hook({}, None, None, True)
-    operation = result["paths"][UPLOAD_STREAM_PATH]["post"]
+    operation = result["paths"][settings.UPLOAD_STREAM_PATH]["post"]
     assert operation["requestBody"]["content"]["application/octet-stream"]
     assert {"filename", "path"} == {p["name"] for p in operation["parameters"]}
 
 
 def test_the_stream_endpoint_schema_documents_the_per_file_size_limit():
     operation = add_stream_upload_postprocessing_hook({}, None, None, True)["paths"][
-        UPLOAD_STREAM_PATH
+        settings.UPLOAD_STREAM_PATH
     ]["post"]
 
     assert "DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE" in operation["description"]
@@ -76,7 +75,7 @@ def _shipped_byte_size_or_none(name: str) -> int | None:
 def test_shipped_upload_defaults():
     # Read from env.yaml, not settings: a developer's .env may override any of these.
     assert _shipped_default("DJANGO_UPLOAD_MAX_CONCURRENCY") == "4"
-    assert _shipped_default("DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG") == "4"
+    assert _shipped_default("DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG") == "3"
     assert humanize.to_time(_shipped_default("DJANGO_UPLOAD_SLOT_TIMEOUT")) == 30
     assert humanize.to_time(_shipped_default("DJANGO_UPLOAD_IDLE_TIMEOUT")) == 120
     assert humanize.to_time(_shipped_default("DJANGO_UPLOAD_MAX_DURATION")) == 5 * HOUR

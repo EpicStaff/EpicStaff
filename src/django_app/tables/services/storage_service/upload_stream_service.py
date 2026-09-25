@@ -165,8 +165,9 @@ def upload_limits(org_id: int) -> dict:
     doomed file before sending it. A name is routed as an archive iff it ends with
     an archive suffix and not with a document extension (is_archive_name).
     `free_bytes` ignores uploads still running and credits no file an upload
-    would overwrite."""
+    would overwrite. `upload_path` is where to POST the file (DJANGO_UPLOAD_STREAM_PATH)."""
     return {
+        "upload_path": settings.UPLOAD_STREAM_PATH,
         "max_file_size": settings.MAX_STREAM_UPLOAD_FILE_SIZE,
         "max_archive_size": settings.MAX_ARCHIVE_FILE_SIZE,
         "free_bytes": org_free_bytes(org_id),

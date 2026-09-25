@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.conf import settings
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -44,6 +45,7 @@ def test_upload_limits_returns_the_configured_limits_and_the_free_space(org_user
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {
+        "upload_path": settings.UPLOAD_STREAM_PATH,
         "max_file_size": 524288000,
         "max_archive_size": 52428800,
         "free_bytes": 1073741824,

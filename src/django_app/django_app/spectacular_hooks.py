@@ -1,4 +1,4 @@
-from tables.constants.storage_constants import UPLOAD_STREAM_PATH
+from django.conf import settings
 
 TAG_MAP = [
     # Authentication
@@ -208,7 +208,7 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
     It is a raw ASGI handler mounted in asgi.py (Django buffers whole bodies
     before a view, so it cannot be a DRF view) — the generator never sees it,
     yet it must be testable from Swagger like any other endpoint."""
-    result.setdefault("paths", {})[UPLOAD_STREAM_PATH] = {
+    result.setdefault("paths", {})[settings.UPLOAD_STREAM_PATH] = {
         "post": {
             "operationId": "storage_upload_stream",
             "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],

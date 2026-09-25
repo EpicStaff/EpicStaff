@@ -386,7 +386,6 @@ async def _call_app(query: str, token: str, org_id: int, receive):
     """Drive the upload ASGI app directly with a hand-written `receive`, for body
     timings httpx cannot produce (a stall, a disconnect mid-body)."""
     from tables.asgi_upload import upload_stream_app
-    from tables.constants.storage_constants import UPLOAD_STREAM_PATH
 
     scope = {
         "type": "http",
@@ -394,8 +393,8 @@ async def _call_app(query: str, token: str, org_id: int, receive):
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
-        "path": UPLOAD_STREAM_PATH,
-        "raw_path": UPLOAD_STREAM_PATH.encode(),
+        "path": settings.UPLOAD_STREAM_PATH,
+        "raw_path": settings.UPLOAD_STREAM_PATH.encode(),
         "root_path": "",
         "query_string": query.encode(),
         "headers": [

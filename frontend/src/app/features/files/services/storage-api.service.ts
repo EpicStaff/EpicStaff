@@ -245,7 +245,8 @@ export class StorageApiService {
     }
 
     /** One file, one request; a 429/503 is re-sent after its Retry-After, up to UPLOAD_MAX_ATTEMPTS. */
-    uploadStream(path: string, file: File): Observable<StorageStreamUploadResponse> {
+    /** `uploadPath` is the endpoint path from getUploadLimits(); without it the default route is used. */
+    uploadStream(path: string, file: File, uploadPath?: string): Observable<StorageStreamUploadResponse> {
         const normalized = this.normalizePath(path);
         // Built by hand because HttpParams leaves "+" unescaped and Django reads it
         // back as a space, silently renaming files like "a+b.txt".
@@ -256,7 +257,7 @@ export class StorageApiService {
         // The File itself is the body: the browser streams it from disk. Wrapping it
         // in FormData, or reading it into memory first, defeats the whole endpoint.
         return this.http
-            .post<StorageStreamUploadResponse>(`${this.apiUrl}upload/stream${query}`, file, {
+            .post<StorageStreamUploadResponse>(`${this.uploadStreamUrl(uploadPath)}${query}`, file, {
                 headers: new HttpHeaders({ 'Content-Type': 'application/octet-stream' }),
             })
             .pipe(
@@ -269,6 +270,14 @@ export class StorageApiService {
                     },
                 })
             );
+    }
+
+    /** The backend's upload path (DJANGO_UPLOAD_STREAM_PATH) on the API's origin, which
+     *  may differ from the page's when apiUrl is absolute. */
+    private uploadStreamUrl(uploadPath: string | undefined): string {
+        if (!uploadPath?.startsWith('/')) return `${this.apiUrl}upload/stream`;
+        const apiBase = new URL(this.configService.apiUrl, window.location.origin);
+        return new URL(uploadPath, apiBase).toString();
     }
 
     downloadZip(paths: string[]): Observable<Blob> {

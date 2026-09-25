@@ -96,6 +96,8 @@ export type StorageUploadOutcome =
 
 /** GET storage/upload-limits/: sizes in bytes. */
 export interface StorageUploadLimits {
+    /** URL path to POST a file to ("/api/storage/upload/stream"). Older backends omit it. */
+    upload_path?: string;
     /** Null when plain files are not capped. */
     max_file_size: number | null;
     /** Applies to names the backend treats as archives (see isArchiveForLimits). */

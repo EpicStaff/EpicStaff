@@ -305,6 +305,7 @@ client can reject a file before sending it. Needs `FILES:READ`.
 **Response:** `200 OK`
 ```json
 {
+    "upload_path": "/api/storage/upload/stream",
     "max_file_size": 2147483648,
     "max_archive_size": 52428800,
     "free_bytes": 53687091200,
@@ -315,6 +316,7 @@ client can reject a file before sending it. Needs `FILES:READ`.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `upload_path` | string | URL path to POST files to (`DJANGO_UPLOAD_STREAM_PATH`, default `/api/storage/upload/stream`) |
 | `max_file_size` | integer \| null | Max bytes of one plain file (`DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE`); `null` = unlimited |
 | `max_archive_size` | integer | Max compressed bytes of one archive (`DJANGO_MAX_ARCHIVE_FILE_SIZE`); never `null` |
 | `free_bytes` | integer | Bytes the organization may still upload (quota minus used, never below 0) |

@@ -264,7 +264,8 @@ STORAGE_UPLOAD_LIMITS_SWAGGER = {
         "before each batch. A file name is uploaded as an archive (and capped by "
         "`max_archive_size`) iff its lower-cased name ends with one of "
         "`archive_suffixes` and with none of `document_extensions`; both lists are "
-        "lower-case, include the leading dot and are sorted. Needs FILES:READ."
+        "lower-case, include the leading dot and are sorted. `upload_path` is the URL "
+        "path to POST files to (DJANGO_UPLOAD_STREAM_PATH). Needs FILES:READ."
     ),
     "responses": {200: StorageUploadLimitsResponseSerializer},
 }

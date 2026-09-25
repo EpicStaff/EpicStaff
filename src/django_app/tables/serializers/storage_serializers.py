@@ -191,6 +191,9 @@ class StorageMkdirResponseSerializer(serializers.Serializer):
 
 
 class StorageUploadLimitsResponseSerializer(serializers.Serializer):
+    upload_path = serializers.CharField(
+        help_text="URL path of the streaming upload endpoint (POST the file there)"
+    )
     max_file_size = serializers.IntegerField(
         allow_null=True, help_text="Max bytes of one file; null = unlimited"
     )
