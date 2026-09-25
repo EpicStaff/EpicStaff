@@ -278,13 +278,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const headerEl = this.elRef.nativeElement.querySelector('.ag-header') as HTMLElement | null;
         const rowsOffsetY = bodyOffsetY + (headerEl?.getBoundingClientRect().height ?? 0);
         const overlaysEl = wrapperEl.querySelector('.group-overlays') as HTMLElement | null;
-        if (overlaysEl) {
-            const rowsBottom = bodyOffsetY + bodyEl.clientHeight;
-            overlaysEl.style.setProperty(
-                '--cdt-overlay-clip-bottom',
-                `${Math.max(0, wrapperRect.height - rowsBottom)}px`
-            );
-        }
         const scrollTop = bodyEl.scrollTop;
         const collapsed = this.collapsedGroups();
         const insideCollapsed = this.sectionsInsideCollapsed();
@@ -519,6 +512,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                           ...items.map((item) => (item.isCollapsed ? item.top : item.top - chipOverhang))
                       );
             overlaysEl.style.setProperty('--cdt-overlay-clip-top', `${Math.max(0, clipTop)}px`);
+
+            const rowsBottom = bodyOffsetY + bodyEl.clientHeight;
+            const scrolledToEnd = scrollTop + bodyEl.clientHeight >= bodyEl.scrollHeight - 1;
+            const clipBottom = scrolledToEnd
+                ? wrapperRect.height - Math.max(rowsBottom, ...items.map((item) => item.top + item.height))
+                : Math.max(0, wrapperRect.height - rowsBottom);
+            overlaysEl.style.setProperty('--cdt-overlay-clip-bottom', `${clipBottom}px`);
         }
 
         this.groupOverlayItems.set(items);
