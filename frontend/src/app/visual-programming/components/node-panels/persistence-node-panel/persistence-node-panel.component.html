@@ -15,26 +15,28 @@
                 <app-validation-errors [control]="form.get('node_name')!" />
             </div>
 
-            <div class="field-isolated">
-                <app-select
-                    label="Table"
-                    tooltipText="The persistent data table this node reads from, writes to or deletes from."
-                    placeholder="Select a table"
-                    formControlName="persistence_table"
-                    [items]="tableItems()"
-                    [loading]="loadingTables()"
-                />
-                @if (form.get('persistence_table')?.value === null) {
-                    <div class="table-warning">Select a table — this node fails at run time without one</div>
-                }
-            </div>
+            <div class="table-mode-row">
+                <div class="field-isolated">
+                    <app-select
+                        label="Table"
+                        tooltipText="The persistent data table this node reads from, writes to or deletes from."
+                        placeholder="Select a table"
+                        formControlName="persistence_table"
+                        [items]="tableItems()"
+                        [loading]="loadingTables()"
+                    />
+                    @if (form.get('persistence_table')?.value === null) {
+                        <div class="table-warning">Select a table — this node fails at run time without one</div>
+                    }
+                </div>
 
-            <app-select
-                label="Mode"
-                tooltipText="Read returns stored values, Write upserts values from the input map, Delete removes keys."
-                formControlName="mode"
-                [items]="modeItems"
-            />
+                <app-select
+                    label="Mode"
+                    tooltipText="Read returns stored values, Write upserts values from the input map, Delete removes keys."
+                    formControlName="mode"
+                    [items]="modeItems"
+                />
+            </div>
 
             <div class="entries">
                 <span class="entries-label">Keys</span>
@@ -138,10 +140,10 @@
                 <app-input-map [activeColor]="activeColor"></app-input-map>
             </div>
 
-            @if (mode() !== 'delete') {
+            @if (mode() === 'read') {
                 <app-custom-input
                     label="Output Variable Path"
-                    tooltipText="Where the node output is stored, e.g. variables.customer. Read stores each alias under it; Write stores the written values."
+                    tooltipText="Where the read values are stored, e.g. variables.customer. Each alias is stored under it."
                     formControlName="output_variable_path"
                     placeholder="Enter output variable path (leave empty for null)"
                     [activeColor]="activeColor"

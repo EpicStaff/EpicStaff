@@ -185,7 +185,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             ...this.node(),
             node_name: this.form.value.node_name,
             input_map: createInputMapFromPairs(getValidInputPairs(this.inputMapPairs)),
-            output_variable_path: mode === 'delete' ? null : this.form.value.output_variable_path || null,
+            output_variable_path: mode === 'read' ? this.form.value.output_variable_path || null : null,
             data: {
                 persistence_table: this.form.value.persistence_table ?? null,
                 mode,

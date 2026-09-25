@@ -21,6 +21,18 @@
     @include mixins.secondary-button;
 }
 
+// Table takes 2/3, mode 1/3; minmax(0, …) lets a long table name truncate instead of widening the row.
+.table-mode-row {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+
+    > * {
+        min-width: 0;
+    }
+}
+
 .table-warning {
     margin-top: 4px;
     font-size: 0.75rem;

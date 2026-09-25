@@ -1,6 +1,6 @@
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { FormArray } from '@angular/forms';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ControlValueAccessor, FormArray, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
 import { NEVER, of } from 'rxjs';
 
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
@@ -31,8 +31,24 @@ const DTO: GetPersistenceNodeRequest = {
     metadata: {},
 };
 
-function createPanel(node: PersistenceNodeModel): {
+// Stands in for the form-bound shared controls so the real template renders without their dependencies.
+@Component({
+    selector: 'app-select, app-custom-input',
+    template: '',
+    providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => FormControlStubComponent), multi: true }],
+})
+class FormControlStubComponent implements ControlValueAccessor {
+    writeValue(): void {}
+    registerOnChange(): void {}
+    registerOnTouched(): void {}
+}
+
+function createPanel(
+    node: PersistenceNodeModel,
+    { renderTemplate = false }: { renderTemplate?: boolean } = {}
+): {
     panel: PersistenceNodePanelComponent;
+    fixture: ComponentFixture<PersistenceNodePanelComponent>;
     triggerAutosave: ReturnType<typeof vi.fn>;
 } {
     const triggerAutosave = vi.fn();
@@ -51,11 +67,15 @@ function createPanel(node: PersistenceNodeModel): {
             { provide: SidePanelService, useValue: { triggerAutosave } },
         ],
     });
-    TestBed.overrideComponent(PersistenceNodePanelComponent, { set: { template: '', imports: [] } });
+    TestBed.overrideComponent(PersistenceNodePanelComponent, {
+        set: renderTemplate
+            ? { imports: [ReactiveFormsModule, FormControlStubComponent], schemas: [CUSTOM_ELEMENTS_SCHEMA] }
+            : { template: '', imports: [] },
+    });
     const fixture = TestBed.createComponent(PersistenceNodePanelComponent);
     fixture.componentRef.setInput('node', node);
     fixture.detectChanges();
-    return { panel: fixture.componentInstance, triggerAutosave };
+    return { panel: fixture.componentInstance, fixture, triggerAutosave };
 }
 
 function flowOf(node: PersistenceNodeModel): FlowModel {
@@ -105,5 +125,38 @@ describe('PersistenceNodePanelComponent', () => {
         vi.advanceTimersByTime(300);
 
         expect(triggerAutosave).not.toHaveBeenCalled();
+    });
+
+    describe('output variable path', () => {
+        const writeNode = (): PersistenceNodeModel =>
+            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'user' }] });
+        const outputField = (fixture: ComponentFixture<PersistenceNodePanelComponent>): Element | null =>
+            fixture.nativeElement.querySelector('app-custom-input[label="Output Variable Path"]');
+
+        it('is shown and saved in read mode', () => {
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+
+            expect(outputField(fixture)).not.toBeNull();
+            expect(panel.onSave()!.output_variable_path).toBe('variables.saved');
+        });
+
+        it('is hidden in write mode and saved as null even when the node had one', () => {
+            const { panel, fixture } = createPanel(writeNode(), { renderTemplate: true });
+
+            expect(outputField(fixture)).toBeNull();
+            expect(panel.onSave()!.output_variable_path).toBeNull();
+        });
+
+        it('disappears when the mode switches from read to write', () => {
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+
+            panel.form.get('mode')!.setValue('write');
+            // Write entries need a value alias before the form is valid.
+            (panel.form.get('entries') as FormArray).controls.forEach((entry) => entry.patchValue({ value: 'user' }));
+            fixture.detectChanges();
+
+            expect(outputField(fixture)).toBeNull();
+            expect(panel.onSave()!.output_variable_path).toBeNull();
+        });
     });
 });
