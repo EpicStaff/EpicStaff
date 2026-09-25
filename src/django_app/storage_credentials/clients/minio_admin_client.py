@@ -7,11 +7,22 @@ single-call "inline" policy attach for a regular IAM user in `miniopy_async`
 (unlike `add_service_account`, which does accept an inline `policy_file`).
 """
 
+import asyncio
 import json
+import ssl
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import certifi
+from aiohttp import (
+    ClientConnectorError,
+    ClientSession,
+    ClientTimeout,
+    ServerDisconnectedError,
+    TCPConnector,
+)
+from aiohttp_retry import ExponentialRetry, RetryClient
 from miniopy_async import MinioAdmin as _MinioAdminClient
 from miniopy_async.credentials import StaticProvider
 
@@ -25,11 +36,48 @@ from storage_credentials.exceptions import (
 class MinioAdminGateway:
     def __init__(self, host: str, access_key: str, secret_key: str):
         secure, endpoint = self._split_host(host)
+        session = self._create_session()
         self._client = _MinioAdminClient(
             endpoint=endpoint,
             credentials=StaticProvider(access_key, secret_key),
             secure=secure,
+            session=session,
         )
+
+    @staticmethod
+    def _create_session() -> RetryClient:
+        """Create an aiohttp ClientSession with custom shorter timeout values and retry logic.
+
+        The default MinioAdmin timeout is 300s (5 minutes) for both connect and
+        socket read. This reduces it to significantly shorter values to prevent
+        long-lived transactions from holding database connections during MinIO
+        failures. Transactions using MinioAdminGateway will now timeout in
+        seconds, not minutes.
+
+        Timeout values:
+        - connect: 10s (time to establish TCP connection)
+        - sock_read: 15s (time waiting for first byte from server)
+
+        Retry configuration:
+        - Retries on HTTP 5xx statuses (500, 502, 503, 504)
+        - Retries on network errors (connection errors, server disconnect, timeouts)
+        - Exponential backoff with up to 5 retry attempts
+        """
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        timeout = ClientTimeout(connect=10, sock_read=15)
+        connector = TCPConnector(limit=10, ssl=ssl_context)
+        session = ClientSession(connector=connector, timeout=timeout)
+
+        retry_options = ExponentialRetry(
+            attempts=5,
+            statuses={500, 502, 503, 504},
+            exceptions={
+                ClientConnectorError,
+                ServerDisconnectedError,
+                asyncio.TimeoutError,
+            },
+        )
+        return RetryClient(client_session=session, retry_options=retry_options)
 
     @staticmethod
     def _split_host(value: str) -> tuple[bool, str]:
@@ -50,6 +98,9 @@ class MinioAdminGateway:
         session = getattr(self._client, "_session", None)
         if session is not None:
             await session.close()
+            # Also close the underlying client_session if the session is a RetryClient
+            if isinstance(session, RetryClient):
+                await session.client_session.close()
 
     # --- org-level (long-lived) IAM user ---------------------------------
 
@@ -61,9 +112,7 @@ class MinioAdminGateway:
         user's service accounts along with it."""
         await self._client.user_remove(access_key)
 
-    async def create_named_policy(
-        self, policy_name: str, policy: dict[str, Any]
-    ) -> None:
+    async def create_named_policy(self, policy_name: str, policy: dict[str, Any]) -> None:
         with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
             json.dump(policy, policy_file)
             policy_file.flush()
@@ -82,9 +131,7 @@ class MinioAdminGateway:
     ) -> tuple[str, str]:
         """Mint a temporary service account scoped to `policy`. Returns
         (access_key, secret_key)."""
-        expiration_str = (datetime.now(timezone.utc) + expiration).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        expiration_str = (datetime.now(UTC) + expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
                 json.dump(policy, policy_file)
