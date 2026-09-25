@@ -1,7 +1,7 @@
 import pytest
 
 from tables.models import Secret
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.secrets import (
     SecretResolutionError,
     secret_resolver,

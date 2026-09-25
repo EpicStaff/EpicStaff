@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 from loguru import logger
+from rbac.models import OrganizationUser
 from rest_framework import serializers
 from tables.constants.variables_constants import (
     DOMAIN_ORGANIZATION_KEY,
@@ -14,7 +15,6 @@ from tables.models.graph_models import (
     GraphOrganizationUser,
     StartNode,
 )
-from tables.models.rbac_models import OrganizationUser
 
 # Sentinel distinguishing "key absent" from "value is explicitly None".
 _MISSING = object()

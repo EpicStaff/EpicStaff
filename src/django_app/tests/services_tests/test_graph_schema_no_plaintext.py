@@ -12,7 +12,7 @@ from tables.models import (
     Session,
 )
 from tables.models.graph_models import AgentNode, Edge, StartNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec

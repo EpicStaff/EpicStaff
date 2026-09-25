@@ -16,6 +16,7 @@ import settings
 from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
+from network_policy import NetworkPolicy, decide_network_policy
 from secret_scrubber import scrub
 from services.storage_credential_manager import StorageCredentialManager
 from src.shared.models import CodeResultData
@@ -184,6 +185,7 @@ class CreateVenvHandler(AbstractHandler):
         predefined_libraries = {
             "/app/src/shared/dotdict",
             "/app/src/shared/epicstaff_secrets",
+            "/app/src/shared/epicstaff_common",
         }  # TODO: deal with hard coded path
         if context.get("use_storage"):
             predefined_libraries.add("/app/src/shared/epicstaff_storage")
@@ -359,8 +361,59 @@ class ExecuteCodeHandler(AbstractHandler):
         code_lines = ["    " + line for line in code_lines]
         code = "\n".join(code_lines)
         wrapped_code = f"""
+import errno
+import os
+import socket
 import sys
 import json
+
+# Message-quality aid only, NOT a security control -- the real boundary is
+# the kernel-enforced seccomp/Landlock filter launcher.py installs before
+# this interpreter starts. SANDBOX_NETWORK_BLOCKED mirrors that real state
+# ("all" / "storage_only"), set by ExecuteCodeHandler.handle.
+__sys_network_block_mode = os.environ.get("SANDBOX_NETWORK_BLOCKED")
+
+
+def __sys_network_block_message():
+    if __sys_network_block_mode == "storage_only":
+        return (
+            "Network access denied: the sandbox network policy allows outbound "
+            "network access only to the MinIO storage endpoint."
+        )
+    return "Network access denied: the sandbox network policy blocks all outbound network access."
+
+
+# Some in-sandbox tools catch socket.gaierror themselves and format it into
+# their own returned string, e.g. f"could not resolve host {{host}}: {{e}}",
+# so it never reaches __sys_is_network_denial() below. Monkeypatching
+# getaddrinfo makes the exception itself carry the policy message, so every
+# consumer that does str(e) gets it for free. Message-quality aid only, not a
+# security control. Gated on "all" only: under storage_only, DNS genuinely
+# still works over UDP, so a gaierror there is a real failure, not this.
+if __sys_network_block_mode == "all":
+    __sys_real_getaddrinfo = socket.getaddrinfo
+
+    def __sys_getaddrinfo(*args, **kwargs):
+        try:
+            return __sys_real_getaddrinfo(*args, **kwargs)
+        except socket.gaierror as exc:
+            raise socket.gaierror(exc.errno, __sys_network_block_message()) from None
+
+    socket.getaddrinfo = __sys_getaddrinfo
+
+
+def __sys_is_network_denial(exc):
+    # Partial coverage, deliberately: the raw OSError/PermissionError from
+    # seccomp/Landlock, socket.gaierror (DNS), and one level of unwrap for
+    # urllib's URLError (.reason). Other wrapper exceptions (requests, httpx,
+    # botocore, ...) fall through to the generic str(e) message below.
+    if isinstance(exc, socket.gaierror):
+        # Only a full block guarantees DNS itself fails; under storage_only,
+        # Landlock leaves DNS reachable, so a gaierror there is real and must
+        # not be misreported as a policy denial.
+        return __sys_network_block_mode == "all"
+    return isinstance(exc, OSError) and exc.errno == errno.EACCES and exc.filename is None
+
 
 try:
     from dotdict import DotDict, DotObject, DotList
@@ -375,6 +428,13 @@ try:
     sys_result_variable = {entrypoint}(**__sys_dot_kwargs)
     with open(r'{result_file_path.as_posix()}', 'w', encoding='utf-8') as file:
         file.write(json.dumps(sys_result_variable))
+except OSError as e:
+    __sys_candidate = getattr(e, "reason", e)
+    if __sys_network_block_mode and __sys_is_network_denial(__sys_candidate):
+        print(__sys_network_block_message(), file=sys.stderr)
+    else:
+        print(str(e), file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
@@ -466,17 +526,65 @@ except Exception:
                 context["execution_id"],
                 REQUIRE_ISOLATION_ENV_VAR,
             )
-        else:
-            # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
-            # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
-            # ExecuteCodeHandler only receives "python_executable" when driven directly,
-            # without CreateVenvHandler ahead of it (as the unit tests do).
-            jail = build_jail(
-                exec_dir=Path(context["result_file_path"]).parent,
-                venv_path=Path(python_executable).parent.parent,
-                savefiles_root=Path(context["work_dir"]),
+
+        network_decision = decide_network_policy(
+            block_network=settings.BLOCK_NETWORK,
+            use_storage=bool(context.get("use_storage")),
+            landlock_abi=isolation_abi,
+            storage_port=int(settings.STORAGE_PORT),
+        )
+
+        # Lets wrap_code's preamble tell a genuine network denial apart from
+        # an unrelated Landlock filesystem EACCES, and pick the right wording
+        # for which policy is actually in effect; see the comment there.
+        if network_decision.policy is NetworkPolicy.BLOCK_ALL:
+            env["SANDBOX_NETWORK_BLOCKED"] = "all"
+        elif network_decision.policy is NetworkPolicy.ALLOW_PORTS:
+            env["SANDBOX_NETWORK_BLOCKED"] = "storage_only"
+
+        if network_decision.policy is NetworkPolicy.REFUSE:
+            message = (
+                "Sandbox network isolation unavailable: storage-enabled executions "
+                "require Landlock ABI 4+ (Linux 6.7+) to restrict outbound connections "
+                "to the storage port; refusing to execute. Set SANDBOX_BLOCK_NETWORK=false "
+                "to disable network isolation for this execution."
             )
-            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(asdict(jail)), *argv]
+            logger.error(
+                "Sandbox network isolation unavailable (Landlock ABI {} < 4); "
+                "refusing to execute {} because it uses storage.",
+                isolation_abi,
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=message,
+                stdout="",
+                returncode=1,
+            )
+
+        use_launcher = isolation_abi >= 1 or network_decision.policy is NetworkPolicy.BLOCK_ALL
+        if use_launcher:
+            jail = None
+            if isolation_abi >= 1:
+                # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
+                # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
+                # ExecuteCodeHandler only receives "python_executable" when driven directly,
+                # without CreateVenvHandler ahead of it (as the unit tests do).
+                jail = asdict(
+                    build_jail(
+                        exec_dir=Path(context["result_file_path"]).parent,
+                        venv_path=Path(python_executable).parent.parent,
+                        savefiles_root=Path(context["work_dir"]),
+                    )
+                )
+            if network_decision.policy is NetworkPolicy.BLOCK_ALL:
+                network = {"mode": "block_all"}
+            elif network_decision.policy is NetworkPolicy.ALLOW_PORTS:
+                network = {"mode": "allow_ports", "ports": list(network_decision.allowed_tcp_ports)}
+            else:
+                network = {"mode": "unrestricted"}
+            plan = {"jail": jail, "network": network}
+            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
         process = await asyncio.create_subprocess_exec(
             *argv,

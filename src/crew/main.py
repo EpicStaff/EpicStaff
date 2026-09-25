@@ -22,7 +22,7 @@ async def main():
     agent_task_service = AgentTaskService(
         redis_service=redis_service,
         request_stream=settings.AGENT_REQUEST_STREAM,
-        result_stream=settings.AGENT_RESULT_STREAM,
+        result_stream_prefix=settings.AGENT_RESULT_STREAM,
         default_timeout=settings.AGENT_RESULT_TIMEOUT,
     )
     session_manager_service = GraphSessionManagerService(

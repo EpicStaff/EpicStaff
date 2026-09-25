@@ -1,4 +1,4 @@
-from tables.serializers.org_scoped_fields import resolve_active_org_id
+from rbac.scoping.fields import resolve_active_org_id
 
 
 def org_scoped_label_ids(instance, request) -> list[int]:

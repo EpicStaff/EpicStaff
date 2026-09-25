@@ -192,7 +192,7 @@ class SessionPrincipal(models.Model):
         related_name="+",
     )
     api_key = models.ForeignKey(
-        "ApiKey",
+        "rbac.ApiKey",
         on_delete=models.SET_NULL,
         null=True,
         default=None,

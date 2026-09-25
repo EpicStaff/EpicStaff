@@ -16,7 +16,7 @@ from tables.models.webhook_models import (
 )
 from tables.models import Agent
 from tables.models.realtime_models import RealtimeAgent, RealtimeAgentDefinition
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.secrets import secret_resolver, secret_service
 
 # Every fixture/test in this module needs a uniquely-named Secret (org-scoped

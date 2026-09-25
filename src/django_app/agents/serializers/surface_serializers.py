@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+from rbac.scoping.fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+    OrgVisiblePrimaryKeyRelatedField,
+)
 from rest_framework import serializers
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
-from tables.serializers.org_scoped_fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-    OrgVisiblePrimaryKeyRelatedField,
-)
 
 from agents.models.surface_models import (
     StorageAccess,

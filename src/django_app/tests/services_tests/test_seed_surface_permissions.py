@@ -1,7 +1,7 @@
 import pytest
 
-from tables.models.rbac_models import Role, RolePermission
-from tables.models.rbac_models.rbac_enums import BuiltInRole, ResourceType
+from rbac.models import Role, RolePermission
+from rbac.models.enums import BuiltInRole, ResourceType
 
 
 @pytest.mark.django_db

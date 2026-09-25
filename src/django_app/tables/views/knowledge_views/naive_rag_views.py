@@ -8,6 +8,14 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from loguru import logger
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.asserts import assert_org_permission
+from rbac.access.gates import HasOrgPermission
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -35,7 +43,6 @@ from tables.models.knowledge_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.naive_rag_serializers import (
     ChunkingConfigSerializer,
     ChunkSearchRequestSerializer,
@@ -54,9 +61,6 @@ from tables.serializers.naive_rag_serializers import (
     PreviewChunksByIdsResponseSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permission_assert import assert_org_permission
-from tables.services.rbac.permissions import HasOrgPermission
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_COLLECTIONS_GET,
     NAIVE_RAG_COLLECTIONS_POST,
@@ -72,10 +76,6 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST,
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
     NAIVE_RAG_GET,
-)
-from tables.views.mixins import (
-    OrgScopedChildViewSetMixin,
-    OrgScopedServiceViewSetMixin,
 )
 
 # ORM path from a NaiveRag (or its children) up to the owning collection's org.
