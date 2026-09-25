@@ -373,9 +373,10 @@ def _persistence_node_data() -> PersistenceNodeData:
         node_name="persist_1",
         persistence_table_id=3,
         mode="read",
-        entries=[{"alias": "a", "key": "k"}],
+        entries=[{"key": "k", "value": "variables.out"}],
         input_map={},
-        output_variable_path="variables.out",
+        # Saved by older node data; the builder must not hand it to the node.
+        output_variable_path="variables.stale",
     )
 
 
