@@ -15,6 +15,7 @@ class GraphMessage:
     execution_order: int
     message_data: dict
     timestamp: str = field(default_factory=iso_utc_timestamp)
+    node_type: str = ""
 
 
 @dataclass

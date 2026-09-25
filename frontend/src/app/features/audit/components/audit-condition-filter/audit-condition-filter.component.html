@@ -1,0 +1,26 @@
+@for (condition of conditions(); track condition.id; let index = $index) {
+    <app-audit-condition-row
+        [condition]="condition"
+        (conditionChange)="updateCondition($event)"
+        [operators]="operators()"
+        [showJoin]="index > 0"
+        [showKey]="showKey()"
+        (removed)="removeCondition(condition.id)"
+    />
+}
+
+<button
+    class="conditions-filter__add"
+    type="button"
+    (click)="addCondition()"
+>
+    + Add condition
+</button>
+
+<button
+    class="conditions-filter__add conditions-filter__add--group"
+    type="button"
+    disabled
+>
+    + Add group
+</button>

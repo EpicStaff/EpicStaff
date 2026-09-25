@@ -1,0 +1,75 @@
+<button
+    class="match-scope__header"
+    type="button"
+    [attr.aria-expanded]="isExpanded()"
+    (click)="toggleExpanded()"
+>
+    <app-svg-icon
+        class="match-scope__chevron"
+        [class.match-scope__chevron--collapsed]="!isExpanded()"
+        icon="chevron-down-filled"
+        size="8px"
+    />
+    <span>Match scope</span>
+</button>
+
+@if (isExpanded()) {
+    <div class="match-scope__rows">
+        <label class="match-scope__row is-fixed">
+            <app-checkbox
+                [checked]="true"
+                [disabled]="true"
+            />
+            <span>Its session &amp; node</span>
+            <span class="match-scope__hint">(always — a row without its parents is unauditable)</span>
+        </label>
+
+        <label
+            class="match-scope__row"
+            [class.is-disabled]="scope().fullSessionHistory"
+            [title]="scope().fullSessionHistory ? fullSessionHint : ''"
+        >
+            <app-checkbox
+                [checked]="scope().children"
+                [disabled]="scope().fullSessionHistory"
+                (changed)="setChildren($event)"
+            />
+            <span>Everything inside the match</span>
+            <span class="match-scope__hint">(a node brings its events, an event brings its nested keys)</span>
+        </label>
+
+        <label
+            class="match-scope__row"
+            [class.is-disabled]="scope().fullSessionHistory"
+            [title]="scope().fullSessionHistory ? fullSessionHint : ''"
+        >
+            <app-checkbox
+                [checked]="scope().rowsBeforeEnabled"
+                [disabled]="scope().fullSessionHistory"
+                (changed)="setRowsBeforeEnabled($event)"
+            />
+            <span>The</span>
+            <input
+                class="match-scope__count"
+                type="number"
+                min="1"
+                [max]="maxRowsBefore"
+                aria-label="Rows before the match"
+                [value]="scope().rowsBefore"
+                [disabled]="scope().fullSessionHistory"
+                (change)="setRowsBefore($event)"
+            />
+            <span>row(s) immediately before it</span>
+            <span class="match-scope__hint">(what led up to the match)</span>
+        </label>
+
+        <label class="match-scope__row">
+            <app-checkbox
+                [checked]="scope().fullSessionHistory"
+                (changed)="setFullSessionHistory($event)"
+            />
+            <span>Full data on the same session</span>
+            <span class="match-scope__hint">(history)</span>
+        </label>
+    </div>
+}

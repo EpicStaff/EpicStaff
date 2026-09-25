@@ -54,6 +54,7 @@ def seed_builtin_roles_and_permissions() -> None:
       0171  roles + initial bitmasks
       0183  authoritative bitmasks (e.g. Org Admin export on agents/projects)
       0205  surfaces grants
+      0209  audit bitmasks (EST-3207)
       0209  Org Admin organizations = READ|UPDATE
       0210  rename resource_type `users` -> `memberships`
       0210  voice bitmasks, and the EXPORT bit on tools
@@ -69,11 +70,16 @@ def seed_builtin_roles_and_permissions() -> None:
     the (role, resource_type) unique constraint. And 0242 must precede any
     subsequent additive seed: 0242 is the authoritative baseline and drops
     bits the earlier seeds write (flows:USE on Viewer, secrets:LIST,
-    secrets:UPDATE); a later seed layers additional grants on top.
+    secrets:UPDATE); a later seed layers additional grants on top. 0242 never
+    touches the `audit` resource type, so the audit seed's position relative
+    to it doesn't affect correctness -- placed here to match migration order.
 
     Skipping any step leaves tests on stale permissions -- e.g. without the
     voice seed every non-superadmin request to a VOICE-gated endpoint 403s in
-    tests although the migration seeds it correctly in production.
+    tests although the migration seeds it correctly in production; skipping
+    the audit seed leaves every AUDIT-gated endpoint (including
+    AuditFilterPresetViewSet) 403ing in tests regardless of the RBAC logic
+    under test.
 
     Migration module names start with digits and cannot be imported with
     `from ... import`; use importlib.
@@ -85,6 +91,10 @@ def seed_builtin_roles_and_permissions() -> None:
             "seed_role_permissions",
         ),
         ("tables.migrations.0205_seed_surface_permissions", "seed"),
+        (
+            "tables.migrations.0209_seed_audit_role_permissions",
+            "seed_audit_permissions",
+        ),
         (
             "tables.migrations.0209_seed_org_admin_organizations_perm",
             "seed_org_admin_organizations_perm",

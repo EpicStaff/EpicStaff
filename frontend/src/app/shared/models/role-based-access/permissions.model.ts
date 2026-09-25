@@ -21,6 +21,7 @@ export enum ResourceCode {
     LlmConfigs = 'llm_configs',
     ApiKeys = 'api_keys',
     Secrets = 'secrets',
+    Audit = 'audit',
     Voice = 'voice',
     Webhooks = 'webhooks',
 }

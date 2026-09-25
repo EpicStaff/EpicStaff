@@ -1,0 +1,28 @@
+@for (chip of chips(); track chip.key) {
+    <span class="filter-chip">
+        <span class="filter-chip__label">{{ chip.label }}:</span>
+        <span
+            class="filter-chip__value"
+            [title]="chip.value"
+            >{{ chip.value }}</span
+        >
+        <button
+            class="filter-chip__remove"
+            type="button"
+            [attr.aria-label]="'Remove ' + chip.label + ' filter'"
+            (click)="removed.emit(chip.key)"
+        >
+            ✕
+        </button>
+    </span>
+}
+
+@if (chips().length > 1) {
+    <button
+        class="filter-chips__clear"
+        type="button"
+        (click)="cleared.emit()"
+    >
+        Clear all
+    </button>
+}

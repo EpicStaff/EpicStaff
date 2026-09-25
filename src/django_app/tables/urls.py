@@ -42,6 +42,7 @@ from tables.views.model_view_sets import (
     AgentNodeTaskViewSet,
     AgentNodeViewSet,
     AudioTranscriptionNodeViewSet,
+    AuditFilterPresetViewSet,
     ClassificationDecisionTableNodeModelViewSet,
     ConditionalEdgeViewSet,
     ConversationRecordingViewSet,
@@ -178,6 +179,7 @@ router.register(r"graph-notes", GraphNoteViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")

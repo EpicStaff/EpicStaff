@@ -1,0 +1,74 @@
+from datetime import UTC, datetime, timedelta
+
+import jwt
+from django.conf import settings
+from drf_spectacular.utils import extend_schema
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from src.shared.audit.token import AUDIT_TOKEN_ISSUER
+from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
+from rbac.models import OrganizationConfig
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from tables.swagger_schemas.audit_schemas import AUDIT_TOKEN_CREATE
+
+
+class AuditTokenView(APIView):
+    """
+    POST /api/audit/token/ — mints a short-lived JWT for the caller's
+    active organization, consumed directly by `auditor` (the frontend
+    never talks to Django again for audit reads/exports after this one
+    call). `auditor` verifies locally with the same AUDIT_JWT_SECRET - no
+    callback to Django per request.
+    """
+
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    _org_context = OrgContextService()
+    _resolver = PermissionResolver()
+
+    @extend_schema(**AUDIT_TOKEN_CREATE)
+    def post(self, request):
+        org_id = self._org_context.resolve(request=request, view_kwargs={})
+        effective = self._resolver.resolve(user=request.user, org_id=org_id)
+
+        actions = []
+        if effective.can(ResourceType.AUDIT, Permission.READ):
+            actions.append("read")
+        if effective.can(ResourceType.AUDIT, Permission.EXPORT):
+            actions.append("export")
+
+        if not actions:
+            raise PermissionDenied("You do not have permission to perform this action.")
+
+        # Restrictionless pass for superadmin and this org's Org Admin
+        is_org_admin = (
+            effective.role is not None
+            and effective.role.is_built_in
+            and effective.role.name == BuiltInRole.ORG_ADMIN
+        )
+        if effective.is_superadmin or is_org_admin:
+            retention_days = 0
+        else:
+            try:
+                retention_days = OrganizationConfig.objects.get(org_id=org_id).audit_retention_days
+            except OrganizationConfig.DoesNotExist:
+                retention_days = 0
+
+        now = datetime.now(UTC)
+        payload = {
+            "iss": AUDIT_TOKEN_ISSUER,
+            "user_id": request.user.id,
+            "org_id": org_id,
+            ResourceType.AUDIT.name: actions,
+            "retention_days": retention_days,
+            "iat": now,
+            "exp": now + timedelta(seconds=settings.AUDIT_TOKEN_TTL_SECONDS),
+        }
+        token = jwt.encode(payload, settings.AUDIT_JWT_SECRET, algorithm="HS256")
+
+        return Response({"token": token, "expires_in": settings.AUDIT_TOKEN_TTL_SECONDS})

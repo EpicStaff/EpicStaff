@@ -72,6 +72,7 @@ export class SelectDropdownComponent {
     maxPanelWidth = input<string | number | null>(null);
     /** Panel max-height. Number => px; string passed through (e.g. '80vh'). Null keeps the CSS default. */
     maxPanelHeight = input<string | number | null>(null);
+    panelClass = input<string>('');
     emptyText = input<string>('No results');
     checkedTip = input<((value: unknown) => string | null) | null>(null);
 
@@ -251,6 +252,7 @@ export class SelectDropdownComponent {
                 scrollStrategy: this.overlay.scrollStrategies.reposition(),
                 hasBackdrop: true,
                 backdropClass: 'transparent-backdrop',
+                panelClass: this.panelClass() || undefined,
                 width: this.panelWidth() ?? triggerEl.nativeElement.offsetWidth,
                 minWidth: this.minPanelWidth() ?? undefined,
                 maxWidth: this.maxPanelWidth() ?? undefined,

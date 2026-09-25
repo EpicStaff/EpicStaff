@@ -16,6 +16,8 @@ class ResourceType(models.TextChoices):
     PROJECTS = "projects", "Projects"
     LLM_CONFIGS = "llm_configs", "LLM Configs"
     SECRETS = "secrets", "Secrets"
+    USERS = "users", "Users"
+    AUDIT = "audit", "Audit"
     VOICE = "voice", "Voice"
     SURFACES = "surfaces", "Surfaces"
     WEBHOOKS = "webhooks", "Webhooks"

@@ -74,3 +74,19 @@
     bottom: 110px !important;
     transform: none !important;
 }
+
+.cdk-overlay-pane.audit-select-panel {
+    .select-dropdown__panel {
+        padding: 6px;
+    }
+
+    .select-dropdown__list {
+        gap: 2px;
+    }
+
+    .select-dropdown__row {
+        height: 30px;
+        gap: 6px;
+        padding: 0 8px;
+    }
+}

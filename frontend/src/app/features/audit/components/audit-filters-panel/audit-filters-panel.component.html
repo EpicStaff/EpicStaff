@@ -1,0 +1,307 @@
+<div class="filters-panel">
+    <div class="filters-panel__header">
+        <app-svg-icon
+            class="filters-panel__title-icon"
+            icon="filter"
+            size="14px"
+        />
+        <span class="filters-panel__title">Filters</span>
+        <button
+            class="filters-panel__close"
+            type="button"
+            (click)="closed.emit()"
+            aria-label="Close filters"
+        >
+            ✕
+        </button>
+    </div>
+
+    <div class="filters-panel__tabs">
+        <button
+            class="filters-panel__tab"
+            type="button"
+            [class.is-active]="activeTab() === 'builder'"
+            (click)="setActiveTab('builder')"
+        >
+            Builder
+        </button>
+        <span class="filters-panel__tab-sep">/</span>
+        <button
+            class="filters-panel__tab"
+            type="button"
+            disabled
+        >
+            Query Code
+        </button>
+        <span class="filters-panel__tabs-spacer"></span>
+        <button
+            class="filters-panel__tab"
+            type="button"
+            disabled
+        >
+            Presets
+        </button>
+    </div>
+
+    <div class="filters-panel__body">
+        @if (activeTab() === 'builder') {
+            <div class="filters-panel__groups">
+                <app-audit-match-scope
+                    [scope]="filter().matchScope"
+                    (scopeChange)="setMatchScope($event)"
+                />
+
+                <app-audit-filter-group label="Kind">
+                    <app-audit-checkbox-enum
+                        [options]="kindOptions"
+                        [value]="filter().kinds"
+                        [disabledValues]="disabledKinds()"
+                        disabledHint="Not available with the filters you already picked"
+                        (valueChange)="setKinds($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group label="ID">
+                    <app-audit-id-filter
+                        [filter]="filter().id"
+                        (filterChange)="setId($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group label="Flow">
+                    <app-audit-flow-filter
+                        [options]="flowOptions()"
+                        [filter]="filter().flow"
+                        (filterChange)="setFlow($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Status"
+                    [disabled]="!isStatusEnabled()"
+                    [class.is-disabled]="!isStatusEnabled()"
+                    [hint]="isStatusEnabled() ? '' : 'Only events carry a status'"
+                >
+                    <app-audit-checkbox-enum
+                        [options]="statusOptions"
+                        [value]="filter().statuses"
+                        [disabledValues]="disabledStatuses()"
+                        disabledHint="Only events carry a status"
+                        (valueChange)="setStatuses($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Node Type"
+                    [disabled]="!isNodeTypeEnabled()"
+                    [class.is-disabled]="!isNodeTypeEnabled()"
+                    [hint]="isNodeTypeEnabled() ? '' : 'Only nodes and events carry a node type'"
+                >
+                    <app-audit-checkbox-enum
+                        [options]="nodeTypeOptions"
+                        [value]="filter().nodeTypes"
+                        [disabledValues]="disabledNodeTypes()"
+                        disabledHint="Only nodes and events carry a node type"
+                        (valueChange)="setNodeTypes($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Run"
+                    [disabled]="!isRunTypeEnabled()"
+                    [class.is-disabled]="!isRunTypeEnabled()"
+                    [hint]="isRunTypeEnabled() ? '' : 'Only sessions carry a run type'"
+                >
+                    <app-audit-checkbox-enum
+                        [options]="runTypeOptions"
+                        [value]="filter().runTypes"
+                        [disabledValues]="disabledRunTypes()"
+                        disabledHint="Only sessions carry a run type"
+                        (valueChange)="setRunTypes($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Input"
+                    [disabled]="!isInputEnabled()"
+                    [class.is-disabled]="!isInputEnabled()"
+                    [hint]="isInputEnabled() ? '' : 'Only events carry input'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().input"
+                        (conditionsChange)="setInput($event)"
+                        [operators]="jsonOperators"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Output"
+                    [disabled]="!isOutputEnabled()"
+                    [class.is-disabled]="!isOutputEnabled()"
+                    [hint]="isOutputEnabled() ? '' : 'Only events carry output'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().output"
+                        (conditionsChange)="setOutput($event)"
+                        [operators]="jsonOperators"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Error"
+                    [disabled]="!isErrorEnabled()"
+                    [class.is-disabled]="!isErrorEnabled()"
+                    [hint]="isErrorEnabled() ? '' : 'Only events carry an error'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().error"
+                        (conditionsChange)="setError($event)"
+                        [operators]="errorOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Details"
+                    [disabled]="!isDetailsEnabled()"
+                    [class.is-disabled]="!isDetailsEnabled()"
+                    [hint]="isDetailsEnabled() ? '' : 'Only events carry details'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().details"
+                        (conditionsChange)="setDetails($event)"
+                        [operators]="jsonOperators"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group label="Date">
+                    <app-audit-date-filter
+                        [range]="dateRange()"
+                        (rangeChange)="setDateRange($event)"
+                    />
+                </app-audit-filter-group>
+
+                <p class="filters-panel__section">Deep filters</p>
+
+                <app-audit-filter-group
+                    label="Agent"
+                    [disabled]="!isAgentEnabled()"
+                    [class.is-disabled]="!isAgentEnabled()"
+                    [hint]="agentHint()"
+                >
+                    <app-audit-flow-filter
+                        [options]="agentOptions()"
+                        [filter]="filter().agent"
+                        (filterChange)="setAgent($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Tool"
+                    [disabled]="!isToolEnabled()"
+                    [class.is-disabled]="!isToolEnabled()"
+                    [hint]="toolHint()"
+                >
+                    <app-audit-flow-filter
+                        [options]="toolOptions()"
+                        [filter]="filter().tool"
+                        (filterChange)="setTool($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Tokens"
+                    [disabled]="!isTokensEnabled()"
+                    [class.is-disabled]="!isTokensEnabled()"
+                    [hint]="isTokensEnabled() ? '' : 'Only events carry token usage'"
+                >
+                    <app-audit-tokens-filter
+                        [filter]="filter().tokens"
+                        (filterChange)="setTokens($event)"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Task"
+                    [disabled]="!isTaskEnabled()"
+                    [class.is-disabled]="!isTaskEnabled()"
+                    [hint]="isTaskEnabled() ? '' : 'Only events carry a task'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().task"
+                        (conditionsChange)="setTask($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Prompt"
+                    [disabled]="!isPromptEnabled()"
+                    [class.is-disabled]="!isPromptEnabled()"
+                    [hint]="isPromptEnabled() ? '' : 'Only events carry a prompt'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().prompt"
+                        (conditionsChange)="setPrompt($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Message text"
+                    [disabled]="!isMessageTextEnabled()"
+                    [class.is-disabled]="!isMessageTextEnabled()"
+                    [hint]="isMessageTextEnabled() ? '' : 'Only events carry a message'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().messageText"
+                        (conditionsChange)="setMessageText($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+
+                <app-audit-filter-group
+                    label="Message thought"
+                    [disabled]="!isMessageThoughtEnabled()"
+                    [class.is-disabled]="!isMessageThoughtEnabled()"
+                    [hint]="isMessageThoughtEnabled() ? '' : 'Only events carry a message'"
+                >
+                    <app-audit-condition-filter
+                        [conditions]="filter().messageThought"
+                        (conditionsChange)="setMessageThought($event)"
+                        [operators]="deepTextOperators"
+                        [showKey]="false"
+                    />
+                </app-audit-filter-group>
+            </div>
+        }
+    </div>
+
+    <div class="filters-panel__footer">
+        <button
+            class="filters-panel__btn"
+            type="button"
+            (click)="cleared.emit()"
+        >
+            Clear Filters
+        </button>
+        <span class="filters-panel__footer-spacer"></span>
+        <button
+            class="filters-panel__btn"
+            type="button"
+            (click)="closed.emit()"
+        >
+            Cancel
+        </button>
+        <button
+            class="filters-panel__btn filters-panel__btn--primary"
+            type="button"
+            (click)="applied.emit()"
+        >
+            Apply Filters
+        </button>
+    </div>
+</div>

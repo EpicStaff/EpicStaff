@@ -57,6 +57,7 @@ class AgentNode(BaseNode):
             writer=writer,
             execution_order=execution_order,
             stream_message_type="agent_node_stream",
+            agent_id=agent_definition.id,
         )
 
         result = await self.agent_task_service.run_agent_node(

@@ -138,6 +138,13 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
+        "code": ResourceType.AUDIT.value,
+        "label": "Audit",
+        "group": "admin",
+        "description": "Org-wide session execution trace: browse and export",
+        "applicable_actions": ["read", "export"],
+    },
+    {
         "code": ResourceType.VOICE.value,
         "label": "Voice",
         "group": "config",
