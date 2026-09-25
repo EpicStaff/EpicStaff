@@ -2009,6 +2009,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     removeFieldColumn(fieldName: string): void {
         const colId = `${CDT_FIELD_PREFIX}${fieldName}`;
         this.movableColumnOrder.set(this.movableColumnOrder().filter((id) => id !== colId));
+        this.dropRowField('field_expressions', fieldName);
         this.saveGridState();
     }
 
@@ -2048,7 +2049,20 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     removeManipFieldColumn(fieldName: string): void {
         const colId = `${CDT_MANIP_PREFIX}${fieldName}`;
         this.manipColumnOrder.set(this.manipColumnOrder().filter((id) => id !== colId));
+        this.dropRowField('field_manipulations', fieldName);
         this.saveGridState();
+    }
+
+    private dropRowField(key: 'field_expressions' | 'field_manipulations', fieldName: string): void {
+        const rows = this.rowData();
+        if (!rows.some((row) => row[key] && fieldName in row[key])) return;
+        rows.forEach((row) => {
+            const fields = row[key];
+            if (fields && fieldName in fields) {
+                row[key] = Object.fromEntries(Object.entries(fields).filter(([name]) => name !== fieldName));
+            }
+        });
+        this.emitChanges(this.getUpdatedRows());
     }
 
     onManipSelectionChange(values: unknown[]): void {
