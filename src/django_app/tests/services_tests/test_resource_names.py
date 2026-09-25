@@ -1,4 +1,5 @@
 import pytest
+from django.apps import apps
 from django.contrib.auth import get_user_model
 
 from rbac.access.delete_collector import build_collector, summarize
@@ -28,7 +29,30 @@ def _cascade_closure(root_model):
 
 def test_resource_name_returns_the_mapped_friendly_name():
     assert resource_name("tables.Graph") == "flow"
-    assert resource_name("tables.Role") == "roles"
+    assert resource_name("rbac.Role") == "roles"
+    assert resource_name("rbac.OrganizationUser") == "memberships"
+    assert resource_name("rbac.ApiKey") == "api_keys"
+
+
+def _stale_labels(labels):
+    """Return every label in `labels` that names no installed model."""
+    stale = []
+    for label in labels:
+        try:
+            apps.get_model(label)
+        except LookupError:
+            stale.append(label)
+    return sorted(stale)
+
+
+def test_every_resource_names_key_is_an_installed_model_label():
+    stale = _stale_labels(RESOURCE_NAMES)
+    assert stale == [], f"RESOURCE_NAMES keys naming no installed model: {stale}"
+
+
+def test_every_known_excluded_label_is_an_installed_model_label():
+    stale = _stale_labels(KNOWN_EXCLUDED_LABELS)
+    assert stale == [], f"KNOWN_EXCLUDED_LABELS members naming no installed model: {stale}"
 
 
 def test_resource_name_returns_none_for_a_known_excluded_label():

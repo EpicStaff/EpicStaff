@@ -351,6 +351,17 @@ def test_custom_roles_of_the_org_are_deleted(actor, populated_org, _surviving_or
 
 
 @pytest.mark.django_db
+def test_org_delete_preview_reports_custom_roles(actor, populated_org, _surviving_org):
+    Role.objects.create(name="Preview Custom Role", is_built_in=False, org=populated_org)
+
+    preview = OrganizationManagementService().preview_delete(
+        actor=actor, org_id=populated_org.pk
+    )
+
+    assert preview.affected_resources["roles"] == 1
+
+
+@pytest.mark.django_db
 def test_org_delete_sweeps_orphaned_document_content(actor, populated_org, _surviving_org):
     """A real org delete sweeps the org's SourceCollections so their DocumentContent rows don't survive as orphans."""
     from tables.models.knowledge_models.collection_models import (

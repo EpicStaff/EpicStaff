@@ -33,6 +33,6 @@ def test_build_affected_resources_drops_a_zero_value_external_count():
 
 
 def test_build_affected_resources_merges_external_count_into_existing_db_key():
-    by_model = [ModelCount(model="tables.OrganizationUser", count=2)]
+    by_model = [ModelCount(model="rbac.OrganizationUser", count=2)]
     result = build_affected_resources(by_model, external_counts={"memberships": 3})
     assert result == {"memberships": 5}

@@ -17,7 +17,7 @@ def org_with_graphs(db):
 def test_report_counts_the_root_instance(org_with_graphs):
     report = summarize(build_collector(org_with_graphs))
     rows = {row.model: row.count for row in report}
-    assert rows["tables.Organization"] == 1
+    assert rows["rbac.Organization"] == 1
 
 
 @pytest.mark.django_db

@@ -227,6 +227,35 @@ def test_delete_user_dry_run_deletes_nothing(actor, target_user):
 
 
 @pytest.mark.django_db
+def test_delete_user_preview_reports_memberships_and_api_keys(actor, target_user, issue_api_key):
+    role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    first_org = Organization.objects.create(name="Preview Membership Org One")
+    second_org = Organization.objects.create(name="Preview Membership Org Two")
+    OrganizationUser.objects.create(user=target_user, org=first_org, role=role)
+    OrganizationUser.objects.create(user=target_user, org=second_org, role=role)
+    issue_api_key(user=target_user, name="preview-key")
+
+    preview = UserManagementService().preview_delete(
+        actor=actor, target_user_id=target_user.pk
+    )
+
+    assert preview.affected_resources["memberships"] == 2
+    assert preview.affected_resources["api_keys"] == 1
+
+
+@pytest.mark.django_db
+def test_delete_user_preview_omits_memberships_and_api_keys_when_the_user_has_none(
+    actor, target_user
+):
+    preview = UserManagementService().preview_delete(
+        actor=actor, target_user_id=target_user.pk
+    )
+
+    assert "memberships" not in preview.affected_resources
+    assert "api_keys" not in preview.affected_resources
+
+
+@pytest.mark.django_db
 def test_delete_user_dry_run_prediction_matches_what_the_delete_actually_removes(
     actor, target_user, issue_api_key, settings, tmp_path
 ):
