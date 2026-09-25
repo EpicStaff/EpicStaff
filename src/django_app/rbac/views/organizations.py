@@ -1,0 +1,200 @@
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from rbac.governance.organizations import (
+    OrganizationManagementService,
+)
+from rbac.models.enums import Permission, ResourceType
+from rbac.serializers.organizations import (
+    OrganizationCreateRequestSerializer,
+    OrganizationListResponseSerializer,
+    OrganizationRenameRequestSerializer,
+    OrganizationResponseSerializer,
+    OrganizationSettingsUpdateSerializer,
+)
+from rbac.access.gates import HasOrgPermission
+from rbac.access.org_context import OrgContextService
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
+from rbac.validation.organization import (
+    OrganizationValidationService,
+)
+from rbac.views.cross_org_base import CrossOrgAdminPagination, CrossOrgAdminViewSet
+from tables.swagger_schemas.organization_schemas import ORGANIZATION_SETTINGS_UPDATE
+
+_ORG_ORDERING_WHITELIST = {
+    "name": "name",
+    "created_at": "created_at",
+    "member_count": "member_count",
+}
+
+
+class OrganizationAdminViewSet(CrossOrgAdminViewSet):
+    """Adaptive management of Organizations.
+
+    list / retrieve / partial_update are permission-aware (ORGANIZATIONS bits;
+    superadmin sees all). create / deactivate / reactivate are platform-level
+    and stay superadmin-only via `superadmin_actions`.
+
+    Domain errors (404 not-found, 400 name-conflict, 400 last-active-org) are
+    raised by the service layer as CustomAPIExeption subclasses and rendered
+    through the project's `custom_exception_handler` envelope; the view layer
+    does not catch or translate them.
+    """
+
+    superadmin_actions = frozenset({"create", "deactivate", "reactivate"})
+    pagination_class = CrossOrgAdminPagination
+    rbac_resource_type = ResourceType.ORGANIZATIONS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "partial_update": Permission.UPDATE,
+    }
+
+    _service = OrganizationManagementService()
+    _validator = OrganizationValidationService()
+
+    @extend_schema(
+        summary="List organizations (permission-aware)",
+        responses={200: OrganizationListResponseSerializer(many=True)},
+    )
+    def list(self, request):
+        is_active = self._parse_is_active(request.query_params.get("is_active"))
+        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
+        scopes = getattr(request, "_rbac_org_scopes", None)
+        qs = self._service.list_for_actor(
+            actor=request.user,
+            is_active=is_active,
+            search=request.query_params.get("search"),
+            org_ids=org_ids,
+            scopes=scopes,
+        )
+        qs = self._apply_ordering(qs, request.query_params.get("ordering"))
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        self._service.attach_admins(
+            page,
+            include_superadmin_fallback=getattr(request.user, "is_superadmin", False),
+        )
+        return paginator.get_paginated_response(
+            OrganizationListResponseSerializer(page, many=True, context={"request": request}).data
+        )
+
+    @extend_schema(
+        summary="Get one organization (settings surface)",
+        responses={
+            200: OrganizationResponseSerializer,
+            404: OpenApiResponse(description="Organization not found or not accessible"),
+        },
+    )
+    def retrieve(self, request, pk=None):
+        org = self._service.get_for_read(actor=request.user, org_id=int(pk))
+        return Response(OrganizationResponseSerializer(org).data)
+
+    @extend_schema(
+        summary="Create an organization (superadmin)",
+        request=OrganizationCreateRequestSerializer,
+        responses={
+            201: OrganizationResponseSerializer,
+            400: OpenApiResponse(description="Validation error or duplicate name"),
+        },
+    )
+    def create(self, request):
+        cleaned = self._validator.validate_create(request.data)
+        org = self._service.create_organization(name=cleaned["name"])
+        return Response(
+            OrganizationResponseSerializer(org).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        summary="Rename an organization (ORGANIZATIONS.UPDATE or superadmin)",
+        request=OrganizationRenameRequestSerializer,
+        responses={
+            200: OrganizationResponseSerializer,
+            400: OpenApiResponse(description="Validation error or duplicate name"),
+            404: OpenApiResponse(description="Organization not found or not accessible"),
+        },
+    )
+    def partial_update(self, request, pk=None):
+        cleaned = self._validator.validate_rename(request.data)
+        org = self._service.rename_organization(
+            actor=request.user, org_id=int(pk), name=cleaned["name"]
+        )
+        return Response(OrganizationResponseSerializer(org).data)
+
+    @action(detail=True, methods=["post"], url_path="deactivate")
+    @extend_schema(
+        summary="Deactivate an organization (superadmin)",
+        responses={
+            200: OrganizationResponseSerializer,
+            400: OpenApiResponse(description="Cannot deactivate the last active organization"),
+            404: OpenApiResponse(description="Organization not found"),
+        },
+    )
+    def deactivate(self, request, pk=None):
+        org = self._service.deactivate_organization(org_id=int(pk))
+        return Response(OrganizationResponseSerializer(org).data)
+
+    @action(detail=True, methods=["post"], url_path="reactivate")
+    @extend_schema(
+        summary="Reactivate an organization (superadmin)",
+        responses={
+            200: OrganizationResponseSerializer,
+            404: OpenApiResponse(description="Organization not found"),
+        },
+    )
+    def reactivate(self, request, pk=None):
+        org = self._service.reactivate_organization(org_id=int(pk))
+        return Response(OrganizationResponseSerializer(org).data)
+
+    def _apply_ordering(self, qs, raw):
+        if not raw:
+            return qs  # default: -is_active, name (from _list_organizations)
+        descending = raw.startswith("-")
+        key = raw.lstrip("-")
+        field = _ORG_ORDERING_WHITELIST.get(key)
+        if field is None:
+            return qs
+        return qs.order_by(f"-{field}" if descending else field, "id")
+
+    @staticmethod
+    def _parse_is_active(value):
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized in ("true", "1"):
+            return True
+        if normalized in ("false", "0"):
+            return False
+        return None
+
+
+class OrganizationSelfServiceViewSet(viewsets.ViewSet):
+    """Active-context self-service settings for the caller's own organization.
+
+    PATCH /api/admin/organizations/settings/ (X-Organization-Id header) — an
+    Org Admin managing their own org's settings, distinct from
+    OrganizationAdminViewSet's superadmin-only org CRUD above.
+    """
+
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    rbac_resource_type = ResourceType.ORGANIZATIONS
+
+    _service = OrganizationManagementService()
+    _org_context = OrgContextService()
+
+    @extend_schema(**ORGANIZATION_SETTINGS_UPDATE)
+    def partial_update(self, request):
+        org_id = self._org_context.resolve(request=request, view_kwargs={})
+        serializer = OrganizationSettingsUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        org = self._service.update_audit_retention(
+            org_id=org_id,
+            audit_retention_days=serializer.validated_data["audit_retention_days"],
+        )
+        return Response(OrganizationResponseSerializer(org).data)

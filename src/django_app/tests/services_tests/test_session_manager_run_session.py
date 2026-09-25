@@ -5,7 +5,7 @@ from tables.models.graph_models import (
     GraphOrganizationUser,
     StartNode,
 )
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 

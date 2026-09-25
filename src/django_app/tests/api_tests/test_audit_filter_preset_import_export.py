@@ -76,7 +76,7 @@ class TestAuditFilterPresetExport:
     def test_export_of_another_orgs_preset_404s(
         self, auth_client, django_user_model
     ):
-        from tables.models.rbac_models import Organization
+        from rbac.models import Organization
 
         other_org = Organization.objects.create(name="Other org for presets")
         other_owner = django_user_model.objects.create_user(

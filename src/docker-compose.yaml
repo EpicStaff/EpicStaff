@@ -201,6 +201,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # ScheduleService polls tables_scheduletriggernode as soon as it starts. On a
+      # fresh volume django_app is still migrating then, and the column it selects
+      # (is_soft_deleted) only arrives at migration 0238 — so the query fails until
+      # migrations pass that point. django_app's healthcheck hits /ht/, which is only
+      # served once entrypoint.sh reaches `exec gunicorn` after `migrate`, so waiting
+      # for it guarantees the schema is complete.
+      django_app:
+        condition: service_healthy
 
   crewdb:
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:-latest}
@@ -312,6 +320,7 @@ services:
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
       SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+      SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}

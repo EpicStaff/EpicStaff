@@ -1,7 +1,7 @@
 from drf_spectacular.utils import OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 
-from tables.serializers.organization_serializers import (
+from rbac.serializers.organizations import (
     OrganizationResponseSerializer,
     OrganizationSettingsUpdateSerializer,
 )

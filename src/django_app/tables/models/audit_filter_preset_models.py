@@ -1,8 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import TimestampMixin
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class AuditFilterPreset(OrgScopedModel, TimestampMixin):

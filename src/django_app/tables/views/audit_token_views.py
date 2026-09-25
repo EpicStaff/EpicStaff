@@ -8,11 +8,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from src.shared.audit.token import AUDIT_TOKEN_ISSUER
-from tables.models.rbac_models import OrganizationConfig
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.org_context_service import OrgContextService
-from tables.services.rbac.permission_resolver import PermissionResolver
+from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
+from rbac.models import OrganizationConfig
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.swagger_schemas.audit_schemas import AUDIT_TOKEN_CREATE
 
 

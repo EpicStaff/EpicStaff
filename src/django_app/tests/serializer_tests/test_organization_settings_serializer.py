@@ -1,6 +1,6 @@
 import pytest
 
-from tables.serializers.organization_serializers import (
+from rbac.serializers.organizations import (
     AUDIT_RETENTION_DAYS_MAX,
     OrganizationSettingsUpdateSerializer,
 )

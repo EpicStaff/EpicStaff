@@ -1,3 +1,9 @@
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
+)
 from rest_framework import serializers
 from tables.models.embedding_models import (
     EmbeddingConfig,
@@ -8,12 +14,6 @@ from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingConfigTagSerializer,
     EmbeddingTagSerializer,
-)
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgScopedUniqueTogetherValidator,
-    OrgScopedUniqueValidator,
-    OrgVisiblePrimaryKeyRelatedField,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin

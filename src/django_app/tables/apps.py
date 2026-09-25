@@ -14,6 +14,7 @@ class TablesConfig(AppConfig):
         import tables.import_export.version_conversions.convertions
         import tables.signals.graph_signals
         import tables.signals.naive_rag_signals
+        import tables.signals.profile_signals
         import tables.signals.python_code_signals
         import tables.signals.python_code_tool_config_signals
         import tables.signals.schedule_signals

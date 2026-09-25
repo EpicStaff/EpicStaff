@@ -1,7 +1,6 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from tables.views.api_key_admin_views import ApiKeyAdminViewSet
 from tables.views.default_config import (
     DefaultModelsAPIView,
 )
@@ -39,7 +38,6 @@ from tables.views.knowledge_views.search_config_views import (
     GraphRagSuggestParamsView,
     NaiveRagSuggestParamsView,
 )
-from tables.views.membership_admin_views import MembershipAdminViewSet
 from tables.views.model_view_sets import (
     AgentNodeTaskViewSet,
     AgentNodeViewSet,
@@ -95,17 +93,11 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
 )
-from tables.views.organization_admin_views import (
-    OrganizationAdminViewSet,
-    OrganizationSelfServiceViewSet,
-)
-from tables.views.role_admin_views import RoleAdminViewSet
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
 )
 from tables.views.storage_views import StorageAPIView
-from tables.views.user_management_views import UserAdminViewSet
 from tables.views.views import (
     CancelRagIndexingView,
     GetUpdates,
@@ -192,39 +184,12 @@ router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
 
-admin_router = DefaultRouter()
-admin_router.register(r"organizations", OrganizationAdminViewSet, basename="admin-organization")
-admin_router.register(r"users", UserAdminViewSet, basename="admin-user")
-admin_router.register(r"roles", RoleAdminViewSet, basename="admin-role")
-admin_router.register(r"api-keys", ApiKeyAdminViewSet, basename="admin-api-key")
-
 urlpatterns = [
     path(
         "documents/bulk-delete/",
         DocumentManagementViewSet.as_view({"post": "bulk_delete"}),
         name="document-bulk-delete",
     ),
-    path(
-        "admin/memberships/",
-        MembershipAdminViewSet.as_view({"get": "list", "post": "create"}),
-        name="admin-memberships",
-    ),
-    path(
-        "admin/memberships/assignable-users/",
-        MembershipAdminViewSet.as_view({"get": "assignable_users"}),
-        name="admin-memberships-assignable-users",
-    ),
-    path(
-        "admin/memberships/<int:pk>/",
-        MembershipAdminViewSet.as_view({"patch": "partial_update", "delete": "destroy"}),
-        name="admin-membership-detail",
-    ),
-    path(
-        "admin/organizations/settings/",
-        OrganizationSelfServiceViewSet.as_view({"patch": "partial_update"}),
-        name="organization-self-settings",
-    ),
-    path("admin/", include(admin_router.urls)),
     path("", include(router.urls)),
     path("run-session/", RunSession.as_view(), name="run-session"),
     path(

@@ -49,7 +49,7 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService

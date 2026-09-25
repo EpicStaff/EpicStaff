@@ -111,15 +111,6 @@ from .python_models import (
     PythonCodeTool,
     PythonCodeToolConfig,
 )
-from .rbac_models import (
-    ApiKey,
-    Organization,
-    OrganizationUser,
-    PasswordResetToken,
-    Role,
-    RolePermission,
-    User,
-)
 from .realtime_models import (
     AudioFormatChoices,
     ConversationRecording,
@@ -153,6 +144,7 @@ from .tag_models import (
     RealtimeTranscriptionConfigTag,
     Tag,
 )
+from .user import User
 from .webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
@@ -178,7 +170,6 @@ __all__ = [
     "AgentPythonCodeTools",
     "AgentSessionMessage",
     "AgentTag",
-    "ApiKey",
     "AudioFormatChoices",
     "AudioTranscriptionNode",
     "AuditFilterPreset",
@@ -248,9 +239,6 @@ __all__ = [
     "NextVal",
     "NgrokWebhookConfig",
     "OpenAIRealtimeConfig",
-    "Organization",
-    "OrganizationUser",
-    "PasswordResetToken",
     "Process",
     "Provider",
     "ProviderType",
@@ -271,8 +259,6 @@ __all__ = [
     "RealtimeTranscriptionConfig",
     "RealtimeTranscriptionConfigTag",
     "RealtimeTranscriptionModel",
-    "Role",
-    "RolePermission",
     "ScheduleTriggerNode",
     "Secret",
     "Session",

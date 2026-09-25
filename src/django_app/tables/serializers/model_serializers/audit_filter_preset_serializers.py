@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
+from rbac.scoping.fields import resolve_active_org_id
 from tables.models.audit_filter_preset_models import AuditFilterPreset
-from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.validators.audit_filter_body_validator import validate_filter_body_shape
 
 
