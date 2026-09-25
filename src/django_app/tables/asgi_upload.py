@@ -1,15 +1,18 @@
 import io
 import json
-import logging
 from urllib.parse import parse_qsl
 
 from asgiref.sync import ThreadSensitiveContext, sync_to_async
 from django.conf import settings
 from django.core import signals
 from django.core.handlers.asgi import ASGIHandler, ASGIRequest
+from django.db import close_old_connections
+from rest_framework import status
 from rest_framework.exceptions import (
     APIException,
+    AuthenticationFailed,
     MethodNotAllowed,
+    NotAuthenticated,
     ValidationError,
 )
 from rest_framework.request import Request
@@ -17,13 +20,11 @@ from rest_framework.request import Request
 # Reused so this endpoint renders errors exactly like every DRF view in the
 # project; duplicating the flattening would let the two envelopes drift apart.
 from utils.exception_handler import _flatten_detail
+from utils.logger import logger
 
-from tables.exceptions import UploadFailedError
 from tables.services.storage_service import upload_stream_service
 from tables.services.storage_service.archive_formats import is_archive_name
 from tables.views.storage_views import StorageAPIView
-
-logger = logging.getLogger(__name__)
 
 UPLOAD_STREAM_ACTION = "upload_stream"
 
@@ -55,6 +56,9 @@ async def _serve_upload(scope, receive, send) -> None:
 
         _reject_non_utf8_query(scope)
         request, org_id = await sync_to_async(_check_access)(scope)
+        # The wait for an upload slot and the body itself can take long: give the
+        # auth query's Postgres connection back now; later DB work opens a fresh one.
+        await sync_to_async(close_old_connections)()
 
         path = request.query_params.get("path", "")
         filename = request.query_params.get("filename", "")
@@ -62,11 +66,14 @@ async def _serve_upload(scope, receive, send) -> None:
             raise ValidationError({"filename": "Query param 'filename' is required."})
 
         chunks = _request_body_chunks(receive)
+        declared_size = _declared_size(request)
         if is_archive_name(filename):
-            result = await upload_stream_service.upload_archive(org_id, path, filename, chunks)
+            result = await upload_stream_service.upload_archive(
+                org_id, path, filename, chunks, declared_size
+            )
         else:
             result = await upload_stream_service.upload_file(
-                org_id, path, filename, chunks, _declared_size(request)
+                org_id, path, filename, chunks, declared_size
             )
 
         await _send_json(send, scope, 200, {"status": "DONE", **result})
@@ -75,9 +82,9 @@ async def _serve_upload(scope, receive, send) -> None:
         await _send_error(send, scope, exc)
     except ClientDisconnectedError:
         logger.info("Streaming upload aborted: client disconnected")
-    except Exception:
+    except Exception as exc:
         logger.exception("Streaming upload failed")
-        await _send_error(send, scope, UploadFailedError())
+        await _send_unexpected_error(send, scope, exc)
 
 
 def _reject_non_utf8_query(scope) -> None:
@@ -101,9 +108,17 @@ def _check_access(scope) -> tuple[Request, int]:
     # Empty body: the real one is read straight from `receive`.
     request = view.initialize_request(ASGIRequest(scope, io.BytesIO()))
     view.request = request
-    view.perform_authentication(request)
-    view.check_permissions(request)
-    view.check_throttles(request)
+    try:
+        view.perform_authentication(request)
+        view.check_permissions(request)
+        view.check_throttles(request)
+    except (NotAuthenticated, AuthenticationFailed) as exc:
+        # What APIView.handle_exception does before rendering a 401.
+        if auth_header := view.get_authenticate_header(request):
+            exc.auth_header = auth_header
+        else:
+            exc.status_code = status.HTTP_403_FORBIDDEN
+        raise
     return request, view.get_active_org_id()
 
 
@@ -151,15 +166,33 @@ def _cors_headers(scope) -> list[tuple[bytes, bytes]]:
     return headers
 
 
-async def _send_json(send, scope, status: int, payload: dict) -> None:
+async def _send_json(
+    send, scope, status_code: int, payload: dict, extra_headers: dict[str, str] | None = None
+) -> None:
     body = json.dumps(payload).encode()
     headers = [
         (b"content-type", b"application/json"),
         (b"content-length", str(len(body)).encode()),
         *_cors_headers(scope),
+        *(
+            (name.lower().encode("latin1"), value.encode("latin1"))
+            for name, value in (extra_headers or {}).items()
+        ),
     ]
-    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.start", "status": status_code, "headers": headers})
     await send({"type": "http.response.body", "body": body})
+
+
+def _error_headers(exc: APIException) -> dict[str, str]:
+    """The headers DRF's exception_handler plus custom_exception_handler would send:
+    WWW-Authenticate on a 401, Retry-After on a Throttled, and exc.headers."""
+    headers = {}
+    if auth_header := getattr(exc, "auth_header", None):
+        headers["WWW-Authenticate"] = auth_header
+    if wait := getattr(exc, "wait", None):
+        headers["Retry-After"] = str(wait)  # Throttled already rounds it up to whole seconds
+    headers.update(getattr(exc, "headers", None) or {})
+    return headers
 
 
 async def _send_error(send, scope, exc: APIException) -> None:
@@ -170,4 +203,14 @@ async def _send_error(send, scope, exc: APIException) -> None:
         "code": exc.default_code,
         "message": _flatten_detail(detail),
     }
-    await _send_json(send, scope, exc.status_code, payload)
+    await _send_json(send, scope, exc.status_code, payload, _error_headers(exc))
+
+
+async def _send_unexpected_error(send, scope, exc: Exception) -> None:
+    """A 500 in the envelope custom_exception_handler renders for a non-API error."""
+    payload = {
+        "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "code": exc.__class__.__name__,
+        "message": "Unpredictable error",
+    }
+    await _send_json(send, scope, status.HTTP_500_INTERNAL_SERVER_ERROR, payload)

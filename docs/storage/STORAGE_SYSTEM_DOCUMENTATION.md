@@ -126,12 +126,14 @@ Located at `tables/services/storage_service/db_sync.py`. Keeps the `StorageFile`
 
 | Method | Behavior |
 |--------|----------|
-| `on_upload(org_id, path)` | `get_or_create` StorageFile record |
+| `on_upload(org_id, path, size)` | `get_or_create` StorageFile record |
+| `on_bulk_upload(org_id, files, folders)` | Upsert many `(path, size)` file rows plus folder rows in two INSERTs |
 | `on_delete(org_id, path)` | Delete exact match; if no match, delete all files with that prefix (folder delete) |
 | `on_move(org_id, src, dst)` | Update path; if no exact match, bulk-update all paths under prefix via `Concat+Substr` |
-| `on_copy(org_id, actual_dst_paths)` | `bulk_create` with `ignore_conflicts=True` |
-| `on_move_cross_org(src_org, src_path, dst_org, dst_path)` | Delete from source org, create in destination org |
-| `on_copy_cross_org(dst_org, dst_path)` | Create record in destination org |
+
+Copy and cross-org move have no sync method of their own: the manager records the copied rows through `quota_service.record_files_within_quota` (see §7).
+
+**Agent and sandbox writes** arrive as `storage_mutations` events (`RedisPubSub.storage_mutations_handler`). Each write is recorded at the size S3 reports (`StorageManager.record_external_write` → backend `head_file`: one request, 2 s connect / 5 s read, no retries, because the handler runs on the shared pub/sub listener thread). If that lookup fails, the row is still written without a size; a write whose object is gone is skipped. A mutation that fails is logged and skipped, and the rest of the batch and the session's `session:{id}:storage_mutations` Redis set are still updated. Agent writes are not quota-checked (the bytes are already stored); an organization left over its quota is logged.
 
 **Folder delete** works by prefix matching: if no exact `path` match exists, all records whose `path` starts with `{path}/` are deleted. This handles recursive folder removal without requiring a tree walk.
 
@@ -199,12 +201,12 @@ Cross-org operations are restricted to **superadmin**, enforced at the REST API 
 ### `copy_cross_org`
 
 - Uses server-side S3 copy (no data round-trip through application server)
-- DB sync: `on_copy_cross_org(dst_org, dst_path)` creates record in destination
+- Same path as a same-org `copy`: the copied rows get the sizes S3 reports for the copied objects (not the source rows, which may predate size tracking) and are written by `record_files_within_quota` under the destination org's lock. Over quota the copied objects are deleted again (one batched `DeleteObjects` per 1000 keys, exactly the keys this copy created) and `413` is raised. If a single `copy_object` fails midway, the objects already copied are deleted and the original error propagates. An unlocked pre-check on the source rows rejects the obvious cases before anything is copied.
 
 ### `move_cross_org`
 
 - **Non-atomic**: copy happens first, then delete. If the delete step fails, the file exists in both orgs. No automatic rollback.
-- DB sync: `on_move_cross_org(src_org, src_path, dst_org, dst_path)` deletes from source, creates in destination
+- Copies exactly like `copy_cross_org` (quota-checked, `413` leaves the source untouched), then deletes the source objects and their rows.
 
 Authorization (superadmin) is enforced at the API layer; the `StorageManager` performs no permission checks.
 

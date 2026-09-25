@@ -4,8 +4,9 @@ import re
 import zipfile
 from collections.abc import Iterator
 
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, IntegerField, Q, Sum, Value, When
 from django.db.models.functions import Lower
+from django.utils.dateparse import parse_datetime
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -18,6 +19,11 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import sanitize_storage_path
+from tables.services.storage_service.quota_service import (
+    ensure_fits_quota,
+    record_files_within_quota,
+)
+from utils.logger import logger
 
 # Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
 _BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
@@ -176,12 +182,65 @@ class StorageManager:
         StorageFileSync.on_move(org_id, source_path, destination_path)
 
     def copy(self, org_id: int, source_path: str, destination_path: str) -> None:
-        actual_keys = self._backend.copy(
-            self._build_storage_key(org_id, source_path),
-            self._build_storage_key(org_id, destination_path),
+        self._copy_within_quota(org_id, source_path, org_id, destination_path)
+
+    def _copy_within_quota(
+        self, src_org_id: int, source_path: str, dst_org_id: int, destination_path: str
+    ) -> None:
+        """Copy source into the destination folder, then record the copies at the
+        sizes the store reports within the destination org's quota. Over quota, the
+        copies are deleted again and StorageQuotaExceeded (413) is raised.
+
+        The org lock is taken only for the row write, never across the S3 copy."""
+        # Early reject only: rows of files that predate size tracking count as 0 here.
+        ensure_fits_quota(dst_org_id, self._recorded_size(src_org_id, source_path))
+
+        copied = self._backend.copy(
+            self._build_storage_key(src_org_id, source_path),
+            self._build_storage_key(dst_org_id, destination_path),
         )
-        actual_paths = [self._strip_org_prefix(org_id, k) for k in actual_keys]
-        StorageFileSync.on_copy(org_id, actual_paths)
+
+        files, folders = [], []
+        for key, size in copied:
+            path = self._strip_org_prefix(dst_org_id, key)
+            if key.endswith("/"):
+                folders.append(path)
+            else:
+                files.append((path, size))
+
+        try:
+            record_files_within_quota(dst_org_id, files, folders)
+        except BaseException:
+            self._discard_copies([key for key, _ in copied])
+            raise
+
+    def _discard_copies(self, keys: list[str]) -> None:
+        """Remove the objects of a copy that was not recorded. A failure is only
+        logged, so the caller re-raises the error that rejected the copy."""
+        try:
+            self._backend.delete_keys(keys)
+        except Exception:
+            logger.exception("Could not remove {} objects of a rejected copy", len(keys))
+
+    @staticmethod
+    def _recorded_size(org_id: int, source_path: str) -> int:
+        """Sum of the source's file row sizes; a missing size counts as 0."""
+        source = sanitize_storage_path(source_path, allow_empty=True, allow_leading_slash=True)
+        rows = StorageFile.objects.filter(org_id=org_id, item_type="file").filter(
+            Q(path=source) | Q(path__startswith=source + "/")
+        )
+        return rows.aggregate(total=Sum("size"))["total"] or 0
+
+    def record_external_write(self, org_id: int, path: str) -> None:
+        """Record a file another service (agent, sandbox) already wrote, at the size
+        stored in S3 (one quick, non-retried request). Not quota-checked: the bytes are
+        already there. FileNotFoundError when no file exists at `path`."""
+        stored = self._backend.head_file(self._build_storage_key(org_id, path))
+        if stored is None:
+            raise FileNotFoundError(f"No file at {path}")
+        StorageFileSync.on_upload(
+            org_id, path, size=stored.size, s3_modified=parse_datetime(stored.modified)
+        )
 
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
@@ -425,16 +484,11 @@ class StorageManager:
         dst_path: str,
     ) -> None:
         """
-        Copy a file from one org to another. Caller authorization (superadmin)
-        is enforced at the API layer. Uses a server-side S3 copy — no data
-        streams through the app.
+        Copy a file or folder from one org to another, within the destination
+        org's quota. Caller authorization (superadmin) is enforced at the API
+        layer. Uses a server-side S3 copy — no data streams through the app.
         """
-        actual_keys = self._backend.copy(
-            self._build_storage_key(src_org_id, src_path),
-            self._build_storage_key(dst_org_id, dst_path),
-        )
-        actual_dst_paths = [self._strip_org_prefix(dst_org_id, k) for k in actual_keys]
-        StorageFileSync.on_copy(dst_org_id, actual_dst_paths)
+        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path)
 
     def move_cross_org(
         self,
@@ -444,13 +498,11 @@ class StorageManager:
         dst_path: str,
     ) -> None:
         """
-        Move a file from one org to another. Caller authorization (superadmin)
-        is enforced at the API layer. Non-atomic: if the delete step fails after
-        a successful copy, the file will exist in both orgs.
+        Move a file or folder from one org to another, within the destination
+        org's quota; over quota the source stays untouched. Caller authorization
+        (superadmin) is enforced at the API layer. Non-atomic: if the delete step
+        fails after a successful copy, the file will exist in both orgs.
         """
-        actual_key = self._backend.move(
-            self._build_storage_key(src_org_id, src_path),
-            self._build_storage_key(dst_org_id, dst_path),
-        )
-        actual_dst_path = self._strip_org_prefix(dst_org_id, actual_key)
-        StorageFileSync.on_move_cross_org(src_org_id, src_path, dst_org_id, actual_dst_path)
+        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path)
+        self._backend.delete(self._build_storage_key(src_org_id, src_path))
+        StorageFileSync.on_delete(src_org_id, src_path.rstrip("/"))

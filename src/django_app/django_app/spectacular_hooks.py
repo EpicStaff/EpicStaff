@@ -214,9 +214,13 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
             "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
             "description": (
                 "Stream one file straight into storage: the raw body is the file, "
-                "proxied to MinIO in bounded memory. An archive (.zip/.tar*) up to "
-                "MAX_ARCHIVE_FILE_SIZE is unpacked into a new folder instead. "
-                "Bounded only by the organization storage quota."
+                "proxied to MinIO in bounded memory. A plain file may be at most "
+                "DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE (default 2gb; none = unlimited). "
+                "An archive (.zip/.tar*) up to DJANGO_MAX_ARCHIVE_FILE_SIZE is unpacked "
+                "into a new folder instead. Over either cap: 413 upload_too_large. "
+                "Everything is also bounded by the organization storage quota "
+                "(413 storage_quota_exceeded). GET /api/storage/upload-limits/ "
+                "returns the limits."
             ),
             "parameters": [
                 {
@@ -248,7 +252,12 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
                 "400": {"description": "Blocked extension, bad archive or missing filename."},
                 "401": {"description": "Not authenticated."},
                 "403": {"description": "Missing FILES:CREATE in the active organization."},
-                "413": {"description": "Over the file/archive cap or the org storage quota."},
+                "413": {
+                    "description": (
+                        "Over the file/archive size cap (upload_too_large) or the org "
+                        "storage quota (storage_quota_exceeded)."
+                    )
+                },
             },
         }
     }

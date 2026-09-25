@@ -190,6 +190,27 @@ class StorageMkdirResponseSerializer(serializers.Serializer):
     created = serializers.BooleanField(help_text="Whether the folder was created")
 
 
+class StorageUploadLimitsResponseSerializer(serializers.Serializer):
+    max_file_size = serializers.IntegerField(
+        allow_null=True, help_text="Max bytes of one file; null = unlimited"
+    )
+    max_archive_size = serializers.IntegerField(help_text="Max compressed bytes of one archive")
+    free_bytes = serializers.IntegerField(
+        min_value=0, help_text="Bytes the organization may still upload"
+    )
+    archive_suffixes = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Lower-case suffixes (with the dot) of names uploaded as archives, sorted",
+    )
+    document_extensions = serializers.ListField(
+        child=serializers.CharField(),
+        help_text=(
+            "Lower-case extensions (with the dot) that are never unpacked even when "
+            "they match an archive suffix, sorted"
+        ),
+    )
+
+
 class GraphStorageFileSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     graph_id = serializers.IntegerField(read_only=True)

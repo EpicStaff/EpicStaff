@@ -25,10 +25,11 @@ from tables.serializers.storage_serializers import (
     StorageRenameSerializer,
     StorageSearchQuerySerializer,
     StorageTreeQuerySerializer,
+    StorageUploadLimitsResponseSerializer,
 )
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.permissions import HasOrgPermission
-from tables.services.storage_service import get_storage_manager
+from tables.services.storage_service import get_storage_manager, upload_stream_service
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
@@ -46,6 +47,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
     STORAGE_TREE_SWAGGER,
+    STORAGE_UPLOAD_LIMITS_SWAGGER,
 )
 from tables.views.mixins import OrgScopedResolverMixin
 
@@ -62,6 +64,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "graph_files": Permission.READ,
         "files_by_ids": Permission.READ,
         "search": Permission.READ,
+        "upload_limits": Permission.READ,
         "download_zip": Permission.EXPORT,
         # Served by tables.asgi_upload (raw ASGI), gated through this viewset.
         "upload_stream": Permission.CREATE,
@@ -408,3 +411,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 "results": results,
             }
         )
+
+    @extend_schema(**STORAGE_UPLOAD_LIMITS_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="upload-limits")
+    def upload_limits(self, request):
+        limits = upload_stream_service.upload_limits(self.get_active_org_id())
+        return Response(StorageUploadLimitsResponseSerializer(limits).data)

@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 
 from tables.models import Organization, StorageFile
 from tables.services.storage_service import upload_stream_service as svc
+from tables.services.storage_service.upload_admission import UploadAdmission
 from tables.exceptions import StorageQuotaExceeded, UploadTooLarge
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
@@ -99,7 +100,7 @@ async def test_upload_archive_happy():
     backend = InMemoryStorageBackend(organization_prefix="")
     archive = _zip({"a.txt": b"hello", "sub/b.txt": b"world"})
     result = await svc.upload_archive(
-        org.id, "", "bundle.zip", _aiter(archive.read()), backend=backend
+        org.id, "", "bundle.zip", _aiter(archive.read()), None, backend=backend
     )
     assert result["path"] == "bundle"
     assert sorted(result["extracted"]) == sorted(
@@ -118,8 +119,8 @@ async def test_upload_archive_twice_dedupes_folder():
     org = await Organization.objects.acreate(name="Acme")
     backend = InMemoryStorageBackend(organization_prefix="")
     archive = _zip({"a.txt": b"hello"}).read()
-    first = await svc.upload_archive(org.id, "", "bundle.zip", _aiter(archive), backend=backend)
-    second = await svc.upload_archive(org.id, "", "bundle.zip", _aiter(archive), backend=backend)
+    first = await svc.upload_archive(org.id, "", "bundle.zip", _aiter(archive), None, backend=backend)
+    second = await svc.upload_archive(org.id, "", "bundle.zip", _aiter(archive), None, backend=backend)
     assert (first["path"], second["path"]) == ("bundle", "bundle (1)")
     assert second["extracted"] == ["bundle (1)/a.txt"]
 
@@ -133,7 +134,7 @@ async def test_upload_archive_past_free_space_writes_nothing():
     archive = _zip({"big.txt": b"0123456789"})  # 10 > free 5
     with pytest.raises(StorageQuotaExceeded):
         await svc.upload_archive(
-            org.id, "", "bundle.zip", _aiter(archive.read()), backend=backend
+            org.id, "", "bundle.zip", _aiter(archive.read()), None, backend=backend
         )
     assert not backend._objects
     assert not await StorageFile.objects.filter(org=org, path__startswith="bundle").aexists()
@@ -166,7 +167,11 @@ async def test_upload_file_honours_cap_when_configured():
 @override_settings(ORG_STORAGE_QUOTA=10**12, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_semaphore_caps_concurrent_uploads(monkeypatch):
     org = await Organization.objects.acreate(name="Acme")
-    monkeypatch.setattr(svc, "_slots", asyncio.Semaphore(2))
+    monkeypatch.setattr(
+        svc,
+        "_admission",
+        UploadAdmission(max_concurrency=2, per_org_limit=10, slot_timeout=30),
+    )
 
     in_flight = 0
     peak = 0
@@ -206,7 +211,7 @@ async def test_upload_archive_stores_a_non_archive_as_a_plain_file():
     backend = InMemoryStorageBackend(organization_prefix="")
     body = b"not an archive at all, just text"
 
-    result = await svc.upload_archive(org.id, "docs", "notes.zip", _aiter(body), backend=backend)
+    result = await svc.upload_archive(org.id, "docs", "notes.zip", _aiter(body), None, backend=backend)
 
     assert result == {"path": "docs/notes.zip", "size": len(body)}
     assert backend._objects[f"org_{org.id}/docs/notes.zip"][0] == body
@@ -223,7 +228,7 @@ async def test_non_archive_fallback_still_honours_the_quota():
 
     with pytest.raises(StorageQuotaExceeded):
         await svc.upload_archive(
-            org.id, "", "notes.zip", _aiter(b"x" * 50), backend=backend
+            org.id, "", "notes.zip", _aiter(b"x" * 50), None, backend=backend
         )
     assert not backend._objects
     assert not await StorageFile.objects.filter(org=org).aexists()
@@ -243,7 +248,7 @@ async def test_upload_archive_extracts_a_tbz_alias():
         tf.addfile(info, io.BytesIO(b"hello"))
 
     result = await svc.upload_archive(
-        org.id, "", "bundle.tbz", _aiter(buf.getvalue()), backend=backend
+        org.id, "", "bundle.tbz", _aiter(buf.getvalue()), None, backend=backend
     )
 
     assert result["extracted"] == [f"{result['path']}/a.txt"]
@@ -294,7 +299,7 @@ async def test_upload_archive_rejects_a_bad_path_before_reading_the_body():
         yield b"x"
 
     with pytest.raises(ValidationError):
-        await svc.upload_archive(org.id, "../escape", "b.zip", _watched(), backend=backend)
+        await svc.upload_archive(org.id, "../escape", "b.zip", _watched(), None, backend=backend)
     assert not consumed  # body never touched
 
 
@@ -315,7 +320,7 @@ async def test_encrypted_archive_is_rejected_before_anything_is_written():
     raw[cd + 8] |= 0x01
 
     with pytest.raises(ValidationError, match="password-protected"):
-        await svc.upload_archive(org.id, "", "secret.zip", _aiter(bytes(raw)), backend=backend)
+        await svc.upload_archive(org.id, "", "secret.zip", _aiter(bytes(raw)), None, backend=backend)
 
     # the pre-flight runs before extraction, so not even the readable member lands
     assert not backend._objects
@@ -338,7 +343,7 @@ async def test_damaged_archive_answers_400_instead_of_a_server_fault():
     raw[60:200] = b"\xff" * 140
 
     with pytest.raises(ValidationError):
-        await svc.upload_archive(org.id, "", "broken.zip", _aiter(bytes(raw)), backend=backend)
+        await svc.upload_archive(org.id, "", "broken.zip", _aiter(bytes(raw)), None, backend=backend)
     assert not await StorageFile.objects.filter(org=org).aexists()
 
 
@@ -390,7 +395,7 @@ async def test_archive_members_small_and_large_all_land():
     archive = _zip(members)
 
     result = await svc.upload_archive(
-        org.id, "", "bundle.zip", _aiter(archive.read()), backend=backend
+        org.id, "", "bundle.zip", _aiter(archive.read()), None, backend=backend
     )
 
     for name, data in members.items():
@@ -431,7 +436,7 @@ async def test_empty_archive_folders_are_created():
         zf.writestr(zipfile.ZipInfo("empty/"), b"")
         zf.writestr("full/a.txt", b"x")
 
-    result = await svc.upload_archive(org.id, "", "b.zip", _aiter(buf.getvalue()), backend=backend)
+    result = await svc.upload_archive(org.id, "", "b.zip", _aiter(buf.getvalue()), None, backend=backend)
 
     assert f"org_{org.id}/{result['path']}/empty/" in backend._objects
     assert await StorageFile.objects.filter(
@@ -447,3 +452,181 @@ async def test_upload_file_rejects_unprintable_or_blank_names(filename):
     org = await Organization.objects.acreate(name="Acme")
     with pytest.raises(ValidationError):
         await svc.upload_file(org.id, "", filename, _aiter(b"x"), 1, backend=_FakeFlatBackend(1))
+
+
+# --- hostile archives answer 400, not 500 ---
+
+
+def _long_name_bomb_tgz() -> bytes:
+    """A 1 MiB GNU long-name header (over the 64 KiB bound) in about 1 KiB of .tar.gz."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", format=tarfile.GNU_FORMAT) as tf:
+        info = tarfile.TarInfo("a" * (1024 * 1024))
+        info.size = 1
+        tf.addfile(info, io.BytesIO(b"x"))
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9)
+async def test_a_tar_header_bomb_answers_400_and_writes_nothing():
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+
+    with pytest.raises(ValidationError, match="tar header of"):
+        await svc.upload_archive(
+            org.id, "", "x.tar.gz", _aiter(_long_name_bomb_tgz()), None, backend=backend
+        )
+    assert not backend._objects
+    assert not await StorageFile.objects.filter(org=org).aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9)
+async def test_a_deflate64_zip_answers_400_and_writes_nothing():
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+    raw = bytearray(_zip({"a.txt": b"data"}).getvalue())
+    raw[8:10] = (9).to_bytes(2, "little")  # local header: Deflate64
+    cd = raw.find(b"PK\x01\x02")
+    raw[cd + 10 : cd + 12] = (9).to_bytes(2, "little")  # central directory: Deflate64
+
+    with pytest.raises(ValidationError, match="unsupported method"):
+        await svc.upload_archive(org.id, "", "d64.zip", _aiter(bytes(raw)), None, backend=backend)
+    assert not backend._objects
+    assert not await StorageFile.objects.filter(org=org).aexists()
+
+
+# --- a failed unpack removes exactly what it created ---
+
+
+class _StoreFailingOn(InMemoryStorageBackend):
+    """Object store double that refuses one key, as MinIO would on an outage."""
+
+    def __init__(self, failing_key_suffix: str):
+        super().__init__(organization_prefix="")
+        self.failing_key_suffix = failing_key_suffix
+
+    def put_bytes(self, path, data):
+        if path.endswith(self.failing_key_suffix):
+            raise ConnectionError("minio went away")
+        return super().put_bytes(path, data)
+
+
+async def _upload_report_file(org, backend) -> str:
+    """The user's own plain file "report", named exactly like report.zip's folder."""
+    await svc.upload_file(org.id, "", "report", _aiter(b"keep me"), 7, backend=backend)
+    return f"org_{org.id}/report"
+
+
+def _keys_under(backend, folder_key: str) -> list[str]:
+    return [key for key in backend._objects if key.startswith(folder_key + "/")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_an_archive_named_like_a_file_unpacks_into_the_next_free_folder():
+    # MinIO refuses keys under the object "report", so "report/" is not free.
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+    report_key = await _upload_report_file(org, backend)
+
+    result = await svc.upload_archive(
+        org.id, "", "report.zip", _aiter(_zip({"a.txt": b"a"}).getvalue()), None, backend=backend
+    )
+
+    assert result == {"path": "report (1)", "extracted": ["report (1)/a.txt"]}
+    assert backend._objects[report_key][0] == b"keep me"
+    assert _keys_under(backend, report_key) == []
+    assert backend._objects[f"{report_key} (1)/a.txt"][0] == b"a"
+    assert await StorageFile.objects.filter(org=org, path="report", item_type="file").aexists()
+    assert await StorageFile.objects.filter(org=org, path="report (1)/a.txt").aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_an_archive_skips_a_file_named_like_the_next_free_folder():
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+    archive = _zip({"a.txt": b"a"}).getvalue()
+    await svc.upload_archive(org.id, "", "report.zip", _aiter(archive), None, backend=backend)
+    await svc.upload_file(org.id, "", "report (1)", _aiter(b"keep me"), 7, backend=backend)
+
+    result = await svc.upload_archive(
+        org.id, "", "report.zip", _aiter(archive), None, backend=backend
+    )
+
+    assert result["path"] == "report (2)"
+    assert backend._objects[f"org_{org.id}/report (1)"][0] == b"keep me"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_a_failed_unpack_keeps_a_file_named_like_the_folder():
+    org = await Organization.objects.acreate(name="Acme")
+    backend = _StoreFailingOn("/report (1)/c.txt")
+    report_key = await _upload_report_file(org, backend)
+    archive = _zip({"a.txt": b"a", "b.txt": b"b", "c.txt": b"c", "d.txt": b"d"}).getvalue()
+
+    with pytest.raises(ConnectionError):
+        await svc.upload_archive(org.id, "", "report.zip", _aiter(archive), None, backend=backend)
+
+    assert backend._objects[report_key][0] == b"keep me"
+    assert _keys_under(backend, f"{report_key} (1)") == []
+    assert f"{report_key} (1)/" not in backend._objects
+    assert await StorageFile.objects.filter(org=org, path="report", item_type="file").aexists()
+    assert not await StorageFile.objects.filter(org=org, path__startswith="report (1)").aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_an_unpack_rejected_by_the_quota_keeps_a_file_named_like_the_folder(monkeypatch):
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+    report_key = await _upload_report_file(org, backend)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(zipfile.ZipInfo("empty/"), b"")
+        zf.writestr("a.txt", b"a")
+
+    def _quota_raced(*_args, **_kwargs):
+        # another upload used the space between the pre-flight and the row write
+        raise StorageQuotaExceeded()
+
+    monkeypatch.setattr(svc, "record_files_within_quota", _quota_raced)
+    with pytest.raises(StorageQuotaExceeded):
+        await svc.upload_archive(
+            org.id, "", "report.zip", _aiter(buf.getvalue()), None, backend=backend
+        )
+
+    assert backend._objects[report_key][0] == b"keep me"
+    # members, the empty-folder marker and the claimed folder marker are all gone
+    assert _keys_under(backend, f"{report_key} (1)") == []
+    assert f"{report_key} (1)/" not in backend._objects
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9)
+async def test_a_failing_rollback_does_not_mask_the_original_error(monkeypatch):
+    org = await Organization.objects.acreate(name="Acme")
+    backend = InMemoryStorageBackend(organization_prefix="")
+
+    def _delete_fails(_keys):
+        raise RuntimeError("delete failed too")
+
+    def _quota_raced(*_args, **_kwargs):
+        raise StorageQuotaExceeded()
+
+    backend.delete_keys = _delete_fails
+    monkeypatch.setattr(svc, "record_files_within_quota", _quota_raced)
+    with pytest.raises(StorageQuotaExceeded):
+        await svc.upload_archive(
+            org.id, "", "bundle.zip", _aiter(_zip({"a.txt": b"a"}).getvalue()), None, backend=backend
+        )

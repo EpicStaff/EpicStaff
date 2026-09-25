@@ -1,6 +1,7 @@
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
 from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
+from utils.logger import logger
 
 
 def upload_archive_members(
@@ -11,7 +12,37 @@ def upload_archive_members(
     Files are read one after another (zip/tar can't be read in parallel), but
     their uploads overlap in a pool of `workers`. A file up to part_size is
     sent from memory in one PUT, a bigger one is streamed, so RAM stays near
-    workers x part_size. On any error the PUTs already running finish first."""
+    workers x part_size. On any error the PUTs already running finish first,
+    then every key this call wrote (or started to) is deleted again, so nothing
+    it created is left behind; the error is re-raised."""
+    started: list[str] = []
+    try:
+        return _upload_members(
+            archive_file, guard, backend, folder_key, part_size, workers, started
+        )
+    except BaseException:
+        # The pool has shut down by now, so no PUT can land after this delete.
+        discard_keys(backend, started)
+        raise
+
+
+def discard_keys(backend, keys: list[str]) -> None:
+    """Remove exactly these keys of an upload that failed. A failure is only
+    logged, so the caller re-raises the error that made the upload fail."""
+    if not keys:
+        return
+    try:
+        # One key twice (a name repeated in the archive) is deleted once.
+        backend.delete_keys(list(dict.fromkeys(keys)))
+    except Exception:
+        logger.exception("Could not remove {} objects of a failed archive upload", len(keys))
+
+
+def _upload_members(
+    archive_file, guard, backend, folder_key, part_size, workers, started: list[str]
+) -> dict[str, int]:
+    """upload_archive_members without the cleanup; appends each key to `started`
+    before writing it, so a failure knows what to take back."""
     written: dict[str, int] = {}
     pending: dict[str, Future] = {}
 
@@ -26,10 +57,12 @@ def upload_archive_members(
                 head = _read_at_most(reader, part_size + 1)
                 if len(head) <= part_size:
                     _wait_for_free_worker(pending, workers)
+                    started.append(key)
                     pending[name] = pool.submit(backend.put_bytes, key, head)
                     written[name] = len(head)
                 else:
                     member = _ReplayingReader(head, reader)
+                    started.append(key)
                     backend.upload_stream(key, member, part_size=part_size)
                     written[name] = member.bytes_read
 

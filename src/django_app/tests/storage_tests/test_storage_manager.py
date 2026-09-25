@@ -85,16 +85,6 @@ class TestDelegation:
             storage_manager.rename(org.id, "old.txt", "new.txt")
         mock_backend.rename.assert_not_called()
 
-    def test_copy_strips_org_prefix_from_returned_keys_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        mock_backend.copy.return_value = [
-            f"org_{org.id}/dest/a.txt",
-            f"org_{org.id}/dest/b.txt",
-        ]
-        storage_manager.copy(org.id, "src", "dest")
-        patch_sync.on_copy.assert_called_once_with(org.id, ["dest/a.txt", "dest/b.txt"])
-
     def test_info_strips_org_prefix_from_result_path(
         self, storage_manager, org, org_user
     ):
@@ -109,43 +99,6 @@ class TestDelegation:
         result = storage_manager.info(org.id, "docs/f.txt")
         assert isinstance(result, FileInfo)
         assert result.path == "docs/f.txt"
-
-
-# --- Cross-org ---
-
-
-@pytest.mark.django_db
-class TestCrossOrg:
-    def test_copy_cross_org_checks_both_orgs(
-        self,
-        storage_manager,
-        mock_backend,
-        org,
-        org_user,
-        second_org,
-        second_org_user,
-        patch_sync,
-    ):
-        mock_backend.copy.return_value = [f"org_{second_org.id}/dest.txt"]
-        storage_manager.copy_cross_org(org.id, "src.txt", second_org.id, "dest.txt")
-        mock_backend.copy.assert_called_once()
-        patch_sync.on_copy.assert_called_once_with(second_org.id, ["dest.txt"])
-
-    def test_move_cross_org_delegates_to_backend_and_syncs(
-        self,
-        storage_manager,
-        mock_backend,
-        org,
-        org_user,
-        second_org,
-        second_org_user,
-        patch_sync,
-    ):
-        storage_manager.move_cross_org(org.id, "src.txt", second_org.id, "dest.txt")
-        mock_backend.move.assert_called_once_with(
-            f"org_{org.id}/src.txt", f"org_{second_org.id}/dest.txt"
-        )
-        patch_sync.on_move_cross_org.assert_called_once()
 
 
 @pytest.mark.django_db

@@ -1,4 +1,6 @@
+import asyncio
 import io
+import json
 import lzma
 import tarfile
 import zipfile
@@ -7,13 +9,16 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from asgiref.sync import sync_to_async
+from botocore.exceptions import EndpointConnectionError
 from django.conf import settings
 from django.test import override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
 from tables.models import StorageFile
 from tables.services.storage_service import upload_stream_service as svc
+from tables.services.storage_service.upload_admission import UploadAdmission
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.test_s3_stream_upload import _backend as _fake_s3_backend
 
 
 @sync_to_async
@@ -157,6 +162,38 @@ async def test_stream_upload_end_to_end_archive(org_user, monkeypatch):
     assert await StorageFile.objects.filter(
         org_id=org_user.org_id, path=f"{body['path']}/a.txt"
     ).aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_an_archive_named_like_an_existing_file_is_a_200_into_the_next_folder(
+    org_user, monkeypatch
+):
+    backend = InMemoryStorageBackend(organization_prefix="")
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("a.txt", "hello")
+
+    token = await _token(org_user)
+    async with _client() as client:
+        file_resp = await _post(
+            client, "filename=report", token=token, org_id=org_user.org_id, body=b"keep me"
+        )
+        archive_resp = await _post(
+            client,
+            "filename=report.zip",
+            token=token,
+            org_id=org_user.org_id,
+            body=buf.getvalue(),
+        )
+
+    assert file_resp.status_code == 200, file_resp.text
+    assert archive_resp.status_code == 200, archive_resp.text
+    assert archive_resp.json()["path"] == "report (1)"
+    assert archive_resp.json()["extracted"] == ["report (1)/a.txt"]
+    assert backend._objects[f"org_{org_user.org_id}/report"][0] == b"keep me"
 
 
 async def _post(client, query, *, token=None, org_id=None, body=b"x", headers=None):
@@ -340,3 +377,205 @@ async def test_request_lifecycle_signals_fire_like_a_django_view(org_user, monke
 
     assert (ok.status_code, denied.status_code) == (200, 401)
     assert fired == ["started", "finished", "started", "finished"]
+
+
+# --- limits, timeouts and error rendering -------------------------------------------
+
+
+async def _call_app(query: str, token: str, org_id: int, receive):
+    """Drive the upload ASGI app directly with a hand-written `receive`, for body
+    timings httpx cannot produce (a stall, a disconnect mid-body)."""
+    from tables.asgi_upload import upload_stream_app
+    from tables.constants.storage_constants import UPLOAD_STREAM_PATH
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": UPLOAD_STREAM_PATH,
+        "raw_path": UPLOAD_STREAM_PATH.encode(),
+        "root_path": "",
+        "query_string": query.encode(),
+        "headers": [
+            (b"host", b"test"),
+            (b"authorization", f"Bearer {token}".encode()),
+            (b"x-organization-id", str(org_id).encode()),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("test", 80),
+    }
+    sent = []
+
+    async def _send(message):
+        sent.append(message)
+
+    await upload_stream_app(scope, receive, _send)
+    return sent
+
+
+def _receive_from(*events):
+    """`receive` returning `events` in order, then hanging like a silent client."""
+    pending = list(events)
+
+    async def _receive():
+        if pending:
+            return pending.pop(0)
+        await asyncio.Event().wait()
+
+    return _receive
+
+
+def _status_and_body(sent) -> tuple[int, dict]:
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
+    return start["status"], json.loads(body)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, UPLOAD_PART_SIZE=4)
+async def test_disconnect_mid_body_aborts_the_multipart_upload_and_writes_no_row(
+    org_user, monkeypatch
+):
+    backend, client = _fake_s3_backend()
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
+    token = await _token(org_user)
+
+    sent = await _call_app(
+        "filename=a.bin",
+        token,
+        org_user.org_id,
+        _receive_from(
+            {"type": "http.request", "body": b"12345678", "more_body": True},
+            {"type": "http.disconnect"},
+        ),
+    )
+
+    assert sent == []  # nobody is left to answer
+    assert client.parts and client.aborted and client.completed is None
+    assert not await StorageFile.objects.filter(org_id=org_user.org_id).aexists()
+    assert svc._upload_admission().uploads_of(org_user.org_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9, UPLOAD_PART_SIZE=4, UPLOAD_IDLE_TIMEOUT=0.05)
+async def test_a_silent_client_gets_408_and_leaves_nothing_behind(org_user, monkeypatch):
+    backend, client = _fake_s3_backend()
+    monkeypatch.setattr(svc, "_storage_backend", lambda: backend)
+    token = await _token(org_user)
+
+    sent = await _call_app(
+        "filename=a.bin",
+        token,
+        org_user.org_id,
+        _receive_from({"type": "http.request", "body": b"12345678", "more_body": True}),
+    )
+
+    status_code, body = _status_and_body(sent)
+    assert status_code == 408
+    assert body["code"] == "upload_idle_timeout"
+    assert client.aborted and client.completed is None
+    assert not await StorageFile.objects.filter(org_id=org_user.org_id).aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_a_full_worker_answers_503_with_retry_after(org_user, monkeypatch):
+    admission = UploadAdmission(max_concurrency=1, per_org_limit=5, slot_timeout=0.05)
+    monkeypatch.setattr(svc, "_admission", admission)
+    token = await _token(org_user)
+
+    async with admission.admit(org_id=-1):  # some other org's upload holds the only slot
+        async with _client() as client:
+            resp = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
+
+    assert resp.status_code == 503
+    assert resp.headers["retry-after"] == "1"
+    assert resp.json()["code"] == "upload_slots_busy"
+    assert set(resp.json()) == {"status_code", "code", "message"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_an_org_over_its_upload_share_gets_429_with_retry_after(org_user, monkeypatch):
+    admission = UploadAdmission(max_concurrency=4, per_org_limit=1, slot_timeout=30)
+    monkeypatch.setattr(svc, "_admission", admission)
+    token = await _token(org_user)
+
+    async with admission.admit(org_user.org_id):
+        async with _client() as client:
+            resp = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
+
+    assert resp.status_code == 429
+    assert resp.headers["retry-after"] == "30"
+    assert resp.json()["code"] == "org_upload_limit_reached"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_a_401_carries_www_authenticate():
+    async with _client() as client:
+        resp = await _post(client, "filename=a.txt")
+    assert resp.status_code == 401
+    assert resp.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_an_unexpected_error_is_a_500_in_the_error_envelope(org_user, monkeypatch):
+    monkeypatch.setattr(svc, "upload_file", AsyncMock(side_effect=RuntimeError("bug")))
+    token = await _token(org_user)
+    async with _client() as client:
+        resp = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
+
+    assert resp.status_code == 500
+    assert resp.json() == {
+        "status_code": 500,
+        "code": "RuntimeError",
+        "message": "Unpredictable error",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@override_settings(ORG_STORAGE_QUOTA=10**9)
+async def test_unreachable_storage_is_a_503(org_user, monkeypatch):
+    class _MinioDown(InMemoryStorageBackend):
+        async def upload_chunks(self, path, chunks, **_kwargs):
+            raise EndpointConnectionError(endpoint_url="http://minio:9000")
+
+    monkeypatch.setattr(svc, "_storage_backend", lambda: _MinioDown(organization_prefix=""))
+    token = await _token(org_user)
+    async with _client() as client:
+        resp = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
+
+    assert resp.status_code == 503
+    assert resp.headers["retry-after"] == "30"
+    assert resp.json()["code"] == "storage_unavailable"
+    assert not await StorageFile.objects.filter(org_id=org_user.org_id).aexists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_auth_db_connection_is_released_before_the_upload_waits(org_user, monkeypatch):
+    from django.db import connection
+
+    connection_open_during_upload = []
+
+    async def _upload(*_args, **_kwargs):
+        # same thread-sensitive context, so the same connection the auth query used
+        connection_open_during_upload.append(
+            await sync_to_async(lambda: connection.connection is not None)()
+        )
+        return {"path": "a.txt", "size": 1}
+
+    monkeypatch.setattr(svc, "upload_file", _upload)
+    token = await _token(org_user)
+    async with _client() as client:
+        resp = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
+
+    assert resp.status_code == 200
+    assert connection_open_during_upload == [False]

@@ -27,13 +27,24 @@ def org_free_bytes(org_id: int, replacing=()) -> int:
     return max(0, settings.ORG_STORAGE_QUOTA - org_used_bytes(org_id) + freed)
 
 
+def is_over_quota(org_id: int) -> bool:
+    return org_used_bytes(org_id) > settings.ORG_STORAGE_QUOTA
+
+
+def ensure_fits_quota(org_id: int, size: int, replacing=()) -> None:
+    """Raise 413 unless `size` more bytes fit the org's quota. Outside
+    record_files_within_quota's lock this is only an early reject."""
+    if size > org_free_bytes(org_id, replacing=replacing):
+        raise StorageQuotaExceeded()
+
+
 def record_files_within_quota(org_id: int, files: list[tuple[str, int]], folders=()) -> None:
-    """Write StorageFile rows for already-uploaded files [(path, size)] and empty
+    """Write StorageFile rows for already-stored files [(path, size)] and empty
     `folders`, or raise 413 if the files no longer fit. The org row lock makes
-    concurrent uploads of one org check the quota one after another."""
-    total = sum(size for _, size in files)
+    concurrent writers of one org check the quota one after another."""
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=org_id)
-        if total > org_free_bytes(org_id, replacing=[path for path, _ in files]):
-            raise StorageQuotaExceeded()
+        ensure_fits_quota(
+            org_id, sum(size for _, size in files), replacing=[path for path, _ in files]
+        )
         StorageFileSync.on_bulk_upload(org_id, files, folders)

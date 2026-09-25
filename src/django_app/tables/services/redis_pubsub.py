@@ -130,12 +130,13 @@ class RedisPubSub:
             try:
                 org_id = int(org_prefix.split("_", 1)[1])
             except (IndexError, ValueError):
-                logger.error(f"Invalid org_prefix format: {org_prefix}")
+                logger.error("Invalid org_prefix format: {}", org_prefix)
                 return
 
             close_old_connections()
 
             from tables.services.storage_service.db_sync import StorageFileSync
+            from tables.services.storage_service.quota_service import is_over_quota
 
             for mutation in event.mutations:
                 rel_path = mutation.path
@@ -143,10 +144,17 @@ class RedisPubSub:
                 if rel_path and rel_path.startswith(org_prefix + "/"):
                     rel_path = rel_path[len(org_prefix) + 1 :]
 
-                if mutation.op == "write":
-                    StorageFileSync.on_upload(org_id, rel_path)
-                elif mutation.op == "delete":
-                    StorageFileSync.on_delete(org_id, rel_path)
+                # One bad mutation must not drop the rest of the batch or the session
+                # bookkeeping below.
+                try:
+                    if mutation.op == "write":
+                        self._record_external_write(org_id, rel_path)
+                    elif mutation.op == "delete":
+                        StorageFileSync.on_delete(org_id, rel_path)
+                except Exception:
+                    logger.exception(
+                        "Could not sync storage {} of {} in org {}", mutation.op, rel_path, org_id
+                    )
 
             if event.session_id is not None:
                 redis_key = f"session:{event.session_id}:storage_mutations"
@@ -166,8 +174,40 @@ class RedisPubSub:
 
                 self.redis_client.expire(redis_key, 7200)
 
+            # Agent writes are already stored, so they cannot be rejected; flag them.
+            if any(mutation.op == "write" for mutation in event.mutations) and is_over_quota(
+                org_id
+            ):
+                logger.warning(
+                    "Org {} is over its storage quota after agent writes (execution {})",
+                    org_id,
+                    event.execution_id,
+                )
+
         except Exception as e:
-            logger.error(f"Error handling storage_mutations message: {e}")
+            logger.error("Error handling storage_mutations message: {}", e)
+
+    @staticmethod
+    def _record_external_write(org_id: int, rel_path: str) -> None:
+        """Record an agent write at its stored size. When the store cannot be asked
+        (error, timeout, a path it rejects), the row is still written, without a
+        size, as before sizes were tracked."""
+        from tables.services.storage_service import get_storage_manager
+        from tables.services.storage_service.db_sync import StorageFileSync
+
+        try:
+            get_storage_manager().record_external_write(org_id, rel_path)
+        except FileNotFoundError:
+            logger.warning(
+                "Skipping storage write of {} in org {}: no such object", rel_path, org_id
+            )
+        except Exception:
+            logger.exception(
+                "Could not read the stored size of {} in org {}; recording it without one",
+                rel_path,
+                org_id,
+            )
+            StorageFileSync.on_upload(org_id, rel_path)
 
     def webhook_events_handler(self, message: dict):
         try:

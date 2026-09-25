@@ -99,6 +99,11 @@ class FileValidator:
             )
         return None
 
+    # TODO: storage no longer validates through here (it streams via
+    # upload_stream_service with archive_formats.inspect_archive and
+    # ArchiveExtractionGuard); only knowledge document uploads reach validate().
+    # Consider dropping the archive scans below and moving knowledge uploads onto
+    # the storage streaming path.
     def _archive_problem(self, file_obj, filename: str) -> str | None:
         """Why this archive's contents are rejected (executables inside, unsafe
         declared expansion), or None; a non-archive passes."""

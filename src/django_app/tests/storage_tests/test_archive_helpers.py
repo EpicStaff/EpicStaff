@@ -14,7 +14,11 @@ from io import BytesIO
 
 import pytest
 
-from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
+from tables.services.storage_service.archive_limits import (
+    ArchiveExtractionGuard,
+    ArchiveLimitExceeded,
+)
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 
 @pytest.fixture
@@ -204,3 +208,53 @@ class TestIterArchiveMembersLimits:
 
     def test_applies_a_default_guard_when_none_is_injected(self, backend, sample_zip):
         assert len(_drain(backend, sample_zip)) == 2
+
+
+def _tar_of(members, *, tar_format=tarfile.GNU_FORMAT) -> BytesIO:
+    """members: (name, member type, bytes or None)."""
+    buf = BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", format=tar_format) as tf:
+        for name, member_type, data in members:
+            info = tarfile.TarInfo(name)
+            info.type = member_type
+            if data is None:
+                tf.addfile(info)
+            else:
+                info.size = len(data)
+                tf.addfile(info, BytesIO(data))
+    buf.seek(0)
+    return buf
+
+
+class TestStreamingTarHeadersAndTypes:
+    """The streaming iterator guards itself too, not only the pre-flight before it.
+    Uses its own backend (only the inherited iterator is exercised)."""
+
+    backend = InMemoryStorageBackend()
+
+    @pytest.mark.parametrize("tar_format", [tarfile.GNU_FORMAT, tarfile.PAX_FORMAT])
+    def test_a_long_name_header_bomb_is_rejected(self, tar_format):
+        archive = _tar_of([("a" * (1024 * 1024), tarfile.REGTYPE, b"x")], tar_format=tar_format)
+        with pytest.raises(ValueError, match="tar header of"):
+            _names(self.backend, archive)
+
+    @pytest.mark.parametrize("tar_format", [tarfile.GNU_FORMAT, tarfile.PAX_FORMAT])
+    def test_long_nested_names_stream_as_before(self, tar_format):
+        deep = "/".join(["a-rather-long-folder-name"] * 10) + "/file-" + "n" * 200 + ".txt"
+        archive = _tar_of(
+            [("empty", tarfile.DIRTYPE, None), (deep, tarfile.REGTYPE, b"deep")],
+            tar_format=tar_format,
+        )
+        assert _drain(self.backend, archive) == [deep]
+
+    @pytest.mark.parametrize("member_type", [tarfile.FIFOTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE])
+    def test_a_device_or_fifo_member_is_rejected(self, member_type):
+        archive = _tar_of([("ok.txt", tarfile.REGTYPE, b"x"), ("dev", member_type, None)])
+        with pytest.raises(ValueError, match="not a plain file or folder"):
+            _names(self.backend, archive)
+
+    def test_every_member_counts_toward_the_entry_cap_folders_too(self):
+        archive = _tar_of([(f"d{i}", tarfile.DIRTYPE, None) for i in range(3)])
+        guard = ArchiveExtractionGuard(max_entries=2, max_total_bytes=1_000)
+        with pytest.raises(ArchiveLimitExceeded, match="more than 2 entries"):
+            _names(self.backend, archive, guard)

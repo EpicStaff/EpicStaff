@@ -1,4 +1,3 @@
-import tarfile
 import zipfile
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
@@ -8,6 +7,7 @@ from tables.services.storage_service.archive_limits import (
     GuardedMemberReader,
     default_guard,
 )
+from tables.services.storage_service.archive_readers import is_tar, open_tar
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
@@ -57,10 +57,11 @@ class AbstractStorageBackend(ABC):
     ) -> Iterator[tuple[str, "GuardedMemberReader"]]:
         """Yield (safe_name, GuardedMemberReader) per file member, streaming.
 
-        Rejects symlinked members and sanitizes names, but does
-        not read member bytes here — the caller streams each reader to storage
-        before advancing to the next member (member stays open during the
-        yield)."""
+        Rejects symlinks, hardlinks and any tar member that is not a plain file or
+        folder (every tar member, folders too, counts toward the guard's entry
+        cap) and sanitizes names, but does not read member bytes here — the
+        caller streams each reader to storage before advancing to the next
+        member (member stays open during the yield)."""
         pos = archive_file.tell()
         guard = guard or default_guard()
 
@@ -79,27 +80,25 @@ class AbstractStorageBackend(ABC):
 
         archive_file.seek(pos)
 
-        try:
-            is_tar = tarfile.is_tarfile(archive_file)
-        except Exception:
-            is_tar = False
-
-        if is_tar:
-            archive_file.seek(pos)
-
-            with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
+        if is_tar(archive_file):
+            with open_tar(archive_file) as tf:
                 # Lazily, not getmembers(): that inflates the whole archive first.
                 for member in tf:
+                    guard.account_entry()
                     if member.issym() or member.islnk():
                         raise ValueError(
                             f"Archive member is a symlink or hardlink: {member.name!r}"
                         )
-                    if member.isfile():
-                        guard.account_entry()
-                        safe_name = self._sanitize_archive_member_name(member.name)
-                        fobj = tf.extractfile(member)
-                        if fobj:
-                            yield safe_name, GuardedMemberReader(fobj, guard, member.name)
+                    if member.isdir():
+                        continue
+                    if not member.isfile() or member.issparse():
+                        raise ValueError(
+                            f"Archive member is not a plain file or folder: {member.name!r}"
+                        )
+                    safe_name = self._sanitize_archive_member_name(member.name)
+                    fobj = tf.extractfile(member)
+                    if fobj:
+                        yield safe_name, GuardedMemberReader(fobj, guard, member.name)
             return
 
         archive_file.seek(pos)
@@ -124,7 +123,9 @@ class AbstractStorageBackend(ABC):
 
     @abstractmethod
     def unique_key(self, key: str, is_folder: bool = False) -> str:
-        """key, or its first "name (n)" variant that nothing exists at yet."""
+        """key, or its first "name (n)" variant that nothing exists at yet. For a
+        folder, a file of the same name counts as existing: nothing can be written
+        under it."""
 
     @abstractmethod
     def delete(self, path: str) -> None:
@@ -133,6 +134,12 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def mkdir(self, path: str) -> None:
         """Create a folder."""
+
+    @abstractmethod
+    def claim_folder(self, path: str) -> bool:
+        """Create the folder marker only if none exists yet, atomically in the store.
+        False when another writer got there first, with a folder or a file of that
+        name."""
 
     @abstractmethod
     def move(self, source_path: str, destination_path: str) -> str:
@@ -155,12 +162,23 @@ class AbstractStorageBackend(ABC):
         """
 
     @abstractmethod
-    def copy(self, source_path: str, destination_path: str) -> list[str]:
-        """Copy file or folder. Returns the actual destination path(s) created."""
+    def copy(self, source_path: str, destination_path: str) -> list[tuple[str, int]]:
+        """Copy file or folder into the destination folder. Returns (key, size) of
+        every object created, sizes read from the store; folder markers end in "/".
+        On failure nothing it created is left behind."""
+
+    @abstractmethod
+    def delete_keys(self, keys: list[str]) -> None:
+        """Delete exactly these keys (as copy returns them), nothing else."""
 
     @abstractmethod
     def info(self, path: str) -> FileInfo | FolderInfo:
         """Return file or folder metadata."""
+
+    @abstractmethod
+    def head_file(self, path: str) -> FileInfo | None:
+        """Metadata of the file at path from one quick, non-retried request; None when
+        no file is there. For callers that must not stall on a slow store."""
 
     @abstractmethod
     def exists(self, path: str) -> bool:
