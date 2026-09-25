@@ -1,0 +1,88 @@
+:host {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    isolation: isolate;
+    background: var(--color-background-body);
+    border: 1px solid var(--accent-color);
+}
+
+app-flow-graph {
+    flex: 1;
+    min-height: 0;
+}
+
+.preview-bar {
+    position: absolute;
+    top: var(--space-lg);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    // Centered between the canvas controls: the left toolbar (Domain, search) ends ~10rem in,
+    // so a long version name truncates instead of sliding under them.
+    max-width: min(40rem, calc(100% - 2 * 10rem));
+    padding: var(--space-2xs) var(--space-2xs) var(--space-2xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    background: var(--color-modals-background);
+    color: var(--accent-color);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+
+    &__title {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    button {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2xs);
+        flex-shrink: 0;
+        padding: var(--space-2xs) var(--space-sm);
+        border: none;
+        border-radius: var(--radius-sm);
+        font: inherit;
+        cursor: pointer;
+    }
+
+    &__warnings {
+        background: transparent;
+        color: var(--color-warning);
+
+        &:hover {
+            background: var(--color-secondary-btn-background-hover);
+        }
+    }
+
+    &__exit {
+        background: var(--accent-color);
+        color: var(--color-text-primary);
+
+        &:hover {
+            background: var(--accent-color-hover);
+        }
+    }
+}
+
+.preview-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    color: var(--color-text-secondary);
+
+    &--error {
+        color: var(--color-status-error);
+    }
+}
