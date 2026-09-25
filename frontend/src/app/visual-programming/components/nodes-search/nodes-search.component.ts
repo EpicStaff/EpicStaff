@@ -3,9 +3,9 @@ import {
     Component,
     ElementRef,
     EventEmitter,
+    inject,
     Input,
     OnChanges,
-    OnInit,
     Output,
     signal,
     SimpleChanges,
@@ -22,6 +22,12 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
     selector: 'app-nodes-search',
     imports: [FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    // Host listener instead of document.addEventListener so it is removed with the component
+    // (the flow canvas is destroyed and re-created around version preview).
+    host: {
+        '(document:keydown)': 'onDocumentKeydown($event)',
+        '(document:mousedown)': 'onDocumentMousedown($event)',
+    },
     template: `
         <div
             class="nodes-search-container"
@@ -270,7 +276,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
         `,
     ],
 })
-export class NodesSearchComponent implements OnInit, OnChanges {
+export class NodesSearchComponent implements OnChanges {
     @Input() nodes: NodeModel[] = [];
     @ViewChild('searchInputRef') searchInputRef!: ElementRef<HTMLInputElement>;
 
@@ -284,22 +290,28 @@ export class NodesSearchComponent implements OnInit, OnChanges {
     public filteredNodes: NodeModel[] = [];
     public isSearchVisible = signal<boolean>(false);
 
-    public ngOnInit(): void {
-        document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                e.preventDefault();
-                this.toggleSearchInput();
-            }
-
-            if (e.key === 'Escape' && this.isSearchVisible()) {
-                this.toggleSearchInput();
-            }
-        });
-    }
+    private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['nodes']) {
             this.updateSearch(this.searchQuery);
+        }
+    }
+
+    protected onDocumentMousedown(event: MouseEvent): void {
+        if (this.isSearchVisible() && !this.hostElement.nativeElement.contains(event.target as Node)) {
+            this.closeSearch();
+        }
+    }
+
+    protected onDocumentKeydown(event: KeyboardEvent): void {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+            event.preventDefault();
+            this.toggleSearchInput();
+        }
+
+        if (event.key === 'Escape' && this.isSearchVisible()) {
+            this.toggleSearchInput();
         }
     }
 
