@@ -47,6 +47,8 @@ class OrgContextService:
         if getattr(user, "is_superadmin", False):
             if not Organization.objects.filter(id=org_id).exists():
                 raise OrganizationNotFoundError()
+            if not Organization.objects.filter(id=org_id, is_active=True).exists():
+                raise OrgMembershipRequiredError()
             return
         exists = OrganizationUser.objects.filter(
             user=user, org_id=org_id, org__is_active=True
