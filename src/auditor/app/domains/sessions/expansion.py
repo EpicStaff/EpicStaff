@@ -22,7 +22,7 @@ class MatchScope(BaseModel):
 
     ancestors: bool = Field(
         default=False,
-        description="Pull in the matched row's owning node/session wrapper doc(s), up to 2 hops.",
+        description="Pull in the owning node/session wrapper doc(s), up to 2 hops, of every returned row - matches plus rows pulled in by children/rows_before.",
     )
     children: bool = Field(
         default=False,
@@ -83,30 +83,25 @@ async def _expand_full_session_history(
 
 async def _expand_ancestors(
     repository: AuditRepository,
-    matched_events: list[SessionAuditEvent],
+    rows: list[SessionAuditEvent],
     query_builder: ScopedQueryBuilder,
 ) -> list[SessionAuditEvent]:
-    """Walks parent_id upward, batched (not N+1). Session -> node -> event
-    is only 2 hops max, so this never needs to recurse arbitrarily deep."""
-    parent_ids = sorted({e.parent_id for e in matched_events if e.parent_id})
-    if not parent_ids:
-        return []
-    wrappers = await _fetch_all(
-        repository,
-        [{"terms": {"id": parent_ids}}],
-        query_builder,
-    )
-    grandparent_ids = sorted({w.parent_id for w in wrappers if w.parent_id})
-    grandparents = (
-        await _fetch_all(
-            repository,
-            [{"terms": {"id": grandparent_ids}}],
-            query_builder,
+    """Walks parent_id upward from every row already in the result, batched
+    (not N+1). Session -> node -> event is 2 hops max; parents already in the
+    result are not fetched again."""
+    known_ids = {row.id for row in rows}
+    ancestors: list[SessionAuditEvent] = []
+    frontier = rows
+    for _hop in range(2):
+        parent_ids = sorted(
+            {row.parent_id for row in frontier if row.parent_id and row.parent_id not in known_ids}
         )
-        if grandparent_ids
-        else []
-    )
-    return wrappers + grandparents
+        if not parent_ids:
+            break
+        frontier = await _fetch_all(repository, [{"terms": {"id": parent_ids}}], query_builder)
+        known_ids.update(row.id for row in frontier)
+        ancestors.extend(frontier)
+    return ancestors
 
 
 async def _expand_children(
@@ -187,8 +182,6 @@ async def expand_matches(
         )
 
     extra: list[SessionAuditEvent] = []
-    if match_scope.ancestors:
-        extra.extend(await _expand_ancestors(repository, matched_events, query_builder))
     if match_scope.children:
         extra.extend(await _expand_children(repository, matched_events, query_builder))
     if match_scope.rows_before > 0:
@@ -200,6 +193,10 @@ async def expand_matches(
                 query_builder,
             )
         )
+    if match_scope.ancestors:
+        # Runs last, over every row gathered so far, so a row pulled in by
+        # rows_before never comes back without its owning node/session.
+        extra.extend(await _expand_ancestors(repository, matched_events + extra, query_builder))
 
     return _dedupe_and_sort(matched_events + extra)
 

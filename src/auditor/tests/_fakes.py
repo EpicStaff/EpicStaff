@@ -4,7 +4,28 @@ Shared test doubles for auditor tests. Not itself a test module (no
 it's only ever imported by the real test modules.
 """
 
+import operator
+from datetime import datetime
+
 from src.shared.models import SessionAuditEvent
+
+_RANGE_OPERATORS = {"lt": operator.lt, "lte": operator.le, "gt": operator.gt, "gte": operator.ge}
+
+
+def _range_matches(event: SessionAuditEvent, clause: dict) -> bool:
+    (field, bounds), = clause["range"].items()
+    actual = getattr(event, field, None)
+    if actual is None:
+        return False
+    for op, bound in bounds.items():
+        # Datetime fields arrive as isoformat strings in the clause. Date
+        # math such as the retention scope's "now-10d" is not supported and
+        # raises here rather than silently matching.
+        if isinstance(actual, datetime):
+            bound = datetime.fromisoformat(bound)
+        if not _RANGE_OPERATORS[op](actual, bound):
+            return False
+    return True
 
 
 def _clause_matches(event: SessionAuditEvent, clause: dict) -> bool:
@@ -14,13 +35,13 @@ def _clause_matches(event: SessionAuditEvent, clause: dict) -> bool:
     if "terms" in clause:
         (field, values), = clause["terms"].items()
         return getattr(event, field, None) in values
-    # range/bool/wildcard/etc. clauses aren't exercised by the current tests
-    # built on this fake - treat as always-matching rather than trying to
-    # fully reimplement the compiler's semantics here. KNOWN LIMITATION: this
-    # means a `range` clause (e.g. the `event_time <= ...` upper bound that
-    # match_scope._expand_rows_before builds) is silently ignored - a
-    # rows_before test reusing this fake would pass even if the time-bound
-    # filtering were broken, unless _clause_matches is extended first.
+    if "range" in clause:
+        return _range_matches(event, clause)
+    # bool/wildcard/etc. clauses aren't exercised by the current tests built
+    # on this fake - treat as always-matching rather than trying to fully
+    # reimplement the compiler's semantics here. KNOWN LIMITATION: a test
+    # whose correctness depends on one of those clauses would pass even if
+    # the clause were wrong, unless _clause_matches is extended first.
     return True
 
 
@@ -28,8 +49,8 @@ class InMemoryFakeRepository:
     """Stands in for SessionAuditRepository - evaluates the compiled
     `{"bool": {"filter": [...]}}` query against an in-memory event list.
     Real enough to drive match_scope's ancestors/children/rows_before/
-    full_session_history follow-up queries (all of which are simple
-    term/terms lookups), without needing real OpenSearch.
+    full_session_history follow-up queries (simple term/terms/range
+    lookups), without needing real OpenSearch.
 
     Paginates like the real repository: a `cursor` is just the string form
     of an offset into the sorted match list, and a page hands back a

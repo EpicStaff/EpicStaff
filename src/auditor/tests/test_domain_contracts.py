@@ -33,7 +33,7 @@ from app.domains.base import (
     ScopingPolicy,
 )
 from app.domains.sessions.domain import SESSIONS
-from app.domains.sessions.expansion import MatchScope
+from app.domains.sessions.expansion import MatchScope, expand_matches
 from app.filtering.ast import FieldSpec, FilterValidationError
 from app.filtering.constants import SELECT_OPS, TEXT_CONDITION_OPS
 from app.repositories.compiler import FilterCompileError, QueryCompiler
@@ -431,3 +431,37 @@ def test_session_audit_event_details_default_is_not_shared_between_instances():
     first.details["leaked"] = True
 
     assert second.details == {}
+
+
+# --- match_scope expansion ---------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ancestors_cover_rows_pulled_in_by_rows_before():
+    def event(event_id, kind, seconds, parent_id=""):
+        return SessionAuditEvent(
+            id=event_id, parent_id=parent_id, session_id=100, kind=kind,
+            event_time=NOW + timedelta(seconds=seconds), org_id=ORG_ID,
+        )
+
+    events = [
+        event("sess", "session", 0),
+        event("node-a", "node", 1, "sess"),
+        event("evt-a1", "event", 2, "node-a"),
+        event("node-b", "node", 3, "sess"),
+        event("evt-b1", "event", 4, "node-b"),
+        event("evt-b2", "event", 5, "node-b"),
+    ]
+    query_builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(ORG_ID, 0))
+
+    result = await expand_matches(
+        InMemoryFakeRepository(events),
+        [events[4]],
+        MatchScope(ancestors=True, rows_before=2),
+        query_builder,
+    )
+
+    result_ids = [row.id for row in result]
+    # evt-a1 arrives via rows_before; without node-a the tree shows it as a detached root.
+    assert set(result_ids) == {"sess", "node-a", "evt-a1", "node-b", "evt-b1"}
+    assert len(result_ids) == len(set(result_ids))

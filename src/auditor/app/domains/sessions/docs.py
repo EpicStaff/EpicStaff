@@ -153,9 +153,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "not_equal (filters)": {
         "summary": "op: not_equal",
-        "value": {
-            "filters": {"field": "status", "op": "not_equal", "value": "completed"}
-        },
+        "value": {"filters": {"field": "status", "op": "not_equal", "value": "completed"}},
     },
     # --- contains / not_contains ----------------------------------------
     "contains (query)": {
@@ -172,16 +170,12 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "not_contains (filters)": {
         "summary": "op: not_contains",
-        "value": {
-            "filters": {"field": "output", "op": "not_contains", "value": "timeout"}
-        },
+        "value": {"filters": {"field": "output", "op": "not_contains", "value": "timeout"}},
     },
     # --- starts_with / ends_with (filters-only - no query symbol) -------
     "starts_with (filters only)": {
         "summary": "op: starts_with - no query-language symbol, use filters",
-        "value": {
-            "filters": {"field": "name", "op": "starts_with", "value": "Session"}
-        },
+        "value": {"filters": {"field": "name", "op": "starts_with", "value": "Session"}},
     },
     "ends_with (filters only)": {
         "summary": "op: ends_with - no query-language symbol, use filters",
@@ -211,9 +205,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "in (filters)": {
         "summary": "op: in",
-        "value": {
-            "filters": {"field": "status", "op": "in", "value": ["failed", "error"]}
-        },
+        "value": {"filters": {"field": "status", "op": "in", "value": ["failed", "error"]}},
     },
     "not_in (query)": {
         "summary": "op: not_in - `not in (...)`",
@@ -221,9 +213,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "not_in (filters)": {
         "summary": "op: not_in",
-        "value": {
-            "filters": {"field": "status", "op": "not_in", "value": ["failed", "error"]}
-        },
+        "value": {"filters": {"field": "status", "op": "not_in", "value": ["failed", "error"]}},
     },
     # --- gt / lt / gte / lte -----------------------------------------
     "gt/lt/gte/lte (query)": {
@@ -265,9 +255,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "free text (filters)": {
         "summary": "Free text as an AST leaf - sentinel field `__text__`",
-        "value": {
-            "filters": {"field": "__text__", "op": "contains", "value": "timeout"}
-        },
+        "value": {"filters": {"field": "__text__", "op": "contains", "value": "timeout"}},
     },
     # --- deep filters (agent/tool/task/prompt/message_text/message_thought) ---
     "deep filter - agent (query)": {
@@ -276,9 +264,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "deep filter - tool (filters)": {
         "summary": "Deep filter alias `tool` -> details.tool",
-        "value": {
-            "filters": {"field": "tool", "op": "in", "value": ["Web Search Tool"]}
-        },
+        "value": {"filters": {"field": "tool", "op": "in", "value": ["Web Search Tool"]}},
     },
     "deep filter - prompt (query)": {
         "summary": "Deep filter alias `prompt` -> details.prompt_text (free text)",
@@ -334,7 +320,7 @@ SEARCH_REQUEST_EXAMPLES = {
         },
     },
     "match_scope - ancestors": {
-        "summary": "Pull in each match's owning node/session wrapper doc(s)",
+        "summary": "Pull in the owning node/session wrapper doc(s) of every returned row",
         "value": {"query": "error is not empty", "match_scope": {"ancestors": True}},
     },
     "match_scope - children": {
