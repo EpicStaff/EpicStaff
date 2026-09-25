@@ -132,10 +132,17 @@ class PersistenceNode(BaseNode):
         return key
 
     def _resolve(self, path: str, variables: DotDict) -> Any:
-        if _PATH_SEGMENT.findall(path.split("|", 1)[0]) == ["variables"]:
+        segments = _PATH_SEGMENT.findall(path.split("|", 1)[0])
+        if segments == ["variables"]:
             raise PersistenceNodeError(
                 f"Persistence node '{self.node_name}': '{path}' names the whole flow state. "
                 "Point at a single variable, e.g. 'variables.user.id'."
+            )
+        # getattr on a DotDict would return its internals, e.g. `variables._properties`.
+        if any(segment.startswith("_") for segment in segments):
+            raise PersistenceNodeError(
+                f"Persistence node '{self.node_name}': '{path}' has a segment starting with '_'. "
+                "Flow state paths cannot name internal attributes."
             )
         try:
             # Keyed by the path itself so the resolver's own messages name the user's path.

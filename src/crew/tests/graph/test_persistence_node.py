@@ -1,3 +1,4 @@
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -138,6 +139,27 @@ async def test_write_value_resolving_to_dict_method_raises():
     with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.cart.items'.*method"):
         await run(node, {"cart": {"total": 3}})
     client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "value_path", ["variables._properties", "variables.__dict__", "variables.user._secret|0"]
+)
+async def test_write_value_naming_internal_attribute_raises(value_path):
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+    with pytest.raises(PersistenceNodeError, match=f"persist_1.*'{re.escape(value_path)}'.*'_'"):
+        await run(node, {"user": {"_secret": 1}})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_render_key_rejects_placeholder_naming_internal_attribute():
+    client = AsyncMock()
+    node = make_node("read", [{"alias": "a", "key": "k_{variables._properties}"}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables._properties'.*'_'"):
+        await run(node, {"user": {"id": 1}})
+    client.read.assert_not_awaited()
 
 
 @pytest.mark.asyncio
