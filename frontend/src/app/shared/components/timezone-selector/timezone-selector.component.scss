@@ -27,7 +27,7 @@
         color: var(--color-input-text-placeholder);
     }
 
-    &:hover {
+    &:hover:not(:disabled) {
         border-color: var(--accent-color, #685fff);
     }
 
