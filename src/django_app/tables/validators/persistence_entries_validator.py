@@ -5,56 +5,101 @@ from rest_framework import serializers
 
 from tables.constants.persistence_constants import MAX_KEY_LENGTH
 
-_REQUIRED_FIELDS = {
-    "read": ("alias", "key"),
+_FIELDS = {
+    "read": ("key", "value"),
     "write": ("key", "value"),
     "delete": ("key",),
 }
-_ALLOWED_FIELDS = {
-    "read": {"alias", "key", "default"},
-    "write": {"key", "value"},
-    "delete": {"key"},
-}
-# Crew's `variables` is a DotDict, so a path must start with a key (`variables[0]` never
-# resolves). A prefix match leaves room for the `|default` suffix; ASCII matches the frontend.
-_STATE_PATH = re.compile(r"^variables\.\w", re.ASCII)
+# Crew's `variables` is a DotDict, so a path starts with a name (`variables[0]` never
+# resolves). ASCII matches the frontend. Crew's PersistenceNode checks the same rules at run
+# time.
+_STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[\d+\])*", re.ASCII)
+_PATH_NAME = re.compile(r"\w+", re.ASCII)
+# DotDict attribute access finds these before a stored key, so crew could never read a value
+# kept under one of these names: the dict methods plus DotDict's own public methods.
+DOTDICT_METHOD_NAMES = frozenset(
+    {
+        "add_property",
+        "add_setter",
+        "clear",
+        "copy",
+        "deep_dump",
+        "fromkeys",
+        "get",
+        "items",
+        "keys",
+        "model_dump",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "values",
+    }
+)
 
 
 class PersistenceEntriesValidator:
-    """Structural rules for PersistenceNode.entries. Key templates are rendered by crew."""
+    """Structural rules for PersistenceNode.entries. Key templates are rendered by crew.
+
+    `value` is a flow state path in both modes that have one: the source of a write, the
+    target a read stores into. Returned entries carry the stripped path.
+    """
 
     def validate(self, mode: str, entries: Any) -> list[dict]:
         if not isinstance(entries, list):
             raise serializers.ValidationError({"entries": "Must be a list."})
         errors: list[str] = []
-        aliases: set[str] = set()
+        read_targets: set[str] = set()
         for index, entry in enumerate(entries):
-            error = self._entry_error(mode, entry, aliases)
+            error = self._entry_error(mode, entry, read_targets)
             if error:
                 errors.append(f"Entry {index}: {error}")
         if errors:
             raise serializers.ValidationError({"entries": errors})
-        if mode == "write":
-            # Crew keeps the `|default` text verbatim, so `variables.x|0 ` would default to "0 ".
-            return [{**entry, "value": entry["value"].strip()} for entry in entries]
-        return entries
+        if mode == "delete":
+            return entries
+        # Stripping canonicalises read targets (the duplicate check compares stripped paths),
+        # and crew keeps a write's `|default` text verbatim, so `variables.x|0 ` would default
+        # to "0 ".
+        return [{**entry, "value": entry["value"].strip()} for entry in entries]
 
-    def _entry_error(self, mode: str, entry: Any, aliases: set[str]) -> str | None:
+    def _entry_error(self, mode: str, entry: Any, read_targets: set[str]) -> str | None:
         if not isinstance(entry, dict):
             return "must be an object."
-        unknown = set(entry) - _ALLOWED_FIELDS[mode]
+        unknown = set(entry) - set(_FIELDS[mode])
         if unknown:
             return f"unknown fields {sorted(unknown)} for mode '{mode}'."
-        for field in _REQUIRED_FIELDS[mode]:
+        for field in _FIELDS[mode]:
             value = entry.get(field)
             if not isinstance(value, str) or not value.strip():
                 return f"'{field}' must be a non-empty string."
         if len(entry["key"]) > MAX_KEY_LENGTH:
             return f"'key' must be at most {MAX_KEY_LENGTH} characters."
-        if mode == "write" and not _STATE_PATH.match(entry["value"].strip()):
-            return "'value' must be a state path like 'variables.user.name'."
+        if mode == "delete":
+            return None
+        path = entry["value"].strip()
+        if mode == "read" and "|" in path:
+            return (
+                "'value' is where the stored value goes: use a plain state path like "
+                "'variables.user.name', without '|default'."
+            )
+        error = self._state_path_error(path.split("|", 1)[0])
+        if error:
+            return error
         if mode == "read":
-            if entry["alias"] in aliases:
-                return f"duplicate alias '{entry['alias']}'."
-            aliases.add(entry["alias"])
+            if path in read_targets:
+                return (
+                    f"'{path}' already receives another key; use a different variable for each key."
+                )
+            read_targets.add(path)
+        return None
+
+    def _state_path_error(self, state_path: str) -> str | None:
+        if not _STATE_PATH.fullmatch(state_path):
+            return "'value' must be a state path like 'variables.user.name'."
+        for name in _PATH_NAME.findall(state_path):
+            if name.startswith("_"):
+                return f"'value' names '{name}'; use a variable name without the leading '_'."
+            if name in DOTDICT_METHOD_NAMES:
+                return f"'value' names '{name}', a built-in method; use a different variable name."
         return None

@@ -13,9 +13,8 @@ def node(graph, default_org) -> PersistenceNode:
         node_name="persist",
         persistence_table=table,
         mode="write",
-        entries=[{"key": "profile_{user_id}", "value": "profile"}],
-        input_map={"user_id": "variables.user.id", "profile": "variables.profile"},
-        output_variable_path="variables.saved",
+        entries=[{"key": "profile_{variables.user.id}", "value": "variables.profile"}],
+        input_map={},
     )
 
 
@@ -25,8 +24,7 @@ def test_converter_maps_every_field(node):
     assert data.persistence_table_id == node.persistence_table_id
     assert data.mode == "write"
     assert data.entries == node.entries
-    assert data.input_map == node.input_map
-    assert data.output_variable_path == "variables.saved"
+    assert data.input_map == {}
 
 
 @pytest.mark.django_db

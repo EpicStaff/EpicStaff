@@ -42,7 +42,7 @@ def source_node(source_org):
         node_name="p",
         persistence_table=table,
         mode="read",
-        entries=[{"alias": "a", "key": "k"}],
+        entries=[{"key": "k", "value": "variables.a"}],
     )
 
 
@@ -161,7 +161,8 @@ def test_import_rejects_malformed_entries(source_node, source_org):
 @pytest.mark.django_db
 def test_import_rejects_entries_that_do_not_fit_the_mode(source_node, source_org):
     strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
-    exported = {**strategy.export_entity(source_node), "mode": "write"}
+    # Read and write share the {key, value} shape; delete takes only a key.
+    exported = {**strategy.export_entity(source_node), "mode": "delete"}
 
     with pytest.raises(serializers.ValidationError):
         _import_into(source_org, exported, source_node.graph_id)
