@@ -280,7 +280,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const overlaysEl = wrapperEl.querySelector('.group-overlays') as HTMLElement | null;
         if (overlaysEl) {
             const rowsBottom = bodyOffsetY + bodyEl.clientHeight;
-            overlaysEl.style.setProperty('--cdt-overlay-clip-top', `${Math.max(0, rowsOffsetY)}px`);
             overlaysEl.style.setProperty(
                 '--cdt-overlay-clip-bottom',
                 `${Math.max(0, wrapperRect.height - rowsBottom)}px`
@@ -509,6 +508,18 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 items.push({ ...item, top: stackTop + position * (chevronHeight + chevronStackGap) });
             });
         });
+
+        if (overlaysEl) {
+            const chipOverhang = 11;
+            const clipTop =
+                scrollTop > 0
+                    ? rowsOffsetY
+                    : Math.min(
+                          rowsOffsetY,
+                          ...items.map((item) => (item.isCollapsed ? item.top : item.top - chipOverhang))
+                      );
+            overlaysEl.style.setProperty('--cdt-overlay-clip-top', `${Math.max(0, clipTop)}px`);
+        }
 
         this.groupOverlayItems.set(items);
     }
