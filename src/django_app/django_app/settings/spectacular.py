@@ -8,6 +8,7 @@ SPECTACULAR_SETTINGS = {
     },
     "POSTPROCESSING_HOOKS": [
         "drf_spectacular.hooks.postprocess_schema_enums",
+        "django_app.spectacular_hooks.add_stream_upload_postprocessing_hook",
         "django_app.spectacular_hooks.assign_tags_postprocessing_hook",
         "django_app.spectacular_hooks.add_org_header_postprocessing_hook",
     ],

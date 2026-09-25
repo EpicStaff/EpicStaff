@@ -56,6 +56,7 @@
             </div>
             <button
                 class="files-dialog__add-btn"
+                [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                 (click)="onAddFilesToStorage()"
             >
                 + Add Files to Storage
@@ -66,6 +67,7 @@
     <div class="files-dialog__body">
         <app-drag-drop-area
             class="files-dialog__drop-wrapper"
+            [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
             (filesDropped)="onFilesDropped($event)"
         >
             <div class="files-dialog__file-list">
@@ -140,5 +142,13 @@
                 }
             </div>
         </app-drag-drop-area>
+        @if (uploadLimitsHint(); as hint) {
+            <p
+                class="files-dialog__size-hint"
+                [id]="uploadLimitsHintId"
+            >
+                {{ hint }}
+            </p>
+        }
     </div>
 </div>

@@ -9,9 +9,17 @@ from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser
 from rbac.models import Role
+from tables.services.storage_service import upload_stream_service
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+
+
+@pytest.fixture(autouse=True)
+def fresh_upload_admission(monkeypatch):
+    """The upload gate is a per-worker singleton: rebuild it from each test's
+    settings, and keep one test's in-flight uploads out of the next."""
+    monkeypatch.setattr(upload_stream_service, "_admission", None)
 
 
 @pytest.fixture
@@ -30,6 +38,17 @@ def org_user(db, org):
     role = Role.objects.get(name="Org Admin", is_built_in=True, org__isnull=True)
     user = get_user_model().objects.create_user(
         email="testuser@example.com",
+        password="TestPass123!",
+    )
+    return OrganizationUser.objects.create(user=user, org=org, role=role)
+
+
+@pytest.fixture
+def viewer_org_user(db, org):
+    """Org member whose role grants FILES:READ but not FILES:CREATE."""
+    role = Role.objects.get(name="Viewer", is_built_in=True, org__isnull=True)
+    user = get_user_model().objects.create_user(
+        email="viewer@example.com",
         password="TestPass123!",
     )
     return OrganizationUser.objects.create(user=user, org=org, role=role)

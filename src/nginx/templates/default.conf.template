@@ -88,6 +88,27 @@ server {
         proxy_read_timeout 86400;
     }
 
+    location = ${DJANGO_UPLOAD_STREAM_PATH} {
+        proxy_pass http://backend_server;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size 0;
+        # Inactivity timers (between two reads/writes), not a cap on the upload's
+        # length: Django enforces that (DJANGO_UPLOAD_IDLE_TIMEOUT, DJANGO_UPLOAD_MAX_DURATION).
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        # Keep above DJANGO_UPLOAD_IDLE_TIMEOUT (default 120s), so a stalled client gets Django's JSON 408, not nginx's HTML one.
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
         proxy_set_header Authorization $http_authorization;

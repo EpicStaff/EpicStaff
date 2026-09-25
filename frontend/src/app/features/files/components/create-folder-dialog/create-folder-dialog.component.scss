@@ -281,6 +281,15 @@
         overflow-y: hidden;
     }
 
+    &__size-hint {
+        flex-shrink: 0;
+        margin: 0;
+        color: var(--color-ks-transparent-text-60);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
     &__drop-wrapper {
         display: flex;
         flex-direction: column;

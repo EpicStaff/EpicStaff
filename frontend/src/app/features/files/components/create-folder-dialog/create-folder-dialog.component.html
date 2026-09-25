@@ -17,6 +17,7 @@
             <button
                 class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--confirm"
                 aria-label="Add files"
+                [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                 matTooltip="Confirm"
                 matTooltipPosition="above"
                 [disabled]="!isValid() || isUploading()"
@@ -176,10 +177,14 @@
         <!-- Drop zone + file list -->
         <div class="create-folder-dialog__field create-folder-dialog__field--files">
             @if (files().length === 0) {
-                <app-file-uploader (filesUploaded)="onFilesUploaded($event)" />
+                <app-file-uploader
+                    [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
+                    (filesUploaded)="onFilesUploaded($event)"
+                />
             } @else {
                 <app-drag-drop-area
                     class="create-folder-dialog__drop-wrapper"
+                    [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                     (filesDropped)="onFilesUploaded($event)"
                 >
                     <div class="create-folder-dialog__file-list-header">
@@ -196,6 +201,7 @@
                                 type="file"
                                 multiple
                                 hidden
+                                [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                                 (change)="onFileInputChange($event)"
                             />
                         </label>
@@ -218,7 +224,9 @@
                                     @if (getFileError(file); as serverError) {
                                         <span
                                             class="create-folder-dialog__file-badge create-folder-dialog__file-badge--blocked"
-                                            >{{ serverError }}</span
+                                            [matTooltip]="serverError.message"
+                                            matTooltipPosition="above"
+                                            >{{ serverError.label }}</span
                                         >
                                     } @else if (isZeroSize(file)) {
                                         <span
@@ -254,6 +262,14 @@
                         }
                     </ul>
                 </app-drag-drop-area>
+            }
+            @if (uploadLimitsHint(); as hint) {
+                <p
+                    class="create-folder-dialog__size-hint"
+                    [id]="uploadLimitsHintId"
+                >
+                    {{ hint }}
+                </p>
             }
         </div>
     </div>

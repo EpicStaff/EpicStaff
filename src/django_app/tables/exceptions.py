@@ -1,3 +1,5 @@
+import math
+
 from utils.exceptions import CustomAPIExeption
 
 from tables.constants.knowledge_constants import (
@@ -476,3 +478,82 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class StorageQuotaExceeded(CustomAPIExeption):
+    status_code = 413
+    default_detail = "Storage quota exceeded for this organization."
+    default_code = "storage_quota_exceeded"
+
+
+class UploadTooLarge(CustomAPIExeption):
+    status_code = 413
+    default_detail = "Uploaded file is too large."
+    default_code = "upload_too_large"
+
+
+class RangeNotSatisfiable(CustomAPIExeption):
+    status_code = 416
+    default_detail = "Requested range starts past the end of the file."
+    default_code = "range_not_satisfiable"
+
+    def __init__(self, file_size: int | None = None):
+        super().__init__()
+        # RFC 9110: a 416 names the current length, so the client can retry within it.
+        self.headers = {"Content-Range": f"bytes */{file_size}"} if file_size is not None else {}
+
+
+class UploadSlotsBusy(CustomAPIExeption):
+    """Every upload slot of this worker stayed taken for the whole wait: the server,
+    not the caller, is at capacity."""
+
+    status_code = 503
+    default_detail = "The server is busy with other uploads. Please retry shortly."
+    default_code = "upload_slots_busy"
+
+    def __init__(self, retry_after: float):
+        super().__init__()
+        self.headers = {"Retry-After": str(math.ceil(retry_after))}
+
+
+class OrgUploadLimitReached(Throttled):
+    """The organization already runs its share of this worker's uploads. A Throttled,
+    so it renders as 429 + Retry-After exactly like DRF's rate limiting."""
+
+    default_detail = "Your organization already has the maximum number of uploads in progress."
+    default_code = "org_upload_limit_reached"
+
+
+class UploadIdleTimeout(CustomAPIExeption):
+    status_code = 408
+    default_code = "upload_idle_timeout"
+
+    def __init__(self, idle_seconds: float):
+        super().__init__(
+            f"No data arrived for {math.ceil(idle_seconds)} seconds; the upload was aborted."
+        )
+
+
+class UploadDurationExceeded(CustomAPIExeption):
+    status_code = 408
+    default_code = "upload_duration_exceeded"
+
+    def __init__(self, max_seconds: float):
+        super().__init__(
+            f"The upload did not finish within the allowed {math.ceil(max_seconds)} seconds "
+            "and was aborted."
+        )
+
+
+class StorageUnavailable(CustomAPIExeption):
+    """Object storage (MinIO / S3) could not be reached or answered with a server error."""
+
+    status_code = 503
+    default_detail = "File storage is temporarily unavailable. Please retry later."
+    default_code = "storage_unavailable"
+    # Long enough for a MinIO container restart, short enough not to strand a user.
+    RETRY_AFTER_SECONDS = 30
+
+    def __init__(self):
+        super().__init__()
+        self.headers = {"Retry-After": str(self.RETRY_AFTER_SECONDS)}

@@ -41,3 +41,13 @@ def sanitize_storage_path(
         raise ValueError(f"Path escapes the target folder: {path!r}")
 
     return normalized
+
+
+def check_new_name(path: str) -> None:
+    """ValueError for a name that stores fine but breaks later: a control character
+    (a download can't put it in Content-Disposition) or a blank segment. Only for
+    names being created, so objects that already have such names stay reachable."""
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in path):
+        raise ValueError(f"Name contains a control character: {path!r}")
+    if any(not segment.strip() for segment in path.split("/")):
+        raise ValueError(f"Name must not be blank: {path!r}")

@@ -27,26 +27,6 @@ class StoragePathQuerySerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
-class StorageUploadSerializer(serializers.Serializer):
-    path = serializers.CharField(
-        required=False,
-        default="",
-        help_text="Target folder path",
-    )
-    files = serializers.ListField(
-        child=serializers.FileField(),
-        allow_empty=False,
-        help_text="Files to upload",
-    )
-
-    def validate_path(self, value: str) -> str:
-        return _normalize_path(value)
-
-    def validate(self, attrs):
-        FileValidator().validate(attrs["files"])
-        return attrs
-
-
 class StorageMkdirSerializer(serializers.Serializer):
     path = serializers.CharField(
         required=True,
@@ -199,33 +179,6 @@ class StorageInfoResponseSerializer(serializers.Serializer):
     )
 
 
-class StorageUploadResultSerializer(serializers.Serializer):
-    type = serializers.ChoiceField(
-        choices=["file", "archive"],
-        help_text="Whether the file was uploaded as-is or extracted as an archive",
-    )
-    path = serializers.CharField(
-        required=False,
-        help_text="Relative path (regular files only)",
-    )
-    size = serializers.IntegerField(
-        required=False,
-        help_text="File size in bytes (regular files only)",
-    )
-    extracted = serializers.ListField(
-        child=serializers.CharField(),
-        required=False,
-        help_text="Extracted file paths (archives only)",
-    )
-
-
-class StorageUploadResponseSerializer(serializers.Serializer):
-    uploaded = StorageUploadResultSerializer(
-        many=True,
-        help_text="Results for each uploaded file",
-    )
-
-
 class StorageFromToResponseSerializer(serializers.Serializer):
     from_path = serializers.CharField(source="from", help_text="Source path")
     to_path = serializers.CharField(source="to", help_text="Destination path")
@@ -235,6 +188,30 @@ class StorageFromToResponseSerializer(serializers.Serializer):
 class StorageMkdirResponseSerializer(serializers.Serializer):
     path = serializers.CharField(help_text="Created folder path")
     created = serializers.BooleanField(help_text="Whether the folder was created")
+
+
+class StorageUploadLimitsResponseSerializer(serializers.Serializer):
+    upload_path = serializers.CharField(
+        help_text="URL path of the streaming upload endpoint (POST the file there)"
+    )
+    max_file_size = serializers.IntegerField(
+        allow_null=True, help_text="Max bytes of one file; null = unlimited"
+    )
+    max_archive_size = serializers.IntegerField(help_text="Max compressed bytes of one archive")
+    free_bytes = serializers.IntegerField(
+        min_value=0, help_text="Bytes the organization may still upload"
+    )
+    archive_suffixes = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Lower-case suffixes (with the dot) of names uploaded as archives, sorted",
+    )
+    document_extensions = serializers.ListField(
+        child=serializers.CharField(),
+        help_text=(
+            "Lower-case extensions (with the dot) that are never unpacked even when "
+            "they match an archive suffix, sorted"
+        ),
+    )
 
 
 class GraphStorageFileSerializer(serializers.Serializer):

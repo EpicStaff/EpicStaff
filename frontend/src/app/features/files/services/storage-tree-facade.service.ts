@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
@@ -26,7 +25,9 @@ import {
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
 import { StorageItem, StorageItemInfo } from '../models/storage.models';
 import { getFileExtension } from '../utils/storage-file.utils';
+import { describeUploadFailures } from '../utils/upload-error.utils';
 import { StorageApiService } from './storage-api.service';
+import { StorageUploadService } from './storage-upload.service';
 
 export interface StorageContextActionEvent {
     action: string;
@@ -40,6 +41,7 @@ export interface StorageContextActionEvent {
 export class StorageTreeFacade {
     private destroyRef = inject(DestroyRef);
     private storageApiService = inject(StorageApiService);
+    private storageUploadService = inject(StorageUploadService);
     private toastService = inject(ToastService);
     private confirmationDialogService = inject(ConfirmationDialogService);
     private dialog = inject(Dialog);
@@ -386,19 +388,20 @@ export class StorageTreeFacade {
         this.storageApiService
             .confirmOverwrite('', validFiles)
             .pipe(
-                switchMap((confirmed) => (confirmed ? this.storageApiService.uploadMany('', validFiles) : EMPTY)),
+                switchMap((confirmed) => (confirmed ? this.storageUploadService.uploadMany('', validFiles) : EMPTY)),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toastService.success(`${validFiles.length} file(s) uploaded`);
-                    this.loadTree();
-                    this.notifyStorageChanged();
+                next: ({ uploaded, failed }) => {
+                    if (uploaded.length) {
+                        this.toastService.success(`${uploaded.length} file(s) uploaded`);
+                        this.loadTree();
+                        this.notifyStorageChanged();
+                    }
+                    if (failed.length) this.toastService.error(describeUploadFailures(failed));
                 },
-                error: (error: unknown) => {
-                    const checking = error instanceof HttpErrorResponse && error.url?.includes('/storage/list/');
-                    this.toastService.error(checking ? 'Failed to check existing files' : 'Failed to upload files');
-                },
+                // uploadMany reports failures in its result; only the overwrite check errors.
+                error: () => this.toastService.error('Failed to check existing files'),
             });
     }
 

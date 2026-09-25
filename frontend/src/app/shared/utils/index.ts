@@ -2,6 +2,7 @@ export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './download-blob.util';
 export * from './flow-links';
+export * from './format-file-size.util';
 export * from './generate-uuid.util';
 export * from './get-provider-icon';
 export * from './get-relative-time.util';

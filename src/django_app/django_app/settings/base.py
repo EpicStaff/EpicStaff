@@ -1,5 +1,10 @@
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
+from tables.services.rbac.first_setup_mode import FirstSetupMode
+from tables.validators.upload_settings_validator import (
+    parse_minio_duration,
+    validate_upload_settings,
+)
 
 from django_app.settings import BASE_DIR, env
 
@@ -92,6 +97,34 @@ MAX_UPLOAD_TOTAL_SIZE = env.byte_size("DJANGO_MAX_UPLOAD_TOTAL_SIZE")
 
 MAX_ARCHIVE_ENTRIES = env.int("DJANGO_MAX_ARCHIVE_ENTRIES")
 MAX_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE")
+
+ORG_STORAGE_QUOTA = env.byte_size("DJANGO_ORG_STORAGE_QUOTA")
+MAX_STREAM_UPLOAD_FILE_SIZE = env.byte_size("DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE")
+# Routed to the raw ASGI upload handler in asgi.py, not a URLconf route.
+UPLOAD_STREAM_PATH = env.str("DJANGO_UPLOAD_STREAM_PATH")
+MAX_ARCHIVE_FILE_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_FILE_SIZE")
+UPLOAD_PART_SIZE = env.byte_size("DJANGO_UPLOAD_PART_SIZE")
+UPLOAD_MAX_CONCURRENCY = env.int("DJANGO_UPLOAD_MAX_CONCURRENCY")
+UPLOAD_MAX_CONCURRENCY_PER_ORG = env.int("DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG")
+UPLOAD_SLOT_TIMEOUT = env.time("DJANGO_UPLOAD_SLOT_TIMEOUT")
+UPLOAD_IDLE_TIMEOUT = env.time("DJANGO_UPLOAD_IDLE_TIMEOUT")
+UPLOAD_MAX_DURATION = env.time("DJANGO_UPLOAD_MAX_DURATION")
+ARCHIVE_UPLOAD_CONCURRENCY = env.int("DJANGO_ARCHIVE_UPLOAD_CONCURRENCY")
+MINIO_STALE_UPLOADS_EXPIRY = parse_minio_duration(
+    "MINIO_STALE_UPLOADS_EXPIRY", env.str("MINIO_STALE_UPLOADS_EXPIRY")
+)
+validate_upload_settings(
+    part_size=UPLOAD_PART_SIZE,
+    storage_quota=ORG_STORAGE_QUOTA,
+    max_stream_file_size=MAX_STREAM_UPLOAD_FILE_SIZE,
+    max_archive_file_size=MAX_ARCHIVE_FILE_SIZE,
+    max_concurrency=UPLOAD_MAX_CONCURRENCY,
+    per_org_limit=UPLOAD_MAX_CONCURRENCY_PER_ORG,
+    slot_timeout=UPLOAD_SLOT_TIMEOUT,
+    idle_timeout=UPLOAD_IDLE_TIMEOUT,
+    max_duration=UPLOAD_MAX_DURATION,
+    stale_uploads_expiry=MINIO_STALE_UPLOADS_EXPIRY,
+)
 
 TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 

@@ -1,4 +1,3 @@
-import zipfile
 from io import BytesIO
 
 import pytest
@@ -129,23 +128,23 @@ class TestCopy:
     def test_copy_file_into_destination_returns_single_path(self, fake_backend):
         fake_backend.upload("orig.txt", BytesIO(b"data"))
         fake_backend.mkdir("target")
-        paths = fake_backend.copy("orig.txt", "target")
-        assert paths == ["target/orig.txt"]
+        copied = fake_backend.copy("orig.txt", "target")
+        assert copied == [("target/orig.txt", 4)]
         assert fake_backend.download("target/orig.txt") == b"data"
 
     def test_copy_folder_returns_all_nested_file_paths(self, fake_backend):
         fake_backend.upload("folder/a.txt", BytesIO(b"a"))
         fake_backend.upload("folder/sub/b.txt", BytesIO(b"b"))
         fake_backend.mkdir("dest")
-        paths = fake_backend.copy("folder", "dest")
-        assert set(paths) == {"dest/folder/a.txt", "dest/folder/sub/b.txt"}
+        copied = fake_backend.copy("folder", "dest")
+        assert set(copied) == {("dest/folder/a.txt", 1), ("dest/folder/sub/b.txt", 1)}
 
     def test_copy_appends_increment_suffix_on_name_conflict(self, fake_backend):
         fake_backend.upload("file.txt", BytesIO(b"data"))
         fake_backend.mkdir("dest")
         fake_backend.copy("file.txt", "dest")
-        paths = fake_backend.copy("file.txt", "dest")
-        assert paths == ["dest/file (1).txt"]
+        copied = fake_backend.copy("file.txt", "dest")
+        assert copied == [("dest/file (1).txt", 4)]
 
     def test_copy_raises_file_not_found_for_missing_source(self, fake_backend):
         with pytest.raises(FileNotFoundError):
@@ -231,54 +230,3 @@ class TestListTree:
         assert len(root.children) <= 3
 
 
-class TestUploadArchive:
-    def test_upload_archive_extracts_zip_into_named_folder(
-        self, fake_backend, sample_zip
-    ):
-        paths = fake_backend.upload_archive("", sample_zip, "sample.zip")
-        assert len(paths) == 2
-        assert any("hello.txt" in p for p in paths)
-
-    def test_upload_archive_extracts_tar_into_named_folder(
-        self, fake_backend, sample_tar
-    ):
-        paths = fake_backend.upload_archive("", sample_tar, "sample.tar")
-        assert len(paths) == 2
-
-    def test_upload_archive_increments_folder_name_on_conflict(
-        self, fake_backend, sample_zip
-    ):
-        fake_backend.mkdir("sample")
-        paths = fake_backend.upload_archive("", sample_zip, "sample.zip")
-        assert any("sample (1)" in p for p in paths)
-
-    def test_upload_archive_rejects_password_protected_zip(
-        self, fake_backend, password_zip
-    ):
-        with pytest.raises(ValueError, match="protected"):
-            fake_backend.upload_archive("", password_zip, "encrypted.zip")
-
-    def test_upload_archive_rejects_zip_slip_and_writes_nothing(self, fake_backend):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            # Malicious entry is written first so the generator fails before
-            # any legitimate entry gets extracted, proving there is no
-            # partial extraction on the way to the ValueError.
-            zf.writestr("../evil.txt", "evil content")
-            zf.writestr("safe.txt", "safe content")
-        buf.seek(0)
-
-        with pytest.raises(ValueError, match="escapes the target folder"):
-            fake_backend.upload_archive("", buf, "malicious.zip")
-
-        assert fake_backend._objects == {}
-
-    def test_upload_archive_rejects_traversal_in_archive_name(
-        self, fake_backend, sample_zip
-    ):
-        with pytest.raises(ValueError, match="escapes the target folder"):
-            fake_backend.upload_archive(
-                "org_1/uploads", sample_zip, "../org_2/evil.zip"
-            )
-
-        assert fake_backend._objects == {}

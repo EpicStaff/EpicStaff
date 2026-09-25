@@ -10,7 +10,8 @@ from io import BytesIO
 
 import pytest
 
-from tables.models import StorageFile
+from tables.exceptions import RangeNotSatisfiable
+from tables.models import Organization, StorageFile
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
@@ -124,7 +125,70 @@ class TestDownloadFlow:
     def test_download_with_db_row_returns_bytes(self, manager, org, org_user):
         manager.upload(org.id, "known.txt", BytesIO(b"known content"))
 
-        assert manager.download(org.id, "known.txt") == b"known content"
+        download = manager.download(org.id, "known.txt")
+
+        assert download.content == b"known content"
+        assert download.content_range is None
+
+    @pytest.mark.parametrize(
+        ("range_header", "content", "content_range"),
+        [
+            ("bytes=0-4", b"known", "bytes 0-4/13"),
+            ("bytes=6-", b"content", "bytes 6-12/13"),
+            ("bytes=6-999", b"content", "bytes 6-12/13"),
+        ],
+    )
+    def test_download_range_returns_only_that_part(
+        self, manager, org, org_user, range_header, content, content_range
+    ):
+        manager.upload(org.id, "known.txt", BytesIO(b"known content"))
+
+        download = manager.download(org.id, "known.txt", range_header)
+
+        assert download.content == content
+        assert download.content_range == content_range
+
+    @pytest.mark.parametrize(
+        "range_header",
+        ["bytes=-5", "bytes=0-1,4-5", "bytes=5-2", "items=0-4", "bytes=" + "9" * 5000 + "-"],
+    )
+    def test_download_unsupported_range_returns_whole_file(
+        self, manager, org, org_user, range_header
+    ):
+        manager.upload(org.id, "known.txt", BytesIO(b"known content"))
+
+        download = manager.download(org.id, "known.txt", range_header)
+
+        assert download.content == b"known content"
+        assert download.content_range is None
+
+    def test_download_range_past_end_raises_not_satisfiable(self, manager, org, org_user):
+        manager.upload(org.id, "known.txt", BytesIO(b"known content"))
+
+        with pytest.raises(RangeNotSatisfiable) as exc_info:
+            manager.download(org.id, "known.txt", "bytes=13-")
+        assert exc_info.value.headers == {"Content-Range": "bytes */13"}
+
+    def test_download_range_follows_the_object_not_a_stale_row_size(
+        self, manager, org, org_user
+    ):
+        manager.upload(org.id, "known.txt", BytesIO(b"short"))
+        # An agent write replaces the object without touching the row's size.
+        manager._backend.upload(f"org_{org.id}/known.txt", BytesIO(b"much longer content"))
+
+        download = manager.download(org.id, "known.txt", "bytes=0-")
+
+        assert download.content == b"much longer content"
+        assert download.content_range == "bytes 0-18/19"
+
+    def test_download_range_of_another_org_file_raises_file_not_found(
+        self, manager, org, org_user
+    ):
+        manager.upload(org.id, "known.txt", BytesIO(b"known content"))
+        other = Organization.objects.create(name="Other")
+
+        with pytest.raises(FileNotFoundError):
+            manager.download(other.id, "known.txt", "bytes=0-4")
 
 
 class TestDownloadZipFlow:

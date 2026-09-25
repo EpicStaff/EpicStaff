@@ -20,7 +20,7 @@ Access is gated by the caller's **FILES** permission in the active org:
 
 | Permission | Endpoints |
 |---|---|
-| `READ` | list, tree, search, info, download, graph-files |
+| `READ` | list, tree, search, info, download, graph-files, upload-limits |
 | `EXPORT` | download-zip |
 | `CREATE` | upload, mkdir, add-to-graph |
 | `UPDATE` | rename, move, copy |
@@ -48,21 +48,22 @@ existence leak.
 3. [Search Files](#search-files)
 4. [File Info](#file-info)
 5. [Download File](#download-file)
-6. [Upload Files](#upload-files)
-7. [Download ZIP](#download-zip)
-8. [Create Folder](#create-folder)
-9. [Bulk Delete](#bulk-delete)
-10. [Rename](#rename)
-11. [Move](#move)
-12. [Copy](#copy)
-13. [Add to Graph](#add-to-graph)
-14. [Remove from Graph](#remove-from-graph)
-15. [Graph Files](#graph-files)
-16. [Session Output Files](#session-output-files)
-17. [Blocked Extensions Reference](#blocked-extensions-reference)
-18. [Archive Format Reference](#archive-format-reference)
-19. [Path Normalization](#path-normalization)
-20. [HTTP Status Codes](#http-status-codes)
+6. [Upload Limits](#upload-limits)
+7. [Upload Files](#upload-files)
+8. [Download ZIP](#download-zip)
+9. [Create Folder](#create-folder)
+10. [Bulk Delete](#bulk-delete)
+11. [Rename](#rename)
+12. [Move](#move)
+13. [Copy](#copy)
+14. [Add to Graph](#add-to-graph)
+15. [Remove from Graph](#remove-from-graph)
+16. [Graph Files](#graph-files)
+17. [Session Output Files](#session-output-files)
+18. [Blocked Extensions Reference](#blocked-extensions-reference)
+19. [Archive Format Reference](#archive-format-reference)
+20. [Path Normalization](#path-normalization)
+21. [HTTP Status Codes](#http-status-codes)
 
 ---
 
@@ -294,47 +295,129 @@ Downloads a single file as a binary stream.
 
 ---
 
-## Upload Files
+## Upload Limits
 
-**POST** `/api/storage/upload/`
+**GET** `/api/storage/upload-limits/`
 
-Uploads one or more files. ZIP and TAR archives are auto-extracted into a subfolder named after the archive stem. Document formats (`.xlsx`, `.docx`, `.pptx`, `.jar`, etc.) are uploaded as-is and not extracted.
+The limits [Upload a File](#upload-a-file) enforces for the active organization, so a
+client can reject a file before sending it. Needs `FILES:READ`.
+
+**Response:** `200 OK`
+```json
+{
+    "upload_path": "/api/storage/upload/stream",
+    "max_file_size": 2147483648,
+    "max_archive_size": 52428800,
+    "free_bytes": 53687091200,
+    "archive_suffixes": [".tar", ".tar.bz2", ".tar.gz", ".tar.xz", ".taz", ".tbz", ".tbz2", ".tgz", ".txz", ".zip"],
+    "document_extensions": [".apk", ".docm", ".docx", ".dotx", ".epub", ".jar", ".odf", ".odg", ".odp", ".ods", ".odt", ".otp", ".ots", ".ott", ".potx", ".ppsx", ".pptm", ".pptx", ".war", ".xlsm", ".xlsx", ".xltx", ".xpi"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `upload_path` | string | URL path to POST files to (`DJANGO_UPLOAD_STREAM_PATH`, default `/api/storage/upload/stream`) |
+| `max_file_size` | integer \| null | Max bytes of one plain file (`DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE`); `null` = unlimited |
+| `max_archive_size` | integer | Max compressed bytes of one archive (`DJANGO_MAX_ARCHIVE_FILE_SIZE`); never `null` |
+| `free_bytes` | integer | Bytes the organization may still upload (quota minus used, never below 0) |
+| `archive_suffixes` | string[] | Lower-case suffixes, with the leading dot, of names uploaded as archives; sorted |
+| `document_extensions` | string[] | Lower-case extensions, with the leading dot, never unpacked even if they match an archive suffix; sorted |
+
+A file name is uploaded as an archive — and capped by `max_archive_size` instead
+of `max_file_size` — iff its lower-cased name ends with one of `archive_suffixes`
+and with none of `document_extensions`. This is exactly the server's routing rule.
+
+`free_bytes` is a snapshot: it ignores uploads still in flight and does not credit
+a file an upload would overwrite (the upload itself only charges the size
+difference). It shrinks as files are added, so read it again before each batch;
+the upload's own `413` stays authoritative.
+
+**Errors:** `400` no `X-Organization-Id` header (`org_context_required`) · `401` not
+authenticated · `403` missing `FILES:READ`, or the header names an organization the
+caller is not a member of.
+
+---
+
+## Upload a File
+
+**POST** `/api/storage/upload/stream`
+
+Streams one file into storage. The request body is the raw file — Django reads it
+in chunks and pipes it into object storage, so memory stays bounded by one part
+regardless of file size. One plain file may be at most
+`DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE` (default `2gb`; `none` = unlimited) and one
+archive at most `DJANGO_MAX_ARCHIVE_FILE_SIZE` (default `50mb`, compressed); a
+bigger one is rejected with `413` (`upload_too_large`). Everything is also bounded
+by the organization's free storage quota (`413`, `storage_quota_exceeded`).
+Read the limits up front from [Upload Limits](#upload-limits).
+
+When the request declares a `Content-Length` over the size limit, it is rejected
+with `413` at once, before it waits for an upload slot (so never with a `429` or
+`503` a client would retry). The quota is checked once the upload holds a slot,
+before any of the body is read. Both limits are enforced again on the bytes
+actually received, so a missing or wrong `Content-Length` is still stopped.
+
+An archive (`.zip`, `.tar`, `.tgz`, `.taz`, `.tar.gz`, `.tar.bz2`, `.tbz`, `.tbz2`,
+`.tar.xz`, `.txz`) up to `DJANGO_MAX_ARCHIVE_FILE_SIZE` is unpacked into a new
+folder instead of being stored. A file that carries an archive extension without
+actually being one is stored as a plain file. Document formats (`.xlsx`, `.docx`,
+`.pptx`, `.jar`, etc.) are stored as-is and never extracted.
+
+Note the exact path: there is **no trailing slash**.
 
 **Request:**
-- Content-Type: `multipart/form-data`
+- Content-Type: `application/octet-stream`
+- Body: the raw file bytes (not `multipart/form-data`, one file per request)
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `path` | string | No | Destination directory path |
-| `files` | file[] | Yes | One or more files; must be non-empty |
+| Query param | Type | Required | Description |
+|-------------|------|----------|-------------|
+| `path` | string | No | Destination directory; omit for the storage root |
+| `filename` | string | Yes | Target file name; must not contain a path separator |
 
 **Validation rules:**
 - Blocks executable extensions (see [Blocked Extensions Reference](#blocked-extensions-reference))
 - Blocks unsupported archive formats (see [Archive Format Reference](#archive-format-reference))
-- Scans ZIP/TAR contents for executables before extraction
-- Rejects password-protected archives
+- Rejects names with control characters or blank segments (file name and `path`)
+- Checks the whole archive before anything is written: executables inside,
+  empty, password-protected or damaged archives, zip-slip and symlinked members,
+  tar members that are not plain files or folders (hardlinks, FIFOs, devices,
+  sparse files), tar headers over 64 KiB, ZIP members with an unsupported
+  compression method (e.g. Deflate64), bad member names, a file and a folder
+  with the same name, more than `DJANGO_MAX_ARCHIVE_ENTRIES` entries; empty
+  folders inside are kept. Each of these answers `400`
+- The unpacked size has no cap of its own: an archive that would not fit the
+  organization's free storage quota is rejected with `413`
 
-**Response (regular file):** `201 Created`
+**Response (regular file):** `200 OK`
+```json
+{"status": "DONE", "path": "reports/data.csv", "size": 5120}
+```
+
+**Response (archive):** `200 OK`
 ```json
 {
-    "uploaded": [
-        {"type": "file", "path": "reports/data.csv", "size": 5120}
-    ]
+    "status": "DONE",
+    "path": "reports/dataset-3f2a9c1b",
+    "extracted": ["reports/dataset-3f2a9c1b/file1.csv", "reports/dataset-3f2a9c1b/file2.csv"]
 }
 ```
 
-**Response (auto-extracted archive):** `201 Created`
-```json
-{
-    "uploaded": [
-        {"type": "archive", "extracted": ["reports/dataset/file1.csv", "reports/dataset/file2.csv"]}
-    ]
-}
-```
+**Errors:** `400` blocked extension, malformed name or bad archive · `401` not
+authenticated (with `WWW-Authenticate`) · `403` missing `FILES:CREATE` in the
+active organization · `408` no body data for `DJANGO_UPLOAD_IDLE_TIMEOUT`
+(`upload_idle_timeout`) or the upload ran past `DJANGO_UPLOAD_MAX_DURATION`
+(`upload_duration_exceeded`) · `413` over `DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE` or
+`DJANGO_MAX_ARCHIVE_FILE_SIZE` (`upload_too_large`) or over the organization
+storage quota (`storage_quota_exceeded`) · `429` + `Retry-After` the organization already runs
+`DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG` uploads on this worker
+(`org_upload_limit_reached`) · `500` unexpected server error · `503` +
+`Retry-After` no upload slot freed up within `DJANGO_UPLOAD_SLOT_TIMEOUT`
+(`upload_slots_busy`) · `503` + `Retry-After: 30` object storage unreachable, or no
+folder name for an archive could be claimed in it (`storage_unavailable`).
+An aborted upload leaves no object and no row behind.
 
-**Error:** `400 Bad Request`
 ```json
-{"detail": "Upload rejected. '.exe' has a blocked executable extension"}
+{"status_code": 400, "code": "invalid", "message": "'setup.exe' has a blocked executable extension"}
 ```
 
 ---
@@ -454,6 +537,8 @@ Moves a file or folder to a new location. Supports cross-organization moves by p
 
 > **Note:** Cross-org move is non-atomic. If the delete step fails after the copy completes, the file will exist in both organizations.
 
+A cross-org move counts against the destination organization's storage quota. Over quota it fails with `413` and the source is left untouched.
+
 **Request (same org):**
 ```json
 {"from": "reports/file.pdf", "to": "archive/file.pdf"}
@@ -485,6 +570,8 @@ Moves a file or folder to a new location. Supports cross-organization moves by p
 ```json
 {"from": "Source path does not exist: ..."}
 ```
+
+**Error:** `413` — a cross-org move that does not fit the destination organization's storage quota.
 
 ---
 
@@ -520,6 +607,8 @@ Copies a file or folder to a new location. Supports cross-organization copies. I
 ```json
 {"from": "reports/file.pdf", "to": "backup/file.pdf", "success": true}
 ```
+
+**Error:** `413` — the copy (every file in a copied folder included) does not fit the destination organization's storage quota. Nothing is left behind.
 
 ---
 
@@ -684,4 +773,5 @@ All path inputs are normalized before processing:
 | 400 | Bad Request | Validation error, blocked extension, invalid graph IDs |
 | 404 | Not Found | Non-existing path, file, or graph |
 | 409 | Conflict | Resource already exists (e.g. mkdir on existing path) |
+| 413 | Content Too Large | Upload over the per-file or archive size limit (`upload_too_large`); upload, copy or cross-org move over the organization storage quota (`storage_quota_exceeded`) |
 | 500 | Internal Server Error | Unexpected server error |

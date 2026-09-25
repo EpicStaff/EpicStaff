@@ -18,8 +18,7 @@ from tables.serializers.storage_serializers import (
     StorageRenameSerializer,
     StorageSearchResponseSerializer,
     StorageTreeResponseSerializer,
-    StorageUploadResponseSerializer,
-    StorageUploadSerializer,
+    StorageUploadLimitsResponseSerializer,
 )
 
 _STORAGE_PATH_PARAM = OpenApiParameter(
@@ -60,24 +59,14 @@ STORAGE_DOWNLOAD_SWAGGER = {
     "summary": "Download a file",
     "description": (
         "Downloads a single file by path. Returns the file content "
-        "with appropriate Content-Disposition header."
+        "with appropriate Content-Disposition header. A single "
+        "`Range: bytes=first-[last]` header returns only that part (206)."
     ),
     "parameters": [_STORAGE_PATH_PARAM],
-    "responses": {200: OpenApiResponse(description="File content as binary stream")},
-}
-
-STORAGE_UPLOAD_SWAGGER = {
-    "summary": "Upload files",
-    "description": (
-        "Upload one or more files to the specified path. Send as "
-        "multipart/form-data with `files` (one or more files) and "
-        "`path` (target folder). Archives (ZIP/TAR) are automatically "
-        "extracted. Executable files are rejected."
-    ),
-    "request": StorageUploadSerializer,
     "responses": {
-        201: StorageUploadResponseSerializer,
-        400: OpenApiResponse(description="Validation error (missing files or blocked extension)"),
+        200: OpenApiResponse(description="File content as binary stream"),
+        206: OpenApiResponse(description="The requested byte range, with Content-Range"),
+        416: OpenApiResponse(description="Range starts past the end of the file"),
     },
 }
 
@@ -261,4 +250,22 @@ STORAGE_SEARCH_SWAGGER = {
         ),
     ],
     "responses": {200: StorageSearchResponseSerializer},
+}
+
+STORAGE_UPLOAD_LIMITS_SWAGGER = {
+    "summary": "Get upload limits",
+    "description": (
+        "Returns the limits the streaming upload enforces, so a client can reject an "
+        "oversize file before sending it. Sizes are in bytes: `max_file_size` caps one "
+        "plain file (null means unlimited) and `max_archive_size` one compressed "
+        "archive (always set). `free_bytes` is what the active organization may still "
+        "upload; it ignores uploads still in flight and does not credit a file the "
+        "upload would overwrite, and it shrinks as files are added, so read it again "
+        "before each batch. A file name is uploaded as an archive (and capped by "
+        "`max_archive_size`) iff its lower-cased name ends with one of "
+        "`archive_suffixes` and with none of `document_extensions`; both lists are "
+        "lower-case, include the leading dot and are sorted. `upload_path` is the URL "
+        "path to POST files to (DJANGO_UPLOAD_STREAM_PATH). Needs FILES:READ."
+    ),
+    "responses": {200: StorageUploadLimitsResponseSerializer},
 }
