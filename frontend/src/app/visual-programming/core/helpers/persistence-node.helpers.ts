@@ -1,8 +1,11 @@
 import { PersistenceEntryLookup } from '../../../features/persistent-data/models/persistence-table.model';
 import { PersistenceEntry, PersistenceMode, PersistenceReadEntry } from '../models/persistence-node.model';
 
-// Must stay identical to crew's key-template regex, so the panel flags exactly what crew rejects.
+// Mirrors crew's key-template parsing: placeholders match this regex, and a key with braces left over
+// once they are removed is malformed. Keep both identical to crew so the panel flags what crew rejects.
 const PLACEHOLDER = /\{([^{}]+)\}/g;
+// Key placeholders and write values are flow state paths: `variables` plus at least one segment.
+export const STATE_PATH = /^variables(\.\w|\[\d)/;
 
 export interface ExistenceBadge {
     kind: 'recorded' | 'missing' | 'dynamic' | 'unknown';
@@ -38,13 +41,29 @@ export function extractPlaceholders(template: string): string[] {
     return Array.from(template.matchAll(PLACEHOLDER), (match) => match[1]);
 }
 
-export function isStaticKey(template: string): boolean {
-    return extractPlaceholders(template).length === 0;
+/** Crew tolerates whitespace around a path, so the panel does too. */
+export function isStatePath(text: string): boolean {
+    return STATE_PATH.test(text.trim());
 }
 
-export function missingPlaceholders(template: string, inputMapKeys: string[]): string[] {
-    const known = new Set(inputMapKeys);
-    return extractPlaceholders(template).filter((name) => !known.has(name));
+/** An empty `{}` or an unbalanced brace. */
+export function isMalformedKey(template: string): boolean {
+    return /[{}]/.test(template.replace(PLACEHOLDER, ''));
+}
+
+export function isStaticKey(template: string): boolean {
+    return !isMalformedKey(template) && extractPlaceholders(template).length === 0;
+}
+
+export function nonStatePathPlaceholders(template: string): string[] {
+    return extractPlaceholders(template).filter((placeholder) => !isStatePath(placeholder));
+}
+
+export function keyTemplateHint(template: string): string | null {
+    if (isMalformedKey(template)) return 'Empty or unbalanced placeholder. Use e.g. {variables.user.id}';
+    const invalid = nonStatePathPlaceholders(template);
+    if (invalid.length === 0) return null;
+    return `Not a state path: ${invalid.map((placeholder) => `{${placeholder}}`).join(', ')}. Use e.g. {variables.user.id}`;
 }
 
 /**
@@ -88,6 +107,9 @@ export function existenceBadge(
     template: string,
     lookup: PersistenceEntryLookup | undefined
 ): ExistenceBadge {
+    if (isMalformedKey(template)) {
+        return { kind: 'unknown', label: '', tooltip: null };
+    }
     if (!isStaticKey(template)) {
         return { kind: 'dynamic', label: 'resolved at run time', tooltip: null };
     }

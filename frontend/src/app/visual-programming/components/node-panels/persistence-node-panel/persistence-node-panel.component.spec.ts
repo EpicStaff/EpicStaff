@@ -98,7 +98,7 @@ describe('PersistenceNodePanelComponent', () => {
     it('asks for a debounced autosave when mode or table change, so the canvas badge follows', () => {
         vi.useFakeTimers();
         const { panel, triggerAutosave } = createPanel(
-            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'user' }] })
+            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'variables.user' }] })
         );
 
         panel.form.get('mode')!.setValue('delete');
@@ -127,9 +127,96 @@ describe('PersistenceNodePanelComponent', () => {
         expect(triggerAutosave).not.toHaveBeenCalled();
     });
 
+    it('has no input map section and saves an empty input map', () => {
+        const { panel, fixture } = createPanel(
+            mapPersistenceNodeToModel({ ...DTO, input_map: { user_id: 'variables.user.id' } }),
+            { renderTemplate: true }
+        );
+
+        expect(fixture.nativeElement.querySelector('app-input-map')).toBeNull();
+        expect(panel.onSave()!.input_map).toEqual({});
+    });
+
+    it('accepts only state paths as write values', () => {
+        const { panel } = createPanel(
+            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: '' }] })
+        );
+        const value = (panel.form.get('entries') as FormArray).at(0).get('value')!;
+
+        for (const path of ['variables.a.b', 'variables.x|0', 'variables[0]', ' variables.a ']) {
+            value.setValue(path);
+            expect(value.valid).toBe(true);
+        }
+        for (const path of ['name', 'variables', 'variables.', '   ']) {
+            value.setValue(path);
+            expect(value.hasError('pattern')).toBe(true);
+        }
+        value.setValue('');
+        expect(value.hasError('required')).toBe(true);
+    });
+
+    it('shows an inline error for a write value that is not a state path, and saves it trimmed', () => {
+        const { panel, fixture } = createPanel(
+            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'variables.a' }] }),
+            { renderTemplate: true }
+        );
+        const value = (panel.form.get('entries') as FormArray).at(0).get('value')!;
+        const hintText = (): string | undefined =>
+            fixture.nativeElement.querySelector('.entry-hint')?.textContent.trim();
+
+        value.setValue('name');
+        fixture.detectChanges();
+        expect(hintText()).toBe('Must be a state path, e.g. variables.user.name');
+
+        value.setValue('  variables.user.name ');
+        fixture.detectChanges();
+        expect(hintText()).toBeUndefined();
+        expect(panel.onSave()!.data.entries).toEqual([{ key: 'profile', value: 'variables.user.name' }]);
+    });
+
+    it('hints at key placeholders that are not state paths', () => {
+        const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+        const entries = panel.form.get('entries') as FormArray;
+        const hints = (): string[] =>
+            Array.from(fixture.nativeElement.querySelectorAll('.entry-hint'), (hint: Element) =>
+                hint.textContent!.trim()
+            );
+
+        entries.at(0).patchValue({ key: 'profile_{user_id}' });
+        entries.at(1).patchValue({ key: 'plan_{ variables.user.id }' });
+        fixture.detectChanges();
+
+        expect(hints()).toEqual(['Not a state path: {user_id}. Use e.g. {variables.user.id}']);
+
+        entries.at(1).patchValue({ key: 'plan_{}' });
+        fixture.detectChanges();
+
+        expect(hints()).toEqual([
+            'Not a state path: {user_id}. Use e.g. {variables.user.id}',
+            'Empty or unbalanced placeholder. Use e.g. {variables.user.id}',
+        ]);
+    });
+
+    it('drops read aliases when switching to write, leaving the value path empty', () => {
+        const { panel } = createPanel(mapPersistenceNodeToModel(DTO));
+
+        panel.form.get('mode')!.setValue('write');
+
+        const entries = panel.form.get('entries') as FormArray;
+        expect(entries.getRawValue()).toEqual([
+            { key: 'profile', value: '' },
+            { key: 'plan', value: '' },
+        ]);
+        expect(entries.at(0).get('value')!.hasError('required')).toBe(true);
+    });
+
     describe('output variable path', () => {
         const writeNode = (): PersistenceNodeModel =>
-            mapPersistenceNodeToModel({ ...DTO, mode: 'write', entries: [{ key: 'profile', value: 'user' }] });
+            mapPersistenceNodeToModel({
+                ...DTO,
+                mode: 'write',
+                entries: [{ key: 'profile', value: 'variables.user' }],
+            });
         const outputField = (fixture: ComponentFixture<PersistenceNodePanelComponent>): Element | null =>
             fixture.nativeElement.querySelector('app-custom-input[label="Output Variable Path"]');
 
@@ -151,8 +238,10 @@ describe('PersistenceNodePanelComponent', () => {
             const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
 
             panel.form.get('mode')!.setValue('write');
-            // Write entries need a value alias before the form is valid.
-            (panel.form.get('entries') as FormArray).controls.forEach((entry) => entry.patchValue({ value: 'user' }));
+            // Write entries need a value path before the form is valid.
+            (panel.form.get('entries') as FormArray).controls.forEach((entry) =>
+                entry.patchValue({ value: 'variables.user' })
+            );
             fixture.detectChanges();
 
             expect(outputField(fixture)).toBeNull();

@@ -1,34 +1,74 @@
 import {
     existenceBadge,
     extractPlaceholders,
+    isMalformedKey,
     isSameLookupRequest,
+    isStatePath,
     isStaticKey,
-    missingPlaceholders,
+    keyTemplateHint,
+    nonStatePathPlaceholders,
     normalizeEntry,
     parseDefaultValue,
     reshapeEntriesForMode,
+    STATE_PATH,
 } from './persistence-node.helpers';
 
 describe('persistence node helpers', () => {
     it('extracts placeholders', () => {
-        expect(extractPlaceholders('profile_{user_id}_{region}')).toEqual(['user_id', 'region']);
+        expect(extractPlaceholders('profile_{variables.user.id}_{variables.region}')).toEqual([
+            'variables.user.id',
+            'variables.region',
+        ]);
         expect(extractPlaceholders('static')).toEqual([]);
     });
 
     it('detects static keys', () => {
         expect(isStaticKey('config')).toBe(true);
+        expect(isStaticKey('profile_{variables.user.id}')).toBe(false);
         expect(isStaticKey('profile_{user_id}')).toBe(false);
+        expect(isStaticKey('profile_{}')).toBe(false);
+        expect(isStaticKey('profile_{variables.id')).toBe(false);
     });
 
-    it('lists placeholders missing from the input map', () => {
-        expect(missingPlaceholders('p_{user_id}_{region}', ['user_id'])).toEqual(['region']);
+    it('detects malformed keys the way crew does', () => {
+        for (const key of ['p_{}', 'p_{variables.id', 'p_variables.id}', 'p_{{variables.id}}']) {
+            expect(isMalformedKey(key)).toBe(true);
+        }
+        for (const key of ['static', 'p_{variables.id}', 'p_{user_id}_{variables[0]}']) {
+            expect(isMalformedKey(key)).toBe(false);
+        }
     });
 
-    it('keeps only keys when switching modes', () => {
+    it('recognises state paths', () => {
+        for (const path of ['variables.a.b', 'variables.x|0', 'variables[0]']) {
+            expect(STATE_PATH.test(path)).toBe(true);
+        }
+        for (const path of ['name', 'variables', 'variables.', 'variables[', 'variablesX.a', 'state.variables.a']) {
+            expect(STATE_PATH.test(path)).toBe(false);
+        }
+        expect(isStatePath('  variables.a  ')).toBe(true);
+        expect(isStatePath(' variables. ')).toBe(false);
+    });
+
+    it('lists placeholders that are not state paths', () => {
+        expect(nonStatePathPlaceholders('p_{variables.user.id}_{region}_{variables[0]}')).toEqual(['region']);
+        expect(nonStatePathPlaceholders('static')).toEqual([]);
+        expect(nonStatePathPlaceholders('p_{ variables.id }_{variables.}')).toEqual(['variables.']);
+    });
+
+    it('builds one hint per key template', () => {
+        expect(keyTemplateHint('p_{variables.id}')).toBeNull();
+        expect(keyTemplateHint('p_{user_id}')).toBe('Not a state path: {user_id}. Use e.g. {variables.user.id}');
+        expect(keyTemplateHint('p_{}_{user_id}')).toBe('Empty or unbalanced placeholder. Use e.g. {variables.user.id}');
+    });
+
+    it('keeps only keys when switching modes, so a read alias never lands in a write value path', () => {
         const entries = [{ alias: 'a', key: 'k1', default: 1 }];
         expect(reshapeEntriesForMode(entries, 'delete')).toEqual([{ key: 'k1' }]);
         expect(reshapeEntriesForMode(entries, 'write')).toEqual([{ key: 'k1', value: '' }]);
-        expect(reshapeEntriesForMode([{ key: 'k1' }], 'read')).toEqual([{ alias: '', key: 'k1' }]);
+        expect(reshapeEntriesForMode([{ key: 'k1', value: 'variables.a' }], 'read')).toEqual([
+            { alias: '', key: 'k1' },
+        ]);
     });
 
     it('parses defaults as JSON, falling back to text', () => {
@@ -48,6 +88,9 @@ describe('persistence node helpers', () => {
         expect(existenceBadge('write', 'k', missing).label).toBe('new key');
         expect(existenceBadge('delete', 'k', missing).label).toBe('not recorded — no-op');
         expect(existenceBadge('read', 'p_{id}', undefined).kind).toBe('dynamic');
+        // A malformed key fails at run time: no lookup, and no badge claiming it is new or dynamic.
+        expect(existenceBadge('write', 'p_{', missing).kind).toBe('unknown');
+        expect(existenceBadge('write', 'p_{}', undefined).kind).toBe('unknown');
         expect(existenceBadge('read', 'k', undefined).kind).toBe('unknown');
     });
 

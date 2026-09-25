@@ -1,11 +1,19 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    AbstractControl,
+    FormArray,
+    FormGroup,
+    ReactiveFormsModule,
+    ValidationErrors,
+    Validators,
+} from '@angular/forms';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
     SelectComponent,
     SelectItem,
+    TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -30,9 +38,10 @@ import {
     ExistenceBadge,
     existenceBadge,
     isSameLookupRequest,
+    isStatePath,
     isStaticKey,
+    keyTemplateHint,
     LookupRequest,
-    missingPlaceholders,
     normalizeEntry,
     parseDefaultValue,
     reshapeEntriesForMode,
@@ -41,8 +50,6 @@ import { PersistenceNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PersistenceEntry, PersistenceMode } from '../../../core/models/persistence-node.model';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { InputMapComponent } from '../../input-map/input-map.component';
-import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 
 // Mirrors MAX_KEY_LENGTH in tables/constants/persistence_constants.py.
 const PERSISTENCE_KEY_MAX_LENGTH = 512;
@@ -61,10 +68,10 @@ interface EntryFormValue {
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
-        InputMapComponent,
         ValidationErrorsComponent,
         SelectComponent,
         AppSvgIconComponent,
+        TooltipComponent,
     ],
     templateUrl: './persistence-node-panel.component.html',
     styleUrls: ['./persistence-node-panel.component.scss'],
@@ -73,7 +80,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected readonly mode = signal<PersistenceMode>('read');
     protected readonly loadingTables = signal(false);
     protected readonly lookups = signal<PersistenceEntryLookupResponse>({});
-    protected readonly missingPlaceholderHints = signal<Record<number, string[]>>({});
+    protected readonly placeholderHints = signal<Record<number, string>>({});
     protected readonly keySuggestions = signal<string[]>([]);
     protected readonly canReadData = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Read));
     protected readonly tableItems = computed<SelectItem<number | null>[]>(() => [
@@ -121,10 +128,6 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return this.form.get('entries') as FormArray;
     }
 
-    protected get inputMapPairs(): FormArray {
-        return this.form.get('input_map') as FormArray;
-    }
-
     protected initializeForm(): FormGroup {
         const node = this.node();
         const { mode, persistence_table, entries } = node.data;
@@ -136,11 +139,8 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             persistence_table: this.fb.control<number | null>(persistence_table),
             mode: this.fb.control<PersistenceMode>(mode),
             entries: this.fb.array<FormGroup>(entries.map((entry) => this.createEntryGroup(entry, mode))),
-            input_map: this.fb.array([]),
             output_variable_path: [node.output_variable_path ?? ''],
         });
-
-        initializeInputMap(form, node.input_map as Record<string, unknown> | null | undefined, this.fb);
 
         form.controls.mode.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -184,13 +184,21 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return {
             ...this.node(),
             node_name: this.form.value.node_name,
-            input_map: createInputMapFromPairs(getValidInputPairs(this.inputMapPairs)),
+            // Entries reference flow state paths directly; this node has no input map.
+            input_map: {},
             output_variable_path: mode === 'read' ? this.form.value.output_variable_path || null : null,
             data: {
                 persistence_table: this.form.value.persistence_table ?? null,
                 mode,
                 entries: entryValues.map((entryValue) =>
-                    normalizeEntry({ ...entryValue, default: parseDefaultValue(entryValue.default ?? '') }, mode)
+                    normalizeEntry(
+                        {
+                            ...entryValue,
+                            value: entryValue.value?.trim(),
+                            default: parseDefaultValue(entryValue.default ?? ''),
+                        },
+                        mode
+                    )
                 ),
             },
         };
@@ -235,21 +243,21 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             });
         }
         if (mode === 'write') {
-            return this.fb.group({ key, value: ['value' in entry ? entry.value : '', Validators.required] });
+            return this.fb.group({
+                key,
+                value: ['value' in entry ? entry.value : '', [Validators.required, statePathValidator]],
+            });
         }
         return this.fb.group({ key });
     }
 
     private refreshPlaceholderHints(form: FormGroup): void {
-        const inputMapKeys = (form.get('input_map') as FormArray).controls.map((pair) =>
-            ((pair.value.key as string) ?? '').trim()
-        );
-        const hints: Record<number, string[]> = {};
+        const hints: Record<number, string> = {};
         (form.get('entries') as FormArray).controls.forEach((entry, index) => {
-            const missing = missingPlaceholders(entry.value.key ?? '', inputMapKeys);
-            if (missing.length > 0) hints[index] = missing;
+            const hint = keyTemplateHint(entry.value.key ?? '');
+            if (hint !== null) hints[index] = hint;
         });
-        this.missingPlaceholderHints.set(hints);
+        this.placeholderHints.set(hints);
     }
 
     private buildLookupRequest(form: FormGroup): LookupRequest {
@@ -280,6 +288,11 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             catchError(() => of([]))
         );
     }
+}
+
+// Empty is left to Validators.required.
+function statePathValidator(control: AbstractControl<string>): ValidationErrors | null {
+    return !control.value || isStatePath(control.value) ? null : { pattern: true };
 }
 
 function canvasSummary(form: FormGroup): string {

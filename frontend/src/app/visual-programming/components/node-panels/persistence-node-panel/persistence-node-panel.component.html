@@ -32,14 +32,17 @@
 
                 <app-select
                     label="Mode"
-                    tooltipText="Read returns stored values, Write upserts values from the input map, Delete removes keys."
+                    tooltipText="Read returns stored values, Write upserts values taken from flow state paths, Delete removes keys."
                     formControlName="mode"
                     [items]="modeItems"
                 />
             </div>
 
             <div class="entries">
-                <span class="entries-label">Keys</span>
+                <app-tooltip
+                    label="Keys"
+                    tooltipText="Each key names a stored value. Put state paths in braces to build a key at run time, e.g. profile_{variables.user.id}."
+                />
                 <div
                     formArrayName="entries"
                     class="entries-list"
@@ -59,12 +62,12 @@
                                     autocomplete="off"
                                 />
                             }
-                            <div class="entry-key">
+                            <div class="entry-field">
                                 <input
                                     type="text"
                                     class="entry-input"
                                     formControlName="key"
-                                    placeholder="Key, e.g. profile_{user_id}"
+                                    placeholder="Key, e.g. profile_{variables.user.id}"
                                     aria-label="Key"
                                     autocomplete="off"
                                     [attr.list]="keySuggestionsListId()"
@@ -80,8 +83,8 @@
                                         >
                                     }
                                 }
-                                @if (missingPlaceholderHints()[i]; as missing) {
-                                    <div class="entry-hint">Not in input map: {{ missing.join(', ') }}</div>
+                                @if (placeholderHints()[i]; as hint) {
+                                    <div class="entry-hint">{{ hint }}</div>
                                 }
                             </div>
                             @if (mode() === 'read') {
@@ -95,14 +98,19 @@
                                 />
                             }
                             @if (mode() === 'write') {
-                                <input
-                                    type="text"
-                                    class="entry-input"
-                                    formControlName="value"
-                                    placeholder="Input map alias"
-                                    aria-label="Value alias"
-                                    autocomplete="off"
-                                />
+                                <div class="entry-field">
+                                    <input
+                                        type="text"
+                                        class="entry-input"
+                                        formControlName="value"
+                                        placeholder="variables.user.name"
+                                        aria-label="Value path"
+                                        autocomplete="off"
+                                    />
+                                    @if (entry.get('value')?.hasError('pattern')) {
+                                        <div class="entry-hint">Must be a state path, e.g. variables.user.name</div>
+                                    }
+                                </div>
                             }
                             <button
                                 type="button"
@@ -134,10 +142,6 @@
                     />
                     Add key
                 </button>
-            </div>
-
-            <div class="input-map">
-                <app-input-map [activeColor]="activeColor"></app-input-map>
             </div>
 
             @if (mode() === 'read') {

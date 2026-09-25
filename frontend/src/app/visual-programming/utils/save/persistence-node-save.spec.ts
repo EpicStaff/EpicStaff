@@ -15,8 +15,8 @@ const dto: GetPersistenceNodeRequest = {
     node_name: 'Persistence #1',
     persistence_table: 3,
     mode: 'write',
-    entries: [{ key: 'profile_{user_id}', value: 'profile' }],
-    input_map: { user_id: 'variables.user.id' },
+    entries: [{ key: 'profile_{variables.user.id}', value: 'variables.profile' }],
+    input_map: {},
     output_variable_path: 'variables.saved',
     metadata: {},
 };
