@@ -43,6 +43,45 @@
         [innerHTML]="data.message"
     ></p>
 
+    @if (breakdown) {
+        <div class="breakdown">
+            <button
+                type="button"
+                class="breakdown-header"
+                [attr.aria-expanded]="isBreakdownExpanded()"
+                [attr.aria-controls]="breakdownListId"
+                (click)="toggleBreakdown()"
+            >
+                <app-icon
+                    icon="ui/chevron-down"
+                    size="0.85rem"
+                    class="breakdown-chevron"
+                    [class.collapsed]="!isBreakdownExpanded()"
+                />
+                <span class="breakdown-title">{{ breakdown.title }}</span>
+                <span class="breakdown-total">{{ breakdownTotal }}</span>
+            </button>
+            <div
+                class="grid-collapsible"
+                [class.expanded]="isBreakdownExpanded()"
+            >
+                <div>
+                    <ul
+                        class="breakdown-list"
+                        [id]="breakdownListId"
+                    >
+                        @for (item of breakdown.items; track item.label) {
+                            <li class="breakdown-item">
+                                <span class="breakdown-item-label">{{ item.label }}</span>
+                                <span class="breakdown-item-count">{{ item.count }}</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    }
+
     @if (data.caution) {
         <div class="caution-block">
             @if (data.cautionTitle) {

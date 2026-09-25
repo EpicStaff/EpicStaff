@@ -188,10 +188,9 @@ export class OrganizationsTabComponent implements OnInit {
         this.hardDeleteFlow
             .run(
                 (dryRun) => this.organizationStorage.deleteOrganization(id, dryRun),
-                (report) => buildOrganizationDeleteMessage(name, report),
+                () => buildOrganizationDeleteMessage(name),
                 {
-                    title: 'Permanently delete the organization?',
-                    caution: 'This action is irreversible. All data owned by this organization will be destroyed.',
+                    title: 'Delete the organization?',
                     successMessage: 'Organization deleted successfully',
                     previewErrorFallback: 'Failed to preview organization deletion.',
                     deleteErrorFallback: 'Failed to delete organization.',

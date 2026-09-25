@@ -5,11 +5,11 @@ import { DeleteReport } from '@shared/models';
 import { catchError, filter, Observable, of, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
-import { rbacErrorMessage } from '../utils';
+import { buildDeleteBreakdownItems, rbacErrorMessage } from '../utils';
 
 export interface HardDeleteOptions {
     title: string;
-    caution: string;
+    caution?: string;
     successMessage: string;
     previewErrorFallback: string;
     deleteErrorFallback: string;
@@ -36,6 +36,10 @@ export class HardDeleteFlowService {
                     type: 'danger',
                     confirmText: 'Delete permanently',
                     cancelText: 'Cancel',
+                    breakdown: {
+                        title: 'Resources to delete',
+                        items: buildDeleteBreakdownItems(report.affected_resources),
+                    },
                 })
             ),
             filter((confirmed) => confirmed === true),

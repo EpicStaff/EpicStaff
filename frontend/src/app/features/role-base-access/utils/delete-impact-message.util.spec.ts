@@ -1,79 +1,55 @@
-import { OrganizationDeleteReport, UserDeleteReport } from '@shared/models';
+import { UserDeleteReport } from '@shared/models';
 
-import { buildOrganizationDeleteMessage, buildUserDeleteMessage } from './delete-impact-message.util';
-
-function organizationReport(affectedResources: Record<string, number>): OrganizationDeleteReport {
-    return { organization_id: 3, affected_resources: affectedResources };
-}
+import {
+    buildDeleteBreakdownItems,
+    buildOrganizationDeleteMessage,
+    buildUserDeleteMessage,
+} from './delete-impact-message.util';
 
 function userReport(affectedResources: Record<string, number>): UserDeleteReport {
     return { user_id: 7, affected_resources: affectedResources };
 }
 
 describe('buildOrganizationDeleteMessage', () => {
-    function expectedMessage(name: string, impact: string): string {
-        return `<strong>${name}</strong> and everything it owns will be permanently deleted: ${impact}.`;
-    }
-
-    it('reports no additional data when nothing else is affected', () => {
-        expect(buildOrganizationDeleteMessage('Acme', organizationReport({}))).toBe(
-            expectedMessage('Acme', 'no additional data')
+    it('warns that the organization will be permanently deleted', () => {
+        expect(buildOrganizationDeleteMessage('Acme')).toBe(
+            'You are about to permanently delete <strong>Acme</strong> organization. This action is irreversible.'
         );
     });
+});
 
-    it('lists a single resource with its total', () => {
-        expect(buildOrganizationDeleteMessage('Acme', organizationReport({ agents: 1 }))).toBe(
-            expectedMessage('Acme', '1 agents (1 items total)')
-        );
+describe('buildDeleteBreakdownItems', () => {
+    it('returns no items when nothing is affected', () => {
+        expect(buildDeleteBreakdownItems({})).toEqual([]);
     });
 
-    it('replaces underscores in resource names with spaces', () => {
-        expect(buildOrganizationDeleteMessage('Acme', organizationReport({ knowledge_documents: 2 }))).toBe(
-            expectedMessage('Acme', '2 knowledge documents (2 items total)')
-        );
+    it('replaces underscores in resource names with spaces and capitalizes the first letter', () => {
+        expect(buildDeleteBreakdownItems({ knowledge_documents: 2 })).toEqual([
+            { label: 'Knowledge documents', count: 2 },
+        ]);
     });
 
     it('sorts by count descending and breaks ties by name ascending', () => {
-        const report = organizationReport({ tools: 2, agents: 5, labels: 2, crews: 9 });
-
-        expect(buildOrganizationDeleteMessage('Acme', report)).toBe(
-            expectedMessage('Acme', '9 crews, 5 agents, 2 labels, 2 tools (18 items total)')
-        );
+        expect(buildDeleteBreakdownItems({ tools: 2, agents: 5, labels: 2, crews: 9 })).toEqual([
+            { label: 'Crews', count: 9 },
+            { label: 'Agents', count: 5 },
+            { label: 'Labels', count: 2 },
+            { label: 'Tools', count: 2 },
+        ]);
     });
 
-    it('shows the top five resources, marks the rest as more and totals every resource', () => {
-        const report = organizationReport({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7 });
+    it('lists every resource without truncation', () => {
+        const affectedResources = { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7 };
 
-        expect(buildOrganizationDeleteMessage('Acme', report)).toBe(
-            expectedMessage('Acme', '7 g, 6 f, 5 e, 4 d, 3 c, and more (28 items total)')
-        );
-    });
-
-    it('does not mark more when there are exactly five resources', () => {
-        const report = organizationReport({ a: 1, b: 1, c: 1, d: 1, e: 1 });
-
-        expect(buildOrganizationDeleteMessage('Acme', report)).toBe(
-            expectedMessage('Acme', '1 a, 1 b, 1 c, 1 d, 1 e (5 items total)')
-        );
-    });
-
-    it('describes a realistic organization deletion including stored files', () => {
-        const report = organizationReport({
-            flow: 4,
-            agents: 6,
-            sessions: 20,
-            knowledge_documents: 12,
-            storage_files: 12,
-            memberships: 3,
-            secrets: 1,
-        });
-
-        expect(buildOrganizationDeleteMessage('Globex', report)).toBe(
-            expectedMessage(
-                'Globex',
-                '20 sessions, 12 knowledge documents, 12 storage files, 6 agents, 4 flow, and more (58 items total)'
-            )
-        );
+        expect(buildDeleteBreakdownItems(affectedResources).map((item) => item.label)).toEqual([
+            'G',
+            'F',
+            'E',
+            'D',
+            'C',
+            'B',
+            'A',
+        ]);
     });
 });
 

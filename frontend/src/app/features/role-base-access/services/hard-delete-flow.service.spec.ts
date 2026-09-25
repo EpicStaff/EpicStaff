@@ -65,6 +65,24 @@ describe('HardDeleteFlowService', () => {
         expect(toastService.error).not.toHaveBeenCalled();
     });
 
+    it('passes every affected resource to the dialog as a sorted breakdown', async () => {
+        confirmationService.confirm.mockReturnValue(of(false));
+
+        await firstValueFrom(service.run(deleteFunction, buildMessage, OPTIONS), { defaultValue: undefined });
+
+        expect(confirmationService.confirm).toHaveBeenCalledWith(
+            expect.objectContaining({
+                breakdown: {
+                    title: 'Resources to delete',
+                    items: [
+                        { label: 'Api keys', count: 3 },
+                        { label: 'Memberships', count: 2 },
+                    ],
+                },
+            })
+        );
+    });
+
     it('performs the real deletion and reports success when confirmed', async () => {
         confirmationService.confirm.mockReturnValue(of(true));
 
