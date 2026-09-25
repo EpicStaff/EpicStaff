@@ -45,8 +45,12 @@ class OrgContextService:
 
     def _assert_membership(self, user, org_id: int) -> None:
         if getattr(user, "is_superadmin", False):
-            if not Organization.objects.filter(id=org_id).exists():
+            org = Organization.objects.filter(id=org_id).values("is_active").first()
+
+            if org is None:
                 raise OrganizationNotFoundError()
+            if not org["is_active"]:
+                raise OrgMembershipRequiredError()
             return
         exists = OrganizationUser.objects.filter(
             user=user, org_id=org_id, org__is_active=True
