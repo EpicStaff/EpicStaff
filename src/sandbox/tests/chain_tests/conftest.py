@@ -31,6 +31,7 @@ def _set_env_defaults() -> None:
         "MINIO_SSL": "false",
         "SANDBOX_MASK_SECRET": "true",
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
+        "SANDBOX_BLOCK_NETWORK": "false",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
