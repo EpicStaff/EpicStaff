@@ -80,9 +80,12 @@
     }
 }
 <ng-template #interactiveNode>
+    @let persistenceAccentColor = persistenceHeaderAccentColor;
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
+        [class.has-persistence-accent]="persistenceAccentColor"
+        [style.--persistence-accent]="persistenceAccentColor"
         appClickOrDrag
         (actualClick)="onEditClick()"
     >
@@ -90,10 +93,21 @@
         @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
             <div class="header">
                 <div class="icon-wrapper">
-                    <i
-                        [class]="node.icon"
-                        [style.color]="node.color"
-                    ></i>
+                    @if (persistenceHeaderIcon; as icon) {
+                        <i
+                            [class]="icon"
+                            [style.color]="persistenceAccentColor"
+                            role="img"
+                            [matTooltip]="persistenceSubtitle"
+                            matTooltipPosition="above"
+                            [attr.aria-label]="persistenceSubtitle"
+                        ></i>
+                    } @else {
+                        <i
+                            [class]="node.icon"
+                            [style.color]="node.color"
+                        ></i>
+                    }
                 </div>
                 <div
                     class="title"
@@ -149,17 +163,6 @@
                             size="0.875rem"
                         ></app-svg-icon>
                         <span>No LLM</span>
-                    </div>
-                }
-                @if (persistenceVisual; as visual) {
-                    <div
-                        class="persistence-mode-badge"
-                        [style.--persistence-accent]="'var(' + visual.accentVar + ')'"
-                        [matTooltip]="persistenceSubtitle"
-                        matTooltipPosition="above"
-                    >
-                        <i [class]="visual.icon"></i>
-                        <span>{{ visual.label }}</span>
                     </div>
                 }
                 @if (hasMissingPersistenceTable) {

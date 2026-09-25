@@ -194,25 +194,6 @@
                 border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
                 white-space: nowrap;
             }
-
-            .persistence-mode-badge {
-                margin-left: auto;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                font-size: 0.6875rem;
-                padding: 2px 6px;
-                border-radius: 10px;
-                background: color-mix(in srgb, var(--persistence-accent) 15%, transparent);
-                color: var(--persistence-accent);
-                border: 1px solid color-mix(in srgb, var(--persistence-accent) 60%, transparent);
-                white-space: nowrap;
-
-                // The "No table" warning follows this badge; only this one pushes the pair to the right.
-                & + .llm-warning-badge {
-                    margin-left: 6px;
-                }
-            }
         }
 
         .node-details {
@@ -221,6 +202,12 @@
 
         &.is-blocked-llm {
             box-shadow: 0 0 0 1px var(--color-error);
+        }
+
+        // Left accent strip showing the Persistence node's mode. An inset box-shadow (not
+        // border-color) so it never fights the selected/error border-color rules below.
+        &.has-persistence-accent {
+            box-shadow: inset 3px 0 0 0 var(--persistence-accent);
         }
     }
 

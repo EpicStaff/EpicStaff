@@ -24,8 +24,8 @@ import { flowUrl } from '@shared/utils';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
 import {
-    PERSISTENCE_MODE_VISUALS,
-    PersistenceModeVisual,
+    persistenceAccentVar,
+    persistenceNodeIcon,
     persistenceSubtitle as formatPersistenceSubtitle,
 } from '../../core/constants/persistence-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
@@ -232,9 +232,19 @@ export class FlowBaseNodeComponent implements OnInit {
         return this.node.type === NodeType.PERSISTENCE ? (this.node as PersistenceNodeModel) : null;
     }
 
-    public get persistenceVisual(): PersistenceModeVisual | null {
+    /** Header icon for a Persistence node, derived from its current mode at render time
+     *  (ignores any icon saved on the node's metadata). */
+    public get persistenceHeaderIcon(): string | null {
         const node = this.persistenceNode;
-        return node ? PERSISTENCE_MODE_VISUALS[node.data.mode] : null;
+        return node ? persistenceNodeIcon(node.data.mode) : null;
+    }
+
+    /** Header accent colour for a Persistence node, as a ready-to-use `var(--...)` string,
+     *  derived from its current mode at render time (ignores any color saved on the node's
+     *  metadata). */
+    public get persistenceHeaderAccentColor(): string | null {
+        const node = this.persistenceNode;
+        return node ? `var(${persistenceAccentVar(node.data.mode)})` : null;
     }
 
     public get persistenceSubtitle(): string | null {
