@@ -13,7 +13,7 @@ def _stub_storage(mocker):
     backend = mocker.MagicMock()
     backend.list_all_objects.return_value = [("a.txt", 10, "")]
     return mocker.patch(
-        "rbac.governance.organizations.get_storage_backend",
+        "tables.services.organization_deletion.get_storage_backend",
         return_value=backend,
     )
 

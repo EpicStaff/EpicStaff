@@ -4,8 +4,8 @@ from django.contrib.auth import get_user_model
 
 from rbac.access.delete_collector import build_collector, summarize
 from rbac.access.delete_resource_names import (
-    KNOWN_EXCLUDED_LABELS,
-    RESOURCE_NAMES,
+    known_excluded_resource_labels,
+    known_resource_names,
     resource_name,
 )
 from rbac.models import Organization
@@ -46,13 +46,13 @@ def _stale_labels(labels):
 
 
 def test_every_resource_names_key_is_an_installed_model_label():
-    stale = _stale_labels(RESOURCE_NAMES)
-    assert stale == [], f"RESOURCE_NAMES keys naming no installed model: {stale}"
+    stale = _stale_labels(known_resource_names())
+    assert stale == [], f"resource name keys naming no installed model: {stale}"
 
 
 def test_every_known_excluded_label_is_an_installed_model_label():
-    stale = _stale_labels(KNOWN_EXCLUDED_LABELS)
-    assert stale == [], f"KNOWN_EXCLUDED_LABELS members naming no installed model: {stale}"
+    stale = _stale_labels(known_excluded_resource_labels())
+    assert stale == [], f"excluded labels naming no installed model: {stale}"
 
 
 def test_resource_name_returns_none_for_a_known_excluded_label():
@@ -105,7 +105,7 @@ def rich_org(default_org):
 
     # Deprecated, SET_NULL-only reachable rows -- included for a realistic
     # cascade, but the Collector only reports rows reached via CASCADE, so
-    # these are counted separately by OrganizationManagementService's sweep,
+    # these are counted separately by TablesOrganizationDeletion's sweep,
     # not by build_collector/summarize.
     Task.objects.create(
         crew=crew, agent=agent, name="t", instructions="i", expected_output="e"
@@ -121,30 +121,30 @@ def rich_org(default_org):
 
 @pytest.mark.django_db
 def test_every_model_a_richly_populated_org_delete_touches_is_mapped_or_excluded(rich_org):
-    """Every model label a real org-delete cascade reports must be a RESOURCE_NAMES key or a KNOWN_EXCLUDED_LABELS member."""
+    """Every model label a real org-delete cascade reports must be a known resource name or a known excluded label."""
     by_model = summarize(build_collector(rich_org))
 
     unmapped = [
         row.model for row in by_model
-        if row.model not in RESOURCE_NAMES and row.model not in KNOWN_EXCLUDED_LABELS
+        if row.model not in known_resource_names() and row.model not in known_excluded_resource_labels()
     ]
     assert unmapped == [], f"unmapped model labels in a real org-delete cascade: {unmapped}"
 
 
 def test_every_cascade_reachable_org_model_is_mapped_or_excluded():
-    """Every model CASCADE-reachable from Organization must be a RESOURCE_NAMES key or a KNOWN_EXCLUDED_LABELS member."""
+    """Every model CASCADE-reachable from Organization must be a known resource name or a known excluded label."""
     unmapped = [
         label for label in (model._meta.label for model in _cascade_closure(Organization))
-        if label not in RESOURCE_NAMES and label not in KNOWN_EXCLUDED_LABELS
+        if label not in known_resource_names() and label not in known_excluded_resource_labels()
     ]
     assert unmapped == [], f"CASCADE-reachable from Organization but unmapped: {sorted(unmapped)}"
 
 
 def test_every_cascade_reachable_user_model_is_mapped_or_excluded():
-    """Every model CASCADE-reachable from User must be a RESOURCE_NAMES key or a KNOWN_EXCLUDED_LABELS member."""
+    """Every model CASCADE-reachable from User must be a known resource name or a known excluded label."""
     User = get_user_model()
     unmapped = [
         label for label in (model._meta.label for model in _cascade_closure(User))
-        if label not in RESOURCE_NAMES and label not in KNOWN_EXCLUDED_LABELS
+        if label not in known_resource_names() and label not in known_excluded_resource_labels()
     ]
     assert unmapped == [], f"CASCADE-reachable from User but unmapped: {sorted(unmapped)}"

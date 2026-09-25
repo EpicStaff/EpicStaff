@@ -171,7 +171,7 @@ def _no_storage_calls(mocker):
     backend = mocker.MagicMock()
     backend.list_all_objects.return_value = [("a.txt", 10, ""), ("b.txt", 5, "")]
     return mocker.patch(
-        "rbac.governance.organizations.get_storage_backend",
+        "tables.services.organization_deletion.get_storage_backend",
         return_value=backend,
     )
 
