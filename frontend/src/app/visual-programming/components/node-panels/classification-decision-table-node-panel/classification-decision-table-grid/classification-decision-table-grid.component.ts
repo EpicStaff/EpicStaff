@@ -1260,6 +1260,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         };
 
         const stackCounts = new Map<number, number>();
+        for (const addPos of [this.exprAddPos(), this.manipAddPos()]) {
+            if (addPos) stackCounts.set(addPos.x - 10, 1);
+        }
         const placeBadge = (colId: string, boundaryX: number, label: string): void => {
             let stackKey = boundaryX;
             for (const key of stackCounts.keys()) {
