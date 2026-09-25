@@ -172,6 +172,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly routeQueryParamMap;
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
+    private liveCdtStorageIds = new Set<string>();
 
     @ViewChild(FlowGraphComponent)
     private flowGraphComponent?: FlowGraphComponent;
@@ -249,6 +250,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const warnings = this.createGraphWarningService.readPending();
             if (warnings.length) this.restoreWarnings.set(warnings);
             this.fetchGraph(graphId);
+        });
+
+        effect(() => {
+            const flowState = this.currentFlowState();
+            const cdtStorageIds = new Set(
+                flowState.nodes
+                    .filter((node) => node.type === NodeType.CLASSIFICATION_TABLE)
+                    .map((node) => String(node.nodeNumber ?? node.backendId))
+            );
+            const cdtRemoved = [...this.liveCdtStorageIds].some((id) => !cdtStorageIds.has(id));
+            this.liveCdtStorageIds = cdtStorageIds;
+            if (cdtRemoved) this.cleanupCdtGridState(flowState);
         });
 
         this.sidePanelService.saveNodeRequest$
@@ -1022,6 +1035,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }),
         };
         this.flowService.setFlow(rewrittenFlow);
+        this.cleanupCdtGridState(rewrittenFlow);
 
         this.isLoaded.set(true);
 
