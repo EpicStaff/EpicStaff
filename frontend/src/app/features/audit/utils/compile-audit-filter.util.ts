@@ -2,12 +2,12 @@ import {
     AuditCondition,
     AuditFilterNode,
     AuditFilterState,
+    AuditMatchScopeState,
     isUsableCondition,
+    MAX_ROWS_BEFORE,
     VALUE_FREE_OPS,
 } from '../models/audit-filter.models';
 import { AuditMatchScope, AuditRunBucket, AuditRunType } from '../models/audit-session.models';
-
-const MATCH_SCOPE: AuditMatchScope = { children: true };
 
 const TOOL_NAME_FIELD = 'details.data.name';
 const TOKENS_FIELD = 'details.token_usage.total_tokens';
@@ -41,6 +41,20 @@ function compileConditions(root: string, conditions: AuditCondition[]): AuditFil
         combined = { op: usable[index].join, children: [combined, nodes[index]] };
     }
     return combined;
+}
+
+function compileMatchScope(scope: AuditMatchScopeState): AuditMatchScope {
+    if (scope.fullSessionHistory) {
+        return { full_session_history: true };
+    }
+    return {
+        ancestors: true,
+        children: scope.children,
+        // clamped here, not only in the input: a saved preset reaches this without passing through the UI
+        rows_before: scope.rowsBeforeEnabled
+            ? Math.min(Math.max(Math.trunc(scope.rowsBefore) || 1, 1), MAX_ROWS_BEFORE)
+            : 0,
+    };
 }
 
 export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
@@ -153,11 +167,11 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     }
 
     if (leaves.length === 0) {
-        return { matchScope: MATCH_SCOPE };
+        return { matchScope: compileMatchScope(state.matchScope) };
     }
 
     return {
         filters: leaves.length === 1 ? leaves[0] : { op: 'and', children: leaves },
-        matchScope: MATCH_SCOPE,
+        matchScope: compileMatchScope(state.matchScope),
     };
 }

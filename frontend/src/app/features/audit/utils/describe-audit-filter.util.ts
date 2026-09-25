@@ -4,8 +4,10 @@ import {
     AuditFilterState,
     AuditIdFilter,
     AuditIdMode,
+    AuditMatchScopeState,
     AuditNumberFilter,
     createAuditCondition,
+    DEFAULT_MATCH_SCOPE,
     isUsableCondition,
 } from '../models/audit-filter.models';
 import {
@@ -102,6 +104,17 @@ function describeTokens(tokens: AuditNumberFilter): string | null {
     return `${operator} ${tokens.value}`;
 }
 
+function describeMatchScope(scope: AuditMatchScopeState): string | null {
+    if (scope.fullSessionHistory) {
+        return 'Whole session';
+    }
+    const parts = [
+        scope.children ? 'Everything inside' : '',
+        scope.rowsBeforeEnabled ? `${scope.rowsBefore} row(s) before` : '',
+    ].filter((part) => part !== '');
+    return parts.length > 0 ? parts.join(', ') : null;
+}
+
 export interface AuditFilterVocabularies {
     agents?: AuditEnumOption[];
     tools?: AuditEnumOption[];
@@ -112,6 +125,11 @@ export function describeAuditFilter(
     vocabularies: AuditFilterVocabularies = {}
 ): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
+
+    const matchScopeValue = describeMatchScope(state.matchScope);
+    if (matchScopeValue !== null) {
+        chips.push({ key: 'matchScope', label: 'Match scope', value: matchScopeValue });
+    }
 
     if (state.kinds.length > 0) {
         chips.push({ key: 'kind', label: 'Kind', value: labelsFor(state.kinds, KIND_OPTIONS) });
@@ -212,6 +230,8 @@ export function describeAuditFilter(
 
 export function clearAuditFilterField(state: AuditFilterState, key: string): AuditFilterState {
     switch (key) {
+        case 'matchScope':
+            return { ...state, matchScope: DEFAULT_MATCH_SCOPE };
         case 'kind':
             return { ...state, kinds: [] };
         case 'flow':

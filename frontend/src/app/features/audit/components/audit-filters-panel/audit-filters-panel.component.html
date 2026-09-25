@@ -46,6 +46,11 @@
     <div class="filters-panel__body">
         @if (activeTab() === 'builder') {
             <div class="filters-panel__groups">
+                <app-audit-match-scope
+                    [scope]="filter().matchScope"
+                    (scopeChange)="setMatchScope($event)"
+                />
+
                 <app-audit-filter-group label="Kind">
                     <app-audit-checkbox-enum
                         [options]="kindOptions"

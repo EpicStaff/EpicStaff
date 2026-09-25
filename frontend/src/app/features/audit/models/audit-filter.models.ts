@@ -73,7 +73,24 @@ export interface AuditIdFilter {
     values: string[];
 }
 
+export interface AuditMatchScopeState {
+    children: boolean;
+    rowsBeforeEnabled: boolean;
+    rowsBefore: number;
+    fullSessionHistory: boolean;
+}
+
+export const DEFAULT_MATCH_SCOPE: AuditMatchScopeState = {
+    children: false,
+    rowsBeforeEnabled: false,
+    rowsBefore: 1,
+    fullSessionHistory: false,
+};
+
+export const MAX_ROWS_BEFORE = 20; // backend MatchScope.rows_before le=20
+
 export interface AuditFilterState {
+    matchScope: AuditMatchScopeState;
     kinds: AuditEventKind[];
     statuses: AuditEventStatus[];
     dateFrom: string | null;
@@ -98,6 +115,7 @@ export interface AuditFilterState {
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
 
 export const EMPTY_AUDIT_FILTER: AuditFilterState = {
+    matchScope: DEFAULT_MATCH_SCOPE,
     kinds: [],
     statuses: [],
     dateFrom: null,

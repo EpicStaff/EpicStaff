@@ -7,6 +7,7 @@ import {
     AuditEnumOption,
     AuditFilterState,
     AuditIdFilter,
+    AuditMatchScopeState,
     AuditNumberFilter,
     AuditValuesFilter,
     EMPTY_AUDIT_FILTER,
@@ -33,6 +34,7 @@ import { AuditDateFilterComponent } from '../audit-date-filter/audit-date-filter
 import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-group.component';
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
+import { AuditMatchScopeComponent } from '../audit-match-scope/audit-match-scope.component';
 import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | 'presets';
@@ -49,6 +51,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
         AuditConditionFilterComponent,
         AuditDateFilterComponent,
         AuditTokensFilterComponent,
+        AuditMatchScopeComponent,
     ],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
@@ -139,6 +142,10 @@ export class AuditFiltersPanelComponent {
 
     public setDateRange(range: DateRangeFilter): void {
         this.filter.update((current) => ({ ...current, dateFrom: range.after, dateTo: range.before }));
+    }
+
+    public setMatchScope(matchScope: AuditMatchScopeState): void {
+        this.filter.update((current) => ({ ...current, matchScope }));
     }
 
     public setKinds(kinds: string[]): void {
