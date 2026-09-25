@@ -130,3 +130,32 @@ async def test_publish_credential_scope_is_called_before_the_task_is_published(
     )
 
     assert call_order == ["publish_scope", "async_publish"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_storage_scope_returns_error_result():
+    """When CodeTaskData creation fails (invalid storage scope),
+    run_code() must return a structured error result instead of
+    raising an exception. This prevents the tool executor from hanging."""
+    redis = MagicMock()
+    service = PythonCodeExecutorService(redis_service=redis)
+
+    # Create invalid python_code_data that will fail CodeTaskData validation
+    # (e.g., use_storage=True with storage_org_prefix=None)
+    python_code_data = make_python_code_data(
+        use_storage=True,
+        storage_org_prefix=None,  # Invalid: use_storage=True requires org_prefix
+        storage_allowed_paths=None,  # Invalid: use_storage=True requires allowed_paths
+        org_id=None,  # Invalid: use_storage=True requires org_id
+    )
+
+    result = await asyncio.wait_for(
+        service.run_code(python_code_data=python_code_data, inputs={}), timeout=5
+    )
+
+    assert isinstance(result, dict)
+    assert result["returncode"] == 1
+    assert "Invalid storage scope" in result["stderr"]
+    assert result["stdout"] == ""
+    # redis should not have been called (no publish)
+    redis.async_subscribe.assert_not_called()

@@ -118,15 +118,24 @@ class RealtimeSurfaceService:
         allowed_tool_ids = [
             entry["python_tool"] for entry in python_tool_entries if entry["mode"] == "allow"
         ]
-        return [
-            self.converter_service.convert_tool_to_base_tool_pydantic(
-                python_tool,
-                storage_allowed_paths_override=storage_allowed_paths,
-                storage_org_prefix_override=storage_org_prefix,
-                org_id_override=org_id,
+        tools = []
+        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids):
+            if python_tool.use_storage and storage_org_prefix is None:
+                logger.warning(
+                    "Python tool {} skipped for realtime agent — storage scope not resolved.",
+                    python_tool.name,
+                )
+                continue
+
+            tools.append(
+                self.converter_service.convert_tool_to_base_tool_pydantic(
+                    python_tool,
+                    storage_allowed_paths_override=storage_allowed_paths,
+                    storage_org_prefix_override=storage_org_prefix,
+                    org_id_override=org_id,
+                )
             )
-            for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids)
-        ]
+        return tools
 
     def _resolve_storage_grants(
         self, storage_item_entries: list[dict], org_id: int | None
