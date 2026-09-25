@@ -69,6 +69,7 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
+import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
 import {
     AgentNodeModel,
     NodeModel,
@@ -76,15 +77,11 @@ import {
     TaskNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
+import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
-import {
-    createStartNode,
-    hasStartNode,
-    mapGraphDtoToFlowModel,
-    normalizeFlowPorts,
-} from '../../../../visual-programming/utils/load';
+import { buildFlowModelFromGraphDto, normalizeFlowPorts } from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
 import {
     buildBulkSavePayload,
@@ -114,6 +111,7 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
         MatTooltipModule,
         FlowAssistantPanelComponent,
         VersionHistoryPanelComponent,
+        FlowVersionPreviewComponent,
     ],
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
@@ -131,17 +129,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
-    private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
+    protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
     protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
         if (!graph) return { nodes: [], connections: [] };
-
-        let flowModel = mapGraphDtoToFlowModel(graph);
-        flowModel = this.addStartNodeIfNeeded(flowModel);
-        const validated = this.validateSubgraphNodes(flowModel, this.availableFlowLights());
-        return validated.flowModel;
+        return buildFlowModelFromGraphDto(graph, this.availableFlowLights());
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
@@ -162,6 +156,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public readonly versionHistoryGraphSaveVersion = computed<number | undefined>(
         () => this.graphState()?.save_version
     );
+
+    /** The version shown instead of the live canvas; null while editing the live flow. */
+    public readonly previewedVersion = signal<GraphVersionDto | null>(null);
+    public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
+    /** Live canvas pan/zoom captured on entering a preview, handed back when the live canvas re-mounts. */
+    public readonly savedViewport = signal<FlowViewport | null>(null);
+    public readonly selectedVersionId = signal<number | null>(null);
+    /** True while a restored version loads; the live canvas then re-mounts and fits it. */
+    public readonly isCanvasReloading = signal(false);
     private readonly MIN_PANEL_WIDTH = 430;
     private readonly MAX_PANEL_WIDTH_RATIO = 0.7;
     private readonly MIN_CANVAS_WIDTH = 560;
@@ -169,6 +172,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly routeQueryParamMap;
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
+    // The nodeId/nodeName query opens its panel once; re-mounting the live canvas must not re-open it.
+    private lastNodeQueryKey: string | null = null;
+    private isNodeQueryConsumed = false;
 
     @ViewChild(FlowGraphComponent)
     private flowGraphComponent?: FlowGraphComponent;
@@ -211,6 +217,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         effect(() => {
             const params = this.routeQueryParamMap();
+            const nodeQueryKey = [params.get('nodeId'), params.get('nodeName'), params.get('nodeType')].join('|');
+            if (nodeQueryKey !== this.lastNodeQueryKey) {
+                this.lastNodeQueryKey = nodeQueryKey;
+                this.isNodeQueryConsumed = false;
+            }
+            if (this.isNodeQueryConsumed) {
+                this.initialNodeId = null;
+                return;
+            }
             const nodeId = params.get('nodeId');
             if (nodeId) {
                 const match = this.currentFlowState().nodes.find(
@@ -243,6 +258,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!isFinite(graphId)) return;
             if (graphId === this.lastFetchedGraphId) return;
             this.lastFetchedGraphId = graphId;
+            this.previewedVersion.set(null);
+            this.savedViewport.set(null);
+            this.selectedVersionId.set(null);
+            this.isVersionHistoryOpen.set(false);
             this.undoRedoService.setUndoStack([]);
             this.undoRedoService.setRedoStack([]);
             const warnings = this.createGraphWarningService.readPending();
@@ -303,8 +322,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 takeUntilDestroyed(this.destroyRef),
                 tap(({ graph, flows }) => {
                     // Update graphState and availableFlowLights so loadedFlowState()
-                    // recomputes via mapGraphDtoToFlowModel + addStartNodeIfNeeded +
-                    // validateSubgraphNodes (the existing computed pipeline).
+                    // recomputes via buildFlowModelFromGraphDto (the shared post-load pipeline).
                     this.graphState.set(graph);
                     this.availableFlowLights.set(flows);
 
@@ -387,7 +405,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
-    private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false): void {
+    private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false, onSettled?: () => void): void {
         forkJoin({
             graph: this.flowApiService.getGraphById(graphId, forceRefresh),
             flows: this.flowApiService.getGraphsLight().pipe(catchError(() => of([] as GetGraphLightRequest[]))),
@@ -403,7 +421,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     void this.router.navigate(['/flows/my']);
                     return EMPTY;
                 }),
-                finalize(() => this.cdr.markForCheck())
+                finalize(() => {
+                    onSettled?.();
+                    this.cdr.markForCheck();
+                })
             )
             .subscribe();
     }
@@ -761,9 +782,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (flowUuid && startNodeInitialState) {
             const curlCommand = this.generateCurlCommand(flowUuid, startNodeInitialState, apiUrl);
             this.copyToClipboard(curlCommand);
-            this.toastService.success('CURL command copied to clipboard!');
+            this.toastService.success('cURL command copied to clipboard!');
         } else {
-            this.toastService.error('Unable to generate CURL: Missing flow ID or start node data');
+            this.toastService.error('Unable to generate cURL: Missing flow ID or start node data');
         }
     }
 
@@ -811,6 +832,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
+            if (this.previewedVersion()) {
+                this.toastService.info('Exit preview mode to save');
+                return;
+            }
             this.onHeaderSave();
         }
     }
@@ -956,36 +981,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.wsService.disconnect();
     }
 
-    private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {
-        if (hasStartNode(flowModel)) return flowModel;
-        return { ...flowModel, nodes: [createStartNode(), ...flowModel.nodes] };
-    }
-
-    private validateSubgraphNodes(
-        flowModel: FlowModel,
-        flows: GetGraphLightRequest[]
-    ): { flowModel: FlowModel; blockedCount: number } {
-        const availableIds = new Set(flows.map((f) => f.id));
-        let blockedCount = 0;
-
-        const nextFlowModel: FlowModel = {
-            ...flowModel,
-            nodes: flowModel.nodes.map((node) => {
-                if (node.type !== NodeType.SUBGRAPH) return node;
-                const subgraphId = Number((node as { data?: { id?: unknown } })?.data?.id);
-                const isMissing = !subgraphId || !availableIds.has(subgraphId);
-                if (isMissing) blockedCount++;
-                return { ...node, isBlocked: isMissing };
-            }),
-        };
-
-        return { flowModel: nextFlowModel, blockedCount };
-    }
-
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
         this.graphState.set(graph);
         this.availableFlowLights.set(flows);
-        const normalizedFlow = normalizeFlowPorts(this.loadedFlowState());
+        const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
         // savedFlowState captures the as-persisted snapshot used for dirty-tracking.
         // It is set BEFORE the legacy-name rewrite so that flows with legacy names are
@@ -1102,7 +1101,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
 
         const top = rect.top;
-        const left = rect.right - 30;
+        const left = rect.right + 8;
 
         this.shortcutsPos.set({ top, left });
         this.isShortcutsOpen.set(true);
@@ -1130,9 +1129,43 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public onVersionHistoryClosed(): void {
         this.isVersionHistoryOpen.set(false);
+        this.selectedVersionId.set(null);
+        this.onPreviewExit();
+    }
+
+    public onVersionPreviewRequested(version: GraphVersionDto): void {
+        if (!this.previewedVersion()) {
+            // Edits pending in an open node panel belong to the live flow; keep them before its canvas goes away.
+            if (!this.commitLiveSidePanel()) {
+                this.toastService.warning('Fix the errors in the open node panel before previewing a version');
+                return;
+            }
+            this.savedViewport.set(this.flowGraphComponent?.captureViewport() ?? null);
+            this.consumeNodeQuery();
+        }
+        // Switching between versions keeps the viewport captured on the first entry.
+        this.previewedVersion.set(version);
+        this.selectedVersionId.set(version.id);
+    }
+
+    /** Plain exit: the live canvas re-mounts with its root state and the viewport saved on entry. */
+    public onPreviewExit(): void {
+        this.previewedVersion.set(null);
+    }
+
+    public onVersionDeleted(version: GraphVersionDto): void {
+        if (this.selectedVersionId() === version.id) {
+            this.selectedVersionId.set(null);
+        }
+        if (this.previewedVersion()?.id === version.id) {
+            this.onPreviewExit();
+        }
     }
 
     public onVersionRestoreRequested(version: GraphVersionDto): void {
+        // The dirty check and the optional backup read the live flow (root state, which the preview
+        // never touches), so the preview stays open behind the dialog. It closes only once the user
+        // picks a restore option; Cancel leaves them in the preview.
         const hasUnsaved = this.hasUnsavedChanges();
         const message = hasUnsaved
             ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
@@ -1143,13 +1176,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 title: 'Restore version',
                 message,
                 saveText: 'Save & Restore',
-                dontSaveText: 'Just Restore',
+                dontSaveText: 'Discard & Restore',
                 cancelText: 'Cancel',
                 type: 'warning',
                 showDontSave: true,
             })
             .pipe(
                 switchMap((result) => {
+                    if (result === 'save' || result === 'dont-save') {
+                        this.onPreviewExit();
+                    }
                     if (result === 'save') {
                         return this.saveCurrentState().pipe(
                             switchMap(() =>
@@ -1181,11 +1217,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     } else {
                         this.toastService.success('Version restored successfully');
                     }
-                    this.isVersionHistoryOpen.set(false);
+                    this.onVersionHistoryClosed();
                     this.restoreWarnings.set(response.warnings);
                     this.undoRedoService.setUndoStack([]);
                     this.undoRedoService.setRedoStack([]);
-                    this.refreshCurrentFlow();
+                    this.reloadRestoredGraph();
                 },
                 error: () => this.toastService.error('Failed to restore version'),
             });
@@ -1277,5 +1313,33 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    /** Commits the live node panel into the root flow; false (or a throw) means it holds invalid edits. */
+    private commitLiveSidePanel(): boolean {
+        try {
+            return this.flowGraphComponent?.commitSidePanelToFlow() ?? true;
+        } catch (error) {
+            console.error('Committing the open node panel failed', error);
+            return false;
+        }
+    }
+
+    private consumeNodeQuery(): void {
+        this.isNodeQueryConsumed = true;
+        this.initialNodeId = null;
+    }
+
+    /**
+     * Loads the restored graph while the live canvas is unmounted, so it re-mounts and fits the
+     * restored version instead of keeping the pre-restore (or pre-preview) viewport.
+     */
+    private reloadRestoredGraph(): void {
+        const graphId = Number(this.route.snapshot.paramMap.get('id'));
+        if (!isFinite(graphId)) return;
+        this.savedViewport.set(null);
+        this.consumeNodeQuery();
+        this.isCanvasReloading.set(true);
+        this.fetchGraph(graphId, true, true, () => this.isCanvasReloading.set(false));
     }
 }

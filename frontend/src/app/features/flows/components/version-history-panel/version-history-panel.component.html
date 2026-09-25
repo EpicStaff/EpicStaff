@@ -30,35 +30,57 @@
         @for (version of versionsList; track version.id) {
             <div
                 class="version-card"
-                [class.version-card--selected]="selectedVersionId === version.id"
-                (click)="selectVersion(version)"
+                tabindex="0"
+                role="button"
+                [attr.aria-pressed]="selectedVersionId() === version.id"
+                [class.version-card--selected]="selectedVersionId() === version.id"
+                [class.version-card--previewed]="previewedVersionId() === version.id"
+                (click)="onCardClick($event, version)"
+                (keydown)="onCardKeydown($event, version)"
             >
                 <div class="version-info">
                     @if (editingVersionId === version.id && editingField === 'name') {
                         <input
                             #versionEditInput
                             class="version-edit-input"
+                            maxlength="255"
                             [(ngModel)]="editingValue"
+                            (click)="$event.stopPropagation()"
                             (keydown)="onEditKeydown($event, version)"
                         />
                     } @else {
-                        <div class="version-name">{{ version.name }}</div>
+                        <div
+                            class="version-name"
+                            (click)="onRenameableTextClick($event, version)"
+                            (dblclick)="startEdit(version, 'name')"
+                        >
+                            {{ version.name }}
+                        </div>
                     }
                     @if (editingVersionId === version.id && editingField === 'description') {
-                        <textarea
+                        <input
                             #versionEditInput
-                            class="version-edit-input version-edit-textarea"
-                            rows="1"
+                            class="version-edit-input version-edit-input--description"
                             placeholder="Enter description..."
                             [(ngModel)]="editingValue"
+                            (click)="$event.stopPropagation()"
                             (keydown)="onEditKeydown($event, version)"
-                        ></textarea>
+                        />
                     } @else if (version.description) {
-                        <div class="version-description">{{ version.description }}</div>
+                        <div
+                            class="version-description"
+                            (click)="onRenameableTextClick($event, version)"
+                            (dblclick)="startEdit(version, 'description')"
+                        >
+                            {{ version.description }}
+                        </div>
                     }
                     <div class="version-date">{{ version.created_at | date: 'MMM d, yyyy, HH:mm' }}</div>
                 </div>
-                <div class="version-menu">
+                <div
+                    class="version-menu"
+                    (click)="$event.stopPropagation()"
+                >
                     <app-icon-button
                         #menuOrigin="cdkOverlayOrigin"
                         cdkOverlayOrigin
@@ -126,7 +148,7 @@
     <div class="dialog-footer">
         <button
             class="restore-version-btn"
-            [disabled]="!selectedVersionId"
+            [disabled]="!selectedVersionId()"
             (click)="restoreSelectedVersion()"
         >
             Restore This Version

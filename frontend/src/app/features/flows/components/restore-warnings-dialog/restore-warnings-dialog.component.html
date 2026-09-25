@@ -3,7 +3,7 @@
         <div class="dialog-title-row">
             <app-svg-icon
                 icon="alert-circle"
-                size="2.2rem"
+                size="20px"
                 class="warning-icon"
             />
             <h2 class="dialog-title">Missing Dependencies</h2>
@@ -21,10 +21,7 @@
 
     <div class="dialog-divider"></div>
 
-    <p class="dialog-message">
-        Flow restored successfully, but it relies on dependencies that have since been deleted. Affected nodes require
-        adaptation.
-    </p>
+    <p class="dialog-message">{{ message }}</p>
 
     <div class="warnings-list">
         @for (warning of data.warnings; track $index) {
@@ -33,11 +30,6 @@
                 [class.warning-item--clickable]="warning.node_id != null"
                 (click)="selectWarning(warning)"
             >
-                <app-svg-icon
-                    icon="alert-triangle"
-                    size="1.4rem"
-                    class="warning-item-icon"
-                />
                 <span>
                     @if (warning.node_name) {
                         In node <strong>{{ warning.node_name }}</strong
@@ -60,9 +52,14 @@
 
     <div class="dialog-footer">
         <app-button
-            type="ghost"
+            type="outline-primary"
             (click)="dialogRef.close()"
             >Close</app-button
+        >
+        <app-button
+            type="primary"
+            (click)="dialogRef.close()"
+            >Got it</app-button
         >
     </div>
 </div>

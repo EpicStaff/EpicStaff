@@ -1,4 +1,4 @@
-import { WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
+import { WebhookTriggerWrite } from '@shared/models';
 
 export interface TelegramTriggerField {
     field_name: string;
@@ -47,5 +47,6 @@ export interface GetTelegramTriggerNodeRequest {
     telegram_bot_api_key_secret_id: number | null;
     fields: TelegramTriggerNodeField[];
     metadata: Record<string, unknown>;
-    webhook_trigger: WebhookTriggerModel | null;
+    /** Nested object from the live API; a bare id when built from a version snapshot. */
+    webhook_trigger: WebhookTriggerWrite | null;
 }

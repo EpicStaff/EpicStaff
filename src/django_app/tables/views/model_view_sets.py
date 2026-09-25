@@ -1067,6 +1067,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         "all": Permission.READ,
         "restore": Permission.UPDATE,
         "create_graph": Permission.CREATE,
+        "preview": Permission.READ,
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph_id"]
@@ -1141,6 +1142,12 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         version = self.get_object()
         result = GraphVersioningService().create_graph_from_version(version)
         return Response(result, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        version = self.get_object()
+        result = GraphVersioningService().preview_version(version)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class IdempotentNodeCreateMixin:

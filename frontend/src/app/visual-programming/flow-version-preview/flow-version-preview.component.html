@@ -1,0 +1,53 @@
+@if (preview.isLoading()) {
+    <app-spinner
+        text="Loading version…"
+        [isOverlay]="false"
+    ></app-spinner>
+} @else if (hasFailed()) {
+    <div class="preview-state preview-state--error">
+        <app-svg-icon
+            icon="alert-triangle"
+            size="1.25rem"
+        ></app-svg-icon>
+        <span>This version could not be loaded.</span>
+    </div>
+} @else if (previewModel(); as model) {
+    <app-flow-graph
+        [flowState]="model.flow"
+        (openShortcuts)="openShortcuts.emit($event)"
+        (copied)="onCopied()"
+    ></app-flow-graph>
+}
+
+<!-- After the canvas so it paints above it. -->
+<div class="preview-bar">
+    <app-svg-icon
+        icon="eye"
+        size="1rem"
+    ></app-svg-icon>
+    <span
+        class="preview-bar__title"
+        [attr.title]="version().name"
+        >Preview Mode – {{ version().name }}</span
+    >
+    @if (warnings().length > 0) {
+        <button
+            type="button"
+            class="preview-bar__warnings"
+            (click)="onShowWarnings()"
+        >
+            <app-svg-icon
+                icon="alert-triangle"
+                size="1rem"
+            ></app-svg-icon>
+            {{ warnings().length }} {{ warnings().length === 1 ? 'warning' : 'warnings' }}
+        </button>
+    }
+    <button
+        type="button"
+        class="preview-bar__exit"
+        (click)="onExit()"
+    >
+        Exit preview
+    </button>
+</div>

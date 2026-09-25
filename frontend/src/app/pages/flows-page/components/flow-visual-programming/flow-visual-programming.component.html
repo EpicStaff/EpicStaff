@@ -6,6 +6,7 @@
         [graph]="graph"
         [isSaving]="isSaving()"
         [isRunning]="isRunning()"
+        [isPreviewMode]="isPreviewing()"
         [hasUnsavedChanges]="hasUnsavedChangesSignal()"
         (save)="onHeaderSave()"
         (saveVersion)="onSaveVersion()"
@@ -19,7 +20,7 @@
     ></app-flow-header>
 
     <div class="body">
-        @if (restoreWarnings().length > 0) {
+        @if (restoreWarnings().length > 0 && !isPreviewing()) {
             <button
                 class="restore-warning-btn"
                 (click)="onShowRestoreWarnings()"
@@ -32,19 +33,37 @@
                 {{ restoreWarnings().length === 1 ? 'dependency' : 'dependencies' }}
             </button>
         }
-        <app-flow-graph
-            [flowState]="currentFlowState()"
-            [currentFlowId]="graph.id"
-            [flowName]="graph.name"
-            [initialNodeId]="initialNodeId"
-            [initialNodeExpand]="initialNodeExpand"
-            [isSaving]="isSaving()"
-            [hasUnsavedChanges]="hasUnsavedChanges()"
-            (save)="onGraphSave($event)"
-            (openShortcuts)="openShortcutsModal($event)"
-            (requestReload)="refreshCurrentFlow()"
-            (importComplete)="handlePartialImportComplete()"
-        ></app-flow-graph>
+        <!-- The live canvas is removed while previewing, so the preview never touches its (root) state. -->
+        @if (previewedVersion(); as version) {
+            <app-flow-version-preview
+                [version]="version"
+                [flowsLight]="availableFlowLights()"
+                (closed)="onPreviewExit()"
+                (openShortcuts)="openShortcutsModal($event)"
+            />
+        } @else if (isCanvasReloading()) {
+            <div class="canvas-placeholder">
+                <app-spinner
+                    text="Loading restored version…"
+                    [isOverlay]="false"
+                ></app-spinner>
+            </div>
+        } @else {
+            <app-flow-graph
+                [flowState]="currentFlowState()"
+                [currentFlowId]="graph.id"
+                [flowName]="graph.name"
+                [initialNodeId]="initialNodeId"
+                [initialNodeExpand]="initialNodeExpand"
+                [initialViewport]="savedViewport()"
+                [isSaving]="isSaving()"
+                [hasUnsavedChanges]="hasUnsavedChanges()"
+                (save)="onGraphSave($event)"
+                (openShortcuts)="openShortcutsModal($event)"
+                (requestReload)="refreshCurrentFlow()"
+                (importComplete)="handlePartialImportComplete()"
+            ></app-flow-graph>
+        }
         <app-shortcuts-modal
             [open]="isShortcutsOpen()"
             [pos]="shortcutsPos()"
@@ -57,6 +76,7 @@
             class="drag-handle"
             [class.dragging]="isDragging"
             [class.collapsed]="isPanelCollapsed()"
+            [class.preview-mode]="isPreviewing()"
             (mousedown)="onDragStart($event)"
         >
             @if (!isVersionHistoryOpen()) {
@@ -90,8 +110,12 @@
                 [graphId]="graph.id"
                 [graphSaveVersion]="versionHistoryGraphSaveVersion()"
                 [hasUnsavedChanges]="hasUnsavedChanges()"
+                [selectedVersionId]="selectedVersionId()"
+                [previewedVersionId]="previewedVersion()?.id ?? null"
                 (closed)="onVersionHistoryClosed()"
                 (restoreRequested)="onVersionRestoreRequested($event)"
+                (previewRequested)="onVersionPreviewRequested($event)"
+                (versionDeleted)="onVersionDeleted($event)"
             ></app-version-history-panel>
         }
         @if (isSaving()) {

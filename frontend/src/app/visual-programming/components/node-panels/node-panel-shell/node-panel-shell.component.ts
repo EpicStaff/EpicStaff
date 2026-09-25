@@ -4,6 +4,7 @@ import {
     Component,
     computed,
     effect,
+    inject,
     input,
     output,
     Signal,
@@ -11,6 +12,7 @@ import {
     TemplateRef,
     viewChild,
 } from '@angular/core';
+import { AbstractControl } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
@@ -20,6 +22,7 @@ import { ShortcutListenerDirective } from '../../../core/directives/shortcut-lis
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
+import { FLOW_EDITOR_READ_ONLY } from '../../../core/providers/flow-editor-state.providers';
 import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
@@ -174,6 +177,7 @@ export class NodePanelShellComponent {
         exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
+        if (this.isReadOnly) return false;
         const panel = this.panelInstanceSig();
         return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
     });
@@ -182,6 +186,7 @@ export class NodePanelShellComponent {
     private isAutosaving = false;
     private lastHandledAutosaveTrigger = 0;
     private autosavePending = false;
+    private readonly isReadOnly = inject(FLOW_EDITOR_READ_ONLY);
 
     constructor(
         private sidePanelService: SidePanelService,
@@ -218,6 +223,9 @@ export class NodePanelShellComponent {
                 setTimeout(() => {
                     const outletRef = this.outlet();
                     if (outletRef?.componentInstance) {
+                        if (this.isReadOnly) {
+                            this.disablePanelForm(outletRef.componentInstance);
+                        }
                         this.panelInstance = outletRef.componentInstance as NodePanel & {
                             onSaveSilently?: () => NodeModel | null;
                         };
@@ -270,6 +278,10 @@ export class NodePanelShellComponent {
     }
 
     protected onShortcutSave(): void {
+        if (this.isReadOnly) {
+            this.sidePanelService.clearSelection();
+            return;
+        }
         if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
             return;
         }
@@ -286,6 +298,10 @@ export class NodePanelShellComponent {
     }
 
     private saveSidePanel(): void {
+        if (this.isReadOnly) {
+            this.sidePanelService.clearSelection();
+            return;
+        }
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&
@@ -302,7 +318,7 @@ export class NodePanelShellComponent {
     }
 
     private tryAutosave(trigger: number): void {
-        if (trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
+        if (this.isReadOnly || trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
             return;
         }
         if (this.isAutosaving) {
@@ -323,6 +339,9 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
+        if (this.isReadOnly) {
+            return;
+        }
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&
@@ -332,6 +351,18 @@ export class NodePanelShellComponent {
             if (updatedNode) {
                 this.autosave.emit(updatedNode);
             }
+        }
+    }
+
+    /**
+     * Read-only is applied generically here instead of in each panel: the panel's reactive
+     * form is disabled once it exists. Widgets outside that form (editors, grids) stay
+     * interactive, but nothing they change can be saved because save and autosave are off.
+     */
+    private disablePanelForm(panel: object): void {
+        const form = (panel as { form?: unknown }).form;
+        if (form instanceof AbstractControl) {
+            form.disable({ emitEvent: false });
         }
     }
 

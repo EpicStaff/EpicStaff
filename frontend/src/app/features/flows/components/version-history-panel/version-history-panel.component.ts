@@ -30,6 +30,9 @@ import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
 import { FlowsApiService } from '../../services/flows-api.service';
 
+/** How long a click on the renameable name/description waits for a second click (double-click = rename). */
+const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
+
 @Component({
     selector: 'app-version-history-panel',
     imports: [
@@ -49,23 +52,29 @@ export class VersionHistoryPanelComponent implements OnInit {
     public versionsList: GraphVersionDto[] = [];
     public isLoading = true;
     public openMenuId: number | null = null;
-    public selectedVersionId: number | null = null;
     public editingVersionId: number | null = null;
     public editingField: 'name' | 'description' | null = null;
     public editingValue: string = '';
     private editingVersion: GraphVersionDto | null = null;
     private isSaving = false;
+    private pendingPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 
-    @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement | HTMLTextAreaElement>;
+    @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement>;
 
     private destroyRef = inject(DestroyRef);
 
     public graphId = input.required<number>();
     public graphSaveVersion = input<number | undefined>();
     public hasUnsavedChanges = input<boolean>(false);
+    /** Version currently shown in the canvas preview (owned by the parent); highlights its card. */
+    public readonly previewedVersionId = input<number | null>(null);
+    /** Selected card (owned by the parent, set only once it accepts a preview); the footer "Restore This Version" acts on it. */
+    public readonly selectedVersionId = input<number | null>(null);
 
     public closed = output<void>();
     public restoreRequested = output<GraphVersionDto>();
+    public readonly previewRequested = output<GraphVersionDto>();
+    public readonly versionDeleted = output<GraphVersionDto>();
 
     @HostListener('document:mousedown', ['$event'])
     onDocumentMouseDown(event: MouseEvent): void {
@@ -83,7 +92,9 @@ export class VersionHistoryPanelComponent implements OnInit {
         private cdr: ChangeDetectorRef,
         private router: Router,
         private createGraphWarningsService: CreateGraphWarningsService
-    ) {}
+    ) {
+        this.destroyRef.onDestroy(() => this.cancelPendingPreview());
+    }
 
     public ngOnInit(): void {
         this.loadVersions();
@@ -93,8 +104,32 @@ export class VersionHistoryPanelComponent implements OnInit {
         this.openMenuId = this.openMenuId === id ? null : id;
     }
 
-    public selectVersion(version: GraphVersionDto): void {
-        this.selectedVersionId = version.id;
+    public onCardClick(event: MouseEvent, version: GraphVersionDto): void {
+        // The second click of a double-click; the first one already opened the preview.
+        if (event.detail > 1) return;
+        this.openPreview(version);
+    }
+
+    /**
+     * A double-click on the name/description starts a rename, and it fires two clicks first.
+     * Wait out the double-click window so a rename never opens the preview (or moves the selection).
+     */
+    public onRenameableTextClick(event: MouseEvent, version: GraphVersionDto): void {
+        event.stopPropagation();
+        if (event.detail > 1) return;
+        this.cancelPendingPreview();
+        this.pendingPreviewTimer = setTimeout(() => {
+            this.pendingPreviewTimer = null;
+            this.openPreview(version);
+        }, RENAME_DOUBLE_CLICK_WINDOW_MS);
+    }
+
+    public onCardKeydown(event: KeyboardEvent, version: GraphVersionDto): void {
+        // Keys typed into the rename inputs or the options button bubble up here — only the card itself reacts.
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        this.openPreview(version);
     }
 
     public restoreVersion(version: GraphVersionDto, event?: MouseEvent): void {
@@ -104,7 +139,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public restoreSelectedVersion(): void {
-        const version = this.versionsList.find((v) => v.id === this.selectedVersionId);
+        const version = this.versionsList.find((v) => v.id === this.selectedVersionId());
         if (!version) return;
 
         const pendingName =
@@ -116,6 +151,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public startEdit(version: GraphVersionDto, field: 'name' | 'description'): void {
+        this.cancelPendingPreview();
         this.openMenuId = null;
         this.editingVersion = version;
         this.editingVersionId = version.id;
@@ -134,7 +170,12 @@ export class VersionHistoryPanelComponent implements OnInit {
         const value = this.editingValue.trim();
         const originalValue = field === 'name' ? version.name : version.description || '';
 
-        if ((field === 'name' && !value) || value === originalValue) {
+        if (field === 'name' && !value) {
+            this.toastService.warning('Version name is required');
+            this.cancelEdit();
+            return;
+        }
+        if (value === originalValue) {
             this.cancelEdit();
             return;
         }
@@ -203,9 +244,7 @@ export class VersionHistoryPanelComponent implements OnInit {
             .subscribe({
                 next: () => {
                     this.versionsList = this.versionsList.filter((v) => v.id !== version.id);
-                    if (this.selectedVersionId === version.id) {
-                        this.selectedVersionId = null;
-                    }
+                    this.versionDeleted.emit(version);
                     this.toastService.success('Version deleted');
                 },
                 error: () => {
@@ -247,5 +286,17 @@ export class VersionHistoryPanelComponent implements OnInit {
                 },
                 error: () => this.toastService.error('Failed to create flow'),
             });
+    }
+
+    /** Asks the parent to preview the version; the parent selects it only if it accepts, so selection == previewed version. */
+    private openPreview(version: GraphVersionDto): void {
+        this.cancelPendingPreview();
+        this.previewRequested.emit(version);
+    }
+
+    private cancelPendingPreview(): void {
+        if (this.pendingPreviewTimer === null) return;
+        clearTimeout(this.pendingPreviewTimer);
+        this.pendingPreviewTimer = null;
     }
 }

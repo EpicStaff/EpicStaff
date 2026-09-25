@@ -1,6 +1,7 @@
 .dialog-container {
-    background: var(--graphite-875);
-    border-radius: 8px;
+    background: var(--graphite-900);
+    border-radius: 10px;
+    border: 1px solid var(--graphite-750);
     padding: 24px;
     min-width: 320px;
     max-width: 100%;
@@ -13,13 +14,12 @@
 .dialog-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     border-bottom: 1px solid var(--white-alpha-10);
     padding-bottom: 16px;
 }
 
 .close-button {
-    margin-top: -8px;
     margin-right: -8px;
 }
 

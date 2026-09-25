@@ -75,17 +75,11 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: var(--color-input-background);
+    background: var(--amber-alpha-8);
     border-left: 3px solid var(--color-warning);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.875rem;
     line-height: 1.5;
-
-    .warning-item-icon {
-        color: var(--color-warning);
-        flex-shrink: 0;
-        margin-top: 1px;
-    }
 
     .warning-item-arrow {
         color: var(--color-text-secondary);
@@ -100,7 +94,7 @@
         transition: background-color 0.15s ease;
 
         &:hover {
-            background: var(--color-input-background-hover);
+            background: var(--amber-alpha-12);
 
             .warning-item-arrow {
                 color: var(--color-text-primary);
