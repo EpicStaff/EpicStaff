@@ -27,7 +27,8 @@ export function mapPersistenceNodeToModel(dto: GetPersistenceNodeRequest): Persi
         color: ui.color,
         icon: ui.icon,
         input_map: dto.input_map ?? {},
-        output_variable_path: dto.output_variable_path,
+        // No persistence mode writes an output; read values go to each entry's own path.
+        output_variable_path: null,
         size: ui.size,
     };
 }

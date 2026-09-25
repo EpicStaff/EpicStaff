@@ -88,6 +88,7 @@ import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { NodeFactoryService } from '../services/node-factory.service';
+import { PersistenceValueDraftsService } from '../services/persistence-value-drafts.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
@@ -121,6 +122,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
             }),
             deps: [FlowService],
         },
+        PersistenceValueDraftsService,
     ],
     imports: [
         FFlowModule,

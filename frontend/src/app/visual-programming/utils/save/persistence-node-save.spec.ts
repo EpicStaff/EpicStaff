@@ -30,6 +30,37 @@ describe('persistence node save/load', () => {
         expect(model.input_map).toEqual(dto.input_map);
     });
 
+    it('loads and saves read entries as key and target path, with no output variable path', () => {
+        // jsonb hands the keys back sorted, which here is already key, value.
+        const readDto: GetPersistenceNodeRequest = {
+            ...dto,
+            mode: 'read',
+            entries: [{ key: 'profile', value: 'variables.profile' }],
+        };
+        const loaded = mapPersistenceNodeToModel(readDto);
+        const created: PersistenceNodeModel = { ...loaded, backendId: null };
+        const current = { nodes: [created], connections: [] } as unknown as FlowModel;
+        const diff = getNodeDiff({ nodes: [], connections: [] } as unknown as FlowModel, current);
+
+        const payload = buildBulkSavePayload(
+            1,
+            diff,
+            { toCreate: [], toDelete: [], toUpdate: [] },
+            current,
+            new Map(),
+            1
+        );
+
+        expect(loaded.output_variable_path).toBeNull();
+        expect(payload['persistence_node_list']).toEqual([
+            expect.objectContaining({
+                mode: 'read',
+                entries: [{ key: 'profile', value: 'variables.profile' }],
+                output_variable_path: null,
+            }),
+        ]);
+    });
+
     it('detects a mode change as an update', () => {
         const before = mapPersistenceNodeToModel(dto);
         const after: PersistenceNodeModel = {

@@ -32,7 +32,7 @@
 
                 <app-select
                     label="Mode"
-                    tooltipText="Read returns stored values, Write upserts values taken from flow state paths, Delete removes keys."
+                    tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
                     formControlName="mode"
                     [items]="modeItems"
                 />
@@ -40,8 +40,8 @@
 
             <div class="entries">
                 <app-tooltip
-                    label="Keys"
-                    tooltipText="Each key names a stored value. Put state paths in braces to build a key at run time, e.g. profile_{variables.user.id}."
+                    [label]="keysLabel()"
+                    tooltipText="Each key names a stored value. Put state paths in braces to build a key at run time, e.g. profile_{variables.user.id}. Read writes the stored value into the variable next to its key; Write stores that variable's value."
                 />
                 <div
                     formArrayName="entries"
@@ -52,21 +52,6 @@
                             class="entry-row"
                             [formGroupName]="i"
                         >
-                            @if (mode() === 'read') {
-                                <div class="entry-field">
-                                    <input
-                                        type="text"
-                                        class="entry-input"
-                                        formControlName="alias"
-                                        placeholder="Alias"
-                                        aria-label="Alias"
-                                        autocomplete="off"
-                                    />
-                                    @if (aliasHintFor(i); as hint) {
-                                        <div class="entry-hint">{{ hint }}</div>
-                                    }
-                                </div>
-                            }
                             <div class="entry-field">
                                 <input
                                     type="text"
@@ -77,10 +62,10 @@
                                     autocomplete="off"
                                     role="combobox"
                                     aria-autocomplete="list"
-                                    [attr.aria-expanded]="isSuggestionListOpen(i)"
+                                    [attr.aria-expanded]="isSuggestionListOpen(i, 'key')"
                                     (input)="onKeyInput(i, $event)"
-                                    (keydown)="onKeyKeydown($event)"
-                                    (blur)="onKeyBlur()"
+                                    (keydown)="onSuggestionKeydown($event)"
+                                    (blur)="onSuggestionBlur()"
                                 />
                                 @if (placeholderHints()[i]; as hint) {
                                     <div class="entry-hint">{{ hint }}</div>
@@ -89,25 +74,21 @@
                                     <div class="entry-hint">{{ hint }}</div>
                                 }
                             </div>
-                            @if (mode() === 'read') {
-                                <input
-                                    type="text"
-                                    class="entry-input"
-                                    formControlName="default"
-                                    placeholder="Default (JSON or text)"
-                                    aria-label="Default value"
-                                    autocomplete="off"
-                                />
-                            }
-                            @if (mode() === 'write') {
+                            @if (mode() !== 'delete') {
                                 <div class="entry-field">
                                     <input
                                         type="text"
                                         class="entry-input"
                                         formControlName="value"
                                         placeholder="variables.user.name"
-                                        aria-label="Value path"
+                                        aria-label="Variable path"
                                         autocomplete="off"
+                                        role="combobox"
+                                        aria-autocomplete="list"
+                                        [attr.aria-expanded]="isSuggestionListOpen(i, 'value')"
+                                        (input)="onValueInput(i, $event)"
+                                        (keydown)="onSuggestionKeydown($event)"
+                                        (blur)="onSuggestionBlur()"
                                     />
                                     @if (valueHintFor(i); as hint) {
                                         <div class="entry-hint">{{ hint }}</div>
@@ -140,16 +121,6 @@
                     Add key
                 </button>
             </div>
-
-            @if (mode() === 'read') {
-                <app-custom-input
-                    label="Output Variable Path"
-                    tooltipText="Where the read values are stored, e.g. variables.customer. Each alias is stored under it."
-                    formControlName="output_variable_path"
-                    placeholder="Enter output variable path (leave empty for null)"
-                    [activeColor]="activeColor"
-                ></app-custom-input>
-            }
         </form>
     </div>
 </div>

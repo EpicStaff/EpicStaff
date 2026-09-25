@@ -483,7 +483,7 @@ export function buildBulkSavePayload(
             node_name: n.node_name,
             graph: graphId,
             input_map: n.input_map || {},
-            output_variable_path: n.output_variable_path || null,
+            output_variable_path: null,
             persistence_table: n.data?.persistence_table ?? null,
             mode: n.data?.mode ?? 'read',
             entries: n.data?.entries ?? [],
