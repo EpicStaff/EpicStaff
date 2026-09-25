@@ -2,12 +2,12 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
     width: 28px;
     height: 28px;
-    border: 1px solid var(--red);
+    border: 1px solid var(--orange-500);
     border-radius: 4px;
     background: transparent;
+    color: var(--orange-500);
     opacity: 1;
     cursor: pointer;
     transition: background-color 0.15s ease;
@@ -20,11 +20,4 @@
         opacity: 0.4;
         cursor: not-allowed;
     }
-}
-
-.stop-bar {
-    width: 4px;
-    height: 12px;
-    border-radius: 1px;
-    background: var(--red);
 }

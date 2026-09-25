@@ -36,7 +36,7 @@ from tables.models import (
     TaskNode,
 )
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 
 

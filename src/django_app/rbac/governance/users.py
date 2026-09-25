@@ -1,19 +1,39 @@
+from dataclasses import dataclass, field
+
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
+from tables.models.user import User
 
 from rbac.exceptions import (
     EmailAlreadyExistsError,
     LastSuperadminError,
     OrganizationNotFoundError,
     RoleNotFoundError,
+    SelfAccountDeletionError,
     UserNotFoundError,
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
+from rbac.governance.delete_collector import (
+    build_affected_resources,
+    build_collector,
+    summarize,
+)
 from rbac.governance.guards import UserManagementGuards
+from rbac.identity.session_invalidation import (
+    SessionInvalidationService,
+)
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, ResourceType
+
+
+@dataclass
+class UserDeleteReport:
+    """What deleting a user removed, or would remove."""
+
+    user_id: int
+    affected_resources: dict[str, int] = field(default_factory=dict)
 
 
 class UserManagementService(CrossOrgResourceService):
@@ -27,13 +47,19 @@ class UserManagementService(CrossOrgResourceService):
     span, which is why the list scopes through MEMBERSHIPS on the cross-org
     skeleton rather than an `org` column.
 
-    Every write method wraps in transaction.atomic(), acquires
-    SELECT FOR UPDATE on the contested row before any guard, translates
+    Every write method wraps in transaction.atomic(), translates
     IntegrityError to typed domain exceptions, and logs INFO via loguru.
+    Most methods acquire SELECT FOR UPDATE on the contested row(s) before any
+    guard; `delete_user` is the exception -- it runs its unlocked pre-checks
+    first (so the common failure paths never take a lock) and only locks for
+    the real-delete path's re-check.
     """
 
     rbac_resource_type = ResourceType.MEMBERSHIPS
     not_found_exception = UserNotFoundError
+
+    def __init__(self, session_invalidator: SessionInvalidationService | None = None):
+        self._session_invalidator = session_invalidator or SessionInvalidationService()
 
     # ---- read ----
 
@@ -233,6 +259,129 @@ class UserManagementService(CrossOrgResourceService):
         )
 
         return target
+
+    # ---- deletion ----
+
+    def _target_user_or_404(self, target_user_id: int):
+        """Fetch the user a delete/preview targets, or raise UserNotFoundError."""
+        UserModel = get_user_model()  # noqa: N806
+        try:
+            return UserModel.objects.get(pk=target_user_id)
+        except UserModel.DoesNotExist as exc:
+            raise UserNotFoundError() from exc
+
+    @staticmethod
+    def _assert_deletable_user(actor: User, instance) -> None:
+        """Refuse self-deletion and removal of the last active superadmin."""
+        UserModel = get_user_model()  # noqa: N806
+        if getattr(actor, "pk", None) == instance.pk:
+            raise SelfAccountDeletionError()
+        if instance.is_superadmin:
+            others_remain = (
+                UserModel.objects.filter(is_superadmin=True, is_active=True)
+                .exclude(pk=instance.pk)
+                .exists()
+            )
+            if not others_remain:
+                raise LastSuperadminError()
+
+    def preview_delete(self, actor: User, target_user_id: int) -> UserDeleteReport:
+        """Report what deleting a user would remove, without deleting anything."""
+        instance = self._target_user_or_404(target_user_id)
+        self._assert_deletable_user(actor=actor, instance=instance)
+
+        by_model = summarize(build_collector(instance))
+        affected = build_affected_resources(by_model, self._user_external_artifacts(instance))
+        payload = UserDeleteReport(user_id=instance.pk, affected_resources=affected)
+        logger.info(
+            "UserManagementService.preview_delete actor={a} target={t} resources={r}",
+            a=getattr(actor, "email", "system"),
+            t=instance.email,
+            r=affected,
+        )
+        return payload
+
+    @transaction.atomic
+    def delete_user(self, actor: User, target_user_id: int) -> UserDeleteReport:
+        """Permanently delete a user account, refusing self-deletion and removal of the last active superadmin."""
+        UserModel = get_user_model()  # noqa: N806
+        instance = self._target_user_or_404(target_user_id)
+        self._assert_deletable_user(actor=actor, instance=instance)
+
+        # Computed before any lock is taken, so it never extends how long the
+        # locks taken below are held (this check is a no-op here, but the same
+        # shape on the organization side does real MinIO network I/O).
+        external = self._user_external_artifacts(instance)
+        # Captured before the delete: after it, the row these read from is gone.
+        snapshot = self._user_delete_snapshot(instance)
+
+        # Re-fetch under lock and re-check the last-active-superadmin guard
+        # against current state. Locks the active-superadmin set FIRST, in pk
+        # order, then the target row -- the SAME lock order
+        # revoke_superadmin/set_user_active use, so a concurrent call taking
+        # both locks can never deadlock against this one.
+        superadmin_pks = set(
+            UserModel.objects.filter(is_superadmin=True, is_active=True)
+            .order_by("pk")
+            .select_for_update()
+            .values_list("pk", flat=True)
+        )
+        try:
+            locked_target = UserModel.objects.select_for_update().get(pk=instance.pk)
+        except UserModel.DoesNotExist as exc:
+            raise UserNotFoundError() from exc
+        if locked_target.is_superadmin and not (superadmin_pks - {instance.pk}):
+            raise LastSuperadminError()
+
+        self._session_invalidator.blacklist_all_for_user(instance)
+        # Built from the SAME collector that performs the delete below, so
+        # this describes exactly what was removed. Nothing here needs
+        # merging in from outside the collector's closure:
+        # `blacklist_all_for_user` only ever creates new `BlacklistedToken`
+        # rows, and `OutstandingToken.user` is SET_NULL (not CASCADE), so
+        # `BlacklistedToken` -- which cascades from `OutstandingToken`, not
+        # from User -- is never part of this cascade's closure.
+        collector = build_collector(instance)
+        by_model = summarize(collector)
+        affected = build_affected_resources(by_model, external)
+        payload = UserDeleteReport(user_id=instance.pk, affected_resources=affected)
+        collector.delete()
+        transaction.on_commit(lambda: self._cleanup_user_delete_external(snapshot))
+
+        logger.info(
+            "UserManagementService.delete_user actor={a} target={t} resources={r}",
+            a=getattr(actor, "email", "system"),
+            t=instance.email,
+            r=affected,
+        )
+        return payload
+
+    @staticmethod
+    def _user_external_artifacts(instance: User) -> dict[str, int]:
+        """Report the avatar file, which lives on local disk rather than in MinIO."""
+        if not instance.avatar:
+            return {}
+        return {"avatar": 1}
+
+    @staticmethod
+    def _user_delete_snapshot(instance: User) -> dict:
+        """Capture the avatar's storage backend and name before the user row is deleted."""
+        if not instance.avatar:
+            return {}
+        return {"avatar_storage": instance.avatar.storage, "avatar_name": instance.avatar.name}
+
+    @staticmethod
+    def _cleanup_user_delete_external(snapshot: dict) -> None:
+        """Delete the orphaned avatar file, logging rather than raising on failure."""
+        name = snapshot.get("avatar_name")
+        if not name:
+            return
+        try:
+            snapshot["avatar_storage"].delete(name)
+        except Exception as exc:
+            logger.error(
+                "UserManagementService.delete_user cleanup failed error={error}", error=exc
+            )
 
     # ---- internal helpers ----
 

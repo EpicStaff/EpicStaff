@@ -1,15 +1,38 @@
+from dataclasses import dataclass, field
+
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
+from loguru import logger
 from tables.models.user import User
 
 from rbac.exceptions import (
+    DefaultOrganizationNotDeletableError,
     LastActiveOrganizationError,
+    LastOrganizationError,
     OrganizationNameConflictError,
     OrganizationNotFoundError,
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
+from rbac.governance.delete_collector import (
+    ModelCount,
+    build_affected_resources,
+    build_collector,
+    summarize,
+)
+from rbac.governance.organization_deletion import (
+    OrganizationDeletionCounts,
+    participants,
+)
 from rbac.models import Organization, OrganizationUser
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
+
+
+@dataclass
+class OrganizationDeleteReport:
+    """What deleting an organization removed, or would remove."""
+
+    organization_id: int
+    affected_resources: dict[str, int] = field(default_factory=dict)
 
 
 class OrganizationManagementService(CrossOrgResourceService):
@@ -143,6 +166,136 @@ class OrganizationManagementService(CrossOrgResourceService):
         org.is_active = True
         org.save(update_fields=["is_active", "updated_at"])
         return self._get_organization_with_member_count(org.pk)
+
+    # ---- deletion ----
+
+    def _target_org_or_404(self, org_id: int) -> Organization:
+        """Fetch the organization a delete/preview targets, or raise OrganizationNotFoundError."""
+        try:
+            return Organization.objects.get(pk=org_id)
+        except Organization.DoesNotExist as exc:
+            raise OrganizationNotFoundError() from exc
+
+    @staticmethod
+    def _assert_deletable_org(instance: Organization) -> None:
+        """Refuse the default organization and the last remaining active one."""
+        if instance.is_default:
+            raise DefaultOrganizationNotDeletableError()
+        if not Organization.objects.filter(is_active=True).exclude(pk=instance.pk).exists():
+            raise LastOrganizationError()
+
+    def preview_delete(self, actor: User, org_id: int) -> OrganizationDeleteReport:
+        """Report what deleting an organization would remove, without deleting anything."""
+        instance = self._target_org_or_404(org_id)
+        self._assert_deletable_org(instance)
+
+        registered = participants()
+        participant_counts = [participant.count(instance) for participant in registered]
+        external_counts = [
+            participant.count_external_artifacts(instance) for participant in registered
+        ]
+        affected = self._affected_resources(
+            summarize(build_collector(instance)), participant_counts, external_counts
+        )
+        payload = OrganizationDeleteReport(organization_id=instance.pk, affected_resources=affected)
+        logger.info(
+            "OrganizationManagementService.preview_delete actor={actor} target={target} resources={resources}",
+            actor=getattr(actor, "email", "system"),
+            target=instance.name,
+            resources=affected,
+        )
+        return payload
+
+    @transaction.atomic
+    def delete_organization(self, actor: User, org_id: int) -> OrganizationDeleteReport:
+        """Permanently delete an organization and everything it owns, refusing the default organization and the last remaining active one."""
+        instance = self._target_org_or_404(org_id)
+        self._assert_deletable_org(instance)
+
+        registered = participants()
+        # External artifact counts may do network I/O (a MinIO listing); they
+        # run before any lock is taken, so they never extend how long the
+        # locks taken below are held. They do run inside this method's own
+        # @transaction.atomic, so a DB connection is held open across that
+        # unbounded network call.
+        external_counts = [
+            participant.count_external_artifacts(instance) for participant in registered
+        ]
+
+        locked = {
+            org.pk: org
+            for org in Organization.objects.filter(is_active=True)
+            .order_by("pk")
+            .select_for_update()
+        }
+        # `instance.is_default` is read unlocked here rather than from
+        # `locked` (which only holds active orgs, and could miss an inactive
+        # target): safe because `is_default` has no live write path -- it is
+        # set once, by SuperadminBootstrap at provisioning time, and never
+        # toggled by request-handling code.
+        if instance.is_default:
+            raise DefaultOrganizationNotDeletableError()
+        # Narrower, lock-scoped re-check of the same last-active-org invariant `_assert_deletable_org` enforces unlocked above -- not a full re-implementation, so don't assume edits to one mirror the other.
+        if instance.pk in locked and not set(locked) - {instance.pk}:
+            raise LastOrganizationError()
+
+        # Each participant counts non-destructively immediately before its
+        # sweep, under the same locks, so this agrees with the preview. The
+        # sweeps run before build_collector: the rows they remove must already
+        # be gone when the collector walks the organization's relations.
+        participant_counts: list[OrganizationDeletionCounts] = []
+        cleanups = []
+        for participant in registered:
+            participant_counts.append(participant.count(instance))
+            cleanups.append(participant.sweep(instance))
+        collector = build_collector(instance)
+        affected = self._affected_resources(
+            summarize(collector), participant_counts, external_counts
+        )
+        payload = OrganizationDeleteReport(organization_id=instance.pk, affected_resources=affected)
+        collector.delete()
+        for cleanup in cleanups:
+            if cleanup is not None:
+                # robust: a failing cleanup is logged and never undoes the
+                # committed delete or skips another participant's cleanup.
+                transaction.on_commit(cleanup, robust=True)
+
+        logger.info(
+            "OrganizationManagementService.delete_organization actor={actor} target={target} resources={resources}",
+            actor=getattr(actor, "email", "system"),
+            target=instance.name,
+            resources=affected,
+        )
+        return payload
+
+    @staticmethod
+    def _affected_resources(
+        collector_by_model: list[ModelCount],
+        participant_counts: list[OrganizationDeletionCounts],
+        external_counts: list[dict[str, int]],
+    ) -> dict[str, int]:
+        """Fold the collector's rows, each participant's swept rows and every external artifact count into the delete report."""
+        swept_by_model = [row for counts in participant_counts for row in counts.by_model]
+        external_totals: dict[str, int] = {}
+        for counts in [
+            *external_counts,
+            *(counts.external_counts for counts in participant_counts),
+        ]:
+            for name, count in counts.items():
+                external_totals[name] = external_totals.get(name, 0) + count
+        return build_affected_resources(
+            OrganizationManagementService._merge_sweep_counts(collector_by_model, swept_by_model),
+            external_totals,
+        )
+
+    @staticmethod
+    def _merge_sweep_counts(
+        collector_by_model: list[ModelCount], sweep_counts: list[ModelCount]
+    ) -> list[ModelCount]:
+        """Replace the collector's own count for every swept model with the sweep's own count, so dry-run and real mode always agree."""
+        swept_labels = {row.model for row in sweep_counts}
+        kept = [row for row in collector_by_model if row.model not in swept_labels]
+        return kept + sweep_counts
 
     def _get_organization_with_member_count(self, org_id: int) -> Organization:
         try:

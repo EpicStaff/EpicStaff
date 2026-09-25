@@ -1,5 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateOrganizationRequest, GetOrganizationResponse, UpdateOrganizationRequest } from '@shared/models';
+import {
+    CreateOrganizationRequest,
+    GetOrganizationResponse,
+    OrganizationDeleteReport,
+    UpdateOrganizationRequest,
+} from '@shared/models';
 import { StorageService } from '@shared/services';
 import { catchError, map, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
@@ -74,6 +79,17 @@ export class OrganizationsStorageService implements StorageService {
         );
     }
 
+    deleteOrganization(id: number, dryRun: boolean): Observable<OrganizationDeleteReport> {
+        return this.apiService.deleteOrganization(id, dryRun).pipe(
+            tap(() => {
+                if (!dryRun) {
+                    this.removeFromCache(id);
+                }
+            }),
+            catchError((err) => throwError(() => err))
+        );
+    }
+
     private updateOrganizationInCache(updated: GetOrganizationResponse): void {
         this.organizationsSignal.update((orgs) => {
             const index = orgs.findIndex((o) => o.id === updated.id);
@@ -89,6 +105,10 @@ export class OrganizationsStorageService implements StorageService {
     clear(): void {
         this.organizationsSignal.set([]);
         this.organizationsLoaded.set(false);
+    }
+
+    private removeFromCache(id: number): void {
+        this.organizationsSignal.update((orgs) => orgs.filter((o) => o.id !== id));
     }
 
     private setActiveInCache(id: number, isActive: boolean): void {

@@ -4,6 +4,7 @@ import {
     ActionCode,
     CreateOrganizationRequest,
     GetOrganizationResponse,
+    OrganizationDeleteReport,
     ResourceCode,
     UpdateOrganizationRequest,
 } from '@shared/models';
@@ -64,5 +65,11 @@ export class AdminOrganizationsService {
 
     reactivateOrganization(id: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${id}/reactivate/`, {});
+    }
+
+    deleteOrganization(id: number, dryRun: boolean): Observable<OrganizationDeleteReport> {
+        return this.http.delete<OrganizationDeleteReport>(`${this.apiUrl}${id}/`, {
+            params: new HttpParams().set('dry_run', String(dryRun)),
+        });
     }
 }

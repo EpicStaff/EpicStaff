@@ -1,16 +1,26 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+import dataclasses
+
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from rbac.access.gates import IsSuperadmin
+from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.governance.users import UserManagementService
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
-from rbac.schemas.users import USERS_LIST_GET
+from rbac.schemas.users import (
+    USERS_CREATE_POST,
+    USERS_DEACTIVATE_POST,
+    USERS_DESTROY_DELETE,
+    USERS_GRANT_SUPERADMIN_POST,
+    USERS_LIST_GET,
+    USERS_REACTIVATE_POST,
+    USERS_REVOKE_SUPERADMIN_POST,
+)
+from rbac.serializers.delete import UserDeleteReportSerializer
 from rbac.serializers.users import (
-    UserCreateRequestSerializer,
     UserResponseSerializer,
 )
 from rbac.validation.user import UserValidationService
@@ -55,6 +65,12 @@ class UserAdminViewSet(viewsets.ViewSet):
     _service = UserManagementService()
     _validator = UserValidationService()
 
+    def get_permissions(self):
+        """Permanent deletion is JWT-only; a leaked key must not erase accounts."""
+        if getattr(self, "action", None) == "destroy":
+            return [IsAuthenticated(), IsSuperadmin(), DenyApiKeyAuth()]
+        return super().get_permissions()
+
     @extend_schema(**USERS_LIST_GET)
     def list(self, request):
         org_ids = CrossOrgAdminViewSet.parse_org_ids(request.query_params.get("org_ids"))
@@ -84,15 +100,7 @@ class UserAdminViewSet(viewsets.ViewSet):
             return qs.order_by(*_DEFAULT_ORDERING)
         return qs.order_by(f"-{field}" if descending else field, "id")
 
-    @extend_schema(
-        summary="Create a user (superadmin)",
-        request=UserCreateRequestSerializer,
-        responses={
-            201: UserResponseSerializer,
-            400: OpenApiResponse(description="Validation error or duplicate email"),
-            404: OpenApiResponse(description="Organization or role not found"),
-        },
-    )
+    @extend_schema(**USERS_CREATE_POST)
     def create(self, request):
         cleaned = self._validator.validate_create_user(request.data)
         user = self._service.create_user(
@@ -110,41 +118,21 @@ class UserAdminViewSet(viewsets.ViewSet):
         )
 
     @action(detail=True, methods=["post"], url_path="grant-superadmin")
-    @extend_schema(
-        summary="Grant superadmin (superadmin)",
-        responses={
-            200: UserResponseSerializer,
-            404: OpenApiResponse(description="User not found"),
-        },
-    )
+    @extend_schema(**USERS_GRANT_SUPERADMIN_POST)
     def grant_superadmin(self, request, pk=None):
         user = self._service.grant_superadmin(actor=request.user, target_user_id=int(pk))
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="revoke-superadmin")
-    @extend_schema(
-        summary="Revoke superadmin (superadmin)",
-        responses={
-            200: UserResponseSerializer,
-            400: OpenApiResponse(description="Cannot revoke last superadmin"),
-            404: OpenApiResponse(description="User not found"),
-        },
-    )
+    @extend_schema(**USERS_REVOKE_SUPERADMIN_POST)
     def revoke_superadmin(self, request, pk=None):
         user = self._service.revoke_superadmin(actor=request.user, target_user_id=int(pk))
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="deactivate")
-    @extend_schema(
-        summary="Deactivate a user account (superadmin)",
-        responses={
-            200: UserResponseSerializer,
-            400: OpenApiResponse(description="Cannot deactivate the last active superadmin"),
-            404: OpenApiResponse(description="User not found"),
-        },
-    )
+    @extend_schema(**USERS_DEACTIVATE_POST)
     def deactivate(self, request, pk=None):
         user = self._service.set_user_active(
             actor=request.user, target_user_id=int(pk), value=False
@@ -153,14 +141,21 @@ class UserAdminViewSet(viewsets.ViewSet):
         return Response(UserResponseSerializer(user, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="reactivate")
-    @extend_schema(
-        summary="Reactivate a user account (superadmin)",
-        responses={
-            200: UserResponseSerializer,
-            404: OpenApiResponse(description="User not found"),
-        },
-    )
+    @extend_schema(**USERS_REACTIVATE_POST)
     def reactivate(self, request, pk=None):
         user = self._service.set_user_active(actor=request.user, target_user_id=int(pk), value=True)
         user = self._service.list_users(actor=request.user).get(pk=user.pk)
         return Response(UserResponseSerializer(user, context={"request": request}).data)
+
+    @extend_schema(**USERS_DESTROY_DELETE)
+    def destroy(self, request, pk=None):
+        """Permanently delete a user account, or preview the deletion."""
+        if self._is_truthy(request.query_params.get("dry_run")):
+            report = self._service.preview_delete(actor=request.user, target_user_id=int(pk))
+        else:
+            report = self._service.delete_user(actor=request.user, target_user_id=int(pk))
+        return Response(UserDeleteReportSerializer(dataclasses.asdict(report)).data)
+
+    @staticmethod
+    def _is_truthy(raw):
+        return str(raw).strip().lower() in ("true", "1") if raw is not None else False
