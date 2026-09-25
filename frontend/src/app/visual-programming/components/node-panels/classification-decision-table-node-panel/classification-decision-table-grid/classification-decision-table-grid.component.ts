@@ -278,13 +278,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const headerEl = this.elRef.nativeElement.querySelector('.ag-header') as HTMLElement | null;
         const rowsOffsetY = bodyOffsetY + (headerEl?.getBoundingClientRect().height ?? 0);
         const overlaysEl = wrapperEl.querySelector('.group-overlays') as HTMLElement | null;
-        if (overlaysEl) {
-            const rowsBottom = bodyOffsetY + bodyEl.clientHeight;
-            overlaysEl.style.setProperty(
-                '--cdt-overlay-clip-bottom',
-                `${Math.max(0, wrapperRect.height - rowsBottom)}px`
-            );
-        }
         const scrollTop = bodyEl.scrollTop;
         const collapsed = this.collapsedGroups();
         const insideCollapsed = this.sectionsInsideCollapsed();
@@ -519,6 +512,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                           ...items.map((item) => (item.isCollapsed ? item.top : item.top - chipOverhang))
                       );
             overlaysEl.style.setProperty('--cdt-overlay-clip-top', `${Math.max(0, clipTop)}px`);
+
+            const rowsBottom = bodyOffsetY + bodyEl.clientHeight;
+            const scrolledToEnd = scrollTop + bodyEl.clientHeight >= bodyEl.scrollHeight - 1;
+            const clipBottom = scrolledToEnd
+                ? wrapperRect.height - Math.max(rowsBottom, ...items.map((item) => item.top + item.height))
+                : Math.max(0, wrapperRect.height - rowsBottom);
+            overlaysEl.style.setProperty('--cdt-overlay-clip-bottom', `${clipBottom}px`);
         }
 
         this.groupOverlayItems.set(items);
@@ -851,7 +851,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             this.contextMenu.set({
                 x: mouseEvent.clientX,
                 y: mouseEvent.clientY,
-                rowIndex: event.node.rowIndex!,
+                rowIndex: this.rowData().indexOf(event.node.data),
             });
             this.cdr.markForCheck();
         },
@@ -1754,7 +1754,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 cursor: 'pointer',
             },
             onCellClicked: (event: CellClickedEvent) => {
-                this.deleteRow(event.node.rowIndex!);
+                this.deleteRow(this.rowData().indexOf(event.node.data));
             },
         };
 
@@ -2452,7 +2452,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     private insertRowAtContext(offset: 0 | 1): void {
         const ctx = this.contextMenu();
-        if (!ctx) return;
+        if (!ctx || ctx.rowIndex === -1) return;
         const currentRows = this.rowData();
         const insertAt = ctx.rowIndex + offset;
         const newRow = this.createNewRow(insertAt);
@@ -2466,6 +2466,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     deleteRow(rowIndex: number): void {
+        if (rowIndex === -1) return;
         const currentRows = this.rowData();
         const updatedRows = currentRows
             .filter((_, index) => index !== rowIndex)
