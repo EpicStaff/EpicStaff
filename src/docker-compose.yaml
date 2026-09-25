@@ -339,14 +339,15 @@ services:
         condition: service_healthy
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
     container_name: minio
-    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:?}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?}
+      RUSTFS_ACCESS_KEY: ${MINIO_USER:?}
+      RUSTFS_SECRET_KEY: ${MINIO_PASSWORD:?}
+      RUSTFS_ADDRESS: ":${MINIO_PORT}"
+      RUSTFS_CONSOLE_ENABLE: "false"
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data
     networks:
       - backend-network
       - sandbox-network
@@ -359,7 +360,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
     container_name: minio-init
     networks:
       - backend-network
@@ -368,10 +369,10 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:${MINIO_PORT} ${MINIO_USER} ${MINIO_PASSWORD} &&
-      mc mb --ignore-existing local/${MINIO_BUCKET} &&
-      echo 'Bucket ready.' &&
-      exit 0
+      status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
+      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${MINIO_USER}:${MINIO_PASSWORD}'
+      http://minio:${MINIO_PORT}/${MINIO_BUCKET}) &&
+      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac
       "
     restart: on-failure
 
@@ -533,7 +534,7 @@ volumes:
     external: true
   redis_data: {}
   code_instances: {}
-  minio_data: {}
+  rustfs_data: {}
 
 networks:
   backend-network:

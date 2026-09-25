@@ -2,45 +2,37 @@
 
 ## Overview
 
-The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. It works with MinIO (self-hosted) or AWS S3 (managed) — the same backend code handles both, distinguished only by `STORAGE_ENDPOINT`.
+The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. The default server is [RustFS](https://github.com/rustfs/rustfs) (Apache-2.0), which replaced MinIO in EST-4230 after MinIO stopped publishing images.
+
+The sandbox also uses the MinIO Admin API (which RustFS implements) to create short-lived, org-scoped credentials for each code execution. A plain S3 service without that API (for example AWS S3) can serve files, but sandbox storage access will not work.
 
 ---
 
 ## Quick Start
 
-### MinIO (default)
-
-MinIO starts automatically as a core service. No extra configuration needed.
+RustFS starts automatically as a core service (compose service name `minio`, kept for now). No extra configuration is needed.
 
 ```bash
 docker compose up
 ```
 
-MinIO console is available at `http://localhost:9001` (default credentials: `minioadmin` / `minioadmin_secret`).
-The `minio-init` service auto-creates the bucket on first start.
-
-### AWS S3
-
-```bash
-# Set env vars in .env
-STORAGE_ENDPOINT=           # leave empty for AWS
-STORAGE_ACCESS_KEY=<your-aws-access-key>
-STORAGE_SECRET_KEY=<your-aws-secret-key>
-STORAGE_BUCKET_NAME=<your-bucket-name>
-```
+The `minio-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
 
 ---
 
 ## Environment Variables
 
+Set in `.env` (generated from `src/env.yaml`). Services build the endpoint as `http(s)://MINIO_HOST:MINIO_PORT`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STORAGE_ENDPOINT` | `http://minio:9000` | S3 endpoint URL. Leave empty for AWS S3. |
-| `STORAGE_ACCESS_KEY` | `minioadmin` | S3 access key / MinIO root user |
-| `STORAGE_SECRET_KEY` | `minioadmin_secret` | S3 secret key / MinIO root password |
-| `STORAGE_BUCKET_NAME` | `epicstaff` | S3 bucket name |
-| `MINIO_PORT` | `9000` | MinIO API port (used in healthcheck and mc commands) |
-| `MINIO_CONSOLE_PORT` | `9001` | MinIO web console port |
+| `MINIO_HOST` | `minio` | Hostname of the storage service |
+| `MINIO_PORT` | `9000` | S3 API port (also used by the healthcheck and `minio-init`) |
+| `MINIO_SSL` | `False` | Use HTTPS to reach the storage service |
+| `MINIO_USER` | — | Root access key |
+| `MINIO_PASSWORD` | — | Root secret key |
+| `MINIO_BUCKET` | `epicstaff` | Bucket for file storage |
+| `KNOWLEDGE_MINIO_BUCKET` | `epicstaff-knowledge` | Bucket for knowledge (GraphRAG) data |
 | `STORAGE_MUTATION_CHANNEL` | `storage_mutations` | Redis pub/sub channel for storage mutation events |
 | `MAX_TOTAL_FILE_SIZE` | `10485760` (10 MB) | Maximum total upload size per request |
 
@@ -65,7 +57,7 @@ StorageAPIView (REST endpoints)
 |------|---------|
 | `tables/services/storage_service/__init__.py` | Factory functions `get_storage_backend()`, `get_storage_manager()` |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/s3_backend.py` | S3/MinIO implementation |
+| `tables/services/storage_service/s3_backend.py` | S3 implementation |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, archive handling) |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` — keeps DB in sync with storage mutations |
 | `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `UploadResult`, etc. |
@@ -202,7 +194,7 @@ Deletes `StorageFile` rows whose corresponding backend key no longer exists (orp
 Cascading: deleting a `StorageFile` row also removes linked `GraphStorageFile` and `SessionStorageFile` entries via FK `CASCADE`. Always run with `--dry-run` first on production.
 
 Use when:
-- Files were deleted directly in S3/MinIO (bypassing the API)
+- Files were deleted directly in S3 (bypassing the API)
 - Recovering from a missed sync hook
 - After a backend migration that removed objects
 
@@ -263,10 +255,10 @@ Full Swagger documentation is available at the `/swagger/` endpoint.
 
 ## Docker Compose
 
-MinIO is a core service — it starts with every `docker compose up`. No profiles are needed.
+The storage server is a core service — it starts with every `docker compose up`. No profiles are needed.
 
-- **`minio`** — S3-compatible object storage (`minio/minio:latest`), volume: `minio_data`
-- **`minio-init`** — one-shot container that creates the bucket using `mc` (MinIO client), restarts on failure until successful
+- **`minio`** — RustFS (`rustfs/rustfs:1.0.0`, pinned by digest), volume: `rustfs_data`. The compose service and container are still named `minio`.
+- **`minio-init`** — one-shot container (same RustFS image) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
 
 The `django_app` service depends on `minio` being healthy before starting.
 

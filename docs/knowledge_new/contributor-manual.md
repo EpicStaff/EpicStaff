@@ -30,7 +30,7 @@ ingest file → extract text → chunk → embed → index → search
 ```
 
 It exposes an HTTP API (Litestar, uvicorn, port `8100`) and persists to Postgres
-(SQLAlchemy async), MinIO/S3 (object storage) and LanceDB (vectors, for graph
+(SQLAlchemy async), S3-compatible object storage (RustFS) and LanceDB (vectors, for graph
 RAG). It is driven by the Django `django_app` service over HTTP, not directly by
 users.
 
@@ -204,7 +204,7 @@ custom MinIO-backed adapters at import time:
   `LanceDBVectorStore`, then `register_vector_store("<name>", MyStore)`. Config
   from `create_vector_store_config(...)`.
 
-The `endpoint` passed to both is the **full MinIO URL** (`http://host:port`) —
+The `endpoint` passed to both is the **full S3 endpoint URL** (`http://host:port`) —
 see §7 on the endpoint contract.
 
 ### 5.4 Add a REST endpoint
@@ -285,7 +285,7 @@ Things that are *not* in `backend-conventions.md` and have already bitten people
   positionally (`provider, host, port, user, password, name`) — order matters and
   a wrong order fails silently (empty password → `fe_sendauth: no password
   supplied`).
-- **MinIO endpoint is a full URL** (`http://host:port`), not a bare host. The
+- **The S3 endpoint is a full URL** (`http://host:port`), not a bare host. The
   MinIO client strips the scheme (`_parse_endpoint`); the LanceDB vector store
   passes the whole URL as `aws_endpoint`. One value serves both.
 - **Bucket names must be S3-valid**: lowercase, digits, hyphens, dots — **no
@@ -331,8 +331,8 @@ the handler registry. Don't build ad-hoc HTTP responses in controllers.
   (`register_storage`, `register_vector_store`). We plug MinIO/LanceDB adapters
   into these factories; the pipeline (`graphrag.api.build_index`) is upstream
   code — read its docs rather than documenting internals here.
-- **MinIO** (`miniopy_async`) — S3 object storage for both graph inputs/outputs
-  and vector data.
+- **`miniopy_async`** (MinIO's S3 client) — talks to the S3 server (RustFS by
+  default) for both graph inputs/outputs and vector data.
 - **LanceDB** — vector store for graph RAG, S3-backed via `aws_endpoint`.
 - **LiteLLM** — the embedder adapters route provider calls through it.
 - **Litestar** — HTTP framework; auto-generates OpenAPI (the endpoint reference

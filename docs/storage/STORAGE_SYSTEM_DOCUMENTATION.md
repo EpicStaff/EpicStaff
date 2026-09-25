@@ -64,7 +64,7 @@ Surface storage grants (SurfaceStorageItem / InlineSurfaceStorageItem / AgentInl
 
 **StorageManager** is the central org-aware service. It wraps every backend operation with org isolation and DB sync (authorization is enforced upstream at the REST API layer, not in the manager). Views never call the backend directly.
 
-**AbstractStorageBackend** defines the interface. `S3StorageBackend` is the sole production implementation (MinIO or any S3-compatible service). Tests exercise the same interface against `InMemoryStorageBackend`, a fake that mirrors S3 semantics.
+**AbstractStorageBackend** defines the interface. `S3StorageBackend` is the sole production implementation (RustFS by default, or any S3-compatible service). Tests exercise the same interface against `InMemoryStorageBackend`, a fake that mirrors S3 semantics.
 
 **StorageFileSync** keeps the `StorageFile` DB table consistent with actual storage mutations. It is called by `StorageManager` after every mutating operation.
 
@@ -248,7 +248,7 @@ Authorization (superadmin) is enforced at the API layer; the `StorageManager` pe
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org-aware wrapper) |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/s3_backend.py` | S3/MinIO backend |
+| `tables/services/storage_service/s3_backend.py` | S3 backend |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
 | `tables/validators/file_upload_validator.py` | `FileValidator` (upload security) |
@@ -263,8 +263,8 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 
 | Service | Image | Purpose |
 |---------|-------|---------|
-| `minio` | `minio/minio:latest` | S3-compatible object storage, volume `minio_data` |
-| `minio-init` | MinIO client (`mc`) | One-shot container that creates the bucket on startup |
+| `minio` | `rustfs/rustfs:1.0.0` (pinned by digest) | S3-compatible object storage (RustFS), volume `rustfs_data`. Service name kept from MinIO. |
+| `minio-init` | `rustfs/rustfs:1.0.0` | One-shot container that creates the bucket on startup (SigV4-signed `curl`) |
 
 `django_app` depends on `minio` being healthy before starting.
 
@@ -272,9 +272,9 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 
 | Variable | Purpose |
 |----------|---------|
-| `STORAGE_ENDPOINT` | S3/MinIO endpoint URL |
-| `STORAGE_ACCESS_KEY` | S3 access key |
-| `STORAGE_SECRET_KEY` | S3 secret key |
+| `STORAGE_ENDPOINT` | S3 endpoint URL |
+| `STORAGE_ACCESS_KEY` | Per-execution scoped access key (MinIO Admin API service account, revoked after the run) |
+| `STORAGE_SECRET_KEY` | Secret for that scoped key |
 | `STORAGE_BUCKET_NAME` | Target bucket name |
 | `STORAGE_ORG_PREFIX` | Org prefix used by SDK (set per execution context) |
 | `STORAGE_ALLOWED_PATHS` | JSON array of allowed paths for SDK access |

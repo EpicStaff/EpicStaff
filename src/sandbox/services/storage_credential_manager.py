@@ -1,11 +1,18 @@
 import json
 import posixpath
+import secrets
+import string
 import tempfile
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from miniopy_async import MinioAdmin as MinioAdminClient
 from miniopy_async.credentials import StaticProvider
+from miniopy_async.error import MinioAdminException
+from utils.logger import logger
+
+_ACCESS_KEY_ALPHABET = string.ascii_uppercase + string.digits
+_SECRET_KEY_ALPHABET = string.ascii_letters + string.digits
 
 
 class CredentialManagerError(Exception):
@@ -34,20 +41,48 @@ class StorageCredentialManager:
         return http == "https", endpoint
 
     async def create(self, policy: dict[str, Any]) -> tuple[str, str]:
-        """Create a user in minio and return generated credentials"""
+        """Create a scoped service account and return its credentials"""
+        access_key, secret_key = self._generate_key_pair()
         expiration = (datetime.now(UTC) + self._expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
         with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
             json.dump(policy, policy_file)
             policy_file.flush()
-            raw = await self._client.add_service_account(
-                policy_file=policy_file.name,
-                expiration=expiration,
+            try:
+                await self._client.add_service_account(
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    policy_file=policy_file.name,
+                    expiration=expiration,
+                )
+            except MinioAdminException:
+                raise  # non-2xx: the server did not create the account
+            except ValueError as error:
+                # RustFS encrypts the 2xx response with an AEAD the client can't read.
+                if str(error) != "Unknown AEAD ID 2":
+                    await self._revoke_after_failed_create(access_key)
+                    raise
+            except BaseException:
+                await self._revoke_after_failed_create(access_key)
+                raise
+        return access_key, secret_key
+
+    @staticmethod
+    def _generate_key_pair() -> tuple[str, str]:
+        access_key = "".join(secrets.choice(_ACCESS_KEY_ALPHABET) for _ in range(20))
+        secret_key = "".join(secrets.choice(_SECRET_KEY_ALPHABET) for _ in range(40))
+        return access_key, secret_key
+
+    async def _revoke_after_failed_create(self, access_key: str):
+        # The request may have reached the server, so don't leave a live credential.
+        try:
+            await self.revoke(access_key)
+        except Exception as error:
+            logger.warning(
+                "Cleanup of service account {} after failed create: {}", access_key, error
             )
-        credentials = json.loads(raw)["credentials"]
-        return credentials["accessKey"], credentials["secretKey"]
 
     async def revoke(self, temp_access_key: str):
-        """Revoke credentials for a user in minio"""
+        """Revoke a scoped service account"""
         await self._client.delete_service_account(temp_access_key)
 
     def build_policy(
