@@ -18,7 +18,7 @@
         (mousedown)="$event.stopPropagation()"
     >
         <!-- Edit Button for Note -->
-        @if (node.type === NodeType.NOTE) {
+        @if (node.type === NodeType.NOTE && !isReadOnly) {
             <div
                 class="action-button edit-button"
                 matTooltip="Edit note"
@@ -29,7 +29,7 @@
             </div>
         }
         <!-- Delete Button -->
-        @if (node.type !== NodeType.START) {
+        @if (node.type !== NodeType.START && !isReadOnly) {
             <div
                 class="action-button delete-button"
                 matTooltip="Delete node"

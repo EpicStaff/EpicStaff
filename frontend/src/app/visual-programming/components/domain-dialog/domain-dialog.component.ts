@@ -34,6 +34,8 @@ declare const monaco: typeof import('monaco-editor');
 
 export interface DomainDialogData {
     initialData: Record<string, unknown>;
+    /** View-only (version preview): the editor is locked and closing returns no result. */
+    readOnly?: boolean;
 }
 
 export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
@@ -67,16 +69,18 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     Here you can define your domain variables that will be available throughout your workflow execution.
                 </div>
 
-                <div class="autocomplete-hint">
-                    <app-svg-icon
-                        icon="bulb"
-                        size="1rem"
-                    ></app-svg-icon>
-                    <span>
-                        Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
-                        <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
-                    </span>
-                </div>
+                @if (!isReadOnly) {
+                    <div class="autocomplete-hint">
+                        <app-svg-icon
+                            icon="bulb"
+                            size="1rem"
+                        ></app-svg-icon>
+                        <span>
+                            Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
+                            <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
+                        </span>
+                    </div>
+                }
 
                 @if (pathErrorMessages().length > 0) {
                     <ul class="path-validation-errors">
@@ -96,6 +100,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                         (validationChange)="onJsonValidChange($event)"
                         (editorReady)="onEditorReady($event)"
                         [fullHeight]="true"
+                        [readonly]="isReadOnly"
                     ></app-json-editor>
                 </div>
             </div>
@@ -259,6 +264,7 @@ export class DomainDialogComponent implements OnDestroy {
     public isJsonValid: boolean = true;
     public validationResult = signal<PersistentVariablesValidationResult>(EMPTY_VALIDATION_RESULT);
 
+    public readonly isReadOnly: boolean;
     public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
     public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
 
@@ -291,6 +297,7 @@ export class DomainDialogComponent implements OnDestroy {
         private dialogRef: DialogRef<Record<string, unknown> | null>,
         @Inject(DIALOG_DATA) public data: DomainDialogData
     ) {
+        this.isReadOnly = data?.readOnly ?? false;
         this.initializeJsonEditor();
 
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
@@ -375,6 +382,10 @@ export class DomainDialogComponent implements OnDestroy {
     }
 
     public close(): void {
+        if (this.isReadOnly) {
+            this.dialogRef.close(null);
+            return;
+        }
         if (!this.isJsonValid || this.hasPathErrors()) return;
         this.dialogRef.close(this.buildResult());
     }

@@ -13,6 +13,13 @@
         fDraggable
         [fMultiSelectTrigger]="multiSelectTrigger"
         [fCanvasMoveTrigger]="canvasMoveTrigger"
+        [fNodeMoveTrigger]="editGestureTrigger"
+        [fNodeResizeTrigger]="editGestureTrigger"
+        [fNodeRotateTrigger]="editGestureTrigger"
+        [fCreateConnectionTrigger]="editGestureTrigger"
+        [fReassignConnectionTrigger]="editGestureTrigger"
+        [fConnectionWaypointsTrigger]="editGestureTrigger"
+        [fMoveControlPointTrigger]="editGestureTrigger"
         [vCellSize]="GRID_CELL_SIZE"
         [hCellSize]="GRID_CELL_SIZE"
         [fCellSizeWhileDragging]="false"
@@ -216,16 +223,18 @@
                         class="connection-center"
                         [position]="CONNECTION_DELETE_BUTTON_POSITION"
                     >
-                        <button
-                            type="button"
-                            class="icon-button delete-icon"
-                            matTooltip="Delete connection"
-                            matTooltipPosition="above"
-                            aria-label="Delete connection"
-                            (click)="onDeleteConnection($event, connection.id)"
-                        >
-                            <i class="ti ti-trash"></i>
-                        </button>
+                        @if (!isReadOnly) {
+                            <button
+                                type="button"
+                                class="icon-button delete-icon"
+                                matTooltip="Delete connection"
+                                matTooltipPosition="above"
+                                aria-label="Delete connection"
+                                (click)="onDeleteConnection($event, connection.id)"
+                            >
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        }
                     </div>
 
                     <f-connection-waypoints
@@ -286,35 +295,39 @@
 
         <div class="top-right-controls">
             <div class="top-right-actions">
-                <app-flow-export-import-button
-                    [selectedCount]="selectedNodeCount()"
-                    [allSelectedAreCdt]="allSelectedAreCdt()"
-                    (exportSelectedJson)="onExportSelectedAsJson()"
-                    (exportSelectedCsv)="onExportSelectedAsCsv()"
-                    (exportJson)="onExportAllAsJson()"
-                    (import)="onImportNodes()"
-                ></app-flow-export-import-button>
-                @if (currentFlowId) {
+                @if (!isReadOnly) {
+                    <app-flow-export-import-button
+                        [selectedCount]="selectedNodeCount()"
+                        [allSelectedAreCdt]="allSelectedAreCdt()"
+                        (exportSelectedJson)="onExportSelectedAsJson()"
+                        (exportSelectedCsv)="onExportSelectedAsCsv()"
+                        (exportJson)="onExportAllAsJson()"
+                        (import)="onImportNodes()"
+                    ></app-flow-export-import-button>
+                }
+                @if (currentFlowId && !isReadOnly) {
                     <app-flow-files-button
                         *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                         [flowId]="currentFlowId"
                         [flowName]="flowName"
                     ></app-flow-files-button>
                 }
-                <button
-                    #arrangeBtnRef
-                    class="arrange-btn"
-                    title="Auto arrange"
-                    matTooltip="Auto arrange"
-                    matTooltipPosition="below"
-                    [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
-                    (click)="onAutoArrange()"
-                >
-                    <app-svg-icon
-                        icon="auto-arrange"
-                        size="38px"
-                    ></app-svg-icon>
-                </button>
+                @if (!isReadOnly) {
+                    <button
+                        #arrangeBtnRef
+                        class="arrange-btn"
+                        title="Auto arrange"
+                        matTooltip="Auto arrange"
+                        matTooltipPosition="below"
+                        [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                        (click)="onAutoArrange()"
+                    >
+                        <app-svg-icon
+                            icon="auto-arrange"
+                            size="38px"
+                        ></app-svg-icon>
+                    </button>
+                }
                 <button
                     class="arrange-btn settings-icon-btn"
                     (click)="openSettings()"
@@ -327,7 +340,10 @@
             </div>
         </div>
     </div>
-    <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
+
+    @if (!isReadOnly) {
+        <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
+    }
 
     @if (showContextMenu()) {
         <app-flow-graph-context-menu
