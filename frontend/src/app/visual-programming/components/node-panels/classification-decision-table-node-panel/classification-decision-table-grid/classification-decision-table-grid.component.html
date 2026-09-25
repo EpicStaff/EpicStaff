@@ -4,7 +4,10 @@
             Conditions
             <app-help-tooltip text="Configure routing rules with continue flag and route codes for dock visibility." />
         </h3>
-        <div class="grid-header-actions">
+        <div
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+            class="grid-header-actions"
+        >
             @if (selectedRowCount() > 0) {
                 <button
                     type="button"
@@ -42,7 +45,7 @@
         [class.has-above-btns]="hasAboveAddButtons()"
     >
         <!-- Above-grid "+" buttons: shown only when the corresponding params group is empty -->
-        @if (!hasFieldCols() && exprAddPos()) {
+        @if (!readonly() && !hasFieldCols() && exprAddPos()) {
             <button
                 class="col-above-add-btn"
                 [style.left.px]="exprAddPos()!.x"
@@ -52,7 +55,7 @@
                 <i class="ti ti-plus"></i>
             </button>
         }
-        @if (!hasManipCols() && manipAddPos()) {
+        @if (!readonly() && !hasManipCols() && manipAddPos()) {
             <button
                 class="col-above-add-btn"
                 [style.left.px]="manipAddPos()!.x"

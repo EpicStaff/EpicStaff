@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { readonly } from '@angular/forms/signals';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import {
     ActionDropdownButtonComponent,
@@ -27,7 +28,8 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { NodeType, ResourceCode } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -69,6 +71,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         SelectComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -248,7 +251,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 name: node.node_name || node.id,
             }));
 
-        return [{ name: 'Select Node', value: '' }, ...nodeItems];
+        return [{ name: 'Unselected', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
@@ -795,4 +798,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             next_error_node: null,
         };
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+    protected readonly readonly = readonly;
 }

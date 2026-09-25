@@ -56,7 +56,8 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 class="selected-model"
                 [class.placeholder]="!selectedConfig()"
                 [class.loading]="isLoading"
-                (click)="!isLoading && toggleDropdown($event)"
+                [class.readonly]="readonly()"
+                (click)="!isLoading && !readonly() && toggleDropdown($event)"
             >
                 @if (isLoading) {
                     <div class="loading-spinner"></div>
@@ -85,23 +86,25 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                         </div>
                     }
                 }
-                <div class="dropdown-icon">
-                    <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
-                        <path
-                            d="M6 9L12 15L18 9"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        />
-                    </svg>
-                </div>
+                @if (!readonly()) {
+                    <div class="dropdown-icon">
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                        >
+                            <path
+                                d="M6 9L12 15L18 9"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            />
+                        </svg>
+                    </div>
+                }
             </div>
 
             <!-- Dropdown Menu (rendered in an overlay so no parent overflow clips it) -->
@@ -185,13 +188,21 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 min-height: 42px;
             }
 
-            .selected-model:hover:not(.loading) {
+            .selected-model:hover:not(.loading):not(.readonly) {
                 border-color: var(--accent-color);
             }
 
             .selected-model.loading {
                 cursor: default;
                 opacity: 0.6;
+            }
+
+            .selected-model.readonly {
+                cursor: default;
+                background-color: transparent;
+                border-color: transparent;
+                padding-left: 0;
+                padding-right: 0;
             }
 
             .loading-spinner {
@@ -359,6 +370,9 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     // consumer keeps its current behaviour unchanged.
     readonly kind = input<ModelSelectorKind>('llm');
 
+    // Readonly mode: renders the current selection as plain text (no dropdown, no create button).
+    readonly readonly = input<boolean>(false);
+
     @Output() modelSelected = new EventEmitter<number>();
 
     private readonly fullLLMConfigService = inject(FullLLMConfigService);
@@ -468,6 +482,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     }
 
     private openDropdown(): void {
+        if (this.readonly()) return;
         const container = this.elementRef.nativeElement.querySelector<HTMLElement>('.llm-selector-container');
         this.triggerWidth.set(container?.getBoundingClientRect().width ?? 0);
 

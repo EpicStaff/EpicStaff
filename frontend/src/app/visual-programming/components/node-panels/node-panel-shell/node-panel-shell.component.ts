@@ -20,6 +20,7 @@ import { ShortcutListenerDirective } from '../../../core/directives/shortcut-lis
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
@@ -174,6 +175,7 @@ export class NodePanelShellComponent {
         exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
+        if (this.flowReadOnly.isReadOnly()) return false;
         const panel = this.panelInstanceSig();
         return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
     });
@@ -185,7 +187,8 @@ export class NodePanelShellComponent {
 
     constructor(
         private sidePanelService: SidePanelService,
-        private toastService: ToastService
+        private toastService: ToastService,
+        private flowReadOnly: FlowReadOnlyService
     ) {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
@@ -270,6 +273,10 @@ export class NodePanelShellComponent {
     }
 
     protected onShortcutSave(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
             return;
         }
@@ -286,6 +293,10 @@ export class NodePanelShellComponent {
     }
 
     private saveSidePanel(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.sidePanelService.clearSelection();
+            return;
+        }
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&
@@ -323,6 +334,7 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&
