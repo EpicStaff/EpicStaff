@@ -48,29 +48,43 @@ class OrgCredentialCache:
 
     def __init__(self):
         self._entries: dict[int, _CacheEntry] = {}
+        self._org_locks: dict[int, asyncio.Lock] = {}
 
-    async def get(
-        self, *, org_id: int, host: str
-    ) -> tuple[OrgMinioCredentials, MinioAdminGateway]:
+    async def get(self, *, org_id: int, host: str) -> tuple[OrgMinioCredentials, MinioAdminGateway]:
+        # First check: fast path for cache hits
         now = time.monotonic()
         cached = self._entries.get(org_id)
         if cached is not None and now - cached.cached_at < self._TTL_SECONDS:
             return cached.credentials, cached.gateway
 
-        credentials = await asyncio.to_thread(_get_org_credentials, org_id)
-        gateway = MinioAdminGateway(
-            host=host,
-            access_key=credentials.access_key,
-            secret_key=credentials.secret_key,
-        )
-        self._entries[org_id] = _CacheEntry(
-            cached_at=now, credentials=credentials, gateway=gateway
-        )
+        # Acquire per-org lock to prevent concurrent gateway creation
+        if org_id not in self._org_locks:
+            self._org_locks[org_id] = asyncio.Lock()
+        lock = self._org_locks[org_id]
 
-        if cached is not None:
-            await cached.gateway.close()
+        async with lock:
+            # Second check: another waiter may have populated the cache
+            now = time.monotonic()
+            cached = self._entries.get(org_id)
+            if cached is not None and now - cached.cached_at < self._TTL_SECONDS:
+                return cached.credentials, cached.gateway
 
-        return credentials, gateway
+            # Cache miss or expired: create new gateway
+            credentials = await asyncio.to_thread(_get_org_credentials, org_id)
+            gateway = MinioAdminGateway(
+                host=host,
+                access_key=credentials.access_key,
+                secret_key=credentials.secret_key,
+            )
+            self._entries[org_id] = _CacheEntry(
+                cached_at=now, credentials=credentials, gateway=gateway
+            )
+
+            # Close old gateway if one existed
+            if cached is not None:
+                await cached.gateway.close()
+
+            return credentials, gateway
 
 
 org_credential_cache = OrgCredentialCache()
