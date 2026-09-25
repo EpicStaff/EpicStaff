@@ -633,11 +633,13 @@ $group-gutter-width: 28px;
     }
 
     // When the grid wrapper has lost DOM focus, remove all visible focus/range indicators.
+    // The right border is ag-grid's column separator — restore it, not hide it.
     .ag-root-wrapper:not(:focus-within) {
         .ag-cell-focus,
         .ag-cell-range-selected,
         .ag-cell-range-single-cell {
             border: 1px solid transparent !important;
+            border-right: var(--ag-column-border) !important;
             box-shadow: none !important;
             background: transparent !important;
         }
@@ -672,6 +674,7 @@ $group-gutter-width: 28px;
     .ag-cell-range-single-cell:not(.ag-cell-focus):not(.ag-cell-inline-editing) {
         background: transparent !important;
         border: 1px solid transparent !important;
+        border-right: var(--ag-column-border) !important;
         box-shadow: none !important;
     }
 
