@@ -21,8 +21,8 @@ import json
 
 import redis.asyncio as aioredis
 from loguru import logger
-
 from src.shared.redis_streams import RedisStreamClient, StreamEnvelope
+from src.shared.storage_credentials import response_key
 from src.shared.storage_credentials.constants import (
     STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
     STORAGE_CREDENTIAL_REQUEST_STREAM,
@@ -53,20 +53,17 @@ class StorageCredentialClient:
         """Returns `{"access_key": ..., "secret_key": ...}` or raises
         `StorageCredentialRequestError` (timeout, issuer-reported error, or
         malformed response) -- callers must treat any of those as fail-closed."""
-        response_key = f"storage_credential_response:{execution_id}"
-        wait_task = asyncio.create_task(self._blpop(response_key))
+        response_redis_key = response_key(execution_id)
+        wait_task = asyncio.create_task(self._blpop(response_redis_key))
 
         try:
             await self._publish_request(execution_id)
 
             try:
-                raw = await asyncio.wait_for(
-                    wait_task, timeout=STORAGE_CREDENTIAL_WAIT_TIMEOUT_S
-                )
-            except asyncio.TimeoutError as error:
+                raw = await asyncio.wait_for(wait_task, timeout=STORAGE_CREDENTIAL_WAIT_TIMEOUT_S)
+            except TimeoutError as error:
                 raise StorageCredentialRequestError(
-                    f"Timed out waiting for storage credentials "
-                    f"(execution_id={execution_id})"
+                    f"Timed out waiting for storage credentials (execution_id={execution_id})"
                 ) from error
         finally:
             if not wait_task.done():
@@ -103,9 +100,7 @@ class StorageCredentialClient:
         )
         try:
             try:
-                result = await client.blpop(
-                    response_key, timeout=STORAGE_CREDENTIAL_WAIT_TIMEOUT_S
-                )
+                result = await client.blpop(response_key, timeout=STORAGE_CREDENTIAL_WAIT_TIMEOUT_S)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
