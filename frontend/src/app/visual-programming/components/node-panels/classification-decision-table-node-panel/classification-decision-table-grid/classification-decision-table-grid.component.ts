@@ -851,7 +851,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             this.contextMenu.set({
                 x: mouseEvent.clientX,
                 y: mouseEvent.clientY,
-                rowIndex: event.node.rowIndex!,
+                rowIndex: this.rowData().indexOf(event.node.data),
             });
             this.cdr.markForCheck();
         },
@@ -1754,7 +1754,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 cursor: 'pointer',
             },
             onCellClicked: (event: CellClickedEvent) => {
-                this.deleteRow(event.node.rowIndex!);
+                this.deleteRow(this.rowData().indexOf(event.node.data));
             },
         };
 
@@ -2452,7 +2452,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     private insertRowAtContext(offset: 0 | 1): void {
         const ctx = this.contextMenu();
-        if (!ctx) return;
+        if (!ctx || ctx.rowIndex === -1) return;
         const currentRows = this.rowData();
         const insertAt = ctx.rowIndex + offset;
         const newRow = this.createNewRow(insertAt);
@@ -2466,6 +2466,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     deleteRow(rowIndex: number): void {
+        if (rowIndex === -1) return;
         const currentRows = this.rowData();
         const updatedRows = currentRows
             .filter((_, index) => index !== rowIndex)
