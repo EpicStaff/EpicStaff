@@ -1,7 +1,7 @@
 from django.core.files.storage import default_storage
 from django.db.models import Count, Q, QuerySet
 from loguru import logger
-from rbac.access.delete_collector import ModelCount
+from rbac.governance.delete_collector import ModelCount
 from rbac.governance.organization_deletion import OrganizationDeletionCounts, PostCommitCleanup
 from rbac.models import Organization
 from tables.models.base_models import DefaultBaseModel

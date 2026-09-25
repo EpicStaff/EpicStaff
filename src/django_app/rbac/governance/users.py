@@ -6,11 +6,6 @@ from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
 from tables.models.user import User
 
-from rbac.access.delete_collector import (
-    build_affected_resources,
-    build_collector,
-    summarize,
-)
 from rbac.exceptions import (
     EmailAlreadyExistsError,
     LastSuperadminError,
@@ -20,6 +15,11 @@ from rbac.exceptions import (
     UserNotFoundError,
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
+from rbac.governance.delete_collector import (
+    build_affected_resources,
+    build_collector,
+    summarize,
+)
 from rbac.governance.guards import UserManagementGuards
 from rbac.identity.session_invalidation import (
     SessionInvalidationService,

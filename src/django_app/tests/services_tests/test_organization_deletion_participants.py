@@ -1,6 +1,6 @@
 import pytest
 
-from rbac.access.delete_resource_names import register_resource_names, resource_name
+from rbac.governance.delete_resource_names import register_resource_names, resource_name
 from rbac.governance import organization_deletion
 from rbac.governance.organization_deletion import (
     OrganizationDeletionCounts,

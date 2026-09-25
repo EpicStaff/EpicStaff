@@ -5,12 +5,6 @@ from django.db.models import Count, Prefetch, QuerySet
 from loguru import logger
 from tables.models.user import User
 
-from rbac.access.delete_collector import (
-    ModelCount,
-    build_affected_resources,
-    build_collector,
-    summarize,
-)
 from rbac.exceptions import (
     DefaultOrganizationNotDeletableError,
     LastActiveOrganizationError,
@@ -19,6 +13,12 @@ from rbac.exceptions import (
     OrganizationNotFoundError,
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
+from rbac.governance.delete_collector import (
+    ModelCount,
+    build_affected_resources,
+    build_collector,
+    summarize,
+)
 from rbac.governance.organization_deletion import (
     OrganizationDeletionCounts,
     participants,

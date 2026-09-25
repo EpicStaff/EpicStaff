@@ -5,7 +5,7 @@ from django.db import router
 from django.db.models import Model
 from django.db.models.deletion import Collector
 
-from rbac.access.delete_resource_names import resource_name
+from rbac.governance.delete_resource_names import resource_name
 
 
 @dataclass

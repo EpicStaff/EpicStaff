@@ -2,8 +2,8 @@ import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
 
-from rbac.access.delete_collector import build_collector, summarize
-from rbac.access.delete_resource_names import (
+from rbac.governance.delete_collector import build_collector, summarize
+from rbac.governance.delete_resource_names import (
     known_excluded_resource_labels,
     known_resource_names,
     resource_name,
@@ -60,7 +60,7 @@ def test_resource_name_returns_none_for_a_known_excluded_label():
 
 
 def test_resource_name_logs_and_returns_none_for_a_truly_unmapped_label(mocker):
-    warning = mocker.patch("rbac.access.delete_resource_names.logger.warning")
+    warning = mocker.patch("rbac.governance.delete_resource_names.logger.warning")
 
     result = resource_name("tables.NotARealModel")
 

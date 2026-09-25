@@ -2,7 +2,7 @@ import pytest
 
 from tables.models.graph_models import Graph
 from rbac.models import Organization
-from rbac.access.delete_collector import build_collector, summarize
+from rbac.governance.delete_collector import build_collector, summarize
 
 
 @pytest.fixture

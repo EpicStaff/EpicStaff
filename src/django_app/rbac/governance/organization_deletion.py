@@ -2,8 +2,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from rbac.access.delete_collector import ModelCount
-from rbac.access.delete_resource_names import register_resource_names
+from rbac.governance.delete_collector import ModelCount
+from rbac.governance.delete_resource_names import register_resource_names
 from rbac.models import Organization
 
 PostCommitCleanup = Callable[[], None]

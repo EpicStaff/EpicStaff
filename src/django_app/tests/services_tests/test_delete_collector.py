@@ -1,10 +1,10 @@
-"""Unit tests for rbac.access.delete_collector.build_affected_resources.
+"""Unit tests for rbac.governance.delete_collector.build_affected_resources.
 
 Shared by OrganizationManagementService and UserManagementService, which both
 fold raw Collector output into the same friendly resource-count map.
 """
 
-from rbac.access.delete_collector import ModelCount, build_affected_resources
+from rbac.governance.delete_collector import ModelCount, build_affected_resources
 
 
 def test_build_affected_resources_sums_two_labels_mapping_to_the_same_name():

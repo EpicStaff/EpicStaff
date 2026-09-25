@@ -180,7 +180,7 @@ def _grouped_row_counts() -> dict[str, int]:
     """Count every installed model's rows through its base manager (so soft-delete filters cannot hide a row), folded under the same friendly resource name `affected_resources` reports under."""
     from django.apps import apps
 
-    from rbac.access.delete_resource_names import resource_name
+    from rbac.governance.delete_resource_names import resource_name
 
     counts: dict[str, int] = {}
     for model in apps.get_models():
