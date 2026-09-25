@@ -1,8 +1,25 @@
 import { ConfirmationBreakdownItem } from '@shared/components';
-import { UserDeleteReport } from '@shared/models';
+import { OrganizationDeleteReport, UserDeleteReport } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 
-export function buildOrganizationDeleteMessage(name: string): string {
-    return `You are about to permanently delete <strong>${name}</strong> organization. This action is irreversible.`;
+import { HardDeleteContent } from '../models/hard-delete-content.model';
+import { UserDeleteIdentity } from '../models/user-delete-identity.model';
+
+export function buildOrganizationDeleteContent(name: string, report: OrganizationDeleteReport): HardDeleteContent {
+    return {
+        message: `You are about to permanently delete <strong>${escapeHtml(name)}</strong> organization. This action is irreversible.`,
+        breakdown: {
+            title: 'Resources to delete',
+            items: buildDeleteBreakdownItems(report.affected_resources),
+        },
+    };
+}
+
+export function buildUserDeleteContent(user: UserDeleteIdentity, report: UserDeleteReport): HardDeleteContent {
+    const message = `The user account for <strong>${escapeHtml(describeUser(user))}</strong> will be permanently deleted from the EpicStaff system.`;
+    const caution = buildUserDeleteCaution(report);
+
+    return caution ? { message, caution, cautionTitle: 'Caution' } : { message };
 }
 
 export function buildDeleteBreakdownItems(affectedResources: Record<string, number>): ConfirmationBreakdownItem[] {
@@ -14,7 +31,12 @@ export function buildDeleteBreakdownItems(affectedResources: Record<string, numb
         .map(([resourceName, count]) => ({ label: capitalize(resourceName.replaceAll('_', ' ')), count }));
 }
 
-export function buildUserDeleteMessage(name: string, report: UserDeleteReport): string {
+function describeUser({ name, email }: UserDeleteIdentity): string {
+    if (name && email) return `${name} (${email})`;
+    return name || email || 'this user';
+}
+
+function buildUserDeleteCaution(report: UserDeleteReport): string | null {
     const membershipCount = report.affected_resources['memberships'] ?? 0;
     const apiKeyCount = report.affected_resources['api_keys'] ?? 0;
 
@@ -26,10 +48,7 @@ export function buildUserDeleteMessage(name: string, report: UserDeleteReport): 
         consequences.push(`${pluralize(apiKeyCount, 'API key', 'API keys')} will stop working`);
     }
 
-    const consequenceSentence = consequences.length > 0 ? ` ${capitalize(consequences.join(', and '))}.` : '';
-    const keptContentSentence = membershipCount > 0 ? ' Content they created in organizations is kept.' : '';
-
-    return `<strong>${name}</strong> will be permanently deleted.${consequenceSentence}${keptContentSentence}`;
+    return consequences.length > 0 ? `${capitalize(consequences.join(', and '))}.` : null;
 }
 
 function pluralize(count: number, singular: string, plural: string): string {

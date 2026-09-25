@@ -5,11 +5,11 @@ import { DeleteReport } from '@shared/models';
 import { catchError, filter, Observable, of, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
-import { buildDeleteBreakdownItems, rbacErrorMessage } from '../utils';
+import { HardDeleteContent } from '../models/hard-delete-content.model';
+import { rbacErrorMessage } from '../utils';
 
 export interface HardDeleteOptions {
     title: string;
-    caution?: string;
     successMessage: string;
     previewErrorFallback: string;
     deleteErrorFallback: string;
@@ -24,22 +24,17 @@ export class HardDeleteFlowService {
 
     run<Report extends DeleteReport>(
         deleteRequest: (dryRun: boolean) => Observable<Report>,
-        buildMessage: (report: Report) => string,
+        buildContent: (report: Report) => HardDeleteContent,
         options: HardDeleteOptions
     ): Observable<boolean> {
         return deleteRequest(true).pipe(
             switchMap((report) =>
                 this.confirmation.confirm({
+                    ...buildContent(report),
                     title: options.title,
-                    message: buildMessage(report),
-                    caution: options.caution,
                     type: 'danger',
                     confirmText: 'Delete permanently',
                     cancelText: 'Cancel',
-                    breakdown: {
-                        title: 'Resources to delete',
-                        items: buildDeleteBreakdownItems(report.affected_resources),
-                    },
                 })
             ),
             filter((confirmed) => confirmed === true),

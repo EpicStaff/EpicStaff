@@ -1,6 +1,7 @@
 export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './download-blob.util';
+export * from './escape-html.util';
 export * from './flow-links';
 export * from './generate-uuid.util';
 export * from './get-provider-icon';

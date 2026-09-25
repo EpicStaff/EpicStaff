@@ -52,7 +52,7 @@ import { HardDeleteFlowService } from '../../../services/hard-delete-flow.servic
 import {
     adminUsersToAggregated,
     aggregateMembershipsByUser,
-    buildUserDeleteMessage,
+    buildUserDeleteContent,
     rbacErrorMessage,
 } from '../../../utils';
 
@@ -293,15 +293,15 @@ export class UsersTabComponent implements OnInit {
     }
 
     onHardDeleteUser(row: TableRow): void {
-        const userId = row['id'] as number;
-        const label = (row['name'] as string) || (row['email'] as string) || 'this account';
+        const user = this.aggregatedUsers().find((aggregatedUser) => aggregatedUser.id === row['id']);
+        if (!user) return;
+        const identity = { name: user.displayName, email: user.email };
         this.hardDeleteFlow
             .run(
-                (dryRun) => this.adminUserService.deleteUser(userId, dryRun),
-                (report) => buildUserDeleteMessage(label, report),
+                (dryRun) => this.adminUserService.deleteUser(user.id, dryRun),
+                (report) => buildUserDeleteContent(identity, report),
                 {
-                    title: 'Permanently delete this account?',
-                    caution: 'This action is irreversible.',
+                    title: 'Delete User Account?',
                     successMessage: 'Account deleted permanently.',
                     previewErrorFallback: 'Failed to preview account deletion.',
                     deleteErrorFallback: 'Failed to delete account.',

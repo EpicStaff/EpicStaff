@@ -29,7 +29,7 @@ import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.co
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
-import { buildOrganizationDeleteMessage, rbacErrorMessage } from '../../../utils';
+import { buildOrganizationDeleteContent, rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Active', value: 'active' },
@@ -188,7 +188,7 @@ export class OrganizationsTabComponent implements OnInit {
         this.hardDeleteFlow
             .run(
                 (dryRun) => this.organizationStorage.deleteOrganization(id, dryRun),
-                () => buildOrganizationDeleteMessage(name),
+                (report) => buildOrganizationDeleteContent(name, report),
                 {
                     title: 'Delete the organization?',
                     successMessage: 'Organization deleted successfully',
