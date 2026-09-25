@@ -7,9 +7,7 @@ This module verifies that _fingerprint_library correctly:
 - Changes hash when local path content changes
 """
 
-import hashlib
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -24,6 +22,20 @@ from dynamic_venv_executor_chain import (
     InstallLibrariesHandler,
     _fingerprint_library,
 )
+
+
+@pytest.fixture
+def allow_local_library_paths(monkeypatch):
+    """Let a test treat its own tmp_path directories as trusted local libraries."""
+
+    def _allow(*paths: str | Path) -> None:
+        monkeypatch.setattr(
+            dynamic_venv_executor_chain,
+            "ALLOWED_LOCAL_LIBRARY_PATHS",
+            frozenset(str(path) for path in paths),
+        )
+
+    return _allow
 
 
 def test_fingerprint_library_with_plain_pip_spec():
@@ -41,10 +53,11 @@ def test_fingerprint_library_with_nonexistent_path():
     assert _fingerprint_library(path) == path
 
 
-def test_fingerprint_library_with_local_directory(tmp_path):
-    """Local directory gets content-hashed (sha256 of relative path + file content)."""
+def test_fingerprint_library_with_local_directory(tmp_path, allow_local_library_paths):
+    """Trusted local directory gets content-hashed (sha256 of relative path + file content)."""
     lib_dir = tmp_path / "test_lib"
     lib_dir.mkdir()
+    allow_local_library_paths(lib_dir)
 
     # Create some files
     (lib_dir / "module.py").write_text("def hello(): pass")
@@ -63,10 +76,13 @@ def test_fingerprint_library_with_local_directory(tmp_path):
     assert fingerprint2 != fingerprint1
 
 
-def test_fingerprint_library_stable_with_excluded_artifacts(tmp_path):
+def test_fingerprint_library_stable_with_excluded_artifacts(
+    tmp_path, allow_local_library_paths
+):
     """Hash stays stable when only excluded artifacts change."""
     lib_dir = tmp_path / "test_lib"
     lib_dir.mkdir()
+    allow_local_library_paths(lib_dir)
 
     # Create main files
     (lib_dir / "module.py").write_text("def hello(): pass")
@@ -100,10 +116,13 @@ def test_fingerprint_library_stable_with_excluded_artifacts(tmp_path):
     assert fingerprint2 == fingerprint1
 
 
-def test_fingerprint_library_stable_when_content_unchanged(tmp_path):
+def test_fingerprint_library_stable_when_content_unchanged(
+    tmp_path, allow_local_library_paths
+):
     """Hash stays stable across repeated calls when content doesn't change."""
     lib_dir = tmp_path / "test_lib"
     lib_dir.mkdir()
+    allow_local_library_paths(lib_dir)
 
     # Create files with specific content
     (lib_dir / "a.py").write_text("content_a")
@@ -120,10 +139,13 @@ def test_fingerprint_library_stable_when_content_unchanged(tmp_path):
     assert fp1 == fp2 == fp3
 
 
-def test_create_venv_handler_calculate_hash_with_mixed_libraries(tmp_path):
+def test_create_venv_handler_calculate_hash_with_mixed_libraries(
+    tmp_path, allow_local_library_paths
+):
     """CreateVenvHandler.calculate_hash combines fingerprints of mixed library types."""
     lib_dir = tmp_path / "my_lib"
     lib_dir.mkdir()
+    allow_local_library_paths(lib_dir)
     (lib_dir / "module.py").write_text("def foo(): pass")
 
     handler = CreateVenvHandler()
@@ -160,10 +182,13 @@ def test_create_venv_handler_calculate_hash_with_mixed_libraries(tmp_path):
     assert hash3 != hash1
 
 
-def test_install_libraries_handler_calculate_hash_consistency(tmp_path):
+def test_install_libraries_handler_calculate_hash_consistency(
+    tmp_path, allow_local_library_paths
+):
     """InstallLibrariesHandler.calculate_hash is consistent with CreateVenvHandler."""
     lib_dir = tmp_path / "my_lib"
     lib_dir.mkdir()
+    allow_local_library_paths(lib_dir)
     (lib_dir / "module.py").write_text("def bar(): pass")
 
     create_handler = CreateVenvHandler()
@@ -187,9 +212,13 @@ def test_install_libraries_handler_calculate_hash_consistency(tmp_path):
     assert hash_create_after != hash_create
 
 
-def test_fingerprint_library_handles_unreadable_file(tmp_path, monkeypatch):
+def test_fingerprint_library_handles_unreadable_file(
+    tmp_path, monkeypatch, allow_local_library_paths
+):
     """_fingerprint_library skips unreadable files with a warning and continues hashing."""
     lib_dir = tmp_path / "test_lib"
+    lib_dir_readable_only = tmp_path / "test_lib_readable"
+    allow_local_library_paths(lib_dir, lib_dir_readable_only)
     lib_dir.mkdir()
 
     # Create multiple files
@@ -221,13 +250,11 @@ def test_fingerprint_library_handles_unreadable_file(tmp_path, monkeypatch):
 
     # Verify the hash reflects readable files only
     # Get a baseline without the unreadable file to compare
-    lib_dir_readable_only = tmp_path / "test_lib_readable"
     lib_dir_readable_only.mkdir()
     (lib_dir_readable_only / "readable1.py").write_text("def func1(): pass")
     (lib_dir_readable_only / "readable2.py").write_text("def func2(): pass")
 
-    # Reset monkeypatch to get true behavior
-    monkeypatch.undo()
+    monkeypatch.setattr(Path, "read_bytes", original_read_bytes)
 
     fingerprint_readable_only = _fingerprint_library(str(lib_dir_readable_only))
 

@@ -47,13 +47,37 @@ if not _can_drop_privileges():
     )
 
 
-def _fingerprint_library(library: str) -> str:
-    """Content hash for local path deps; pass-through for plain pip specs.
+_BASE_PREDEFINED_LIBRARIES: frozenset[str] = frozenset(
+    {
+        "/app/src/shared/dotdict",
+        "/app/src/shared/epicstaff_secrets",
+        "/app/src/shared/epicstaff_common",
+    }
+)
+_STORAGE_PREDEFINED_LIBRARY = "/app/src/shared/epicstaff_storage"
 
-    For local directories, recursively hashes all file paths and content.
-    For non-local entries (plain pip specs), returns the string unchanged.
-    Skips .venv, __pycache__, .pytest_cache, .git, *.egg-info, and symlinks.
+# The only paths _fingerprint_library is allowed to walk. Anything else -- a pip
+# spec or a caller-supplied path -- is hashed as its own string.
+ALLOWED_LOCAL_LIBRARY_PATHS: frozenset[str] = _BASE_PREDEFINED_LIBRARIES | {
+    _STORAGE_PREDEFINED_LIBRARY
+}
+
+
+def _fingerprint_library(library: str) -> str:
+    """Content hash for trusted local path deps; pass-through for everything else.
+
+    Only the directories in ALLOWED_LOCAL_LIBRARY_PATHS are walked: a library
+    entry reaches this function from user-authored code-node metadata, so
+    fingerprinting any directory that happens to exist would let a caller point
+    it at "/" or "/proc/self" and stall the sandbox reading an unbounded tree.
+    Every other entry -- pip specs included -- is returned unchanged.
+
+    For trusted directories, recursively hashes all file paths and content,
+    skipping .venv, __pycache__, .pytest_cache, .git, *.egg-info, and symlinks.
     """
+    if library not in ALLOWED_LOCAL_LIBRARY_PATHS:
+        return library
+
     path = Path(library)
     if not path.is_dir():
         return library
@@ -182,13 +206,9 @@ class CreateVenvHandler(AbstractHandler):
 
         context["libraries"] = set(context["libraries"])
         # Install libraries
-        predefined_libraries = {
-            "/app/src/shared/dotdict",
-            "/app/src/shared/epicstaff_secrets",
-            "/app/src/shared/epicstaff_common",
-        }  # TODO: deal with hard coded path
+        predefined_libraries = set(_BASE_PREDEFINED_LIBRARIES)
         if context.get("use_storage"):
-            predefined_libraries.add("/app/src/shared/epicstaff_storage")
+            predefined_libraries.add(_STORAGE_PREDEFINED_LIBRARY)
         context["libraries"].update(predefined_libraries)
 
         context["libraries"] = sorted(context["libraries"])
