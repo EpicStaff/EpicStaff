@@ -144,7 +144,12 @@ def test_node_without_table_is_saved(auth_client, graph):
     [
         ("read", [{"key": "k"}]),  # missing alias
         ("read", [{"alias": "a", "key": "k1"}, {"alias": "a", "key": "k2"}]),  # duplicate alias
-        ("write", [{"key": "k"}]),  # missing value alias
+        ("write", [{"key": "k"}]),  # missing value
+        ("write", [{"key": "k", "value": "value"}]),  # not a state path
+        ("write", [{"key": "k", "value": "variables"}]),  # bare root
+        ("write", [{"key": "k", "value": "variables."}]),  # empty segment
+        ("write", [{"key": "k", "value": "variables[0]"}]),  # state root is not a list
+        ("write", [{"key": "k", "value": "variables[0].a"}]),  # state root is not a list
         ("delete", [{"key": ""}]),  # empty key
         ("delete", [{"key": "k", "alias": "x"}]),  # unknown field for mode
         ("read", {"alias": "a", "key": "k"}),  # not a list
@@ -155,6 +160,39 @@ def test_invalid_entries_are_rejected(auth_client, graph, table, mode, entries):
                "persistence_node_list": [_node_payload(graph, table, mode=mode, entries=entries)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_write_value_must_name_a_state_path(auth_client, graph, table):
+    entries = [{"key": "k", "value": "user.name"}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Entry 0: 'value' must be a state path like 'variables.user.name'." in str(
+        response.data
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "value",
+    [
+        "variables.a",
+        "variables.a.b",
+        "variables.a[0]",
+        "variables.x|0",
+        "  variables.a  ",
+        "  variables.x|0  ",
+    ],
+)
+def test_write_state_path_values_are_saved_stripped(auth_client, graph, table, value):
+    entries = [{"key": "k", "value": value}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert PersistenceNode.objects.get(graph=graph).entries == [{"key": "k", "value": value.strip()}]
 
 
 @pytest.mark.django_db

@@ -793,7 +793,7 @@ def test_restore_recreates_persistence_node_with_its_table(manager, graph):
         node_name="persistence_node",
         persistence_table=table,
         mode="write",
-        entries=[{"key": "k", "value": "v"}],
+        entries=[{"key": "k", "value": "variables.v"}],
     )
     snapshot = manager.create_snapshot(graph)
     # Edit after the snapshot, so only a real wipe-and-rebuild restores the old state.
@@ -806,7 +806,7 @@ def test_restore_recreates_persistence_node_with_its_table(manager, graph):
     restored = graph.persistence_node_list.get()
     assert restored.persistence_table_id == table.id
     assert restored.mode == "write"
-    assert restored.entries == [{"key": "k", "value": "v"}]
+    assert restored.entries == [{"key": "k", "value": "variables.v"}]
 
 
 @pytest.mark.django_db

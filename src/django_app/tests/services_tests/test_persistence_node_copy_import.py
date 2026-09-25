@@ -167,6 +167,19 @@ def test_import_rejects_entries_that_do_not_fit_the_mode(source_node, source_org
         _import_into(source_org, exported, source_node.graph_id)
 
 
+@pytest.mark.django_db
+def test_import_rejects_write_value_that_is_not_a_state_path(source_node, source_org):
+    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    exported = {
+        **strategy.export_entity(source_node),
+        "mode": "write",
+        "entries": [{"key": "k", "value": "user.name"}],
+    }
+
+    with pytest.raises(serializers.ValidationError, match="must be a state path"):
+        _import_into(source_org, exported, source_node.graph_id)
+
+
 # persistent_data:USE gates table binding on every path that has an acting user.
 
 
