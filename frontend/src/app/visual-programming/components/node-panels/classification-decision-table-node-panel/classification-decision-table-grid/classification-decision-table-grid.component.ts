@@ -741,6 +741,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 manipOrder: this.manipColumnOrder(),
                 pinned: [...this.frozenColIds()],
                 hiddenColIds: [...this.hiddenColIds()],
+                hiddenColumnGroups: [...this.hiddenColumnGroups()],
                 freezeAnchor: this.freezeAnchorColId(),
                 collapsedGroups: [...this.collapsedGroups()],
                 enableFilterMode: this.enableFilterMode(),
@@ -772,6 +773,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
             if (Array.isArray(state.hiddenColIds) && state.hiddenColIds.length > 0) {
                 this.hiddenColIds.set(new Set(state.hiddenColIds as string[]));
+            }
+            if (Array.isArray(state.hiddenColumnGroups)) {
+                this.hiddenColumnGroups.set(new Map(state.hiddenColumnGroups));
             }
             if (Array.isArray(state.collapsedGroups)) {
                 this.collapsedGroups.set(new Set(state.collapsedGroups as string[]));
