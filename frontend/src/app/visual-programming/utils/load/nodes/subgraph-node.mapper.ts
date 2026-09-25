@@ -8,7 +8,8 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(sn.metadata, NodeType.SUBGRAPH);
     const subgraphDetail = sn.subgraph_detail ?? {
-        id: sn.subgraph,
+        // A deleted subgraph keeps its null id (saved back as null); the loader flags the node isBlocked.
+        id: sn.subgraph as number,
         uuid: '',
         name: sn.node_name,
         description: '',

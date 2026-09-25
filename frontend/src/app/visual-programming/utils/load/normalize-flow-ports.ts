@@ -24,7 +24,10 @@ export function normalizeFlowPorts(flowState: FlowModel): FlowModel {
             const conditionGroups = (tableData?.condition_groups ?? []) as Parameters<
                 typeof generatePortsForDecisionTableNode
             >[1];
-            const validGroups = conditionGroups.filter((g) => (g as { valid?: boolean })?.valid === true);
+            // Same predicate as generatePortsForDecisionTableNode (`valid !== false`); a stricter
+            // one here made every group with `valid` unset look out of sync, so the node was
+            // regenerated on every pass and normalizeFlowPorts never returned its input unchanged.
+            const validGroups = conditionGroups.filter((g) => (g as { valid?: boolean })?.valid !== false);
             // Expected: 1 input + N valid condition outputs + default + error
             const expectedPortCount = 1 + validGroups.length + 2;
 
