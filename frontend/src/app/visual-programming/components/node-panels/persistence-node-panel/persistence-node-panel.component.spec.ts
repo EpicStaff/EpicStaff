@@ -1,6 +1,12 @@
 import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ControlValueAccessor, FormArray, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
+import {
+    AbstractControl,
+    ControlValueAccessor,
+    FormArray,
+    NG_VALUE_ACCESSOR,
+    ReactiveFormsModule,
+} from '@angular/forms';
 import { NEVER, Observable, of, Subject } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
@@ -10,7 +16,7 @@ import { PersistenceTablesStorageService } from '../../../../features/persistent
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { FlowModel } from '../../../core/models/flow.model';
 import { PersistenceNodeModel } from '../../../core/models/node.model';
-import { GetPersistenceNodeRequest } from '../../../core/models/persistence-node.model';
+import { GetPersistenceNodeRequest, PersistenceMode } from '../../../core/models/persistence-node.model';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UniqueNodeNameValidatorService } from '../../../services/unique-node-name.validator';
 import { mapPersistenceNodeToModel } from '../../../utils/load/nodes/persistence-node.mapper';
@@ -234,6 +240,9 @@ describe('PersistenceNodePanelComponent', () => {
 
         const added = (panel.form.get('entries') as FormArray).at(1);
         expect(added.value).toEqual({ key: '', value: 'variables.' });
+        // A key makes the row count, so its prefilled value is now checked.
+        added.patchValue({ key: 'plan' });
+        fixture.detectChanges();
         expect(fixture.nativeElement.querySelector('.entry-hint')).toBeNull();
 
         added.get('value')!.markAsTouched();
@@ -241,6 +250,107 @@ describe('PersistenceNodePanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.entry-hint').textContent.trim()).toBe(
             'Use a state path like variables.user.name'
         );
+    });
+
+    describe('empty entries', () => {
+        const nodes: Record<PersistenceMode, PersistenceNodeModel> = {
+            read: mapPersistenceNodeToModel({ ...DTO, entries: [{ key: 'plan', alias: 'plan' }] }),
+            write: mapPersistenceNodeToModel({
+                ...DTO,
+                mode: 'write',
+                entries: [{ key: 'plan', value: 'variables.plan' }],
+            }),
+            delete: mapPersistenceNodeToModel({ ...DTO, mode: 'delete', entries: [{ key: 'plan' }] }),
+        };
+        const addEntry = (
+            fixture: ComponentFixture<PersistenceNodePanelComponent>,
+            panel: PersistenceNodePanelComponent
+        ): AbstractControl => {
+            fixture.nativeElement.querySelector('.add-entry').click();
+            fixture.detectChanges();
+            const entries = panel.form.get('entries') as FormArray;
+            return entries.at(entries.length - 1);
+        };
+
+        for (const mode of ['read', 'write', 'delete'] as const) {
+            it(`does not block the save of a ${mode} node and is left out of its entries`, () => {
+                const { panel, fixture } = createPanel(nodes[mode], { renderTemplate: true });
+                const saved = nodes[mode].data.entries;
+
+                const added = addEntry(fixture, panel);
+                added.markAllAsTouched();
+
+                expect(panel.form.valid).toBe(true);
+                expect(panel.onSave()!.data.entries).toEqual(saved);
+                expect(panel.onSaveSilently()!.data.entries).toEqual(saved);
+                // Still in the form: the user is about to type into it.
+                expect((panel.form.get('entries') as FormArray).length).toBe(2);
+            });
+        }
+
+        it('treats a write value left at the variables. prefill, or cleared, as empty', () => {
+            const { panel, fixture } = createPanel(nodes.write, { renderTemplate: true });
+            const added = addEntry(fixture, panel);
+
+            expect(added.value).toEqual({ key: '', value: 'variables.' });
+            expect(panel.form.valid).toBe(true);
+
+            added.patchValue({ value: '  ' });
+            expect(panel.form.valid).toBe(true);
+            expect(panel.onSave()!.data.entries).toEqual([{ key: 'plan', value: 'variables.plan' }]);
+        });
+
+        it('still validates a write row that has only a value typed', () => {
+            const { panel, fixture } = createPanel(nodes.write, { renderTemplate: true });
+            const added = addEntry(fixture, panel);
+
+            added.patchValue({ value: 'variables.user' });
+
+            expect(added.get('key')!.hasError('required')).toBe(true);
+            expect(panel.onSave()).toBeNull();
+
+            // Back to the prefill: empty again.
+            added.patchValue({ value: 'variables.' });
+            expect(panel.form.valid).toBe(true);
+        });
+
+        it('still validates a read row that has only an alias or only a default typed', () => {
+            const { panel, fixture } = createPanel(nodes.read, { renderTemplate: true });
+            const added = addEntry(fixture, panel);
+
+            added.patchValue({ alias: 'user' });
+            expect(added.get('key')!.hasError('required')).toBe(true);
+            expect(panel.onSave()).toBeNull();
+
+            added.patchValue({ alias: '', default: '"free"' });
+            expect(added.get('key')!.hasError('required')).toBe(true);
+            expect(added.get('alias')!.hasError('required')).toBe(true);
+            expect(panel.onSave()).toBeNull();
+        });
+
+        it('validates the rest of the row once a key is typed', () => {
+            const { panel, fixture } = createPanel(nodes.write, { renderTemplate: true });
+            const added = addEntry(fixture, panel);
+
+            added.patchValue({ key: 'profile' });
+
+            expect(added.get('value')!.hasError('pattern')).toBe(true);
+            expect(panel.onSave()).toBeNull();
+        });
+
+        it('leaves empty rows out of the canvas key count', () => {
+            vi.useFakeTimers();
+            const { panel, fixture, triggerAutosave } = createPanel(nodes.delete, { renderTemplate: true });
+            const added = addEntry(fixture, panel);
+
+            vi.advanceTimersByTime(300);
+            expect(triggerAutosave).not.toHaveBeenCalled();
+
+            added.patchValue({ key: 'profile' });
+            vi.advanceTimersByTime(300);
+            expect(triggerAutosave).toHaveBeenCalledTimes(1);
+            expect(panel.onSave()!.data.entries).toEqual([{ key: 'plan' }, { key: 'profile' }]);
+        });
     });
 
     describe('key suggestions', () => {

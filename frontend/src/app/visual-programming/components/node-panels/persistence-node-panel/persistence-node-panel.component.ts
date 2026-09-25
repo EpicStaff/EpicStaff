@@ -8,6 +8,7 @@ import {
     FormGroup,
     ReactiveFormsModule,
     ValidationErrors,
+    ValidatorFn,
     Validators,
 } from '@angular/forms';
 import {
@@ -39,6 +40,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import {
     ExistenceBadge,
     existenceBadge,
+    isEmptyEntry,
     isSameLookupRequest,
     isStatePath,
     isStaticKey,
@@ -222,16 +224,18 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             data: {
                 persistence_table: this.form.value.persistence_table ?? null,
                 mode,
-                entries: entryValues.map((entryValue) =>
-                    normalizeEntry(
-                        {
-                            ...entryValue,
-                            value: entryValue.value?.trim(),
-                            default: parseDefaultValue(entryValue.default ?? ''),
-                        },
-                        mode
-                    )
-                ),
+                entries: entryValues
+                    .filter((entryValue) => !isEmptyEntry(entryValue))
+                    .map((entryValue) =>
+                        normalizeEntry(
+                            {
+                                ...entryValue,
+                                value: entryValue.value?.trim(),
+                                default: parseDefaultValue(entryValue.default ?? ''),
+                            },
+                            mode
+                        )
+                    ),
             },
         };
     }
@@ -307,22 +311,36 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     }
 
     private createEntryGroup(entry: PersistenceEntry, mode: PersistenceMode): FormGroup {
-        const key = [entry.key, [Validators.required, Validators.maxLength(PERSISTENCE_KEY_MAX_LENGTH)]];
+        const group = this.fb.group(this.entryControls(entry, mode));
+        // Each field's validity depends on whether the whole row is empty, so typing in one field
+        // re-checks the others. emitEvent: false keeps this from re-triggering itself.
+        const revalidateFields = (): void =>
+            Object.values(group.controls).forEach((control) => control.updateValueAndValidity({ emitEvent: false }));
+        revalidateFields();
+        group.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(revalidateFields);
+        return group;
+    }
+
+    private entryControls(entry: PersistenceEntry, mode: PersistenceMode): Record<string, unknown[]> {
+        const key = [
+            entry.key,
+            unlessEmptyEntry(Validators.required, Validators.maxLength(PERSISTENCE_KEY_MAX_LENGTH)),
+        ];
         if (mode === 'read') {
             const defaultValue = 'default' in entry && entry.default !== undefined ? JSON.stringify(entry.default) : '';
-            return this.fb.group({
-                alias: ['alias' in entry ? entry.alias : '', Validators.required],
+            return {
+                alias: ['alias' in entry ? entry.alias : '', unlessEmptyEntry(Validators.required)],
                 key,
                 default: [defaultValue],
-            });
+            };
         }
         if (mode === 'write') {
-            return this.fb.group({
+            return {
                 key,
-                value: ['value' in entry ? entry.value : '', [Validators.required, statePathValidator]],
-            });
+                value: ['value' in entry ? entry.value : '', unlessEmptyEntry(Validators.required, statePathValidator)],
+            };
         }
-        return this.fb.group({ key });
+        return { key };
     }
 
     private pickKeySuggestion(key: string): void {
@@ -423,6 +441,16 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     }
 }
 
+/** An empty row is left out of the save, so its fields are not validated. */
+function unlessEmptyEntry(...validators: ValidatorFn[]): ValidatorFn {
+    const validate = Validators.compose(validators);
+    return (control) => {
+        const row = control.parent;
+        if (validate === null || (row !== null && isEmptyEntry(row.getRawValue()))) return null;
+        return validate(control);
+    };
+}
+
 // Empty is left to Validators.required.
 function statePathValidator(control: AbstractControl<string>): ValidationErrors | null {
     return !control.value || isStatePath(control.value) ? null : { pattern: true };
@@ -430,5 +458,8 @@ function statePathValidator(control: AbstractControl<string>): ValidationErrors 
 
 function canvasSummary(form: FormGroup): string {
     const { mode, persistence_table } = form.getRawValue();
-    return JSON.stringify([mode, persistence_table, (form.get('entries') as FormArray).length]);
+    const entries: EntryFormValue[] = (form.get('entries') as FormArray).getRawValue();
+    // Empty rows are not saved, so they don't count toward the canvas key count.
+    const keyCount = entries.filter((entry) => !isEmptyEntry(entry)).length;
+    return JSON.stringify([mode, persistence_table, keyCount]);
 }

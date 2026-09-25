@@ -1,6 +1,7 @@
 import {
     existenceBadge,
     extractPlaceholders,
+    isEmptyEntry,
     isMalformedKey,
     isSameLookupRequest,
     isStatePath,
@@ -16,6 +17,29 @@ import {
 } from './persistence-node.helpers';
 
 describe('persistence node helpers', () => {
+    it('treats a row with nothing typed as empty, counting the untouched write prefill as nothing', () => {
+        for (const row of [
+            { key: '' },
+            { key: '  ' },
+            { key: '', value: 'variables.' },
+            { key: '', value: ' variables. ' },
+            { key: '', value: '' },
+            { alias: '', key: '', default: '' },
+            { alias: null, key: null, default: null },
+        ]) {
+            expect(isEmptyEntry(row)).toBe(true);
+        }
+        for (const row of [
+            { key: 'plan' },
+            { key: '', value: 'variables.a' },
+            { key: '', value: 'variables' },
+            { alias: 'user', key: '', default: '' },
+            { alias: '', key: '', default: 'null' },
+        ]) {
+            expect(isEmptyEntry(row)).toBe(false);
+        }
+    });
+
     it('extracts placeholders', () => {
         expect(extractPlaceholders('profile_{variables.user.id}_{variables.region}')).toEqual([
             'variables.user.id',

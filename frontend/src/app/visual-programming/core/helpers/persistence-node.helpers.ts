@@ -32,6 +32,14 @@ interface EntryFields {
     default?: unknown;
 }
 
+/** A panel row as typed; `default` is still the raw text. */
+interface EntryText {
+    key?: string | null;
+    alias?: string | null;
+    value?: string | null;
+    default?: string | null;
+}
+
 const RECORDED_LABEL: Record<PersistenceMode, string> = {
     read: 'recorded',
     write: 'exists — will overwrite',
@@ -101,6 +109,18 @@ export function normalizeEntry(entry: EntryFields, mode: PersistenceMode): Persi
     }
     if (mode === 'write') return { key: entry.key, value: entry.value ?? '' };
     return { key: entry.key };
+}
+
+/**
+ * A panel row with nothing typed, such as one just added with "Add key". A write value still at
+ * its prefill counts as nothing typed. The panel neither validates nor saves such a row.
+ */
+export function isEmptyEntry(row: EntryText): boolean {
+    const text = (field: string | null | undefined): string => (field ?? '').trim();
+    return (
+        [row.key, row.alias, row.default].every((field) => text(field) === '') &&
+        ['', WRITE_VALUE_PREFILL].includes(text(row.value))
+    );
 }
 
 export function reshapeEntriesForMode(entries: PersistenceEntry[], mode: PersistenceMode): PersistenceEntry[] {
