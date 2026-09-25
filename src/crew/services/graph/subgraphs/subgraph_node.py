@@ -219,7 +219,7 @@ class SubGraphNode:
         """Process subgraph result and update parent state."""
         subgraph_output = result["variables"].model_dump()
 
-        temp_state = {"variables": DotDict(state["variables"].model_dump())}
+        temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
         if self.output_variable_path == "variables":
             temp_state["variables"] = DotDict(subgraph_output)

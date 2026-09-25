@@ -28,7 +28,7 @@ class DotDict(dict):
         setters = dictionary.pop("__setters__", None)
 
         for key, value in dictionary.items():
-            self[key] = value
+            self._set_wrapped(key, value)
 
         if properties:
             for k, v in properties.items():
@@ -37,11 +37,19 @@ class DotDict(dict):
             for k, v in setters.items():
                 self.add_setter(k, v)
 
-    def __setitem__(self, key, value):
+    def _set_wrapped(self, key, value):
+        """Store `value` aliasing any already-wrapped DotDict/DotList inside it.
+
+        Construction-only path: the values come from the dict literal being wrapped,
+        so nothing outside this instance can still be holding them.
+        """
         if key in self._setters:
             value = self._setters[key](value)
-        super().__setitem__(key, DotObject(value))
+        super().__setitem__(key, _wrap(value))
         self._update_properties()
+
+    def __setitem__(self, key, value):
+        self._set_wrapped(key, _copy_wrap(value))
 
     def __getattr__(self, key):
         try:
@@ -139,20 +147,20 @@ class DotList(list):
         super().__init__()
         if iterable:
             for item in iterable:
-                super().append(DotObject(item))  # recursive conversion
+                super().append(_wrap(item))
 
     def append(self, item):
-        super().append(DotObject(item))
+        super().append(_copy_wrap(item))
 
     def extend(self, iterable):
         for item in iterable:
             self.append(item)
 
     def insert(self, index, item):
-        super().insert(index, DotObject(item))
+        super().insert(index, _copy_wrap(item))
 
     def __setitem__(self, key, value):
-        super().__setitem__(key, DotObject(value))
+        super().__setitem__(key, _copy_wrap(value))
 
     def model_dump(self):
         return [v.model_dump() if hasattr(v, "model_dump") else v for v in self]
@@ -192,9 +200,39 @@ class DotList(list):
         return handler(core_schema.list_schema(items_schema=core_schema.any_schema()))
 
 
-def DotObject(data):  # noqa: N802
+def _wrap(data):
+    """Already-wrapped DotDict/DotList is returned as-is (same instance, not copied) to avoid
+    exponential re-wrapping cost on deep nesting; caller and result then share mutations.
+
+    Only safe where the caller cannot keep a reference to `data` — i.e. inside
+    DotDict/DotList construction. External mutations use `_copy_wrap`.
+    """
+    if isinstance(data, (DotDict, DotList)):
+        return data
     if isinstance(data, Mapping):
-        return DotDict({k: DotObject(v) for k, v in data.items()})
+        return DotDict(data)
     elif isinstance(data, (list, tuple, set)):
-        return DotList(DotObject(v) for v in data)
+        return DotList(data)
     return data
+
+
+def _copy_wrap(data):
+    """Wrap a value coming from outside, copying every DotDict/DotList found in it.
+
+    Assigning an already-wrapped value would otherwise alias it, so a later mutation of
+    either side would be visible on the other and `variables.snapshot = variables` would
+    build a reference cycle that `deep_dump()` and `json.dumps()` cannot walk. Leaf values
+    that are neither mappings nor sequences keep their identity, as on construction.
+
+    Computed properties and setters of a copied DotDict are not carried over.
+    """
+    if isinstance(data, Mapping):
+        return DotDict({key: _copy_wrap(value) for key, value in data.items()})
+    if isinstance(data, (list, tuple, set)):
+        return DotList([_copy_wrap(item) for item in data])
+    return data
+
+
+def DotObject(data):  # noqa: N802
+    """Wrap `data` into a DotDict/DotList, aliasing an already-wrapped argument."""
+    return _wrap(data)

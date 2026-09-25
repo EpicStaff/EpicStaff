@@ -47,6 +47,76 @@ if not _can_drop_privileges():
     )
 
 
+_BASE_PREDEFINED_LIBRARIES: frozenset[str] = frozenset(
+    {
+        "/app/src/shared/dotdict",
+        "/app/src/shared/epicstaff_secrets",
+        "/app/src/shared/epicstaff_common",
+    }
+)
+_STORAGE_PREDEFINED_LIBRARY = "/app/src/shared/epicstaff_storage"
+
+# The only paths _fingerprint_library is allowed to walk. Anything else -- a pip
+# spec or a caller-supplied path -- is hashed as its own string.
+ALLOWED_LOCAL_LIBRARY_PATHS: frozenset[str] = _BASE_PREDEFINED_LIBRARIES | {
+    _STORAGE_PREDEFINED_LIBRARY
+}
+
+
+def _fingerprint_library(library: str) -> str:
+    """Content hash for trusted local path deps; pass-through for everything else.
+
+    Only the directories in ALLOWED_LOCAL_LIBRARY_PATHS are walked: a library
+    entry reaches this function from user-authored code-node metadata, so
+    fingerprinting any directory that happens to exist would let a caller point
+    it at "/" or "/proc/self" and stall the sandbox reading an unbounded tree.
+    Every other entry -- pip specs included -- is returned unchanged.
+
+    For trusted directories, recursively hashes all file paths and content,
+    skipping .venv, __pycache__, .pytest_cache, .git, *.egg-info, and symlinks.
+    """
+    if library not in ALLOWED_LOCAL_LIBRARY_PATHS:
+        return library
+
+    path = Path(library)
+    if not path.is_dir():
+        return library
+
+    skip_dirs = {".venv", "__pycache__", ".pytest_cache", ".git"}
+    skip_suffixes = {".egg-info"}
+
+    digest = hashlib.sha256()
+    for file_path in sorted(path.rglob("*")):
+        if file_path.is_symlink() or not file_path.is_file():
+            continue
+        if any(part in skip_dirs for part in file_path.parts):
+            continue
+        if any(part.endswith(s) for part in file_path.parts for s in skip_suffixes):
+            continue
+        relative = file_path.relative_to(path).as_posix()
+        try:
+            content = file_path.read_bytes()
+        except OSError as exc:
+            logger.warning(
+                "Skipping unreadable file {} while fingerprinting library: {}", file_path, exc
+            )
+            continue
+        digest.update(relative.encode("utf-8"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def _calculate_libraries_hash(libraries: list[str]) -> str:
+    """Calculate a hash of the libraries list, content-aware for local paths.
+
+    Fingerprints each library (content hash for local paths, pass-through for pip specs),
+    then hashes the sorted JSON representation of all fingerprints.
+    """
+    fingerprints = [_fingerprint_library(lib) for lib in libraries]
+    libraries_str = json.dumps(fingerprints, sort_keys=True)
+    return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+
+
 def _privilege_drop_kwargs() -> dict[str, object]:
     """Subprocess kwargs to run a child as sandboxuser, or empty when non-root."""
     if not _can_drop_privileges():
@@ -128,26 +198,21 @@ class DummyHandler(AbstractHandler):
 
 class CreateVenvHandler(AbstractHandler):
     def calculate_hash(self, libraries: list[str]) -> str:
-        """Calculate a hash of the libraries list."""
-        libraries_str = json.dumps(libraries, sort_keys=True)
-        return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+        """Calculate a hash of the libraries list, content-aware for local paths."""
+        return _calculate_libraries_hash(libraries)
 
     async def handle(self, context: dict[str, Any]) -> Any:
         """Create virtual environment task."""
 
         context["libraries"] = set(context["libraries"])
         # Install libraries
-        predefined_libraries = {
-            "/app/src/shared/dotdict",
-            "/app/src/shared/epicstaff_secrets",
-            "/app/src/shared/epicstaff_common",
-        }  # TODO: deal with hard coded path
+        predefined_libraries = set(_BASE_PREDEFINED_LIBRARIES)
         if context.get("use_storage"):
-            predefined_libraries.add("/app/src/shared/epicstaff_storage")
+            predefined_libraries.add(_STORAGE_PREDEFINED_LIBRARY)
         context["libraries"].update(predefined_libraries)
 
         context["libraries"] = sorted(context["libraries"])
-        lib_hash = self.calculate_hash(context["libraries"])
+        lib_hash = await asyncio.to_thread(self.calculate_hash, context["libraries"])
         base_venv_path = context.get("base_venv_path")
         venv_path: Path = Path(base_venv_path) / Path(lib_hash)
         python_executable = (
@@ -179,9 +244,8 @@ class CreateVenvHandler(AbstractHandler):
 
 class InstallLibrariesHandler(AbstractHandler):
     def calculate_hash(self, libraries: list[str]) -> str:
-        """Calculate a hash of the libraries list."""
-        libraries_str = json.dumps(libraries, sort_keys=True)
-        return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+        """Calculate a hash of the libraries list, content-aware for local paths."""
+        return _calculate_libraries_hash(libraries)
 
     def _hash_changed(self, lib_hash: str, hash_file: Path) -> bool:
         """Check if the hash of the libraries has changed."""
