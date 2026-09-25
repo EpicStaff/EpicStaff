@@ -49,7 +49,12 @@ import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
-import { adminUsersToAggregated, aggregateMembershipsByUser, rbacErrorMessage } from '../../../utils';
+import {
+    adminUsersToAggregated,
+    aggregateMembershipsByUser,
+    buildUserDeleteMessage,
+    rbacErrorMessage,
+} from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Online', value: 'online' },
@@ -291,13 +296,17 @@ export class UsersTabComponent implements OnInit {
         const userId = row['id'] as number;
         const label = (row['name'] as string) || (row['email'] as string) || 'this account';
         this.hardDeleteFlow
-            .run((dryRun) => this.adminUserService.deleteUser(userId, dryRun), label, {
-                title: 'Permanently delete this account?',
-                caution: 'This action is irreversible.',
-                successMessage: 'Account deleted permanently.',
-                previewErrorFallback: 'Failed to preview account deletion.',
-                deleteErrorFallback: 'Failed to delete account.',
-            })
+            .run(
+                (dryRun) => this.adminUserService.deleteUser(userId, dryRun),
+                (report) => buildUserDeleteMessage(label, report),
+                {
+                    title: 'Permanently delete this account?',
+                    caution: 'This action is irreversible.',
+                    successMessage: 'Account deleted permanently.',
+                    previewErrorFallback: 'Failed to preview account deletion.',
+                    deleteErrorFallback: 'Failed to delete account.',
+                }
+            )
             .pipe(
                 filter((deleted) => deleted === true),
                 takeUntilDestroyed(this.destroyRef)

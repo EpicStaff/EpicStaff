@@ -3,8 +3,8 @@ import { inject, Injectable } from '@angular/core';
 import {
     ActionCode,
     CreateOrganizationRequest,
-    DeleteReport,
     GetOrganizationResponse,
+    OrganizationDeleteReport,
     ResourceCode,
     UpdateOrganizationRequest,
 } from '@shared/models';
@@ -67,8 +67,8 @@ export class AdminOrganizationsService {
         return this.http.post<void>(`${this.apiUrl}${id}/reactivate/`, {});
     }
 
-    deleteOrganization(id: number, dryRun: boolean): Observable<DeleteReport> {
-        return this.http.delete<DeleteReport>(`${this.apiUrl}${id}/`, {
+    deleteOrganization(id: number, dryRun: boolean): Observable<OrganizationDeleteReport> {
+        return this.http.delete<OrganizationDeleteReport>(`${this.apiUrl}${id}/`, {
             params: new HttpParams().set('dry_run', String(dryRun)),
         });
     }

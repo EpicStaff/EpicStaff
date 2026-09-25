@@ -1,8 +1,8 @@
 import { inject, Injectable, signal } from '@angular/core';
 import {
     CreateOrganizationRequest,
-    DeleteReport,
     GetOrganizationResponse,
+    OrganizationDeleteReport,
     UpdateOrganizationRequest,
 } from '@shared/models';
 import { StorageService } from '@shared/services';
@@ -79,7 +79,7 @@ export class OrganizationsStorageService implements StorageService {
         );
     }
 
-    deleteOrganization(id: number, dryRun: boolean): Observable<DeleteReport> {
+    deleteOrganization(id: number, dryRun: boolean): Observable<OrganizationDeleteReport> {
         return this.apiService.deleteOrganization(id, dryRun).pipe(
             tap(() => {
                 if (!dryRun) {

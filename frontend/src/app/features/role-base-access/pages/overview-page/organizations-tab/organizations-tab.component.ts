@@ -29,7 +29,7 @@ import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.co
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
-import { rbacErrorMessage } from '../../../utils';
+import { buildOrganizationDeleteMessage, rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
     { name: 'Active', value: 'active' },
@@ -186,13 +186,17 @@ export class OrganizationsTabComponent implements OnInit {
         const id = row['id'] as number;
         const name = row['name'] as string;
         this.hardDeleteFlow
-            .run((dryRun) => this.organizationStorage.deleteOrganization(id, dryRun), name, {
-                title: 'Permanently delete the organization?',
-                caution: 'This action is irreversible. All data owned by this organization will be destroyed.',
-                successMessage: 'Organization deleted successfully',
-                previewErrorFallback: 'Failed to preview organization deletion.',
-                deleteErrorFallback: 'Failed to delete organization.',
-            })
+            .run(
+                (dryRun) => this.organizationStorage.deleteOrganization(id, dryRun),
+                (report) => buildOrganizationDeleteMessage(name, report),
+                {
+                    title: 'Permanently delete the organization?',
+                    caution: 'This action is irreversible. All data owned by this organization will be destroyed.',
+                    successMessage: 'Organization deleted successfully',
+                    previewErrorFallback: 'Failed to preview organization deletion.',
+                    deleteErrorFallback: 'Failed to delete organization.',
+                }
+            )
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe();
     }

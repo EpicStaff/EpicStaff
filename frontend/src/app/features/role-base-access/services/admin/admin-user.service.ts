@@ -4,8 +4,8 @@ import {
     ActionCode,
     AdminCreateUserRequest,
     AdminCreateUserResponse,
-    DeleteReport,
     ResourceCode,
+    UserDeleteReport,
 } from '@shared/models';
 import { Observable } from 'rxjs';
 
@@ -87,8 +87,8 @@ export class AdminUserService {
         return this.http.post<void>(`${this.apiUrl}${userId}/reset-password/`, {}, { headers: this.httpHeaders });
     }
 
-    deleteUser(userId: number, dryRun: boolean): Observable<DeleteReport> {
-        return this.http.delete<DeleteReport>(`${this.apiUrl}${userId}/`, {
+    deleteUser(userId: number, dryRun: boolean): Observable<UserDeleteReport> {
+        return this.http.delete<UserDeleteReport>(`${this.apiUrl}${userId}/`, {
             headers: this.httpHeaders,
             params: new HttpParams().set('dry_run', String(dryRun)),
         });
