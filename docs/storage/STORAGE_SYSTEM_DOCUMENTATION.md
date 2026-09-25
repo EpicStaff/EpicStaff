@@ -263,12 +263,14 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 
 | Service | Image | Purpose |
 |---------|-------|---------|
-| `minio` | `rustfs/rustfs:1.0.0` (pinned by digest) | S3-compatible object storage (RustFS), volume `rustfs_data`. Service name kept from MinIO. |
-| `minio-init` | `rustfs/rustfs:1.0.0` | One-shot container that creates the bucket on startup (SigV4-signed `curl`) |
+| `storage` | `rustfs/rustfs:1.0.0` (pinned by digest) | S3-compatible object storage (RustFS), volume `rustfs_data` |
+| `storage-init` | `rustfs/rustfs:1.0.0` | One-shot container that creates the bucket on startup (SigV4-signed `curl`) |
 
-`django_app` depends on `minio` being healthy before starting.
+`django_app` and `knowledge_new` depend on `storage` being healthy before starting.
 
 ### Configuration Environment Variables
+
+The sandbox sets these in the user-code process env for storage-enabled executions. They are separate from the service-level `STORAGE_HOST` / `STORAGE_USER` / … variables in `.env` (see the [Storage Backend Guide](STORAGE_BACKEND_GUIDE.md)).
 
 | Variable | Purpose |
 |----------|---------|

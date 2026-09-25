@@ -10,29 +10,29 @@ The sandbox also uses the MinIO Admin API (which RustFS implements) to create sh
 
 ## Quick Start
 
-RustFS starts automatically as a core service (compose service name `minio`, kept for now). No extra configuration is needed.
+RustFS starts automatically as a core service (compose service name `storage`). No extra configuration is needed.
 
 ```bash
 docker compose up
 ```
 
-The `minio-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
+The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
 
 ---
 
 ## Environment Variables
 
-Set in `.env` (generated from `src/env.yaml`). Services build the endpoint as `http(s)://MINIO_HOST:MINIO_PORT`.
+Set in `.env` (generated from `src/env.yaml`). Services build the endpoint as `http(s)://STORAGE_HOST:STORAGE_PORT`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MINIO_HOST` | `minio` | Hostname of the storage service |
-| `MINIO_PORT` | `9000` | S3 API port (also used by the healthcheck and `minio-init`) |
-| `MINIO_SSL` | `False` | Use HTTPS to reach the storage service |
-| `MINIO_USER` | — | Root access key |
-| `MINIO_PASSWORD` | — | Root secret key |
-| `MINIO_BUCKET` | `epicstaff` | Bucket for file storage |
-| `KNOWLEDGE_MINIO_BUCKET` | `epicstaff-knowledge` | Bucket for knowledge (GraphRAG) data |
+| `STORAGE_HOST` | `storage` | Hostname of the storage service |
+| `STORAGE_PORT` | `9000` | S3 API port (also used by the healthcheck and `storage-init`) |
+| `STORAGE_SSL` | `False` | Use HTTPS to reach the storage service |
+| `STORAGE_USER` | — | Root access key |
+| `STORAGE_PASSWORD` | — | Root secret key |
+| `STORAGE_BUCKET` | `epicstaff` | Bucket for file storage |
+| `KNOWLEDGE_STORAGE_BUCKET` | `epicstaff-knowledge` | Bucket for knowledge (GraphRAG) data |
 | `STORAGE_MUTATION_CHANNEL` | `storage_mutations` | Redis pub/sub channel for storage mutation events |
 | `MAX_TOTAL_FILE_SIZE` | `10485760` (10 MB) | Maximum total upload size per request |
 
@@ -257,10 +257,10 @@ Full Swagger documentation is available at the `/swagger/` endpoint.
 
 The storage server is a core service — it starts with every `docker compose up`. No profiles are needed.
 
-- **`minio`** — RustFS (`rustfs/rustfs:1.0.0`, pinned by digest), volume: `rustfs_data`. The compose service and container are still named `minio`.
-- **`minio-init`** — one-shot container (same RustFS image) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
+- **`storage`** — RustFS (`rustfs/rustfs:1.0.0`, pinned by digest), volume: `rustfs_data`.
+- **`storage-init`** — one-shot container (same RustFS image) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
 
-The `django_app` service depends on `minio` being healthy before starting.
+The `django_app` and `knowledge_new` services depend on `storage` being healthy before starting.
 
 ---
 

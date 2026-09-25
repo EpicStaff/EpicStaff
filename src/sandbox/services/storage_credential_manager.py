@@ -91,7 +91,7 @@ class StorageCredentialManager:
         org_prefix: str,
         allowed_paths: list[str] | None,
     ) -> dict[str, Any]:
-        """Build policy for a minio user"""
+        """Build policy for a scoped storage user"""
         prefix = self._validate_org_prefix(org_prefix)
         folders = allowed_paths or ["/"]  # no explicit paths -> whole-org grant
 

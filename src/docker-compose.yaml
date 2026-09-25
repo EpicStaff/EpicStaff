@@ -12,13 +12,13 @@ x-redis-env: &redis-env
   REDIS_HOST: ${REDIS_HOST:?}
   REDIS_PORT: ${REDIS_PORT:?}
 
-x-minio-env: &minio-env
-  MINIO_USER: ${MINIO_USER:?}
-  MINIO_PASSWORD: ${MINIO_PASSWORD:?}
-  MINIO_SSL: ${MINIO_SSL:?}
-  MINIO_HOST: ${MINIO_HOST:?}
-  MINIO_PORT: ${MINIO_PORT:?}
-  MINIO_BUCKET: ${MINIO_BUCKET}
+x-storage-env: &storage-env
+  STORAGE_USER: ${STORAGE_USER:?}
+  STORAGE_PASSWORD: ${STORAGE_PASSWORD:?}
+  STORAGE_SSL: ${STORAGE_SSL:?}
+  STORAGE_HOST: ${STORAGE_HOST:?}
+  STORAGE_PORT: ${STORAGE_PORT:?}
+  STORAGE_BUCKET: ${STORAGE_BUCKET}
 
 x-communication-env: &communication-env
   CODE_RESULT_CHANNEL: ${CODE_RESULT_CHANNEL:?}
@@ -67,7 +67,7 @@ services:
     container_name: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -129,7 +129,7 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-      minio:
+      storage:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${DJANGO_PORT}/ht/')\""]
@@ -300,7 +300,7 @@ services:
     container_name: sandbox
     init: true
     environment:
-      <<: [*docker-env, *redis-env, *minio-env, *communication-env]
+      <<: [*docker-env, *redis-env, *storage-env, *communication-env]
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
@@ -338,13 +338,13 @@ services:
       redis:
         condition: service_healthy
 
-  minio:
+  storage:
     image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
-    container_name: minio
+    container_name: storage
     environment:
-      RUSTFS_ACCESS_KEY: ${MINIO_USER:?}
-      RUSTFS_SECRET_KEY: ${MINIO_PASSWORD:?}
-      RUSTFS_ADDRESS: ":${MINIO_PORT}"
+      RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
+      RUSTFS_SECRET_KEY: ${STORAGE_PASSWORD:?}
+      RUSTFS_ADDRESS: ":${STORAGE_PORT}"
       RUSTFS_CONSOLE_ENABLE: "false"
     volumes:
       - rustfs_data:/data
@@ -352,26 +352,26 @@ services:
       - backend-network
       - sandbox-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${MINIO_PORT}/minio/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:${STORAGE_PORT}/minio/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
 
-  minio-init:
+  storage-init:
     image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
-    container_name: minio-init
+    container_name: storage-init
     networks:
       - backend-network
     depends_on:
-      minio:
+      storage:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
-      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${MINIO_USER}:${MINIO_PASSWORD}'
-      http://minio:${MINIO_PORT}/${MINIO_BUCKET}) &&
+      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER}:${STORAGE_PASSWORD}'
+      http://${STORAGE_HOST}:${STORAGE_PORT}/${STORAGE_BUCKET}) &&
       case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac
       "
     restart: on-failure
@@ -396,7 +396,7 @@ services:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 
@@ -513,17 +513,17 @@ services:
         condition: service_healthy
       django_app:
         condition: service_healthy
-      minio:
+      storage:
         condition: service_healthy
     environment:
-      <<: [*docker-env, *database-env, *minio-env, *communication-env]
+      <<: [*docker-env, *database-env, *storage-env, *communication-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
       KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}
-      KNOWLEDGE_MINIO_BUCKET: ${KNOWLEDGE_MINIO_BUCKET:?}
+      KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
 
 volumes:
   sandbox_venvs:

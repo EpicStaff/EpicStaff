@@ -11,7 +11,7 @@ from communication.brokers.redis_broker import RedisPubSubBroker
 from communication.consumer import Consumer
 from communication.message import Message
 from communication.producer import Producer
-from communication.storages.minio_storage import MinioStorage
+from communication.storages.s3_storage import S3Storage
 
 CHANNEL_PREFIX = "integ-consumer-channel"
 SMALL_THRESHOLD = 50
@@ -29,23 +29,23 @@ def broker(redis_url):
 
 
 @pytest.fixture
-def minio_storage(minio_params):
+def s3_storage(s3_params):
     bucket = f"cons-test-{uuid.uuid4().hex[:8]}"
-    return MinioStorage(
-        host=minio_params["host"],
-        port=minio_params["port"],
-        access_key=minio_params["access_key"],
-        secret_key=minio_params["secret_key"],
+    return S3Storage(
+        host=s3_params["host"],
+        port=s3_params["port"],
+        access_key=s3_params["access_key"],
+        secret_key=s3_params["secret_key"],
         bucket=bucket,
         secure=False,
     )
 
 
 class TestSyncEndToEnd:
-    def test_inline_payload_roundtrip(self, broker, minio_storage):
+    def test_inline_payload_roundtrip(self, broker, s3_storage):
         channel = _unique_channel("inline-sync")
-        producer = Producer(broker, minio_storage, payload_size_threshold=1024**2)
-        consumer = Consumer(broker, minio_storage)
+        producer = Producer(broker, s3_storage, payload_size_threshold=1024**2)
+        consumer = Consumer(broker, s3_storage)
         message = Message(payload={"hello": "world", "num": 42})
 
         holder: list = []
@@ -65,13 +65,13 @@ class TestSyncEndToEnd:
         assert received.id == message.id
         assert received.payload == {"hello": "world", "num": 42}
 
-    def test_offloaded_payload_roundtrip_and_removed(self, broker, minio_storage):
-        """Large payload rehydrates from MinIO and is removed immediately on receipt."""
+    def test_offloaded_payload_roundtrip_and_removed(self, broker, s3_storage):
+        """Large payload rehydrates from S3 and is removed immediately on receipt."""
         channel = _unique_channel("offload-sync")
         producer = Producer(
-            broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
+            broker, s3_storage, payload_size_threshold=SMALL_THRESHOLD
         )
-        consumer = Consumer(broker, minio_storage)
+        consumer = Consumer(broker, s3_storage)
         big_payload = {"data": "Z" * (SMALL_THRESHOLD + 200)}
         message = Message(payload=big_payload)
 
@@ -92,14 +92,14 @@ class TestSyncEndToEnd:
         assert received.id == message.id
         assert received.payload == big_payload
         # New behavior: the offloaded object is removed immediately on receipt.
-        assert minio_storage.get(message.id) is None
+        assert s3_storage.get(message.id) is None
 
-    def test_stream_collects_multiple_mixed_messages(self, broker, minio_storage):
+    def test_stream_collects_multiple_mixed_messages(self, broker, s3_storage):
         channel = _unique_channel("mixed-sync")
         producer = Producer(
-            broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
+            broker, s3_storage, payload_size_threshold=SMALL_THRESHOLD
         )
-        consumer = Consumer(broker, minio_storage)
+        consumer = Consumer(broker, s3_storage)
         small_msg = Message(payload={"size": "small"})
         large_msg = Message(payload={"data": "A" * (SMALL_THRESHOLD + 100)})
 
@@ -123,15 +123,15 @@ class TestSyncEndToEnd:
         assert by_id[small_msg.id].payload == {"size": "small"}
         assert by_id[large_msg.id].payload == {"data": "A" * (SMALL_THRESHOLD + 100)}
         # The offloaded large message was rehydrated then removed from storage.
-        assert minio_storage.get(large_msg.id) is None
+        assert s3_storage.get(large_msg.id) is None
 
 
 class TestAsyncEndToEnd:
     @pytest.mark.asyncio
-    async def test_async_inline_payload_roundtrip(self, broker, minio_storage):
+    async def test_async_inline_payload_roundtrip(self, broker, s3_storage):
         channel = _unique_channel("inline-async")
-        producer = Producer(broker, minio_storage, payload_size_threshold=1024**2)
-        consumer = Consumer(broker, minio_storage)
+        producer = Producer(broker, s3_storage, payload_size_threshold=1024**2)
+        consumer = Consumer(broker, s3_storage)
         message = Message(payload={"async": True, "value": 99})
 
         task = asyncio.create_task(consumer.areceive(channel, timeout=TIMEOUT))
@@ -145,13 +145,13 @@ class TestAsyncEndToEnd:
 
     @pytest.mark.asyncio
     async def test_async_offloaded_payload_roundtrip_and_removed(
-        self, broker, minio_storage
+        self, broker, s3_storage
     ):
         channel = _unique_channel("offload-async")
         producer = Producer(
-            broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
+            broker, s3_storage, payload_size_threshold=SMALL_THRESHOLD
         )
-        consumer = Consumer(broker, minio_storage)
+        consumer = Consumer(broker, s3_storage)
         big_payload = {"data": "B" * (SMALL_THRESHOLD + 200)}
         message = Message(payload=big_payload)
 
@@ -163,17 +163,17 @@ class TestAsyncEndToEnd:
         assert received is not None
         assert received.id == message.id
         assert received.payload == big_payload
-        assert await minio_storage.aget(message.id) is None
+        assert await s3_storage.aget(message.id) is None
 
     @pytest.mark.asyncio
     async def test_async_stream_collects_multiple_mixed_messages(
-        self, broker, minio_storage
+        self, broker, s3_storage
     ):
         channel = _unique_channel("mixed-async")
         producer = Producer(
-            broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
+            broker, s3_storage, payload_size_threshold=SMALL_THRESHOLD
         )
-        consumer = Consumer(broker, minio_storage)
+        consumer = Consumer(broker, s3_storage)
         small_msg = Message(payload={"size": "async-small"})
         large_msg = Message(payload={"data": "C" * (SMALL_THRESHOLD + 100)})
 
@@ -199,4 +199,4 @@ class TestAsyncEndToEnd:
         by_id = {m.id: m for m in collected}
         assert by_id[small_msg.id].payload == {"size": "async-small"}
         assert by_id[large_msg.id].payload == {"data": "C" * (SMALL_THRESHOLD + 100)}
-        assert await minio_storage.aget(large_msg.id) is None
+        assert await s3_storage.aget(large_msg.id) is None

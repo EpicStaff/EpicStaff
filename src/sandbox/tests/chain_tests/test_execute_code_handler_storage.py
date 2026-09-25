@@ -137,7 +137,7 @@ class TestHandleStorageMutationsWiring:
     async def test_use_storage_true_injects_mutations_import_into_written_code(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+        monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
         monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
 
         recorded: dict = {}
@@ -162,7 +162,7 @@ class TestHandleStorageMutationsWiring:
         self, tmp_path, monkeypatch
     ):
         """The mutations path is result_file_path.parent / storage_mutations.json."""
-        monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+        monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
         monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
 
         recorded: dict = {}

@@ -5,7 +5,7 @@ decision via `seccomp.py` and/or `landlock.py`.
 
 `BLOCK_ALL` uses seccomp because Landlock net can't express a total block (no
 UDP coverage, so DNS would stay open). `ALLOW_PORTS` uses Landlock because
-seccomp can't inspect `connect()`'s `sockaddr`, so it can't say "only MinIO".
+seccomp can't inspect `connect()`'s `sockaddr`, so it can't say "only the storage port".
 Neither primitive alone covers both cases.
 
 `REFUSE` (instead of `BLOCK_ALL`/`UNRESTRICTED`) is returned when storage

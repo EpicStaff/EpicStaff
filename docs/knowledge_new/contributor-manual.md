@@ -64,7 +64,7 @@ POST /rags/{strategy}/{rag_id}/index/
   → build_indexer(strategy, uow)            (application/orchestrators/indexing/factory.py)
   → orchestrator.execute(command)           (application/orchestrators/base.py)
       → repositories via uow                (infrastructure/database/…)
-      → MinIO / LanceDB / GraphRAG          (infrastructure/graphrag/…)
+      → S3 / LanceDB / GraphRAG             (infrastructure/graphrag/…)
 ```
 
 Everything flows inward through a port and back out through an adapter. Keep it
@@ -82,8 +82,8 @@ The service is a **hexagon** (ports & adapters). One rule governs everything:
 
 Why we bother:
 
-- The domain (business rules) is testable with no database, no MinIO, no HTTP.
-- Adapters (Postgres, MinIO, a specific embedder) are swappable without touching
+- The domain (business rules) is testable with no database, no object storage, no HTTP.
+- Adapters (Postgres, S3 storage, a specific embedder) are swappable without touching
   business logic.
 - A "port" is an abstract interface owned by the *inside*; an "adapter" is a
   concrete implementation living on the *outside*. The inside declares what it
@@ -98,7 +98,7 @@ add one.
 
 | Layer | Dir | Lives here | Must **not** contain |
 |-------|-----|------------|----------------------|
-| **Domain** | `domain/` | Entities (`Rag`, `Document`), value objects, enums, domain errors, repository **ports** | Any import of SQLAlchemy, Litestar, MinIO, graphrag |
+| **Domain** | `domain/` | Entities (`Rag`, `Document`), value objects, enums, domain errors, repository **ports** | Any import of SQLAlchemy, Litestar, miniopy_async, graphrag |
 | **Application** | `application/` | Use-case orchestrators, capability **ports** (chunker, embedder, …), commands & results | Concrete DB/HTTP/storage code |
 | **Infrastructure** | `infrastructure/` | Adapters: SQLAlchemy repos + UoW, graphrag storages/vector-stores, naive chunkers/embedders, file extractors, task register | Business rules / use-case logic |
 | **Presentation** | `presentation/rest/` | Litestar controllers, request/response schemas, error handlers | Business logic (controllers stay thin) |
@@ -195,7 +195,7 @@ Same shape for all three — implement the port, register in the factory:
 ### 5.3 Add a GraphRAG storage or vector-store adapter
 
 GraphRAG resolves storage/vector backends through its own factory. We register
-custom MinIO-backed adapters at import time:
+custom S3-backed adapters (`S3Storage`, `S3LanceDBVectorStore`) at import time:
 
 - Storage: `infrastructure/graphrag/storages.py` — implement the graphrag
   `Storage` interface, then `register_storage("<name>", MyStorage)`. The config
@@ -239,7 +239,7 @@ python scripts/envtool.py --dev   # local defaults
 ```
 
 `settings.py` loads those vars through the shared `Env` helper
-(`src/shared/envtools.py`), building `DATABASE_DNS` and `MINIO_ENDPOINT` from
+(`src/shared/envtools.py`), building `DATABASE_DNS` and `STORAGE_ENDPOINT` from
 their parts.
 
 > **The image is baked, not bind-mounted.** Editing a `.py` file on the host and
@@ -280,13 +280,13 @@ Things that are *not* in `backend-conventions.md` and have already bitten people
 - **`env.yaml` is the source of truth**; `.env` is generated. Never hand-edit
   `.env` as a permanent fix — change `env.yaml` and regenerate, or the next
   generation reverts you.
-- `DATABASE_DNS` and `MINIO_ENDPOINT` are **assembled** from parts in
+- `DATABASE_DNS` and `STORAGE_ENDPOINT` are **assembled** from parts in
   `settings.py` via `Env`. The `Env.dns(...)` helper takes env-var *names*
   positionally (`provider, host, port, user, password, name`) — order matters and
   a wrong order fails silently (empty password → `fe_sendauth: no password
   supplied`).
 - **The S3 endpoint is a full URL** (`http://host:port`), not a bare host. The
-  MinIO client strips the scheme (`_parse_endpoint`); the LanceDB vector store
+  S3 storage adapter strips the scheme (`_parse_endpoint`); the LanceDB vector store
   passes the whole URL as `aws_endpoint`. One value serves both.
 - **Bucket names must be S3-valid**: lowercase, digits, hyphens, dots — **no
   underscores** (`epicstaff_knowledge` → `InvalidBucketName`; use
@@ -328,7 +328,7 @@ the handler registry. Don't build ad-hoc HTTP responses in controllers.
 
 - **GraphRAG 3.1.1** + companion packages `graphrag_storage`, `graphrag_vectors`,
   `graphrag_common` — factory-based storage/vector registration
-  (`register_storage`, `register_vector_store`). We plug MinIO/LanceDB adapters
+  (`register_storage`, `register_vector_store`). We plug S3/LanceDB adapters
   into these factories; the pipeline (`graphrag.api.build_index`) is upstream
   code — read its docs rather than documenting internals here.
 - **`miniopy_async`** (MinIO's S3 client) — talks to the S3 server (RustFS by

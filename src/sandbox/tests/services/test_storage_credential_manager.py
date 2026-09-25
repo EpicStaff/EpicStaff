@@ -173,9 +173,9 @@ def test_normalize_path_plain_path_unchanged():
 
 
 def test_split_host_https():
-    secure, endpoint = StorageCredentialManager._split_host("https://minio:9000")
+    secure, endpoint = StorageCredentialManager._split_host("https://storage:9000")
     assert secure is True
-    assert endpoint == "minio:9000"
+    assert endpoint == "storage:9000"
 
 
 def test_split_host_http():
@@ -285,7 +285,7 @@ async def test_create_expiration_rfc3339_utc_format():
 
 @_reopen_while_open_posix_only
 @pytest.mark.asyncio
-async def test_create_minio_readable_response_returns_generated_keys():
+async def test_create_admin_api_response_returns_generated_keys():
     manager = make_manager()
     sent = {}
 

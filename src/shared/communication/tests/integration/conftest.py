@@ -1,4 +1,4 @@
-"""Integration test fixtures — starts real Redis and MinIO via testcontainers."""
+"""Integration test fixtures — starts real Redis and S3 storage (RustFS) via testcontainers."""
 
 import pytest
 
@@ -39,12 +39,12 @@ def redis_url():
 
 
 # ---------------------------------------------------------------------------
-# MinIO container — session-scoped
+# S3 (RustFS) container — session-scoped
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
-def minio_params():
+def s3_params():
     _skip_if_no_docker()
     from testcontainers.minio import MinioContainer
 
