@@ -13,6 +13,10 @@ from agents.services.agent_inline_surface_service import AgentInlineSurfaceServi
 from agents.services.inline_surface_service import InlineSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 from django.db import transaction
+from rbac.scoping.fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+)
 from rest_framework import serializers
 from tables.models.graph_models import (
     AgentNode,
@@ -33,10 +37,6 @@ from tables.serializers.base_serializer import (
 )
 from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.serializers.org_scoped_fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
 from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,

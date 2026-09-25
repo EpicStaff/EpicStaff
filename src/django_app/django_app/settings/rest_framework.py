@@ -12,8 +12,8 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "tables.services.rbac.authentication.JwtAuthentication",
-        "tables.services.rbac.authentication.ApiKeyAuthentication",
+        "rbac.identity.authentication.JwtAuthentication",
+        "rbac.identity.authentication.ApiKeyAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

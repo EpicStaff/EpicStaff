@@ -11,6 +11,19 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema_view,
 )
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.asserts import assert_org_permission
+from rbac.access.gates import (
+    HasOrgPermission,
+    IsSuperadmin,
+)
+from rbac.access.org_context import OrgContextService
+from rbac.models import ApiKey
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -39,8 +52,6 @@ from tables.models.graph_models import (
     PythonNode,
 )
 from tables.models.knowledge_models import GraphRag, NaiveRag
-from tables.models.rbac_models import ApiKey
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.model_serializers import (
     SessionLightSerializer,
     SessionSerializer,
@@ -66,18 +77,11 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.indexing_service import IndexingService
 from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
-from tables.services.rbac.org_context_service import OrgContextService
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permission_assert import assert_org_permission
-from tables.services.rbac.permissions import (
-    HasOrgPermission,
-    IsSuperadmin,
-)
-from tables.services.rbac.session_access import assert_session_org_access
 from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
+from tables.services.session_access import assert_session_org_access
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.swagger_schemas.default_config_schemas import (
@@ -111,10 +115,6 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.views.mixins import (
-    OrgScopedChildViewSetMixin,
-    OrgScopedServiceViewSetMixin,
-)
 from utils.logger import logger
 
 from .default_config import *

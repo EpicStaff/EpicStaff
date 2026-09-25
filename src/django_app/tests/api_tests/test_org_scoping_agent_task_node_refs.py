@@ -15,8 +15,8 @@ from rest_framework.test import APIClient
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
 from tables.models.graph_models import AgentNode, Graph, TaskNode
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 @pytest.fixture

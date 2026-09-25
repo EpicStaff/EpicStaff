@@ -9,7 +9,7 @@ from tables.models.graph_models import (
 from tables.models.python_models import PythonCode
 from tables.models.session_models import Session, SessionPrincipal
 from tables.models.webhook_models import WebhookTrigger
-from tables.services.rbac.api_key.principals import SystemServicePrincipal
+from rbac.identity.api_keys.principals import SystemServicePrincipal
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.telegram_trigger_service import TelegramTriggerService

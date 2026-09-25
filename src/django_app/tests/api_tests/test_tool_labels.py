@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role
 
 
 # ---- fixtures ----
