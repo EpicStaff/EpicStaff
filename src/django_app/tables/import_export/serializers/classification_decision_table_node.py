@@ -22,6 +22,12 @@ class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
         source="classification_decision_table_node",
         write_only=True,
     )
+    section = serializers.PrimaryKeyRelatedField(
+        queryset=ClassificationConditionGroupSection.objects.all(),
+        pk_field=serializers.UUIDField(),
+        allow_null=True,
+        required=False,
+    )
 
     class Meta:
         model = ClassificationConditionGroup

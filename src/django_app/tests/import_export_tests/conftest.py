@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 from tests.fixtures import *  # noqa: F401,F403
@@ -14,6 +16,11 @@ from tables.models import (
     PythonCode,
     PythonCodeTool,
     AgentPythonCodeTools,
+)
+from tables.models.graph_models import (
+    ClassificationDecisionTableNode,
+    ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
 )
 from agents.models import (
     AgentDefinition,
@@ -55,6 +62,36 @@ def import_service(default_org):
 
     service.import_data = _import_data
     return service
+
+
+@pytest.fixture
+def cdt_condition_group_factory():
+    """Factory building a Graph -> CDT node -> [Section] -> ConditionGroup
+    chain, for tests of CDT condition-group export/serialization."""
+
+    def _create(org, *, graph_name="cdt-test", with_section=True, **group_kwargs):
+        graph = Graph.objects.create(name=graph_name, org=org)
+        cdt_node = ClassificationDecisionTableNode.objects.create(
+            graph=graph, node_name="cdt_node"
+        )
+        section = None
+        if with_section:
+            section = ClassificationConditionGroupSection.objects.create(
+                id=uuid.uuid4(),
+                classification_decision_table_node=cdt_node,
+                name="Test Section",
+                metadata={"color": "red"},
+            )
+        group = ClassificationConditionGroup.objects.create(
+            classification_decision_table_node=cdt_node,
+            group_name="group1",
+            order=0,
+            section=section,
+            **group_kwargs,
+        )
+        return graph, cdt_node, section, group
+
+    return _create
 
 
 @pytest.fixture
