@@ -347,7 +347,6 @@ class SessionGraphBuilder:
                     session_id=self.session_id,
                     node_name=persistence_node_data.node_name,
                     stop_event=self.stop_event,
-                    input_map=persistence_node_data.input_map,
                     output_variable_path=persistence_node_data.output_variable_path,
                     persistence_table_id=persistence_node_data.persistence_table_id,
                     mode=persistence_node_data.mode,

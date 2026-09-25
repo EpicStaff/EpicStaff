@@ -13,13 +13,11 @@ def make_node(
     entries: list[dict],
     client=None,
     table_id: int | None = 3,
-    input_map: dict | None = None,
 ) -> PersistenceNode:
     return PersistenceNode(
         session_id=7,
         node_name="persist_1",
         stop_event=MagicMock(),
-        input_map=input_map if input_map is not None else {},
         output_variable_path="variables.out",
         persistence_table_id=table_id,
         mode=mode,
@@ -28,8 +26,14 @@ def make_node(
     )
 
 
-async def run(node: PersistenceNode, input_: dict):
-    return await node.execute(state=MagicMock(), writer=MagicMock(), execution_order=0, input_=input_)
+def make_state(variables: dict) -> dict:
+    return {"state_history": [], "variables": DotDict(variables), "system_variables": {}}
+
+
+async def run(node: PersistenceNode, variables: dict):
+    return await node.execute(
+        state=make_state(variables), writer=MagicMock(), execution_order=0, input_={}
+    )
 
 
 @pytest.mark.asyncio
@@ -37,8 +41,8 @@ async def test_read_returns_aliases_with_defaults_for_missing_keys():
     client = AsyncMock()
     client.read.return_value = {"profile_42": {"name": "Ann"}, "stored_null": None}
     node = make_node("read", [
-        {"alias": "profile", "key": "profile_{user_id}"},
-        {"alias": "score", "key": "score_{user_id}", "default": 0},
+        {"alias": "profile", "key": "profile_{variables.user_id}"},
+        {"alias": "score", "key": "score_{variables.user_id}", "default": 0},
         {"alias": "nothing", "key": "stored_null", "default": "unused"},
     ], client)
 
@@ -51,59 +55,140 @@ async def test_read_returns_aliases_with_defaults_for_missing_keys():
 
 
 @pytest.mark.asyncio
-async def test_write_sends_rendered_keys_and_values():
+async def test_key_placeholder_resolves_nested_path_and_list_index():
     client = AsyncMock()
-    node = make_node("write", [{"key": "profile_{user_id}", "value": "profile"}], client)
+    client.read.return_value = {}
+    node = make_node(
+        "read", [{"alias": "a", "key": "profile_{variables.user.id}_{variables.tags[1]}"}], client
+    )
 
-    result = await run(node, {"user_id": 42, "profile": {"name": "Ann"}})
+    await run(node, {"user": {"id": 42}, "tags": ["x", "y"]})
+
+    _, _, keys = client.read.await_args.args
+    assert keys == ["profile_42_y"]
+
+
+@pytest.mark.asyncio
+async def test_key_placeholder_value_may_contain_braces():
+    client = AsyncMock()
+    client.read.return_value = {}
+    node = make_node("read", [{"alias": "a", "key": "profile_{variables.name}"}], client)
+
+    await run(node, {"name": "a{b}"})
+
+    _, _, keys = client.read.await_args.args
+    assert keys == ["profile_a{b}"]
+
+
+@pytest.mark.asyncio
+async def test_write_sends_rendered_keys_and_state_path_values():
+    client = AsyncMock()
+    node = make_node(
+        "write", [{"key": "profile_{variables.user.id}", "value": "variables.user.profile"}], client
+    )
+
+    result = await run(node, {"user": {"id": 42, "profile": {"name": "Ann"}}})
 
     client.write.assert_awaited_once_with(7, 3, {"profile_42": {"name": "Ann"}})
     assert result == {"profile_42": {"name": "Ann"}}
 
 
 @pytest.mark.asyncio
-async def test_write_duplicate_rendered_keys_last_wins():
+async def test_write_value_default_applies_when_path_is_missing():
     client = AsyncMock()
-    node = make_node("write", [{"key": "k", "value": "first"}, {"key": "k", "value": "second"}], client)
-    await run(node, {"first": 1, "second": 2})
-    client.write.assert_awaited_once_with(7, 3, {"k": 2})
+    node = make_node("write", [{"key": "count", "value": "variables.count|0"}], client)
+
+    await run(node, {})
+
+    client.write.assert_awaited_once_with(7, 3, {"count": 0})
 
 
 @pytest.mark.asyncio
-async def test_write_with_missing_value_alias_raises():
+async def test_write_value_null_default_raises():
     client = AsyncMock()
-    node = make_node("write", [{"key": "k", "value": "profile"}], client)
-    with pytest.raises(PersistenceNodeError, match="profile"):
+    node = make_node("write", [{"key": "count", "value": "variables.count|null"}], client)
+    with pytest.raises(PersistenceNodeError, match="variables.count"):
         await run(node, {})
     client.write.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_run_raises_when_mapped_value_does_not_resolve():
-    """Regression: an input_map path that doesn't resolve (typo'd variable, e.g.
+@pytest.mark.parametrize("value_path", ["variables", "variables.", "variables[", "variables.|0"])
+async def test_write_value_naming_whole_state_raises(value_path):
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*whole flow state"):
+        await run(node, {"user": {"id": 1}})
+    client.write.assert_not_awaited()
 
-    `variables.profile` when the state has no `profile`) makes `map_variables_to_input`
-    set the alias to `None` and only log a warning (see `utils/map_variables.py`), rather
-    than raising. `execute()`'s own `variables.get(value_alias) is None` check is what
-    catches this before the node ever writes a null over a previously-stored value.
-    Goes through the real `get_input()`/`run()` path instead of calling `execute()`
-    directly with a hand-built input dict, so it actually exercises that gap.
-    """
+
+@pytest.mark.asyncio
+async def test_render_key_rejects_placeholder_naming_whole_state():
+    client = AsyncMock()
+    node = make_node("read", [{"alias": "a", "key": "profile_{variables.}"}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.'.*whole flow state"):
+        await run(node, {"user": {"id": 1}})
+    client.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_value_resolving_to_dict_method_raises():
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": "variables.cart.items"}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.cart.items'.*method"):
+        await run(node, {"cart": {"total": 3}})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_duplicate_rendered_keys_last_wins():
     client = AsyncMock()
     node = make_node(
         "write",
-        [{"key": "k", "value": "profile"}],
+        [{"key": "k", "value": "variables.first"}, {"key": "k", "value": "variables.second"}],
         client,
-        input_map={"profile": "variables.profile"},
     )
-    state = {
-        "state_history": [],
-        "variables": DotDict({}),
-        "system_variables": {},
-    }
+    await run(node, {"first": 1, "second": 2})
+    client.write.assert_awaited_once_with(7, 3, {"k": 2})
 
-    with pytest.raises(PersistenceNodeError, match="profile"):
-        await node.run(state, MagicMock())
+
+@pytest.mark.asyncio
+async def test_write_with_missing_value_path_raises():
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
+    with pytest.raises(PersistenceNodeError, match="variables.profile"):
+        await run(node, {})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_with_null_value_raises():
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
+    with pytest.raises(PersistenceNodeError, match="null"):
+        await run(node, {"profile": None})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_value_outside_variables_raises():
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": "profile"}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*'profile'.*variables.user.id"):
+        await run(node, {"profile": "Ann"})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_raises_when_value_path_does_not_resolve():
+    """Regression: the resolver returns None (logging only a warning) for a path that is
+    not in the state, so the node's own null check is what stops it writing a null over a
+    previously stored value. Goes through the real `run()` path."""
+    client = AsyncMock()
+    node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
+
+    with pytest.raises(PersistenceNodeError, match="variables.profile"):
+        await node.run(make_state({}), MagicMock())
 
     client.write.assert_not_awaited()
 
@@ -111,36 +196,91 @@ async def test_run_raises_when_mapped_value_does_not_resolve():
 @pytest.mark.asyncio
 async def test_delete_sends_rendered_keys():
     client = AsyncMock()
-    node = make_node("delete", [{"key": "session_{id}"}, {"key": "static"}], client)
+    node = make_node("delete", [{"key": "session_{variables.id}"}, {"key": "static"}], client)
     assert await run(node, {"id": 5}) is None
     client.delete.assert_awaited_once_with(7, 3, ["session_5", "static"])
 
 
 @pytest.mark.asyncio
 async def test_render_key_rejects_unresolved_placeholder():
-    node = make_node("read", [{"alias": "a", "key": "profile_{user_id}"}])
-    with pytest.raises(PersistenceNodeError, match="user_id"):
+    node = make_node("read", [{"alias": "a", "key": "profile_{variables.user.id}"}])
+    with pytest.raises(PersistenceNodeError, match="variables.user.id"):
         await run(node, {})
 
 
 @pytest.mark.asyncio
 async def test_render_key_rejects_null_placeholder():
-    node = make_node("read", [{"alias": "a", "key": "profile_{user_id}"}])
-    with pytest.raises(PersistenceNodeError, match="user_id"):
+    node = make_node("read", [{"alias": "a", "key": "profile_{variables.user_id}"}])
+    with pytest.raises(PersistenceNodeError, match="variables.user_id"):
         await run(node, {"user_id": None})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["profile_{user_id}", "profile_{ }"])
+async def test_render_key_rejects_placeholder_outside_variables(key):
+    client = AsyncMock()
+    node = make_node("read", [{"alias": "a", "key": key}], client)
+    with pytest.raises(PersistenceNodeError, match=r"profile_\{variables\.user\.id\}"):
+        await run(node, {"user_id": 42})
+    client.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_render_key_error_names_offending_path():
+    node = make_node("read", [{"alias": "a", "key": "profile_{user_id}"}])
+    with pytest.raises(PersistenceNodeError) as error:
+        await run(node, {"user_id": 42})
+    assert "'user_id'" in str(error.value)
+    assert "for value" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_render_key_rejects_placeholder_resolving_to_dict_method():
+    client = AsyncMock()
+    node = make_node("read", [{"alias": "a", "key": "cart_{variables.cart.items}"}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.cart.items'.*method"):
+        await run(node, {"cart": {"total": 3}})
+    client.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["profile_{}", "{{variables.x}}", "profile_{variables.x"])
+async def test_render_key_rejects_leftover_braces(key):
+    client = AsyncMock()
+    node = make_node("read", [{"alias": "a", "key": key}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*unbalanced placeholder"):
+        await run(node, {"x": 1})
+    client.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("key", "variables"),
+    [
+        ("{variables.tags[5]}", {"tags": ["x"]}),
+        ("{variables.user[0]}", {"user": {"id": 1}}),
+        ("{variables.nothing[0]}", {"nothing": None}),
+    ],
+)
+async def test_render_key_rejects_bad_list_index(key, variables):
+    client = AsyncMock()
+    node = make_node("read", [{"alias": "a", "key": key}], client)
+    with pytest.raises(PersistenceNodeError, match="persist_1.*cannot resolve"):
+        await run(node, variables)
+    client.read.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("value", [{"x": 1}, [1, 2]])
 async def test_render_key_rejects_structured_placeholder(value):
-    node = make_node("read", [{"alias": "a", "key": "profile_{user_id}"}])
+    node = make_node("read", [{"alias": "a", "key": "profile_{variables.user_id}"}])
     with pytest.raises(PersistenceNodeError, match="string or number"):
         await run(node, {"user_id": value})
 
 
 @pytest.mark.asyncio
 async def test_render_key_rejects_too_long_key():
-    node = make_node("read", [{"alias": "a", "key": "{long}"}])
+    node = make_node("read", [{"alias": "a", "key": "{variables.long}"}])
     with pytest.raises(PersistenceNodeError, match="512"):
         await run(node, {"long": "x" * 513})
 
