@@ -266,7 +266,7 @@ class LoopResult(BaseModel):
     """Summary returned by ``AgentLoop.run`` after the tool-use cycle ends.
 
     Consumed by ``Emitter.on_final`` to build the outbound result envelope
-    published to ``agent.results``.
+    published to the run's own result stream (``agent_result_stream``).
     """
 
     model_config = ConfigDict(frozen=True)

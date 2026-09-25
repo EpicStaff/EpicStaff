@@ -5,6 +5,7 @@ APP_DIR="/home/developer/EpicStaff"
 COMPOSE_DIR="$APP_DIR/src"
 COMPOSE_FILE="docker-compose.yaml"
 NUKE_DB=${NUKE_DB:-false}
+REGENERATE_ENV=${REGENERATE_ENV:-true}
 IMAGE_TAG=${IMAGE_TAG:-latest}
 
 export IMAGE_TAG
@@ -13,8 +14,16 @@ echo ">> deploy from current checkout"
 echo ">> repo dir: $APP_DIR"
 echo ">> image tag: $IMAGE_TAG"
 echo ">> nuke database: $NUKE_DB"
+echo ">> regenerate .env: $REGENERATE_ENV"
 
 cd "$COMPOSE_DIR"
+
+if [ "$REGENERATE_ENV" = "true" ]; then
+  echo ">> regenerate .env from env.yaml"
+  python3 "$APP_DIR/scripts/envtool.py" --dev
+else
+  echo ">> Skipping .env regeneration."
+fi
 
 DC="docker compose --env-file .env --env-file deploy.env -f $COMPOSE_FILE"
 
@@ -32,9 +41,6 @@ if [ "$NUKE_DB" = "true" ]; then
 else
   echo ">> Skipping database reset (data preserved)."
 fi
-
-echo ">> ensure external volumes"
-docker volume inspect graph_data >/dev/null 2>&1 || docker volume create graph_data >/dev/null
 
 echo ">> docker compose pull"
 $DC pull

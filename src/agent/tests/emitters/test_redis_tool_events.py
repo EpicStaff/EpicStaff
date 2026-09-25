@@ -31,17 +31,45 @@ def _make_emitter() -> tuple[RedisStreamToolEventEmitter, list[dict]]:
 
     client = MagicMock()
 
-    async def capture_publish(stream: str, fields: dict) -> None:
+    async def capture_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
         published.append(fields)
 
     client.publish = capture_publish
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
     return emitter, published
+
+
+def _make_recording_client() -> tuple[MagicMock, list[dict]]:
+    """Return (client, publish_calls) where publish_calls records the stream,
+    maxlen and ttl_s of every client.publish call."""
+    publish_calls: list[dict] = []
+    client = MagicMock()
+
+    async def record_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
+        publish_calls.append(
+            {"stream": stream, "fields": fields, "maxlen": maxlen, "ttl_s": ttl_s}
+        )
+
+    client.publish = record_publish
+    return client, publish_calls
 
 
 def _decode_payload(fields: dict) -> dict:
@@ -350,7 +378,7 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
     published: list[dict] = []
     call_count = {"n": 0}
 
-    async def flaky_publish(stream: str, fields: dict) -> None:
+    async def flaky_publish(stream: str, fields: dict, **options) -> None:
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("redis unavailable")
@@ -361,8 +389,9 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     # First live envelope's publish fails; its token delta (round 1) is
@@ -493,15 +522,16 @@ async def test_on_task_finish_truncates_long_final_text():
 async def test_on_task_finish_publish_failure_does_not_propagate():
     client = MagicMock()
 
-    async def failing_publish(stream: str, fields: dict) -> None:
+    async def failing_publish(stream: str, fields: dict, **options) -> None:
         raise RuntimeError("redis unavailable")
 
     client.publish = failing_publish
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     await emitter.on_task_finish("task_a", 0, _make_loop_result())
@@ -580,7 +610,7 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
     client = MagicMock()
     call_count = {"n": 0}
 
-    async def flaky_publish(stream: str, fields: dict) -> None:
+    async def flaky_publish(stream: str, fields: dict, **options) -> None:
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("redis unavailable")
@@ -589,8 +619,9 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     # First publish (live tool_call) raises internally but must not propagate.
@@ -685,15 +716,16 @@ async def test_on_knowledge_search_success_payload_omits_error_key():
 async def test_on_knowledge_search_publish_failure_does_not_propagate():
     client = MagicMock()
 
-    async def failing_publish(stream: str, fields: dict) -> None:
+    async def failing_publish(stream: str, fields: dict, **options) -> None:
         raise RuntimeError("redis unavailable")
 
     client.publish = failing_publish
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     await emitter.on_knowledge_search(_make_knowledge_target(), "q", [])
@@ -762,3 +794,32 @@ async def test_suppressed_knowledge_tool_step_does_not_consume_usage_delta():
         "cached_prompt_tokens": 0,
         "total_cost_usd": 0.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Per-run result stream + TTL
+# ---------------------------------------------------------------------------
+
+
+async def test_live_and_final_envelopes_all_go_to_per_run_stream_with_ttl():
+    client, publish_calls = _make_recording_client()
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="run-a",
+        result_stream_ttl_s=3600,
+    )
+
+    await emitter.on_task_start("task_a", 0)
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+    await emitter.on_tool_result(ToolResult(tool_call_id="call_1", content="hits"))
+    await emitter.on_final(_make_loop_result())
+
+    assert [call["fields"]["type"] for call in publish_calls] == [
+        "agent.task_start",
+        "agent.tool_call",
+        "agent.tool_result",
+        "agent.result",
+    ]
+    assert {call["stream"] for call in publish_calls} == {"agent.results:run-a"}
+    assert {call["ttl_s"] for call in publish_calls} == {3600}

@@ -18,7 +18,7 @@ from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
 from agents.models.surface_models import SurfacePythonTool, SurfaceStorageItem, ToolMode
 from tables.models.graph_models import StorageFile
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 

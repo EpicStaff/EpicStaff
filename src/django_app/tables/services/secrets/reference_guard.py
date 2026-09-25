@@ -1,7 +1,7 @@
+from rbac.access.resolver import PermissionResolver
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.fields import resolve_active_org_id
 from rest_framework import serializers
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.serializers.org_scoped_fields import resolve_active_org_id
-from tables.services.rbac.permission_resolver import PermissionResolver
 from utils.logger import logger
 
 _DENIED = (

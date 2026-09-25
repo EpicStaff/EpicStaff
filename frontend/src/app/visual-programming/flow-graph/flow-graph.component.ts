@@ -93,6 +93,13 @@ import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
 import { normalizeFlowPorts } from '../utils/load';
 
+interface ConnectionEndGrab {
+    connection: ConnectionModel;
+    group: ConnectionModel[];
+    endpoint: 'source' | 'target';
+    fromPort: boolean;
+}
+
 function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     if (a.length !== b.length) return false;
     return a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
@@ -103,6 +110,10 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     templateUrl: './flow-graph.component.html',
     styleUrls: ['../styles/_variables.scss', './flow-graph.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '(document:pointerup)': 'resetReassignHighlight()',
+        '(document:pointercancel)': 'resetReassignHighlight()',
+    },
     providers: [
         {
             provide: F_CONNECTION_BUILDERS,
@@ -160,6 +171,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     @ViewChild('arrangeBtnRef') private arrangeBtnRef?: ElementRef<HTMLButtonElement>;
 
+    @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
+
+    public closeNodesSearch(): void {
+        this.nodesSearchComponent?.closeSearch();
+    }
+
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
@@ -201,7 +218,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     });
 
     readonly multiSelectTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
-        this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
+        this.multiSelectActive() || (event instanceof MouseEvent && (event.shiftKey || event.ctrlKey || event.metaKey));
 
     readonly selectionAreaTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
         this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
@@ -277,6 +294,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private isDragging = false;
     protected readonly connectionRenderVersions = signal<Record<string, number>>({});
     private readonly hiddenConnectionIds = signal<Set<string>>(new Set<string>());
+    protected readonly reassignSuppressedConnectionIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly reassignFollowerIds = signal<ReadonlySet<string>>(new Set<string>());
+    private reassignGroupIds: string[] = [];
 
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
@@ -289,6 +309,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly injector = inject(Injector);
+    private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     private lastSeenFullSaveRequest = 0;
 
@@ -351,15 +372,139 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    public onReassignConnection(event: FReassignConnectionEvent): void {
-        this.hasUnarrangedChanges.set(true);
-        if (!event.newTargetId && !event.newSourceId) {
-            console.warn('No new target or source provided for reassignment');
+    public onFlowMouseDown(event: MouseEvent): void {
+        const isPlainPress =
+            event.button === 0 && !event.shiftKey && !this.multiSelectActive() && !this.isEditingLocked();
+        const grab = isPlainPress && !event.ctrlKey && !event.metaKey ? this.resolveConnectionEndGrab(event) : null;
+
+        this.reassignGroupIds = grab?.group.map((conn) => conn.id) ?? [];
+        this.suppressReassignOfNeighbours(grab);
+
+        if (!grab?.fromPort) {
             return;
         }
 
-        this.undoRedoService.stateChanged();
+        const connectionElement = this.findConnectionElement(grab.connection.id);
+        const handle = connectionElement && this.getDragHandle(connectionElement, grab.endpoint);
+        if (!handle) {
+            return;
+        }
 
+        const { left, top, width, height } = handle.getBoundingClientRect();
+        // Foblex starts a reassign only when mousedown lands on a connection drag handle, so the grab point is moved onto it.
+        Object.defineProperties(event, {
+            clientX: { value: left + width / 2 },
+            clientY: { value: top + height / 2 },
+        });
+    }
+
+    private resolveConnectionEndGrab(event: MouseEvent): ConnectionEndGrab | null {
+        const target = event.target as Element | null;
+
+        const connectionElement = target?.closest('f-connection');
+        if (connectionElement) {
+            return this.resolveHandleGrab(connectionElement, event);
+        }
+
+        const portElement = target?.closest<HTMLElement>('[data-f-output-id], [data-f-input-id]');
+        const portId = portElement?.dataset['fOutputId'] ?? portElement?.dataset['fInputId'];
+        return portId ? this.resolvePortGrab(portId) : null;
+    }
+
+    private resolveHandleGrab(connectionElement: Element, event: MouseEvent): ConnectionEndGrab | null {
+        const connection = this.flowService.connections().find((conn) => conn.id === connectionElement.id);
+        if (!connection) {
+            return null;
+        }
+
+        const endpoint = (['target', 'source'] as const).find((end) => {
+            const handle = this.getDragHandle(connectionElement, end);
+            if (!handle) {
+                return false;
+            }
+            const { left, top, width, height } = handle.getBoundingClientRect();
+            const radius = width / 2;
+            return (event.clientX - (left + radius)) ** 2 + (event.clientY - (top + height / 2)) ** 2 <= radius ** 2;
+        });
+        if (!endpoint) {
+            return null;
+        }
+
+        const selectedIds = this.getSelectedConnectionIds();
+        const portId = endpoint === 'source' ? connection.sourcePortId : connection.targetPortId;
+        const selectedAtPort = selectedIds.has(connection.id)
+            ? this.connectionsAtPort(portId).filter((conn) => conn.id !== connection.id && selectedIds.has(conn.id))
+            : [];
+
+        return { connection, group: [connection, ...selectedAtPort], endpoint, fromPort: false };
+    }
+
+    private resolvePortGrab(portId: string): ConnectionEndGrab | null {
+        const port = this.flowService
+            .nodes()
+            .flatMap((node) => node.ports ?? [])
+            .find((p) => p.id === portId);
+        if (!port) {
+            return null;
+        }
+
+        const attached = this.connectionsAtPort(portId);
+        const selectedIds = this.getSelectedConnectionIds();
+        const selected = attached.filter((conn) => selectedIds.has(conn.id));
+        const canMoveAll = port.port_type === 'input' || !port.multiple;
+        const group = selected.length > 0 ? selected : canMoveAll ? attached : [];
+        if (group.length === 0) {
+            return null;
+        }
+
+        const [connection] = group;
+        return {
+            connection,
+            group,
+            endpoint: connection.sourcePortId === portId ? 'source' : 'target',
+            fromPort: true,
+        };
+    }
+
+    private getSelectedConnectionIds(): Set<string> {
+        return new Set(this.fFlowComponent.getSelection().fConnectionIds);
+    }
+
+    private suppressReassignOfNeighbours(grab: ConnectionEndGrab | null): void {
+        const suppressed = new Set<string>();
+        if (grab) {
+            const portId = grab.endpoint === 'source' ? grab.connection.sourcePortId : grab.connection.targetPortId;
+            this.connectionsAtPort(portId)
+                .filter((conn) => conn.id !== grab.connection.id)
+                .forEach((conn) => suppressed.add(conn.id));
+        }
+
+        if (suppressed.size === 0 && this.reassignSuppressedConnectionIds().size === 0) {
+            return;
+        }
+
+        this.reassignSuppressedConnectionIds.set(suppressed);
+        // Foblex picks the connection to reassign later in this same mousedown, so the disabled flags must reach it synchronously.
+        this.cd.detectChanges();
+    }
+
+    private connectionsAtPort(portId: string): ConnectionModel[] {
+        return this.flowService
+            .connections()
+            .filter((conn) => conn.sourcePortId === portId || conn.targetPortId === portId);
+    }
+
+    private findConnectionElement(connectionId: string): Element | null {
+        return this.hostElement.nativeElement.querySelector(`f-connection[id="${CSS.escape(connectionId)}"]`);
+    }
+
+    private getDragHandle(connectionElement: Element, endpoint: 'source' | 'target'): Element | null {
+        return connectionElement.querySelector(
+            endpoint === 'source' ? 'circle[f-connection-drag-handle-start]' : 'circle[f-connection-drag-handle-end]'
+        );
+    }
+
+    public onReassignConnection(event: FReassignConnectionEvent): void {
         const existingConnection = this.flowService.connections().find((conn) => conn.id === event.connectionId);
 
         if (!existingConnection) {
@@ -367,29 +512,75 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        const newSourcePortId = event.newSourceId || existingConnection.sourcePortId;
-        const newTargetPortId = event.newTargetId || existingConnection.targetPortId;
+        const groupIds = new Set(
+            this.reassignGroupIds.includes(existingConnection.id) ? this.reassignGroupIds : [existingConnection.id]
+        );
+        this.reassignGroupIds = [];
 
-        if (!isConnectionValid(newSourcePortId as CustomPortId, newTargetPortId as CustomPortId)) {
-            console.warn('New connection is invalid. Reassignment aborted.');
-            this.toastService.warning('Cannot reassign connection: Invalid port combination', 5000, 'bottom-right');
+        const isSourceMoved = event.endpoint === 'source';
+        const nextPortId = (isSourceMoved ? event.nextSourceId : event.nextTargetId) as CustomPortId | undefined;
+        const currentPortId = isSourceMoved ? existingConnection.sourcePortId : existingConnection.targetPortId;
+        if (!nextPortId || nextPortId === currentPortId) {
             return;
         }
 
-        const newSourceNodeId = newSourcePortId.split('_')[0];
-        const newTargetNodeId = newTargetPortId.split('_')[0];
+        const connections = this.flowService.connections();
+        const moved = connections.filter((conn) => groupIds.has(conn.id));
+        const updated: ConnectionModel[] = [];
+        const occupied = connections.filter((conn) => !groupIds.has(conn.id));
 
-        const updatedConnection = createFlowConnection(
-            newSourceNodeId,
-            newTargetNodeId,
-            newSourcePortId as CustomPortId,
-            newTargetPortId as CustomPortId
+        for (const conn of moved) {
+            const sourcePortId = isSourceMoved ? nextPortId : conn.sourcePortId;
+            const targetPortId = isSourceMoved ? conn.targetPortId : nextPortId;
+            const error = this.getReassignError(sourcePortId, targetPortId, [...occupied, ...updated]);
+            if (error) {
+                this.toastService.warning(error, 5000, 'bottom-right');
+                return;
+            }
+            updated.push(
+                createFlowConnection(sourcePortId.split('_')[0], targetPortId.split('_')[0], sourcePortId, targetPortId)
+            );
+        }
+
+        this.hasUnarrangedChanges.set(true);
+        this.undoRedoService.stateChanged();
+
+        moved.forEach((conn) => this.flowService.removeConnection(conn.id));
+        updated.forEach((conn) => this.flowService.addConnection(conn));
+
+        this.toastService.success(
+            updated.length > 1 ? `${updated.length} connections reassigned` : 'Connection reassigned successfully',
+            3000,
+            'bottom-right'
         );
+    }
 
-        this.flowService.removeConnection(event.connectionId);
-        this.flowService.addConnection(updatedConnection);
+    private getReassignError(
+        sourcePortId: CustomPortId,
+        targetPortId: CustomPortId,
+        connections: ConnectionModel[]
+    ): string | null {
+        if (!isConnectionValid(sourcePortId, targetPortId)) {
+            return 'Cannot reassign connection: Invalid port combination';
+        }
+        if (connections.some((conn) => conn.sourcePortId === sourcePortId && conn.targetPortId === targetPortId)) {
+            return 'These ports are already connected';
+        }
+        if (this.hasOccupiedPort(sourcePortId, targetPortId, connections)) {
+            return 'This port already has a connection';
+        }
+        return null;
+    }
 
-        this.toastService.success('Connection reassigned successfully', 3000, 'bottom-right');
+    private hasOccupiedPort(sourcePortId: string, targetPortId: string, connections: ConnectionModel[]): boolean {
+        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
+        const sourcePort = allPorts.find((p) => p.id === sourcePortId);
+        const targetPort = allPorts.find((p) => p.id === targetPortId);
+        const sourceOccupied =
+            !!sourcePort && !sourcePort.multiple && connections.some((conn) => conn.sourcePortId === sourcePortId);
+        const targetOccupied =
+            !!targetPort && !targetPort.multiple && connections.some((conn) => conn.targetPortId === targetPortId);
+        return sourceOccupied || targetOccupied;
     }
 
     public onConnectionAdded(event: FCreateConnectionEvent): void {
@@ -424,18 +615,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
-        const sourcePort = allPorts.find((p) => p.id === pair.sourcePortId);
-        const targetPort = allPorts.find((p) => p.id === pair.targetPortId);
-        const sourceOccupied =
-            !!sourcePort &&
-            !sourcePort.multiple &&
-            currentConnections.some((conn) => conn.sourcePortId === pair.sourcePortId);
-        const targetOccupied =
-            !!targetPort &&
-            !targetPort.multiple &&
-            currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
-        if (sourceOccupied || targetOccupied) {
+        if (this.hasOccupiedPort(pair.sourcePortId, pair.targetPortId, currentConnections)) {
             this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
             return;
         }
@@ -830,7 +1010,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.isDragging = true;
         this.draggingElements.clear();
 
-        const dragData = event.fData as { fNodeIds?: string[] } | undefined;
+        const dragData = event.fData as { fNodeIds?: string[]; fConnectionId?: string } | undefined;
+        if (dragData?.fConnectionId && dragData.fConnectionId === this.reassignGroupIds[0]) {
+            this.reassignFollowerIds.set(new Set(this.reassignGroupIds.slice(1)));
+        }
         if (dragData?.fNodeIds) {
             dragData.fNodeIds.forEach((id: string) => this.draggingElements.add(id));
         }
@@ -1236,6 +1419,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onFlowPointerUp(event: PointerEvent): void {
         this._dragEndClientX = event.clientX;
         this._dragEndClientY = event.clientY;
+    }
+
+    protected resetReassignHighlight(): void {
+        if (this.reassignSuppressedConnectionIds().size > 0) {
+            this.reassignSuppressedConnectionIds.set(new Set<string>());
+        }
+        if (this.reassignFollowerIds().size > 0) {
+            this.reassignFollowerIds.set(new Set<string>());
+        }
     }
 
     public onFlowClick(event: MouseEvent): void {

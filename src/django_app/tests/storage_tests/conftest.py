@@ -7,8 +7,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from tables.models import Organization, OrganizationUser
-from tables.models.rbac_models import Role
+from rbac.models import Organization, OrganizationUser
+from rbac.models import Role
 from tables.services.storage_service import upload_stream_service
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager

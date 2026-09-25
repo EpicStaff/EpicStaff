@@ -19,14 +19,14 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.provider import Provider
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.secrets.usage_service import secret_usage_service
 
 
 def _all_readable():
     """An EffectivePermissions that can read every resource type, matching the pre-RBAC behaviour these tests describe."""
-    from tables.services.rbac.effective_permissions import EffectivePermissions
+    from rbac.access.effective import EffectivePermissions
 
     return EffectivePermissions(is_superadmin=True, role=None, by_resource={})
 

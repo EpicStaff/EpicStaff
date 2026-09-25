@@ -1,7 +1,8 @@
 from django.db import transaction
 from django.db.models import Value
 from django.db.models.functions import Concat, Substr
-from tables.models import Organization, StorageFile
+from rbac.models import Organization
+from tables.models import StorageFile
 
 
 def _name_of(path: str) -> str:

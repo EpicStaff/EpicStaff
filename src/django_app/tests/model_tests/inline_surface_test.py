@@ -35,7 +35,7 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from agents.serializers.inline_surface_serializers import (
     InlineSurfaceReadSerializer,
 )
