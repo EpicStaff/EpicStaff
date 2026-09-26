@@ -177,6 +177,12 @@ export class FlowGraphCoreMenuComponent {
             icon: NODE_ICONS[NodeType.KNOWLEDGE_RETRIEVER],
             color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
         },
+        {
+            label: 'Persistence',
+            type: NodeType.PERSISTENCE,
+            icon: NODE_ICONS[NodeType.PERSISTENCE],
+            color: NODE_COLORS[NodeType.PERSISTENCE],
+        },
     ];
 
     public onBlockClicked(type: NodeType): void {

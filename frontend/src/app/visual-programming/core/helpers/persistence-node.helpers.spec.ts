@@ -4,7 +4,6 @@ import { NodeModel } from '../models/node.model';
 import { PersistenceEntry, PersistenceMode } from '../models/persistence-node.model';
 import {
     duplicateWriteKeys,
-    duplicateWriteSources,
     existenceHint,
     extractPlaceholders,
     hasValidPersistenceEntries,
@@ -190,13 +189,8 @@ describe('persistence node helpers', () => {
         expect(duplicateWriteKeys(['A', 'a', 'p_{', 'p_{', '', ''])).toEqual(new Set());
     });
 
-    it('finds repeated write sources by their path before any |default', () => {
+    it('takes a write source path from before any |default', () => {
         expect(writeSourcePath(' variables.a |0')).toBe('variables.a');
-        expect(duplicateWriteSources(['variables.a', 'variables.a|0', 'variables.b'])).toEqual(
-            new Set(['variables.a'])
-        );
-        expect(duplicateWriteSources([' variables.b ', 'variables.b'])).toEqual(new Set(['variables.b']));
-        expect(duplicateWriteSources(['variables.', 'variables.', 'user.a', 'user.a'])).toEqual(new Set());
     });
 
     it('checks flow entries the way the panel does, so the flow save can refuse them', () => {
@@ -219,7 +213,8 @@ describe('persistence node helpers', () => {
 
         // What a switch from delete leaves until the values are typed.
         expect(isValid('write', [{ key: 'profile_{variables.user.id}', value: 'variables.' }])).toBe(false);
-        // Read and delete allow repeats; write refuses a repeated key or source on every row that has it.
+        // Read and delete allow repeats; write refuses a repeated key on every row that has it, but
+        // rows may share a source.
         expect(
             isValid('read', [
                 { key: 'a', value: 'variables.x' },
@@ -238,7 +233,19 @@ describe('persistence node helpers', () => {
                 { key: 'a', value: 'variables.x' },
                 { key: 'b', value: 'variables.x|0' },
             ])
+        ).toBe(true);
+        expect(
+            isValid('write', [
+                { key: 'key2', value: 'variables.a' },
+                { key: 'key2', value: 'variables.a' },
+            ])
         ).toBe(false);
+        expect(
+            isValid('write', [
+                { key: 'key2', value: 'variables.a' },
+                { key: 'key3', value: 'variables.a' },
+            ])
+        ).toBe(true);
         expect(
             isValid('write', [
                 { key: 'a', value: 'variables.x' },

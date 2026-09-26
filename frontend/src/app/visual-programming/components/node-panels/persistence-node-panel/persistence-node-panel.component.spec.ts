@@ -790,7 +790,7 @@ describe('PersistenceNodePanelComponent', () => {
             expect(panel.captureForValidation()).not.toBeNull();
         });
 
-        it('blocks the flow save when two write rows share a variable, whatever their defaults', () => {
+        it('lets two write rows with different keys share a variable, whatever their defaults', () => {
             const { panel, fixture } = createPanel(
                 nodeWith('write', [
                     { key: 'profile', value: 'variables.user' },
@@ -798,28 +798,16 @@ describe('PersistenceNodePanelComponent', () => {
                 ]),
                 { renderTemplate: true }
             );
-            const entries = entriesOf(panel);
 
-            entries.at(1).patchValue({ value: ' variables.user|{}' });
+            entriesOf(panel).at(1).patchValue({ value: ' variables.user|{}' });
             fixture.detectChanges();
-            expect(hintsOf(fixture)).toEqual([
-                'Duplicate variable — use a different variable',
-                'Duplicate variable — use a different variable',
-            ]);
-            expect(
-                Array.from(fixture.nativeElement.querySelectorAll('.entry-input.duplicate'), (input: Element) =>
-                    input.getAttribute('aria-label')
-                )
-            ).toEqual(['Variable path', 'Variable path']);
-            expect(panel.captureForValidation()).toBeNull();
 
-            entries.at(1).patchValue({ value: 'variables.plan|0' });
-            fixture.detectChanges();
             expect(hintsOf(fixture)).toEqual([]);
+            expect(fixture.nativeElement.querySelectorAll('.entry-input.duplicate').length).toBe(0);
             expect(panel.captureForValidation()).not.toBeNull();
         });
 
-        it('allows repeated keys and variables in read, and repeated keys in delete', () => {
+        it('allows repeated keys and variables in read, repeated keys in delete, and repeated variables in write', () => {
             const repeated: PersistenceEntry[] = [
                 { key: 'profile', value: 'variables.same' },
                 { key: 'profile', value: 'variables.same' },
@@ -827,6 +815,10 @@ describe('PersistenceNodePanelComponent', () => {
             for (const node of [
                 nodeWith('read', repeated),
                 nodeWith('delete', [{ key: 'profile' }, { key: 'profile' }]),
+                nodeWith('write', [
+                    { key: 'key2', value: 'variables.a' },
+                    { key: 'key3', value: 'variables.a' },
+                ]),
             ]) {
                 const { panel, fixture } = createPanel(node, { renderTemplate: true });
 
@@ -836,15 +828,20 @@ describe('PersistenceNodePanelComponent', () => {
             }
         });
 
-        it('flags repeats a write node is loaded with', () => {
+        it('flags on both rows a key a write node is loaded with twice', () => {
             const { panel } = createPanel(
                 nodeWith('write', [
-                    { key: 'a', value: 'variables.same' },
-                    { key: 'b', value: 'variables.same' },
+                    { key: 'key2', value: 'variables.a' },
+                    { key: 'key2', value: 'variables.a' },
                 ])
             );
 
             expect(panel.form.valid).toBe(false);
+            expect(entriesOf(panel).controls.map((row) => row.get('key')!.hasError('duplicateKey'))).toEqual([
+                true,
+                true,
+            ]);
+            expect(entriesOf(panel).controls.every((row) => row.get('value')!.valid)).toBe(true);
         });
 
         it('does not call empty rows, unfinished paths or malformed keys duplicates', () => {
@@ -865,7 +862,6 @@ describe('PersistenceNodePanelComponent', () => {
             addKey();
             entriesOf(panel).at(2).patchValue({ key: 'tier' });
             fixture.detectChanges();
-            expect(entriesOf(panel).at(2).get('value')!.hasError('duplicateSource')).toBe(false);
             expect(hintsOf(fixture)).toEqual([]);
 
             // The same rootless path twice gets the fix, not the duplicate hint; so does a malformed key.
@@ -888,7 +884,6 @@ describe('PersistenceNodePanelComponent', () => {
             panel.form.get('mode')!.setValue('write');
             fixture.detectChanges();
 
-            expect(entriesOf(panel).controls.some((row) => row.get('value')!.hasError('duplicateSource'))).toBe(false);
             expect(hintsOf(fixture)).toEqual([]);
         });
 
@@ -1180,6 +1175,20 @@ describe('PersistenceNodePanelComponent', () => {
             [
                 'write',
                 [
+                    { key: 'key2', value: 'variables.a' },
+                    { key: 'key2', value: 'variables.a' },
+                ],
+            ],
+            [
+                'write',
+                [
+                    { key: 'key2', value: 'variables.a' },
+                    { key: 'key3', value: 'variables.a' },
+                ],
+            ],
+            [
+                'write',
+                [
                     { key: 'a', value: 'variables.x' },
                     { key: ' a ', value: 'variables.y' },
                 ],
@@ -1361,33 +1370,22 @@ describe('PersistenceNodePanelComponent', () => {
             });
         }
 
-        it('offers every variable in read, where rows may share one', () => {
-            const { fixture } = createPanel(
-                nodeWith('read', [
-                    { key: 'profile', value: 'variables.' },
-                    { key: 'plan', value: 'variables.plan' },
-                ]),
-                { renderTemplate: true, initialState }
-            );
+        for (const mode of ['read', 'write'] as const) {
+            it(`offers every variable in ${mode}, also those other rows use, as rows may share one`, () => {
+                const { fixture } = createPanel(
+                    nodeWith(mode, [
+                        { key: 'profile', value: 'variables.' },
+                        { key: 'plan', value: mode === 'write' ? 'variables.plan|free' : 'variables.plan' },
+                    ]),
+                    { renderTemplate: true, initialState }
+                );
 
-            focusValue(fixture);
+                focusValue(fixture);
 
-            expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
-        });
-
-        it('hides the variables other rows use, by their path before any |default', () => {
-            const { fixture } = createPanel(
-                nodeWith('write', [
-                    { key: 'profile', value: 'variables.' },
-                    { key: 'plan', value: 'variables.plan|free' },
-                ]),
-                { renderTemplate: true, initialState }
-            );
-
-            focusValue(fixture);
-
-            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
-        });
+                expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+                expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
+            });
+        }
 
         describe('a flow as the backend returns it, where another write row uses an object', () => {
             const MY_OBJECT = { my_object: { user_id: 'asdasdasdadadsa', user_email: 'test@mail.com' } };
@@ -1432,26 +1430,21 @@ describe('PersistenceNodePanelComponent', () => {
                 expect(flowService.startNodeInitialState()).toEqual({ variables: MY_OBJECT });
             });
 
-            it('keeps the used object above its fields, disabled, and offers the fields', () => {
+            it('offers the object the other row uses, and its fields, all enabled', () => {
                 const { panel, fixture } = openLoaded();
 
                 typeValue(fixture, 'variables.', 1);
                 expect(listed()).toEqual(ALL);
-                expect(disabled()).toEqual(['variables.my_object']);
+                expect(disabled()).toEqual([]);
 
-                // Typed in full it is no match to close on, and a click on it puts nothing in.
-                typeValue(fixture, 'variables.my_object', 1);
-                expect(listed()).toEqual(ALL);
-                document.querySelector<HTMLElement>('.vpf-item:disabled')!.click();
-                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object');
-
-                document.querySelectorAll<HTMLElement>('.vpf-item')[2].click();
+                document.querySelector<HTMLElement>('.vpf-item')!.click();
                 fixture.detectChanges();
-                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object.user_email');
+                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object');
                 expect(entriesOf(panel).at(1).get('value')!.valid).toBe(true);
+                expect(panel.captureForValidation()).not.toBeNull();
             });
 
-            it('picks a field with the arrow keys and Enter, passing the used object by', () => {
+            it('picks a field with the arrow keys and Enter', () => {
                 Element.prototype.scrollIntoView = vi.fn();
                 const { panel, fixture } = openLoaded();
                 const input = typeValue(fixture, 'variables.', 1);

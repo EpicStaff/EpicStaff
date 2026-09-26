@@ -136,27 +136,18 @@ export function writeSourcePath(value: string): string {
     return value.split('|')[0].trim();
 }
 
-function repeated(texts: string[]): Set<string> {
-    const seen = new Set<string>();
-    const duplicates = new Set<string>();
-    texts.forEach((text) => (seen.has(text) ? duplicates : seen).add(text));
-    return duplicates;
-}
-
 /**
  * Keys written by more than one write row, trimmed: the later row would overwrite the earlier one.
- * A key keyError rejects is left to it, so it never counts here. Read and delete allow repeats.
+ * A key keyError rejects is left to it, so it never counts here. Read and delete allow repeats, and
+ * write rows may share a source variable.
  */
 export function duplicateWriteKeys(keys: string[]): Set<string> {
-    return repeated(keys.filter((key) => keyError(key) === null).map((key) => key.trim()));
-}
-
-/**
- * Source paths (see writeSourcePath) used by more than one write row, so `variables.a` and
- * `variables.a|0` repeat each other. A value valueError rejects never counts here.
- */
-export function duplicateWriteSources(values: string[]): Set<string> {
-    return repeated(values.filter((value) => valueError(value, 'write') === null).map(writeSourcePath));
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    keys.filter((key) => keyError(key) === null)
+        .map((key) => key.trim())
+        .forEach((key) => (seen.has(key) ? duplicates : seen).add(key));
+    return duplicates;
 }
 
 /** For a node whose panel may be closed: the flow save refuses one that breaks the entry rules. */
@@ -164,13 +155,11 @@ export function hasValidPersistenceEntries({ mode, entries }: PersistenceNodeDat
     const keys = entries.map((entry) => entry.key);
     const values = entries.map((entry) => ('value' in entry ? entry.value : ''));
     const duplicateKeys = mode === 'write' ? duplicateWriteKeys(keys) : new Set<string>();
-    const duplicateSources = mode === 'write' ? duplicateWriteSources(values) : new Set<string>();
     return entries.every(
         (entry, index) =>
             keyError(entry.key) === null &&
             !duplicateKeys.has(entry.key.trim()) &&
-            (mode === 'delete' ||
-                (valueError(values[index], mode) === null && !duplicateSources.has(writeSourcePath(values[index]))))
+            (mode === 'delete' || valueError(values[index], mode) === null)
     );
 }
 

@@ -41,7 +41,6 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import {
     duplicateWriteKeys,
-    duplicateWriteSources,
     existenceHint,
     isEmptyEntry,
     isSameLookupRequest,
@@ -64,14 +63,13 @@ import { PersistenceEntry, PersistenceMode } from '../../../core/models/persiste
 import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { buildVariablePickerItems, VariablePathPicker, withoutUsedPaths } from '../../input-map/variable-path-picker';
+import { buildVariablePickerItems, VariablePathPicker } from '../../input-map/variable-path-picker';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
 const SUGGESTION_LIMIT = 20;
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
 const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
-const DUPLICATE_SOURCE_HINT = 'Duplicate variable — use a different variable';
 const KEYS_LABEL: Record<PersistenceMode, string> = {
     read: 'Keys to Read',
     write: 'Keys to Write',
@@ -135,17 +133,9 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         { name: 'Write', value: 'write' },
         { name: 'Delete', value: 'delete' },
     ];
-    // The Input List's picker. As there, write takes out the variables other rows use; read allows repeats.
+    // The Input List's picker. Unlike there, every row is offered every variable: rows may share one.
     protected readonly variablePicker = new VariablePathPicker({
-        itemsFor: (rowIndex) => {
-            if (this.mode() !== 'write') return this.variableItems();
-            const usedPaths = new Set(
-                this.entries.controls
-                    .filter((_, index) => index !== rowIndex)
-                    .map((row) => writeSourcePath(row.get('value')?.value ?? ''))
-            );
-            return withoutUsedPaths(this.variableItems(), usedPaths);
-        },
+        itemsFor: () => this.variableItems(),
         insert: (rowIndex, path) => {
             const control = this.entries.at(rowIndex).get('value');
             control?.setValue(path);
@@ -257,14 +247,12 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             if (mode === 'delete' && draft !== undefined) this.hiddenValues.set(row, draft);
         });
 
-        // A write key or source repeats because of the other rows, which its own row doesn't see change.
+        // A write key repeats because of the other rows, which its own row doesn't see change.
         const entriesArray = form.controls.entries;
         entriesArray.valueChanges
             .pipe(startWith(null), takeUntilDestroyed(this.destroyRef))
             .subscribe(() =>
-                entriesArray.controls.forEach((row) =>
-                    ['key', 'value'].forEach((field) => row.get(field)?.updateValueAndValidity({ emitEvent: false }))
-                )
+                entriesArray.controls.forEach((row) => row.get('key')?.updateValueAndValidity({ emitEvent: false }))
             );
 
         form.controls.mode.valueChanges
@@ -370,24 +358,20 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return this.suggestionTarget()?.entryIndex === entryIndex && this.suggestions().length > 0;
     }
 
-    protected isDuplicate(index: number, field: 'key' | 'value'): boolean {
-        const error = field === 'key' ? 'duplicateKey' : 'duplicateSource';
-        return this.entries.at(index).get(field)?.hasError(error) ?? false;
+    protected isDuplicateKey(index: number): boolean {
+        return this.entries.at(index).get('key')?.hasError('duplicateKey') ?? false;
     }
 
     protected keyHintFor(index: number): string | null {
-        return this.isDuplicate(index, 'key') ? DUPLICATE_KEY_HINT : null;
+        return this.isDuplicateKey(index) ? DUPLICATE_KEY_HINT : null;
     }
 
     /** The untouched `variables.` prefill is not an error yet; the user is about to type the rest. */
     protected valueHintFor(index: number): string | null {
         const value = this.entries.at(index).get('value');
-        if (!value) return null;
-        if (value.hasError('pattern')) {
-            if (value.value === VALUE_PREFILL && value.pristine && value.untouched) return null;
-            return valuePathHint(value.value, this.mode());
-        }
-        return this.isDuplicate(index, 'value') ? DUPLICATE_SOURCE_HINT : null;
+        if (!value?.hasError('pattern')) return null;
+        if (value.value === VALUE_PREFILL && value.pristine && value.untouched) return null;
+        return valuePathHint(value.value, this.mode());
     }
 
     protected existenceHintFor(index: number): string | null {
@@ -580,7 +564,7 @@ function keyValidators(mode: PersistenceMode): ValidatorFn[] {
 }
 
 function valueValidators(mode: PersistenceMode): ValidatorFn[] {
-    return mode === 'write' ? [valueValidator(mode), uniqueWriteSourceValidator] : [valueValidator(mode)];
+    return [valueValidator(mode)];
 }
 
 function valueValidator(mode: PersistenceMode): ValidatorFn {
@@ -590,24 +574,19 @@ function valueValidator(mode: PersistenceMode): ValidatorFn {
     };
 }
 
-/** One field of every row that is saved. Empty rows are not saved, so they repeat nothing. */
-function savedFieldValues(control: AbstractControl, field: keyof EntryFormValue): string[] {
+/** The key of every row that is saved. Empty rows are not saved, so they repeat nothing. */
+function savedKeys(control: AbstractControl): string[] {
     const rows = control.parent?.parent;
     if (!(rows instanceof FormArray)) return [];
     return rows.controls
         .map((row): EntryFormValue => row.getRawValue())
         .filter((row) => !isEmptyEntry(row))
-        .map((row) => row[field] ?? '');
+        .map((row) => row.key ?? '');
 }
 
 function uniqueWriteKeyValidator(control: AbstractControl<string | null>): ValidationErrors | null {
-    const duplicates = duplicateWriteKeys(savedFieldValues(control, 'key'));
+    const duplicates = duplicateWriteKeys(savedKeys(control));
     return duplicates.has((control.value ?? '').trim()) ? { duplicateKey: true } : null;
-}
-
-function uniqueWriteSourceValidator(control: AbstractControl<string | null>): ValidationErrors | null {
-    const duplicates = duplicateWriteSources(savedFieldValues(control, 'value'));
-    return duplicates.has(writeSourcePath(control.value ?? '')) ? { duplicateSource: true } : null;
 }
 
 function canvasSummary(form: FormGroup): string {
