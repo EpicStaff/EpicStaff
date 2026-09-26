@@ -398,16 +398,15 @@ async def test_write_rejects_entries_rendering_to_the_same_key(keys):
         ("variables.a|0", "variables.a|1"),
     ],
 )
-async def test_write_rejects_entries_with_the_same_source(values):
+async def test_write_stores_one_source_under_every_key_that_names_it(values):
     client = make_client()
     node = make_node(
         "write",
         [{"key": "k1", "value": values[0]}, {"key": "k2", "value": values[1]}],
         client,
     )
-    with pytest.raises(PersistenceNodeError, match="persist_1': more than one entry writes 'variables.a'"):
-        await run(node, {"a": 1})
-    client.write.assert_not_awaited()
+    await run(node, {"a": 1})
+    client.write.assert_awaited_once_with(7, 3, {"k1": 1, "k2": 1})
 
 
 @pytest.mark.asyncio

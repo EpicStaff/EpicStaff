@@ -36,8 +36,8 @@ class PersistenceNode(BaseNode):
     write sources and read targets (`variables.user.name`) are state paths; the node has no
     input map and no output variable. A read writes each stored value (None for a missing
     key) to its entry's target path, in entry order. A write rejects two entries with the same
-    rendered key or the same source path. A write source's `|default` suffix applies only when
-    the path is missing, not when it holds null.
+    rendered key; one source path may feed several keys. A write source's `|default` suffix
+    applies only when the path is missing, not when it holds null.
 
     After the table call succeeds, the node emits one `persistence` session message listing
     the entries that took effect.
@@ -123,7 +123,6 @@ class PersistenceNode(BaseNode):
     async def _write(self, variables: DotDict) -> tuple[dict[str, Any], PersistenceMessageData]:
         written: dict[str, Any] = {}
         source_by_key: dict[str, str] = {}
-        sources: set[str] = set()
         for entry in self.entries:
             key = self._render_key(entry["key"], variables)
             # Checked on the rendered key: different templates can render to the same one.
@@ -133,13 +132,6 @@ class PersistenceNode(BaseNode):
                     f"'{key}'. Use a different key for each entry."
                 )
             value_path = entry["value"]
-            source = value_path.split("|", 1)[0].strip()
-            if source in sources:
-                raise PersistenceNodeError(
-                    f"Persistence node '{self.node_name}': more than one entry writes "
-                    f"'{source}'. Use a different variable for each entry."
-                )
-            sources.add(source)
             value = self._resolve(value_path, variables)
             if value is None:
                 raise PersistenceNodeError(
