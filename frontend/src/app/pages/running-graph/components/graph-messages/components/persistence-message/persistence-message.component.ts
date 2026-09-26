@@ -5,6 +5,7 @@ import {
     GraphMessage,
     MessageType,
     PersistenceMessageData,
+    PersistenceMessageEntry,
     PersistenceMessageMode,
 } from '../../../../models/graph-session-message.model';
 
@@ -13,9 +14,11 @@ interface PersistenceChip {
     neutral: boolean;
 }
 
+// Rendered assignment-style, `target ← source`, matching the data flow:
+// read `variables.path ← key`, write `key ← variables.path`, delete just the key.
 interface PersistenceRow {
-    key: string;
-    path: string | null;
+    target: string;
+    source: string | null;
     preview: string | null;
     notFound: boolean;
     tag: 'created' | 'updated' | null;
@@ -37,6 +40,7 @@ export class PersistenceMessageComponent {
     readonly message = input.required<GraphMessage>();
 
     protected readonly isExpanded = signal(false);
+    protected readonly isKeysExpanded = signal(true);
 
     protected readonly data = computed<PersistenceMessageData | null>(() => {
         const messageData = this.message().message_data;
@@ -48,18 +52,18 @@ export class PersistenceMessageComponent {
         return data ? MODE_ICONS[data.mode] : '';
     });
 
-    protected readonly title = computed(() => {
+    // The title text before the table name, which the template renders in the accent colour.
+    protected readonly titlePrefix = computed(() => {
         const data = this.data();
         if (!data) return '';
-        const table = data.table_name;
         switch (data.mode) {
             case 'read':
-                return `Read ${countKeys(data.entries.length)} from ${table}`;
+                return `Read ${countKeys(data.entries.length)} from`;
             case 'write':
-                return `Wrote ${countKeys(data.entries.length)} to ${table}`;
+                return `Wrote ${countKeys(data.entries.length)} to`;
             case 'delete': {
                 const removed = data.deleted_count ?? 0;
-                return removed === 0 ? `No keys removed from ${table}` : `Removed ${countKeys(removed)} from ${table}`;
+                return removed === 0 ? 'No keys removed from' : `Removed ${countKeys(removed)} from`;
             }
         }
     });
@@ -92,23 +96,35 @@ export class PersistenceMessageComponent {
 
     protected readonly rows = computed<PersistenceRow[]>(() => {
         const data = this.data();
-        if (!data || data.mode === 'delete') return [];
+        if (!data) return [];
         return data.entries.map((entry) => ({
-            key: entry.key,
-            path: entry.path,
+            ...toAssignment(data.mode, entry),
             preview: entry.value_preview === null ? null : `${entry.value_preview}${entry.truncated ? '…' : ''}`,
             notFound: data.mode === 'read' && entry.found === false,
             tag: data.mode === 'write' ? (entry.created ? 'created' : 'updated') : null,
         }));
     });
 
-    protected readonly requestedKeys = computed(() => {
-        const data = this.data();
-        return data?.mode === 'delete' ? data.entries.map((entry) => entry.key) : [];
-    });
-
     protected toggle(): void {
         this.isExpanded.update((expanded) => !expanded);
+    }
+
+    protected toggleKeys(): void {
+        this.isKeysExpanded.update((expanded) => !expanded);
+    }
+}
+
+function toAssignment(
+    mode: PersistenceMessageMode,
+    entry: PersistenceMessageEntry
+): Pick<PersistenceRow, 'target' | 'source'> {
+    switch (mode) {
+        case 'read':
+            return entry.path ? { target: entry.path, source: entry.key } : { target: entry.key, source: null };
+        case 'write':
+            return { target: entry.key, source: entry.path };
+        case 'delete':
+            return { target: entry.key, source: null };
     }
 }
 

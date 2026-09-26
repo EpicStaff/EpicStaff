@@ -1,14 +1,18 @@
-$monospace: 'JetBrains Mono', 'Fira Code', monospace;
+// Card, header, section heading and content box mirror the start / finish / python
+// session messages; only the accent comes from --color-persistence.
 
 .persistence-container {
+    position: relative;
     background-color: var(--color-nodes-background);
     border-radius: 8px;
-    padding: 0.5rem 1rem;
+    padding: var(--message-padding, 0.5rem 1rem);
     box-shadow: var(--shadow-message-card);
     border-left: 4px solid var(--color-persistence);
 }
 
-.header {
+// Buttons (not divs as in the siblings) for keyboard access; reset to look like their divs.
+.persistence-header,
+.section-heading {
     display: flex;
     align-items: center;
     width: 100%;
@@ -17,9 +21,22 @@ $monospace: 'JetBrains Mono', 'Fira Code', monospace;
     background: none;
     font: inherit;
     text-align: left;
-    color: inherit;
     cursor: pointer;
     user-select: none;
+}
+
+.persistence-header {
+    color: inherit;
+}
+
+// Title and chips wrap as one group; the gap (not a chip margin) keeps a wrapped chip
+// aligned with the title's left edge.
+.header-text {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    min-width: 0;
 }
 
 .play-arrow {
@@ -45,13 +62,6 @@ $monospace: 'JetBrains Mono', 'Fira Code', monospace;
     color: var(--gray-900);
 }
 
-.header-text {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
 .title {
     color: var(--gray-100);
     font-size: var(--text-body-medium-size);
@@ -59,11 +69,17 @@ $monospace: 'JetBrains Mono', 'Fira Code', monospace;
     line-height: var(--text-body-medium-line-height);
 }
 
+.table-name {
+    color: var(--color-persistence);
+    font-weight: 400;
+}
+
 .chip {
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
     font-size: var(--text-body-small-large-size);
     font-weight: var(--text-body-small-large-weight);
-    padding: 2px 10px;
-    border-radius: 12px;
+    white-space: nowrap;
     background-color: color-mix(in srgb, var(--color-persistence) 15%, transparent);
     color: var(--color-persistence);
 }
@@ -73,105 +89,97 @@ $monospace: 'JetBrains Mono', 'Fira Code', monospace;
     color: var(--slate-460);
 }
 
-.content__inner {
-    padding-left: 4.5rem;
-
-    > :first-child {
-        margin-top: 1rem;
-    }
-
-    > :last-child {
-        margin-bottom: 0.25rem;
-    }
+.collapsible-content {
+    overflow: hidden;
+    position: relative;
 }
 
-.muted-note {
-    margin: 0 0 0.5rem;
-    color: var(--gray-400);
-    font-size: 0.85rem;
-}
-
-.key-chips {
+.persistence-content {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-direction: column;
+    gap: 1rem;
+    padding-left: 4.5rem;
 }
 
-.key-chip {
-    max-width: 100%;
-    overflow-wrap: anywhere;
+.persistence-content > :first-child {
+    margin-top: 1.25rem;
 }
 
-.key-chip,
-code {
-    font-family: $monospace;
-    font-size: 0.8rem;
-    color: var(--gray-200);
-    background: var(--gray-900);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
+.keys-container {
+    margin-bottom: 0.5rem;
 }
 
-.entries-table-wrapper {
-    max-height: 360px;
-    overflow: auto;
-    border: 1px solid var(--gray-775);
+.section-heading {
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+    color: var(--gray-300);
+    margin-bottom: 0.5rem;
+
+    app-svg-icon {
+        margin-right: 8px;
+        margin-left: -3px;
+        color: var(--color-persistence);
+    }
+}
+
+.keys-content {
+    background-color: var(--gray-800);
+    border: 1px solid var(--gray-750);
     border-radius: 8px;
+    padding: 0.5rem 1rem;
+    margin-left: 23px;
+    max-height: 400px;
+    overflow: auto;
+    color: var(--gray-200);
 }
 
-.entries-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
+// Plain block flow, no table / grid / flex sizing: every row is as wide as the box, so a
+// long token only breaks at the box edge and the row can never shrink to one character.
+.entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
 
-    td {
-        padding: 0.4rem 0.75rem;
-        color: var(--gray-50);
-        vertical-align: top;
+.entry {
+    padding: 0.5rem 0;
+
+    & + & {
+        border-top: 1px solid var(--gray-750);
     }
-
-    tr + tr td {
-        border-top: 1px solid var(--gray-775);
-    }
-
-    tr:hover {
-        background: var(--gray-850);
-    }
 }
 
-.col-key,
-.col-path {
-    max-width: 200px;
-    overflow-wrap: anywhere;
+.entry__mapping {
+    overflow-wrap: break-word;
+    line-height: 1.6;
 }
 
-.col-arrow,
-.col-tag {
-    white-space: nowrap;
-}
-
-.col-arrow {
-    color: var(--gray-400);
-}
-
-.col-preview {
-    width: 100%;
-}
-
+code,
 .preview {
-    word-break: break-word;
-    white-space: pre-wrap;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85em;
 }
 
-.not-found {
-    color: var(--gray-500);
-    font-style: italic;
+.entry__target {
+    color: var(--gray-100);
+}
+
+.entry__source {
+    color: var(--gray-300);
+}
+
+.arrow {
+    margin: 0 0.4rem;
+    color: var(--gray-400);
 }
 
 .tag {
-    font-size: var(--text-body-small-large-size);
+    margin-left: 0.5rem;
     padding: 1px 8px;
-    border-radius: 12px;
+    border-radius: 999px;
+    font-size: var(--text-body-small-large-size);
+    white-space: nowrap;
     background-color: var(--gray-570-alpha-15);
     color: var(--slate-460);
 }
@@ -179,4 +187,23 @@ code {
 .tag--created {
     background-color: color-mix(in srgb, var(--color-persistence) 15%, transparent);
     color: var(--color-persistence);
+}
+
+.preview {
+    margin: 0.25rem 0 0;
+    color: var(--gray-400);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.not-found {
+    margin-top: 0.25rem;
+    color: var(--gray-500);
+    font-style: italic;
+}
+
+.muted-note {
+    margin: 0.25rem 0 0.5rem;
+    color: var(--gray-400);
+    font-size: 0.85rem;
 }

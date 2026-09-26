@@ -53,6 +53,14 @@ function chips(element: HTMLElement): { label: string; neutral: boolean }[] {
     }));
 }
 
+function mappings(element: HTMLElement): string[] {
+    return Array.from(element.querySelectorAll('.entry__mapping')).map((mapping) =>
+        Array.from(mapping.querySelectorAll('.entry__target, .arrow, .entry__source'))
+            .map((part) => part.textContent?.trim())
+            .join(' ')
+    );
+}
+
 describe('PersistenceMessageComponent', () => {
     it('summarises a read with found and not-found counts', () => {
         const element = render({
@@ -69,9 +77,12 @@ describe('PersistenceMessageComponent', () => {
             { label: '1 found', neutral: false },
             { label: '1 not found', neutral: true },
         ]);
-        const rows = element.querySelectorAll('tbody tr');
+        expect(mappings(element)).toEqual(['variables.a ← a', 'variables.b ← b']);
+        const rows = element.querySelectorAll('.entry');
+        expect(text(rows[0] as HTMLElement, '.preview')).toBe('1');
         expect(rows[0].querySelector('.not-found')).toBeNull();
         expect(text(rows[1] as HTMLElement, '.not-found')).toBe('not found');
+        expect(rows[1].querySelector('.preview')).toBeNull();
     });
 
     it('uses the singular for one key and hides a zero secondary chip', () => {
@@ -101,6 +112,7 @@ describe('PersistenceMessageComponent', () => {
             { label: '1 created', neutral: false },
             { label: '2 updated', neutral: true },
         ]);
+        expect(mappings(element)).toEqual(['a ← variables.a|0', 'b ← variables.b', 'c ← variables.c']);
         expect(Array.from(element.querySelectorAll('.tag')).map((tag) => tag.textContent?.trim())).toEqual([
             'created',
             'updated',
@@ -132,11 +144,8 @@ describe('PersistenceMessageComponent', () => {
         expect(text(element, '.title')).toBe('Removed 1 key from profiles');
         expect(chips(element)).toEqual([{ label: '1 of 3', neutral: true }]);
         expect(text(element, '.muted-note')).toBe('2 keys were not in the table');
-        expect(Array.from(element.querySelectorAll('.key-chip')).map((chip) => chip.textContent)).toEqual([
-            'a',
-            'b',
-            'c',
-        ]);
+        expect(mappings(element)).toEqual(['a', 'b', 'c']);
+        expect(element.querySelector('.arrow, .preview, .tag')).toBeNull();
         expect(element.querySelector('[class*="error"], [class*="danger"], [class*="failed"]')).toBeNull();
     });
 
@@ -164,15 +173,65 @@ describe('PersistenceMessageComponent', () => {
         expect(element.querySelector('.muted-note')).toBeNull();
     });
 
-    it('starts collapsed and expands on header click', () => {
+    it('starts collapsed with the keys section hidden, and expands on header click', () => {
         const fixture = createFixture({ mode: 'delete', deleted_count: 1, entries: [entry({ key: 'a' })] });
         const element = fixture.nativeElement as HTMLElement;
-        const header = element.querySelector<HTMLButtonElement>('.header');
+        const header = element.querySelector<HTMLButtonElement>('.persistence-header');
+        const card = element.querySelector('.persistence-container > .collapsible-content');
 
-        expect(element.querySelector('.content')?.classList.contains('expanded')).toBe(false);
+        expect(card?.classList.contains('expanded')).toBe(false);
+        expect(header?.getAttribute('aria-expanded')).toBe('false');
+        expect(card?.contains(element.querySelector('.entry'))).toBe(true);
+
         header?.click();
         fixture.detectChanges();
-        expect(element.querySelector('.content')?.classList.contains('expanded')).toBe(true);
+        expect(card?.classList.contains('expanded')).toBe(true);
         expect(header?.getAttribute('aria-expanded')).toBe('true');
+        expect(element.querySelector('.keys-collapsible')?.classList.contains('expanded')).toBe(true);
+    });
+
+    it('toggles the keys section independently of the card', () => {
+        const fixture = createFixture({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' })],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+        element.querySelector<HTMLButtonElement>('.persistence-header')?.click();
+        fixture.detectChanges();
+        const heading = element.querySelector<HTMLButtonElement>('.section-heading');
+
+        expect(heading?.textContent?.trim()).toBe('Keys');
+        expect(heading?.getAttribute('aria-expanded')).toBe('true');
+        heading?.click();
+        fixture.detectChanges();
+        expect(element.querySelector('.keys-collapsible')?.classList.contains('expanded')).toBe(false);
+        expect(heading?.getAttribute('aria-expanded')).toBe('false');
+        expect(
+            element.querySelector('.persistence-container > .collapsible-content')?.classList.contains('expanded')
+        ).toBe(true);
+    });
+    it('shows only the key for a read row without a target path', () => {
+        const element = render({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'orphan', path: null, found: true, value_preview: '1' })],
+        });
+
+        expect(mappings(element)).toEqual(['orphan']);
+        expect(element.querySelector('.arrow')).toBeNull();
+    });
+
+    it('colours the table name in the title', () => {
+        const element = render({ mode: 'read', deleted_count: null, entries: [entry({ path: 'variables.a' })] });
+
+        expect(text(element, '.title .table-name')).toBe('profiles');
+    });
+
+    it('omits the keys section when there are no entries', () => {
+        const element = render({ mode: 'read', deleted_count: null, entries: [] });
+
+        expect(element.querySelector('.keys-container')).toBeNull();
+        expect(element.querySelector('.section-heading')).toBeNull();
     });
 });

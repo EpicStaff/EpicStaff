@@ -2,7 +2,7 @@
     <div class="persistence-container">
         <button
             type="button"
-            class="header"
+            class="persistence-header"
             [attr.aria-expanded]="isExpanded()"
             (click)="toggle()"
         >
@@ -15,11 +15,13 @@
             <span class="icon-container">
                 <app-svg-icon
                     [icon]="icon()"
-                    size="1rem"
+                    size="1.25rem"
                 />
             </span>
             <span class="header-text">
-                <span class="title">{{ title() }}</span>
+                <span class="title"
+                    >{{ titlePrefix() }} <span class="table-name">{{ data.table_name }}</span></span
+                >
                 @for (chip of chips(); track chip.label) {
                     <span
                         class="chip"
@@ -31,52 +33,61 @@
         </button>
 
         <div
-            class="content grid-collapsible"
+            class="collapsible-content grid-collapsible"
             [class.expanded]="isExpanded()"
         >
-            <div class="content__inner">
-                @if (data.mode === 'delete') {
-                    @if (missingNote(); as note) {
-                        <p class="muted-note">{{ note }}</p>
-                    }
-                    <div class="key-chips">
-                        @for (key of requestedKeys(); track $index) {
-                            <code class="key-chip">{{ key }}</code>
-                        }
-                    </div>
-                } @else {
-                    <div class="entries-table-wrapper">
-                        <table class="entries-table">
-                            <tbody>
-                                @for (row of rows(); track $index) {
-                                    <tr>
-                                        <td class="col-key">
-                                            <code>{{ row.key }}</code>
-                                        </td>
-                                        <td class="col-arrow">{{ data.mode === 'read' ? '→' : '←' }}</td>
-                                        <td class="col-path">
-                                            <code>{{ row.path }}</code>
-                                        </td>
-                                        <td class="col-preview">
-                                            @if (row.notFound) {
-                                                <span class="not-found">not found</span>
-                                            } @else {
-                                                <code class="preview">{{ row.preview }}</code>
-                                            }
-                                        </td>
-                                        @if (row.tag; as tag) {
-                                            <td class="col-tag">
-                                                <span
-                                                    class="tag"
-                                                    [class.tag--created]="tag === 'created'"
-                                                    >{{ tag }}</span
-                                                >
-                                            </td>
+            <div class="persistence-content">
+                @if (rows().length) {
+                    <div class="keys-container">
+                        <button
+                            type="button"
+                            class="section-heading"
+                            [attr.aria-expanded]="isKeysExpanded()"
+                            (click)="toggleKeys()"
+                        >
+                            <app-svg-icon
+                                [icon]="isKeysExpanded() ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
+                            Keys
+                        </button>
+                        <div
+                            class="collapsible-content keys-collapsible grid-collapsible"
+                            [class.expanded]="isKeysExpanded()"
+                        >
+                            <div class="collapsible-inner">
+                                <div class="keys-content">
+                                    <ul class="entries">
+                                        @for (row of rows(); track $index) {
+                                            <li class="entry">
+                                                <div class="entry__mapping">
+                                                    <code class="entry__target">{{ row.target }}</code>
+                                                    @if (row.source; as source) {
+                                                        <span class="arrow">←</span>
+                                                        <code class="entry__source">{{ source }}</code>
+                                                    }
+                                                    @if (row.tag; as tag) {
+                                                        <span
+                                                            class="tag"
+                                                            [class.tag--created]="tag === 'created'"
+                                                            >{{ tag }}</span
+                                                        >
+                                                    }
+                                                </div>
+                                                @if (row.notFound) {
+                                                    <div class="not-found">not found</div>
+                                                } @else if (row.preview !== null) {
+                                                    <pre class="preview">{{ row.preview }}</pre>
+                                                }
+                                            </li>
                                         }
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                                    </ul>
+                                    @if (missingNote(); as note) {
+                                        <p class="muted-note">{{ note }}</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 }
             </div>
