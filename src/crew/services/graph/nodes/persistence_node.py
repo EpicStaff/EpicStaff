@@ -1,10 +1,13 @@
+import json
 import re
+from dataclasses import asdict
 from typing import Any, Literal
 
 from clients.errors import ClientError
 from clients.persistence import PersistenceClient
 from dotdict import DotDict
 from langgraph.types import StreamWriter
+from models.graph_models import PersistenceMessageData, PersistenceMessageEntry
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import PersistenceNodeError
@@ -12,6 +15,9 @@ from services.graph.nodes.base_node import BaseNode
 from utils import map_variables_to_input
 
 MAX_KEY_LENGTH = 512
+# Mirrors Django's VALUE_PREVIEW_CHARS: the session message shows no more of a value than the
+# table view does.
+VALUE_PREVIEW_CHARS = 200
 _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 # Same tokenisation as `map_variables_to_input`, which resolves a bare `variables` path to the
 # whole flow state.
@@ -29,8 +35,12 @@ class PersistenceNode(BaseNode):
     Entries reference flow state directly: key placeholders (`profile_{variables.user.id}`),
     write sources and read targets (`variables.user.name`) are state paths; the node has no
     input map and no output variable. A read writes each stored value (None for a missing
-    key) to its entry's target path. A write source's `|default` suffix applies only when the
-    path is missing, not when it holds null.
+    key) to its entry's target path, in entry order. A write rejects two entries with the same
+    rendered key or the same source path. A write source's `|default` suffix applies only when
+    the path is missing, not when it holds null.
+
+    After the table call succeeds, the node emits one `persistence` session message listing
+    the entries that took effect.
     """
 
     TYPE = "PERSISTENCE"
@@ -65,39 +75,71 @@ class PersistenceNode(BaseNode):
         variables = state["variables"]
         try:
             if self.mode == "read":
-                return await self._read(variables)
-            if self.mode == "write":
-                return await self._write(variables)
-            return await self._delete(variables)
+                output, message = await self._read(variables)
+            elif self.mode == "write":
+                output, message = await self._write(variables)
+            else:
+                output, message = await self._delete(variables)
         except ClientError as e:
             raise PersistenceNodeError(
                 f"Persistence node '{self.node_name}' {self.mode} failed: {e.detail}"
             ) from e
-
-    async def _read(self, variables: DotDict) -> dict[str, Any]:
-        """Store each read value at its entry's target path; return them keyed by path."""
-        key_by_target: dict[str, str] = {}
-        for entry in self.entries:
-            target = self._check_target(entry["value"])
-            if target in key_by_target:
-                raise PersistenceNodeError(
-                    f"Persistence node '{self.node_name}': '{target}' receives more than one "
-                    "key. Use a different variable for each key."
-                )
-            key_by_target[target] = self._render_key(entry["key"], variables)
-        stored = await self.persistence_client.read(
-            self.session_id, self.persistence_table_id, sorted(set(key_by_target.values()))
+        self.custom_session_message_writer.add_custom_message(
+            session_id=self.session_id,
+            node_name=self.node_name,
+            writer=writer,
+            message_data=asdict(message),
+            execution_order=execution_order,
         )
-        read = {target: stored.get(key) for target, key in key_by_target.items()}
-        for target, value in read.items():
-            self._assign(variables, target, value)
-        return read
+        return output
 
-    async def _write(self, variables: DotDict) -> dict[str, Any]:
+    async def _read(self, variables: DotDict) -> tuple[dict[str, Any], PersistenceMessageData]:
+        """Store each read value at its entry's target path; return them keyed by path."""
+        targets_and_keys = [
+            (self._check_target(entry["value"]), self._render_key(entry["key"], variables))
+            for entry in self.entries
+        ]
+        response = await self.persistence_client.read(
+            self.session_id,
+            self.persistence_table_id,
+            sorted({key for _, key in targets_and_keys}),
+        )
+        stored = response["values"]
+        read: dict[str, Any] = {}
+        message_entries: list[PersistenceMessageEntry] = []
+        # Entry order, so a later entry wins a target it shares with an earlier one.
+        for target, key in targets_and_keys:
+            read[target] = stored.get(key)
+            self._assign(variables, target, read[target])
+            found = key in stored
+            preview, truncated = _preview(stored[key]) if found else (None, False)
+            message_entries.append(
+                PersistenceMessageEntry(
+                    key=key, path=target, found=found, value_preview=preview, truncated=truncated
+                )
+            )
+        return read, self._message(response, message_entries)
+
+    async def _write(self, variables: DotDict) -> tuple[dict[str, Any], PersistenceMessageData]:
         written: dict[str, Any] = {}
+        source_by_key: dict[str, str] = {}
+        sources: set[str] = set()
         for entry in self.entries:
             key = self._render_key(entry["key"], variables)
+            # Checked on the rendered key: different templates can render to the same one.
+            if key in written:
+                raise PersistenceNodeError(
+                    f"Persistence node '{self.node_name}': more than one entry writes key "
+                    f"'{key}'. Use a different key for each entry."
+                )
             value_path = entry["value"]
+            source = value_path.split("|", 1)[0].strip()
+            if source in sources:
+                raise PersistenceNodeError(
+                    f"Persistence node '{self.node_name}': more than one entry writes "
+                    f"'{source}'. Use a different variable for each entry."
+                )
+            sources.add(source)
             value = self._resolve(value_path, variables)
             if value is None:
                 raise PersistenceNodeError(
@@ -105,12 +147,46 @@ class PersistenceNode(BaseNode):
                     "from the flow state or resolved to null."
                 )
             written[key] = value
-        await self.persistence_client.write(self.session_id, self.persistence_table_id, written)
-        return written
+            source_by_key[key] = value_path
+        response = await self.persistence_client.write(
+            self.session_id, self.persistence_table_id, written
+        )
+        created = set(response["created"])
+        message_entries = []
+        for key, value in written.items():
+            preview, truncated = _preview(value)
+            message_entries.append(
+                PersistenceMessageEntry(
+                    key=key,
+                    path=source_by_key[key],
+                    created=key in created,
+                    value_preview=preview,
+                    truncated=truncated,
+                )
+            )
+        return written, self._message(response, message_entries)
 
-    async def _delete(self, variables: DotDict) -> None:
+    async def _delete(self, variables: DotDict) -> tuple[None, PersistenceMessageData]:
         keys = sorted({self._render_key(entry["key"], variables) for entry in self.entries})
-        await self.persistence_client.delete(self.session_id, self.persistence_table_id, keys)
+        response = await self.persistence_client.delete(
+            self.session_id, self.persistence_table_id, keys
+        )
+        message_entries = [PersistenceMessageEntry(key=key) for key in keys]
+        return None, self._message(response, message_entries, deleted_count=response["deleted"])
+
+    def _message(
+        self,
+        response: dict[str, Any],
+        entries: list[PersistenceMessageEntry],
+        deleted_count: int | None = None,
+    ) -> PersistenceMessageData:
+        return PersistenceMessageData(
+            mode=self.mode,
+            table_id=self.persistence_table_id,
+            table_name=response["table_name"],
+            entries=entries,
+            deleted_count=deleted_count,
+        )
 
     def _render_key(self, template: str, variables: DotDict) -> str:
         def substitute(match: re.Match) -> str:
@@ -258,6 +334,12 @@ class PersistenceNode(BaseNode):
                 "not a value in the flow state."
             )
         return value
+
+
+def _preview(value: Any) -> tuple[str, bool]:
+    """Return the value as JSON cut to VALUE_PREVIEW_CHARS, and whether it was cut."""
+    text = json.dumps(value, ensure_ascii=False, default=str)
+    return text[:VALUE_PREVIEW_CHARS], len(text) > VALUE_PREVIEW_CHARS
 
 
 def _describe(value: Any) -> str:

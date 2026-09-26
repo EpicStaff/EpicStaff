@@ -21,17 +21,17 @@ async def _started(handler) -> PersistenceClient:
 
 
 @pytest.mark.asyncio
-async def test_read_posts_keys_with_system_key_and_returns_values():
+async def test_read_posts_keys_with_system_key_and_returns_response():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["url"] = str(request.url)
         seen["api_key"] = request.headers["X-API-Key"]
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"values": {"a": 1}})
+        return httpx.Response(200, json={"values": {"a": 1}, "table_name": "Customers"})
 
     client = await _started(handler)
-    assert await client.read(7, 3, ["a", "b"]) == {"a": 1}
+    assert await client.read(7, 3, ["a", "b"]) == {"values": {"a": 1}, "table_name": "Customers"}
     await client.stop()
 
     assert seen["url"] == f"{BASE_URL}internal/sessions/7/persistence-tables/3/read/"
@@ -40,30 +40,34 @@ async def test_read_posts_keys_with_system_key_and_returns_values():
 
 
 @pytest.mark.asyncio
-async def test_write_sends_entries():
+async def test_write_sends_entries_and_returns_response():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["url"] = str(request.url)
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"written": 1})
+        return httpx.Response(200, json={"written": 1, "created": ["k"], "table_name": "Customers"})
 
     client = await _started(handler)
-    await client.write(7, 3, {"k": {"v": 1}})
+    assert await client.write(7, 3, {"k": {"v": 1}}) == {
+        "written": 1,
+        "created": ["k"],
+        "table_name": "Customers",
+    }
     assert seen["url"].endswith("/persistence-tables/3/write/")
     assert seen["body"] == {"entries": {"k": {"v": 1}}}
 
 
 @pytest.mark.asyncio
-async def test_delete_sends_keys():
+async def test_delete_sends_keys_and_returns_response():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"deleted": 1})
+        return httpx.Response(200, json={"deleted": 1, "table_name": "Customers"})
 
     client = await _started(handler)
-    await client.delete(7, 3, ["k"])
+    assert await client.delete(7, 3, ["k"]) == {"deleted": 1, "table_name": "Customers"}
     assert seen["body"] == {"keys": ["k"]}
 
 

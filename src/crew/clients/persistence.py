@@ -52,14 +52,18 @@ class PersistenceClient:
             logger.info("PersistenceClient stopped")
 
     async def read(self, session_id: int, table_id: int, keys: list[str]) -> dict[str, Any]:
-        body = await self._post(session_id, table_id, "read", {"keys": keys})
-        return body["values"]
+        """Return `{"values": {key: value}, "table_name": str}`; missing keys are absent."""
+        return await self._post(session_id, table_id, "read", {"keys": keys})
 
-    async def write(self, session_id: int, table_id: int, entries: dict[str, Any]) -> None:
-        await self._post(session_id, table_id, "write", {"entries": entries})
+    async def write(
+        self, session_id: int, table_id: int, entries: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return `{"written": int, "created": [new keys], "table_name": str}`."""
+        return await self._post(session_id, table_id, "write", {"entries": entries})
 
-    async def delete(self, session_id: int, table_id: int, keys: list[str]) -> None:
-        await self._post(session_id, table_id, "delete", {"keys": keys})
+    async def delete(self, session_id: int, table_id: int, keys: list[str]) -> dict[str, Any]:
+        """Return `{"deleted": int, "table_name": str}`."""
+        return await self._post(session_id, table_id, "delete", {"keys": keys})
 
     async def _post(
         self, session_id: int, table_id: int, operation: Operation, payload: dict

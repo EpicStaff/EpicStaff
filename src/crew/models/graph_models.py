@@ -152,3 +152,27 @@ class ClassificationPromptMessageData:
     result_variable: str
     usage: dict
     message_type: str = "classification_prompt"
+
+
+@dataclass
+class PersistenceMessageEntry:
+    key: str
+    # read: target path; write: source path (raw, incl. |default); delete: None
+    path: str | None = None
+    # read only: key in values (a stored null counts as found)
+    found: bool | None = None
+    # write only
+    created: bool | None = None
+    # Value as JSON, cut to 200 chars
+    value_preview: str | None = None
+    truncated: bool = False
+
+
+@dataclass
+class PersistenceMessageData:
+    mode: str  # "read" | "write" | "delete"
+    table_id: int
+    table_name: str
+    entries: list[PersistenceMessageEntry]
+    deleted_count: int | None = None  # delete only
+    message_type: str = "persistence"
