@@ -64,7 +64,7 @@ import { PersistenceEntry, PersistenceMode } from '../../../core/models/persiste
 import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { buildVariablePickerItems, VariablePathPicker } from '../../input-map/variable-path-picker';
+import { buildVariablePickerItems, VariablePathPicker, withoutUsedPaths } from '../../input-map/variable-path-picker';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
@@ -135,7 +135,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         { name: 'Write', value: 'write' },
         { name: 'Delete', value: 'delete' },
     ];
-    // The Input List's picker. As there, write hides the variables other rows use; read allows repeats.
+    // The Input List's picker. As there, write takes out the variables other rows use; read allows repeats.
     protected readonly variablePicker = new VariablePathPicker({
         itemsFor: (rowIndex) => {
             if (this.mode() !== 'write') return this.variableItems();
@@ -144,7 +144,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
                     .filter((_, index) => index !== rowIndex)
                     .map((row) => writeSourcePath(row.get('value')?.value ?? ''))
             );
-            return this.variableItems().filter((item) => !usedPaths.has(item.fullPath));
+            return withoutUsedPaths(this.variableItems(), usedPaths);
         },
         insert: (rowIndex, path) => {
             const control = this.entries.at(rowIndex).get('value');

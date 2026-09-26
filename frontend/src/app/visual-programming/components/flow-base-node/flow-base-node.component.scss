@@ -15,16 +15,44 @@
         pointer-events: none;
     }
 
-    .node-name-label {
+    .node-name-label,
+    .persistence-caption {
         background-color: var(--color-nodes-actionbar-bg);
         color: var(--gray-204);
         font-size: 0.75rem;
         padding: 2px 6px;
         border-radius: 3px;
         white-space: nowrap;
+        opacity: 0;
+    }
+
+    .node-name-label {
         overflow: hidden;
         text-overflow: ellipsis;
-        opacity: 0;
+    }
+
+    // Below the node, clear of the #N label above it and of the left/right ports.
+    // visibility (not only opacity) so the hidden caption takes no clicks meant for the canvas;
+    // transitioned so it stays reachable for a moment, and bridged so the gap keeps the node hovered.
+    .persistence-caption {
+        --caption-gap: 6px;
+
+        position: absolute;
+        top: calc(100% + var(--caption-gap));
+        left: 0;
+        visibility: hidden;
+        transition:
+            opacity 0.2s ease,
+            visibility 0.2s;
+
+        &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 100%;
+            height: var(--caption-gap);
+        }
     }
 
     // Control buttons wrapper - positioned above the node
@@ -221,6 +249,11 @@
         // }
 
         .node-name-label {
+            opacity: 1;
+        }
+
+        .persistence-caption {
+            visibility: visible;
             opacity: 1;
         }
 

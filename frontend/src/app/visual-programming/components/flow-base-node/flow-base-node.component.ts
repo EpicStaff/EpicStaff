@@ -25,6 +25,7 @@ import { AgentDefinitionsApiService } from '../../../features/agent-definitions/
 import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
 import {
     persistenceAccentVar,
+    persistenceCaption,
     persistenceNodeIcon,
     persistenceSubtitle as formatPersistenceSubtitle,
 } from '../../core/constants/persistence-mode-visuals';
@@ -247,11 +248,17 @@ export class FlowBaseNodeComponent implements OnInit {
         return node ? `var(${persistenceAccentVar(node.data.mode)})` : null;
     }
 
-    public get persistenceSubtitle(): string | null {
+    /** "Mode · Table · N keys" in full, and as the caption under the node shows it, its table name cut short. */
+    public get persistenceSummary(): { full: string; caption: string } | null {
         const node = this.persistenceNode;
         if (!node) return null;
         const table = this.persistenceTablesStorage.tables().find((t) => t.id === node.data.persistence_table);
-        return formatPersistenceSubtitle(node.data.mode, table?.name ?? null, node.data.entries.length);
+        const tableName = table?.name ?? null;
+        const keyCount = node.data.entries.length;
+        return {
+            full: formatPersistenceSubtitle(node.data.mode, tableName, keyCount),
+            caption: persistenceCaption(node.data.mode, tableName, keyCount),
+        };
     }
 
     public get hasMissingPersistenceTable(): boolean {

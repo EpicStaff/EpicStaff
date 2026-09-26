@@ -11,6 +11,17 @@
     </div>
 }
 
+<!-- Persistence summary under the node, shown on hover; the #N label above stays clear. -->
+@if (persistenceSummary; as summary) {
+    <div
+        class="persistence-caption"
+        aria-hidden="true"
+        [title]="summary.full"
+    >
+        {{ summary.caption }}
+    </div>
+}
+
 <!-- Control buttons positioned above the node -->
 @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
     <div
@@ -94,13 +105,12 @@
             <div class="header">
                 <div class="icon-wrapper">
                     @if (persistenceHeaderIcon; as icon) {
+                        <!-- The caption under the node shows the summary on hover; this names it for screen readers. -->
                         <i
                             [class]="icon"
                             [style.color]="persistenceAccentColor"
                             role="img"
-                            [matTooltip]="persistenceSubtitle"
-                            matTooltipPosition="above"
-                            [attr.aria-label]="persistenceSubtitle"
+                            [attr.aria-label]="persistenceSummary?.full"
                         ></i>
                     } @else {
                         <i

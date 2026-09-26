@@ -99,9 +99,16 @@
                                         placeholder="variables.user.name"
                                         aria-label="Variable path"
                                         autocomplete="off"
+                                        role="combobox"
+                                        aria-autocomplete="list"
                                         [class.duplicate]="isDuplicate(i, 'value')"
+                                        [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                        [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                        [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
                                         (focus)="variablePicker.onFocus(i, $event)"
                                         (input)="variablePicker.onInput(i, $event)"
+                                        (keydown)="variablePicker.onKeydown(i, $event)"
+                                        (blur)="variablePicker.onBlur(i, $event)"
                                     />
                                     @if (valueHintFor(i); as hint) {
                                         <div class="entry-hint">{{ hint }}</div>

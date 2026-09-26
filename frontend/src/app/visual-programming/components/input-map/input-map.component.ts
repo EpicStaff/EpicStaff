@@ -35,7 +35,7 @@ import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { PickerItem } from './var-picker-flat.component';
-import { buildVariablePickerItems, VariablePathPicker } from './variable-path-picker';
+import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsedPaths } from './variable-path-picker';
 
 @Component({
     selector: 'app-input-map',
@@ -102,9 +102,15 @@ import { buildVariablePickerItems, VariablePathPicker } from './variable-path-pi
                                         placeholder="Domain Variable Name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
-                                        (keydown.enter)="onEnterKey($event, i)"
+                                        role="combobox"
+                                        aria-autocomplete="list"
+                                        [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                        [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                        [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
+                                        (keydown)="onValueKeydown(i, $event)"
                                         (focus)="onValueFocus(i, $event)"
                                         (input)="onValueInput(i, $event)"
+                                        (blur)="variablePicker.onBlur(i, $event)"
                                     />
                                 </div>
                                 <app-svg-icon
@@ -479,11 +485,8 @@ export class InputMapComponent implements OnInit, OnChanges {
         if (!state || Object.keys(state).length === 0) return [];
         return buildVariablePickerItems(state);
     });
-    private readonly variablePicker = new VariablePathPicker({
-        itemsFor: (rowIndex) => {
-            const usedPaths = this.usedVariablePaths(rowIndex);
-            return this.pickerItems().filter((item) => !usedPaths.has(item.fullPath));
-        },
+    protected readonly variablePicker = new VariablePathPicker({
+        itemsFor: (rowIndex) => withoutUsedPaths(this.pickerItems(), this.usedVariablePaths(rowIndex)),
         insert: (rowIndex, path) => {
             const valueCtrl = this.pairs.at(rowIndex).get('value');
             valueCtrl?.setValue(path);
@@ -904,6 +907,12 @@ export class InputMapComponent implements OnInit, OnChanges {
 
     onValueInput(rowIndex: number, event: Event): void {
         this.variablePicker.onInput(rowIndex, event);
+    }
+
+    /** Enter picks the highlighted variable; with none highlighted it adds a row, as in the key input. */
+    onValueKeydown(rowIndex: number, event: KeyboardEvent): void {
+        this.variablePicker.onKeydown(rowIndex, event);
+        if (isPlainEnter(event) && !event.defaultPrevented) this.onEnterKey(event, rowIndex);
     }
 
     private usedVariablePaths(excludeRowIndex: number): Set<string> {

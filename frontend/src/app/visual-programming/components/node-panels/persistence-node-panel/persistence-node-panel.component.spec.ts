@@ -8,9 +8,11 @@ import {
     NG_VALUE_ACCESSOR,
     ReactiveFormsModule,
 } from '@angular/forms';
+import { NodeType } from '@shared/models';
 import { NEVER, Observable, of, Subject } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { GraphDto } from '../../../../features/flows/models/graph.model';
 import {
     PersistenceEntryLookupResponse,
     PersistenceTableEntry,
@@ -31,6 +33,7 @@ import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UniqueNodeNameValidatorService } from '../../../services/unique-node-name.validator';
+import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
 import { mapPersistenceNodeToModel } from '../../../utils/load/nodes/persistence-node.mapper';
 import { getNodeDiff } from '../../../utils/save/diff';
 import { NodePanelShellComponent } from '../node-panel-shell/node-panel-shell.component';
@@ -92,6 +95,7 @@ function createPanel(
         getEntries = () => NEVER,
         lookupEntries = () => of({}),
         initialState = {},
+        flowService,
         errorOnUnknownProperties = true,
     }: {
         renderTemplate?: boolean;
@@ -99,6 +103,8 @@ function createPanel(
         getEntries?: () => Observable<ApiGetRequest<PersistenceTableEntry>>;
         lookupEntries?: () => Observable<PersistenceEntryLookupResponse>;
         initialState?: Record<string, unknown>;
+        /** A real one, loaded with a flow; else a stand-in offering initialState. */
+        flowService?: FlowService;
         errorOnUnknownProperties?: boolean;
     } = {}
 ): {
@@ -134,7 +140,7 @@ function createPanel(
                 },
             },
             { provide: ToastService, useValue: { error: toastError } },
-            { provide: FlowService, useValue: { startNodeInitialState: signal(initialState) } },
+            { provide: FlowService, useValue: flowService ?? { startNodeInitialState: signal(initialState) } },
             // FlowGraphComponent provides it in the app, so it outlives any one panel.
             PersistenceValueDraftsService,
         ],
@@ -1258,8 +1264,8 @@ describe('PersistenceNodePanelComponent', () => {
                 const input = focusValue(fixture);
                 // Names a persistence node can't use are left out.
                 expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
-                // It has no arrow keys or Enter, so the input does not claim to be a combobox.
-                expect(input.getAttribute('role')).toBeNull();
+                expect(input.getAttribute('role')).toBe('combobox');
+                expect(input.getAttribute('aria-expanded')).toBe('true');
 
                 typeValue(fixture, 'variables.US');
                 expect(listed()).toEqual(['variables.user', 'variables.user.id']);
@@ -1270,6 +1276,7 @@ describe('PersistenceNodePanelComponent', () => {
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.user.id');
                 expect(entriesOf(panel).at(0).get('value')!.dirty).toBe(true);
                 expect(listed()).toEqual([]);
+                expect(input.getAttribute('aria-expanded')).toBe('false');
             });
         }
 
@@ -1380,6 +1387,119 @@ describe('PersistenceNodePanelComponent', () => {
             focusValue(fixture);
 
             expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+        });
+
+        describe('a flow as the backend returns it, where another write row uses an object', () => {
+            const MY_OBJECT = { my_object: { user_id: 'asdasdasdadadsa', user_email: 'test@mail.com' } };
+            // The start node's `variables` column holds the whole initial state the Domain Variables
+            // dialog saves, flow variables under its own `variables` key.
+            const GRAPH = {
+                id: 1,
+                start_node_list: [
+                    { id: 100, graph: 1, node_name: '__start__', variables: { variables: MY_OBJECT }, metadata: {} },
+                ],
+                persistence_node_list: [
+                    {
+                        ...DTO,
+                        mode: 'write',
+                        entries: [
+                            { key: 'whole', value: 'variables.my_object' },
+                            { key: 'next', value: 'variables.' },
+                        ],
+                    },
+                ],
+            } as unknown as GraphDto;
+            const ALL = ['variables.my_object', 'variables.my_object.user_id', 'variables.my_object.user_email'];
+            const disabled = (): string[] =>
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title);
+
+            function openLoaded(): {
+                panel: PersistenceNodePanelComponent;
+                fixture: ComponentFixture<PersistenceNodePanelComponent>;
+            } {
+                const flowService = new FlowService();
+                flowService.setFlow(mapGraphDtoToFlowModel(GRAPH));
+                const node = flowService.nodes().find((flowNode) => flowNode.type === NodeType.PERSISTENCE);
+                return createPanel(node as PersistenceNodeModel, { renderTemplate: true, flowService });
+            }
+
+            afterEach(() => delete (Element.prototype as Partial<Element>).scrollIntoView);
+
+            it('loads the start node state the picker lists from', () => {
+                const flowService = new FlowService();
+                flowService.setFlow(mapGraphDtoToFlowModel(GRAPH));
+
+                expect(flowService.startNodeInitialState()).toEqual({ variables: MY_OBJECT });
+            });
+
+            it('keeps the used object above its fields, disabled, and offers the fields', () => {
+                const { panel, fixture } = openLoaded();
+
+                typeValue(fixture, 'variables.', 1);
+                expect(listed()).toEqual(ALL);
+                expect(disabled()).toEqual(['variables.my_object']);
+
+                // Typed in full it is no match to close on, and a click on it puts nothing in.
+                typeValue(fixture, 'variables.my_object', 1);
+                expect(listed()).toEqual(ALL);
+                document.querySelector<HTMLElement>('.vpf-item:disabled')!.click();
+                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object');
+
+                document.querySelectorAll<HTMLElement>('.vpf-item')[2].click();
+                fixture.detectChanges();
+                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object.user_email');
+                expect(entriesOf(panel).at(1).get('value')!.valid).toBe(true);
+            });
+
+            it('picks a field with the arrow keys and Enter, passing the used object by', () => {
+                Element.prototype.scrollIntoView = vi.fn();
+                const { panel, fixture } = openLoaded();
+                const input = typeValue(fixture, 'variables.', 1);
+                const press = (key: string): KeyboardEvent => {
+                    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+                    input.dispatchEvent(event);
+                    fixture.detectChanges();
+                    return event;
+                };
+
+                // Other keys still reach the input.
+                expect(press('a').defaultPrevented).toBe(false);
+                press('ArrowUp');
+                press('ArrowUp');
+                press('Enter');
+
+                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.my_object.user_id');
+                expect(listed()).toEqual([]);
+            });
+
+            it('picks nothing on Enter once the pointer has left the list', () => {
+                const { panel, fixture } = openLoaded();
+                const input = typeValue(fixture, 'variables.', 1);
+                document.querySelectorAll('.vpf-item')[2].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+                document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
+                fixture.detectChanges();
+
+                const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+                input.dispatchEvent(enter);
+                fixture.detectChanges();
+
+                expect(enter.defaultPrevented).toBe(false);
+                expect(entriesOf(panel).at(1).get('value')!.value).toBe('variables.');
+                expect(listed()).toEqual(ALL);
+            });
+
+            it('wires the value input to the list as a combobox, and closes the list when focus leaves', () => {
+                const { fixture } = openLoaded();
+                const input = typeValue(fixture, 'variables.', 1);
+                expect(input.getAttribute('aria-controls')).toBe(document.querySelector('.vpf-list')!.id);
+
+                input.dispatchEvent(new FocusEvent('blur'));
+                fixture.detectChanges();
+
+                expect(listed()).toEqual([]);
+                expect(input.getAttribute('aria-controls')).toBeNull();
+                expect(input.getAttribute('aria-expanded')).toBe('false');
+            });
         });
 
         it('leaves the key input to the stored key suggestions', () => {

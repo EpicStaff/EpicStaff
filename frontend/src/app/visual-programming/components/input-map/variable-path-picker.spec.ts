@@ -2,7 +2,12 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PickerItem } from './var-picker-flat.component';
-import { buildVariablePickerItems, VariablePathPicker, VariablePathPickerRows } from './variable-path-picker';
+import {
+    buildVariablePickerItems,
+    VariablePathPicker,
+    VariablePathPickerRows,
+    withoutUsedPaths,
+} from './variable-path-picker';
 
 const STATE = { variables: { user: { id: 1, tags: ['a'] }, plan: 'free' } };
 
@@ -15,6 +20,10 @@ const STATE = { variables: { user: { id: 1, tags: ['a'] }, plan: 'free' } };
                 [value]="value"
                 (focus)="picker.onFocus($index, $event)"
                 (input)="picker.onInput($index, $event)"
+                [attr.aria-controls]="picker.listboxIdFor($index)"
+                [attr.aria-activedescendant]="picker.activeDescendantFor($index)"
+                (keydown)="picker.onKeydown($index, $event)"
+                (blur)="picker.onBlur($index, $event)"
             />
         }
         <button
@@ -53,6 +62,39 @@ describe('buildVariablePickerItems', () => {
     });
 });
 
+describe('withoutUsedPaths', () => {
+    const paths = (items: PickerItem[]): [string, boolean][] =>
+        items.map((item) => [item.fullPath, item.disabled ?? false]);
+
+    it('leaves out a used variable with nothing offered under it', () => {
+        const used = new Set(['variables.plan', 'variables.user.id']);
+
+        expect(paths(withoutUsedPaths(buildVariablePickerItems(STATE), used))).toEqual([
+            ['variables.user', false],
+            ['variables.user.tags', false],
+            ['variables.user.tags[0]', false],
+        ]);
+    });
+
+    it('keeps a used variable, disabled, above the variables still offered under it, at any depth', () => {
+        const used = new Set(['variables.user', 'variables.user.tags']);
+
+        expect(paths(withoutUsedPaths(buildVariablePickerItems(STATE), used))).toEqual([
+            ['variables.user', true],
+            ['variables.user.id', false],
+            ['variables.user.tags', true],
+            ['variables.user.tags[0]', false],
+            ['variables.plan', false],
+        ]);
+    });
+
+    it('leaves out a used object once everything under it is used as well', () => {
+        const used = new Set(['variables.user', 'variables.user.id', 'variables.user.tags', 'variables.user.tags[0]']);
+
+        expect(paths(withoutUsedPaths(buildVariablePickerItems(STATE), used))).toEqual([['variables.plan', false]]);
+    });
+});
+
 describe('VariablePathPicker', () => {
     let fixture: ComponentFixture<RowsHostComponent>;
     let host: RowsHostComponent;
@@ -60,6 +102,20 @@ describe('VariablePathPicker', () => {
     const input = (row: number): HTMLInputElement => fixture.nativeElement.querySelectorAll('.row-value')[row];
     const listed = (): string[] =>
         Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
+    const highlighted = (): string[] =>
+        Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), (item) => item.title);
+    const disabled = (): string[] =>
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.vpf-item:disabled'), (item) => item.title);
+    const press = (row: number, key: string, init: KeyboardEventInit = {}): KeyboardEvent => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+        input(row).dispatchEvent(event);
+        fixture.detectChanges();
+        return event;
+    };
+    const hover = (index: number): void => {
+        document.querySelectorAll('.vpf-item')[index].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+        fixture.detectChanges();
+    };
     const focus = (row: number): void => {
         input(row).dispatchEvent(new FocusEvent('focus'));
         fixture.detectChanges();
@@ -190,6 +246,181 @@ describe('VariablePathPicker', () => {
 
         type(0, 'variables.pl|0');
         expect(listed()).toEqual(['variables.plan']);
+    });
+
+    describe('keyboard', () => {
+        let scrollIntoView: ReturnType<typeof vi.fn<Element['scrollIntoView']>>;
+
+        beforeEach(() => {
+            // jsdom does no layout, so it has no scrollIntoView.
+            scrollIntoView = vi.fn<Element['scrollIntoView']>();
+            Element.prototype.scrollIntoView = scrollIntoView;
+        });
+
+        afterEach(() => delete (Element.prototype as Partial<Element>).scrollIntoView);
+
+        it('moves the highlight with the arrow keys, wrapping around, and scrolls it into view', () => {
+            focus(0);
+            expect(highlighted()).toEqual([]);
+
+            const down = press(0, 'ArrowDown');
+            expect(highlighted()).toEqual(['variables.user']);
+            expect(down.defaultPrevented).toBe(true);
+            press(0, 'ArrowDown');
+            expect(highlighted()).toEqual(['variables.user.id']);
+            expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+            expect(scrollIntoView.mock.contexts.at(-1)).toBe(document.querySelectorAll('.vpf-item')[1]);
+
+            press(0, 'ArrowUp');
+            press(0, 'ArrowUp');
+            expect(highlighted()).toEqual(['variables.plan']);
+            press(0, 'ArrowDown');
+            expect(highlighted()).toEqual(['variables.user']);
+            expect(host.picker.isOpenFor(0)).toBe(true);
+        });
+
+        it('starts from the bottom on ArrowUp, and from no highlight again once the filter changes', () => {
+            focus(0);
+            press(0, 'ArrowUp');
+            expect(highlighted()).toEqual(['variables.plan']);
+
+            type(0, 'variables.u');
+            expect(highlighted()).toEqual([]);
+        });
+
+        it('picks the highlighted path on Enter, and leaves Enter to the host with nothing highlighted', () => {
+            type(1, 'variables.us');
+            expect(press(1, 'Enter').defaultPrevented).toBe(false);
+            expect(host.inserted).toEqual([]);
+
+            press(1, 'ArrowDown');
+            press(1, 'ArrowDown');
+            expect(press(1, 'Enter').defaultPrevented).toBe(true);
+
+            expect(host.inserted).toEqual([[1, 'variables.user.id']]);
+            expect(host.picker.isOpenFor(1)).toBe(false);
+        });
+
+        it('follows the pointer, so Enter picks the hovered row', () => {
+            focus(0);
+            press(0, 'ArrowDown');
+            hover(4);
+            expect(highlighted()).toEqual(['variables.plan']);
+
+            press(0, 'Enter');
+            expect(host.inserted).toEqual([[0, 'variables.plan']]);
+        });
+
+        it('drops the highlight when the pointer leaves the list, so Enter goes back to the host', () => {
+            focus(0);
+            hover(4);
+            document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
+            fixture.detectChanges();
+
+            expect(highlighted()).toEqual([]);
+            expect(press(0, 'Enter').defaultPrevented).toBe(false);
+            expect(host.inserted).toEqual([]);
+        });
+
+        it('picks only on a plain Enter', () => {
+            focus(0);
+            press(0, 'ArrowDown');
+
+            for (const modifier of ['shiftKey', 'ctrlKey', 'altKey', 'metaKey']) {
+                expect(press(0, 'Enter', { [modifier]: true }).defaultPrevented).toBe(false);
+            }
+            expect(host.inserted).toEqual([]);
+            expect(highlighted()).toEqual(['variables.user']);
+        });
+
+        it('leaves the keys to an IME while it composes', () => {
+            focus(0);
+            expect(press(0, 'ArrowDown', { isComposing: true }).defaultPrevented).toBe(false);
+            press(0, 'ArrowDown');
+            expect(press(0, 'Enter', { isComposing: true }).defaultPrevented).toBe(false);
+
+            expect(host.inserted).toEqual([]);
+            expect(highlighted()).toEqual(['variables.user']);
+        });
+
+        it('names its list and the highlighted row to the input as a combobox, and nothing while closed', () => {
+            expect(input(0).getAttribute('aria-controls')).toBeNull();
+            focus(0);
+            const listbox = document.querySelector('.vpf-list')!;
+            expect(listbox.getAttribute('role')).toBe('listbox');
+            expect(listbox.getAttribute('aria-label')).toBe('Flow variables');
+            expect(input(0).getAttribute('aria-controls')).toBe(listbox.id);
+            expect(input(0).getAttribute('aria-activedescendant')).toBeNull();
+
+            press(0, 'ArrowDown');
+            press(0, 'ArrowDown');
+            const active = document.getElementById(input(0).getAttribute('aria-activedescendant')!);
+            expect(active?.title).toBe('variables.user.id');
+            expect(active?.getAttribute('aria-selected')).toBe('true');
+
+            // Each picker has its own ids.
+            focus(1);
+            expect(document.querySelector('.vpf-list')!.id).not.toBe(listbox.id);
+            expect(input(0).getAttribute('aria-controls')).toBeNull();
+            expect(input(0).getAttribute('aria-activedescendant')).toBeNull();
+        });
+
+        it('leaves every other key to the input, and every key while closed', () => {
+            focus(0);
+            expect(press(0, 'a').defaultPrevented).toBe(false);
+
+            type(0, 'user');
+            expect(press(0, 'ArrowDown').defaultPrevented).toBe(false);
+            expect(press(0, 'Enter').defaultPrevented).toBe(false);
+        });
+
+        it('passes a disabled row by, with the arrow keys and on hover', () => {
+            host.items = withoutUsedPaths(buildVariablePickerItems(STATE), new Set(['variables.user']));
+            focus(0);
+
+            hover(0);
+            expect(highlighted()).toEqual([]);
+            press(0, 'ArrowDown');
+            expect(highlighted()).toEqual(['variables.user.id']);
+            press(0, 'ArrowUp');
+            expect(highlighted()).toEqual(['variables.plan']);
+        });
+    });
+
+    it('lists a used variable kept above the variables under it disabled, and never inserts it', () => {
+        host.items = withoutUsedPaths(buildVariablePickerItems(STATE), new Set(['variables.user']));
+        focus(0);
+
+        expect(listed()).toEqual(buildVariablePickerItems(STATE).map((item) => item.fullPath));
+        expect(disabled()).toEqual(['variables.user']);
+        expect(document.querySelector('.vpf-item:disabled')!.textContent).toContain('in use');
+        document.querySelector<HTMLElement>('.vpf-item:disabled')!.click();
+        expect(host.inserted).toEqual([]);
+
+        // Typed in full, it is no match to close on: the picker stays with what can be picked under it.
+        type(0, 'variables.user');
+        expect(host.picker.isOpenFor(0)).toBe(true);
+    });
+
+    it('closes when focus leaves the input, e.g. on Tab, but not for its own search field or a click on a row', () => {
+        focus(0);
+        const searchField = document.querySelector<HTMLElement>('app-var-picker-flat input')!;
+        input(0).dispatchEvent(new FocusEvent('blur', { relatedTarget: searchField }));
+        expect(host.picker.isOpenFor(0)).toBe(true);
+
+        // A click on a row does not take focus from the input, so no blur closes the list under it.
+        const rowPress = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        document.querySelector('.vpf-item')!.dispatchEvent(rowPress);
+        expect(rowPress.defaultPrevented).toBe(true);
+
+        input(0).dispatchEvent(
+            new FocusEvent('blur', { relatedTarget: fixture.nativeElement.querySelector('.outside') })
+        );
+        expect(host.picker.isOpenFor(0)).toBe(false);
+
+        focus(0);
+        input(0).dispatchEvent(new FocusEvent('blur'));
+        expect(host.picker.isOpenFor(0)).toBe(false);
     });
 
     it('closes with its host', () => {
