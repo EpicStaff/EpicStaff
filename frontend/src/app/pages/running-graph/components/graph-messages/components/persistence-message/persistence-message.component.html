@@ -13,10 +13,12 @@
                 />
             </span>
             <span class="icon-container">
-                <app-svg-icon
-                    [icon]="icon()"
-                    size="1.25rem"
-                />
+                @if (icon(); as modeIcon) {
+                    <app-svg-icon
+                        [icon]="modeIcon.name"
+                        [size]="modeIcon.size"
+                    />
+                }
             </span>
             <span class="header-text">
                 <span class="title"
@@ -61,10 +63,14 @@
                                         @for (row of rows(); track $index) {
                                             <li class="entry">
                                                 <div class="entry__mapping">
-                                                    <code class="entry__target">{{ row.target }}</code>
+                                                    <code class="entry__target entry__{{ row.target.kind }}">{{
+                                                        row.target.text
+                                                    }}</code>
                                                     @if (row.source; as source) {
                                                         <span class="arrow">←</span>
-                                                        <code class="entry__source">{{ source }}</code>
+                                                        <code class="entry__source entry__{{ source.kind }}">{{
+                                                            source.text
+                                                        }}</code>
                                                     }
                                                     @if (row.tag; as tag) {
                                                         <span
@@ -76,8 +82,10 @@
                                                 </div>
                                                 @if (row.notFound) {
                                                     <div class="not-found">not found</div>
-                                                } @else if (row.preview !== null) {
-                                                    <pre class="preview">{{ row.preview }}</pre>
+                                                } @else if (row.preview; as preview) {
+                                                    <pre
+                                                        class="preview"
+                                                    >@for (token of preview; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
                                                 }
                                             </li>
                                         }

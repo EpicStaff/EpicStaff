@@ -53,6 +53,14 @@ function chips(element: HTMLElement): { label: string; neutral: boolean }[] {
     }));
 }
 
+function tokens(preview: Element): [string, string][] {
+    return Array.from(preview.querySelectorAll('span')).map((span) => [span.className, span.textContent ?? '']);
+}
+
+function iconHref(element: HTMLElement): string | null {
+    return element.querySelector('.icon-container use')?.getAttribute('href') ?? null;
+}
+
 function mappings(element: HTMLElement): string[] {
     return Array.from(element.querySelectorAll('.entry__mapping')).map((mapping) =>
         Array.from(mapping.querySelectorAll('.entry__target, .arrow, .entry__source'))
@@ -72,7 +80,7 @@ describe('PersistenceMessageComponent', () => {
             ],
         });
 
-        expect(text(element, '.title')).toBe('Read 2 keys from profiles');
+        expect(text(element, '.title')).toBe('Read 2 keys from table profiles');
         expect(chips(element)).toEqual([
             { label: '1 found', neutral: false },
             { label: '1 not found', neutral: true },
@@ -92,7 +100,7 @@ describe('PersistenceMessageComponent', () => {
             entries: [entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' })],
         });
 
-        expect(text(element, '.title')).toBe('Read 1 key from profiles');
+        expect(text(element, '.title')).toBe('Read 1 key from table profiles');
         expect(chips(element)).toEqual([{ label: '1 found', neutral: false }]);
     });
 
@@ -107,7 +115,7 @@ describe('PersistenceMessageComponent', () => {
             ],
         });
 
-        expect(text(element, '.title')).toBe('Wrote 3 keys to profiles');
+        expect(text(element, '.title')).toBe('Wrote 3 keys to table profiles');
         expect(chips(element)).toEqual([
             { label: '1 created', neutral: false },
             { label: '2 updated', neutral: true },
@@ -134,6 +142,111 @@ describe('PersistenceMessageComponent', () => {
         expect(previews).toEqual(['"abc…', '"ab"']);
     });
 
+    it('highlights a truncated object preview token by token and keeps the ellipsis', () => {
+        const element = render({
+            mode: 'read',
+            deleted_count: null,
+            entries: [
+                entry({
+                    key: 'k',
+                    path: 'variables.k',
+                    found: true,
+                    value_preview: '{"name": "Ann", "tags": ["a\\', // cut mid-escape inside an unclosed array
+                    truncated: true,
+                }),
+            ],
+        });
+
+        const preview = element.querySelector('.preview') as Element;
+        expect(preview.textContent).toBe('{"name": "Ann", "tags": ["a\\…');
+        expect(tokens(preview)).toEqual([
+            ['json-punctuation', '{'],
+            ['json-key', '"name"'],
+            ['json-punctuation', ':'],
+            ['json-plain', ' '],
+            ['json-string', '"Ann"'],
+            ['json-punctuation', ','],
+            ['json-plain', ' '],
+            ['json-key', '"tags"'],
+            ['json-punctuation', ':'],
+            ['json-plain', ' '],
+            ['json-punctuation', '['],
+            ['json-string', '"a\\'],
+            ['json-plain', '…'],
+        ]);
+    });
+
+    it('keeps escaped quotes and backslashes inside their key and string tokens', () => {
+        const element = render({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'k', path: 'variables.k', found: true, value_preview: '{"a\\"b": "c\\\\"}' })],
+        });
+
+        expect(tokens(element.querySelector('.preview') as Element)).toEqual([
+            ['json-punctuation', '{'],
+            ['json-key', '"a\\"b"'],
+            ['json-punctuation', ':'],
+            ['json-plain', ' '],
+            ['json-string', '"c\\\\"'],
+            ['json-punctuation', '}'],
+        ]);
+    });
+
+    it('highlights plain scalar previews', () => {
+        const element = render({
+            mode: 'write',
+            deleted_count: null,
+            entries: [
+                entry({ key: 'a', path: 'variables.a', value_preview: '"x"' }),
+                entry({ key: 'b', path: 'variables.b', value_preview: '-1.5e3' }),
+                entry({ key: 'c', path: 'variables.c', value_preview: 'true' }),
+                entry({ key: 'd', path: 'variables.d', value_preview: 'null' }),
+                entry({ key: 'e', path: 'variables.e', value_preview: 'NaN' }),
+            ],
+        });
+
+        expect(Array.from(element.querySelectorAll('.preview')).map(tokens)).toEqual([
+            [['json-string', '"x"']],
+            [['json-number', '-1.5e3']],
+            [['json-boolean', 'true']],
+            [['json-null', 'null']],
+            [['json-plain', 'NaN']],
+        ]);
+    });
+
+    it('colours table keys and state paths by kind, whichever side of the arrow they are on', () => {
+        const kinds = (element: HTMLElement): string[] =>
+            Array.from(element.querySelectorAll('.entry__target, .entry__source')).map((part) =>
+                part.classList.contains('entry__key') ? `key:${part.textContent}` : `path:${part.textContent}`
+            );
+        const read = render({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' })],
+        });
+        const write = render({
+            mode: 'write',
+            deleted_count: null,
+            entries: [entry({ key: 'b', path: 'variables.b', created: true, value_preview: '1' })],
+        });
+
+        expect(kinds(read)).toEqual(['path:variables.a', 'key:a']);
+        expect(kinds(write)).toEqual(['key:b', 'path:variables.b']);
+        expect(read.querySelectorAll('.entry__path.entry__key').length).toBe(0);
+    });
+
+    it('uses the download / upload-outline / trash icon per mode', () => {
+        const icon = (mode: PersistenceMessageData['mode']): string | null =>
+            iconHref(render({ mode, deleted_count: mode === 'delete' ? 0 : null, entries: [] }));
+
+        expect([icon('read'), icon('write'), icon('delete')]).toEqual([
+            '#icon-download',
+            '#icon-upload-outline',
+            '#icon-trash',
+        ]);
+    });
+
     it('summarises a delete with a neutral "N of M" chip and a missing-keys note', () => {
         const element = render({
             mode: 'delete',
@@ -141,7 +254,7 @@ describe('PersistenceMessageComponent', () => {
             entries: [entry({ key: 'a' }), entry({ key: 'b' }), entry({ key: 'c' })],
         });
 
-        expect(text(element, '.title')).toBe('Removed 1 key from profiles');
+        expect(text(element, '.title')).toBe('Removed 1 key from table profiles');
         expect(chips(element)).toEqual([{ label: '1 of 3', neutral: true }]);
         expect(text(element, '.muted-note')).toBe('2 keys were not in the table');
         expect(mappings(element)).toEqual(['a', 'b', 'c']);
@@ -156,7 +269,7 @@ describe('PersistenceMessageComponent', () => {
             entries: [entry({ key: 'a' })],
         });
 
-        expect(text(element, '.title')).toBe('No keys removed from profiles');
+        expect(text(element, '.title')).toBe('No keys removed from table profiles');
         expect(chips(element)).toEqual([{ label: '0 of 1', neutral: true }]);
         expect(text(element, '.muted-note')).toBe('1 key was not in the table');
         expect(element.querySelector('[class*="error"], [class*="danger"], [class*="failed"]')).toBeNull();
@@ -169,7 +282,7 @@ describe('PersistenceMessageComponent', () => {
             entries: [entry({ key: 'a' }), entry({ key: 'b' })],
         });
 
-        expect(text(element, '.title')).toBe('Removed 2 keys from profiles');
+        expect(text(element, '.title')).toBe('Removed 2 keys from table profiles');
         expect(element.querySelector('.muted-note')).toBeNull();
     });
 

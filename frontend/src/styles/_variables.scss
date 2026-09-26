@@ -666,6 +666,13 @@
     --color-error: #f54242;
     --color-findings: #f5a623;
     --color-persistence: #14b8a6; // persistence node + session message accent (matches NODE_COLORS)
+    // JSON value colours: app-json-viewer (styles/json-viewer.scss) + persistence message previews
+    --color-json-key: #e83e8c;
+    --color-json-value: #17a2b8;
+    --color-json-string: #28a745;
+    --color-json-number: #fd7e14;
+    --color-json-boolean: #9370db;
+    --color-json-null: var(--gray-585);
     --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
     --shadow-panel-elevated: 0 4px 16px rgba(0, 0, 0, 0.3);
 

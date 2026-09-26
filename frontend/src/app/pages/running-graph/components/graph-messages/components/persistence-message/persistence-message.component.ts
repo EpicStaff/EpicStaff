@@ -14,21 +14,47 @@ interface PersistenceChip {
     neutral: boolean;
 }
 
+// A table key or a `variables.…` state path; the template colours each kind.
+interface MappingPart {
+    text: string;
+    kind: 'key' | 'path';
+}
+
+type JsonTokenType = 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation' | 'plain';
+
+interface JsonToken {
+    text: string;
+    type: JsonTokenType;
+}
+
 // Rendered assignment-style, `target ← source`, matching the data flow:
 // read `variables.path ← key`, write `key ← variables.path`, delete just the key.
 interface PersistenceRow {
-    target: string;
-    source: string | null;
-    preview: string | null;
+    target: MappingPart;
+    source: MappingPart | null;
+    preview: JsonToken[] | null;
     notFound: boolean;
     tag: 'created' | 'updated' | null;
 }
 
-const MODE_ICONS: Record<PersistenceMessageMode, string> = {
-    read: 'download',
-    write: 'upload',
-    delete: 'trash',
+interface ModeIcon {
+    name: string;
+    size: string;
+}
+
+// download / upload-outline are 24-box outlines with ~3px of padding; trash fills its 13x16 box
+// edge to edge, so it is drawn smaller to match their visible height.
+const MODE_ICONS: Record<PersistenceMessageMode, ModeIcon> = {
+    read: { name: 'download', size: '1.25rem' },
+    write: { name: 'upload-outline', size: '1.25rem' },
+    delete: { name: 'trash', size: '0.9rem' },
 };
+
+// One JSON token per match: a string (then `:` if it is an object key), number, literal or
+// punctuation. Previews are cut at 200 chars, so a string may end without its closing quote
+// (or mid-escape); anything unmatched falls through as plain text.
+const JSON_TOKEN =
+    /("(?:\\[\s\S]?|[^"\\])*(?:"|$))(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}[\],:]/g;
 
 @Component({
     selector: 'app-persistence-message',
@@ -47,9 +73,9 @@ export class PersistenceMessageComponent {
         return messageData?.message_type === MessageType.PERSISTENCE ? messageData : null;
     });
 
-    protected readonly icon = computed(() => {
+    protected readonly icon = computed<ModeIcon | null>(() => {
         const data = this.data();
-        return data ? MODE_ICONS[data.mode] : '';
+        return data ? MODE_ICONS[data.mode] : null;
     });
 
     // The title text before the table name, which the template renders in the accent colour.
@@ -58,12 +84,12 @@ export class PersistenceMessageComponent {
         if (!data) return '';
         switch (data.mode) {
             case 'read':
-                return `Read ${countKeys(data.entries.length)} from`;
+                return `Read ${countKeys(data.entries.length)} from table`;
             case 'write':
-                return `Wrote ${countKeys(data.entries.length)} to`;
+                return `Wrote ${countKeys(data.entries.length)} to table`;
             case 'delete': {
                 const removed = data.deleted_count ?? 0;
-                return removed === 0 ? 'No keys removed from' : `Removed ${countKeys(removed)} from`;
+                return removed === 0 ? 'No keys removed from table' : `Removed ${countKeys(removed)} from table`;
             }
         }
     });
@@ -99,7 +125,7 @@ export class PersistenceMessageComponent {
         if (!data) return [];
         return data.entries.map((entry) => ({
             ...toAssignment(data.mode, entry),
-            preview: entry.value_preview === null ? null : `${entry.value_preview}${entry.truncated ? '…' : ''}`,
+            preview: entry.value_preview === null ? null : previewTokens(entry.value_preview, entry.truncated),
             notFound: data.mode === 'read' && entry.found === false,
             tag: data.mode === 'write' ? (entry.created ? 'created' : 'updated') : null,
         }));
@@ -118,14 +144,45 @@ function toAssignment(
     mode: PersistenceMessageMode,
     entry: PersistenceMessageEntry
 ): Pick<PersistenceRow, 'target' | 'source'> {
+    const key: MappingPart = { text: entry.key, kind: 'key' };
+    const path: MappingPart | null = entry.path ? { text: entry.path, kind: 'path' } : null;
     switch (mode) {
         case 'read':
-            return entry.path ? { target: entry.path, source: entry.key } : { target: entry.key, source: null };
+            return path ? { target: path, source: key } : { target: key, source: null };
         case 'write':
-            return { target: entry.key, source: entry.path };
+            return { target: key, source: path };
         case 'delete':
-            return { target: entry.key, source: null };
+            return { target: key, source: null };
     }
+}
+
+function previewTokens(preview: string, truncated: boolean): JsonToken[] {
+    const tokens = tokenizeJson(preview);
+    return truncated ? [...tokens, { text: '…', type: 'plain' }] : tokens;
+}
+
+function tokenizeJson(text: string): JsonToken[] {
+    const tokens: JsonToken[] = [];
+    let plainStart = 0;
+    for (const match of text.matchAll(JSON_TOKEN)) {
+        if (match.index > plainStart) tokens.push({ text: text.slice(plainStart, match.index), type: 'plain' });
+        const [token, string, colon] = match;
+        if (string !== undefined) {
+            tokens.push({ text: string, type: colon ? 'key' : 'string' });
+            if (colon) tokens.push({ text: colon, type: 'punctuation' });
+        } else {
+            tokens.push({ text: token, type: literalType(token) });
+        }
+        plainStart = match.index + token.length;
+    }
+    if (plainStart < text.length) tokens.push({ text: text.slice(plainStart), type: 'plain' });
+    return tokens;
+}
+
+function literalType(token: string): JsonTokenType {
+    if (token === 'null') return 'null';
+    if (token === 'true' || token === 'false') return 'boolean';
+    return /^-?\d/.test(token) ? 'number' : 'punctuation';
 }
 
 function countKeys(count: number): string {

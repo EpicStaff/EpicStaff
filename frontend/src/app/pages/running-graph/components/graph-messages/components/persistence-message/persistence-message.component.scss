@@ -161,12 +161,13 @@ code,
     font-size: 0.85em;
 }
 
-.entry__target {
-    color: var(--gray-100);
+// Table keys take the table-name accent; state paths the accent used for variables elsewhere.
+.entry__key {
+    color: var(--color-persistence);
 }
 
-.entry__source {
-    color: var(--gray-300);
+.entry__path {
+    color: var(--accent-color);
 }
 
 .arrow {
@@ -194,6 +195,28 @@ code,
     color: var(--gray-400);
     white-space: pre-wrap;
     overflow-wrap: break-word;
+}
+
+// Same palette as app-json-viewer in the other session messages; punctuation and plain text
+// (whitespace, the truncation "…") keep the muted .preview colour.
+.json-key {
+    color: var(--color-json-key);
+}
+
+.json-string {
+    color: var(--color-json-string);
+}
+
+.json-number {
+    color: var(--color-json-number);
+}
+
+.json-boolean {
+    color: var(--color-json-boolean);
+}
+
+.json-null {
+    color: var(--color-json-null);
 }
 
 .not-found {
