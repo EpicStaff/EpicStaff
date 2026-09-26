@@ -1329,6 +1329,31 @@ describe('PersistenceNodePanelComponent', () => {
             }
         });
 
+        for (const mode of ['read', 'write'] as const) {
+            it(`lists an object before its fields in ${mode}, as the Input List does, also when a filter matches only the fields`, () => {
+                const { panel, fixture } = createPanel(nodeWith(mode, [{ key: 'profile', value: 'variables.' }]), {
+                    renderTemplate: true,
+                    initialState: {
+                        variables: { my_object: { user_id: 'asdasdasdadadsa', user_email: 'test@mail.com' } },
+                    },
+                });
+                const all = ['variables.my_object', 'variables.my_object.user_id', 'variables.my_object.user_email'];
+
+                focusValue(fixture);
+                expect(listed()).toEqual(all);
+                typeValue(fixture, 'variables.user');
+                expect(listed()).toEqual(all);
+                typeValue(fixture, 'variables.my_object.');
+                expect(listed()).toEqual(all);
+
+                // The object itself is a valid read target and write source.
+                document.querySelector<HTMLElement>('.vpf-item')!.click();
+                fixture.detectChanges();
+                expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.my_object');
+                expect(entriesOf(panel).at(0).get('value')!.valid).toBe(true);
+            });
+        }
+
         it('offers every variable in read, where rows may share one', () => {
             const { fixture } = createPanel(
                 nodeWith('read', [
@@ -1383,6 +1408,79 @@ describe('PersistenceNodePanelComponent', () => {
             expect(Array.from(document.querySelectorAll('.vdo-item'), (item) => item.textContent!.trim())).toEqual([
                 'profile_1',
             ]);
+        });
+    });
+
+    describe('key highlight', () => {
+        const keyInput = (fixture: ComponentFixture<PersistenceNodePanelComponent>): HTMLInputElement =>
+            fixture.nativeElement.querySelector('input[aria-label="Key"]');
+        const backdrop = (fixture: ComponentFixture<PersistenceNodePanelComponent>): HTMLElement =>
+            fixture.nativeElement.querySelector('.key-backdrop');
+        const highlighted = (fixture: ComponentFixture<PersistenceNodePanelComponent>): string[] =>
+            Array.from(backdrop(fixture).querySelectorAll('.vht-variable'), (span) => span.textContent!);
+        const typeKey = (fixture: ComponentFixture<PersistenceNodePanelComponent>, text: string): void => {
+            keyInput(fixture).value = text;
+            keyInput(fixture).dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+        };
+
+        it('marks the placeholders that are state paths the way the task node marks variables, the rest as plain text', () => {
+            const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.user' }]), {
+                renderTemplate: true,
+            });
+
+            typeKey(fixture, 'profile_{variables.user.id}_{user.id}_{variables._secret}<b>x</b>');
+
+            expect(highlighted(fixture)).toEqual(['{variables.user.id}']);
+            expect(backdrop(fixture).textContent).toBe(
+                'profile_{variables.user.id}_{user.id}_{variables._secret}<b>x</b>'
+            );
+            expect(backdrop(fixture).querySelector('b')).toBeNull();
+            expect(backdrop(fixture).getAttribute('aria-hidden')).toBe('true');
+        });
+
+        it('draws a loaded key, and a key with no placeholders as plain text', () => {
+            const { fixture } = createPanel(
+                nodeWith('delete', [{ key: 'a_{variables.a}_{variables.b[0]}' }, { key: 'plain' }]),
+                { renderTemplate: true }
+            );
+            const backdrops: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.key-backdrop'));
+
+            expect(
+                backdrops.map((row) => Array.from(row.querySelectorAll('.vht-variable'), (span) => span.textContent))
+            ).toEqual([['{variables.a}', '{variables.b[0]}'], []]);
+            expect(backdrops[1].textContent).toBe('plain');
+        });
+
+        it('keeps the key form control, its hints and the stored key suggestions', () => {
+            vi.useFakeTimers();
+            const { panel, fixture } = createPanel(nodeWith('write', [{ key: '', value: 'variables.user' }]), {
+                renderTemplate: true,
+                canRead: true,
+                getEntries: () =>
+                    of({
+                        count: 1,
+                        next: null,
+                        previous: null,
+                        results: [{ key: 'greeting' } as PersistenceTableEntry],
+                    }),
+            });
+
+            typeKey(fixture, 'profile_{user.id}');
+            expect(hintsOf(fixture)).toContain('Use {variables.user.id}');
+            expect(entriesOf(panel).at(0).get('key')!.hasError('keyTemplate')).toBe(true);
+            expect(highlighted(fixture)).toEqual([]);
+
+            typeKey(fixture, 'gre');
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+            expect(keyInput(fixture).getAttribute('aria-expanded')).toBe('true');
+            document.querySelector<HTMLElement>('.vdo-item')!.click();
+            fixture.detectChanges();
+
+            expect(entriesOf(panel).at(0).get('key')!.value).toBe('greeting');
+            expect(keyInput(fixture).value).toBe('greeting');
+            expect(backdrop(fixture).textContent).toBe('greeting');
         });
     });
 });

@@ -54,21 +54,31 @@
                         >
                             <ng-template #keyField>
                                 <div class="entry-field">
-                                    <input
-                                        type="text"
-                                        class="entry-input"
-                                        formControlName="key"
-                                        placeholder="Key, e.g. profile_{variables.user.id}"
-                                        aria-label="Key"
-                                        autocomplete="off"
-                                        role="combobox"
-                                        aria-autocomplete="list"
-                                        [class.duplicate]="isDuplicate(i, 'key')"
-                                        [attr.aria-expanded]="isSuggestionListOpen(i)"
-                                        (input)="onKeyInput(i, $event)"
-                                        (keydown)="onSuggestionKeydown($event)"
-                                        (blur)="onSuggestionBlur()"
-                                    />
+                                    <div class="key-highlight">
+                                        <div
+                                            #keyBackdrop
+                                            class="entry-input key-backdrop"
+                                            aria-hidden="true"
+                                            [innerHTML]="keyHighlights()[i]"
+                                        ></div>
+                                        <input
+                                            #keyInput
+                                            type="text"
+                                            class="entry-input key-input"
+                                            formControlName="key"
+                                            placeholder="Key, e.g. profile_{variables.user.id}"
+                                            aria-label="Key"
+                                            autocomplete="off"
+                                            role="combobox"
+                                            aria-autocomplete="list"
+                                            [class.duplicate]="isDuplicate(i, 'key')"
+                                            [attr.aria-expanded]="isSuggestionListOpen(i)"
+                                            (input)="onKeyInput(i, $event)"
+                                            (keydown)="onSuggestionKeydown($event)"
+                                            (blur)="onSuggestionBlur()"
+                                            (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
+                                        />
+                                    </div>
                                     @if (placeholderHints()[i]; as hint) {
                                         <div class="entry-hint">{{ hint }}</div>
                                     }

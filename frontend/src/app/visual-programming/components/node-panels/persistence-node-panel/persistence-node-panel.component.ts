@@ -65,6 +65,7 @@ import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { buildVariablePickerItems, VariablePathPicker } from '../../input-map/variable-path-picker';
+import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
 const SUGGESTION_LIMIT = 20;
@@ -111,6 +112,8 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected readonly loadingTables = signal(false);
     protected readonly lookups = signal<PersistenceEntryLookupResponse>({});
     protected readonly placeholderHints = signal<Record<number, string>>({});
+    // Each key as backdrop HTML, its state path placeholders marked the way the task node marks variables.
+    protected readonly keyHighlights = signal<string[]>([]);
     private readonly suggestions = signal<string[]>([]);
     private readonly activeSuggestionIndex = signal(0);
     // The key input the suggestions belong to; null once they are dismissed, so a late search is dropped.
@@ -270,6 +273,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
 
         form.valueChanges.pipe(startWith(null), takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.refreshPlaceholderHints(form);
+            this.refreshKeyHighlights(form);
             this.rememberValues(form, node.id);
         });
 
@@ -514,6 +518,11 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             if (hint !== null) hints[index] = hint;
         });
         this.placeholderHints.set(hints);
+    }
+
+    private refreshKeyHighlights(form: FormGroup): void {
+        const keys: string[] = (form.get('entries') as FormArray).controls.map((entry) => entry.value.key ?? '');
+        this.keyHighlights.set(keys.map((key) => highlightVariablesHtml(key, isStatePath)));
     }
 
     private buildLookupRequest(form: FormGroup): LookupRequest {

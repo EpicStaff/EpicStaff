@@ -114,6 +114,17 @@ describe('VariablePathPicker', () => {
         expect(host.picker.isOpenFor(0)).toBe(false);
     });
 
+    it('keeps each match under the parents the row is offered, never under a sibling', () => {
+        type(0, 'variables.tags[');
+        expect(listed()).toEqual(['variables.user', 'variables.user.tags', 'variables.user.tags[0]']);
+        host.picker.close();
+
+        // As when another row uses `variables.user.tags`.
+        host.items = buildVariablePickerItems(STATE).filter((item) => item.fullPath !== 'variables.user.tags');
+        type(0, 'variables.[0]');
+        expect(listed()).toEqual(['variables.user', 'variables.user.tags[0]']);
+    });
+
     it('puts the clicked path into the row it is open for, then closes', () => {
         type(1, 'variables.pl');
         document.querySelector<HTMLElement>('.vpf-item')!.click();

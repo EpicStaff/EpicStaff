@@ -189,10 +189,28 @@ export class VarPickerFlatComponent implements AfterViewInit {
         this.applyFilter(query);
     }
 
+    /**
+     * Keeps the items whose path matches, each under its parents so a match never shows up
+     * indented without them. The items come parents first, as buildVariablePickerItems lists them,
+     * though a host may have left some out: parents are told by path, not by depth.
+     */
     private applyFilter(query: string): void {
-        const f = query.toLowerCase().trim();
-        this.filteredItems = f
-            ? this.allItems.filter((item) => item.fullPath.toLowerCase().includes(f))
-            : this.allItems;
+        const filter = query.toLowerCase().trim();
+        if (!filter) {
+            this.filteredItems = this.allItems;
+            return;
+        }
+        const isParentOf = (parent: PickerItem, child: PickerItem): boolean =>
+            child.fullPath.startsWith(`${parent.fullPath}.`) || child.fullPath.startsWith(`${parent.fullPath}[`);
+        const shown = new Set<PickerItem>();
+        const parents: PickerItem[] = [];
+        for (const item of this.allItems) {
+            while (parents.length > 0 && !isParentOf(parents[parents.length - 1], item)) parents.pop();
+            if (item.fullPath.toLowerCase().includes(filter)) {
+                [...parents, item].forEach((shownItem) => shown.add(shownItem));
+            }
+            parents.push(item);
+        }
+        this.filteredItems = this.allItems.filter((item) => shown.has(item));
     }
 }

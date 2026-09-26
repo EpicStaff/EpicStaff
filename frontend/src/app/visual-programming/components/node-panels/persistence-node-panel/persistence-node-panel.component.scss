@@ -1,5 +1,6 @@
 @use '../../../styles/node-panel-controls.scss' as controls;
 @use '../../../styles/node-panel-mixins.scss' as mixins;
+@use '../shared/variable-highlight-textarea/variable-highlight' as highlight;
 
 .panel-container {
     display: flex;
@@ -87,6 +88,44 @@
     &::placeholder {
         color: var(--color-text-tertiary);
     }
+}
+
+// The key input is the task node's highlight field on one line: the key's text is drawn by a
+// backdrop with the same box behind the input, whose own text is transparent. Both take their box
+// from .entry-input and their text metrics from this mixin, or the highlight drifts off the text.
+@mixin key-text-metrics {
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: normal;
+    letter-spacing: normal;
+}
+
+.key-highlight {
+    position: relative;
+    isolation: isolate;
+}
+
+.key-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    @include key-text-metrics;
+    border-color: transparent;
+    white-space: pre;
+    overflow: hidden;
+    pointer-events: none;
+
+    ::ng-deep .vht-variable {
+        @include highlight.variable-token;
+    }
+}
+
+.key-input {
+    position: relative;
+    z-index: 1;
+    display: block;
+    @include key-text-metrics;
+    @include highlight.transparent-text;
 }
 
 // Rows align to the top for the hints under the fields, so the "=" takes an input's height to sit centred.
