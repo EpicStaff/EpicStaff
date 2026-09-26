@@ -296,16 +296,29 @@ def test_write_keys_are_compared_exactly(auth_client, graph, table):
     "second_value",
     ["variables.a", " variables.a ", "variables.a|0", "variables.a|1"],
 )
-def test_write_entries_must_use_different_sources(auth_client, graph, table, second_value):
+def test_one_source_may_feed_several_write_keys(auth_client, graph, table, second_value):
     entries = [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": second_value}]
     payload = {"save_version": graph.save_version,
                "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert PersistenceNode.objects.get(graph=graph).entries == [
+        {"key": "k1", "value": "variables.a"},
+        {"key": "k2", "value": second_value.strip()},
+    ]
+
+
+@pytest.mark.django_db
+def test_same_key_and_source_twice_is_rejected(auth_client, graph, table):
+    entries = [{"key": "k2", "value": "variables.a"}, {"key": "k2", "value": "variables.a"}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert (
-        "Entry 1: 'variables.a' is already written by entry 0; use a different variable."
-        in str(response.data)
+    assert "Entry 1: key 'k2' is already written by entry 0; use a different key." in str(
+        response.data
     )
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
 
 
 @pytest.mark.django_db

@@ -38,9 +38,14 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
     table = OrgScopedPrimaryKeyRelatedField(queryset=PersistenceTable.objects.all())
     key = serializers.CharField(max_length=MAX_KEY_LENGTH, trim_whitespace=False)
     value = serializers.JSONField(allow_null=True)
+    # Both read annotations from PersistenceTableEntryViewSet's queryset, so listing
+    # entries never loads the session or graph rows. Only the internal run route sets
+    # `updated_by_session`, and it accepts only tables in the session flow's org, so the
+    # name never comes from another org.
     updated_by_graph = serializers.IntegerField(
-        source="updated_by_session.graph_id", read_only=True, allow_null=True
+        source="updated_by_graph_id", read_only=True, allow_null=True
     )
+    updated_by_graph_name = serializers.CharField(read_only=True, allow_null=True)
 
     class Meta:
         model = PersistenceTableEntry
@@ -53,8 +58,12 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
             "updated_at",
             "updated_by_session",
             "updated_by_graph",
+            "updated_by_graph_name",
         ]
         read_only_fields = ["created_at", "updated_at", "updated_by_session"]
+        # The (table, key) check in `validate` replaces DRF's generated one, which reports a
+        # duplicate as a non-field error.
+        validators = []
 
     def validate_table(self, table: PersistenceTable) -> PersistenceTable:
         if self.instance is not None and table.pk != self.instance.table_id:
@@ -68,6 +77,23 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
     def validate_value(self, value):
         PersistenceTableService().validate_value(value)
         return value
+
+    # NOTE: two concurrent renames onto the same key can both pass this check; the second
+    # then hits the DB constraint and surfaces as an IntegrityError (500), the same race
+    # DRF's generated UniqueTogetherValidator has.
+    def validate(self, attrs: dict) -> dict:
+        # An entry can't change table, so without a new key there is nothing to collide with.
+        if "key" not in attrs:
+            return attrs
+        table_id = attrs["table"].pk if "table" in attrs else self.instance.table_id
+        duplicates = PersistenceTableEntry.objects.filter(table_id=table_id, key=attrs["key"])
+        if self.instance is not None:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise serializers.ValidationError(
+                {"key": "An entry with this key already exists in this table."}, code="unique"
+            )
+        return attrs
 
 
 class PersistenceKeysSerializer(serializers.Serializer):

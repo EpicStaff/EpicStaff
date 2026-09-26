@@ -6,7 +6,7 @@ from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.node_surface_service import NodeSurfaceService
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import NOT_PROVIDED, Count, Exists, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.utils import timezone
@@ -2515,7 +2515,10 @@ class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     rbac_resource_type = ResourceType.PERSISTENT_DATA
     org_filter_path = "table__org_id"
     pagination_class = PersistenceTableEntryPagination
-    queryset = PersistenceTableEntry.objects.select_related("updated_by_session").order_by("key")
+    queryset = PersistenceTableEntry.objects.annotate(
+        updated_by_graph_id=F("updated_by_session__graph_id"),
+        updated_by_graph_name=F("updated_by_session__graph__name"),
+    ).order_by("key")
     serializer_class = PersistenceTableEntrySerializer
     filter_backends = [DjangoFilterBackend, drf_filters.SearchFilter]
     search_fields = ["key"]
@@ -2528,8 +2531,10 @@ class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     filterset_class = PersistenceTableEntryFilter
 
     def perform_update(self, serializer) -> None:
-        # A hand edit is no longer "written by run N".
-        serializer.save(updated_by_session=None)
+        # A hand edit is no longer "written by run N". The instance still carries the
+        # queryset's annotations from before the save, so clear them for the response.
+        entry = serializer.save(updated_by_session=None)
+        entry.updated_by_graph_id = entry.updated_by_graph_name = None
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):

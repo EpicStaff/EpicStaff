@@ -49,13 +49,12 @@ class PersistenceEntriesValidator:
         if not isinstance(entries, list):
             raise serializers.ValidationError({"entries": "Must be a list."})
         errors: list[str] = []
-        # Entry index by exact key and by stripped source path, for write entries only.
+        # Entry index by exact key, for write entries only.
         written_keys: dict[str, int] = {}
-        written_sources: dict[str, int] = {}
         for index, entry in enumerate(entries):
             error = self._entry_error(mode, entry)
             if not error and mode == "write":
-                error = self._duplicate_write_error(entry, index, written_keys, written_sources)
+                error = self._duplicate_key_error(entry["key"], index, written_keys)
             if error:
                 errors.append(f"Entry {index}: {error}")
         if errors:
@@ -88,22 +87,17 @@ class PersistenceEntriesValidator:
             )
         return self._state_path_error(path.split("|", 1)[0])
 
-    def _duplicate_write_error(
-        self,
-        entry: dict,
-        index: int,
-        written_keys: dict[str, int],
-        written_sources: dict[str, int],
+    def _duplicate_key_error(
+        self, key: str, index: int, written_keys: dict[str, int]
     ) -> str | None:
-        """Two write entries must not share a key or a source; crew rejects both at run time."""
-        key = entry["key"]
+        """Two write entries must not share a key; crew rejects it at run time.
+
+        One source may feed several keys. Crew also rejects different templates that render
+        to the same key, which only it can see.
+        """
         first = written_keys.setdefault(key, index)
         if first != index:
             return f"key '{key}' is already written by entry {first}; use a different key."
-        source = entry["value"].split("|", 1)[0].strip()
-        first = written_sources.setdefault(source, index)
-        if first != index:
-            return f"'{source}' is already written by entry {first}; use a different variable."
         return None
 
     def _state_path_error(self, state_path: str) -> str | None:

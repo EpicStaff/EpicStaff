@@ -1,4 +1,6 @@
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -142,6 +144,8 @@ def test_delete_table_referenced_only_by_soft_deleted_node(admin_client, org_a, 
 def test_entry_crud(admin_client, table_a):
     created = admin_client.post(ENTRIES_URL, {"table": table_a.id, "key": "k1", "value": {"a": 1}}, format="json")
     assert created.status_code == 201, created.content
+    assert created.data["updated_by_graph"] is None
+    assert created.data["updated_by_graph_name"] is None
 
     listed = admin_client.get(ENTRIES_URL, {"table": table_a.id})
     assert [row["key"] for row in _results(listed)] == ["k1"]
@@ -158,6 +162,8 @@ def test_duplicate_entry_key_is_400(admin_client, table_a):
     PersistenceTableEntry.objects.create(table=table_a, key="k1", value=1)
     response = admin_client.post(ENTRIES_URL, {"table": table_a.id, "key": "k1", "value": 2}, format="json")
     assert response.status_code == 400
+    # The global exception handler flattens field errors into `message`.
+    assert response.data["message"] == "key: An entry with this key already exists in this table."
     assert PersistenceTableEntry.objects.get(table=table_a, key="k1").value == 1
 
 
@@ -170,11 +176,100 @@ def test_hand_edit_clears_run_attribution(admin_client, org_a, table_a):
     listed = _results(admin_client.get(ENTRIES_URL, {"table": table_a.id}))
     assert listed[0]["updated_by_session"] == session.id
     assert listed[0]["updated_by_graph"] == graph.id
+    assert listed[0]["updated_by_graph_name"] == "Writer flow"
+    detail = admin_client.get(f"{ENTRIES_URL}{entry.id}/")
+    assert (detail.data["updated_by_graph"], detail.data["updated_by_graph_name"]) == (
+        graph.id,
+        "Writer flow",
+    )
 
     updated = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"value": 2}, format="json")
     assert updated.status_code == 200
     assert updated.data["updated_by_session"] is None
     assert updated.data["updated_by_graph"] is None
+    assert updated.data["updated_by_graph_name"] is None
+
+
+@pytest.mark.django_db
+def test_entry_list_query_count_does_not_grow_with_writer_sessions(admin_client, org_a, table_a):
+    def list_query_count() -> int:
+        with CaptureQueriesContext(connection) as captured:
+            response = admin_client.get(ENTRIES_URL, {"table": table_a.id})
+        assert response.status_code == 200
+        return len(captured)
+
+    def add_entry_written_by_new_flow(index: int) -> None:
+        graph = Graph.objects.create(name=f"Flow {index}", org=org_a)
+        session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+        PersistenceTableEntry.objects.create(
+            table=table_a, key=f"k{index}", value=index, updated_by_session=session
+        )
+
+    add_entry_written_by_new_flow(0)
+    list_query_count()
+    few = list_query_count()
+    for index in range(1, 4):
+        add_entry_written_by_new_flow(index)
+    many = list_query_count()
+
+    assert many == few
+    names = [row["updated_by_graph_name"] for row in _results(admin_client.get(ENTRIES_URL, {"table": table_a.id}))]
+    assert names == ["Flow 0", "Flow 1", "Flow 2", "Flow 3"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["patch", "put"])
+def test_entry_rename_keeps_value_and_clears_run_attribution(admin_client, org_a, table_a, method):
+    graph = Graph.objects.create(name="Writer flow", org=org_a)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    entry = PersistenceTableEntry.objects.create(
+        table=table_a, key="old", value={"a": 1}, updated_by_session=session
+    )
+    body = {"key": "new"} if method == "patch" else {"table": table_a.id, "key": "new", "value": {"a": 1}}
+
+    response = getattr(admin_client, method)(f"{ENTRIES_URL}{entry.id}/", body, format="json")
+
+    assert response.status_code == 200, response.content
+    assert response.data["key"] == "new"
+    assert response.data["updated_by_session"] is None
+    assert response.data["updated_by_graph_name"] is None
+    entry.refresh_from_db()
+    assert (entry.key, entry.value, entry.updated_by_session_id) == ("new", {"a": 1}, None)
+
+
+@pytest.mark.django_db
+def test_entry_rename_onto_existing_key_is_400(admin_client, table_a):
+    PersistenceTableEntry.objects.create(table=table_a, key="taken", value=1)
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="mine", value=2)
+
+    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "taken"}, format="json")
+
+    assert response.status_code == 400
+    assert response.data["message"] == "key: An entry with this key already exists in this table."
+    entry.refresh_from_db()
+    assert entry.key == "mine"
+
+
+@pytest.mark.django_db
+def test_entry_rename_to_key_used_in_another_table_is_allowed(admin_client, org_a, table_a):
+    other_table = PersistenceTable.objects.create(org=org_a, name="Other")
+    PersistenceTableEntry.objects.create(table=other_table, key="shared", value=1)
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="mine", value=2)
+
+    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "shared"}, format="json")
+
+    assert response.status_code == 200, response.content
+
+
+@pytest.mark.django_db
+def test_entry_rename_cross_org_is_404(admin_client, table_b):
+    entry = PersistenceTableEntry.objects.create(table=table_b, key="k", value=1)
+
+    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "renamed"}, format="json")
+
+    assert response.status_code == 404
+    entry.refresh_from_db()
+    assert entry.key == "k"
 
 
 @pytest.mark.django_db
