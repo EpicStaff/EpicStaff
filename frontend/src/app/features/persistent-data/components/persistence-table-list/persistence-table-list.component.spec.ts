@@ -34,3 +34,50 @@ describe('PersistenceTableListComponent permission gating', () => {
         expect(element.querySelector('[aria-label="Delete table"]')).not.toBeNull();
     });
 });
+
+function renderTables(count: number) {
+    const fixture = TestBed.createComponent(PersistenceTableListComponent);
+    const tables = Array.from({ length: count }, (_, index) => ({
+        ...TABLE,
+        id: index + 1,
+        name: `table_${index + 1}`,
+    }));
+    fixture.componentRef.setInput('tables', tables);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const names = () => [...element.querySelectorAll('.table-list__name')].map((name) => name.textContent?.trim());
+    return { fixture, element, names };
+}
+
+describe('PersistenceTableListComponent name filter', () => {
+    it('hides the filter for 8 tables or fewer', () => {
+        const { element, names } = renderTables(8);
+        expect(element.querySelector('app-search')).toBeNull();
+        expect(names()).toHaveLength(8);
+    });
+
+    it('shows "Filter tables..." past 8 tables and filters names client-side', () => {
+        const { fixture, element, names } = renderTables(9);
+        const input = element.querySelector<HTMLInputElement>('app-search input');
+        expect(input?.placeholder).toBe('Filter tables...');
+
+        fixture.componentInstance.filterText.set('TABLE_9');
+        fixture.detectChanges();
+        expect(names()).toEqual(['table_9']);
+
+        fixture.componentInstance.filterText.set('nothing');
+        fixture.detectChanges();
+        expect(element.querySelector('.table-list__empty')?.textContent?.trim()).toBe('No tables match your filter');
+    });
+
+    it('ignores a leftover filter once the list drops back to 8 tables', () => {
+        const { fixture, names } = renderTables(9);
+        fixture.componentInstance.filterText.set('table_9');
+        fixture.componentRef.setInput(
+            'tables',
+            Array.from({ length: 8 }, (_, index) => ({ ...TABLE, id: index + 1, name: `table_${index + 1}` }))
+        );
+        fixture.detectChanges();
+        expect(names()).toHaveLength(8);
+    });
+});

@@ -31,12 +31,6 @@
         white-space: nowrap;
     }
 
-    &__header-actions {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
     &__body {
         flex: 1;
         min-height: 0;
@@ -45,7 +39,8 @@
 
     &__key,
     &__preview,
-    &__updated {
+    &__updated,
+    &__session-link {
         font-size: var(--text-body-size);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -53,12 +48,18 @@
     }
 
     &__preview,
-    &__updated {
+    &__updated,
+    &__no-session {
         color: var(--color-text-secondary);
     }
 
+    // Fills the Value cell, so a double-click anywhere in it opens the editor.
+    &__preview {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
     &__session-link {
-        margin-left: 8px;
         color: var(--accent-color);
         text-decoration: none;
 

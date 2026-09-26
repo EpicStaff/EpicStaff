@@ -29,10 +29,6 @@ import { PersistenceTablesStorageService } from '../../services/persistence-tabl
 })
 export class PersistentDataPageComponent {
     readonly selectedTableId = signal<number | null>(null);
-    readonly visibleTables = computed(() => {
-        const term = this.filesSearchService.searchTerm().trim().toLowerCase();
-        return this.persistenceTablesStorage.tables().filter((table) => table.name.toLowerCase().includes(term));
-    });
     readonly selectedTable = computed(
         () => this.persistenceTablesStorage.tables().find((table) => table.id === this.selectedTableId()) ?? null
     );
@@ -58,10 +54,11 @@ export class PersistentDataPageComponent {
     });
 
     readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
+    // The Files header search filters entry keys here; it lives above the tab, so a table switch keeps it.
+    protected readonly filesSearchService = inject(FilesSearchService);
 
     private readonly persistenceTablesApi = inject(PersistenceTablesApiService);
     private readonly permissions = inject(PermissionsService);
-    private readonly filesSearchService = inject(FilesSearchService);
     private readonly dialog = inject(Dialog);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);

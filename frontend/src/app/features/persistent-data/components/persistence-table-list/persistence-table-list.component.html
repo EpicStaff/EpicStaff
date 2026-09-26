@@ -1,5 +1,14 @@
+@if (showFilter()) {
+    <div class="table-list__filter">
+        <app-search
+            mod="small"
+            placeholder="Filter tables..."
+            [(searchTerm)]="filterText"
+        />
+    </div>
+}
 <ul class="table-list">
-    @for (table of tables(); track table.id) {
+    @for (table of visibleTables(); track table.id) {
         <li
             class="table-list__row"
             [class.active]="table.id === selectedId()"
@@ -34,6 +43,6 @@
             }
         </li>
     } @empty {
-        <li class="table-list__empty">No tables yet</li>
+        <li class="table-list__empty">{{ emptyMessage() }}</li>
     }
 </ul>

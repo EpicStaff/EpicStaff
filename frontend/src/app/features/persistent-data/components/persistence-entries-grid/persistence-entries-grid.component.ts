@@ -12,11 +12,23 @@ import {
     ButtonComponent,
     ConfirmationDialogService,
     PaginationControlsComponent,
-    SearchComponent,
     TableRow,
 } from '@shared/components';
+import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { debounceTime, distinctUntilChanged, filter, map, switchMap } from 'rxjs';
+import {
+    concat,
+    debounce,
+    distinctUntilChanged,
+    filter,
+    map,
+    Observable,
+    of,
+    skip,
+    switchMap,
+    take,
+    timer,
+} from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { escapeHtml } from '../../helpers/escape-html';
@@ -31,6 +43,26 @@ import {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
+// "<Flow name>, Session #<id>"; null for hand-edited entries, which no run touched.
+function sessionLabel(entry: PersistenceTableEntry): string | null {
+    if (entry.updated_by_session === null || entry.updated_by_graph === null) return null;
+    const session = `Session #${entry.updated_by_session}`;
+    return entry.updated_by_graph_name ? `${entry.updated_by_graph_name}, ${session}` : session;
+}
+
+// Trimmed term to query with. The first value (a term already typed when the tab mounts) and a cleared term go
+// out at once; typing waits until it settles, so each keystroke is not a request.
+function settledSearch(rawTerm$: Observable<string>): Observable<string> {
+    const term$ = rawTerm$.pipe(map((text) => text.trim()));
+    return concat(
+        term$.pipe(take(1)),
+        term$.pipe(
+            skip(1),
+            debounce((text) => (text ? timer(SEARCH_DEBOUNCE_MS) : of(0)))
+        )
+    ).pipe(distinctUntilChanged());
+}
+
 @Component({
     selector: 'app-persistence-entries-grid',
     imports: [
@@ -38,7 +70,6 @@ const SEARCH_DEBOUNCE_MS = 300;
         AppTableCellDirective,
         ButtonComponent,
         PaginationControlsComponent,
-        SearchComponent,
         RouterLink,
         DatePipe,
     ],
@@ -47,21 +78,15 @@ const SEARCH_DEBOUNCE_MS = 300;
 })
 export class PersistenceEntriesGridComponent {
     readonly table = input.required<PersistenceTable>();
+    // Raw text of the Files page header search; filters keys server-side once it settles.
+    readonly searchTerm = input('');
     readonly canCreate = input(false);
     readonly canUpdate = input(false);
     readonly canDelete = input(false);
 
     readonly changed = output<void>();
 
-    readonly searchText = signal('');
-    readonly search = toSignal(
-        toObservable(this.searchText).pipe(
-            debounceTime(SEARCH_DEBOUNCE_MS),
-            map((text) => text.trim()),
-            distinctUntilChanged()
-        ),
-        { initialValue: '' }
-    );
+    readonly search = toSignal(settledSearch(toObservable(this.searchTerm)), { initialValue: '' });
     // The id, not the table object: a refreshed tables list (new entry_count) must not re-fetch or reset paging.
     readonly tableId = computed(() => this.table().id);
     // Back to page 1 whenever the table or the search changes; the pagination controls set it otherwise.
@@ -75,7 +100,11 @@ export class PersistenceEntriesGridComponent {
     readonly totalCount = linkedSignal({ source: this.tableId, computation: () => 0 });
     readonly loading = signal(false);
     readonly rows = computed<TableRow[]>(() =>
-        this.entries().map((entry) => ({ ...entry, preview: previewValue(entry.value) }))
+        this.entries().map((entry) => ({
+            ...entry,
+            preview: previewValue(entry.value),
+            session_label: sessionLabel(entry),
+        }))
     );
     readonly columns = computed<AppTableColumnDef[]>(() => {
         const actions: AppTableRowAction[] = [];
@@ -93,7 +122,8 @@ export class PersistenceEntriesGridComponent {
         const columns: AppTableColumnDef[] = [
             { key: 'key', label: 'Key', width: '1fr' },
             { key: 'preview', label: 'Value', width: '2fr' },
-            { key: 'updated_at', label: 'Updated', width: '200px' },
+            { key: 'session_label', label: 'Session', width: '1fr' },
+            { key: 'updated_at', label: 'Updated', width: '180px' },
         ];
         if (actions.length) {
             columns.push({ key: 'actions', label: 'Actions', width: '96px', align: 'end', actions });
@@ -133,6 +163,7 @@ export class PersistenceEntriesGridComponent {
     });
 
     readonly pageSize = PAGE_SIZE;
+    protected readonly dateFormat = DATE_TIME_FORMAT_24H;
 
     private readonly reloadTick = signal(0);
     private readonly persistenceTablesApi = inject(PersistenceTablesApiService);
@@ -143,6 +174,14 @@ export class PersistenceEntriesGridComponent {
 
     onAdd(): void {
         this.openEntryDialog({ tableId: this.tableId() });
+    }
+
+    // Double-click is the mouse shortcut; keyboard users take the row's Edit action button.
+    onValueDoubleClick(row: TableRow): void {
+        if (!this.canUpdate()) return;
+        // The browser selects the double-clicked word; drop it so the dialog does not open over a highlight.
+        window.getSelection()?.removeAllRanges();
+        this.onEdit(row);
     }
 
     private onEdit(row: TableRow): void {

@@ -54,7 +54,7 @@
                     <input
                         type="text"
                         class="search-input"
-                        placeholder="Search collections, folders, files..."
+                        [placeholder]="searchPlaceholder()"
                         [ngModel]="searchTerm()"
                         (ngModelChange)="filesSearchService.setSearchTerm($event)"
                     />

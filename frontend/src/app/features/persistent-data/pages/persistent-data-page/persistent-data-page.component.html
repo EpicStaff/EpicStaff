@@ -1,7 +1,7 @@
 <div class="persistent-data-page">
     <aside class="persistent-data-page__sidebar">
         <app-persistence-table-list
-            [tables]="visibleTables()"
+            [tables]="persistenceTablesStorage.tables()"
             [selectedId]="selectedTableId()"
             [canRename]="canUpdate()"
             [canDelete]="canDelete()"
@@ -15,6 +15,7 @@
         @if (selectedTable(); as table) {
             <app-persistence-entries-grid
                 [table]="table"
+                [searchTerm]="filesSearchService.searchTerm()"
                 [canCreate]="canCreate()"
                 [canUpdate]="canUpdate()"
                 [canDelete]="canDelete()"

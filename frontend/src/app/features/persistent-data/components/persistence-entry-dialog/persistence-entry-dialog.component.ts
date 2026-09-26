@@ -22,6 +22,17 @@ export interface PersistenceEntryDialogData {
     entry?: PersistenceTableEntry;
 }
 
+// The global exception handler flattens a DRF field error into `message: "key: <reason>"`, so the prefix is
+// the only field signal in the body. Several flattened errors ("key: …; value: …") stay in the banner whole.
+const KEY_ERROR_PREFIX = 'key: ';
+
+function keyErrorReason(error: HttpErrorResponse): string | null {
+    const message: unknown = error.error?.message;
+    if (error.status !== 400 || typeof message !== 'string') return null;
+    if (!message.startsWith(KEY_ERROR_PREFIX) || message.includes('; ')) return null;
+    return message.slice(KEY_ERROR_PREFIX.length);
+}
+
 @Component({
     selector: 'app-persistence-entry-dialog',
     imports: [
@@ -47,11 +58,11 @@ export class PersistenceEntryDialogComponent {
     readonly data = inject<PersistenceEntryDialogData>(DIALOG_DATA);
     readonly isEdit = !!this.data.entry;
     readonly form = new FormGroup({
-        // Keys are the entry's identity, so they are fixed once the entry exists.
-        key: new FormControl(
-            { value: this.data.entry?.key ?? '', disabled: this.isEdit },
-            { nonNullable: true, validators: [Validators.required, Validators.maxLength(512)] }
-        ),
+        // Editable on an existing entry too: a changed key renames it (the backend rejects a key already taken).
+        key: new FormControl(this.data.entry?.key ?? '', {
+            nonNullable: true,
+            validators: [Validators.required, Validators.maxLength(512)],
+        }),
         // JSON text; parsed on submit.
         value: new FormControl(this.data.entry ? JSON.stringify(this.data.entry.value, null, 2) : 'null', {
             nonNullable: true,
@@ -79,19 +90,23 @@ export class PersistenceEntryDialogComponent {
 
         this.isSubmitting.set(true);
         this.errorMessage.set(null);
+        const key = this.form.controls.key.value;
         const request$: Observable<PersistenceTableEntry> = this.data.entry
-            ? this.persistenceTablesApi.updateEntry(this.data.entry.id, { value })
-            : this.persistenceTablesApi.createEntry({
-                  table: this.data.tableId,
-                  key: this.form.controls.key.value,
-                  value,
-              });
+            ? this.persistenceTablesApi.updateEntry(this.data.entry.id, { key, value })
+            : this.persistenceTablesApi.createEntry({ table: this.data.tableId, key, value });
 
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (entry) => this.dialogRef.close(entry),
             error: (error: HttpErrorResponse) => {
                 this.isSubmitting.set(false);
-                this.errorMessage.set(extractHttpErrorMessage(error));
+                const keyError = keyErrorReason(error);
+                if (keyError) {
+                    // Shown by app-validation-errors; the next edit re-validates the key and clears it.
+                    this.form.controls.key.markAsTouched();
+                    this.form.controls.key.setErrors({ server: [keyError] });
+                } else {
+                    this.errorMessage.set(extractHttpErrorMessage(error));
+                }
             },
         });
     }

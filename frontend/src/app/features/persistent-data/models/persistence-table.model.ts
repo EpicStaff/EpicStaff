@@ -23,6 +23,7 @@ export interface PersistenceTableEntry {
     updated_at: string;
     updated_by_session: number | null;
     updated_by_graph: number | null;
+    updated_by_graph_name: string | null;
 }
 
 export interface CreatePersistenceTableEntryRequest {
