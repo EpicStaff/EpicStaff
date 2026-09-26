@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
@@ -140,7 +141,10 @@ function createPanel(
     });
     TestBed.overrideComponent(PersistenceNodePanelComponent, {
         set: renderTemplate
-            ? { imports: [ReactiveFormsModule, FormControlStubComponent], schemas: [CUSTOM_ELEMENTS_SCHEMA] }
+            ? {
+                  imports: [ReactiveFormsModule, NgTemplateOutlet, FormControlStubComponent],
+                  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+              }
             : { template: '', imports: [] },
     });
     const fixture = openPanel(node);
@@ -238,15 +242,53 @@ describe('PersistenceNodePanelComponent', () => {
         }
     });
 
-    it('lays read rows out like write rows: key, variable path, remove', () => {
-        const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
-        const row: HTMLElement = fixture.nativeElement.querySelector('.entry-row');
+    it('lays read rows out as variable = key, write rows as key = variable, and delete rows as the key alone', () => {
+        const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+        // Each row's fields and the separator between them, in the order they are shown.
+        const layout = (): string[] =>
+            Array.from(
+                (fixture.nativeElement.querySelector('.entry-row') as HTMLElement).querySelectorAll(
+                    'input, .equals-sign, .remove-entry'
+                ),
+                (element) => element.getAttribute('aria-label') ?? element.getAttribute('title') ?? element.textContent!
+            );
 
-        expect(Array.from(row.querySelectorAll('input'), (input) => input.getAttribute('aria-label'))).toEqual([
-            'Key',
-            'Variable path',
+        expect(layout()).toEqual(['Variable path', '=', 'Key', 'Remove']);
+
+        panel.form.get('mode')!.setValue('write');
+        fixture.detectChanges();
+        expect(layout()).toEqual(['Key', '=', 'Variable path', 'Remove']);
+
+        panel.form.get('mode')!.setValue('delete');
+        fixture.detectChanges();
+        expect(layout()).toEqual(['Key', 'Remove']);
+    });
+
+    it("separates the fields with the Input List's = sign", () => {
+        const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+        const separators: HTMLElement[] = Array.from(
+            fixture.nativeElement.querySelectorAll('.entry-row > .equals-sign')
+        );
+
+        expect(separators.map((separator) => [separator.tagName, separator.className, separator.textContent])).toEqual([
+            ['DIV', 'equals-sign', '='],
+            ['DIV', 'equals-sign', '='],
         ]);
-        expect(row.querySelector('.remove-entry')).not.toBeNull();
+    });
+
+    it('keeps each hint under its own field whichever side it is on', () => {
+        const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+
+        entriesOf(panel).at(0).patchValue({ key: 'p_{user_id}', value: 'user.name' });
+        fixture.detectChanges();
+        const fields: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.entry-row')[0].children);
+        const hintsUnder = (label: string): string[] => {
+            const field = fields.find((element) => element.querySelector(`input[aria-label="${label}"]`))!;
+            return Array.from(field.querySelectorAll('.entry-hint'), (hint) => hint.textContent!.trim());
+        };
+
+        expect(hintsUnder('Variable path')).toEqual(['Use variables.user.name']);
+        expect(hintsUnder('Key')).toEqual(['Use {variables.user_id}']);
     });
 
     it('accepts only state paths as read and write values, with a default only for write', () => {
@@ -411,6 +453,118 @@ describe('PersistenceNodePanelComponent', () => {
             expect(entriesOf(panel).getRawValue()).toEqual(DTO.entries);
         });
 
+        // Regression: rows sharing a key, including rows with no key typed yet, all came back with the
+        // last such row's value, because drafts were remembered per key text.
+        it('gives each row its own value back after write -> delete -> write, as typed in the panel', () => {
+            const { panel, fixture } = createPanel(nodeWith('write', []), { renderTemplate: true });
+            const type = (label: string, row: number, text: string): void => {
+                const input: HTMLInputElement = fixture.nativeElement.querySelectorAll(`input[aria-label="${label}"]`)[
+                    row
+                ];
+                input.value = text;
+                input.dispatchEvent(new Event('input'));
+                fixture.detectChanges();
+            };
+            const switchTo = (mode: PersistenceMode): void => {
+                panel.form.get('mode')!.setValue(mode);
+                fixture.detectChanges();
+            };
+            const rows: [string, string][] = [
+                ['test1', 'variables.my_key1'],
+                ['test2', 'variables.my_key2'],
+            ];
+            rows.forEach(([key, value], row) => {
+                fixture.nativeElement.querySelector('.add-entry').click();
+                fixture.detectChanges();
+                type('Key', row, key);
+                type('Variable path', row, value);
+            });
+            const typed = rows.map(([key, value]) => ({ key, value }));
+
+            switchTo('delete');
+            switchTo('write');
+            expect(entriesOf(panel).getRawValue()).toEqual(typed);
+
+            // Values typed before the keys: both rows share the empty key when the mode switches.
+            entriesOf(panel).controls.forEach((row) => row.patchValue({ key: '' }));
+            switchTo('delete');
+            switchTo('write');
+            expect(entriesOf(panel).getRawValue()).toEqual(typed.map(({ value }) => ({ key: '', value })));
+        });
+
+        it('gives rows sharing a key their own values back on every round trip, also after reopening', () => {
+            const entries: PersistenceEntry[] = [
+                { key: 'profile', value: 'variables.first' },
+                { key: 'plan', value: 'variables.plan' },
+                { key: 'profile', value: 'variables.second' },
+            ];
+            const { panel, fixture } = createPanel(nodeWith('read', entries));
+            const switchTo = (form: PersistenceNodePanelComponent, mode: PersistenceMode): void =>
+                form.form.get('mode')!.setValue(mode);
+
+            for (const [via, back] of [
+                ['delete', 'read'],
+                ['write', 'delete'],
+                ['delete', 'write'],
+                ['read', 'delete'],
+                ['delete', 'read'],
+            ] as const) {
+                switchTo(panel, via);
+                switchTo(panel, back);
+                if (back !== 'delete') expect(entriesOf(panel).getRawValue()).toEqual(entries);
+            }
+
+            switchTo(panel, 'delete');
+            const closed = panel.onSave()!;
+            fixture.destroy();
+            const reopened = openPanel(closed).componentInstance;
+            switchTo(reopened, 'write');
+
+            expect(entriesOf(reopened).getRawValue()).toEqual(entries);
+        });
+
+        it('gives a row its own value back after the row above it with the same key is removed in delete mode', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'profile', value: 'variables.first' },
+                    { key: 'profile', value: 'variables.second' },
+                ])
+            );
+
+            panel.form.get('mode')!.setValue('delete');
+            entriesOf(panel).removeAt(0);
+            panel.form.get('mode')!.setValue('write');
+            expect(entriesOf(panel).getRawValue()).toEqual([{ key: 'profile', value: 'variables.second' }]);
+
+            // Also once the panel is closed in delete mode and opened again.
+            panel.form.get('mode')!.setValue('delete');
+            const closed = panel.onSave()!;
+            fixture.destroy();
+            const reopened = openPanel(closed).componentInstance;
+            reopened.form.get('mode')!.setValue('write');
+
+            expect(entriesOf(reopened).getRawValue()).toEqual([{ key: 'profile', value: 'variables.second' }]);
+        });
+
+        it('gives rows with no key yet their own values back after a key is typed in delete mode', () => {
+            const { panel, fixture } = createPanel(nodeWith('write', []), { renderTemplate: true });
+            for (const value of ['variables.v1', 'variables.v2']) {
+                fixture.nativeElement.querySelector('.add-entry').click();
+                entriesOf(panel)
+                    .at(entriesOf(panel).length - 1)
+                    .patchValue({ value });
+            }
+
+            panel.form.get('mode')!.setValue('delete');
+            entriesOf(panel).at(0).patchValue({ key: 'a' });
+            panel.form.get('mode')!.setValue('write');
+
+            expect(entriesOf(panel).getRawValue()).toEqual([
+                { key: 'a', value: 'variables.v1' },
+                { key: '', value: 'variables.v2' },
+            ]);
+        });
+
         it('restores the values after a switch to delete and back', () => {
             const { panel } = createPanel(mapPersistenceNodeToModel(DTO));
 
@@ -421,13 +575,13 @@ describe('PersistenceNodePanelComponent', () => {
             panel.form.get('mode')!.setValue('write');
             expect(entriesOf(panel).getRawValue()).toEqual([
                 { key: 'profile', value: 'variables.user' },
-                // A key renamed in delete mode has no value to restore.
-                { key: 'tier', value: 'variables.' },
+                // A row keeps its value when its key is renamed in delete mode.
+                { key: 'tier', value: 'variables.plan' },
             ]);
             // Saves only what the current mode has.
             expect(panel.onSave()!.data.entries).toEqual([
                 { key: 'profile', value: 'variables.user' },
-                { key: 'tier', value: 'variables.' },
+                { key: 'tier', value: 'variables.plan' },
             ]);
         });
 
@@ -596,27 +750,105 @@ describe('PersistenceNodePanelComponent', () => {
             expect(panel.captureForValidation()).toBeNull();
         });
 
-        it('blocks the flow save when two read keys share a variable, on every row that has it', () => {
-            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+        it('blocks the flow save when two write rows share a key, marking both until one changes', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'profile', value: 'variables.user' },
+                    { key: 'plan', value: 'variables.plan' },
+                ]),
+                { renderTemplate: true }
+            );
             const entries = entriesOf(panel);
+            const redInputs = (): string[] =>
+                Array.from(
+                    fixture.nativeElement.querySelectorAll('.entry-input.duplicate'),
+                    (input: Element) => input.getAttribute('aria-label')!
+                );
 
-            entries.at(1).patchValue({ value: ' variables.user' });
+            // Compared trimmed.
+            entries.at(1).patchValue({ key: ' profile ' });
             fixture.detectChanges();
             expect(hintsOf(fixture)).toEqual([
-                'Use a different variable for each key',
-                'Use a different variable for each key',
+                'Duplicate key — use a different key',
+                'Duplicate key — use a different key',
             ]);
+            expect(redInputs()).toEqual(['Key', 'Key']);
+            expect(entries.at(0).get('key')!.hasError('duplicateKey')).toBe(true);
             expect(panel.captureForValidation()).toBeNull();
 
             // Fixing one row clears the other, which did not change.
-            entries.at(1).patchValue({ value: 'variables.plan' });
+            entries.at(1).patchValue({ key: 'plan' });
+            fixture.detectChanges();
+            expect(hintsOf(fixture)).toEqual([]);
+            expect(redInputs()).toEqual([]);
+            expect(panel.captureForValidation()).not.toBeNull();
+        });
+
+        it('blocks the flow save when two write rows share a variable, whatever their defaults', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'profile', value: 'variables.user' },
+                    { key: 'plan', value: 'variables.plan' },
+                ]),
+                { renderTemplate: true }
+            );
+            const entries = entriesOf(panel);
+
+            entries.at(1).patchValue({ value: ' variables.user|{}' });
+            fixture.detectChanges();
+            expect(hintsOf(fixture)).toEqual([
+                'Duplicate variable — use a different variable',
+                'Duplicate variable — use a different variable',
+            ]);
+            expect(
+                Array.from(fixture.nativeElement.querySelectorAll('.entry-input.duplicate'), (input: Element) =>
+                    input.getAttribute('aria-label')
+                )
+            ).toEqual(['Variable path', 'Variable path']);
+            expect(panel.captureForValidation()).toBeNull();
+
+            entries.at(1).patchValue({ value: 'variables.plan|0' });
             fixture.detectChanges();
             expect(hintsOf(fixture)).toEqual([]);
             expect(panel.captureForValidation()).not.toBeNull();
         });
 
-        it('does not call empty rows or unfinished paths duplicates', () => {
-            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true });
+        it('allows repeated keys and variables in read, and repeated keys in delete', () => {
+            const repeated: PersistenceEntry[] = [
+                { key: 'profile', value: 'variables.same' },
+                { key: 'profile', value: 'variables.same' },
+            ];
+            for (const node of [
+                nodeWith('read', repeated),
+                nodeWith('delete', [{ key: 'profile' }, { key: 'profile' }]),
+            ]) {
+                const { panel, fixture } = createPanel(node, { renderTemplate: true });
+
+                expect(panel.form.valid).toBe(true);
+                expect(hintsOf(fixture)).toEqual([]);
+                TestBed.resetTestingModule();
+            }
+        });
+
+        it('flags repeats a write node is loaded with', () => {
+            const { panel } = createPanel(
+                nodeWith('write', [
+                    { key: 'a', value: 'variables.same' },
+                    { key: 'b', value: 'variables.same' },
+                ])
+            );
+
+            expect(panel.form.valid).toBe(false);
+        });
+
+        it('does not call empty rows, unfinished paths or malformed keys duplicates', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'profile', value: 'variables.user' },
+                    { key: 'plan', value: 'variables.plan' },
+                ]),
+                { renderTemplate: true }
+            );
             const addKey = (): void => {
                 fixture.nativeElement.querySelector('.add-entry').click();
                 fixture.detectChanges();
@@ -627,48 +859,31 @@ describe('PersistenceNodePanelComponent', () => {
             addKey();
             entriesOf(panel).at(2).patchValue({ key: 'tier' });
             fixture.detectChanges();
-            expect(entriesOf(panel).at(2).get('value')!.hasError('duplicateTarget')).toBe(false);
+            expect(entriesOf(panel).at(2).get('value')!.hasError('duplicateSource')).toBe(false);
             expect(hintsOf(fixture)).toEqual([]);
 
-            // The same rootless path twice gets the fix, not the duplicate hint.
-            entriesOf(panel).at(0).patchValue({ value: 'user.name' });
-            entriesOf(panel).at(1).patchValue({ value: 'user.name' });
+            // The same rootless path twice gets the fix, not the duplicate hint; so does a malformed key.
+            entriesOf(panel).at(0).patchValue({ key: 'p_{', value: 'user.name' });
+            entriesOf(panel).at(1).patchValue({ key: 'p_{', value: 'user.name' });
             fixture.detectChanges();
-            expect(hintsOf(fixture)).toEqual(['Use variables.user.name', 'Use variables.user.name']);
+            expect(hintsOf(fixture)).toEqual([
+                'Write placeholders as {variables.user.id}',
+                'Use variables.user.name',
+                'Write placeholders as {variables.user.id}',
+                'Use variables.user.name',
+            ]);
         });
 
-        it('shows no duplicate hint after a switch from delete to read with several keys', () => {
+        it('shows no duplicate hint after a switch from delete to write with several keys', () => {
             const { panel, fixture } = createPanel(nodeWith('delete', [{ key: 'a' }, { key: 'b' }, { key: 'c' }]), {
                 renderTemplate: true,
             });
 
-            panel.form.get('mode')!.setValue('read');
+            panel.form.get('mode')!.setValue('write');
             fixture.detectChanges();
 
-            expect(entriesOf(panel).controls.some((row) => row.get('value')!.hasError('duplicateTarget'))).toBe(false);
+            expect(entriesOf(panel).controls.some((row) => row.get('value')!.hasError('duplicateSource'))).toBe(false);
             expect(hintsOf(fixture)).toEqual([]);
-        });
-
-        it('allows one variable for several write keys', () => {
-            const { panel } = createPanel(
-                nodeWith('write', [
-                    { key: 'a', value: 'variables.same' },
-                    { key: 'b', value: 'variables.same' },
-                ])
-            );
-
-            expect(panel.form.valid).toBe(true);
-        });
-
-        it('flags a shared read variable a node is loaded with', () => {
-            const { panel } = createPanel(
-                nodeWith('read', [
-                    { key: 'a', value: 'variables.same' },
-                    { key: 'b', value: 'variables.same' },
-                ])
-            );
-
-            expect(panel.form.valid).toBe(false);
         });
 
         it('names the node by its saved name in the toast when the typed name is blank', () => {
@@ -949,6 +1164,35 @@ describe('PersistenceNodePanelComponent', () => {
                     { key: 'b', value: 'variables.same' },
                 ],
             ],
+            [
+                'write',
+                [
+                    { key: 'a', value: 'variables.same' },
+                    { key: 'b', value: 'variables.same|0' },
+                ],
+            ],
+            [
+                'write',
+                [
+                    { key: 'a', value: 'variables.x' },
+                    { key: ' a ', value: 'variables.y' },
+                ],
+            ],
+            [
+                'write',
+                [
+                    { key: 'a', value: 'variables.x' },
+                    { key: 'A', value: 'variables.y|variables.x' },
+                ],
+            ],
+            ['delete', [{ key: 'a' }, { key: 'a' }]],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.x' },
+                    { key: 'a', value: 'variables.y' },
+                ],
+            ],
             ['read', [{ key: 'a', value: 'variables.a' }]],
             ['read', [{ key: 'a', value: 'variables.a|0' }]],
             ['read', [{ key: 'a', value: 'variables._a' }]],
@@ -980,112 +1224,165 @@ describe('PersistenceNodePanelComponent', () => {
         });
     });
 
-    describe('variable suggestions', () => {
-        const initialState = { variables: { user: { id: 1 }, plan: 'free' } };
+    describe('variable picker', () => {
+        const initialState = { variables: { user: { id: 1 }, plan: 'free', 'user-name': 'x', _secret: 1 } };
+        const valueInput = (fixture: ComponentFixture<PersistenceNodePanelComponent>, row = 0): HTMLInputElement =>
+            fixture.nativeElement.querySelectorAll('input[aria-label="Variable path"]')[row];
+        const focusValue = (fixture: ComponentFixture<PersistenceNodePanelComponent>, row = 0): HTMLInputElement => {
+            const input = valueInput(fixture, row);
+            input.dispatchEvent(new FocusEvent('focus'));
+            fixture.detectChanges();
+            return input;
+        };
         const typeValue = (
             fixture: ComponentFixture<PersistenceNodePanelComponent>,
             text: string,
             row = 0
         ): HTMLInputElement => {
-            const input: HTMLInputElement = fixture.nativeElement.querySelectorAll('input[aria-label="Variable path"]')[
-                row
-            ];
+            const input = valueInput(fixture, row);
             input.value = text;
             input.dispatchEvent(new Event('input'));
             fixture.detectChanges();
             return input;
         };
-        const suggestionTexts = (): string[] =>
-            Array.from(document.querySelectorAll<HTMLElement>('.vdo-item'), (item) => item.textContent!.trim());
-        const firstValue = (panel: PersistenceNodePanelComponent): string => entriesOf(panel).at(0).get('value')!.value;
+        const listed = (): string[] =>
+            Array.from(document.querySelectorAll<HTMLElement>('app-var-picker-flat .vpf-item'), (item) => item.title);
 
         for (const mode of ['read', 'write'] as const) {
-            it(`offers the flow variables under a ${mode} value and fills the clicked one`, () => {
+            it(`is the Input List's picker under a ${mode} value: opens on focus, filters, fills the clicked path`, () => {
                 const { panel, fixture } = createPanel(nodeWith(mode, [{ key: 'profile', value: 'variables.' }]), {
                     renderTemplate: true,
                     initialState,
                 });
 
-                const input = typeValue(fixture, 'variables.');
-                expect(suggestionTexts()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
-                expect(input.getAttribute('aria-expanded')).toBe('true');
+                const input = focusValue(fixture);
+                // Names a persistence node can't use are left out.
+                expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+                // It has no arrow keys or Enter, so the input does not claim to be a combobox.
+                expect(input.getAttribute('role')).toBeNull();
 
                 typeValue(fixture, 'variables.US');
-                expect(suggestionTexts()).toEqual(['variables.user', 'variables.user.id']);
+                expect(listed()).toEqual(['variables.user', 'variables.user.id']);
 
-                document.querySelectorAll<HTMLElement>('.vdo-item')[1].click();
+                document.querySelectorAll<HTMLElement>('.vpf-item')[1].click();
                 fixture.detectChanges();
 
-                expect(firstValue(panel)).toBe('variables.user.id');
-                expect(suggestionTexts()).toEqual([]);
-                expect(input.getAttribute('aria-expanded')).toBe('false');
+                expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.user.id');
+                expect(entriesOf(panel).at(0).get('value')!.dirty).toBe(true);
+                expect(listed()).toEqual([]);
             });
         }
 
-        it('picks with the arrow keys and Enter, closes on Escape and on blur', () => {
-            const { panel, fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.' }]), {
+        it('closes on an exact match, without the variables. prefix, and on Escape, like the Input List', () => {
+            const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.' }]), {
                 renderTemplate: true,
                 initialState,
             });
-            const press = (input: HTMLInputElement, key: string): void => {
-                input.dispatchEvent(new KeyboardEvent('keydown', { key }));
-                fixture.detectChanges();
-            };
 
-            let input = typeValue(fixture, 'variables.');
-            press(input, 'Escape');
-            expect(suggestionTexts()).toEqual([]);
+            typeValue(fixture, 'variables.plan');
+            expect(listed()).toEqual([]);
 
-            input = typeValue(fixture, 'variables.');
-            input.dispatchEvent(new FocusEvent('blur'));
-            fixture.detectChanges();
-            expect(suggestionTexts()).toEqual([]);
+            typeValue(fixture, 'variables.pl');
+            expect(listed()).toEqual(['variables.plan']);
+            typeValue(fixture, 'plan');
+            expect(listed()).toEqual([]);
 
-            input = typeValue(fixture, 'variables.');
-            press(input, 'ArrowUp');
-            press(input, 'Enter');
-            expect(firstValue(panel)).toBe('variables.plan');
+            // The path before a |default is what counts.
+            typeValue(fixture, 'variables.plan|free');
+            expect(listed()).toEqual([]);
+            typeValue(fixture, 'variables.pl|free');
+            expect(listed()).toEqual(['variables.plan']);
         });
 
-        it('lists at most 20 variables, like the key suggestions', () => {
-            const many = Object.fromEntries(Array.from({ length: 25 }, (_, index) => [`name${index}`, index]));
-            const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.' }]), {
+        it('does not open on focus for a variable with a |default', () => {
+            const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.plan|0' }]), {
                 renderTemplate: true,
-                initialState: { variables: many },
+                initialState,
             });
 
-            typeValue(fixture, 'variables.');
+            focusValue(fixture);
 
-            expect(suggestionTexts().length).toBe(20);
+            expect(document.querySelector('app-var-picker-flat')).toBeNull();
         });
 
-        it('hides the variable it already matches and a key search that lands after focus moved to a value', () => {
+        it('closes on Escape without it reaching the panel, which a second Escape closes', () => {
+            const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.' }]), {
+                renderTemplate: true,
+                initialState,
+            });
+            const windowKeydown = vi.fn();
+            window.addEventListener('keydown', windowKeydown);
+
+            try {
+                const input = focusValue(fixture);
+                expect(listed().length).toBe(3);
+
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                fixture.detectChanges();
+                expect(listed()).toEqual([]);
+                expect(windowKeydown).not.toHaveBeenCalled();
+
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                expect(windowKeydown).toHaveBeenCalledTimes(1);
+            } finally {
+                window.removeEventListener('keydown', windowKeydown);
+            }
+        });
+
+        it('offers every variable in read, where rows may share one', () => {
+            const { fixture } = createPanel(
+                nodeWith('read', [
+                    { key: 'profile', value: 'variables.' },
+                    { key: 'plan', value: 'variables.plan' },
+                ]),
+                { renderTemplate: true, initialState }
+            );
+
+            focusValue(fixture);
+
+            expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+        });
+
+        it('hides the variables other rows use, by their path before any |default', () => {
+            const { fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'profile', value: 'variables.' },
+                    { key: 'plan', value: 'variables.plan|free' },
+                ]),
+                { renderTemplate: true, initialState }
+            );
+
+            focusValue(fixture);
+
+            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+        });
+
+        it('leaves the key input to the stored key suggestions', () => {
             vi.useFakeTimers();
-            const keyResponses = new Subject<ApiGetRequest<PersistenceTableEntry>>();
             const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.' }]), {
                 renderTemplate: true,
                 canRead: true,
-                getEntries: () => keyResponses,
+                getEntries: () =>
+                    of({
+                        count: 1,
+                        next: null,
+                        previous: null,
+                        results: [{ key: 'profile_1' } as PersistenceTableEntry],
+                    }),
                 initialState,
             });
 
             const keyInput: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+            keyInput.dispatchEvent(new FocusEvent('focus'));
             keyInput.value = 'pro';
             keyInput.dispatchEvent(new Event('input'));
             vi.advanceTimersByTime(250);
-
-            typeValue(fixture, 'variables.plan');
-            expect(suggestionTexts()).toEqual([]);
-
-            typeValue(fixture, 'variables.user');
-            keyResponses.next({
-                count: 1,
-                next: null,
-                previous: null,
-                results: [{ key: 'profile_1' } as PersistenceTableEntry],
-            });
             fixture.detectChanges();
-            expect(suggestionTexts()).toEqual(['variables.user.id']);
+
+            expect(listed()).toEqual([]);
+            expect(Array.from(document.querySelectorAll('.vdo-item'), (item) => item.textContent!.trim())).toEqual([
+                'profile_1',
+            ]);
         });
     });
 });

@@ -1,24 +1,33 @@
 import { Injectable } from '@angular/core';
 
+import { keyOccurrences } from '../core/helpers/persistence-node.helpers';
+
 /**
- * The read or write value last typed for each key of a persistence node. Delete rows have no
- * value, so switching to delete and back restores the values from here, even after the panel was
- * closed and reopened. Provided by `FlowGraphComponent`, so it lives as long as the canvas and is
- * never saved.
+ * The read or write value of each row of a persistence node as the panel last had it, including
+ * values a switch to delete hid. The open panel keeps its rows' values itself; this is only for
+ * opening the panel again, e.g. on a node closed in delete mode. Provided by `FlowGraphComponent`,
+ * so it lives as long as the canvas and is never saved.
+ *
+ * A row is known by its key and its occurrence among the rows with that key (keyOccurrences):
+ * keys may repeat, and rows with no key yet all share ''.
  */
 @Injectable()
 export class PersistenceValueDraftsService {
-    private readonly valuesByNode = new Map<string, Map<string, string>>();
+    private readonly valuesByNode = new Map<string, Map<string, (string | undefined)[]>>();
 
-    public remember(nodeId: string, entries: { key: string; value?: string }[]): void {
-        const values = this.valuesByNode.get(nodeId) ?? new Map<string, string>();
-        entries.forEach(({ key, value }) => {
-            if (value !== undefined) values.set(key, value);
+    /** Replaces what was remembered for the node with its current rows. */
+    public remember(nodeId: string, rows: { key: string; value?: string }[]): void {
+        const occurrences = keyOccurrences(rows.map((row) => row.key));
+        const values = new Map<string, (string | undefined)[]>();
+        rows.forEach(({ key, value }, index) => {
+            const keyValues = values.get(key) ?? [];
+            keyValues[occurrences[index]] = value;
+            values.set(key, keyValues);
         });
         this.valuesByNode.set(nodeId, values);
     }
 
-    public valueFor(nodeId: string, key: string): string | undefined {
-        return this.valuesByNode.get(nodeId)?.get(key);
+    public valueFor(nodeId: string, key: string, occurrence: number): string | undefined {
+        return this.valuesByNode.get(nodeId)?.get(key)?.[occurrence];
     }
 }

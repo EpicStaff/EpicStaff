@@ -131,28 +131,46 @@ export function valueError(value: string, mode: PersistenceMode): 'required' | '
     return (mode === 'read' ? isStatePath(value) : isWriteSource(value)) ? null : 'pattern';
 }
 
-/**
- * Read targets used by more than one key, trimmed. Two keys read into one variable would
- * overwrite each other. A malformed target is left to valueError, so it never counts here.
- */
-export function duplicateReadTargets(values: string[]): Set<string> {
+/** A write source's state path: what comes before any `|default`, trimmed. */
+export function writeSourcePath(value: string): string {
+    return value.split('|')[0].trim();
+}
+
+function repeated(texts: string[]): Set<string> {
     const seen = new Set<string>();
     const duplicates = new Set<string>();
-    values
-        .map((value) => value.trim())
-        .filter(isStatePath)
-        .forEach((target) => (seen.has(target) ? duplicates : seen).add(target));
+    texts.forEach((text) => (seen.has(text) ? duplicates : seen).add(text));
     return duplicates;
+}
+
+/**
+ * Keys written by more than one write row, trimmed: the later row would overwrite the earlier one.
+ * A key keyError rejects is left to it, so it never counts here. Read and delete allow repeats.
+ */
+export function duplicateWriteKeys(keys: string[]): Set<string> {
+    return repeated(keys.filter((key) => keyError(key) === null).map((key) => key.trim()));
+}
+
+/**
+ * Source paths (see writeSourcePath) used by more than one write row, so `variables.a` and
+ * `variables.a|0` repeat each other. A value valueError rejects never counts here.
+ */
+export function duplicateWriteSources(values: string[]): Set<string> {
+    return repeated(values.filter((value) => valueError(value, 'write') === null).map(writeSourcePath));
 }
 
 /** For a node whose panel may be closed: the flow save refuses one that breaks the entry rules. */
 export function hasValidPersistenceEntries({ mode, entries }: PersistenceNodeData): boolean {
+    const keys = entries.map((entry) => entry.key);
     const values = entries.map((entry) => ('value' in entry ? entry.value : ''));
-    const duplicates = mode === 'read' ? duplicateReadTargets(values) : new Set<string>();
+    const duplicateKeys = mode === 'write' ? duplicateWriteKeys(keys) : new Set<string>();
+    const duplicateSources = mode === 'write' ? duplicateWriteSources(values) : new Set<string>();
     return entries.every(
         (entry, index) =>
             keyError(entry.key) === null &&
-            (mode === 'delete' || (valueError(values[index], mode) === null && !duplicates.has(values[index].trim())))
+            !duplicateKeys.has(entry.key.trim()) &&
+            (mode === 'delete' ||
+                (valueError(values[index], mode) === null && !duplicateSources.has(writeSourcePath(values[index]))))
     );
 }
 
@@ -162,23 +180,6 @@ export function invalidPersistenceNodeMessages(nodes: NodeModel[]): string[] {
         .filter((node): node is PersistenceNodeModel => node.type === NodeType.PERSISTENCE)
         .filter((node) => !hasValidPersistenceEntries(node.data))
         .map((node) => `"${node.node_name}" has invalid keys or variable paths`);
-}
-
-/**
- * Every `variables.` path in the start node's initial state, each parent before its children.
- * Leaves out names a persistence node can't use, such as `user-name` or `_private`.
- */
-export function flowVariablePaths(initialState: Record<string, unknown>): string[] {
-    const paths: string[] = [];
-    const collect = (value: unknown, path: string): void => {
-        if (value === null || typeof value !== 'object' || Array.isArray(value)) return;
-        for (const [name, child] of Object.entries(value)) {
-            paths.push(`${path}.${name}`);
-            collect(child, `${path}.${name}`);
-        }
-    };
-    collect(initialState['variables'], 'variables');
-    return paths.filter(isStatePath);
 }
 
 /**
@@ -200,17 +201,16 @@ export function isEmptyEntry(row: EntryText): boolean {
 }
 
 /**
- * Read and write rows share a shape, so their values carry over. A delete row has no value, so
- * switching away from delete gives each row the value last typed for its key, or the prefill.
+ * For each key, how many keys before it are the same: 0 for the first. With the key, this tells
+ * apart rows whose keys repeat, including rows with no key yet, which all share ''.
  */
-export function reshapeEntriesForMode(
-    entries: EntryFields[],
-    mode: PersistenceMode,
-    rememberedValue: (key: string) => string | undefined
-): PersistenceEntry[] {
-    return entries.map(({ key, value }) =>
-        normalizeEntry({ key, value: value ?? rememberedValue(key) ?? VALUE_PREFILL }, mode)
-    );
+export function keyOccurrences(keys: string[]): number[] {
+    const seen = new Map<string, number>();
+    return keys.map((key) => {
+        const occurrence = seen.get(key) ?? 0;
+        seen.set(key, occurrence + 1);
+        return occurrence;
+    });
 }
 
 export function isSameLookupRequest(previous: LookupRequest, current: LookupRequest): boolean {

@@ -1,5 +1,4 @@
-import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
+import { OverlayModule } from '@angular/cdk/overlay';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -9,12 +8,10 @@ import {
     inject,
     Input,
     OnChanges,
-    OnDestroy,
     OnInit,
     Output,
     signal,
     SimpleChanges,
-    ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -37,9 +34,8 @@ import { RunSessionSSEService } from '../../../pages/running-graph/services/grap
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
-import { PickerItem, VarPickerFlatComponent } from './var-picker-flat.component';
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+import { PickerItem } from './var-picker-flat.component';
+import { buildVariablePickerItems, VariablePathPicker } from './variable-path-picker';
 
 @Component({
     selector: 'app-input-map',
@@ -296,9 +292,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 min-width: 0;
             }
             .equals-sign {
-                color: #fff;
-                font-weight: 500;
-                margin: 0 -2px;
+                @include controls.equals-sign;
             }
 
             .input-wrapper input {
@@ -451,7 +445,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
         `,
     ],
 })
-export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
+export class InputMapComponent implements OnInit, OnChanges {
     @Input() activeColor: string = '#685fff';
     @Input() testMode: boolean = false;
     @Input() showTestMode: boolean = false;
@@ -479,20 +473,22 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     private readonly graphSessionService = inject(GraphSessionService);
     private readonly runSessionSSEService = inject(RunSessionSSEService);
     private readonly flowService = inject(FlowService);
-    private readonly overlay = inject(Overlay);
-    private readonly viewContainerRef = inject(ViewContainerRef);
-
-    private overlayRef: OverlayRef | null = null;
-    private autocompleteInstance: VarPickerFlatComponent | null = null;
-    private activeRowIndex: number | null = null;
-    private activeAnchorEl: HTMLElement | null = null;
-    private pickerSubs: { unsubscribe(): void }[] = [];
-    private readonly variablesPrefix = 'variables.';
 
     private readonly pickerItems = computed<PickerItem[]>(() => {
         const state = this.flowService.startNodeInitialState();
         if (!state || Object.keys(state).length === 0) return [];
-        return this.buildPickerItems(state);
+        return buildVariablePickerItems(state);
+    });
+    private readonly variablePicker = new VariablePathPicker({
+        itemsFor: (rowIndex) => {
+            const usedPaths = this.usedVariablePaths(rowIndex);
+            return this.pickerItems().filter((item) => !usedPaths.has(item.fullPath));
+        },
+        insert: (rowIndex, path) => {
+            const valueCtrl = this.pairs.at(rowIndex).get('value');
+            valueCtrl?.setValue(path);
+            valueCtrl?.markAsDirty();
+        },
     });
 
     constructor(
@@ -572,9 +568,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const keyboardEvent = event as KeyboardEvent;
         keyboardEvent.preventDefault();
 
-        if (this.overlayRef) {
-            this.closePicker();
-        }
+        this.variablePicker.close();
 
         this.addPair();
 
@@ -905,30 +899,11 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     onValueFocus(rowIndex: number, event: FocusEvent): void {
-        const inputEl = event.target as HTMLInputElement;
-        const value = inputEl.value ?? '';
-        if (!value.startsWith(this.variablesPrefix)) return;
-        if (this.isExactVariableMatch(rowIndex, value.slice(this.variablesPrefix.length))) return;
-        this.openPickerForInput(rowIndex, inputEl);
+        this.variablePicker.onFocus(rowIndex, event);
     }
 
     onValueInput(rowIndex: number, event: Event): void {
-        const inputEl = event.target as HTMLInputElement;
-        const value = inputEl.value ?? '';
-
-        if (value.startsWith(this.variablesPrefix)) {
-            const query = value.slice(this.variablesPrefix.length);
-            if (this.isExactVariableMatch(rowIndex, query)) {
-                this.closePicker();
-                return;
-            }
-            if (!(this.overlayRef && this.activeRowIndex === rowIndex)) {
-                this.openPickerForInput(rowIndex, inputEl);
-            }
-            this.autocompleteInstance?.setFilter(query);
-        } else if (this.overlayRef && this.activeRowIndex === rowIndex) {
-            this.closePicker();
-        }
+        this.variablePicker.onInput(rowIndex, event);
     }
 
     private usedVariablePaths(excludeRowIndex: number): Set<string> {
@@ -939,137 +914,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
             if (value) used.add(value);
         });
         return used;
-    }
-
-    private isExactVariableMatch(rowIndex: number, query: string): boolean {
-        const trimmed = query.trim();
-        if (!trimmed) return false;
-        const usedPaths = this.usedVariablePaths(rowIndex);
-        return this.pickerItems().some((item) => !usedPaths.has(item.fullPath) && item.label === trimmed);
-    }
-
-    private openPickerForInput(rowIndex: number, anchorEl: HTMLInputElement): void {
-        if (this.overlayRef && this.activeRowIndex === rowIndex) {
-            return;
-        }
-        this.closePicker();
-
-        this.activeRowIndex = rowIndex;
-        this.activeAnchorEl = anchorEl;
-
-        const positionStrategy = this.overlay
-            .position()
-            .flexibleConnectedTo(anchorEl)
-            .withPositions([
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-            ])
-            .withViewportMargin(8);
-
-        this.overlayRef = this.overlay.create({
-            positionStrategy,
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: false,
-        });
-
-        const portal = new ComponentPortal(VarPickerFlatComponent, this.viewContainerRef);
-        const componentRef = this.overlayRef.attach(portal);
-        this.autocompleteInstance = componentRef.instance;
-        this.autocompleteInstance.autofocusSearch = false;
-        const usedPaths = this.usedVariablePaths(rowIndex);
-        this.autocompleteInstance.setItems(this.pickerItems().filter((item) => !usedPaths.has(item.fullPath)));
-
-        const currentValue = anchorEl.value ?? '';
-        if (currentValue.startsWith(this.variablesPrefix)) {
-            this.autocompleteInstance.setFilter(currentValue.slice(this.variablesPrefix.length));
-        }
-
-        this.pickerSubs = [
-            this.autocompleteInstance.pathSelected.subscribe((path: string) => this.insertPath(path)),
-            this.overlayRef.outsidePointerEvents().subscribe((pointerEvent: MouseEvent) => {
-                const target = pointerEvent.target as Node | null;
-                if (
-                    this.activeAnchorEl &&
-                    target &&
-                    (target === this.activeAnchorEl || this.activeAnchorEl.contains(target))
-                ) {
-                    return;
-                }
-                this.closePicker();
-            }),
-            this.overlayRef
-                .keydownEvents()
-                .pipe(filter((e) => e.key === 'Escape'))
-                .subscribe(() => this.closePicker()),
-        ];
-    }
-
-    private insertPath(path: string): void {
-        if (this.activeRowIndex !== null) {
-            const valueCtrl = this.pairs.at(this.activeRowIndex).get('value');
-            valueCtrl?.setValue(path);
-            valueCtrl?.markAsDirty();
-        }
-        this.closePicker();
-    }
-
-    closePicker(): void {
-        this.pickerSubs.forEach((s) => s.unsubscribe());
-        this.pickerSubs = [];
-        this.overlayRef?.dispose();
-        this.overlayRef = null;
-        this.autocompleteInstance = null;
-        this.activeRowIndex = null;
-        this.activeAnchorEl = null;
-    }
-
-    ngOnDestroy(): void {
-        this.closePicker();
-    }
-
-    private buildPickerItems(state: Record<string, unknown>): PickerItem[] {
-        const variablesObj = state['variables'];
-        if (!isRecord(variablesObj)) return [];
-
-        const items: PickerItem[] = [];
-        for (const firstSeg of Object.keys(variablesObj)) {
-            const val = variablesObj[firstSeg];
-            const fullPath = `variables.${firstSeg}`;
-            const depth = 0;
-            const displayLabel = firstSeg;
-
-            if (isRecord(val)) {
-                items.push({ tag: 'obj', label: this.toRelativeLabel(fullPath), displayLabel, depth, fullPath });
-                this.collectChildItems(val, fullPath, depth + 1, items);
-            } else {
-                items.push({ tag: 'var', label: this.toRelativeLabel(fullPath), displayLabel, depth, fullPath });
-            }
-        }
-        return items;
-    }
-
-    private collectChildItems(
-        obj: Record<string, unknown>,
-        pathPrefix: string,
-        depth: number,
-        result: PickerItem[]
-    ): void {
-        const isArray = Array.isArray(obj);
-        for (const key of Object.keys(obj)) {
-            const fullPath = isArray ? `${pathPrefix}[${key}]` : `${pathPrefix}.${key}`;
-            const val = obj[key];
-            const tag = isRecord(val) ? 'obj' : 'var';
-            result.push({ tag, label: this.toRelativeLabel(fullPath), displayLabel: key, depth, fullPath });
-            if (isRecord(val)) {
-                this.collectChildItems(val, fullPath, depth + 1, result);
-            }
-        }
-    }
-
-    private toRelativeLabel(fullPath: string): string {
-        const prefix = 'variables.';
-        return fullPath.startsWith(prefix) ? fullPath.slice(prefix.length) : fullPath;
     }
 
     private getValidInputPairs(): AbstractControl[] {

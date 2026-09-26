@@ -1,5 +1,6 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked, ViewContainerRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -39,21 +40,23 @@ import { PersistenceTablesStorageService } from '../../../../features/persistent
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import {
-    duplicateReadTargets,
+    duplicateWriteKeys,
+    duplicateWriteSources,
     existenceHint,
-    flowVariablePaths,
     isEmptyEntry,
     isSameLookupRequest,
+    isStatePath,
     isStaticKey,
     keyError,
+    keyOccurrences,
     keyTemplateHint,
     LookupRequest,
     normalizeEntry,
     PERSISTENCE_KEY_MAX_LENGTH,
-    reshapeEntriesForMode,
     VALUE_PREFILL,
     valueError,
     valuePathHint,
+    writeSourcePath,
 } from '../../../core/helpers/persistence-node.helpers';
 import { PersistenceNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -61,20 +64,18 @@ import { PersistenceEntry, PersistenceMode } from '../../../core/models/persiste
 import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { buildVariablePickerItems, VariablePathPicker } from '../../input-map/variable-path-picker';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
-// For stored keys and for flow variables alike.
 const SUGGESTION_LIMIT = 20;
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
-const DUPLICATE_TARGET_HINT = 'Use a different variable for each key';
+const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
+const DUPLICATE_SOURCE_HINT = 'Duplicate variable — use a different variable';
 const KEYS_LABEL: Record<PersistenceMode, string> = {
     read: 'Keys to Read',
     write: 'Keys to Write',
     delete: 'Keys to Delete',
 };
-
-/** The row input a suggestion list belongs to. */
-type SuggestionField = 'key' | 'value';
 
 interface KeySearch {
     entryIndex: number;
@@ -100,6 +101,7 @@ interface EntryFormValue {
         SelectComponent,
         AppSvgIconComponent,
         TooltipComponent,
+        NgTemplateOutlet,
     ],
     templateUrl: './persistence-node-panel.component.html',
     styleUrls: ['./persistence-node-panel.component.scss'],
@@ -111,19 +113,18 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected readonly placeholderHints = signal<Record<number, string>>({});
     private readonly suggestions = signal<string[]>([]);
     private readonly activeSuggestionIndex = signal(0);
-    // The input the suggestions belong to; null once they are dismissed, so a late key search is dropped.
-    private readonly suggestionTarget = signal<{
-        entryIndex: number;
-        field: SuggestionField;
-        input: HTMLInputElement;
-    } | null>(null);
+    // The key input the suggestions belong to; null once they are dismissed, so a late search is dropped.
+    private readonly suggestionTarget = signal<{ entryIndex: number; input: HTMLInputElement } | null>(null);
     protected readonly canReadData = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Read));
     protected readonly tableItems = computed<SelectItem<number | null>[]>(() => [
         { name: 'Select a table', value: null },
         ...this.persistenceTablesStorage.tables().map((table) => ({ name: table.name, value: table.id })),
     ]);
     protected readonly keysLabel = computed(() => KEYS_LABEL[this.mode()]);
-    private readonly variablePaths = computed(() => flowVariablePaths(this.flowService.startNodeInitialState()));
+    // Leaves out names a persistence node can't use, such as `user-name` or `_private`.
+    private readonly variableItems = computed(() =>
+        buildVariablePickerItems(this.flowService.startNodeInitialState()).filter((item) => isStatePath(item.fullPath))
+    );
 
     protected readonly activeColor = 'var(--accent-color)';
     protected readonly modeItems: SelectItem<PersistenceMode>[] = [
@@ -131,6 +132,24 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         { name: 'Write', value: 'write' },
         { name: 'Delete', value: 'delete' },
     ];
+    // The Input List's picker. As there, write hides the variables other rows use; read allows repeats.
+    protected readonly variablePicker = new VariablePathPicker({
+        itemsFor: (rowIndex) => {
+            if (this.mode() !== 'write') return this.variableItems();
+            const usedPaths = new Set(
+                this.entries.controls
+                    .filter((_, index) => index !== rowIndex)
+                    .map((row) => writeSourcePath(row.get('value')?.value ?? ''))
+            );
+            return this.variableItems().filter((item) => !usedPaths.has(item.fullPath));
+        },
+        insert: (rowIndex, path) => {
+            const control = this.entries.at(rowIndex).get('value');
+            control?.setValue(path);
+            control?.markAsDirty();
+        },
+        pathOf: writeSourcePath,
+    });
 
     private readonly persistenceTablesApi = inject(PersistenceTablesApiService);
     private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
@@ -144,6 +163,8 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private readonly keySearch$ = new Subject<KeySearch>();
     private suggestionOverlay: OverlayRef | null = null;
     private suggestionDropdown: VariableDropdownOverlayComponent | null = null;
+    // The value a row had before a switch to delete removed its value field, so switching back restores it.
+    private readonly hiddenValues = new WeakMap<FormGroup, string>();
 
     constructor() {
         super();
@@ -226,22 +247,31 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             mode: this.fb.control<PersistenceMode>(mode),
             entries: this.fb.array<FormGroup>(entries.map((entry) => this.createEntryGroup(entry, mode))),
         });
+        // A delete node opened again gets back the values its rows had when the panel was last open.
+        const occurrences = keyOccurrences(entries.map((entry) => entry.key));
+        form.controls.entries.controls.forEach((row, index) => {
+            const draft = this.valueDrafts.valueFor(node.id, entries[index].key, occurrences[index]);
+            if (mode === 'delete' && draft !== undefined) this.hiddenValues.set(row, draft);
+        });
 
-        // A read target's validity depends on the other rows' targets, which its own row doesn't see change.
+        // A write key or source repeats because of the other rows, which its own row doesn't see change.
         const entriesArray = form.controls.entries;
         entriesArray.valueChanges
             .pipe(startWith(null), takeUntilDestroyed(this.destroyRef))
             .subscribe(() =>
-                entriesArray.controls.forEach((row) => row.get('value')?.updateValueAndValidity({ emitEvent: false }))
+                entriesArray.controls.forEach((row) =>
+                    ['key', 'value'].forEach((field) => row.get(field)?.updateValueAndValidity({ emitEvent: false }))
+                )
             );
 
         form.controls.mode.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((newMode) => this.onModeChange(form, newMode ?? 'read'));
 
-        form.valueChanges
-            .pipe(startWith(null), takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.refreshPlaceholderHints(form));
+        form.valueChanges.pipe(startWith(null), takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.refreshPlaceholderHints(form);
+            this.rememberValues(form, node.id);
+        });
 
         form.valueChanges
             .pipe(
@@ -300,21 +330,8 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
 
     protected onKeyInput(entryIndex: number, event: Event): void {
         const input = event.target as HTMLInputElement;
-        this.suggestionTarget.set({ entryIndex, field: 'key', input });
+        this.suggestionTarget.set({ entryIndex, input });
         this.keySearch$.next({ entryIndex, search: input.value });
-    }
-
-    /** Suggests the flow's variables, taken from the start node's initial state. */
-    protected onValueInput(entryIndex: number, event: Event): void {
-        const input = event.target as HTMLInputElement;
-        const typed = input.value.trim();
-        this.suggestionTarget.set({ entryIndex, field: 'value', input });
-        this.activeSuggestionIndex.set(0);
-        this.suggestions.set(
-            this.variablePaths()
-                .filter((path) => path !== typed && path.toLowerCase().includes(typed.toLowerCase()))
-                .slice(0, SUGGESTION_LIMIT)
-        );
     }
 
     protected onSuggestionKeydown(event: KeyboardEvent): void {
@@ -345,9 +362,17 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         this.dismissSuggestions();
     }
 
-    protected isSuggestionListOpen(entryIndex: number, field: SuggestionField): boolean {
-        const target = this.suggestionTarget();
-        return target?.entryIndex === entryIndex && target.field === field && this.suggestions().length > 0;
+    protected isSuggestionListOpen(entryIndex: number): boolean {
+        return this.suggestionTarget()?.entryIndex === entryIndex && this.suggestions().length > 0;
+    }
+
+    protected isDuplicate(index: number, field: 'key' | 'value'): boolean {
+        const error = field === 'key' ? 'duplicateKey' : 'duplicateSource';
+        return this.entries.at(index).get(field)?.hasError(error) ?? false;
+    }
+
+    protected keyHintFor(index: number): string | null {
+        return this.isDuplicate(index, 'key') ? DUPLICATE_KEY_HINT : null;
     }
 
     /** The untouched `variables.` prefill is not an error yet; the user is about to type the rest. */
@@ -358,7 +383,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             if (value.value === VALUE_PREFILL && value.pristine && value.untouched) return null;
             return valuePathHint(value.value, this.mode());
         }
-        return value.hasError('duplicateTarget') ? DUPLICATE_TARGET_HINT : null;
+        return this.isDuplicate(index, 'value') ? DUPLICATE_SOURCE_HINT : null;
     }
 
     protected existenceHintFor(index: number): string | null {
@@ -366,18 +391,48 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return existenceHint(this.mode(), this.lookups()[key]);
     }
 
+    /**
+     * Keeps every row, so each keeps its own value whatever happens to the keys: delete only takes
+     * the value field away, and leaving delete puts it back with the value it had. The form emits
+     * the new value once this returns, as the mode control's change reaches it.
+     */
     private onModeChange(form: FormGroup, newMode: PersistenceMode): void {
         if (newMode === this.mode()) return;
         this.mode.set(newMode);
 
-        const entriesArray = form.get('entries') as FormArray;
-        const rows: EntryFormValue[] = entriesArray.getRawValue();
-        const nodeId = this.node().id;
-        this.valueDrafts.remember(nodeId, rows);
-        const reshaped = reshapeEntriesForMode(rows, newMode, (key) => this.valueDrafts.valueFor(nodeId, key));
-        entriesArray.clear();
-        reshaped.forEach((entry) => entriesArray.push(this.createEntryGroup(entry, newMode)));
+        const rows = (form.get('entries') as FormArray<FormGroup>).controls;
+        rows.forEach((row) => {
+            const value = row.get('value');
+            if (newMode === 'delete') {
+                if (value) this.hiddenValues.set(row, value.value ?? '');
+                row.removeControl('value', { emitEvent: false });
+            } else if (value) {
+                value.setValidators(unlessEmptyEntry(...valueValidators(newMode)));
+            } else {
+                const restored = this.hiddenValues.get(row) ?? VALUE_PREFILL;
+                row.addControl('value', this.fb.control(restored, unlessEmptyEntry(...valueValidators(newMode))), {
+                    emitEvent: false,
+                });
+            }
+            row.get('key')?.setValidators(unlessEmptyEntry(...keyValidators(newMode)));
+        });
+        // After every row has its validators, as a write row's duplicate check reads the others.
+        rows.forEach((row) =>
+            Object.values(row.controls).forEach((control) => control.updateValueAndValidity({ emitEvent: false }))
+        );
         this.notifyExternalChange();
+    }
+
+    /** What reopening the panel restores: each row's value, visible or hidden by delete. */
+    private rememberValues(form: FormGroup, nodeId: string): void {
+        const rows = (form.get('entries') as FormArray<FormGroup>).controls;
+        this.valueDrafts.remember(
+            nodeId,
+            rows.map((row) => ({
+                key: row.get('key')?.value ?? '',
+                value: row.get('value')?.value ?? this.hiddenValues.get(row),
+            }))
+        );
     }
 
     private createEntryGroup(entry: PersistenceEntry, mode: PersistenceMode): FormGroup {
@@ -392,17 +447,15 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     }
 
     private entryControls(entry: PersistenceEntry, mode: PersistenceMode): Record<string, unknown[]> {
-        const key = [entry.key, unlessEmptyEntry(keyValidator)];
+        const key = [entry.key, unlessEmptyEntry(...keyValidators(mode))];
         if (mode === 'delete') return { key };
-        const valueValidators: ValidatorFn[] = [valueValidator(mode)];
-        if (mode === 'read') valueValidators.push(uniqueTargetValidator);
-        return { key, value: ['value' in entry ? entry.value : '', unlessEmptyEntry(...valueValidators)] };
+        return { key, value: ['value' in entry ? entry.value : '', unlessEmptyEntry(...valueValidators(mode))] };
     }
 
     private pickSuggestion(suggestion: string): void {
         const target = this.suggestionTarget();
         if (target === null) return;
-        const control = this.entries.at(target.entryIndex).get(target.field);
+        const control = this.entries.at(target.entryIndex).get('key');
         control?.setValue(suggestion);
         control?.markAsDirty();
         this.dismissSuggestions();
@@ -414,8 +467,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     }
 
     private showKeySuggestions(result: KeySearchResult): void {
-        const target = this.suggestionTarget();
-        if (target?.entryIndex !== result.entryIndex || target.field !== 'key') return;
+        if (this.suggestionTarget()?.entryIndex !== result.entryIndex) return;
         this.activeSuggestionIndex.set(0);
         this.suggestions.set(result.keys);
     }
@@ -514,6 +566,14 @@ function keyValidator(control: AbstractControl<string | null>): ValidationErrors
     return error === null ? null : { [error]: true };
 }
 
+function keyValidators(mode: PersistenceMode): ValidatorFn[] {
+    return mode === 'write' ? [keyValidator, uniqueWriteKeyValidator] : [keyValidator];
+}
+
+function valueValidators(mode: PersistenceMode): ValidatorFn[] {
+    return mode === 'write' ? [valueValidator(mode), uniqueWriteSourceValidator] : [valueValidator(mode)];
+}
+
 function valueValidator(mode: PersistenceMode): ValidatorFn {
     return (control: AbstractControl<string | null>) => {
         const error = valueError(control.value ?? '', mode);
@@ -521,15 +581,24 @@ function valueValidator(mode: PersistenceMode): ValidatorFn {
     };
 }
 
-// Empty rows are not saved, so they share nothing.
-function uniqueTargetValidator(control: AbstractControl<string | null>): ValidationErrors | null {
+/** One field of every row that is saved. Empty rows are not saved, so they repeat nothing. */
+function savedFieldValues(control: AbstractControl, field: keyof EntryFormValue): string[] {
     const rows = control.parent?.parent;
-    if (!(rows instanceof FormArray)) return null;
-    const values: string[] = rows.controls
-        .map((row) => row.getRawValue())
+    if (!(rows instanceof FormArray)) return [];
+    return rows.controls
+        .map((row): EntryFormValue => row.getRawValue())
         .filter((row) => !isEmptyEntry(row))
-        .map((row) => row.value ?? '');
-    return duplicateReadTargets(values).has((control.value ?? '').trim()) ? { duplicateTarget: true } : null;
+        .map((row) => row[field] ?? '');
+}
+
+function uniqueWriteKeyValidator(control: AbstractControl<string | null>): ValidationErrors | null {
+    const duplicates = duplicateWriteKeys(savedFieldValues(control, 'key'));
+    return duplicates.has((control.value ?? '').trim()) ? { duplicateKey: true } : null;
+}
+
+function uniqueWriteSourceValidator(control: AbstractControl<string | null>): ValidationErrors | null {
+    const duplicates = duplicateWriteSources(savedFieldValues(control, 'value'));
+    return duplicates.has(writeSourcePath(control.value ?? '')) ? { duplicateSource: true } : null;
 }
 
 function canvasSummary(form: FormGroup): string {

@@ -3,9 +3,10 @@ import { NodeType } from '@shared/models';
 import { NodeModel } from '../models/node.model';
 import { PersistenceEntry, PersistenceMode } from '../models/persistence-node.model';
 import {
+    duplicateWriteKeys,
+    duplicateWriteSources,
     existenceHint,
     extractPlaceholders,
-    flowVariablePaths,
     hasValidPersistenceEntries,
     invalidPersistenceNodeMessages,
     isEmptyEntry,
@@ -14,13 +15,14 @@ import {
     isStatePath,
     isStaticKey,
     isWriteSource,
+    keyOccurrences,
     keyTemplateHint,
     nonStatePathPlaceholders,
     normalizeEntry,
-    reshapeEntriesForMode,
     STATE_PATH,
     suggestStatePath,
     valuePathHint,
+    writeSourcePath,
 } from './persistence-node.helpers';
 
 describe('persistence node helpers', () => {
@@ -177,20 +179,24 @@ describe('persistence node helpers', () => {
         expect(valuePathHint('variables.user|0', 'read')).toBe('Leave out the |default: a missing key reads None');
     });
 
-    it('carries values between read and write, and restores remembered ones when leaving delete', () => {
-        const nothingRemembered = (): undefined => undefined;
-        const remembered = (key: string): string | undefined => (key === 'k1' ? 'variables.old' : undefined);
+    it('counts how many keys before each one are the same', () => {
+        expect(keyOccurrences(['a', '', 'a', '', 'b'])).toEqual([0, 0, 1, 1, 0]);
+        expect(keyOccurrences([])).toEqual([]);
+    });
 
-        expect(reshapeEntriesForMode([{ key: 'k1', value: 'variables.a' }], 'delete', nothingRemembered)).toEqual([
-            { key: 'k1' },
-        ]);
-        expect(reshapeEntriesForMode([{ key: 'k1', value: 'variables.a' }], 'read', remembered)).toEqual([
-            { key: 'k1', value: 'variables.a' },
-        ]);
-        expect(reshapeEntriesForMode([{ key: 'k1' }, { key: 'k2' }], 'write', remembered)).toEqual([
-            { key: 'k1', value: 'variables.old' },
-            { key: 'k2', value: 'variables.' },
-        ]);
+    it('finds repeated write keys, trimmed, leaving invalid keys to their own rule', () => {
+        expect(duplicateWriteKeys(['a', ' a ', 'b'])).toEqual(new Set(['a']));
+        expect(duplicateWriteKeys(['p_{variables.x}', 'p_{variables.x}'])).toEqual(new Set(['p_{variables.x}']));
+        expect(duplicateWriteKeys(['A', 'a', 'p_{', 'p_{', '', ''])).toEqual(new Set());
+    });
+
+    it('finds repeated write sources by their path before any |default', () => {
+        expect(writeSourcePath(' variables.a |0')).toBe('variables.a');
+        expect(duplicateWriteSources(['variables.a', 'variables.a|0', 'variables.b'])).toEqual(
+            new Set(['variables.a'])
+        );
+        expect(duplicateWriteSources([' variables.b ', 'variables.b'])).toEqual(new Set(['variables.b']));
+        expect(duplicateWriteSources(['variables.', 'variables.', 'user.a', 'user.a'])).toEqual(new Set());
     });
 
     it('checks flow entries the way the panel does, so the flow save can refuse them', () => {
@@ -213,12 +219,32 @@ describe('persistence node helpers', () => {
 
         // What a switch from delete leaves until the values are typed.
         expect(isValid('write', [{ key: 'profile_{variables.user.id}', value: 'variables.' }])).toBe(false);
+        // Read and delete allow repeats; write refuses a repeated key or source on every row that has it.
         expect(
             isValid('read', [
                 { key: 'a', value: 'variables.x' },
-                { key: 'b', value: ' variables.x ' },
+                { key: 'a', value: ' variables.x ' },
+            ])
+        ).toBe(true);
+        expect(isValid('delete', [{ key: 'a' }, { key: 'a' }])).toBe(true);
+        expect(
+            isValid('write', [
+                { key: 'a', value: 'variables.x' },
+                { key: ' a', value: 'variables.y' },
             ])
         ).toBe(false);
+        expect(
+            isValid('write', [
+                { key: 'a', value: 'variables.x' },
+                { key: 'b', value: 'variables.x|0' },
+            ])
+        ).toBe(false);
+        expect(
+            isValid('write', [
+                { key: 'a', value: 'variables.x' },
+                { key: 'b', value: 'variables.y' },
+            ])
+        ).toBe(true);
         expect(isValid('delete', [{ key: 'p_{user_id}' }])).toBe(false);
         expect(isValid('delete', [{ key: '  ' }])).toBe(false);
         expect(isValid('delete', [{ key: 'k'.repeat(513) }])).toBe(false);
@@ -239,21 +265,6 @@ describe('persistence node helpers', () => {
 
         expect(invalidPersistenceNodeMessages(nodes)).toEqual(['"Unfinished" has invalid keys or variable paths']);
         expect(invalidPersistenceNodeMessages(nodes.slice(0, 1))).toEqual([]);
-    });
-
-    it('lists the flow variables as state paths, each parent first', () => {
-        expect(flowVariablePaths({ variables: { user: { id: 1, tags: ['a'] }, plan: 'free', empty: null } })).toEqual([
-            'variables.user',
-            'variables.user.id',
-            'variables.user.tags',
-            'variables.plan',
-            'variables.empty',
-        ]);
-        expect(flowVariablePaths({ variables: { 'user-name': 'x', _secret: { id: 1 }, ok: 1 } })).toEqual([
-            'variables.ok',
-        ]);
-        expect(flowVariablePaths({})).toEqual([]);
-        expect(flowVariablePaths({ variables: [1] })).toEqual([]);
     });
 
     it('builds existence hints per mode', () => {

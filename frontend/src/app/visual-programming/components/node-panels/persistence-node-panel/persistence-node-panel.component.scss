@@ -78,13 +78,24 @@
         border-color: var(--accent-color);
     }
 
-    &.ng-invalid.ng-touched {
+    // Both rows of a repeated write key or variable are red at once, touched or not.
+    &.ng-invalid.ng-touched,
+    &.duplicate {
         border-color: var(--color-status-error);
     }
 
     &::placeholder {
         color: var(--color-text-tertiary);
     }
+}
+
+// Rows align to the top for the hints under the fields, so the "=" takes an input's height to sit centred.
+.equals-sign {
+    @include controls.equals-sign;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    height: 34px;
 }
 
 .entry-hint {

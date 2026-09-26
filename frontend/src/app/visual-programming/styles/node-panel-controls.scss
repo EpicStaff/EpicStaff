@@ -6,6 +6,13 @@
     color: var(--color-text-secondary);
 }
 
+// The "=" between the two fields of a row, e.g. the Input List's "argument = variable".
+@mixin equals-sign {
+    color: var(--white);
+    font-weight: 500;
+    margin: 0 -2px;
+}
+
 // Full-width "add a row" button under a list, e.g. the task node's "Add Input".
 // Full width comes from sitting in a column flex container.
 @mixin add-row-button {

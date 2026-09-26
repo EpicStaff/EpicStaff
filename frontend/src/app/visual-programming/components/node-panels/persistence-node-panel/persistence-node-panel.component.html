@@ -52,29 +52,35 @@
                             class="entry-row"
                             [formGroupName]="i"
                         >
-                            <div class="entry-field">
-                                <input
-                                    type="text"
-                                    class="entry-input"
-                                    formControlName="key"
-                                    placeholder="Key, e.g. profile_{variables.user.id}"
-                                    aria-label="Key"
-                                    autocomplete="off"
-                                    role="combobox"
-                                    aria-autocomplete="list"
-                                    [attr.aria-expanded]="isSuggestionListOpen(i, 'key')"
-                                    (input)="onKeyInput(i, $event)"
-                                    (keydown)="onSuggestionKeydown($event)"
-                                    (blur)="onSuggestionBlur()"
-                                />
-                                @if (placeholderHints()[i]; as hint) {
-                                    <div class="entry-hint">{{ hint }}</div>
-                                }
-                                @if (existenceHintFor(i); as hint) {
-                                    <div class="entry-hint">{{ hint }}</div>
-                                }
-                            </div>
-                            @if (mode() !== 'delete') {
+                            <ng-template #keyField>
+                                <div class="entry-field">
+                                    <input
+                                        type="text"
+                                        class="entry-input"
+                                        formControlName="key"
+                                        placeholder="Key, e.g. profile_{variables.user.id}"
+                                        aria-label="Key"
+                                        autocomplete="off"
+                                        role="combobox"
+                                        aria-autocomplete="list"
+                                        [class.duplicate]="isDuplicate(i, 'key')"
+                                        [attr.aria-expanded]="isSuggestionListOpen(i)"
+                                        (input)="onKeyInput(i, $event)"
+                                        (keydown)="onSuggestionKeydown($event)"
+                                        (blur)="onSuggestionBlur()"
+                                    />
+                                    @if (placeholderHints()[i]; as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                    @if (keyHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                    @if (existenceHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                </div>
+                            </ng-template>
+                            <ng-template #valueField>
                                 <div class="entry-field">
                                     <input
                                         type="text"
@@ -83,17 +89,30 @@
                                         placeholder="variables.user.name"
                                         aria-label="Variable path"
                                         autocomplete="off"
-                                        role="combobox"
-                                        aria-autocomplete="list"
-                                        [attr.aria-expanded]="isSuggestionListOpen(i, 'value')"
-                                        (input)="onValueInput(i, $event)"
-                                        (keydown)="onSuggestionKeydown($event)"
-                                        (blur)="onSuggestionBlur()"
+                                        [class.duplicate]="isDuplicate(i, 'value')"
+                                        (focus)="variablePicker.onFocus(i, $event)"
+                                        (input)="variablePicker.onInput(i, $event)"
                                     />
                                     @if (valueHintFor(i); as hint) {
                                         <div class="entry-hint">{{ hint }}</div>
                                     }
                                 </div>
+                            </ng-template>
+                            <!-- Read puts the stored value into the variable, so the variable goes first. -->
+                            @switch (mode()) {
+                                @case ('read') {
+                                    <ng-container [ngTemplateOutlet]="valueField" />
+                                    <div class="equals-sign">=</div>
+                                    <ng-container [ngTemplateOutlet]="keyField" />
+                                }
+                                @case ('write') {
+                                    <ng-container [ngTemplateOutlet]="keyField" />
+                                    <div class="equals-sign">=</div>
+                                    <ng-container [ngTemplateOutlet]="valueField" />
+                                }
+                                @case ('delete') {
+                                    <ng-container [ngTemplateOutlet]="keyField" />
+                                }
                             }
                             <button
                                 type="button"
