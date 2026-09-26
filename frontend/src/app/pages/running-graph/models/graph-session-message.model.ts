@@ -27,6 +27,7 @@ export enum MessageType {
     FINDINGS = 'findings',
     TASK_NODE_STREAM = 'task_node_stream',
     AGENT_NODE_STREAM = 'agent_node_stream',
+    PERSISTENCE = 'persistence',
 }
 
 export type FinishStopReason = 'completed' | 'schema_satisfied' | 'max_iter_reached';
@@ -201,6 +202,29 @@ export interface FindingsMessageData {
     message_type: MessageType.FINDINGS;
 }
 
+export type PersistenceMessageMode = 'read' | 'write' | 'delete';
+
+// read: `path` is the target variable and `found` is set.
+// write: `path` is the source path (may carry a `|default` suffix) and `created` is set.
+// delete: `path` is null; `deleted_count` on the message is the number of keys actually removed.
+export interface PersistenceMessageEntry {
+    key: string;
+    path: string | null;
+    found: boolean | null;
+    created: boolean | null;
+    value_preview: string | null;
+    truncated: boolean;
+}
+
+export interface PersistenceMessageData {
+    mode: PersistenceMessageMode;
+    table_id: number;
+    table_name: string;
+    entries: PersistenceMessageEntry[];
+    deleted_count: number | null;
+    message_type: MessageType.PERSISTENCE;
+}
+
 // TaskNode / AgentNode stream events (task_start / tool_call / tool_result / task_finish) —
 // same envelope shape, only message_type differs. AgentNode events MAY additionally carry
 // `data.task` to indicate which sub-task the activity belongs to (absent for single-task
@@ -275,4 +299,5 @@ export type MessageData =
     | ConditionGroupManipulationMessageData
     | FindingsMessageData
     | TaskNodeStreamMessageData
-    | AgentNodeStreamMessageData;
+    | AgentNodeStreamMessageData
+    | PersistenceMessageData;

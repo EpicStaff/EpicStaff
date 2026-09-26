@@ -1,0 +1,85 @@
+@if (data(); as data) {
+    <div class="persistence-container">
+        <button
+            type="button"
+            class="header"
+            [attr.aria-expanded]="isExpanded()"
+            (click)="toggle()"
+        >
+            <span class="play-arrow">
+                <app-svg-icon
+                    [icon]="isExpanded() ? 'caret-down-filled' : 'caret-right-filled'"
+                    size="1.1rem"
+                />
+            </span>
+            <span class="icon-container">
+                <app-svg-icon
+                    [icon]="icon()"
+                    size="1rem"
+                />
+            </span>
+            <span class="header-text">
+                <span class="title">{{ title() }}</span>
+                @for (chip of chips(); track chip.label) {
+                    <span
+                        class="chip"
+                        [class.chip--neutral]="chip.neutral"
+                        >{{ chip.label }}</span
+                    >
+                }
+            </span>
+        </button>
+
+        <div
+            class="content grid-collapsible"
+            [class.expanded]="isExpanded()"
+        >
+            <div class="content__inner">
+                @if (data.mode === 'delete') {
+                    @if (missingNote(); as note) {
+                        <p class="muted-note">{{ note }}</p>
+                    }
+                    <div class="key-chips">
+                        @for (key of requestedKeys(); track $index) {
+                            <code class="key-chip">{{ key }}</code>
+                        }
+                    </div>
+                } @else {
+                    <div class="entries-table-wrapper">
+                        <table class="entries-table">
+                            <tbody>
+                                @for (row of rows(); track $index) {
+                                    <tr>
+                                        <td class="col-key">
+                                            <code>{{ row.key }}</code>
+                                        </td>
+                                        <td class="col-arrow">{{ data.mode === 'read' ? '→' : '←' }}</td>
+                                        <td class="col-path">
+                                            <code>{{ row.path }}</code>
+                                        </td>
+                                        <td class="col-preview">
+                                            @if (row.notFound) {
+                                                <span class="not-found">not found</span>
+                                            } @else {
+                                                <code class="preview">{{ row.preview }}</code>
+                                            }
+                                        </td>
+                                        @if (row.tag; as tag) {
+                                            <td class="col-tag">
+                                                <span
+                                                    class="tag"
+                                                    [class.tag--created]="tag === 'created'"
+                                                    >{{ tag }}</span
+                                                >
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}

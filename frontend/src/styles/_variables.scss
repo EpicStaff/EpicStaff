@@ -665,6 +665,7 @@
 
     --color-error: #f54242;
     --color-findings: #f5a623;
+    --color-persistence: #14b8a6; // persistence node + session message accent (matches NODE_COLORS)
     --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
     --shadow-panel-elevated: 0 4px 16px rgba(0, 0, 0, 0.3);
 
@@ -743,6 +744,7 @@
     --color-scrollbar-track: transparent;
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
     --color-card-background: #ffffff;
+    --color-persistence: #115e59; // darker teal: 5.99:1 on its 15% chip over white (#14b8a6 is 2.2:1)
 
     // LEGACY overrides — see :root block above
     --color-nodes-actionbar-bg: #f8fafc;
