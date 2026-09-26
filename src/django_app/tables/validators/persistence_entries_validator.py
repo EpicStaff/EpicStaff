@@ -49,21 +49,24 @@ class PersistenceEntriesValidator:
         if not isinstance(entries, list):
             raise serializers.ValidationError({"entries": "Must be a list."})
         errors: list[str] = []
-        read_targets: set[str] = set()
+        # Entry index by exact key and by stripped source path, for write entries only.
+        written_keys: dict[str, int] = {}
+        written_sources: dict[str, int] = {}
         for index, entry in enumerate(entries):
-            error = self._entry_error(mode, entry, read_targets)
+            error = self._entry_error(mode, entry)
+            if not error and mode == "write":
+                error = self._duplicate_write_error(entry, index, written_keys, written_sources)
             if error:
                 errors.append(f"Entry {index}: {error}")
         if errors:
             raise serializers.ValidationError({"entries": errors})
         if mode == "delete":
             return entries
-        # Stripping canonicalises read targets (the duplicate check compares stripped paths),
-        # and crew keeps a write's `|default` text verbatim, so `variables.x|0 ` would default
-        # to "0 ".
+        # Crew rejects a path with surrounding whitespace, and keeps a write's `|default` text
+        # verbatim, so `variables.x|0 ` would default to "0 ".
         return [{**entry, "value": entry["value"].strip()} for entry in entries]
 
-    def _entry_error(self, mode: str, entry: Any, read_targets: set[str]) -> str | None:
+    def _entry_error(self, mode: str, entry: Any) -> str | None:
         if not isinstance(entry, dict):
             return "must be an object."
         unknown = set(entry) - set(_FIELDS[mode])
@@ -83,15 +86,24 @@ class PersistenceEntriesValidator:
                 "'value' is where the stored value goes: use a plain state path like "
                 "'variables.user.name', without '|default'."
             )
-        error = self._state_path_error(path.split("|", 1)[0])
-        if error:
-            return error
-        if mode == "read":
-            if path in read_targets:
-                return (
-                    f"'{path}' already receives another key; use a different variable for each key."
-                )
-            read_targets.add(path)
+        return self._state_path_error(path.split("|", 1)[0])
+
+    def _duplicate_write_error(
+        self,
+        entry: dict,
+        index: int,
+        written_keys: dict[str, int],
+        written_sources: dict[str, int],
+    ) -> str | None:
+        """Two write entries must not share a key or a source; crew rejects both at run time."""
+        key = entry["key"]
+        first = written_keys.setdefault(key, index)
+        if first != index:
+            return f"key '{key}' is already written by entry {first}; use a different key."
+        source = entry["value"].split("|", 1)[0].strip()
+        first = written_sources.setdefault(source, index)
+        if first != index:
+            return f"'{source}' is already written by entry {first}; use a different variable."
         return None
 
     def _state_path_error(self, state_path: str) -> str | None:

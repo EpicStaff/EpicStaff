@@ -31,17 +31,16 @@ class PersistenceRuntimeAPIView(APIView):
         if operation == "write":
             serializer = PersistenceWriteSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            written = self.service.write(
-                table, serializer.validated_data["entries"], session=session
-            )
-            return Response({"written": written})
+            entries = serializer.validated_data["entries"]
+            created = self.service.write(table, entries, session=session)
+            return Response({"written": len(entries), "created": created, "table_name": table.name})
 
         serializer = PersistenceKeysSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         keys = serializer.validated_data["keys"]
         if operation == "read":
-            return Response({"values": self.service.read(table, keys)})
-        return Response({"deleted": self.service.delete(table, keys)})
+            return Response({"values": self.service.read(table, keys), "table_name": table.name})
+        return Response({"deleted": self.service.delete(table, keys), "table_name": table.name})
 
     def _get_active_session(self, session_id: int) -> Session:
         session = Session.objects.select_related("graph").filter(pk=session_id).first()

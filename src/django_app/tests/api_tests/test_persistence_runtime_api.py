@@ -39,14 +39,18 @@ def test_write_read_delete_round_trip(system_client, running_session, table):
     written = system_client.post(_url(running_session.id, table.id, "write"),
                                  {"entries": {"a": 1, "b": {"x": [1]}}}, format="json")
     assert written.status_code == 200, written.content
-    assert written.data == {"written": 2}
+    assert written.data == {"written": 2, "created": ["a", "b"], "table_name": "Customers"}
     assert PersistenceTableEntry.objects.get(table=table, key="a").updated_by_session_id == running_session.id
 
     read = system_client.post(_url(running_session.id, table.id, "read"), {"keys": ["a", "b", "zz"]}, format="json")
-    assert read.data == {"values": {"a": 1, "b": {"x": [1]}}}
+    assert read.data == {"values": {"a": 1, "b": {"x": [1]}}, "table_name": "Customers"}
+
+    rewritten = system_client.post(_url(running_session.id, table.id, "write"),
+                                   {"entries": {"a": 2, "c": 3}}, format="json")
+    assert rewritten.data == {"written": 2, "created": ["c"], "table_name": "Customers"}
 
     deleted = system_client.post(_url(running_session.id, table.id, "delete"), {"keys": ["a"]}, format="json")
-    assert deleted.data == {"deleted": 1}
+    assert deleted.data == {"deleted": 1, "table_name": "Customers"}
 
 
 @pytest.mark.django_db
@@ -98,6 +102,8 @@ def test_table_in_other_org_is_404(system_client, running_session):
     response = system_client.post(_url(running_session.id, foreign.id, "read"), {"keys": ["a"]}, format="json")
     assert response.status_code == 404
     assert response.data["code"] == "persistence_table_not_found"
+    assert "table_name" not in response.data
+    assert "Customers" not in response.content.decode()
 
 
 @pytest.mark.django_db
@@ -158,7 +164,7 @@ def test_value_written_by_one_flow_is_read_by_another(system_client, default_org
     system_client.post(_url(writer_session.id, table.id, "write"), {"entries": {"shared": "hello"}}, format="json")
     response = system_client.post(_url(reader_session.id, table.id, "read"), {"keys": ["shared"]}, format="json")
 
-    assert response.data == {"values": {"shared": "hello"}}
+    assert response.data == {"values": {"shared": "hello"}, "table_name": "Customers"}
 
 
 @pytest.mark.django_db

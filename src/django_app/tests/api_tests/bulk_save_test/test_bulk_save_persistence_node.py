@@ -246,17 +246,75 @@ def test_read_value_with_default_is_rejected(auth_client, graph, table):
 
 
 @pytest.mark.django_db
-def test_read_values_must_name_different_variables(auth_client, graph, table):
-    # Compared after stripping: both land on the same variable.
-    entries = [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": " variables.a "}]
+@pytest.mark.parametrize(
+    "entries",
+    [
+        # Two keys into one variable: crew applies them in order, the later one wins.
+        [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": "variables.a"}],
+        # One key into two variables.
+        [{"key": "k", "value": "variables.a"}, {"key": "k", "value": "variables.b"}],
+    ],
+)
+def test_read_entries_may_share_a_key_or_a_variable(auth_client, graph, table, entries):
     payload = {"save_version": graph.save_version,
                "persistence_node_list": [_node_payload(graph, table, entries=entries)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert PersistenceNode.objects.get(graph=graph).entries == entries
+
+
+@pytest.mark.django_db
+def test_write_entries_must_use_different_keys(auth_client, graph, table):
+    entries = [
+        {"key": "k_{variables.id}", "value": "variables.a"},
+        {"key": "other", "value": "variables.b"},
+        {"key": "k_{variables.id}", "value": "variables.c"},
+    ]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert (
-        "Entry 1: 'variables.a' already receives another key; use a different variable for each key."
+        "Entry 2: key 'k_{variables.id}' is already written by entry 0; use a different key."
         in str(response.data)
     )
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_write_keys_are_compared_exactly(auth_client, graph, table):
+    # Crew renders templates at run time and rejects keys that collide there.
+    entries = [{"key": "k", "value": "variables.a"}, {"key": "k ", "value": "variables.b"}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "second_value",
+    ["variables.a", " variables.a ", "variables.a|0", "variables.a|1"],
+)
+def test_write_entries_must_use_different_sources(auth_client, graph, table, second_value):
+    entries = [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": second_value}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (
+        "Entry 1: 'variables.a' is already written by entry 0; use a different variable."
+        in str(response.data)
+    )
+
+
+@pytest.mark.django_db
+def test_write_source_nested_in_another_is_accepted(auth_client, graph, table):
+    entries = [{"key": "k1", "value": "variables.user"}, {"key": "k2", "value": "variables.user.id"}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
 
 
 @pytest.mark.django_db

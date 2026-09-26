@@ -51,7 +51,14 @@ def test_write_overwrites_existing_key_and_records_session(service, table, graph
 
 
 @pytest.mark.django_db
-def test_write_is_single_statement_upsert(service, table):
+def test_write_returns_only_keys_that_did_not_exist(service, table):
+    assert service.write(table, {"a": 1}) == ["a"]
+    assert service.write(table, {"b": 2, "a": 3}) == ["b"]
+    assert service.write(table, {"a": 4, "b": 5}) == []
+
+
+@pytest.mark.django_db
+def test_write_upserts_in_one_insert(service, table):
     service.write(table, {"a": 1})
     with CaptureQueriesContext(connection) as queries:
         service.write(table, {"a": 2, "b": 3})

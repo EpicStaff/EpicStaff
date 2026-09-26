@@ -51,10 +51,18 @@ class PersistenceTableService:
         table: PersistenceTable,
         entries: dict[str, Any],
         session: Session | None = None,
-    ) -> int:
+    ) -> list[str]:
+        """Upsert `entries` into `table` and return the keys that did not exist before, sorted."""
         for key, value in entries.items():
             self.validate_key(key)
             self.validate_value(value)
+        # NOTE: created flags are approximate under concurrent writers; use RETURNING
+        # (xmax = 0) via raw SQL if exact created flags ever matter.
+        existing = set(
+            PersistenceTableEntry.objects.filter(table=table, key__in=entries).values_list(
+                "key", flat=True
+            )
+        )
         rows = [
             PersistenceTableEntry(table=table, key=key, value=value, updated_by_session=session)
             for key, value in entries.items()
@@ -65,7 +73,7 @@ class PersistenceTableService:
             unique_fields=["table", "key"],
             update_fields=["value", "updated_at", "updated_by_session"],
         )
-        return len(rows)
+        return sorted(set(entries) - existing)
 
     def delete(self, table: PersistenceTable, keys: list[str]) -> int:
         deleted, _ = PersistenceTableEntry.objects.filter(table=table, key__in=keys).delete()
