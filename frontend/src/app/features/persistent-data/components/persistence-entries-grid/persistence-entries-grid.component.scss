@@ -54,9 +54,51 @@
     }
 
     // Fills the Value cell, so a double-click anywhere in it opens the editor.
+    &__value {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 1 1 0;
+        min-width: 0;
+        margin: -4px -8px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: background-color 0.15s ease;
+
+        &:hover .entries-grid__edit-hint,
+        &:hover .entries-grid__copy,
+        &:focus-within .entries-grid__copy {
+            opacity: 1;
+        }
+    }
+
+    // Double-click to edit is otherwise invisible: tint the cell and show a pencil on hover.
+    &__value--editable:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
     &__preview {
         flex: 1 1 0;
         min-width: 0;
+    }
+
+    &__edit-hint {
+        flex-shrink: 0;
+        color: var(--color-text-secondary);
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    // app-copy-button floats over a card by default; here it sits inline at the end of the cell.
+    &__copy {
+        position: static;
+        flex-shrink: 0;
+        --copy-btn-size: 24px;
+
+        // No hover on touch screens, so the button would never appear.
+        @media (hover: none) {
+            opacity: 1;
+        }
     }
 
     &__session-link {

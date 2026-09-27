@@ -3,8 +3,10 @@
         <app-persistence-table-list
             [tables]="persistenceTablesStorage.tables()"
             [selectedId]="selectedTableId()"
+            [canCreate]="canCreate()"
             [canRename]="canUpdate()"
             [canDelete]="canDelete()"
+            (createRequested)="onCreate()"
             (selected)="selectedTableId.set($event.id)"
             (renameRequested)="onRename($event)"
             (deleteRequested)="onDelete($event)"

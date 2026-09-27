@@ -35,19 +35,21 @@ describe('PersistenceTablesApiService', () => {
     });
 
     it('sends table, paging and search params when listing entries', () => {
-        service.getEntries({ table: 3, search: 'order', limit: 20, offset: 40 }).subscribe();
+        service.getEntries({ table: 3, search: 'order', ordering: '-updated_at', limit: 20, offset: 40 }).subscribe();
         const request = httpMock.expectOne((r) => r.url === '/api/persistence-table-entries/');
         expect(request.request.params.get('table')).toBe('3');
         expect(request.request.params.get('search')).toBe('order');
+        expect(request.request.params.get('ordering')).toBe('-updated_at');
         expect(request.request.params.get('limit')).toBe('20');
         expect(request.request.params.get('offset')).toBe('40');
         request.flush({ count: 0, next: null, previous: null, results: [] });
     });
 
-    it('omits the search param when empty', () => {
+    it('omits the search and ordering params when not given', () => {
         service.getEntries({ table: 3, search: '', limit: 20, offset: 0 }).subscribe();
         const request = httpMock.expectOne((r) => r.url === '/api/persistence-table-entries/');
         expect(request.request.params.has('search')).toBe(false);
+        expect(request.request.params.has('ordering')).toBe(false);
         request.flush({ count: 0, next: null, previous: null, results: [] });
     });
 

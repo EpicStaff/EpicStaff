@@ -164,7 +164,7 @@ describe('PersistenceEntriesGridComponent updated column', () => {
 describe('PersistenceEntriesGridComponent value double-click', () => {
     it('opens the edit dialog for that entry when the user can update', () => {
         const { element, dialogOpen } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick'));
+        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         expect(dialogOpen).toHaveBeenCalledOnce();
         expect(dialogOpen.mock.calls[0]).toEqual([
             expect.anything(),
@@ -186,14 +186,14 @@ describe('PersistenceEntriesGridComponent value double-click', () => {
         const removeAllRanges = vi.fn();
         vi.spyOn(window, 'getSelection').mockReturnValue({ removeAllRanges } as unknown as Selection);
         const { element } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick'));
+        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         expect(removeAllRanges).toHaveBeenCalledOnce();
         vi.restoreAllMocks();
     });
 
     it('does nothing without update permission', () => {
         const { element, dialogOpen } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick'));
+        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         expect(dialogOpen).not.toHaveBeenCalled();
     });
 });
@@ -242,5 +242,143 @@ describe('PersistenceEntriesGridComponent key search', () => {
         fixture.componentRef.setInput('searchTerm', '');
         fixture.detectChanges();
         expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ search: '' }));
+    });
+});
+
+describe('PersistenceEntriesGridComponent copy value', () => {
+    let writeText: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        writeText = vi.fn(() => Promise.resolve());
+        // jsdom has no Clipboard API.
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    });
+    afterEach(() => Reflect.deleteProperty(navigator, 'clipboard'));
+
+    function copyButtons(element: HTMLElement): HTMLButtonElement[] {
+        return [...element.querySelectorAll<HTMLButtonElement>('app-copy-button button')];
+    }
+
+    it('copies an object value as indented JSON, for read-only users too', () => {
+        const { element } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
+        copyButtons(element)[0].click();
+        expect(writeText).toHaveBeenCalledWith('{\n  "plan": "pro"\n}');
+    });
+
+    it('copies a string value as its raw text, without JSON quotes', () => {
+        const { element } = renderGrid({ entries: [{ ...RUN_ENTRY, value: 'hello "world"' }] });
+        copyButtons(element)[0].click();
+        expect(writeText).toHaveBeenCalledWith('hello "world"');
+    });
+
+    it('does not open the editor when Copy is double-clicked', () => {
+        const { element, dialogOpen } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
+        element.querySelector('app-copy-button')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        expect(dialogOpen).not.toHaveBeenCalled();
+    });
+});
+
+describe('PersistenceEntriesGridComponent editable value hint', () => {
+    it('marks the value cell editable and shows a pencil only for users who can update', () => {
+        const editable = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
+        expect(editable.element.querySelector('.entries-grid__value--editable')).not.toBeNull();
+        expect(editable.element.querySelector('.entries-grid__edit-hint')).not.toBeNull();
+        TestBed.resetTestingModule();
+
+        const readOnly = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
+        expect(readOnly.element.querySelector('.entries-grid__value')).not.toBeNull();
+        expect(readOnly.element.querySelector('.entries-grid__value--editable')).toBeNull();
+        expect(readOnly.element.querySelector('.entries-grid__edit-hint')).toBeNull();
+    });
+});
+
+describe('PersistenceEntriesGridComponent sorting', () => {
+    function sortHeader(element: HTMLElement, label: string): HTMLElement | undefined {
+        return [...element.querySelectorAll<HTMLElement>('.col-label-group--clickable')].find(
+            (header) => header.querySelector('.col-label')?.textContent?.trim() === label
+        );
+    }
+
+    it('sorts by key ascending by default', () => {
+        const { getEntries } = renderGrid();
+        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'key' }));
+    });
+
+    it('makes Key, Session and Updated sortable, but not Value', () => {
+        const { element } = renderGrid();
+        const labels = [...element.querySelectorAll('.col-label-group--clickable .col-label')].map((label) =>
+            label.textContent?.trim()
+        );
+        expect(labels).toEqual(['Key', 'Session', 'Updated']);
+    });
+
+    it('flips the sorted column and starts a new column ascending', () => {
+        const { fixture, element, getEntries } = renderGrid();
+        const clickHeader = (label: string) => {
+            sortHeader(element, label)?.click();
+            fixture.detectChanges();
+        };
+
+        clickHeader('Key');
+        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-key' }));
+        clickHeader('Updated');
+        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'updated_at' }));
+        clickHeader('Updated');
+        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-updated_at' }));
+        clickHeader('Session');
+        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'session' }));
+    });
+
+    it('shows the direction on the sorted column only', () => {
+        const { fixture } = renderGrid();
+        const icons = () =>
+            fixture.componentInstance
+                .columns()
+                .filter((column) => column.headerIcon)
+                .map((column) => [column.key, column.headerIcon, column.headerIconActive]);
+
+        expect(icons()).toEqual([
+            ['key', 'arrow-up', true],
+            ['session_label', 'arrow-up-down', false],
+            ['updated_at', 'arrow-up-down', false],
+        ]);
+        fixture.componentInstance.onSortToggle('key');
+        expect(icons()[0]).toEqual(['key', 'arrow-down', true]);
+    });
+
+    it('exposes the current sort as aria-sort on the sorted header only', () => {
+        const { fixture, element } = renderGrid();
+        const sortedLabels = () =>
+            [...element.querySelectorAll('[aria-sort]')].map((cell) => [
+                cell.querySelector('.col-label')?.textContent?.trim(),
+                cell.getAttribute('aria-sort'),
+            ]);
+        expect(sortedLabels()).toEqual([['Key', 'ascending']]);
+
+        sortHeader(element, 'Updated')?.click();
+        sortHeader(element, 'Updated')?.click();
+        fixture.detectChanges();
+        expect(sortedLabels()).toEqual([['Updated', 'descending']]);
+    });
+
+    it('ignores a click on a column that does not sort', () => {
+        const { fixture } = renderGrid();
+        fixture.componentInstance.onSortToggle('preview');
+        expect(fixture.componentInstance.ordering()).toBe('key');
+    });
+
+    it('goes back to page 1 on a sort change and keeps the search term', () => {
+        const entries = Array.from({ length: 20 }, (_, index) => ({ ...RUN_ENTRY, id: index + 1 }));
+        const { fixture, getEntries } = renderGrid({ entries, searchTerm: 'profile' });
+        fixture.componentInstance.page.set(2);
+        fixture.detectChanges();
+        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20 }));
+
+        fixture.componentInstance.onSortToggle('updated_at');
+        fixture.detectChanges();
+        expect(fixture.componentInstance.page()).toBe(1);
+        expect(getEntries).toHaveBeenLastCalledWith(
+            expect.objectContaining({ ordering: 'updated_at', search: 'profile', offset: 0 })
+        );
     });
 });

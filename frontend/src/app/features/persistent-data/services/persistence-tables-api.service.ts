@@ -62,6 +62,9 @@ export class PersistenceTablesApiService {
         if (query.search) {
             params = params.set('search', query.search);
         }
+        if (query.ordering) {
+            params = params.set('ordering', query.ordering);
+        }
         return this.http.get<ApiGetRequest<PersistenceTableEntry>>(this.entriesUrl, { params });
     }
 

@@ -64,3 +64,35 @@ describe('FilesListPageComponent header search placeholder', () => {
         expect(search.searchTerm()).toBe('');
     });
 });
+
+describe('FilesListPageComponent header create button', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('has no top-right Create table button on Persistent Data, even with every permission', async () => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([
+                    {
+                        path: 'files',
+                        component: FilesListPageComponent,
+                        children: [
+                            { path: 'storage', component: TabStubComponent },
+                            { path: 'persistent-data', component: TabStubComponent },
+                        ],
+                    },
+                ]),
+                { provide: PermissionsService, useValue: { can: () => true } },
+            ],
+        });
+        const harness = await RouterTestingHarness.create();
+        const headerButton = () => harness.routeNativeElement?.querySelector('.header-actions app-button');
+
+        // Positive control: the same permissions do render the header button on another tab.
+        await harness.navigateByUrl('/files/storage');
+        expect(headerButton()?.textContent?.trim()).toBe('Add files');
+
+        await harness.navigateByUrl('/files/persistent-data');
+        expect(headerButton()).toBeNull();
+    });
+});

@@ -42,9 +42,15 @@ export interface PersistenceEntryLookup {
 
 export type PersistenceEntryLookupResponse = Record<string, PersistenceEntryLookup>;
 
+export type PersistenceEntrySortField = 'key' | 'session' | 'updated_at';
+// DRF-style `ordering` value: the field ascending, or `-field` descending.
+export type PersistenceEntryOrdering = PersistenceEntrySortField | `-${PersistenceEntrySortField}`;
+
 export interface PersistenceEntriesQuery {
     table: number;
     search: string;
+    // Omitted: the server default (key ascending).
+    ordering?: PersistenceEntryOrdering;
     limit: number;
     offset: number;
 }

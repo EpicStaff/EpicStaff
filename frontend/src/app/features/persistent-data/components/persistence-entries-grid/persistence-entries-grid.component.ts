@@ -5,12 +5,14 @@ import { Component, computed, DestroyRef, effect, inject, input, linkedSignal, o
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import {
+    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
     AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
+    CopyButtonComponent,
     PaginationControlsComponent,
     TableRow,
 } from '@shared/components';
@@ -32,8 +34,13 @@ import {
 
 import { ToastService } from '../../../../services/notifications';
 import { escapeHtml } from '../../helpers/escape-html';
-import { previewValue } from '../../helpers/persistence-value-preview';
-import { PersistenceTable, PersistenceTableEntry } from '../../models/persistence-table.model';
+import { copyableValue, previewValue } from '../../helpers/persistence-value-preview';
+import {
+    PersistenceEntryOrdering,
+    PersistenceEntrySortField,
+    PersistenceTable,
+    PersistenceTableEntry,
+} from '../../models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../services/persistence-tables-api.service';
 import {
     PersistenceEntryDialogComponent,
@@ -42,6 +49,12 @@ import {
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+// Column key -> the server's ordering field. Columns not listed (Value, Actions) are not sortable.
+const SORT_FIELDS: Partial<Record<string, PersistenceEntrySortField>> = {
+    key: 'key',
+    session_label: 'session',
+    updated_at: 'updated_at',
+};
 
 // "<Flow name>, Session #<id>"; null for hand-edited entries, which no run touched.
 function sessionLabel(entry: PersistenceTableEntry): string | null {
@@ -68,7 +81,9 @@ function settledSearch(rawTerm$: Observable<string>): Observable<string> {
     imports: [
         AppTableComponent,
         AppTableCellDirective,
+        AppSvgIconComponent,
         ButtonComponent,
+        CopyButtonComponent,
         PaginationControlsComponent,
         RouterLink,
         DatePipe,
@@ -89,10 +104,13 @@ export class PersistenceEntriesGridComponent {
     readonly search = toSignal(settledSearch(toObservable(this.searchTerm)), { initialValue: '' });
     // The id, not the table object: a refreshed tables list (new entry_count) must not re-fetch or reset paging.
     readonly tableId = computed(() => this.table().id);
-    // Back to page 1 whenever the table or the search changes; the pagination controls set it otherwise.
+    // Server-side sort, clicked from the Key / Session / Updated headers; kept across a table switch.
+    readonly ordering = signal<PersistenceEntryOrdering>('key');
+    // Back to page 1 whenever the table, search or sort changes; the pagination controls set it otherwise.
     readonly page = linkedSignal(() => {
         this.tableId();
         this.search();
+        this.ordering();
         return 1;
     });
     // Reset on a table switch, so the old table's rows (and their entry ids) never sit under the new heading.
@@ -103,6 +121,7 @@ export class PersistenceEntriesGridComponent {
         this.entries().map((entry) => ({
             ...entry,
             preview: previewValue(entry.value),
+            copy_text: copyableValue(entry.value),
             session_label: sessionLabel(entry),
         }))
     );
@@ -120,10 +139,10 @@ export class PersistenceEntriesGridComponent {
             });
         }
         const columns: AppTableColumnDef[] = [
-            { key: 'key', label: 'Key', width: '1fr' },
+            this.sortableColumn({ key: 'key', label: 'Key', width: '1fr' }),
             { key: 'preview', label: 'Value', width: '2fr' },
-            { key: 'session_label', label: 'Session', width: '1fr' },
-            { key: 'updated_at', label: 'Updated', width: '180px' },
+            this.sortableColumn({ key: 'session_label', label: 'Session', width: '1fr' }),
+            this.sortableColumn({ key: 'updated_at', label: 'Updated', width: '180px' }),
         ];
         if (actions.length) {
             columns.push({ key: 'actions', label: 'Actions', width: '96px', align: 'end', actions });
@@ -139,6 +158,7 @@ export class PersistenceEntriesGridComponent {
             .getEntries({
                 table: this.tableId(),
                 search: this.search(),
+                ordering: this.ordering(),
                 limit: PAGE_SIZE,
                 offset: (page - 1) * PAGE_SIZE,
             })
@@ -176,12 +196,32 @@ export class PersistenceEntriesGridComponent {
         this.openEntryDialog({ tableId: this.tableId() });
     }
 
+    // A new column sorts ascending; clicking the sorted column flips its direction.
+    onSortToggle(columnKey: string): void {
+        const field = SORT_FIELDS[columnKey];
+        if (!field) return;
+        this.ordering.update((current) => (current === field ? `-${field}` : field));
+    }
+
     // Double-click is the mouse shortcut; keyboard users take the row's Edit action button.
     onValueDoubleClick(row: TableRow): void {
         if (!this.canUpdate()) return;
         // The browser selects the double-clicked word; drop it so the dialog does not open over a highlight.
         window.getSelection()?.removeAllRanges();
         this.onEdit(row);
+    }
+
+    // The header icon shows the sort: up/down on the sorted column, a neutral up-down arrow on the others.
+    private sortableColumn(column: AppTableColumnDef): AppTableColumnDef {
+        const field = SORT_FIELDS[column.key];
+        const ordering = this.ordering();
+        if (ordering === field) {
+            return { ...column, headerIcon: 'arrow-up', headerIconActive: true, sortDirection: 'ascending' };
+        }
+        if (ordering === `-${field}`) {
+            return { ...column, headerIcon: 'arrow-down', headerIconActive: true, sortDirection: 'descending' };
+        }
+        return { ...column, headerIcon: 'arrow-up-down', headerIconActive: false };
     }
 
     private onEdit(row: TableRow): void {

@@ -1,5 +1,5 @@
 import { Component, computed, input, output, signal } from '@angular/core';
-import { IconButtonComponent, SearchComponent } from '@shared/components';
+import { ButtonComponent, IconButtonComponent, SearchComponent } from '@shared/components';
 
 import { PersistenceTable } from '../../models/persistence-table.model';
 
@@ -8,16 +8,18 @@ const FILTER_THRESHOLD = 8;
 
 @Component({
     selector: 'app-persistence-table-list',
-    imports: [IconButtonComponent, SearchComponent],
+    imports: [ButtonComponent, IconButtonComponent, SearchComponent],
     templateUrl: './persistence-table-list.component.html',
     styleUrls: ['./persistence-table-list.component.scss'],
 })
 export class PersistenceTableListComponent {
     readonly tables = input.required<PersistenceTable[]>();
     readonly selectedId = input<number | null>(null);
+    readonly canCreate = input(false);
     readonly canRename = input(false);
     readonly canDelete = input(false);
 
+    readonly createRequested = output<void>();
     readonly selected = output<PersistenceTable>();
     readonly renameRequested = output<PersistenceTable>();
     readonly deleteRequested = output<PersistenceTable>();

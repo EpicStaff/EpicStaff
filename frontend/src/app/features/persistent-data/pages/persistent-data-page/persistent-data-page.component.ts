@@ -64,6 +64,19 @@ export class PersistentDataPageComponent {
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
+    onCreate(): void {
+        this.dialog
+            .open<PersistenceTable | null>(PersistenceTableDialogComponent, { width: '480px' })
+            .closed.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((table) => {
+                if (!table) return;
+                this.toastService.success(`Table "${table.name}" created`);
+                // Kept by the reload, which only falls back to the first table when the selection is gone.
+                this.selectedTableId.set(table.id);
+                this.persistenceTablesStorage.triggerRefresh();
+            });
+    }
+
     onRename(table: PersistenceTable): void {
         this.dialog
             .open<PersistenceTable | null, PersistenceTableDialogData>(PersistenceTableDialogComponent, {

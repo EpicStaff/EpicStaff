@@ -81,3 +81,43 @@ describe('PersistenceTableListComponent name filter', () => {
         expect(names()).toHaveLength(8);
     });
 });
+
+// jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+describe('PersistenceTableListComponent header', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function renderHeader(canCreate: boolean) {
+        const fixture = TestBed.createComponent(PersistenceTableListComponent);
+        fixture.componentRef.setInput('tables', [TABLE, { ...TABLE, id: 2, name: 'orders' }]);
+        fixture.componentRef.setInput('canCreate', canCreate);
+        fixture.detectChanges();
+        const element = fixture.nativeElement as HTMLElement;
+        const addButton = element.querySelector<HTMLElement>('.table-list__header app-button');
+        return { fixture, element, addButton };
+    }
+
+    it('reads "Tables" with the table count', () => {
+        const { element } = renderHeader(false);
+        expect(element.querySelector('.table-list__header-label')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+            'Tables 2'
+        );
+    });
+
+    it('offers Add only with create permission and emits createRequested on click', () => {
+        expect(renderHeader(false).addButton).toBeNull();
+
+        const { fixture, addButton } = renderHeader(true);
+        const createRequested = vi.fn();
+        fixture.componentInstance.createRequested.subscribe(createRequested);
+        expect(addButton?.textContent?.trim()).toBe('Add');
+        addButton?.click();
+        expect(createRequested).toHaveBeenCalledOnce();
+    });
+});

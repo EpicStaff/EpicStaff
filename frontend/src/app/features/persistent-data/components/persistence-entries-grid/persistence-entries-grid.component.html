@@ -18,6 +18,7 @@
             [data]="rows()"
             [hasExternalFilter]="!!search()"
             rowId="id"
+            (headerIconClick)="onSortToggle($event.key)"
         >
             <ng-template
                 appTableCell="key"
@@ -30,12 +31,31 @@
                 appTableCell="preview"
                 let-row
             >
-                <span
-                    class="entries-grid__preview"
-                    [attr.title]="canUpdate() ? 'Double-click to edit' : null"
+                <div
+                    class="entries-grid__value"
+                    [class.entries-grid__value--editable]="canUpdate()"
                     (dblclick)="onValueDoubleClick(row)"
-                    >{{ row['preview'] }}</span
                 >
+                    <span
+                        class="entries-grid__preview"
+                        [attr.title]="canUpdate() ? 'Double-click to edit' : null"
+                        >{{ row['preview'] }}</span
+                    >
+                    @if (canUpdate()) {
+                        <app-svg-icon
+                            class="entries-grid__edit-hint"
+                            icon="edit"
+                            size="14px"
+                        />
+                    }
+                    <!-- A fast double click on Copy must not also open the editor. -->
+                    <app-copy-button
+                        class="entries-grid__copy"
+                        ariaLabel="Copy value"
+                        [text]="row['copy_text']"
+                        (dblclick)="$event.stopPropagation()"
+                    />
+                </div>
             </ng-template>
 
             <ng-template

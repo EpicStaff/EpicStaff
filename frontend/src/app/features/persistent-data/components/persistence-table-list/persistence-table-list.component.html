@@ -1,3 +1,19 @@
+<!-- Same header as the Knowledge Sources collections sidebar. -->
+<div class="table-list__header">
+    <span class="table-list__header-label"
+        >Tables
+        <span class="table-list__header-count">{{ tables().length }}</span>
+    </span>
+    @if (canCreate()) {
+        <app-button
+            [type]="tables().length ? 'primary' : 'outline-primary'"
+            [leftIcon]="'plus'"
+            (click)="createRequested.emit()"
+        >
+            Add
+        </app-button>
+    }
+</div>
 @if (showFilter()) {
     <div class="table-list__filter">
         <app-search
