@@ -1,3 +1,4 @@
+import json
 import re
 from unittest.mock import AsyncMock, MagicMock
 
@@ -6,6 +7,7 @@ from dotdict import DotDict
 
 from clients.errors import ClientValidationError
 from services.graph.exceptions import PersistenceNodeError
+from services.graph.nodes import persistence_node
 from services.graph.nodes.persistence_node import PersistenceNode
 
 TABLE_NAME = "Customers"
@@ -138,6 +140,7 @@ async def test_read_replaces_existing_object_instead_of_merging():
         ("variables.a..b", "is not a flow state path"),
         (" variables.a", "is not a flow state path"),
         ("variables.tags[x]", "is not a flow state path"),
+        ("variables.tags[01]", "is not a flow state path"),
         ("variables.count|0", "takes no '|default'"),
         ("variables._properties", "'_'"),
         ("variables.user.__dict__", "'_'"),
@@ -154,43 +157,66 @@ async def test_read_rejects_bad_target_path_before_reading(target, message):
 
 
 @pytest.mark.asyncio
-async def test_read_later_entry_wins_a_shared_target():
-    client = make_client()
-    client.read.return_value = read_response({"k1": "first", "k2": "second"})
-    node = make_node(
-        "read",
+@pytest.mark.parametrize(
+    "entries",
+    [
         [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": "variables.a"}],
-        client,
-    )
-    state = make_state({})
+        [{"key": "k1", "value": "variables.a"}, {"key": "k1", "value": "variables.a"}],
+    ],
+)
+async def test_read_rejects_two_entries_with_the_same_target_before_reading(entries):
+    client = make_client()
+    node = make_node("read", entries, client)
     writer = MagicMock()
 
-    result = await node.execute(state=state, writer=writer, execution_order=0, input_={})
+    with pytest.raises(
+        PersistenceNodeError, match="persist_1.*more than one entry reads into 'variables.a'"
+    ):
+        await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
-    assert state["variables"].deep_dump() == {"a": "second"}
-    assert result == {"variables.a": "second"}
-    client.read.assert_awaited_once_with(7, 3, ["k1", "k2"])
-    [message] = persistence_messages(writer)
-    assert [
-        (entry["key"], entry["path"], entry["found"], entry["value_preview"])
-        for entry in message["entries"]
-    ] == [("k1", "variables.a", True, '"first"'), ("k2", "variables.a", True, '"second"')]
+    client.read.assert_not_awaited()
+    assert persistence_messages(writer) == []
 
 
 @pytest.mark.asyncio
-async def test_read_later_entry_replaces_a_target_nested_in_an_earlier_one():
+@pytest.mark.parametrize(
+    ("first", "second", "inner", "outer"),
+    [
+        ("variables.user", "variables.user.name", "variables.user.name", "variables.user"),
+        ("variables.user.name", "variables.user", "variables.user.name", "variables.user"),
+        ("variables.users", "variables.users[0]", "variables.users[0]", "variables.users"),
+        ("variables.users[0]", "variables.users", "variables.users[0]", "variables.users"),
+    ],
+)
+async def test_read_rejects_a_target_nested_in_another_before_reading(first, second, inner, outer):
     client = make_client()
-    client.read.return_value = read_response({"k1": "Ann", "k2": {"id": 1}})
+    node = make_node(
+        "read", [{"key": "k1", "value": first}, {"key": "k2", "value": second}], client
+    )
+
+    with pytest.raises(
+        PersistenceNodeError,
+        match=re.escape(f"read target '{inner}' is inside read target '{outer}'"),
+    ):
+        await run(node, {})
+
+    client.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_read_targets_sharing_only_a_name_prefix_do_not_overlap():
+    client = make_client()
+    client.read.return_value = read_response({"k1": {"id": 1}, "k2": "ann"})
     node = make_node(
         "read",
-        [{"key": "k1", "value": "variables.user.name"}, {"key": "k2", "value": "variables.user"}],
+        [{"key": "k1", "value": "variables.user"}, {"key": "k2", "value": "variables.username"}],
         client,
     )
     state = make_state({})
 
     await node.execute(state=state, writer=MagicMock(), execution_order=0, input_={})
 
-    assert state["variables"].deep_dump() == {"user": {"id": 1}}
+    assert state["variables"].deep_dump() == {"user": {"id": 1}, "username": "ann"}
 
 
 @pytest.mark.asyncio
@@ -589,11 +615,11 @@ async def test_read_emits_message_with_found_and_missing_entries():
         "table_name": "Customers",
         "entries": [
             {"key": "k1", "path": "variables.a", "found": True, "created": None,
-             "value_preview": '{"name": "Ann"}', "truncated": False},
+             "value": {"name": "Ann"}, "truncated": False},
             {"key": "missing", "path": "variables.b", "found": False, "created": None,
-             "value_preview": None, "truncated": False},
+             "value": None, "truncated": False},
             {"key": "stored_null", "path": "variables.c", "found": True, "created": None,
-             "value_preview": "null", "truncated": False},
+             "value": None, "truncated": False},
         ],
         "deleted_count": None,
         "message_type": "persistence",
@@ -621,9 +647,9 @@ async def test_write_emits_message_with_created_flags_and_source_paths():
     assert message["table_name"] == "Customers"
     assert message["entries"] == [
         {"key": "new", "path": "variables.a", "found": None, "created": True,
-         "value_preview": '"Ann"', "truncated": False},
+         "value": "Ann", "truncated": False},
         {"key": "old_1", "path": "variables.missing|fallback", "found": None, "created": False,
-         "value_preview": '"fallback"', "truncated": False},
+         "value": "fallback", "truncated": False},
     ]
 
 
@@ -640,20 +666,120 @@ async def test_delete_emits_message_with_deleted_count_and_requested_keys():
     assert message["deleted_count"] == 1
     assert [entry["key"] for entry in message["entries"]] == ["a", "b"]
     assert all(entry["path"] is None for entry in message["entries"])
+    assert all(entry["value"] is None for entry in message["entries"])
+    assert not any(entry["truncated"] for entry in message["entries"])
+
+
+NESTED_VALUE = {"name": "Ann", "tags": ["a", "b"], "address": {"city": "Kyiv", "zip": None}}
 
 
 @pytest.mark.asyncio
-async def test_long_value_preview_is_cut_to_200_chars_and_marked_truncated():
+async def test_read_message_carries_full_nested_value():
     client = make_client()
-    client.read.return_value = read_response({"k": "ж" * 300})
-    node = make_node("read", [{"key": "k", "value": "variables.a"}], client)
+    client.read.return_value = read_response({"k": NESTED_VALUE, "long": "ж" * 300})
+    node = make_node(
+        "read",
+        [{"key": "k", "value": "variables.a"}, {"key": "long", "value": "variables.b"}],
+        client,
+    )
     writer = MagicMock()
 
     await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
+    entries = persistence_messages(writer)[0]["entries"]
+    assert [(entry["value"], entry["truncated"]) for entry in entries] == [
+        (NESTED_VALUE, False),
+        ("ж" * 300, False),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_write_message_carries_full_nested_value():
+    node = make_node("write", [{"key": "k", "value": "variables.profile"}])
+    writer = MagicMock()
+
+    await node.execute(
+        state=make_state({"profile": NESTED_VALUE}), writer=writer, execution_order=0, input_={}
+    )
+
     [entry] = persistence_messages(writer)[0]["entries"]
-    assert entry["value_preview"] == '"' + "ж" * 199
-    assert entry["truncated"] is True
+    # The value comes from flow state (a DotDict); it must survive the JSON publish as-is.
+    assert json.loads(json.dumps(entry["value"])) == NESTED_VALUE
+    assert entry["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_values_past_message_budget_are_sent_as_truncated_previews(monkeypatch):
+    # '"aaaaaaaaaa"' is 12 bytes of JSON: two fit a 30-byte budget, the third does not.
+    monkeypatch.setattr(persistence_node, "MESSAGE_VALUE_BUDGET_BYTES", 30)
+    client = make_client()
+    client.read.return_value = read_response(
+        {"k1": "a" * 10, "k2": "a" * 10, "k3": "ж" * 300, "k4": "small", "k5": None}
+    )
+    node = make_node(
+        "read",
+        [{"key": f"k{index}", "value": f"variables.v{index}"} for index in range(1, 7)],
+        client,
+    )
+    writer = MagicMock()
+
+    await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
+
+    entries = persistence_messages(writer)[0]["entries"]
+    assert [(entry["found"], entry["value"], entry["truncated"]) for entry in entries] == [
+        (True, "a" * 10, False),
+        (True, "a" * 10, False),
+        (True, '"' + "ж" * 199, True),
+        # Past the budget a value short enough to preview is sent as it is.
+        (True, "small", False),
+        # A stored null and a missing key carry no value, so they are never truncated.
+        (True, None, False),
+        (False, None, False),
+    ]
+
+
+def entries_for(mode: str, count: int) -> list[dict]:
+    if mode == "delete":
+        return [{"key": f"k{index}"} for index in range(count)]
+    return [{"key": f"k{index}", "value": f"variables.v{index}"} for index in range(count)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+async def test_more_than_500_entries_are_rejected_before_calling_the_table(mode):
+    client = make_client()
+    node = make_node(mode, entries_for(mode, 501), client)
+
+    with pytest.raises(PersistenceNodeError, match="persist_1.*501 entries; at most 500"):
+        await run(node, {f"v{index}": index for index in range(501)})
+
+    client.read.assert_not_awaited()
+    client.write.assert_not_awaited()
+    client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_500_entries_are_accepted():
+    client = make_client()
+    node = make_node("write", entries_for("write", 500), client)
+
+    await run(node, {f"v{index}": index for index in range(500)})
+
+    client.write.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_write_accepts_canonical_list_indexes():
+    client = make_client()
+    node = make_node(
+        "write",
+        [{"key": "first", "value": "variables.tags[0]"}, {"key": "last", "value": "variables.tags[10]"}],
+        client,
+    )
+
+    output = await run(node, {"tags": list(range(11))})
+
+    assert output == {"first": 0, "last": 10}
 
 
 @pytest.mark.asyncio

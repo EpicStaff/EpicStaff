@@ -163,8 +163,9 @@ class PersistenceMessageEntry:
     found: bool | None = None
     # write only
     created: bool | None = None
-    # Value as JSON, cut to 200 chars
-    value_preview: str | None = None
+    # read: stored value (None when not found); write: value written; delete: None
+    value: Any = None
+    # True when the value did not fit the message budget; `value` is then a JSON-text preview
     truncated: bool = False
 
 

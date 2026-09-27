@@ -15,15 +15,23 @@ from services.graph.nodes.base_node import BaseNode
 from utils import map_variables_to_input
 
 MAX_KEY_LENGTH = 512
-# Mirrors Django's VALUE_PREVIEW_CHARS: the session message shows no more of a value than the
-# table view does.
+# Mirrors Django's MAX_KEYS_PER_REQUEST, which the internal routes enforce per call.
+MAX_ENTRIES = 500
+# Mirrors Django's VALUE_PREVIEW_CHARS: a value past the message budget is previewed the way
+# the table view previews it.
 VALUE_PREVIEW_CHARS = 200
+# Total UTF-8 JSON size of the values one session message carries in full; later long values
+# are sent as previews so a large read or write cannot bloat the message stream. This bounds
+# the size as the message is stored (a JSONField), not the Redis payload: that is published
+# with ensure_ascii escaping, which can grow non-ASCII text several times over.
+MESSAGE_VALUE_BUDGET_BYTES = 512 * 1024
 _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 # Same tokenisation as `map_variables_to_input`, which resolves a bare `variables` path to the
 # whole flow state.
-_PATH_SEGMENT = re.compile(r"\w+|\[\d+\]")
-# Django's PersistenceEntriesValidator applies the same rule on save.
-_STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[\d+\])*", re.ASCII)
+_PATH_SEGMENT = re.compile(r"\w+|\[(?:0|[1-9]\d*)\]")
+# Django's PersistenceEntriesValidator applies the same rule on save. Indexes are canonical
+# (`[0]`, `[10]`, not `[01]`) so equal paths compare equal as strings.
+_STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCII)
 # Attribute access on a DotDict finds these before any stored key, so a value stored under
 # one of these names can never be read back by path.
 _DOTDICT_ATTRIBUTES = frozenset(name for name in dir(DotDict) if not name.startswith("_"))
@@ -35,12 +43,15 @@ class PersistenceNode(BaseNode):
     Entries reference flow state directly: key placeholders (`profile_{variables.user.id}`),
     write sources and read targets (`variables.user.name`) are state paths; the node has no
     input map and no output variable. A read writes each stored value (None for a missing
-    key) to its entry's target path, in entry order. A write rejects two entries with the same
+    key) to its entry's target path, in entry order, and rejects two entries whose targets
+    are the same or nested (`variables.user` and `variables.user.name`); one key may feed
+    several targets. A write rejects two entries with the same
     rendered key; one source path may feed several keys. A write source's `|default` suffix
     applies only when the path is missing, not when it holds null.
 
     After the table call succeeds, the node emits one `persistence` session message listing
-    the entries that took effect.
+    the entries that took effect, with their full values while they fit
+    MESSAGE_VALUE_BUDGET_BYTES and a truncated preview after that.
     """
 
     TYPE = "PERSISTENCE"
@@ -72,6 +83,11 @@ class PersistenceNode(BaseNode):
             raise PersistenceNodeError(
                 f"Persistence node '{self.node_name}' has no table selected."
             )
+        if len(self.entries) > MAX_ENTRIES:
+            raise PersistenceNodeError(
+                f"Persistence node '{self.node_name}' has {len(self.entries)} entries; "
+                f"at most {MAX_ENTRIES} are allowed."
+            )
         variables = state["variables"]
         try:
             if self.mode == "read":
@@ -99,6 +115,7 @@ class PersistenceNode(BaseNode):
             (self._check_target(entry["value"]), self._render_key(entry["key"], variables))
             for entry in self.entries
         ]
+        self._check_separate_targets([target for target, _ in targets_and_keys])
         response = await self.persistence_client.read(
             self.session_id,
             self.persistence_table_id,
@@ -107,15 +124,12 @@ class PersistenceNode(BaseNode):
         stored = response["values"]
         read: dict[str, Any] = {}
         message_entries: list[PersistenceMessageEntry] = []
-        # Entry order, so a later entry wins a target it shares with an earlier one.
         for target, key in targets_and_keys:
             read[target] = stored.get(key)
             self._assign(variables, target, read[target])
-            found = key in stored
-            preview, truncated = _preview(stored[key]) if found else (None, False)
             message_entries.append(
                 PersistenceMessageEntry(
-                    key=key, path=target, found=found, value_preview=preview, truncated=truncated
+                    key=key, path=target, found=key in stored, value=read[target]
                 )
             )
         return read, self._message(response, message_entries)
@@ -144,18 +158,12 @@ class PersistenceNode(BaseNode):
             self.session_id, self.persistence_table_id, written
         )
         created = set(response["created"])
-        message_entries = []
-        for key, value in written.items():
-            preview, truncated = _preview(value)
-            message_entries.append(
-                PersistenceMessageEntry(
-                    key=key,
-                    path=source_by_key[key],
-                    created=key in created,
-                    value_preview=preview,
-                    truncated=truncated,
-                )
+        message_entries = [
+            PersistenceMessageEntry(
+                key=key, path=source_by_key[key], created=key in created, value=value
             )
+            for key, value in written.items()
+        ]
         return written, self._message(response, message_entries)
 
     async def _delete(self, variables: DotDict) -> tuple[None, PersistenceMessageData]:
@@ -172,6 +180,7 @@ class PersistenceNode(BaseNode):
         entries: list[PersistenceMessageEntry],
         deleted_count: int | None = None,
     ) -> PersistenceMessageData:
+        _fit_values_to_budget(entries)
         return PersistenceMessageData(
             mode=self.mode,
             table_id=self.persistence_table_id,
@@ -211,6 +220,30 @@ class PersistenceNode(BaseNode):
                 f"got {len(key)}."
             )
         return key
+
+    def _check_separate_targets(self, targets: list[str]) -> None:
+        """Reject targets that repeat or nest: reading into both would overwrite one of them.
+
+        Compared by path segment, so `variables.user` and `variables.username` are separate.
+        """
+        seen: list[tuple[list[str], str]] = []
+        for target in targets:
+            segments = _PATH_SEGMENT.findall(target)
+            for earlier_segments, earlier in seen:
+                shared = min(len(segments), len(earlier_segments))
+                if segments[:shared] != earlier_segments[:shared]:
+                    continue
+                if len(segments) == len(earlier_segments):
+                    raise PersistenceNodeError(
+                        f"Persistence node '{self.node_name}': more than one entry reads into "
+                        f"'{target}'. Use a different variable for each entry."
+                    )
+                inner, outer = (target, earlier) if len(segments) > shared else (earlier, target)
+                raise PersistenceNodeError(
+                    f"Persistence node '{self.node_name}': read target '{inner}' is inside "
+                    f"read target '{outer}'. Use a different variable for each entry."
+                )
+            seen.append((segments, target))
 
     def _check_target(self, path: str) -> str:
         if "|" in path:
@@ -328,10 +361,22 @@ class PersistenceNode(BaseNode):
         return value
 
 
-def _preview(value: Any) -> tuple[str, bool]:
-    """Return the value as JSON cut to VALUE_PREVIEW_CHARS, and whether it was cut."""
-    text = json.dumps(value, ensure_ascii=False, default=str)
-    return text[:VALUE_PREVIEW_CHARS], len(text) > VALUE_PREVIEW_CHARS
+def _fit_values_to_budget(entries: list[PersistenceMessageEntry]) -> None:
+    """Keep full values, in entry order, while their JSON fits MESSAGE_VALUE_BUDGET_BYTES.
+
+    Once the running total passes the budget, every later value whose JSON text is longer
+    than VALUE_PREVIEW_CHARS is replaced by the start of that text, marked truncated; shorter
+    values stay as they are.
+    """
+    used_bytes = 0
+    for entry in entries:
+        if entry.value is None:
+            continue
+        text = json.dumps(entry.value, ensure_ascii=False)
+        used_bytes += len(text.encode("utf-8"))
+        if used_bytes > MESSAGE_VALUE_BUDGET_BYTES and len(text) > VALUE_PREVIEW_CHARS:
+            entry.value = text[:VALUE_PREVIEW_CHARS]
+            entry.truncated = True
 
 
 def _describe(value: Any) -> str:
