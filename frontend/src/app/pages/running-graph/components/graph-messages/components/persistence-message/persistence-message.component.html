@@ -82,10 +82,28 @@
                                                 </div>
                                                 @if (row.notFound) {
                                                     <div class="not-found">not found</div>
+                                                } @else if (row.json; as json) {
+                                                    <div class="value-content">
+                                                        <app-copy-button [text]="row.copyText ?? ''" />
+                                                        <app-json-viewer
+                                                            [json]="json"
+                                                            [expanded]="false"
+                                                        />
+                                                    </div>
                                                 } @else if (row.preview; as preview) {
-                                                    <pre
-                                                        class="preview"
-                                                    >@for (token of preview; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
+                                                    <div class="preview-box">
+                                                        @if (row.copyText !== null) {
+                                                            <app-copy-button [text]="row.copyText" />
+                                                        }
+                                                        <pre
+                                                            class="preview"
+                                                        >@for (token of preview; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
+                                                    </div>
+                                                }
+                                                @if (row.truncated) {
+                                                    <p class="truncated-note">
+                                                        Message size limit reached — first 200 characters shown
+                                                    </p>
                                                 }
                                             </li>
                                         }

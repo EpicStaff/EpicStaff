@@ -1,5 +1,5 @@
 import { Component, computed, input, signal } from '@angular/core';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import {
     GraphMessage,
@@ -29,13 +29,23 @@ interface JsonToken {
 
 // Rendered assignment-style, `target ← source`, matching the data flow:
 // read `variables.path ← key`, write `key ← variables.path`, delete just the key.
+// A non-empty object / array value goes to the JSON viewer (`json`); a scalar, an empty
+// container or a truncated JSON prefix is highlighted inline (`preview`). `copyText` is the full
+// value (pretty JSON, strings raw); null for a truncated prefix, which is not the value.
 interface PersistenceRow {
     target: MappingPart;
     source: MappingPart | null;
+    json: object | null;
     preview: JsonToken[] | null;
+    truncated: boolean;
+    copyText: string | null;
     notFound: boolean;
     tag: 'created' | 'updated' | null;
 }
+
+type PersistenceRowValue = Pick<PersistenceRow, 'json' | 'preview' | 'truncated' | 'copyText'>;
+
+const NO_VALUE: PersistenceRowValue = { json: null, preview: null, truncated: false, copyText: null };
 
 interface ModeIcon {
     name: string;
@@ -51,14 +61,14 @@ const MODE_ICONS: Record<PersistenceMessageMode, ModeIcon> = {
 };
 
 // One JSON token per match: a string (then `:` if it is an object key), number, literal or
-// punctuation. Previews are cut at 200 chars, so a string may end without its closing quote
-// (or mid-escape); anything unmatched falls through as plain text.
+// punctuation. A truncated value is the first 200 chars of the JSON text, so a string may end
+// without its closing quote (or mid-escape); anything unmatched falls through as plain text.
 const JSON_TOKEN =
     /("(?:\\[\s\S]?|[^"\\])*(?:"|$))(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}[\],:]/g;
 
 @Component({
     selector: 'app-persistence-message',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent],
     templateUrl: './persistence-message.component.html',
     styleUrls: ['./persistence-message.component.scss'],
 })
@@ -123,12 +133,15 @@ export class PersistenceMessageComponent {
     protected readonly rows = computed<PersistenceRow[]>(() => {
         const data = this.data();
         if (!data) return [];
-        return data.entries.map((entry) => ({
-            ...toAssignment(data.mode, entry),
-            preview: entry.value_preview === null ? null : previewTokens(entry.value_preview, entry.truncated),
-            notFound: data.mode === 'read' && entry.found === false,
-            tag: data.mode === 'write' ? (entry.created ? 'created' : 'updated') : null,
-        }));
+        return data.entries.map((entry) => {
+            const notFound = data.mode === 'read' && entry.found === false;
+            return {
+                ...toAssignment(data.mode, entry),
+                ...(data.mode === 'delete' || notFound ? NO_VALUE : toRowValue(entry)),
+                notFound,
+                tag: data.mode === 'write' ? (entry.created ? 'created' : 'updated') : null,
+            };
+        });
     });
 
     protected toggle(): void {
@@ -156,9 +169,17 @@ function toAssignment(
     }
 }
 
-function previewTokens(preview: string, truncated: boolean): JsonToken[] {
-    const tokens = tokenizeJson(preview);
-    return truncated ? [...tokens, { text: '…', type: 'plain' }] : tokens;
+function toRowValue({ value, truncated }: PersistenceMessageEntry): PersistenceRowValue {
+    if (truncated) {
+        const preview: JsonToken[] = [...tokenizeJson(String(value)), { text: '…', type: 'plain' }];
+        return { json: null, preview, truncated, copyText: null };
+    }
+    const json = value ?? null;
+    const copyText = typeof json === 'string' ? json : JSON.stringify(json, null, 2);
+    if (typeof json === 'object' && json !== null && Object.keys(json).length > 0) {
+        return { json, preview: null, truncated, copyText };
+    }
+    return { json: null, preview: tokenizeJson(JSON.stringify(json)), truncated, copyText };
 }
 
 function tokenizeJson(text: string): JsonToken[] {

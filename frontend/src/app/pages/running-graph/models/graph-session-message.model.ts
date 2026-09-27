@@ -207,12 +207,14 @@ export type PersistenceMessageMode = 'read' | 'write' | 'delete';
 // read: `path` is the target variable and `found` is set.
 // write: `path` is the source path (may carry a `|default` suffix) and `created` is set.
 // delete: `path` is null; `deleted_count` on the message is the number of keys actually removed.
+// `value` is the full JSON value (null for delete and not-found reads). When the message hit its
+// size budget, `truncated` is true and `value` is a string holding the first 200 chars of the JSON text.
 export interface PersistenceMessageEntry {
     key: string;
     path: string | null;
     found: boolean | null;
     created: boolean | null;
-    value_preview: string | null;
+    value: unknown;
     truncated: boolean;
 }
 

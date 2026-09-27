@@ -129,8 +129,6 @@
     border-radius: 8px;
     padding: 0.5rem 1rem;
     margin-left: 23px;
-    max-height: 400px;
-    overflow: auto;
     color: var(--gray-200);
 }
 
@@ -155,8 +153,7 @@
     line-height: 1.6;
 }
 
-code,
-.preview {
+code {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85em;
 }
@@ -190,8 +187,45 @@ code,
     color: var(--color-persistence);
 }
 
+// Same box as the finish message's variables (collapsed JSON viewer, own scroll past 400px),
+// with tighter padding because it already sits inside the indented Keys box.
+.value-content {
+    position: relative;
+    background-color: var(--gray-800);
+    border: 1px solid var(--gray-750);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.25rem;
+    max-height: 400px;
+    overflow: auto;
+}
+
+.value-content,
+.preview-box {
+    &:hover app-copy-button {
+        opacity: 1;
+    }
+}
+
+.preview-box {
+    position: relative;
+    margin-top: 0.25rem;
+
+    // A one-line preview is shorter than the default 28px button offset 8px from the top.
+    app-copy-button {
+        --copy-btn-size: 20px;
+        top: 0;
+        right: 0;
+    }
+}
+
+// Font matches app-json-viewer (styles/json-viewer.scss) so inline and object values look alike;
+// capped like .value-content so one huge string cannot push every row down.
 .preview {
-    margin: 0.25rem 0 0;
+    margin: 0;
+    max-height: 400px;
+    overflow: auto;
+    font-family: 'Courier New', monospace;
     color: var(--gray-400);
     white-space: pre-wrap;
     overflow-wrap: break-word;
@@ -225,7 +259,8 @@ code,
     font-style: italic;
 }
 
-.muted-note {
+.muted-note,
+.truncated-note {
     margin: 0.25rem 0 0.5rem;
     color: var(--gray-400);
     font-size: 0.85rem;

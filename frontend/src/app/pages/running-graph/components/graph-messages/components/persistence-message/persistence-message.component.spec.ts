@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { CopyButtonComponent } from '@shared/components';
 
 import {
     GraphMessage,
@@ -14,7 +16,7 @@ function entry(overrides: Partial<PersistenceMessageEntry>): PersistenceMessageE
         path: null,
         found: null,
         created: null,
-        value_preview: null,
+        value: null,
         truncated: false,
         ...overrides,
     };
@@ -75,7 +77,7 @@ describe('PersistenceMessageComponent', () => {
             mode: 'read',
             deleted_count: null,
             entries: [
-                entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' }),
+                entry({ key: 'a', path: 'variables.a', found: true, value: 1 }),
                 entry({ key: 'b', path: 'variables.b', found: false }),
             ],
         });
@@ -90,14 +92,14 @@ describe('PersistenceMessageComponent', () => {
         expect(text(rows[0] as HTMLElement, '.preview')).toBe('1');
         expect(rows[0].querySelector('.not-found')).toBeNull();
         expect(text(rows[1] as HTMLElement, '.not-found')).toBe('not found');
-        expect(rows[1].querySelector('.preview')).toBeNull();
+        expect(rows[1].querySelector('.preview, app-json-viewer, .truncated-note')).toBeNull();
     });
 
     it('uses the singular for one key and hides a zero secondary chip', () => {
         const element = render({
             mode: 'read',
             deleted_count: null,
-            entries: [entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' })],
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: 1 })],
         });
 
         expect(text(element, '.title')).toBe('Read 1 key from table profiles');
@@ -109,9 +111,9 @@ describe('PersistenceMessageComponent', () => {
             mode: 'write',
             deleted_count: null,
             entries: [
-                entry({ key: 'a', path: 'variables.a|0', created: true, value_preview: '0' }),
-                entry({ key: 'b', path: 'variables.b', created: false, value_preview: '"x"' }),
-                entry({ key: 'c', path: 'variables.c', created: false, value_preview: '"y"' }),
+                entry({ key: 'a', path: 'variables.a|0', created: true, value: 0 }),
+                entry({ key: 'b', path: 'variables.b', created: false, value: 'x' }),
+                entry({ key: 'c', path: 'variables.c', created: false, value: 'y' }),
             ],
         });
 
@@ -128,18 +130,124 @@ describe('PersistenceMessageComponent', () => {
         ]);
     });
 
-    it('ends truncated previews with an ellipsis', () => {
+    it('ends a truncated value with an ellipsis and a note that it is partial', () => {
         const element = render({
             mode: 'write',
             deleted_count: null,
             entries: [
-                entry({ key: 'long', path: 'variables.long', created: true, value_preview: '"abc', truncated: true }),
-                entry({ key: 'short', path: 'variables.short', created: true, value_preview: '"ab"' }),
+                entry({ key: 'long', path: 'variables.long', created: true, value: '"abc', truncated: true }),
+                entry({ key: 'short', path: 'variables.short', created: true, value: 'ab' }),
             ],
         });
 
-        const previews = Array.from(element.querySelectorAll('.preview')).map((preview) => preview.textContent);
-        expect(previews).toEqual(['"abc…', '"ab"']);
+        const rows = element.querySelectorAll('.entry');
+        expect(text(rows[0] as HTMLElement, '.preview')).toBe('"abc…');
+        expect(text(rows[0] as HTMLElement, '.truncated-note')).toBe(
+            'Message size limit reached — first 200 characters shown'
+        );
+        expect(text(rows[1] as HTMLElement, '.preview')).toBe('"ab"');
+        expect(rows[1].querySelector('.truncated-note')).toBeNull();
+        expect(element.querySelector('app-json-viewer')).toBeNull();
+    });
+
+    it('renders an object value in the JSON viewer, collapsed by default', () => {
+        const element = render({
+            mode: 'read',
+            deleted_count: null,
+            entries: [
+                entry({
+                    key: 'k',
+                    path: 'variables.k',
+                    found: true,
+                    value: { name: 'Ann', address: { city: 'Kyiv' }, tags: ['a', 'b'] },
+                }),
+            ],
+        });
+
+        const viewer = element.querySelector('.entry .value-content app-json-viewer') as HTMLElement;
+        expect(Array.from(viewer.querySelectorAll('.segment-key')).map((key) => key.textContent)).toEqual([
+            'name',
+            'address',
+            'tags',
+        ]);
+        expect(viewer.querySelectorAll('.segment-main.expandable').length).toBe(2);
+        expect(viewer.querySelector('.segment-main.expanded, .children')).toBeNull();
+        expect(element.querySelector('.entry .preview, .entry .truncated-note')).toBeNull();
+    });
+
+    it('expands a nested object in the viewer on click', () => {
+        const fixture = createFixture({
+            mode: 'write',
+            deleted_count: null,
+            entries: [entry({ key: 'k', path: 'variables.k', created: true, value: { address: { city: 'Kyiv' } } })],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+
+        element.querySelector<HTMLElement>('.segment-main.expandable')?.click();
+        fixture.detectChanges();
+
+        expect(text(element, '.children .segment-key')).toBe('city');
+        expect(text(element, '.children .segment-value')).toBe('"Kyiv"');
+    });
+
+    it('renders an array value in the JSON viewer by index', () => {
+        const element = render({
+            mode: 'write',
+            deleted_count: null,
+            entries: [entry({ key: 'k', path: 'variables.k', created: true, value: ['a', { b: 1 }] })],
+        });
+
+        const viewer = element.querySelector('.value-content app-json-viewer') as HTMLElement;
+        expect(Array.from(viewer.querySelectorAll('.segment-key')).map((key) => key.textContent)).toEqual(['0', '1']);
+        expect(viewer.querySelectorAll('.segment-main.expandable').length).toBe(1);
+    });
+
+    it('shows a found read whose stored value is null as null, not as not found', () => {
+        const element = render({
+            mode: 'read',
+            deleted_count: null,
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: null })],
+        });
+
+        expect(text(element, '.preview')).toBe('null');
+        expect(element.querySelector('.not-found')).toBeNull();
+    });
+
+    it('copies the full value: pretty JSON for objects and scalars, strings raw, nothing for a truncated prefix', () => {
+        const fixture = createFixture({
+            mode: 'write',
+            deleted_count: null,
+            entries: [
+                entry({ key: 'a', path: 'variables.a', value: { b: [1] } }),
+                entry({ key: 'b', path: 'variables.b', value: 'say "hi"' }),
+                entry({ key: 'c', path: 'variables.c', value: 42 }),
+                entry({ key: 'd', path: 'variables.d', value: '"cut', truncated: true }),
+            ],
+        });
+
+        const copyTexts = fixture.debugElement
+            .queryAll(By.directive(CopyButtonComponent))
+            .map((button) => (button.componentInstance as CopyButtonComponent).text);
+        expect(copyTexts).toEqual([JSON.stringify({ b: [1] }, null, 2), 'say "hi"', '42']);
+        const element = fixture.nativeElement as HTMLElement;
+        expect(element.querySelector('.value-content app-copy-button')).not.toBeNull();
+    });
+
+    it('renders an empty object or array inline instead of an empty viewer', () => {
+        const element = render({
+            mode: 'write',
+            deleted_count: null,
+            entries: [
+                entry({ key: 'a', path: 'variables.a', value: {} }),
+                entry({ key: 'b', path: 'variables.b', value: [] }),
+            ],
+        });
+
+        expect(element.querySelector('app-json-viewer')).toBeNull();
+        expect(Array.from(element.querySelectorAll('.preview')).map((preview) => preview.textContent)).toEqual([
+            '{}',
+            '[]',
+        ]);
     });
 
     it('highlights a truncated object preview token by token and keeps the ellipsis', () => {
@@ -151,7 +259,7 @@ describe('PersistenceMessageComponent', () => {
                     key: 'k',
                     path: 'variables.k',
                     found: true,
-                    value_preview: '{"name": "Ann", "tags": ["a\\', // cut mid-escape inside an unclosed array
+                    value: '{"name": "Ann", "tags": ["a\\', // cut mid-escape inside an unclosed array
                     truncated: true,
                 }),
             ],
@@ -180,7 +288,9 @@ describe('PersistenceMessageComponent', () => {
         const element = render({
             mode: 'read',
             deleted_count: null,
-            entries: [entry({ key: 'k', path: 'variables.k', found: true, value_preview: '{"a\\"b": "c\\\\"}' })],
+            entries: [
+                entry({ key: 'k', path: 'variables.k', found: true, value: '{"a\\"b": "c\\\\"}', truncated: true }),
+            ],
         });
 
         expect(tokens(element.querySelector('.preview') as Element)).toEqual([
@@ -190,29 +300,29 @@ describe('PersistenceMessageComponent', () => {
             ['json-plain', ' '],
             ['json-string', '"c\\\\"'],
             ['json-punctuation', '}'],
+            ['json-plain', '…'],
         ]);
     });
 
-    it('highlights plain scalar previews', () => {
+    it('highlights scalar values inline, as JSON', () => {
         const element = render({
             mode: 'write',
             deleted_count: null,
             entries: [
-                entry({ key: 'a', path: 'variables.a', value_preview: '"x"' }),
-                entry({ key: 'b', path: 'variables.b', value_preview: '-1.5e3' }),
-                entry({ key: 'c', path: 'variables.c', value_preview: 'true' }),
-                entry({ key: 'd', path: 'variables.d', value_preview: 'null' }),
-                entry({ key: 'e', path: 'variables.e', value_preview: 'NaN' }),
+                entry({ key: 'a', path: 'variables.a', value: 'say "hi"' }),
+                entry({ key: 'b', path: 'variables.b', value: -1.5e-7 }),
+                entry({ key: 'c', path: 'variables.c', value: true }),
+                entry({ key: 'd', path: 'variables.d', value: null }),
             ],
         });
 
         expect(Array.from(element.querySelectorAll('.preview')).map(tokens)).toEqual([
-            [['json-string', '"x"']],
-            [['json-number', '-1.5e3']],
+            [['json-string', '"say \\"hi\\""']],
+            [['json-number', '-1.5e-7']],
             [['json-boolean', 'true']],
             [['json-null', 'null']],
-            [['json-plain', 'NaN']],
         ]);
+        expect(element.querySelector('app-json-viewer, .truncated-note')).toBeNull();
     });
 
     it('colours table keys and state paths by kind, whichever side of the arrow they are on', () => {
@@ -223,12 +333,12 @@ describe('PersistenceMessageComponent', () => {
         const read = render({
             mode: 'read',
             deleted_count: null,
-            entries: [entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' })],
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: 1 })],
         });
         const write = render({
             mode: 'write',
             deleted_count: null,
-            entries: [entry({ key: 'b', path: 'variables.b', created: true, value_preview: '1' })],
+            entries: [entry({ key: 'b', path: 'variables.b', created: true, value: 1 })],
         });
 
         expect(kinds(read)).toEqual(['path:variables.a', 'key:a']);
@@ -258,7 +368,7 @@ describe('PersistenceMessageComponent', () => {
         expect(chips(element)).toEqual([{ label: '1 of 3', neutral: true }]);
         expect(text(element, '.muted-note')).toBe('2 keys were not in the table');
         expect(mappings(element)).toEqual(['a', 'b', 'c']);
-        expect(element.querySelector('.arrow, .preview, .tag')).toBeNull();
+        expect(element.querySelector('.arrow, .preview, .tag, app-json-viewer, .truncated-note')).toBeNull();
         expect(element.querySelector('[class*="error"], [class*="danger"], [class*="failed"]')).toBeNull();
     });
 
@@ -307,7 +417,7 @@ describe('PersistenceMessageComponent', () => {
         const fixture = createFixture({
             mode: 'read',
             deleted_count: null,
-            entries: [entry({ key: 'a', path: 'variables.a', found: true, value_preview: '1' })],
+            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: 1 })],
         });
         const element = fixture.nativeElement as HTMLElement;
         element.querySelector<HTMLButtonElement>('.persistence-header')?.click();
@@ -328,7 +438,7 @@ describe('PersistenceMessageComponent', () => {
         const element = render({
             mode: 'read',
             deleted_count: null,
-            entries: [entry({ key: 'orphan', path: null, found: true, value_preview: '1' })],
+            entries: [entry({ key: 'orphan', path: null, found: true, value: 1 })],
         });
 
         expect(mappings(element)).toEqual(['orphan']);
