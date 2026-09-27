@@ -175,6 +175,7 @@ STATE_PATH_MESSAGE = "'value' must be a state path like 'variables.user.name'."
         ("variables.a..b", STATE_PATH_MESSAGE),
         ("variables.a.", STATE_PATH_MESSAGE),
         ("variables.tags[x]", STATE_PATH_MESSAGE),
+        ("variables.tags[01]", STATE_PATH_MESSAGE),
         ("variables.tags[0]extra", STATE_PATH_MESSAGE),
         ("variables.naïve", STATE_PATH_MESSAGE),
         ("variables._properties", "'value' names '_properties'; use a variable name without the leading '_'."),
@@ -221,6 +222,7 @@ def test_write_value_must_name_a_state_path(auth_client, graph, table):
         "variables.a",
         "variables.a.b",
         "variables.a[0]",
+        "variables.a[10]",
         "variables.x|0",
         "  variables.a  ",
         "  variables.x|0  ",
@@ -246,21 +248,76 @@ def test_read_value_with_default_is_rejected(auth_client, graph, table):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize(
-    "entries",
-    [
-        # Two keys into one variable: crew applies them in order, the later one wins.
-        [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": "variables.a"}],
-        # One key into two variables.
-        [{"key": "k", "value": "variables.a"}, {"key": "k", "value": "variables.b"}],
-    ],
-)
-def test_read_entries_may_share_a_key_or_a_variable(auth_client, graph, table, entries):
+def test_read_entries_may_read_one_key_into_two_variables(auth_client, graph, table):
+    entries = [{"key": "k", "value": "variables.a"}, {"key": "k", "value": "variables.b"}]
     payload = {"save_version": graph.save_version,
                "persistence_node_list": [_node_payload(graph, table, entries=entries)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_200_OK, response.content
     assert PersistenceNode.objects.get(graph=graph).entries == entries
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "entries",
+    [
+        # Two keys into one variable, compared after stripping.
+        [
+            {"key": "k1", "value": "variables.my_var"},
+            {"key": "other", "value": "variables.b"},
+            {"key": "k2", "value": " variables.my_var "},
+        ],
+        # Two identical rows.
+        [
+            {"key": "k1", "value": "variables.my_var"},
+            {"key": "other", "value": "variables.b"},
+            {"key": "k1", "value": "variables.my_var"},
+        ],
+    ],
+)
+def test_read_entries_must_use_different_variables(auth_client, graph, table, entries):
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (
+        "Entry 2: 'variables.my_var' is already filled by entry 0; use a different variable."
+        in str(response.data)
+    )
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "first, second, message",
+    [
+        ("variables.user", "variables.user.name",
+         "Entry 1: 'variables.user.name' is inside 'variables.user' (entry 0); use a different variable."),
+        ("variables.user", " variables.user[0] ",
+         "Entry 1: 'variables.user[0]' is inside 'variables.user' (entry 0); use a different variable."),
+        ("variables.user.name", "variables.user",
+         "Entry 1: 'variables.user' contains 'variables.user.name' (entry 0); use a different variable."),
+        ("variables.user[0]", "variables.user",
+         "Entry 1: 'variables.user' contains 'variables.user[0]' (entry 0); use a different variable."),
+    ],
+)
+def test_read_targets_must_not_nest(auth_client, graph, table, first, second, message):
+    entries = [{"key": "k1", "value": first}, {"key": "k2", "value": second}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert message in str(response.data)
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_read_targets_sharing_only_a_name_prefix_are_accepted(auth_client, graph, table):
+    entries = [{"key": "k1", "value": "variables.user"}, {"key": "k2", "value": "variables.username"}]
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
 
 
 @pytest.mark.django_db
@@ -341,6 +398,35 @@ def test_read_values_are_saved_stripped(auth_client, graph, table):
         {"key": "k1", "value": "variables.a"},
         {"key": "k2", "value": "variables.b[0]"},
     ]
+
+
+def _entries_for(mode: str, count: int) -> list[dict]:
+    if mode == "delete":
+        return [{"key": f"k{index}"} for index in range(count)]
+    return [{"key": f"k{index}", "value": f"variables.v{index}"} for index in range(count)]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+def test_more_than_500_entries_are_rejected(auth_client, graph, table, mode):
+    entries = _entries_for(mode, 501)
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode=mode, entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "A persistence node can have at most 500 keys." in str(response.data)
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+def test_500_entries_are_accepted(auth_client, graph, table, mode):
+    entries = _entries_for(mode, 500)
+    payload = {"save_version": graph.save_version,
+               "persistence_node_list": [_node_payload(graph, table, mode=mode, entries=entries)]}
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert len(PersistenceNode.objects.get(graph=graph).entries) == 500
 
 
 @pytest.mark.django_db

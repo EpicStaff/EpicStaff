@@ -3,7 +3,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from tables.constants.persistence_constants import MAX_KEY_LENGTH
+from tables.constants.persistence_constants import MAX_KEY_LENGTH, MAX_KEYS_PER_REQUEST
 
 _FIELDS = {
     "read": ("key", "value"),
@@ -11,10 +11,12 @@ _FIELDS = {
     "delete": ("key",),
 }
 # Crew's `variables` is a DotDict, so a path starts with a name (`variables[0]` never
-# resolves). ASCII matches the frontend. Crew's PersistenceNode checks the same rules at run
+# resolves). ASCII matches the frontend. Indexes are canonical (`[0]`, `[10]`, not `[01]`) so
+# equal paths compare equal as strings. Crew's PersistenceNode checks the same rules at run
 # time.
-_STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[\d+\])*", re.ASCII)
+_STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCII)
 _PATH_NAME = re.compile(r"\w+", re.ASCII)
+_PATH_SEGMENT = re.compile(r"\w+|\[(?:0|[1-9]\d*)\]", re.ASCII)
 # DotDict attribute access finds these before a stored key, so crew could never read a value
 # kept under one of these names: the dict methods plus DotDict's own public methods.
 DOTDICT_METHOD_NAMES = frozenset(
@@ -48,13 +50,21 @@ class PersistenceEntriesValidator:
     def validate(self, mode: str, entries: Any) -> list[dict]:
         if not isinstance(entries, list):
             raise serializers.ValidationError({"entries": "Must be a list."})
+        if len(entries) > MAX_KEYS_PER_REQUEST:
+            raise serializers.ValidationError(
+                {"entries": f"A persistence node can have at most {MAX_KEYS_PER_REQUEST} keys."}
+            )
         errors: list[str] = []
         # Entry index by exact key, for write entries only.
         written_keys: dict[str, int] = {}
+        # (segments, stripped target, entry index) of each valid read entry.
+        read_targets: list[tuple[list[str], str, int]] = []
         for index, entry in enumerate(entries):
             error = self._entry_error(mode, entry)
             if not error and mode == "write":
                 error = self._duplicate_key_error(entry["key"], index, written_keys)
+            elif not error and mode == "read":
+                error = self._target_conflict_error(entry["value"].strip(), index, read_targets)
             if error:
                 errors.append(f"Entry {index}: {error}")
         if errors:
@@ -98,6 +108,34 @@ class PersistenceEntriesValidator:
         first = written_keys.setdefault(key, index)
         if first != index:
             return f"key '{key}' is already written by entry {first}; use a different key."
+        return None
+
+    def _target_conflict_error(
+        self, target: str, index: int, read_targets: list[tuple[list[str], str, int]]
+    ) -> str | None:
+        """Two read entries must not fill the same or nested variables; crew rejects it too.
+
+        A parent target would overwrite its child. Compared by path segment, so
+        `variables.user` and `variables.username` do not conflict. One key may still be read
+        into several variables.
+        """
+        segments = _PATH_SEGMENT.findall(target)
+        for earlier_segments, earlier, earlier_index in read_targets:
+            shared = min(len(segments), len(earlier_segments))
+            if segments[:shared] != earlier_segments[:shared]:
+                continue
+            if len(segments) == len(earlier_segments):
+                return f"'{target}' is already filled by entry {earlier_index}; use a different variable."
+            if len(segments) > shared:
+                return (
+                    f"'{target}' is inside '{earlier}' (entry {earlier_index}); "
+                    "use a different variable."
+                )
+            return (
+                f"'{target}' contains '{earlier}' (entry {earlier_index}); "
+                "use a different variable."
+            )
+        read_targets.append((segments, target, index))
         return None
 
     def _state_path_error(self, state_path: str) -> str | None:
