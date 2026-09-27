@@ -3,7 +3,7 @@
 from django.db.models import Exists, F, IntegerField, OuterRef
 from django.db.models.functions import Cast, Extract
 from django_filters import rest_framework as filters
-from rest_framework.filters import BaseFilterBackend
+from rest_framework.filters import BaseFilterBackend, OrderingFilter
 
 from tables.models import (
     GraphSessionMessage,
@@ -66,6 +66,31 @@ class LabelFilterBackend(BaseFilterBackend):
                 "schema": {"type": "boolean"},
             },
         ]
+
+
+class PersistenceTableEntryOrderingFilter(OrderingFilter):
+    """Order entries by `?ordering=` with a `session` alias and a stable tiebreak.
+
+    `session` sorts by `updated_by_session_id`; entries no run wrote sort last in both
+    directions. `key`, then `id` break ties so offset pages never shuffle. Unknown
+    terms are dropped and fall back to the view's default, like the stock filter.
+    """
+
+    # Only aliased terms are nullable. The rest are NOT NULL and sort plainly, so
+    # Postgres can still scan the (table_id, key) index backwards for `-key`.
+    nullable_field_aliases = {"session": "updated_by_session_id"}
+
+    def filter_queryset(self, request, queryset, view):
+        expressions = []
+        for term in self.get_ordering(request, queryset, view):
+            field_name = self.nullable_field_aliases.get(term.removeprefix("-"))
+            if field_name is None:
+                expressions.append(term)
+            elif term.startswith("-"):
+                expressions.append(F(field_name).desc(nulls_last=True))
+            else:
+                expressions.append(F(field_name).asc(nulls_last=True))
+        return queryset.order_by(*expressions, "key", "id")
 
 
 class SessionFilter(filters.FilterSet):

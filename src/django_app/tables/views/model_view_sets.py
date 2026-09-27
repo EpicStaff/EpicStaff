@@ -73,6 +73,7 @@ from tables.filters import (
     LabelFilterBackend,
     LLMModelFilter,
     McpToolFilter,
+    PersistenceTableEntryOrderingFilter,
     ProviderFilter,
     PythonCodeToolFilter,
     WebhookTriggerFilter,
@@ -2518,10 +2519,16 @@ class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     queryset = PersistenceTableEntry.objects.annotate(
         updated_by_graph_id=F("updated_by_session__graph_id"),
         updated_by_graph_name=F("updated_by_session__graph__name"),
-    ).order_by("key")
+    )
     serializer_class = PersistenceTableEntrySerializer
-    filter_backends = [DjangoFilterBackend, drf_filters.SearchFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        drf_filters.SearchFilter,
+        PersistenceTableEntryOrderingFilter,
+    ]
     search_fields = ["key"]
+    ordering_fields = ["key", "updated_at", "session"]
+    ordering = ["key"]
 
     class PersistenceTableEntryFilter(FilterSet):
         # Plain number, not ModelChoiceFilter: that validates against every org's

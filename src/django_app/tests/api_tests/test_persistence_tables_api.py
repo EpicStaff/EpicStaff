@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -290,6 +292,119 @@ def test_entry_search_and_pagination(admin_client, table_a):
     response = admin_client.get(ENTRIES_URL, {"table": table_a.id, "search": "order", "limit": 2, "offset": 0})
     assert response.data["count"] == 3
     assert [row["key"] for row in response.data["results"]] == ["order_0", "order_1"]
+
+
+@pytest.fixture
+def ordering_entries(org_a, table_a):
+    """Five entries with ties on `updated_at` and on session, two without a session."""
+    graph = Graph.objects.create(name="Writer flow", org=org_a)
+    first_session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    second_session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    base = timezone.now()
+    rows = [
+        ("b", second_session, 1),
+        ("a", first_session, 3),
+        ("c", None, 2),
+        ("d", first_session, 1),
+        ("e", None, 2),
+    ]
+    for key, session, hours in rows:
+        entry = PersistenceTableEntry.objects.create(
+            table=table_a, key=key, value=key, updated_by_session=session
+        )
+        # update() skips auto_now, so the timestamps stick.
+        PersistenceTableEntry.objects.filter(id=entry.id).update(
+            updated_at=base + timedelta(hours=hours)
+        )
+
+
+def _keys(response) -> list[str]:
+    assert response.status_code == 200, response.content
+    return [row["key"] for row in _results(response)]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("ordering", "expected"),
+    [
+        (None, ["a", "b", "c", "d", "e"]),
+        ("key", ["a", "b", "c", "d", "e"]),
+        ("-key", ["e", "d", "c", "b", "a"]),
+        ("updated_at", ["b", "d", "c", "e", "a"]),
+        ("-updated_at", ["a", "c", "e", "b", "d"]),
+        ("session", ["a", "d", "b", "c", "e"]),
+        ("-session", ["b", "a", "d", "c", "e"]),
+        ("session,-updated_at", ["a", "d", "b", "c", "e"]),
+        ("session,updated_at", ["d", "a", "b", "c", "e"]),
+    ],
+)
+def test_entry_ordering(admin_client, table_a, ordering_entries, ordering, expected):
+    params = {"table": table_a.id}
+    if ordering is not None:
+        params["ordering"] = ordering
+
+    assert _keys(admin_client.get(ENTRIES_URL, params)) == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ordering", ["bogus", "value", "-table", "--key", "created_at", ""])
+def test_entry_unknown_ordering_falls_back_to_key(admin_client, table_a, ordering_entries, ordering):
+    response = admin_client.get(ENTRIES_URL, {"table": table_a.id, "ordering": ordering})
+
+    assert _keys(response) == ["a", "b", "c", "d", "e"]
+
+
+@pytest.mark.django_db
+def test_entry_ordering_ties_on_same_key_break_by_id(admin_client, org_a, table_a):
+    other_table = PersistenceTable.objects.create(org=org_a, name="Other")
+    first = PersistenceTableEntry.objects.create(table=table_a, key="shared", value=1)
+    second = PersistenceTableEntry.objects.create(table=other_table, key="shared", value=2)
+
+    for ordering in ("-key", "session", "-session"):
+        response = admin_client.get(ENTRIES_URL, {"ordering": ordering})
+        assert [row["id"] for row in _results(response)] == [first.id, second.id], ordering
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ordering", ["session", "-session", "updated_at", "-updated_at"])
+def test_entry_ordering_pages_are_stable(admin_client, table_a, ordering_entries, ordering):
+    full = _keys(admin_client.get(ENTRIES_URL, {"table": table_a.id, "ordering": ordering}))
+
+    paged = []
+    for offset in range(0, 5, 2):
+        paged += _keys(
+            admin_client.get(
+                ENTRIES_URL, {"table": table_a.id, "ordering": ordering, "limit": 2, "offset": offset}
+            )
+        )
+
+    assert paged == full
+    assert sorted(paged) == ["a", "b", "c", "d", "e"]
+
+
+@pytest.mark.django_db
+def test_entry_ordering_with_search_and_pagination(admin_client, table_a):
+    for index in range(4):
+        PersistenceTableEntry.objects.create(table=table_a, key=f"order_{index}", value=index)
+    PersistenceTableEntry.objects.create(table=table_a, key="profile_9", value=9)
+
+    response = admin_client.get(
+        ENTRIES_URL,
+        {"table": table_a.id, "search": "order", "ordering": "-key", "limit": 2, "offset": 1},
+    )
+
+    assert response.data["count"] == 4
+    assert _keys(response) == ["order_2", "order_1"]
+
+
+@pytest.mark.django_db
+def test_entry_ordering_keeps_org_scope_and_annotations(admin_client, table_a, table_b, ordering_entries):
+    PersistenceTableEntry.objects.create(table=table_b, key="0_foreign", value=1)
+
+    rows = _results(admin_client.get(ENTRIES_URL, {"ordering": "session"}))
+
+    assert [row["key"] for row in rows] == ["a", "d", "b", "c", "e"]
+    assert [row["updated_by_graph_name"] for row in rows] == ["Writer flow"] * 3 + [None, None]
 
 
 @pytest.mark.django_db
