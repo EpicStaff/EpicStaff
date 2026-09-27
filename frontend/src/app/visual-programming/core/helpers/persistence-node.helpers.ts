@@ -3,17 +3,41 @@ import { NodeType } from '@shared/models';
 import { PersistenceEntryLookup } from '../../../features/persistent-data/models/persistence-table.model';
 import { NodeModel, PersistenceNodeModel } from '../models/node.model';
 import { PersistenceEntry, PersistenceMode, PersistenceNodeData } from '../models/persistence-node.model';
+import { isPathUnder } from './variable-path.util';
 
 // Mirrors crew's key-template parsing: placeholders match this regex, and a key with braces left over
 // once they are removed is malformed. Keep both identical to crew so the panel flags what crew rejects.
 const PLACEHOLDER = /\{([^{}]+)\}/g;
 // Mirrors MAX_KEY_LENGTH in tables/constants/persistence_constants.py.
 export const PERSISTENCE_KEY_MAX_LENGTH = 512;
+// Mirrors MAX_KEYS_PER_REQUEST in tables/constants/persistence_constants.py.
+export const PERSISTENCE_MAX_KEYS = 500;
 // Key placeholders, read targets and write sources (before any `|default`) are flow state paths.
 // Mirrors crew and Django: `variables.` then ASCII word names or `[index]`, and no name may start
-// with `_`. Flow variables are a dict in crew, so `variables[0]` can never resolve.
-export const STATE_PATH = /^variables\.\w+(?:\.\w+|\[\d+\])*$/;
+// with `_`. Flow variables are a dict in crew, so `variables[0]` can never resolve. An index is
+// written canonically, without leading zeros: `[0]`, `[10]`, never `[01]`.
+export const STATE_PATH = /^variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*$/;
 const PRIVATE_NAME = /\._/;
+// Keep in sync with DOTDICT_METHOD_NAMES in tables/validators/persistence_entries_validator.py.
+// Crew's DotDict attribute access finds these methods before any stored name, so a path through
+// one never resolves: crew rejects it in read targets, write sources and key placeholders alike.
+const RESERVED_NAMES: ReadonlySet<string> = new Set([
+    'add_property',
+    'add_setter',
+    'clear',
+    'copy',
+    'deep_dump',
+    'fromkeys',
+    'get',
+    'items',
+    'keys',
+    'model_dump',
+    'pop',
+    'popitem',
+    'setdefault',
+    'update',
+    'values',
+]);
 // Loosely rooted, so a path that only misspells its names gets the naming hint.
 const ROOTED_PATH = /^variables\.\w/;
 const KEY_PLACEHOLDER_HINT = 'Write placeholders as {variables.user.id}';
@@ -22,7 +46,7 @@ const NAME_CHARACTERS_HINT = 'Use letters, digits and _ in variable names, like 
 const PRIVATE_NAME_HINT = "Variable names can't start with _";
 const READ_DEFAULT_HINT = 'Leave out the |default: a missing key reads None';
 // A bare path such as `user.id` or `items[0]`, which only lacks the `variables.` root.
-const ROOTLESS_PATH = /^[A-Za-z]\w*(?:\.[A-Za-z0-9]\w*|\[\d+\])*$/;
+const ROOTLESS_PATH = /^[A-Za-z]\w*(?:\.[A-Za-z0-9]\w*|\[(?:0|[1-9]\d*)\])*$/;
 
 /** A read or write value starts as this so the user only types the rest of the path. */
 export const VALUE_PREFILL = 'variables.';
@@ -59,10 +83,15 @@ export function extractPlaceholders(template: string): string[] {
     return Array.from(template.matchAll(PLACEHOLDER), (match) => match[1]);
 }
 
+/** The first name in a path that is a reserved DotDict method name, or null. */
+function reservedName(path: string): string | null {
+    return path.match(/\w+/g)?.find((name) => RESERVED_NAMES.has(name)) ?? null;
+}
+
 /** Crew tolerates whitespace around a path, so the panel does too. */
 export function isStatePath(text: string): boolean {
     const path = text.trim();
-    return STATE_PATH.test(path) && !PRIVATE_NAME.test(path);
+    return STATE_PATH.test(path) && !PRIVATE_NAME.test(path) && reservedName(path) === null;
 }
 
 /** A write value: a state path, optionally followed by `|default`. */
@@ -70,9 +99,13 @@ export function isWriteSource(text: string): boolean {
     return isStatePath(text.split('|')[0]);
 }
 
-/** Why a path that starts like a state path is not one, or null. */
+/** Why a path that starts like a state path, or is one without the `variables.` root, is not one, or null. */
 function namingHint(path: string): string | null {
     const trimmed = path.trim();
+    const reserved = reservedName(trimmed);
+    if (reserved !== null && (STATE_PATH.test(trimmed) || isRootlessPath(trimmed))) {
+        return `Use a different name — '${reserved}' is reserved`;
+    }
     if (STATE_PATH.test(trimmed)) return PRIVATE_NAME.test(trimmed) ? PRIVATE_NAME_HINT : null;
     return ROOTED_PATH.test(trimmed) ? NAME_CHARACTERS_HINT : null;
 }
@@ -90,10 +123,15 @@ export function nonStatePathPlaceholders(template: string): string[] {
     return extractPlaceholders(template).filter((placeholder) => !isStatePath(placeholder));
 }
 
-/** The state path the user most likely meant, or null when it can't be guessed. */
+/** A path that only lacks the `variables.` root, not one that tries a root such as `Variables.`. */
+function isRootlessPath(path: string): boolean {
+    return !path.toLowerCase().startsWith('variables') && ROOTLESS_PATH.test(path);
+}
+
+/** The state path the user most likely meant, or null when it can't be guessed or could never resolve. */
 export function suggestStatePath(text: string): string | null {
     const path = text.trim();
-    if (path.toLowerCase().startsWith('variables') || !ROOTLESS_PATH.test(path)) return null;
+    if (!isRootlessPath(path) || reservedName(path) !== null) return null;
     return `variables.${path}`;
 }
 
@@ -136,18 +174,48 @@ export function writeSourcePath(value: string): string {
     return value.split('|')[0].trim();
 }
 
-/**
- * Keys written by more than one write row, trimmed: the later row would overwrite the earlier one.
- * A key keyError rejects is left to it, so it never counts here. Read and delete allow repeats, and
- * write rows may share a source variable.
- */
-export function duplicateWriteKeys(keys: string[]): Set<string> {
+/** The texts that occur more than once. */
+function repeated(texts: string[]): Set<string> {
     const seen = new Set<string>();
     const duplicates = new Set<string>();
-    keys.filter((key) => keyError(key) === null)
-        .map((key) => key.trim())
-        .forEach((key) => (seen.has(key) ? duplicates : seen).add(key));
+    texts.forEach((text) => (seen.has(text) ? duplicates : seen).add(text));
     return duplicates;
+}
+
+/**
+ * Keys written by more than one write row, trimmed: the later row would overwrite the earlier one.
+ * A key keyError rejects is left to it, so it never counts here. Read and delete allow repeated
+ * keys, and write rows may share a source variable.
+ */
+export function duplicateWriteKeys(keys: string[]): Set<string> {
+    return repeated(keys.filter((key) => keyError(key) === null).map((key) => key.trim()));
+}
+
+/** A read target valueError accepts, trimmed; null for one it rejects, which is left to it. */
+export function validReadTarget(value: string): string | null {
+    return valueError(value, 'read') === null ? value.trim() : null;
+}
+
+/**
+ * Whether one of two trimmed state paths lies inside the other, compared name by name, so
+ * `variables.user` holds `variables.user.name` and `variables.user[0]` but not `variables.username`.
+ */
+export function isNestedPath(path: string, otherPath: string): boolean {
+    return isPathUnder(path, otherPath) || isPathUnder(otherPath, path);
+}
+
+/**
+ * How a read target clashes with the read targets of all rows, its own included: another row fills
+ * the same variable ('duplicate'), or one inside or around it ('overlap'), so the later row would
+ * overwrite the earlier one. Null when it doesn't, or when valueError rejects it. Read rows may share a key.
+ * Compares one target with the others, so a check of every row stays quadratic.
+ */
+export function readTargetConflict(value: string, values: string[]): 'duplicate' | 'overlap' | null {
+    const target = validReadTarget(value);
+    if (target === null) return null;
+    const targets = values.map(validReadTarget).filter((other): other is string => other !== null);
+    if (targets.filter((other) => other === target).length > 1) return 'duplicate';
+    return targets.some((other) => isNestedPath(target, other)) ? 'overlap' : null;
 }
 
 /** For a node whose panel may be closed: the flow save refuses one that breaks the entry rules. */
@@ -155,11 +223,15 @@ export function hasValidPersistenceEntries({ mode, entries }: PersistenceNodeDat
     const keys = entries.map((entry) => entry.key);
     const values = entries.map((entry) => ('value' in entry ? entry.value : ''));
     const duplicateKeys = mode === 'write' ? duplicateWriteKeys(keys) : new Set<string>();
-    return entries.every(
-        (entry, index) =>
-            keyError(entry.key) === null &&
-            !duplicateKeys.has(entry.key.trim()) &&
-            (mode === 'delete' || valueError(values[index], mode) === null)
+    return (
+        entries.filter((entry) => !isEmptyEntry(entry)).length <= PERSISTENCE_MAX_KEYS &&
+        entries.every(
+            (entry, index) =>
+                keyError(entry.key) === null &&
+                !duplicateKeys.has(entry.key.trim()) &&
+                (mode !== 'read' || readTargetConflict(values[index], values) === null) &&
+                (mode === 'delete' || valueError(values[index], mode) === null)
+        )
     );
 }
 

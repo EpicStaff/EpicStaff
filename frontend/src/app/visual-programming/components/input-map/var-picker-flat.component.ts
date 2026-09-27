@@ -10,6 +10,8 @@ import {
     viewChildren,
 } from '@angular/core';
 
+import { isPathUnder } from '../../core/helpers/variable-path.util';
+
 export interface PickerItem {
     tag: string;
     label: string;
@@ -18,11 +20,6 @@ export interface PickerItem {
     fullPath: string;
     /** Listed to keep the variables under it in place, but not offered: another row uses it. */
     disabled?: boolean;
-}
-
-/** Whether `path` names a variable inside the one at `parentPath`, at any depth. */
-export function isPathUnder(path: string, parentPath: string): boolean {
-    return path.startsWith(`${parentPath}.`) || path.startsWith(`${parentPath}[`);
 }
 
 let nextPickerId = 0;

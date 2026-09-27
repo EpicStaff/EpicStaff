@@ -3,7 +3,8 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { DestroyRef, inject, signal, ViewContainerRef } from '@angular/core';
 import { filter } from 'rxjs';
 
-import { isPathUnder, PickerItem, VarPickerFlatComponent } from './var-picker-flat.component';
+import { isPathUnder } from '../../core/helpers/variable-path.util';
+import { PickerItem, VarPickerFlatComponent } from './var-picker-flat.component';
 
 const VARIABLES_PREFIX = 'variables.';
 

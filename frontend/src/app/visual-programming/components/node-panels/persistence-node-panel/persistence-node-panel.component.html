@@ -101,6 +101,7 @@
                                         autocomplete="off"
                                         role="combobox"
                                         aria-autocomplete="list"
+                                        [class.duplicate]="isConflictingVariable(i)"
                                         [attr.aria-expanded]="variablePicker.isOpenFor(i)"
                                         [attr.aria-controls]="variablePicker.listboxIdFor(i)"
                                         [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
@@ -147,6 +148,7 @@
                 <button
                     type="button"
                     class="add-entry"
+                    [disabled]="atKeyLimit"
                     (click)="addEntry()"
                 >
                     <app-svg-icon
@@ -155,6 +157,9 @@
                     />
                     Add key
                 </button>
+                @if (atKeyLimit) {
+                    <div class="entry-hint">{{ keyLimitHint }}</div>
+                }
             </div>
         </form>
     </div>

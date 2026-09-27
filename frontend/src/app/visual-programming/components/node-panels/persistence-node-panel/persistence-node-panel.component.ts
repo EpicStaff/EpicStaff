@@ -43,6 +43,7 @@ import {
     duplicateWriteKeys,
     existenceHint,
     isEmptyEntry,
+    isNestedPath,
     isSameLookupRequest,
     isStatePath,
     isStaticKey,
@@ -52,6 +53,9 @@ import {
     LookupRequest,
     normalizeEntry,
     PERSISTENCE_KEY_MAX_LENGTH,
+    PERSISTENCE_MAX_KEYS,
+    readTargetConflict,
+    validReadTarget,
     VALUE_PREFILL,
     valueError,
     valuePathHint,
@@ -63,13 +67,16 @@ import { PersistenceEntry, PersistenceMode } from '../../../core/models/persiste
 import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { buildVariablePickerItems, VariablePathPicker } from '../../input-map/variable-path-picker';
+import { PickerItem } from '../../input-map/var-picker-flat.component';
+import { buildVariablePickerItems, VariablePathPicker, withoutUsedPaths } from '../../input-map/variable-path-picker';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
 const SUGGESTION_LIMIT = 20;
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
 const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
+const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
+const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
 const KEYS_LABEL: Record<PersistenceMode, string> = {
     read: 'Keys to Read',
     write: 'Keys to Write',
@@ -128,14 +135,17 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     );
 
     protected readonly activeColor = 'var(--accent-color)';
+    protected readonly keyLimitHint = `A persistence node can have at most ${PERSISTENCE_MAX_KEYS} keys`;
     protected readonly modeItems: SelectItem<PersistenceMode>[] = [
         { name: 'Read', value: 'read' },
         { name: 'Write', value: 'write' },
         { name: 'Delete', value: 'delete' },
     ];
-    // The Input List's picker. Unlike there, every row is offered every variable: rows may share one.
+    // The Input List's picker. Read rows each fill their own variable, so a row is not offered what
+    // other rows fill, nor what lies inside or around it: those stay only as disabled parents of what
+    // is still offered. Write rows may share a source, so each is offered every variable.
     protected readonly variablePicker = new VariablePathPicker({
-        itemsFor: () => this.variableItems(),
+        itemsFor: (rowIndex) => (this.mode() === 'read' ? this.readTargetItemsFor(rowIndex) : this.variableItems()),
         insert: (rowIndex, path) => {
             const control = this.entries.at(rowIndex).get('value');
             control?.setValue(path);
@@ -238,7 +248,10 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             node_name: [node.node_name, this.createNodeNameValidators()],
             persistence_table: this.fb.control<number | null>(persistence_table),
             mode: this.fb.control<PersistenceMode>(mode),
-            entries: this.fb.array<FormGroup>(entries.map((entry) => this.createEntryGroup(entry, mode))),
+            entries: this.fb.array<FormGroup>(
+                entries.map((entry) => this.createEntryGroup(entry, mode)),
+                keyLimitValidator
+            ),
         });
         // A delete node opened again gets back the values its rows had when the panel was last open.
         const occurrences = keyOccurrences(entries.map((entry) => entry.key));
@@ -247,13 +260,14 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             if (mode === 'delete' && draft !== undefined) this.hiddenValues.set(row, draft);
         });
 
-        // A write key repeats because of the other rows, which its own row doesn't see change.
+        // A write key or a read variable repeats because of the other rows, which its own row doesn't see change.
         const entriesArray = form.controls.entries;
-        entriesArray.valueChanges
-            .pipe(startWith(null), takeUntilDestroyed(this.destroyRef))
-            .subscribe(() =>
-                entriesArray.controls.forEach((row) => row.get('key')?.updateValueAndValidity({ emitEvent: false }))
-            );
+        entriesArray.valueChanges.pipe(startWith(null), takeUntilDestroyed(this.destroyRef)).subscribe(() =>
+            entriesArray.controls.forEach((row) => {
+                row.get('key')?.updateValueAndValidity({ emitEvent: false });
+                row.get('value')?.updateValueAndValidity({ emitEvent: false });
+            })
+        );
 
         form.controls.mode.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -312,7 +326,13 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         };
     }
 
+    /** Every row counts here, empty or not, so "Add key" stops where the saved keys would. */
+    protected get atKeyLimit(): boolean {
+        return this.entries.length >= PERSISTENCE_MAX_KEYS;
+    }
+
     protected addEntry(): void {
+        if (this.atKeyLimit) return;
         this.entries.push(this.createEntryGroup({ key: '', value: VALUE_PREFILL }, this.mode()));
     }
 
@@ -366,9 +386,17 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return this.isDuplicateKey(index) ? DUPLICATE_KEY_HINT : null;
     }
 
+    /** A read target that another row's target repeats, or lies inside or around. */
+    protected isConflictingVariable(index: number): boolean {
+        const value = this.entries.at(index).get('value');
+        return (value?.hasError('duplicateVariable') || value?.hasError('overlappingVariable')) ?? false;
+    }
+
     /** The untouched `variables.` prefill is not an error yet; the user is about to type the rest. */
     protected valueHintFor(index: number): string | null {
         const value = this.entries.at(index).get('value');
+        if (value?.hasError('duplicateVariable')) return DUPLICATE_VARIABLE_HINT;
+        if (value?.hasError('overlappingVariable')) return OVERLAPPING_VARIABLE_HINT;
         if (!value?.hasError('pattern')) return null;
         if (value.value === VALUE_PREFILL && value.pristine && value.untouched) return null;
         return valuePathHint(value.value, this.mode());
@@ -404,7 +432,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             }
             row.get('key')?.setValidators(unlessEmptyEntry(...keyValidators(newMode)));
         });
-        // After every row has its validators, as a write row's duplicate check reads the others.
+        // After every row has its validators, as a write key's or read variable's duplicate check reads the others.
         rows.forEach((row) =>
             Object.values(row.controls).forEach((control) => control.updateValueAndValidity({ emitEvent: false }))
         );
@@ -421,6 +449,19 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
                 value: row.get('value')?.value ?? this.hiddenValues.get(row),
             }))
         );
+    }
+
+    private readTargetItemsFor(rowIndex: number): PickerItem[] {
+        // Only finished targets: a half-typed `variables.user.` takes nothing away yet.
+        const otherTargets = this.entries.controls
+            .filter((_row, index) => index !== rowIndex)
+            .map((row) => validReadTarget(row.get('value')?.value ?? ''))
+            .filter((target): target is string => target !== null);
+        const items = this.variableItems();
+        const unusable = items
+            .map((item) => item.fullPath)
+            .filter((path) => otherTargets.some((target) => path === target || isNestedPath(path, target)));
+        return withoutUsedPaths(items, new Set(unusable));
     }
 
     private createEntryGroup(entry: PersistenceEntry, mode: PersistenceMode): FormGroup {
@@ -564,7 +605,7 @@ function keyValidators(mode: PersistenceMode): ValidatorFn[] {
 }
 
 function valueValidators(mode: PersistenceMode): ValidatorFn[] {
-    return [valueValidator(mode)];
+    return mode === 'read' ? [valueValidator(mode), uniqueReadTargetValidator] : [valueValidator(mode)];
 }
 
 function valueValidator(mode: PersistenceMode): ValidatorFn {
@@ -574,19 +615,32 @@ function valueValidator(mode: PersistenceMode): ValidatorFn {
     };
 }
 
-/** The key of every row that is saved. Empty rows are not saved, so they repeat nothing. */
-function savedKeys(control: AbstractControl): string[] {
+/** Every row that is saved, from one of its fields. Empty rows are not saved, so they repeat nothing. */
+function savedEntries(control: AbstractControl): EntryFormValue[] {
     const rows = control.parent?.parent;
     if (!(rows instanceof FormArray)) return [];
-    return rows.controls
-        .map((row): EntryFormValue => row.getRawValue())
-        .filter((row) => !isEmptyEntry(row))
-        .map((row) => row.key ?? '');
+    return rows.controls.map((row): EntryFormValue => row.getRawValue()).filter((row) => !isEmptyEntry(row));
 }
 
 function uniqueWriteKeyValidator(control: AbstractControl<string | null>): ValidationErrors | null {
-    const duplicates = duplicateWriteKeys(savedKeys(control));
+    const duplicates = duplicateWriteKeys(savedEntries(control).map((row) => row.key ?? ''));
     return duplicates.has((control.value ?? '').trim()) ? { duplicateKey: true } : null;
+}
+
+function uniqueReadTargetValidator(control: AbstractControl<string | null>): ValidationErrors | null {
+    const conflict = readTargetConflict(
+        control.value ?? '',
+        savedEntries(control).map((row) => row.value ?? '')
+    );
+    if (conflict === 'duplicate') return { duplicateVariable: true };
+    return conflict === 'overlap' ? { overlappingVariable: true } : null;
+}
+
+/** The flow save refuses more saved keys than the backend takes in one node; empty rows are not saved. */
+function keyLimitValidator(control: AbstractControl): ValidationErrors | null {
+    if (!(control instanceof FormArray)) return null;
+    const rows: EntryFormValue[] = control.getRawValue();
+    return rows.filter((row) => !isEmptyEntry(row)).length > PERSISTENCE_MAX_KEYS ? { keyLimit: true } : null;
 }
 
 function canvasSummary(form: FormGroup): string {

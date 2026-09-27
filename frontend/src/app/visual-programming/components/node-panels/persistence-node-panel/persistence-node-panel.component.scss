@@ -161,4 +161,11 @@
 
 .add-entry {
     @include controls.add-row-button;
+
+    // At the key limit.
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--color-action-btn-background);
+    }
 }

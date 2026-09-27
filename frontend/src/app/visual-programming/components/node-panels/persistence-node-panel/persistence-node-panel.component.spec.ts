@@ -311,8 +311,8 @@ describe('PersistenceNodePanelComponent', () => {
             'variables.user-name|0',
         ];
         const validPaths: Record<'read' | 'write', string[]> = {
-            read: ['variables.a.b', 'variables.items[0].name', ' variables.a ', 'variables.a_b'],
-            write: ['variables.a.b', 'variables.x|0', 'variables.x|', 'variables.items[0]', ' variables.a '],
+            read: ['variables.a.b', 'variables.tags[0].name', ' variables.a ', 'variables.a_b'],
+            write: ['variables.a.b', 'variables.x|0', 'variables.x|', 'variables.tags[0]', ' variables.a '],
         };
         for (const mode of ['read', 'write'] as const) {
             const { panel } = createPanel(nodeWith(mode, [{ key: 'profile', value: '' }]));
@@ -807,13 +807,189 @@ describe('PersistenceNodePanelComponent', () => {
             expect(panel.captureForValidation()).not.toBeNull();
         });
 
-        it('allows repeated keys and variables in read, repeated keys in delete, and repeated variables in write', () => {
-            const repeated: PersistenceEntry[] = [
-                { key: 'profile', value: 'variables.same' },
-                { key: 'profile', value: 'variables.same' },
-            ];
+        it('blocks the flow save when two read rows fill one variable, marking both until one changes', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('read', [
+                    { key: 'key1', value: 'variables.my_var' },
+                    { key: 'key2', value: 'variables.other' },
+                ]),
+                { renderTemplate: true }
+            );
+            const entries = entriesOf(panel);
+            const redInputs = (): string[] =>
+                Array.from(
+                    fixture.nativeElement.querySelectorAll('.entry-input.duplicate'),
+                    (input: Element) => input.getAttribute('aria-label')!
+                );
+
+            // Compared trimmed.
+            entries.at(1).patchValue({ value: ' variables.my_var ' });
+            fixture.detectChanges();
+            expect(hintsOf(fixture)).toEqual([
+                'Duplicate variable — use a different variable',
+                'Duplicate variable — use a different variable',
+            ]);
+            expect(redInputs()).toEqual(['Variable path', 'Variable path']);
+            expect(entries.at(0).get('value')!.hasError('duplicateVariable')).toBe(true);
+            expect(panel.captureForValidation()).toBeNull();
+
+            // Fixing one row clears the other, which did not change.
+            entries.at(1).patchValue({ value: 'variables.other' });
+            fixture.detectChanges();
+            expect(hintsOf(fixture)).toEqual([]);
+            expect(redInputs()).toEqual([]);
+            expect(panel.captureForValidation()).not.toBeNull();
+        });
+
+        for (const [first, second] of [
+            ['variables.user', 'variables.user.name'],
+            ['variables.user.name', 'variables.user'],
+            ['variables.user', 'variables.user[0]'],
+            ['variables.user[0]', 'variables.user'],
+        ]) {
+            it(`blocks the flow save when read rows fill ${first} and ${second}, one inside the other`, () => {
+                const { panel, fixture } = createPanel(
+                    nodeWith('read', [
+                        { key: 'a', value: first },
+                        { key: 'b', value: 'variables.plan' },
+                    ]),
+                    { renderTemplate: true }
+                );
+
+                entriesOf(panel)
+                    .at(1)
+                    .patchValue({ value: ` ${second} ` });
+                fixture.detectChanges();
+                expect(hintsOf(fixture)).toEqual([
+                    'Overlaps another variable — use a different variable',
+                    'Overlaps another variable — use a different variable',
+                ]);
+                expect(fixture.nativeElement.querySelectorAll('.entry-input.duplicate').length).toBe(2);
+                expect(panel.captureForValidation()).toBeNull();
+
+                // Fixing one row clears the other, which did not change.
+                entriesOf(panel).at(1).patchValue({ value: 'variables.plan' });
+                fixture.detectChanges();
+                expect(hintsOf(fixture)).toEqual([]);
+                expect(panel.captureForValidation()).not.toBeNull();
+            });
+        }
+
+        it('lets read rows fill variables whose names only start alike, and write rows share nested sources', () => {
+            for (const mode of ['read', 'write'] as const) {
+                const { panel, fixture } = createPanel(
+                    nodeWith(mode, [
+                        { key: 'a', value: 'variables.user' },
+                        { key: 'b', value: mode === 'read' ? 'variables.username' : 'variables.user.name' },
+                    ]),
+                    { renderTemplate: true }
+                );
+
+                expect(panel.form.valid).toBe(true);
+                expect(hintsOf(fixture)).toEqual([]);
+                TestBed.resetTestingModule();
+            }
+        });
+
+        it('clears the duplicate variable of the row left when the other is removed', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('read', [
+                    { key: 'a', value: 'variables.my_var' },
+                    { key: 'b', value: 'variables.my_var' },
+                    { key: 'c', value: 'variables.other' },
+                ]),
+                { renderTemplate: true }
+            );
+            expect(entriesOf(panel).at(0).get('value')!.hasError('duplicateVariable')).toBe(true);
+
+            fixture.nativeElement.querySelectorAll('.remove-entry')[1].click();
+            fixture.detectChanges();
+
+            expect(entriesOf(panel).at(0).get('value')!.hasError('duplicateVariable')).toBe(false);
+            expect(hintsOf(fixture)).toEqual([]);
+            expect(panel.form.valid).toBe(true);
+        });
+
+        it('flags on both rows two identical read rows a node is loaded with', () => {
+            const { panel } = createPanel(
+                nodeWith('read', [
+                    { key: 'profile', value: 'variables.same' },
+                    { key: 'profile', value: 'variables.same' },
+                ])
+            );
+
+            expect(panel.form.valid).toBe(false);
+            expect(entriesOf(panel).controls.map((row) => row.get('value')!.hasError('duplicateVariable'))).toEqual([
+                true,
+                true,
+            ]);
+            expect(entriesOf(panel).controls.every((row) => row.get('key')!.valid)).toBe(true);
+        });
+
+        it('does not call empty read rows or unfinished paths duplicate variables', () => {
+            const { panel, fixture } = createPanel(nodeWith('read', [{ key: 'profile', value: 'variables.user' }]), {
+                renderTemplate: true,
+            });
+
+            fixture.nativeElement.querySelector('.add-entry').click();
+            fixture.nativeElement.querySelector('.add-entry').click();
+            entriesOf(panel).at(2).patchValue({ key: 'tier' });
+            fixture.detectChanges();
+            expect(hintsOf(fixture)).toEqual([]);
+
+            // The same rootless path twice gets the fix, not the duplicate hint.
+            entriesOf(panel).at(0).patchValue({ value: 'user.name' });
+            entriesOf(panel).at(2).patchValue({ value: 'user.name' });
+            fixture.detectChanges();
+            expect(hintsOf(fixture)).toEqual(['Use variables.user.name', 'Use variables.user.name']);
+        });
+
+        it('checks the rule of the new mode on a switch between read and write', () => {
+            const { panel, fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'a', value: 'variables.same' },
+                    { key: 'b', value: 'variables.same' },
+                ]),
+                { renderTemplate: true }
+            );
+            const valueErrors = (): boolean[] =>
+                entriesOf(panel).controls.map((row) => row.get('value')!.hasError('duplicateVariable'));
+            const keyErrors = (): boolean[] =>
+                entriesOf(panel).controls.map((row) => row.get('key')!.hasError('duplicateKey'));
+
+            expect(panel.form.valid).toBe(true);
+
+            panel.form.get('mode')!.setValue('read');
+            fixture.detectChanges();
+            expect(valueErrors()).toEqual([true, true]);
+            expect(hintsOf(fixture)).toEqual([
+                'Duplicate variable — use a different variable',
+                'Duplicate variable — use a different variable',
+            ]);
+
+            // Read rows may share a key, write rows may not.
+            entriesOf(panel).at(1).patchValue({ key: 'a', value: 'variables.other' });
+            fixture.detectChanges();
+            expect(panel.form.valid).toBe(true);
+
+            panel.form.get('mode')!.setValue('write');
+            fixture.detectChanges();
+            expect(keyErrors()).toEqual([true, true]);
+            expect(valueErrors()).toEqual([false, false]);
+
+            // Through delete and back to read: the restored values repeat nothing.
+            panel.form.get('mode')!.setValue('delete');
+            panel.form.get('mode')!.setValue('read');
+            fixture.detectChanges();
+            expect(panel.form.valid).toBe(true);
+        });
+
+        it('allows a key read into different variables, repeated keys in delete, and repeated variables in write', () => {
             for (const node of [
-                nodeWith('read', repeated),
+                nodeWith('read', [
+                    { key: 'profile', value: 'variables.a' },
+                    { key: 'profile', value: 'variables.b' },
+                ]),
                 nodeWith('delete', [{ key: 'profile' }, { key: 'profile' }]),
                 nodeWith('write', [
                     { key: 'key2', value: 'variables.a' },
@@ -897,6 +1073,44 @@ describe('PersistenceNodePanelComponent', () => {
                     'Fix the highlighted fields in "Persistence #1" to save the flow.'
                 );
             }
+        });
+    });
+
+    describe('key limit', () => {
+        const keys = (count: number): PersistenceEntry[] =>
+            Array.from({ length: count }, (_, index) => ({ key: `k${index}` }));
+        const addKeyButton = (fixture: ComponentFixture<PersistenceNodePanelComponent>): HTMLButtonElement =>
+            fixture.nativeElement.querySelector('.add-entry');
+
+        it('stops Add key at 500 rows and says why', () => {
+            const { panel, fixture } = createPanel(nodeWith('delete', keys(499)), { renderTemplate: true });
+
+            expect(addKeyButton(fixture).disabled).toBe(false);
+            expect(hintsOf(fixture)).toEqual([]);
+
+            addKeyButton(fixture).click();
+            fixture.detectChanges();
+
+            expect(entriesOf(panel).length).toBe(500);
+            expect(addKeyButton(fixture).disabled).toBe(true);
+            expect(hintsOf(fixture)).toEqual(['A persistence node can have at most 500 keys']);
+            // The empty row is not saved, so 499 keys still save.
+            expect(panel.captureForValidation()).not.toBeNull();
+
+            entriesOf(panel).at(499).patchValue({ key: 'k499' });
+            expect(panel.captureForValidation()).not.toBeNull();
+
+            fixture.nativeElement.querySelector('.remove-entry').click();
+            fixture.detectChanges();
+            expect(addKeyButton(fixture).disabled).toBe(false);
+            expect(hintsOf(fixture)).toEqual([]);
+        });
+
+        it('blocks the flow save for a node loaded with more than 500 keys', () => {
+            const { panel } = createPanel(nodeWith('delete', keys(501)));
+
+            expect(entriesOf(panel).hasError('keyLimit')).toBe(true);
+            expect(panel.captureForValidation()).toBeNull();
         });
     });
 
@@ -1208,6 +1422,62 @@ describe('PersistenceNodePanelComponent', () => {
                     { key: 'a', value: 'variables.y' },
                 ],
             ],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.x' },
+                    { key: 'a', value: 'variables.x' },
+                ],
+            ],
+            [
+                'read',
+                [
+                    { key: 'key1', value: 'variables.my_var' },
+                    { key: 'key2', value: 'variables.my_var' },
+                ],
+            ],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.x|0' },
+                    { key: 'b', value: 'variables.x|0' },
+                ],
+            ],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.user' },
+                    { key: 'b', value: 'variables.user.name' },
+                ],
+            ],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.user.name' },
+                    { key: 'b', value: 'variables.user' },
+                ],
+            ],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.user[0]' },
+                    { key: 'b', value: 'variables.user' },
+                ],
+            ],
+            [
+                'read',
+                [
+                    { key: 'a', value: 'variables.user' },
+                    { key: 'b', value: 'variables.username' },
+                ],
+            ],
+            ['read', [{ key: 'a', value: 'variables.items' }]],
+            ['read', [{ key: 'a', value: 'variables.a[01]' }]],
+            ['write', [{ key: 'p_{variables.a[10]}', value: 'variables.a[0]|0' }]],
+            ['delete', Array.from({ length: 500 }, (_, index) => ({ key: `k${index}` }))],
+            ['delete', Array.from({ length: 501 }, (_, index) => ({ key: `k${index}` }))],
+            ['write', [{ key: 'a', value: 'variables.cart.keys|0' }]],
+            ['delete', [{ key: 'p_{variables.cart.get}' }]],
             ['read', [{ key: 'a', value: 'variables.a' }]],
             ['read', [{ key: 'a', value: 'variables.a|0' }]],
             ['read', [{ key: 'a', value: 'variables._a' }]],
@@ -1370,22 +1640,133 @@ describe('PersistenceNodePanelComponent', () => {
             });
         }
 
+        it('offers every variable in write, also those other rows use, as rows may share one', () => {
+            const { fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'profile', value: 'variables.' },
+                    { key: 'plan', value: 'variables.plan|free' },
+                    { key: 'user', value: 'variables.user' },
+                ]),
+                { renderTemplate: true, initialState }
+            );
+
+            focusValue(fixture);
+
+            expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
+            expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
+        });
+
         for (const mode of ['read', 'write'] as const) {
-            it(`offers every variable in ${mode}, also those other rows use, as rows may share one`, () => {
+            it(`leaves out in ${mode} the variables named after a DotDict method, which crew can never use`, () => {
+                const { fixture } = createPanel(nodeWith(mode, [{ key: 'profile', value: 'variables.' }]), {
+                    renderTemplate: true,
+                    initialState: { variables: { cart: { items: [1], total: 2 }, keys: 'k', plan: 'free' } },
+                });
+
+                focusValue(fixture);
+
+                expect(listed()).toEqual(['variables.cart', 'variables.cart.total', 'variables.plan']);
+            });
+        }
+
+        it("does not count a read row's own variable as used by another row", () => {
+            const { fixture } = createPanel(
+                nodeWith('read', [
+                    { key: 'profile', value: 'variables.user' },
+                    { key: 'plan', value: 'variables.plan' },
+                ]),
+                { renderTemplate: true, initialState }
+            );
+
+            // Its own variable is offered, so it is an exact match and the list stays closed.
+            focusValue(fixture);
+            expect(listed()).toEqual([]);
+
+            // The input shows only the prefix while the row still holds variables.user.
+            valueInput(fixture).value = 'variables.';
+            focusValue(fixture);
+            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+            expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
+        });
+
+        describe('in read, around a variable another row fills', () => {
+            const nested = { variables: { user: { id: 1, name: 'n' }, username: 'u', plan: 'free' } };
+            const disabled = (): string[] =>
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item:disabled'), (item) => item.title);
+
+            it('leaves out the object and its fields when another row fills the object', () => {
                 const { fixture } = createPanel(
-                    nodeWith(mode, [
+                    nodeWith('read', [
                         { key: 'profile', value: 'variables.' },
-                        { key: 'plan', value: mode === 'write' ? 'variables.plan|free' : 'variables.plan' },
+                        { key: 'user', value: 'variables.user' },
                     ]),
-                    { renderTemplate: true, initialState }
+                    { renderTemplate: true, initialState: nested }
                 );
 
                 focusValue(fixture);
 
-                expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.plan']);
-                expect(document.querySelectorAll('.vpf-item:disabled').length).toBe(0);
+                expect(listed()).toEqual(['variables.username', 'variables.plan']);
             });
-        }
+
+            it('keeps the object above the other fields as in use when another row fills a field', () => {
+                const { fixture } = createPanel(
+                    nodeWith('read', [
+                        { key: 'profile', value: 'variables.' },
+                        { key: 'name', value: ' variables.user.name ' },
+                        { key: 'plan', value: 'variables.plan' },
+                    ]),
+                    { renderTemplate: true, initialState: nested }
+                );
+
+                focusValue(fixture);
+
+                expect(listed()).toEqual(['variables.user', 'variables.user.id', 'variables.username']);
+                expect(disabled()).toEqual(['variables.user']);
+                expect(document.querySelector('.vpf-item:disabled')!.textContent).toContain('in use');
+            });
+
+            it('does not take anything away for a target another row has only half typed', () => {
+                const { fixture } = createPanel(
+                    nodeWith('read', [
+                        { key: 'profile', value: 'variables.' },
+                        { key: 'user', value: 'variables.user.' },
+                    ]),
+                    { renderTemplate: true, initialState: nested }
+                );
+
+                focusValue(fixture);
+
+                expect(listed()).toEqual([
+                    'variables.user',
+                    'variables.user.id',
+                    'variables.user.name',
+                    'variables.username',
+                    'variables.plan',
+                ]);
+                expect(disabled()).toEqual([]);
+            });
+
+            it("offers everything around the row's own variable", () => {
+                const { fixture } = createPanel(
+                    nodeWith('read', [
+                        { key: 'name', value: 'variables.user.name' },
+                        { key: 'plan', value: 'variables.plan' },
+                    ]),
+                    { renderTemplate: true, initialState: nested }
+                );
+
+                valueInput(fixture).value = 'variables.';
+                focusValue(fixture);
+
+                expect(listed()).toEqual([
+                    'variables.user',
+                    'variables.user.id',
+                    'variables.user.name',
+                    'variables.username',
+                ]);
+                expect(disabled()).toEqual([]);
+            });
+        });
 
         describe('a flow as the backend returns it, where another write row uses an object', () => {
             const MY_OBJECT = { my_object: { user_id: 'asdasdasdadadsa', user_email: 'test@mail.com' } };

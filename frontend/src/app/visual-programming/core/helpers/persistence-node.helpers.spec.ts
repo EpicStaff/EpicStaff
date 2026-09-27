@@ -10,6 +10,7 @@ import {
     invalidPersistenceNodeMessages,
     isEmptyEntry,
     isMalformedKey,
+    isNestedPath,
     isSameLookupRequest,
     isStatePath,
     isStaticKey,
@@ -18,6 +19,8 @@ import {
     keyTemplateHint,
     nonStatePathPlaceholders,
     normalizeEntry,
+    PERSISTENCE_MAX_KEYS,
+    readTargetConflict,
     STATE_PATH,
     suggestStatePath,
     valuePathHint,
@@ -67,7 +70,13 @@ describe('persistence node helpers', () => {
     });
 
     it('recognises well-formed state paths only, as crew and Django do', () => {
-        for (const path of ['variables.a.b', 'variables.items[0]', 'variables.items[0][1].name', 'variables.a_b.0']) {
+        for (const path of [
+            'variables.a.b',
+            'variables.tags[0]',
+            'variables.tags[10]',
+            'variables.tags[0][1].name',
+            'variables.a_b.0',
+        ]) {
             expect(STATE_PATH.test(path)).toBe(true);
             expect(isStatePath(path)).toBe(true);
         }
@@ -85,15 +94,32 @@ describe('persistence node helpers', () => {
             'variables.a.',
             'variables.a..b',
             'variables.a[x]',
+            // An index is canonical, without leading zeros.
+            'variables.a[01]',
+            'variables.a[00]',
+            'variables.a[0][007]',
             'variables.caf\u00e9',
         ]) {
             expect(STATE_PATH.test(path)).toBe(false);
             expect(isStatePath(path)).toBe(false);
         }
         // Names starting with _ fit the pattern but are rejected.
-        for (const path of ['variables._private', 'variables.user.__class__', 'variables.items[0]._x']) {
+        for (const path of ['variables._private', 'variables.user.__class__', 'variables.tags[0]._x']) {
             expect(STATE_PATH.test(path)).toBe(true);
             expect(isStatePath(path)).toBe(false);
+        }
+        // So are DotDict method names, which crew can never read or write through.
+        for (const path of [
+            'variables.items',
+            'variables.cart.keys',
+            'variables.tags[0].get',
+            'variables.a.model_dump',
+        ]) {
+            expect(STATE_PATH.test(path)).toBe(true);
+            expect(isStatePath(path)).toBe(false);
+        }
+        for (const path of ['variables.items_count', 'variables.my_keys', 'variables.get_user', 'variables.a.Items']) {
+            expect(isStatePath(path)).toBe(true);
         }
         expect(isStatePath('  variables.a  ')).toBe(true);
         expect(isStatePath(' variables. ')).toBe(false);
@@ -103,7 +129,8 @@ describe('persistence node helpers', () => {
         for (const text of ['variables.a', 'variables.a|0', 'variables.a|', ' variables.a |{"x": 1}']) {
             expect(isWriteSource(text)).toBe(true);
         }
-        for (const text of ['variables.a-b|0', 'variables._a|0', '|0', 'a|variables.a']) {
+        expect(isWriteSource('variables.a|items')).toBe(true);
+        for (const text of ['variables.a-b|0', 'variables._a|0', '|0', 'a|variables.a', 'variables.cart.pop|0']) {
             expect(isWriteSource(text)).toBe(false);
         }
     });
@@ -134,6 +161,8 @@ describe('persistence node helpers', () => {
             '',
             '_id',
             'a._b',
+            'cart.items',
+            'user[01]',
         ]) {
             expect(suggestStatePath(text)).toBeNull();
         }
@@ -142,7 +171,9 @@ describe('persistence node helpers', () => {
     it('builds one key hint that says how to write the placeholders, from what was typed', () => {
         expect(keyTemplateHint('p_{variables.id}')).toBeNull();
         expect(keyTemplateHint('p_{user_id}')).toBe('Use {variables.user_id}');
-        expect(keyTemplateHint('p_{user.id}_{items[0]}')).toBe('Use {variables.user.id}, {variables.items[0]}');
+        expect(keyTemplateHint('p_{user.id}_{tags[0]}')).toBe('Use {variables.user.id}, {variables.tags[0]}');
+        expect(keyTemplateHint('p_{variables.cart.items}')).toBe("Use a different name — 'items' is reserved");
+        expect(keyTemplateHint('p_{cart.keys}')).toBe("Use a different name — 'keys' is reserved");
         expect(keyTemplateHint('{user_id}_{user_id}')).toBe('Use {variables.user_id}');
         expect(keyTemplateHint('p_{}_{user_id}')).toBe('Write placeholders as {variables.user.id}');
         expect(keyTemplateHint('p_{variables.}')).toBe('Write placeholders as {variables.user.id}');
@@ -171,7 +202,13 @@ describe('persistence node helpers', () => {
                 'Use letters, digits and _ in variable names, like variables.user_name'
             );
             expect(valuePathHint('variables.user._id', mode)).toBe("Variable names can't start with _");
+            expect(valuePathHint('variables.cart.items', mode)).toBe("Use a different name — 'items' is reserved");
+            expect(valuePathHint('cart.get', mode)).toBe("Use a different name — 'get' is reserved");
+            // A misspelled root is not a rootless path, so it gets the state path hint.
+            expect(valuePathHint('Variables.items', mode)).toBe('Use a state path like variables.user.name');
+            expect(valuePathHint('variablesX.items', mode)).toBe('Use a state path like variables.user.name');
         }
+        expect(valuePathHint('variables.values|0', 'write')).toBe("Use a different name — 'values' is reserved");
         expect(valuePathHint('variables.user|0', 'write')).toBeNull();
         expect(valuePathHint('user.name|0', 'write')).toBe('Use variables.user.name|0');
         expect(valuePathHint('variables._x|0', 'write')).toBe("Variable names can't start with _");
@@ -187,6 +224,51 @@ describe('persistence node helpers', () => {
         expect(duplicateWriteKeys(['a', ' a ', 'b'])).toEqual(new Set(['a']));
         expect(duplicateWriteKeys(['p_{variables.x}', 'p_{variables.x}'])).toEqual(new Set(['p_{variables.x}']));
         expect(duplicateWriteKeys(['A', 'a', 'p_{', 'p_{', '', ''])).toEqual(new Set());
+    });
+
+    it('tells nested paths apart name by name, in either order', () => {
+        expect(isNestedPath('variables.user', 'variables.user.name')).toBe(true);
+        expect(isNestedPath('variables.user.name', 'variables.user')).toBe(true);
+        expect(isNestedPath('variables.user', 'variables.user[0].id')).toBe(true);
+        expect(isNestedPath('variables.user', 'variables.username')).toBe(false);
+        expect(isNestedPath('variables.user', 'variables.user')).toBe(false);
+        expect(isNestedPath('variables.user.id', 'variables.user.name')).toBe(false);
+    });
+
+    it('tells how a read target clashes with the targets of all rows, trimmed, leaving invalid values to their own rule', () => {
+        const repeated = ['variables.a', ' variables.a ', 'variables.b'];
+        expect(repeated.map((value) => readTargetConflict(value, repeated))).toEqual(['duplicate', 'duplicate', null]);
+
+        const nested = ['variables.user', ' variables.user.name ', 'variables.user[0]', 'variables.plan'];
+        expect(nested.map((value) => readTargetConflict(value, nested))).toEqual([
+            'overlap',
+            'overlap',
+            'overlap',
+            null,
+        ]);
+
+        // A duplicate is named first, and a name that only starts alike is not inside.
+        const both = ['variables.user', 'variables.user', 'variables.user.id', 'variables.username'];
+        expect(both.map((value) => readTargetConflict(value, both))).toEqual([
+            'duplicate',
+            'duplicate',
+            'overlap',
+            null,
+        ]);
+
+        const invalid = [
+            '',
+            '',
+            'variables.',
+            'variables.',
+            'variables.a|0',
+            'variables.a|0',
+            'user',
+            'variables.user.',
+        ];
+        expect(invalid.map((value) => readTargetConflict(value, [...invalid, 'variables.user']))).toEqual(
+            invalid.map(() => null)
+        );
     });
 
     it('takes a write source path from before any |default', () => {
@@ -213,12 +295,51 @@ describe('persistence node helpers', () => {
 
         // What a switch from delete leaves until the values are typed.
         expect(isValid('write', [{ key: 'profile_{variables.user.id}', value: 'variables.' }])).toBe(false);
-        // Read and delete allow repeats; write refuses a repeated key on every row that has it, but
-        // rows may share a source.
+        // Read refuses a repeated variable, compared trimmed, but rows may share a key; delete allows
+        // repeats; write refuses a repeated key on every row that has it, but rows may share a source.
         expect(
             isValid('read', [
                 { key: 'a', value: 'variables.x' },
                 { key: 'a', value: ' variables.x ' },
+            ])
+        ).toBe(false);
+        expect(
+            isValid('read', [
+                { key: 'key1', value: 'variables.my_var' },
+                { key: 'key2', value: 'variables.my_var' },
+            ])
+        ).toBe(false);
+        expect(
+            isValid('read', [
+                { key: 'a', value: 'variables.x' },
+                { key: 'a', value: 'variables.y' },
+            ])
+        ).toBe(true);
+        // Nor may one read target lie inside another, in either order; a longer name is not inside.
+        for (const [first, second] of [
+            ['variables.user', 'variables.user.name'],
+            ['variables.user.name', 'variables.user'],
+            ['variables.user', 'variables.user[0]'],
+            ['variables.user[0]', 'variables.user'],
+        ]) {
+            expect(
+                isValid('read', [
+                    { key: 'a', value: first },
+                    { key: 'b', value: second },
+                ])
+            ).toBe(false);
+        }
+        expect(
+            isValid('read', [
+                { key: 'a', value: 'variables.user' },
+                { key: 'b', value: 'variables.username' },
+            ])
+        ).toBe(true);
+        // Write sources may overlap.
+        expect(
+            isValid('write', [
+                { key: 'a', value: 'variables.user' },
+                { key: 'b', value: 'variables.user.name' },
             ])
         ).toBe(true);
         expect(isValid('delete', [{ key: 'a' }, { key: 'a' }])).toBe(true);
@@ -253,6 +374,17 @@ describe('persistence node helpers', () => {
             ])
         ).toBe(true);
         expect(isValid('delete', [{ key: 'p_{user_id}' }])).toBe(false);
+        // DotDict method names, as Django and crew refuse them.
+        expect(isValid('read', [{ key: 'a', value: 'variables.items' }])).toBe(false);
+        expect(isValid('write', [{ key: 'a', value: 'variables.cart.keys|0' }])).toBe(false);
+        expect(isValid('delete', [{ key: 'p_{variables.cart.get}' }])).toBe(false);
+        expect(isValid('read', [{ key: 'a', value: 'variables.a[01]' }])).toBe(false);
+        expect(isValid('write', [{ key: 'p_{variables.a[10]}', value: 'variables.a[0]' }])).toBe(true);
+        // As many keys as the backend takes in one node, and no more.
+        const keys = (count: number): PersistenceEntry[] =>
+            Array.from({ length: count }, (_, index) => ({ key: `k${index}` }));
+        expect(isValid('delete', keys(PERSISTENCE_MAX_KEYS))).toBe(true);
+        expect(isValid('delete', keys(PERSISTENCE_MAX_KEYS + 1))).toBe(false);
         expect(isValid('delete', [{ key: '  ' }])).toBe(false);
         expect(isValid('delete', [{ key: 'k'.repeat(513) }])).toBe(false);
     });
