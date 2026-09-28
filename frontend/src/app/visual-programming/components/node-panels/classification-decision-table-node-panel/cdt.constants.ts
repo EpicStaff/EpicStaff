@@ -40,3 +40,10 @@ export const CDT_EXPRESSION_EDITOR_POPUP_WIDTH = 660;
 
 /** Fallback display label used when no LLM config is selected. */
 export const CDT_DEFAULT_LLM_LABEL = 'Default LLM';
+
+// ── Route Code / Continue copy ────────────────────────────────────────────────
+
+/** Route Code cell tooltip; see `cdt-route-continue.util.ts` for the rule. */
+export const CDT_ROUTE_CONTINUE_COPY = {
+    continueIgnored: 'Use one: a route code or Continue. With a route code, Continue is ignored.',
+} as const;

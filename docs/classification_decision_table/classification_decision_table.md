@@ -76,10 +76,13 @@ Empty/None expressions evaluate as `True` — a row with only field_expressions 
 3. **Match (True):**
    - Execute the LLM prompt if `prompt_id` is set.
    - Execute the combined manipulation (`field_manipulations` + `manipulation`); changes are written back to state.
-   - If `next_node` is set, capture it as the routing target (overwrites any prior).
-   - If `continue_flag` is `False` → **stop**. If `True` → continue to the next row.
+   - If `next_node` is set → take it as the routing target and **stop**. `continue_flag` is not consulted at all.
+   - Otherwise, if `continue_flag` is `False` → **stop**. If `True` → continue to the next row.
 
-`continue_flag` is consulted **only after a row matches**. A non-matching row always falls through to the next row regardless of `continue_flag`.
+Two consequences of that order, both easy to get wrong:
+
+- **An explicit route is terminal.** A matched row with a non-null `next_node` ends evaluation even with `continue_flag = True` — the flag is only reached on rows that capture no target. Covered by `test_explicit_route_is_terminal_continue_ignored`.
+- **`continue_flag` is consulted only after a row matches.** A non-matching row always falls through to the next row regardless of the flag.
 
 ### Routing
 
@@ -88,13 +91,17 @@ There is **no** route-code/route-map lookup. Each matched row's `next_node` (a r
 Priority after all rows are evaluated:
 
 ```
-last matched row's next_node  >  default_next_node  >  END
+first matched row's next_node  >  default_next_node  >  END
 errors (pre-comp / expression / manipulation / prompt / post-comp)  ⇒  next_error_node  >  END
 ```
 
-With `continue_flag = True`, the **last** matching row that has a non-null `next_node` wins; a later matching row whose `next_node` is null does **not** clear a previously-captured target. The engine sets `system_variables[node]["result_node"]`, and `add_classification_decision_table_node` (graph_builder.py) returns `result_node or default_next_node`.
+The **first** matching row with a non-null `next_node` wins, and evaluation stops there — no later row can overwrite it, because there is no later row. `matched_next_node` is assigned exactly once, immediately followed by `break`
+(`classification_decision_table_node.py`, "Step 4: An explicit route is terminal"). The engine sets
+`system_variables[node]["result_node"]`, and `add_classification_decision_table_node` (graph_builder.py) returns `result_node or default_next_node`.
 
-> `route_code` exists on the Django model but is a **frontend-only** identifier (the canvas output-port id). It is not in the runtime pydantic model and the engine never reads it.
+So `continue_flag = True` only keeps evaluation going across rows that match **without** capturing a target — an enrichment row that writes variables and hands over to the next rule.
+
+> `route_code` exists on the Django model but is a **frontend-only** identifier (the canvas output-port id). It is not in the runtime pydantic model and the engine never reads it. A row can therefore carry a `route_code` and still have a null `next_node` — nothing is connected to that output port on the canvas — and such a row does **not** end evaluation: it falls through to the `continue_flag` check like any unrouted row.
 
 ### Enabled / disabled rows (`dock_visible`)
 
@@ -218,4 +225,4 @@ API: `POST/GET/DELETE /api/classification-decision-table-node/`
 
 ## Tests
 
-`src/crew/tests/graph/subgraphs/test_classification_decision_table_node.py` covers routing (first-match, fall-through, continue/last-match-wins, default, error→next_error_node), `dock_visible` skipping, field expressions, manipulation write-back, and prompt `output_schema` application. The sandbox (`RunPythonCodeService.run_code`) and `litellm.acompletion` are mocked.
+`src/crew/tests/graph/subgraphs/test_classification_decision_table_node.py` covers routing (first-match, fall-through, explicit route terminal with `continue_flag=True`, continue-then-route, default, error→next_error_node), `dock_visible` skipping, field expressions, manipulation write-back, and prompt `output_schema` application. The sandbox (`RunPythonCodeService.run_code`) and `litellm.acompletion` are mocked.

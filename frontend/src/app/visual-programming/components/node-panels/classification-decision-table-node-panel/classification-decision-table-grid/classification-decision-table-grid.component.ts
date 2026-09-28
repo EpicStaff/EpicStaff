@@ -66,6 +66,12 @@ import {
     CDT_MANIP_PREFIX,
     CDT_OVERLAY_ROW_HEIGHT,
 } from '../cdt.constants';
+import {
+    continueFlagAfterRouteCodeEdit,
+    isContinueIgnored,
+    isMissingRouteOrContinue,
+    normalizeRouteCode,
+} from '../cdt-route-continue.util';
 import { ColumnHeaderMenuComponent } from './column-header-menu/column-header-menu.component';
 import { EnableFilterHeaderComponent, EnableFilterMode } from './enable-filter-header/enable-filter-header.component';
 import { ExpressionBuilderCellEditorComponent } from './expression-builder/expression-builder-cell-editor.component';
@@ -74,6 +80,7 @@ import { MonacoCellRendererComponent } from './monaco-cell-renderer/monaco-cell-
 import { ParamsGroupHeaderComponent } from './params-group-header/params-group-header.component';
 import { PromptIdCellEditorComponent } from './prompt-id-cell-editor/prompt-id-cell-editor.component';
 import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt-tooltip-renderer.component';
+import { RouteCodeCellRendererComponent } from './route-code-cell-renderer/route-code-cell-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
 
@@ -1315,14 +1322,23 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerComponentParams: this.makeMenuHeaderParams('route_code', 'Route Code'),
             field: 'route_code',
             editable: true,
+            // Stored trimmed, so whitespace-only is empty and the grid, the canvas
+            // port and the save all see the same code.
+            valueParser: (p) => normalizeRouteCode(p.newValue),
             width: 150,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
             },
+            cellClassRules: {
+                'cell-required-invalid': (p) => isMissingRouteOrContinue(p.data as ConditionGroup | undefined),
+            },
+            // Shows the code plus a status icon whose tooltip explains the red or dimmed state.
+            cellRenderer: RouteCodeCellRendererComponent,
         };
 
         const skipCol: ColDef = {
+            colId: 'continue_flag',
             headerName: 'Continue',
             field: 'continue_flag',
             editable: true,
@@ -1334,6 +1350,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+            },
+            cellClassRules: {
+                // The route wins, so the tick is dimmed; the Route Code cell explains why.
+                'cell-continue-ignored': (p) => isContinueIgnored(p.data as ConditionGroup | undefined),
             },
         };
 
@@ -1796,6 +1816,22 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const activeNames = this.activeFieldColumns();
         const activeManipNames = this.activeManipFieldColumns();
 
+        if (colId === 'route_code') {
+            // Naming a route unticks Continue and clearing it ticks Continue back;
+            // see `continueFlagAfterRouteCodeEdit`. Written in place like the other
+            // cross-cell syncs here, then emitted with the rest of the row below.
+            const nextContinue = continueFlagAfterRouteCodeEdit(event.oldValue, event.newValue);
+            if (nextContinue !== null) {
+                rowData.continue_flag = nextContinue;
+            }
+        }
+
+        if (colId === 'route_code' || colId === 'continue_flag') {
+            // Each cell's look depends on the other: the red highlight and tooltip on
+            // Route Code depend on the flag, and the dimmed checkbox on the code.
+            event.api.refreshCells({ rowNodes: [event.node], columns: ['route_code', 'continue_flag'], force: true });
+        }
+
         if (colId === CDT_COLUMN_KIND.EXPRESSION) {
             // Expression → params sync
             const newExpr: string = (rowData.expression ?? '').trim();
@@ -1930,7 +1966,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             expression: null,
             conditions: [],
             manipulation: null,
-            continue_flag: false,
+            // Falling through to the next rule is the readable default; stopping on
+            // the table default is the deliberate choice, made by unticking.
+            continue_flag: true,
             route_code: '',
             dock_visible: true,
             next_node: null,

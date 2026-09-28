@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
+import { normalizeRouteCode } from './cdt-route-continue.util';
 
 export interface CdtExportPythonCode {
     code: string;
@@ -266,7 +267,7 @@ export class CdtExportImportService {
                 prompt_id: promptId,
                 manipulation: this.asNullableString(g['manipulation']),
                 continue_flag: g['continue_flag'] === true,
-                route_code: this.asNullableString(g['route_code']),
+                route_code: this.asRouteCode(g['route_code']),
                 dock_visible: g['dock_visible'] !== false,
                 field_expressions: this.asStringRecord(g['field_expressions']),
                 field_manipulations: this.asStringRecord(g['field_manipulations']),
@@ -397,7 +398,7 @@ export class CdtExportImportService {
             prompt_id: this.asNullableString(group['prompt_id']),
             manipulation: this.asNullableString(group['manipulation']),
             continue_flag: group['continue_flag'] === true,
-            route_code: this.asNullableString(group['route_code']),
+            route_code: this.asRouteCode(group['route_code']),
             dock_visible: group['dock_visible'] !== false,
             field_expressions: this.asStringRecord(group['field_expressions']),
             field_manipulations: this.asStringRecord(group['field_manipulations']),
@@ -425,6 +426,15 @@ export class CdtExportImportService {
     private asNullableString(value: unknown): string | null {
         if (typeof value === 'string') return value;
         return null;
+    }
+
+    /**
+     * Imported route codes follow the grid's input rule (`normalizeRouteCode`), so
+     * an import cannot bring back surrounding spaces the grid would strip. Empty
+     * stays null, as it was here before and as `payload.ts` saves it.
+     */
+    private asRouteCode(value: unknown): string | null {
+        return normalizeRouteCode(value) || null;
     }
 
     private asNullableNumber(value: unknown): number | null {
