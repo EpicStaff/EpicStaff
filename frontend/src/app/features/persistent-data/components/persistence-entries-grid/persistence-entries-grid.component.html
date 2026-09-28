@@ -24,7 +24,24 @@
                 appTableCell="key"
                 let-row
             >
-                <span class="entries-grid__key">{{ row['key'] }}</span>
+                <div
+                    class="entries-grid__cell"
+                    [class.entries-grid__cell--editable]="canUpdate()"
+                    (dblclick)="onCellDoubleClick(row)"
+                >
+                    <span
+                        class="entries-grid__key"
+                        [attr.title]="canUpdate() ? 'Double-click to edit' : null"
+                        >{{ row['key'] }}</span
+                    >
+                    <!-- A fast double click on Copy must not also open the editor. -->
+                    <app-copy-button
+                        class="entries-grid__copy"
+                        ariaLabel="Copy key"
+                        [text]="row['key']"
+                        (dblclick)="$event.stopPropagation()"
+                    />
+                </div>
             </ng-template>
 
             <ng-template
@@ -32,23 +49,15 @@
                 let-row
             >
                 <div
-                    class="entries-grid__value"
-                    [class.entries-grid__value--editable]="canUpdate()"
-                    (dblclick)="onValueDoubleClick(row)"
+                    class="entries-grid__cell"
+                    [class.entries-grid__cell--editable]="canUpdate()"
+                    (dblclick)="onCellDoubleClick(row)"
                 >
                     <span
                         class="entries-grid__preview"
                         [attr.title]="canUpdate() ? 'Double-click to edit' : null"
                         >{{ row['preview'] }}</span
                     >
-                    @if (canUpdate()) {
-                        <app-svg-icon
-                            class="entries-grid__edit-hint"
-                            icon="edit"
-                            size="14px"
-                        />
-                    }
-                    <!-- A fast double click on Copy must not also open the editor. -->
                     <app-copy-button
                         class="entries-grid__copy"
                         ariaLabel="Copy value"

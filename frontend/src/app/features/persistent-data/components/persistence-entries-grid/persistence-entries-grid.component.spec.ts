@@ -161,10 +161,13 @@ describe('PersistenceEntriesGridComponent updated column', () => {
     });
 });
 
-describe('PersistenceEntriesGridComponent value double-click', () => {
+describe.each([
+    ['value', '.entries-grid__preview'],
+    ['key', '.entries-grid__key'],
+])('PersistenceEntriesGridComponent %s double-click', (_cell, selector) => {
     it('opens the edit dialog for that entry when the user can update', () => {
         const { element, dialogOpen } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        element.querySelector(selector)?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         expect(dialogOpen).toHaveBeenCalledOnce();
         expect(dialogOpen.mock.calls[0]).toEqual([
             expect.anything(),
@@ -174,26 +177,15 @@ describe('PersistenceEntriesGridComponent value double-click', () => {
 
     it('hints at double-click only for users who can update', () => {
         const editable = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        expect(editable.element.querySelector<HTMLElement>('.entries-grid__preview')?.title).toBe(
-            'Double-click to edit'
-        );
+        expect(editable.element.querySelector<HTMLElement>(selector)?.title).toBe('Double-click to edit');
         TestBed.resetTestingModule();
         const readOnly = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        expect(readOnly.element.querySelector('.entries-grid__preview')?.hasAttribute('title')).toBe(false);
-    });
-
-    it('clears the word the double-click selected', () => {
-        const removeAllRanges = vi.fn();
-        vi.spyOn(window, 'getSelection').mockReturnValue({ removeAllRanges } as unknown as Selection);
-        const { element } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-        expect(removeAllRanges).toHaveBeenCalledOnce();
-        vi.restoreAllMocks();
+        expect(readOnly.element.querySelector(selector)?.hasAttribute('title')).toBe(false);
     });
 
     it('does nothing without update permission', () => {
         const { element, dialogOpen } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        element.querySelector('.entries-grid__preview')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        element.querySelector(selector)?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         expect(dialogOpen).not.toHaveBeenCalled();
     });
 });
@@ -245,7 +237,7 @@ describe('PersistenceEntriesGridComponent key search', () => {
     });
 });
 
-describe('PersistenceEntriesGridComponent copy value', () => {
+describe('PersistenceEntriesGridComponent copy key and value', () => {
     let writeText: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
@@ -255,40 +247,46 @@ describe('PersistenceEntriesGridComponent copy value', () => {
     });
     afterEach(() => Reflect.deleteProperty(navigator, 'clipboard'));
 
-    function copyButtons(element: HTMLElement): HTMLButtonElement[] {
-        return [...element.querySelectorAll<HTMLButtonElement>('app-copy-button button')];
+    function copyButton(element: HTMLElement, ariaLabel: 'Copy key' | 'Copy value'): HTMLButtonElement | null {
+        return element.querySelector<HTMLButtonElement>(`app-copy-button button[aria-label="${ariaLabel}"]`);
     }
+
+    it('copies the key, for read-only users too', () => {
+        const { element } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
+        copyButton(element, 'Copy key')?.click();
+        expect(writeText).toHaveBeenCalledWith('profile_42');
+    });
 
     it('copies an object value as indented JSON, for read-only users too', () => {
         const { element } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        copyButtons(element)[0].click();
+        copyButton(element, 'Copy value')?.click();
         expect(writeText).toHaveBeenCalledWith('{\n  "plan": "pro"\n}');
     });
 
     it('copies a string value as its raw text, without JSON quotes', () => {
         const { element } = renderGrid({ entries: [{ ...RUN_ENTRY, value: 'hello "world"' }] });
-        copyButtons(element)[0].click();
+        copyButton(element, 'Copy value')?.click();
         expect(writeText).toHaveBeenCalledWith('hello "world"');
     });
 
-    it('does not open the editor when Copy is double-clicked', () => {
+    it('does not open the editor when Copy key or Copy value is double-clicked', () => {
         const { element, dialogOpen } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        element.querySelector('app-copy-button')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        const copyHosts = [...element.querySelectorAll('app-copy-button')];
+        expect(copyHosts).toHaveLength(2);
+        copyHosts.forEach((host) => host.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
         expect(dialogOpen).not.toHaveBeenCalled();
     });
 });
 
-describe('PersistenceEntriesGridComponent editable value hint', () => {
-    it('marks the value cell editable and shows a pencil only for users who can update', () => {
+describe('PersistenceEntriesGridComponent editable cell hint', () => {
+    it('marks the key and value cells editable only for users who can update', () => {
         const editable = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        expect(editable.element.querySelector('.entries-grid__value--editable')).not.toBeNull();
-        expect(editable.element.querySelector('.entries-grid__edit-hint')).not.toBeNull();
+        expect(editable.element.querySelectorAll('.entries-grid__cell--editable')).toHaveLength(2);
         TestBed.resetTestingModule();
 
         const readOnly = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        expect(readOnly.element.querySelector('.entries-grid__value')).not.toBeNull();
-        expect(readOnly.element.querySelector('.entries-grid__value--editable')).toBeNull();
-        expect(readOnly.element.querySelector('.entries-grid__edit-hint')).toBeNull();
+        expect(readOnly.element.querySelectorAll('.entries-grid__cell')).toHaveLength(2);
+        expect(readOnly.element.querySelector('.entries-grid__cell--editable')).toBeNull();
     });
 });
 

@@ -53,8 +53,9 @@
         color: var(--color-text-secondary);
     }
 
-    // Fills the Value cell, so a double-click anywhere in it opens the editor.
-    &__value {
+    // Fills the Key / Value cell, so a double-click anywhere in it opens the editor.
+    // Not selectable for everyone, read-only users included, on purpose: the copy button covers copying.
+    &__cell {
         display: flex;
         align-items: center;
         gap: 4px;
@@ -63,30 +64,24 @@
         margin: -4px -8px;
         padding: 4px 8px;
         border-radius: 4px;
+        user-select: none;
         transition: background-color 0.15s ease;
 
-        &:hover .entries-grid__edit-hint,
         &:hover .entries-grid__copy,
         &:focus-within .entries-grid__copy {
             opacity: 1;
         }
     }
 
-    // Double-click to edit is otherwise invisible: tint the cell and show a pencil on hover.
-    &__value--editable:hover {
+    // Double-click to edit is otherwise invisible: tint the cell on hover.
+    &__cell--editable:hover {
         background-color: var(--color-ghost-btn-hover);
     }
 
+    &__key,
     &__preview {
         flex: 1 1 0;
         min-width: 0;
-    }
-
-    &__edit-hint {
-        flex-shrink: 0;
-        color: var(--color-text-secondary);
-        opacity: 0;
-        transition: opacity 0.15s ease;
     }
 
     // app-copy-button floats over a card by default; here it sits inline at the end of the cell.

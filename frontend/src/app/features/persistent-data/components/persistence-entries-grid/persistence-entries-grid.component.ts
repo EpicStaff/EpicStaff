@@ -5,7 +5,6 @@ import { Component, computed, DestroyRef, effect, inject, input, linkedSignal, o
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import {
-    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
@@ -81,7 +80,6 @@ function settledSearch(rawTerm$: Observable<string>): Observable<string> {
     imports: [
         AppTableComponent,
         AppTableCellDirective,
-        AppSvgIconComponent,
         ButtonComponent,
         CopyButtonComponent,
         PaginationControlsComponent,
@@ -204,10 +202,8 @@ export class PersistenceEntriesGridComponent {
     }
 
     // Double-click is the mouse shortcut; keyboard users take the row's Edit action button.
-    onValueDoubleClick(row: TableRow): void {
+    onCellDoubleClick(row: TableRow): void {
         if (!this.canUpdate()) return;
-        // The browser selects the double-clicked word; drop it so the dialog does not open over a highlight.
-        window.getSelection()?.removeAllRanges();
         this.onEdit(row);
     }
 
