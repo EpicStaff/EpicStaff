@@ -1,9 +1,8 @@
 from collections import defaultdict
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.db import connection
 from loguru import logger
-
 from tables.models.base_models import BaseGlobalNode
 
 """
@@ -50,8 +49,7 @@ def resolve_node_names(ids: Iterable[int]) -> dict[int, str]:
 
     placeholders = ", ".join(["%s"] * len(ids))
     union_parts = [
-        f"SELECT id, '{t}' as tbl FROM {t} WHERE id IN ({placeholders})"
-        for t in table_to_model
+        f"SELECT id, '{t}' as tbl FROM {t} WHERE id IN ({placeholders})" for t in table_to_model
     ]
     query = " UNION ALL ".join(union_parts)
     params = ids * len(table_to_model)

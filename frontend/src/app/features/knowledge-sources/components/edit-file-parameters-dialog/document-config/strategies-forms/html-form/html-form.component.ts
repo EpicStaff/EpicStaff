@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     CustomInputComponent,
+    HelpTooltipComponent,
     InputNumberComponent,
     JsonEditorComponent,
     ToggleSwitchComponent,
@@ -11,7 +12,6 @@ import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { jsonValidator } from '@shared/form-validators';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
-import { HelpTooltipComponent } from '../../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { HtmlStrategyModel } from '../../../../../models/strategy.model';
 import { StrategyForm } from '../strategy-config-form.abstract';
 

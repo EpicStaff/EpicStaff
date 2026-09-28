@@ -1,14 +1,13 @@
-import uuid
 import asyncio
+import uuid
 from typing import Any
 
-from loguru import logger
-
 from core import config
-from utils.singleton_meta import SingletonMeta
-from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
+from domain.ports.i_redis_messaging_service import IRedisMessagingService
+from loguru import logger
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from utils.singleton_meta import SingletonMeta
 
 
 class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonMeta):
@@ -55,9 +54,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         logger.info("Waiting for code_results")
 
         while True:
-            message = await pubsub.get_message(
-                ignore_subscribe_messages=True, timeout=1.0
-            )
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message:
                 code_result_data = CodeResultData.model_validate_json(message["data"])
                 if code_result_data.execution_id == unique_task_id:

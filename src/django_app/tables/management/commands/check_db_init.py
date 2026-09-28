@@ -1,10 +1,10 @@
 import time
-from django.core.management.base import BaseCommand
-import psycopg2
-from psycopg2 import OperationalError
-from loguru import logger
 
+import psycopg2
+from django.core.management.base import BaseCommand
 from django_app.settings import env
+from loguru import logger
+from psycopg2 import OperationalError
 
 
 class Command(BaseCommand):

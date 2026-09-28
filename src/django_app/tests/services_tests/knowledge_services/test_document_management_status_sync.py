@@ -32,10 +32,10 @@ GS = GraphRagDocument.Status
 # ---------------------------------------------------------------------------
 
 
-def _make_collection(suffix=""):
+def _make_collection(default_org, suffix=""):
     """Each test gets an isolated collection to avoid cross-test conflicts."""
     return SourceCollection.objects.create(
-        collection_name=f"dm_coll{suffix}", user_id=f"dm_user{suffix}"
+        collection_name=f"dm_coll{suffix}", user_id=f"dm_user{suffix}", org=default_org
     )
 
 
@@ -72,10 +72,10 @@ def _make_naive_rag(collection, embedding_config):
 
 class TestDeleteDocumentSync:
     def test_deleting_doc_with_completed_naive_config_recomputes_to_new(
-        self, test_embedding_config
+        self, test_embedding_config, default_org
     ):
         """Deleting the only doc (COMPLETED naive config) → NaiveRag becomes NEW."""
-        collection = _make_collection("_dn1")
+        collection = _make_collection(default_org, "_dn1")
         # Create doc FIRST, then naive_rag — the signal auto-creates a config.
         doc = _make_doc(collection, "_dn1")
         rag = _make_naive_rag(collection, test_embedding_config)
@@ -93,10 +93,10 @@ class TestDeleteDocumentSync:
         assert rag.rag_status == NaiveRag.NaiveRagStatus.NEW
 
     def test_deleting_one_of_two_completed_graph_docs_outdates_graph_rag(
-        self, test_embedding_config, llm_config
+        self, test_embedding_config, llm_config, default_org
     ):
         """Deleting one of two COMPLETED GraphRag documents → GraphRag becomes OUTDATED."""
-        collection = _make_collection("_dg1")
+        collection = _make_collection(default_org, "_dg1")
         # Create both docs BEFORE GraphRag so they get auto-linked.
         doc_a = _make_doc(collection, "_dg1a")
         doc_b = _make_doc(collection, "_dg1b")
@@ -116,10 +116,10 @@ class TestDeleteDocumentSync:
         assert rag.rag_status == GraphRag.GraphRagStatus.OUTDATED
 
     def test_deleting_doc_with_new_graph_rag_link_does_not_outdate(
-        self, test_embedding_config, llm_config
+        self, test_embedding_config, llm_config, default_org
     ):
         """Deleting a NEW (unindexed) GraphRag document should not outdate the rag."""
-        collection = _make_collection("_dg_new")
+        collection = _make_collection(default_org, "_dg_new")
         doc = _make_doc(collection, "_dg_new")
         rag = GraphRagService.create_or_update_graph_rag(
             collection_id=collection.collection_id,
@@ -134,21 +134,23 @@ class TestDeleteDocumentSync:
         assert rag.rag_status != GraphRag.GraphRagStatus.OUTDATED
 
     def test_deleting_doc_syncs_both_naive_and_graph_rag(
-        self, test_embedding_config, llm_config
+        self, test_embedding_config, llm_config, default_org
     ):
         """
         A document in a collection with both a NaiveRag and a GraphRag.
         When the only NaiveRag doc is deleted → NaiveRag→NEW.
         When one of two GraphRag docs is deleted → GraphRag→OUTDATED.
         """
-        collection = _make_collection("_dboth")
+        collection = _make_collection(default_org, "_dboth")
         # Create docs FIRST so both RAG types auto-link them.
         doc = _make_doc(collection, "_dboth_main")
         doc_extra = _make_doc(collection, "_dboth_extra")  # extra for graph_rag
 
         naive_rag = _make_naive_rag(collection, test_embedding_config)
         # Signal auto-created configs for both docs — flip only doc's config to COMPLETED.
-        naive_config = NaiveRagDocumentConfig.objects.get(naive_rag=naive_rag, document=doc)
+        naive_config = NaiveRagDocumentConfig.objects.get(
+            naive_rag=naive_rag, document=doc
+        )
         naive_config.status = NS.COMPLETED
         naive_config.save(update_fields=["status"])
         naive_rag.rag_status = NaiveRag.NaiveRagStatus.COMPLETED
@@ -182,10 +184,10 @@ class TestDeleteDocumentSync:
 
 class TestDeleteDocumentsBatchSync:
     def test_batch_delete_recomputes_both_rag_types(
-        self, test_embedding_config, llm_config
+        self, test_embedding_config, llm_config, default_org
     ):
         """Batch delete spanning both a NaiveRag and a GraphRag: both recompute."""
-        collection = _make_collection("_batch")
+        collection = _make_collection(default_org, "_batch")
         doc_naive = _make_doc(collection, "_batch_naive")
         # doc_graph_keep remains in the collection after batch delete → graph_rag OUTDATED.
         doc_graph_keep = _make_doc(collection, "_batch_graph_keep")
@@ -223,10 +225,10 @@ class TestDeleteDocumentsBatchSync:
         assert graph_rag.rag_status == GraphRag.GraphRagStatus.OUTDATED
 
     def test_batch_delete_one_of_two_completed_graph_docs_outdates_rag(
-        self, test_embedding_config, llm_config
+        self, test_embedding_config, llm_config, default_org
     ):
         """GraphRag with two COMPLETED docs: delete one → OUTDATED, survivor flipped too."""
-        collection = _make_collection("_bg")
+        collection = _make_collection(default_org, "_bg")
         doc_a = _make_doc(collection, "_bg_a")
         doc_b = _make_doc(collection, "_bg_b")
 

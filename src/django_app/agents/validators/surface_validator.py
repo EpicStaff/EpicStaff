@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections import Counter
 
-from agents.exceptions import SurfaceValidationError
 from tables.models.knowledge_models.collection_models import BaseRagType
+
+from agents.exceptions import SurfaceValidationError
 
 
 class SurfaceValidator:
@@ -26,9 +27,7 @@ class SurfaceValidator:
 
         if duplicates:
             raise SurfaceValidationError(
-                detail={
-                    "python_tools": f"Duplicate python_tool ids: {sorted(duplicates)}"
-                }
+                detail={"python_tools": f"Duplicate python_tool ids: {sorted(duplicates)}"}
             )
 
     @staticmethod
@@ -48,8 +47,20 @@ class SurfaceValidator:
 
         if duplicates:
             raise SurfaceValidationError(
+                detail={"storage_items": f"Duplicate storage_file ids: {sorted(duplicates)}"}
+            )
+
+    @staticmethod
+    def validate_storage_items_org(storage_items_data, org_id):
+        mismatched = [
+            item["storage_file"].pk
+            for item in storage_items_data
+            if item["storage_file"].org_id != org_id
+        ]
+        if mismatched:
+            raise SurfaceValidationError(
                 detail={
-                    "storage_items": f"Duplicate storage_file ids: {sorted(duplicates)}"
+                    "storage_items": f"StorageFile ids {mismatched} do not belong to organization {org_id}"
                 }
             )
 
@@ -74,14 +85,10 @@ class SurfaceValidator:
             rag_types_by_collection.setdefault(collection_id, set()).add(rag_type)
 
         for item in knowledge_data:
-            SurfaceValidator._validate_knowledge_item_configs(
-                item, rag_types_by_collection
-            )
+            SurfaceValidator._validate_knowledge_item_configs(item, rag_types_by_collection)
 
     @staticmethod
-    def _validate_knowledge_item_configs(
-        item, rag_types_by_collection: dict[int, set[str]]
-    ):
+    def _validate_knowledge_item_configs(item, rag_types_by_collection: dict[int, set[str]]):
         collection = item["collection"]
         rag_types = rag_types_by_collection.get(collection.pk, set())
 
@@ -101,10 +108,7 @@ class SurfaceValidator:
                 }
             )
 
-        if (
-            graph_basic_config is not None
-            and BaseRagType.RagType.GRAPH not in rag_types
-        ):
+        if graph_basic_config is not None and BaseRagType.RagType.GRAPH not in rag_types:
             raise SurfaceValidationError(
                 detail={
                     "knowledge": (
@@ -114,10 +118,7 @@ class SurfaceValidator:
                 }
             )
 
-        if (
-            graph_local_config is not None
-            and BaseRagType.RagType.GRAPH not in rag_types
-        ):
+        if graph_local_config is not None and BaseRagType.RagType.GRAPH not in rag_types:
             raise SurfaceValidationError(
                 detail={
                     "knowledge": (
@@ -127,10 +128,7 @@ class SurfaceValidator:
                 }
             )
 
-        if (
-            graph_global_config is not None
-            and BaseRagType.RagType.GRAPH not in rag_types
-        ):
+        if graph_global_config is not None and BaseRagType.RagType.GRAPH not in rag_types:
             raise SurfaceValidationError(
                 detail={
                     "knowledge": (
@@ -140,10 +138,7 @@ class SurfaceValidator:
                 }
             )
 
-        if (
-            graph_drift_config is not None
-            and BaseRagType.RagType.GRAPH not in rag_types
-        ):
+        if graph_drift_config is not None and BaseRagType.RagType.GRAPH not in rag_types:
             raise SurfaceValidationError(
                 detail={
                     "knowledge": (
@@ -167,8 +162,7 @@ class SurfaceValidator:
             surface = item["surface"]
 
             if surface.owner_agent_id is not None and (
-                agent_definition is None
-                or surface.owner_agent_id != agent_definition.pk
+                agent_definition is None or surface.owner_agent_id != agent_definition.pk
             ):
                 errors.append(
                     f"Surface {surface.pk} is owned by agent {surface.owner_agent_id} "
@@ -199,8 +193,7 @@ class SurfaceValidator:
 
         for surface in surfaces:
             if surface.owner_agent_id is not None and (
-                agent_definition is None
-                or surface.owner_agent_id != agent_definition.pk
+                agent_definition is None or surface.owner_agent_id != agent_definition.pk
             ):
                 errors.append(
                     f"Surface {surface.pk} is owned by agent {surface.owner_agent_id} "
@@ -231,8 +224,7 @@ class SurfaceValidator:
 
         for surface in surfaces:
             if surface.owner_agent_id is not None and (
-                agent_definition is None
-                or surface.owner_agent_id != agent_definition.pk
+                agent_definition is None or surface.owner_agent_id != agent_definition.pk
             ):
                 errors.append(
                     f"Surface {surface.pk} is owned by agent {surface.owner_agent_id} "

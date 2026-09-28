@@ -4,7 +4,8 @@ from unittest.mock import patch
 import pytest
 from django.core.management import call_command
 
-from tables.models import Organization, StorageFile
+from rbac.models import Organization
+from tables.models import StorageFile
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 

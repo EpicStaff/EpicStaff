@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError, SchemaValidationError
 from app.llm.client import LLMChunk
@@ -19,7 +17,7 @@ from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
 from app.output.enforcer import EnforcementResult
-from app.resources.resolver import AgentResolver, ResolvedAgent
+from app.resources.resolver import ResolvedAgent
 from app.runners.deps import RunnerDependencies
 from app.runners.single_task import SingleTaskRunner
 from app.tools.registry import ToolRegistry, ToolSpec
@@ -33,7 +31,6 @@ from shared.models.agent_service import (
     ToolResult,
 )
 from shared.models.ai_providers import LLMConfigData, LLMData
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -518,9 +515,7 @@ async def test_agent_schema_max_retries_zero_overrides_settings_default():
     answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
     runner = _runner(loop=answer_loop)
     agent = _agent_spec(schema_max_retries=0)
-    request = _request(
-        {"task_instructions": "Do X", "output_schema": schema}, agents=[agent]
-    )
+    request = _request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent])
 
     with (
         patch("app.runners.single_task._schema_max_retries") as settings_fn,
@@ -552,14 +547,10 @@ async def test_agent_schema_max_retries_none_falls_back_to_settings():
     answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
     runner = _runner(loop=answer_loop)
     agent = _agent_spec(schema_max_retries=None)
-    request = _request(
-        {"task_instructions": "Do X", "output_schema": schema}, agents=[agent]
-    )
+    request = _request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent])
 
     with (
-        patch(
-            "app.runners.single_task._schema_max_retries", return_value=7
-        ) as settings_fn,
+        patch("app.runners.single_task._schema_max_retries", return_value=7) as settings_fn,
         patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
     ):
         enforcer_class.return_value.enforce = AsyncMock(

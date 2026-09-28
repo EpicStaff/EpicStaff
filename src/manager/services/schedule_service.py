@@ -1,18 +1,16 @@
 import asyncio
 import json
-import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import settings
 from apscheduler.events import EVENT_JOB_REMOVED
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pydantic import ValidationError
-
 from helpers.logger import logger
+from pydantic import ValidationError
 from repositories.schedule_trigger_repository import ScheduleTriggerNodeRepository
-from services.redis_service import RedisService
 from src.shared.models import (
     ScheduleTriggerNodeDeletePayload,
     ScheduleTriggerNodePayload,
@@ -20,7 +18,7 @@ from src.shared.models import (
 )
 from src.shared.schedule.trigger_builder import build_trigger
 
-import settings
+from services.redis_service import RedisService
 
 
 class ScheduleService:
@@ -53,7 +51,7 @@ class ScheduleService:
         """Load active schedules, start APScheduler, subscribe to the Redis channel."""
         await self.load_schedules_from_django()
         self.scheduler.start()
-        asyncio.create_task(self._start_redis_listener())
+        asyncio.create_task(self._start_redis_listener())  # noqa: RUF006
 
     async def load_schedules_from_django(self):
         """Initial sync of active schedules from the DB into APScheduler.
@@ -91,9 +89,7 @@ class ScheduleService:
         trigger = build_trigger(node, node_tz)
 
         if trigger is None:
-            logger.warning(
-                f"[ScheduleService] Could not build trigger for node {node_id}"
-            )
+            logger.warning(f"[ScheduleService] Could not build trigger for node {node_id}")
             return
 
         job_id = f"schedule_{node_id}"
@@ -119,9 +115,7 @@ class ScheduleService:
                 f"every={node.every}, unit={node.unit}, end_type={node.end_type})"
             )
         except Exception:
-            logger.exception(
-                f"[ScheduleService] Error registering Job for node {node_id}"
-            )
+            logger.exception(f"[ScheduleService] Error registering Job for node {node_id}")
             self._manual_removals.discard(job_id)
 
     def _on_job_removed(self, event):
@@ -153,7 +147,7 @@ class ScheduleService:
             f"[ScheduleService] Job {job_id} auto-removed by APScheduler "
             f"(end_date reached). Publishing 'deactivate' for node {node_id}."
         )
-        asyncio.create_task(self._publish_deactivate(node_id))
+        asyncio.create_task(self._publish_deactivate(node_id))  # noqa: RUF006
 
     async def _publish_deactivate(self, node_id: int):
         """Publish a 'deactivate' signal so Django flips is_active=False."""
@@ -163,30 +157,23 @@ class ScheduleService:
                 {"action": "deactivate", "node_id": node_id},
             )
         except Exception:
-            logger.exception(
-                f"[ScheduleService] Error publishing 'deactivate' for node {node_id}"
-            )
+            logger.exception(f"[ScheduleService] Error publishing 'deactivate' for node {node_id}")
 
     async def remove_schedule(self, node_id: int):
         """Remove the APScheduler job for a node (idempotent if already gone)."""
         job_id = self.schedule_nodes.pop(node_id, None)
         if not job_id:
-            logger.debug(
-                f"[ScheduleService] No tracked job for node {node_id} (already removed)"
-            )
+            logger.debug(f"[ScheduleService] No tracked job for node {node_id} (already removed)")
             return
 
         self._manual_removals.add(job_id)
         try:
             self.scheduler.remove_job(job_id)
             logger.info(
-                f"[ScheduleService] Job {job_id} removed "
-                f"(deactivate/delete signal from Django)"
+                f"[ScheduleService] Job {job_id} removed (deactivate/delete signal from Django)"
             )
         except JobLookupError:
-            logger.debug(
-                f"[ScheduleService] Job {job_id} was already removed by APScheduler"
-            )
+            logger.debug(f"[ScheduleService] Job {job_id} was already removed by APScheduler")
             self._manual_removals.discard(job_id)
         except Exception:
             logger.exception(f"[ScheduleService] Error removing Job {job_id}")
@@ -224,9 +211,7 @@ class ScheduleService:
 
             logger.info(f"[ScheduleService] Schedule fire complete for node {node_id}")
         except Exception:
-            logger.exception(
-                f"[ScheduleService] Error executing schedule for node {node_id}"
-            )
+            logger.exception(f"[ScheduleService] Error executing schedule for node {node_id}")
 
     def _resolve_tz(self, name: str | None):
         """Return a zoneinfo tz for the given IANA name, falling back to server tz."""
@@ -235,9 +220,7 @@ class ScheduleService:
         try:
             return ZoneInfo(name)
         except ZoneInfoNotFoundError:
-            logger.warning(
-                f"[ScheduleService] Unknown tz {name!r}, falling back to server tz"
-            )
+            logger.warning(f"[ScheduleService] Unknown tz {name!r}, falling back to server tz")
             return self.tz
 
     async def _start_redis_listener(self):
@@ -274,9 +257,7 @@ class ScheduleService:
         action = envelope.data.action
         node = envelope.data.node
 
-        is_active = (
-            node.is_active if isinstance(node, ScheduleTriggerNodePayload) else None
-        )
+        is_active = node.is_active if isinstance(node, ScheduleTriggerNodePayload) else None
         logger.info(
             f"[ScheduleService] Received '{action}' from Django for node {node.id} "
             f"(is_active={is_active})"

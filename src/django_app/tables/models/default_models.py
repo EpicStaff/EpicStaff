@@ -1,4 +1,5 @@
 from django.db import models
+
 from tables.models.base_models import DefaultBaseModel
 
 

@@ -1,9 +1,11 @@
-from typing import Callable, Dict, Any, Coroutine
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any
 
-from loguru import logger
-from infrastructure.persistence.database import save_realtime_session_item_to_db
 from domain.services.chat_buffer import ChatSummarizedBuffer
+from loguru import logger
+
+from infrastructure.persistence.database import save_realtime_session_item_to_db
 
 
 class TranscriptionClientEventHandler:
@@ -16,14 +18,14 @@ class TranscriptionClientEventHandler:
         )
 
         self.client: OpenaiRealtimeTranscriptionClient = client
-        self.event_map: Dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
+        self.event_map: dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
             "input_audio_buffer.append": self.handle_input_audio_buffer_append,
             "session.update": self.handle_session_update,
             "conversation.item.create": self.handle_conversation_item_create,
         }
         self.buffer = buffer
 
-    async def handle_event(self, data: Dict[str, Any]) -> None:
+    async def handle_event(self, data: dict[str, Any]) -> None:
         """Handle incoming event by calling the appropriate method."""
         event_type = data.get("type")
 
@@ -39,14 +41,14 @@ class TranscriptionClientEventHandler:
             user_id=self.client.user_id,
         )
 
-    async def unknown_event_handler(self, data: Dict[str, Any]) -> None:
+    async def unknown_event_handler(self, data: dict[str, Any]) -> None:
         """Default handler for unknown events."""
         logger.warning(f"Unknown event type received: {json.dumps(data, indent=2)}")
 
-    async def handle_input_audio_buffer_commit(self, data: Dict[str, Any]) -> None:
+    async def handle_input_audio_buffer_commit(self, data: dict[str, Any]) -> None:
         await self.client.send_server(data)
 
-    async def handle_input_audio_buffer_append(self, data: Dict[str, Any]) -> None:
+    async def handle_input_audio_buffer_append(self, data: dict[str, Any]) -> None:
         await self.client.send_server(data)
 
     async def handle_session_update(self, data: dict):
@@ -59,8 +61,8 @@ class TranscriptionClientEventHandler:
 
         import uuid
 
-        event_id = f"event_{str(uuid.uuid4())}"
-        item_id = f"item_{str(uuid.uuid4())}"
+        event_id = f"event_{uuid.uuid4()!s}"
+        item_id = f"item_{uuid.uuid4()!s}"
 
         e4 = {
             "type": "conversation.item.created",

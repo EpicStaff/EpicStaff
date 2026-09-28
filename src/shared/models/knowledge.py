@@ -1,10 +1,10 @@
-from enum import Enum
-from pydantic import BaseModel
-from typing import Annotated, Literal, Union, List
-from pydantic import Field, ConfigDict
+from enum import StrEnum
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class KnowledgeStatus(str, Enum):
+class KnowledgeStatus(StrEnum):
     """Shared knowledge search / job statuses used across knowledge and crew."""
 
     COMPLETED = "completed"
@@ -91,12 +91,10 @@ class GraphRagDriftSearchParams(BaseModel):
 
 
 GraphSearchParams = Annotated[
-    Union[
-        GraphRagBasicSearchParams,
-        GraphRagLocalSearchParams,
-        GraphRagGlobalSearchParams,
-        GraphRagDriftSearchParams,
-    ],
+    GraphRagBasicSearchParams
+    | GraphRagLocalSearchParams
+    | GraphRagGlobalSearchParams
+    | GraphRagDriftSearchParams,
     Field(discriminator="search_method"),
 ]
 
@@ -109,7 +107,7 @@ class GraphRagSearchConfig(BaseRagSearchConfig):
 
 
 RagSearchConfig = Annotated[
-    Union[NaiveRagSearchConfig, GraphRagSearchConfig],
+    NaiveRagSearchConfig | GraphRagSearchConfig,
     Field(discriminator="rag_type"),
 ]
 
@@ -127,9 +125,7 @@ class BaseKnowledgeSearchMessage(BaseModel):
     rag_type: Literal["naive", "graph"]  # Type of RAG ("naive", "graph", etc.)
     uuid: str
     query: str
-    rag_search_config: (
-        RagSearchConfig  # Discriminated union automatically handles subtypes
-    )
+    rag_search_config: RagSearchConfig  # Discriminated union automatically handles subtypes
     embedder_api_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -151,10 +147,10 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
     uuid: str
     retrieved_chunks: int
     query: str
-    chunks: List[KnowledgeChunkResponse]
+    chunks: list[KnowledgeChunkResponse]
     rag_search_config: RagSearchConfig
     # Support backwards compatibility
-    results: List[str] = []  # deprecated, use chunks instead
+    results: list[str] = []  # deprecated, use chunks instead
     token_usage: dict = {}
     status: KnowledgeStatus = KnowledgeStatus.COMPLETED
     message: str | None = None  # error detail when status == "failed"

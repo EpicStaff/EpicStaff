@@ -1,22 +1,20 @@
-from typing import Set
-from loguru import logger
 from django.db import transaction
-
-from utils.singleton_meta import SingletonMeta
-from tables.models.llm_models import (
-    LLMModel,
-    LLMConfig,
-)
-from tables.models.embedding_models import EmbeddingModel, EmbeddingConfig
-from tables.models.provider import Provider
+from loguru import logger
 from tables.models.default_models import DefaultModels
-from tables.models.realtime_models import OpenAIRealtimeConfig, GeminiRealtimeConfig
+from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from tables.models.llm_models import (
+    LLMConfig,
+    LLMModel,
+)
+from tables.models.provider import Provider
+from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.models.secret_models import Secret
 from tables.models.tag_models import (
-    LLMConfigTag,
     EmbeddingConfigTag,
+    LLMConfigTag,
 )
 from tables.services.secrets import secret_service
+from utils.singleton_meta import SingletonMeta
 
 
 class QuickstartService(metaclass=SingletonMeta):
@@ -88,13 +86,9 @@ class QuickstartService(metaclass=SingletonMeta):
                 )
 
                 if provider == "openai":
-                    self._create_openai_realtime_config(
-                        bundle_secret, config_name, org_id=org_id
-                    )
+                    self._create_openai_realtime_config(bundle_secret, config_name, org_id=org_id)
                 elif provider == "gemini":
-                    self._create_gemini_realtime_config(
-                        bundle_secret, config_name, org_id=org_id
-                    )
+                    self._create_gemini_realtime_config(bundle_secret, config_name, org_id=org_id)
 
                 self._apply_quickstart_tag(
                     llm_config=llm_config,
@@ -102,9 +96,7 @@ class QuickstartService(metaclass=SingletonMeta):
                     org_id=org_id,
                 )
 
-            logger.success(
-                f"Quickstart configuration: {config_name} created successfully!"
-            )
+            logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {
                 "success": True,
                 "config_name": config_name,
@@ -196,9 +188,7 @@ class QuickstartService(metaclass=SingletonMeta):
         if last_config.get("llm_config"):
             checks.append(dm.agent_llm_config_id == last_config["llm_config"].id)
         if last_config.get("embedding_config"):
-            checks.append(
-                dm.memory_embedding_config_id == last_config["embedding_config"].id
-            )
+            checks.append(dm.memory_embedding_config_id == last_config["embedding_config"].id)
         return bool(checks) and all(checks)
 
     def _bundle_secret_name(self, *, bundle_name: str) -> str:
@@ -220,9 +210,7 @@ class QuickstartService(metaclass=SingletonMeta):
     def _create_embedder_config(
         self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> EmbeddingConfig:
-        embedder_model = self._get_or_create_embedder_model(
-            provider=provider, org_id=org_id
-        )
+        embedder_model = self._get_or_create_embedder_model(provider=provider, org_id=org_id)
         return EmbeddingConfig.objects.create(
             model=embedder_model,
             custom_name=config_name,
@@ -252,9 +240,7 @@ class QuickstartService(metaclass=SingletonMeta):
     def _get_or_create_llm_model(self, *, provider: Provider, org_id: int):
         llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")
         if llm_model_name is None:
-            raise KeyError(
-                f"Can not get 'llm_model' from PROVIDER_CONFIGS for {provider.name}"
-            )
+            raise KeyError(f"Can not get 'llm_model' from PROVIDER_CONFIGS for {provider.name}")
         candidates = LLMModel.objects.filter(llm_provider=provider, name=llm_model_name)
         llm_model = (
             candidates.filter(org_id=org_id).first()
@@ -276,9 +262,7 @@ class QuickstartService(metaclass=SingletonMeta):
         return llm_model
 
     def _get_or_create_embedder_model(self, *, provider: Provider, org_id: int):
-        embedder_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get(
-            "embedding_model"
-        )
+        embedder_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("embedding_model")
         if embedder_model_name is None:
             raise KeyError(
                 f"Can not get 'embedding_model' from PROVIDER_CONFIGS for {provider.name}"
@@ -346,7 +330,7 @@ class QuickstartService(metaclass=SingletonMeta):
         else:
             return f"{base_name}_{max_number + 1}"
 
-    def _get_existing_config_names(self, base_name: str) -> Set[str]:
+    def _get_existing_config_names(self, base_name: str) -> set[str]:
         """Get all existing configuration names that start with base_name"""
         existing_names = set()
 

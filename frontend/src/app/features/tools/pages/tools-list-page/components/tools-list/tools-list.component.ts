@@ -17,17 +17,17 @@ import {
     AppIncludeExcludeDialogData,
     AppIncludeExcludeDialogResult,
     ConfirmationDialogService,
+    FetchErrorStateComponent,
     IncludeExcludeTab,
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
-import { buildPreviewImportResult, extractHttpErrorMessage, ImportFileData } from '@shared/utils';
+import { buildPreviewImportResult, downloadBlob, extractHttpErrorMessage, ImportFileData } from '@shared/utils';
 import { EMPTY, from, Observable, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
-import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
 import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
@@ -63,7 +63,7 @@ const RECENT_TOOLS_MAX = 8;
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './tools-list.component.html',
     styleUrls: ['./tools-list.component.scss'],
-    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule],
+    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule, FetchErrorStateComponent],
 })
 export class ToolsListComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
@@ -85,6 +85,7 @@ export class ToolsListComponent implements OnInit {
 
     public readonly loadingMessage = computed(() => `Loading ${this.port.entityLabelPlural}...`);
     public readonly emptyMessage = computed(() => `No ${this.port.entityLabelPlural} found.`);
+    public readonly errorTitle = computed(() => `Failed to load ${this.port.entityLabelPlural}`);
 
     public readonly cards = computed<ToolCardVM[]>(() => {
         const usage = this.usageById();

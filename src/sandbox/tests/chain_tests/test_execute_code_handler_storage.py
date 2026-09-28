@@ -16,7 +16,6 @@ Behavior B — handle (async):
 """
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -27,30 +26,11 @@ pytest.importorskip(
 
 from dynamic_venv_executor_chain import ExecuteCodeHandler
 
+from conftest import make_execute_context
 
-def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
-    """Minimal valid context for ExecuteCodeHandler.handle().
 
-    Mirrors _make_execute_context in test_build_environment_handler.py so the
-    fake-subprocess helper works without modification.
-    """
-    exec_dir = tmp_path / "exec"
-    exec_dir.mkdir(parents=True, exist_ok=True)
-
-    ctx: dict[str, Any] = {
-        "python_executable": tmp_path / "venv" / "bin" / "python",
-        "temp_code_path": exec_dir / "code.py",
-        "result_file_path": exec_dir / "output.txt",
-        "home_path": str(exec_dir / "home"),
-        "code": "def main(**kwargs):\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "test-exec-storage",
-        "use_storage": False,
-    }
-    ctx.update(overrides)
-    return ctx
+def _make_execute_context(tmp_path: Path, **overrides):
+    return make_execute_context(tmp_path, execution_id="test-exec-storage", **overrides)
 
 
 def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> None:
@@ -157,7 +137,7 @@ class TestHandleStorageMutationsWiring:
     async def test_use_storage_true_injects_mutations_import_into_written_code(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+        monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
         monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
 
         recorded: dict = {}
@@ -182,7 +162,7 @@ class TestHandleStorageMutationsWiring:
         self, tmp_path, monkeypatch
     ):
         """The mutations path is result_file_path.parent / storage_mutations.json."""
-        monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+        monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
         monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
 
         recorded: dict = {}

@@ -31,7 +31,7 @@ from tables.services.secrets import secret_service
 
 @pytest.fixture
 def other_org(db):
-    from tables.models.rbac_models import Organization
+    from rbac.models import Organization
 
     return Organization.objects.create(name="Other Organization For Webhook Test")
 

@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ValidationErrorsComponent } from '@shared/components';
+import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
 
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';

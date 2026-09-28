@@ -2,7 +2,7 @@
 
 import django.db.models.deletion
 import django.utils.timezone
-import tables.models.rbac_models.managers
+import tables.models.user
 import uuid
 from django.conf import settings
 from django.db import migrations, models
@@ -91,7 +91,7 @@ class Migration(migrations.Migration):
                 "db_table": "rbac_user",
             },
             managers=[
-                ("objects", tables.models.rbac_models.managers.UserManager()),
+                ("objects", tables.models.user.UserManager()),
             ],
         ),
         migrations.CreateModel(

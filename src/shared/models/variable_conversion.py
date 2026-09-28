@@ -1,11 +1,11 @@
 from .variables import VariableTypeInput
 
 __all__ = [
+    "_normalize_type",
     "args_schema_to_variables",
     "json_schema_node_to_nested_variable",
     "nested_variable_to_json_schema_node",
     "variables_to_args_schema",
-    "_normalize_type",
 ]
 
 _PASSTHROUGH_TYPES = {"string", "number", "boolean", "object", "array", "any"}
@@ -34,7 +34,7 @@ def json_schema_node_to_nested_variable(node: dict) -> dict:
     result = {
         "type": normalized_type,
         "description": node.get("description", ""),
-        "default_value": node.get("default", None),
+        "default_value": node.get("default"),
     }
 
     if normalized_type == "object":
@@ -50,9 +50,7 @@ def json_schema_node_to_nested_variable(node: dict) -> dict:
     return result
 
 
-def args_schema_to_variables(
-    args_schema: dict, input_type: str = "agent_input"
-) -> list[dict]:
+def args_schema_to_variables(args_schema: dict, input_type: str = "agent_input") -> list[dict]:
     required_names = set(args_schema.get("required", []))
     variables = []
 

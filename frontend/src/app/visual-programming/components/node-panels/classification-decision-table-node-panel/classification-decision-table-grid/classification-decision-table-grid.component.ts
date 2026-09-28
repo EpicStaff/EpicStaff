@@ -21,8 +21,17 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    HelpTooltipComponent,
+    MultiSelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { AgGridModule } from 'ag-grid-angular';
 import {
+    AllCommunityModule,
     BodyScrollEvent,
     CellClickedEvent,
     CellValueChangedEvent,
@@ -35,19 +44,13 @@ import {
     GridOptions,
     GridReadyEvent,
     IRowNode,
+    ModuleRegistry,
     RowSpanParams,
+    themeQuartz,
     ValueGetterParams,
     ValueSetterParams,
 } from 'ag-grid-community';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { themeQuartz } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { ConfirmationDialogService } from '../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
-import { MultiSelectComponent } from '../../../../../shared/components/multi-select/multi-select.component';
-import { SelectItem } from '../../../../../shared/components/select/select.component';
 import {
     CDT_SECTION_DEFAULT_COLOR,
     CdtSection,

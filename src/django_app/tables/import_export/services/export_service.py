@@ -1,9 +1,8 @@
-from typing import List
 from collections import defaultdict
 
-from tables.import_export.registry import EntityRegistry
+from tables.import_export.constants import IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
-from tables.import_export.constants import MAIN_ENTITY_KEY, IMPORT_VERSION
+from tables.import_export.registry import EntityRegistry
 
 
 class ExportService:
@@ -13,7 +12,7 @@ class ExportService:
     def export_entities(
         self,
         entity_type: EntityType,
-        entity_ids: List[int],
+        entity_ids: list[int],
         org_id: int | None = None,
     ) -> dict:
         collector = DependencyCollector(self.registry, org_id=org_id)
@@ -68,8 +67,7 @@ class DependencyCollector:
         for entity_type, instances in self.collected.items():
             strategy = self.registry.get_strategy(entity_type)
             result[entity_type] = [
-                self._export_entity(strategy, instance)
-                for instance in instances.values()
+                self._export_entity(strategy, instance) for instance in instances.values()
             ]
 
         return result

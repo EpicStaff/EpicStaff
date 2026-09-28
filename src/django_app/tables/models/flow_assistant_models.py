@@ -38,7 +38,7 @@ class FlowAssistantConversation(SoftDeleteFields, models.Model):
         related_name="conversations",
     )
     organization_user = models.ForeignKey(
-        "OrganizationUser",
+        "rbac.OrganizationUser",
         on_delete=models.CASCADE,
         related_name="flow_assistant_conversations",
     )

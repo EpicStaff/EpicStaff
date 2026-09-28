@@ -1,5 +1,6 @@
 from abc import ABCMeta
 from threading import Lock
+from typing import ClassVar
 
 
 class SingletonMeta(ABCMeta):
@@ -7,7 +8,7 @@ class SingletonMeta(ABCMeta):
     This is a thread-safe implementation of Singleton.
     """
 
-    _instances = {}
+    _instances: ClassVar[dict] = {}
 
     _lock: Lock = Lock()
     """

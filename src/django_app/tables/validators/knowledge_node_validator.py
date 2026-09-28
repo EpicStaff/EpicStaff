@@ -23,9 +23,7 @@ class KnowledgeNodeValidator:
                 {"source_collection": "Required when a RAG is selected."}
             )
         if rag_type is None:
-            raise serializers.ValidationError(
-                {"rag_type": "Required when rag_id is set."}
-            )
+            raise serializers.ValidationError({"rag_type": "Required when rag_id is set."})
         resolve_rag_in_collection(rag_type, rag_id, source_collection)
 
     def validate_serializer(self, serializer):

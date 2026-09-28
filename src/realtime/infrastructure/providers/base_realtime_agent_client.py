@@ -1,6 +1,7 @@
 import json
 from abc import abstractmethod
-from typing import Any, Callable, Awaitable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 
@@ -16,9 +17,9 @@ class BaseRealtimeAgentClient(IRealtimeAgentClient):
         self,
         api_key: str,
         connection_key: str,
-        on_server_event: Optional[Callable[[dict], Awaitable[None]]] = None,
-        org_id: Optional[int] = None,
-        user_id: Optional[int] = None,
+        on_server_event: Callable[[dict], Awaitable[None]] | None = None,
+        org_id: int | None = None,
+        user_id: int | None = None,
     ):
         self.api_key = api_key
         self.connection_key = connection_key
@@ -27,7 +28,7 @@ class BaseRealtimeAgentClient(IRealtimeAgentClient):
         self.user_id = user_id
         self.ws = None
 
-        self._stream_sid: Optional[str] = None
+        self._stream_sid: str | None = None
         self._is_twilio: bool = False
 
     # ------------------------------------------------------------------
@@ -35,7 +36,7 @@ class BaseRealtimeAgentClient(IRealtimeAgentClient):
     # ------------------------------------------------------------------
 
     @property
-    def stream_sid(self) -> Optional[str]:
+    def stream_sid(self) -> str | None:
         return self._stream_sid
 
     @stream_sid.setter
@@ -80,7 +81,7 @@ class BaseRealtimeAgentClient(IRealtimeAgentClient):
     async def handle_messages(self) -> None: ...
 
     @abstractmethod
-    async def process_message(self, message: dict) -> Optional[dict]: ...
+    async def process_message(self, message: dict) -> dict | None: ...
 
     @abstractmethod
     async def send_audio(self, ulaw8k_b64: str) -> None: ...
@@ -101,4 +102,3 @@ class BaseRealtimeAgentClient(IRealtimeAgentClient):
 
     async def replay_audio_buffer(self) -> None:
         """No-op default — providers without a rolling buffer do nothing on reconnect."""
-        pass

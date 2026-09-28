@@ -212,9 +212,7 @@ def _sync_condition_groups(node, condition_groups_data, sections_by_id):
             to_update.append(existing)
         else:
             to_create.append(
-                ClassificationConditionGroup(
-                    classification_decision_table_node=node, **gd
-                )
+                ClassificationConditionGroup(classification_decision_table_node=node, **gd)
             )
 
     # --- route-code-less groups: no unique key, match positionally by order ---
@@ -230,17 +228,13 @@ def _sync_condition_groups(node, condition_groups_data, sections_by_id):
             to_update.append(existing)
         else:
             to_create.append(
-                ClassificationConditionGroup(
-                    classification_decision_table_node=node, **gd
-                )
+                ClassificationConditionGroup(classification_decision_table_node=node, **gd)
             )
     surplus_ids = [g.id for g in existing_unrouted[len(unrouted) :]]
 
     if surplus_ids:
         ClassificationConditionGroup.objects.filter(id__in=surplus_ids).delete()
     if to_update:
-        ClassificationConditionGroup.objects.bulk_update(
-            to_update, _GROUP_UPDATE_FIELDS
-        )
+        ClassificationConditionGroup.objects.bulk_update(to_update, _GROUP_UPDATE_FIELDS)
     if to_create:
         ClassificationConditionGroup.objects.bulk_create(to_create)

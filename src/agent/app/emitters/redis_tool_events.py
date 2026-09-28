@@ -1,7 +1,7 @@
 """
 RedisStreamToolEventEmitter: extends ``RedisStreamBatchEmitter`` with live
-``agent.tool_call`` / ``agent.tool_result`` envelopes published to
-``agent.results`` as they happen, in addition to buffering everything for the
+``agent.tool_call`` / ``agent.tool_result`` envelopes published to the run's
+own result stream as they happen, in addition to buffering everything for the
 terminal ``agent.result`` payload (unchanged by construction — the parent
 implementation still owns buffering).
 
@@ -16,10 +16,10 @@ from loguru import logger
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
 from app.usage import TokenUsageAccumulator
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, ToolResult
 from shared.models.knowledge_new import FoundChunk
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
-from shared.knowledge.target import KnowledgeSearchTarget
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
 LIVE_CONTENT_MAX_CHARS = 2000
@@ -48,10 +48,11 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
     def __init__(
         self,
         client: RedisStreamClient,
-        result_stream: str,
+        result_stream_prefix: str,
         correlation_id: str,
+        result_stream_ttl_s: int,
     ) -> None:
-        super().__init__(client, result_stream, correlation_id)
+        super().__init__(client, result_stream_prefix, correlation_id, result_stream_ttl_s)
         self._call_names: dict[str, str] = {}
         self._current_task: dict | None = None
         self._usage = TokenUsageAccumulator()
@@ -65,7 +66,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         )
 
         try:
-            await self._client.publish(self._result_stream, envelope.to_fields())
+            await self._publish(envelope)
         except Exception as error:
             logger.warning(
                 "failed to publish live {} correlation_id={} error={}",
@@ -80,9 +81,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._current_task = {"name": task_name, "order": task_order}
         await self._publish_live("agent.task_start", {"task": self._current_task})
 
-    async def on_task_finish(
-        self, task_name: str, task_order: int, result: LoopResult
-    ) -> None:
+    async def on_task_finish(self, task_name: str, task_order: int, result: LoopResult) -> None:
         """Publish a live ``agent.task_finish`` envelope carrying the task's
         own result, then clear the current-task label and reset the live
         token-usage delta so it doesn't bleed into the next task."""
@@ -124,9 +123,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             await super().on_tool_call(call)
             return
 
-        arguments, truncated = _truncate(
-            call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS
-        )
+        arguments, truncated = _truncate(call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS)
         await self._publish_live(
             "agent.tool_call",
             {

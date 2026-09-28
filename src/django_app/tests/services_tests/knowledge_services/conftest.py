@@ -37,16 +37,16 @@ from tables.constants.knowledge_constants import (
 
 
 @pytest.fixture
-def source_collection():
+def source_collection(default_org):
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user"
+        collection_name="Test Collection", user_id="test_user", org=default_org
     )
 
 
 @pytest.fixture
-def empty_collection():
+def empty_collection(default_org):
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user_empty"
+        collection_name="Empty Collection", user_id="test_user_empty", org=default_org
     )
 
 
@@ -103,12 +103,13 @@ def test_embedding_model(embedding_provider):
 
 
 @pytest.fixture
-def test_embedding_config(test_embedding_model):
+def test_embedding_config(test_embedding_model, default_org):
     config, _ = EmbeddingConfig.objects.get_or_create(
         custom_name="Test Embedder Config Svc",
         defaults={
             "model": test_embedding_model,
             "task_type": "retrieval_document",
+            "org": default_org,
         },
     )
     return config
@@ -131,26 +132,28 @@ def other_provider_embedding_model(other_embedding_provider):
 
 
 @pytest.fixture
-def other_provider_embedding_config(other_provider_embedding_model):
+def other_provider_embedding_config(other_provider_embedding_model, default_org):
     """EmbeddingConfig whose provider is DIFFERENT from test_embedding_config."""
     config, _ = EmbeddingConfig.objects.get_or_create(
         custom_name="Other Provider Embedder Config Svc",
         defaults={
             "model": other_provider_embedding_model,
             "task_type": "retrieval_document",
+            "org": default_org,
         },
     )
     return config
 
 
 @pytest.fixture
-def same_provider_embedding_config(test_embedding_model):
+def same_provider_embedding_config(test_embedding_model, default_org):
     """EmbeddingConfig with a different pk but SAME provider as test_embedding_config."""
     config, _ = EmbeddingConfig.objects.get_or_create(
         custom_name="Same Provider Alt Embedder Config Svc",
         defaults={
             "model": test_embedding_model,
             "task_type": "retrieval_query",
+            "org": default_org,
         },
     )
     return config
@@ -176,13 +179,14 @@ def llm_model(llm_provider):
 
 
 @pytest.fixture
-def llm_config(llm_model):
+def llm_config(llm_model, default_org):
     config, _ = LLMConfig.objects.get_or_create(
         custom_name="Test LLM Config Svc",
         defaults={
             "model": llm_model,
             "temperature": 0.7,
             "is_visible": True,
+            "org": default_org,
         },
     )
     return config

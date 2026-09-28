@@ -3,10 +3,10 @@ from django.db import models
 from django.db.models import PositiveIntegerField
 
 from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
+from ..crew_models import Agent
 from ..embedding_models import EmbeddingConfig
 from ..llm_models import LLMConfig
 from .collection_models import BaseRagType, DocumentMetadata
-from ..crew_models import Agent
 
 
 class GraphRag(SoftDeleteFields, models.Model):
@@ -103,10 +103,7 @@ class GraphRag(SoftDeleteFields, models.Model):
             self.graph_rag_documents.values_list("status", flat=True).distinct()
         )
 
-        if (
-            GraphRagDocument.Status.OUTDATED in document_statuses
-            or self.outdated_reasons
-        ):
+        if GraphRagDocument.Status.OUTDATED in document_statuses or self.outdated_reasons:
             new_status = self.GraphRagStatus.OUTDATED
         elif self.indexing_document_config_ids:
             new_status = self.GraphRagStatus.PROCESSING
@@ -153,9 +150,7 @@ class AgentGraphRag(SoftDeleteFields, models.Model):
         unique=True,  # TEMPORARY: Remove to allow multiple GraphRag per Agent
         related_name="agent_graph_rags",
     )
-    graph_rag = models.ForeignKey(
-        GraphRag, on_delete=models.CASCADE, related_name="agent_links"
-    )
+    graph_rag = models.ForeignKey(GraphRag, on_delete=models.CASCADE, related_name="agent_links")
     search_method = models.CharField(
         max_length=10,
         choices=SearchMethod.choices,

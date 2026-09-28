@@ -103,6 +103,29 @@
         }
     </ng-template>
 
+    <!-- ACTIONS -->
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        <div
+            class="actions-cell"
+            (click)="$event.stopPropagation()"
+        >
+            @if (canRevokeRow(row)) {
+                <app-stop-button
+                    tooltip="Revoke key"
+                    (triggered)="onRevokeKey(row)"
+                />
+            }
+            <app-delete-button
+                tooltip="Delete key"
+                [variant]="row['status'] === ApiKeyStatus.ACTIVE ? 'danger' : 'default'"
+                (triggered)="onDeleteKey(row)"
+            />
+        </div>
+    </ng-template>
+
     <div tableEmpty>
         <h4 class="empty-title">Any keys yet</h4>
         <p class="empty-subtitle">

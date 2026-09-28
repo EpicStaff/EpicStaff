@@ -19,12 +19,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { WebhookProviderType, WebhookTriggerAuthKind, WebhookTriggerModel } from '@shared/models';
 
-import {
-    WebhookProviderType,
-    WebhookTriggerAuthKind,
-    WebhookTriggerModel,
-} from '../../../visual-programming/core/models/webhook-trigger.model';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 import {

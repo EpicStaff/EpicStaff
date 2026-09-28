@@ -67,8 +67,7 @@ class TokenUsageAccumulator:
         current = self.to_token_usage()
         delta = {
             "prompt_tokens": current.prompt_tokens - self._consumed.prompt_tokens,
-            "completion_tokens": current.completion_tokens
-            - self._consumed.completion_tokens,
+            "completion_tokens": current.completion_tokens - self._consumed.completion_tokens,
             "total_tokens": current.total_tokens - self._consumed.total_tokens,
             "cached_prompt_tokens": current.cached_prompt_tokens
             - self._consumed.cached_prompt_tokens,

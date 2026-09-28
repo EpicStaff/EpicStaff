@@ -30,7 +30,7 @@ TAG_MAP = [
     ("api/telegram-trigger-available-fields", "Telegram"),
     ("api/telegram-trigger-nodes", "Telegram"),
     # Edges
-    ("api/edges", "Edges"),    
+    ("api/edges", "Edges"),
     ("api/conditionaledges", "Conditional Edges"),
     # Sessions
     ("api/sessions", "Sessions"),
@@ -38,9 +38,9 @@ TAG_MAP = [
     # Providers
     ("api/providers", "Providers"),
     # LLM & Embeddings
-    ("api/llm-models", "LLM Models"),     
+    ("api/llm-models", "LLM Models"),
     ("api/llm-configs", "LLM Configs"),
-    ("api/embedding-models", "Embedding Models"),   
+    ("api/embedding-models", "Embedding Models"),
     ("api/embedding-configs", "Embedding Configs"),
     # Tools
     ("api/mcp-tools", "MCP Tools"),
@@ -76,7 +76,7 @@ TAG_MAP = [
     # Voice Recordings
     ("api/conversation-recordings", "Voice Recordings"),
     # Webhook Triggers
-    ("api/webhook-triggers", "Webhook Triggers"),     
+    ("api/webhook-triggers", "Webhook Triggers"),
     # Webhook Trigger Nodes
     ("api/webhook-trigger-nodes", "Webhook Trigger Nodes"),
     # Organizations
@@ -164,7 +164,7 @@ def _get_tag(path: str) -> str:
 
 def assign_tags_postprocessing_hook(result, generator, request, public, **kwargs):
     for path, path_item in result.get("paths", {}).items():
-        for method, operation in path_item.items():
+        for operation in path_item.values():
             if isinstance(operation, dict):
                 operation["tags"] = [_get_tag(path)]
 

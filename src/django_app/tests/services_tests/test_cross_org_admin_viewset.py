@@ -1,8 +1,8 @@
 import pytest
 
-from tables.services.rbac.permissions import HasResourcePermissionAnywhere, IsSuperadmin
-from tables.services.rbac.rbac_exceptions import OrgContextRequiredError
-from tables.views.cross_org_admin import CrossOrgAdminViewSet
+from rbac.access.gates import HasResourcePermissionAnywhere, IsSuperadmin
+from rbac.exceptions import OrgContextRequiredError
+from rbac.views.cross_org_base import CrossOrgAdminViewSet
 
 
 class _V(CrossOrgAdminViewSet):
@@ -35,10 +35,10 @@ def test_parse_org_ids_rejects_non_integer():
 
 
 def test_cross_org_surfaces_share_one_paginator():
-    from tables.views.cross_org_admin import CrossOrgAdminPagination
-    from tables.views.membership_admin_views import MembershipAdminViewSet
-    from tables.views.organization_admin_views import OrganizationAdminViewSet
-    from tables.views.role_admin_views import RoleAdminViewSet
+    from rbac.views.cross_org_base import CrossOrgAdminPagination
+    from rbac.views.memberships import MembershipAdminViewSet
+    from rbac.views.organizations import OrganizationAdminViewSet
+    from rbac.views.roles import RoleAdminViewSet
 
     assert CrossOrgAdminPagination.page_size == 50
     assert CrossOrgAdminPagination.max_page_size == 200
@@ -49,6 +49,6 @@ def test_cross_org_surfaces_share_one_paginator():
 
 def test_api_key_admin_viewset_has_empty_superadmin_actions():
     """DenyApiKeyAuth is dropped for any action later added to this set."""
-    from tables.views.api_key_admin_views import ApiKeyAdminViewSet
+    from rbac.views.api_keys_admin import ApiKeyAdminViewSet
 
     assert ApiKeyAdminViewSet.superadmin_actions == frozenset()

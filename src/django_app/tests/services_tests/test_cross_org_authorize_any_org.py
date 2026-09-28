@@ -1,15 +1,10 @@
 import pytest
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-    RolePermission,
-)
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.cross_org_service import CrossOrgResourceService
-from tables.services.rbac.rbac_exceptions import RoleNotFoundError
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
+from rbac.governance.cross_org_base import CrossOrgResourceService
+from rbac.exceptions import RoleNotFoundError
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

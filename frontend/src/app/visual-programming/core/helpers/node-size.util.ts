@@ -1,4 +1,5 @@
-import { NodeType } from '../enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../models/node.model';
 
 // DT row height matches the default node height, for the same reason as CDT below: each

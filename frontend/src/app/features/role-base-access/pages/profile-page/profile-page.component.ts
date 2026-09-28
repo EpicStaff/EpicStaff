@@ -3,12 +3,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent, RouteTab, RouteTabsComponent } from '@shared/components';
+import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
-import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { PasswordChangeDialogComponent } from '../../components/password-change-dialog/password-change-dialog.component';
 import { ProfileEditDialogComponent } from '../../components/profile-edit-dialog/profile-edit-dialog.component';
 import { UserAvatarComponent } from '../../components/user-avatar/user-avatar.component';

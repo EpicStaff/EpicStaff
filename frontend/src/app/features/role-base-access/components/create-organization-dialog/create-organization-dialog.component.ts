@@ -11,7 +11,7 @@ import { finalize, map, Observable, of, switchMap } from 'rxjs';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
-import { rbacErrorMessage } from '../../utils/rbac-error-messages.util';
+import { rbacErrorMessage } from '../../utils';
 import { OrgMembersEditorComponent } from './org-members-editor/org-members-editor.component';
 
 @Component({

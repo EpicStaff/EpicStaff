@@ -3,9 +3,7 @@ from loguru import logger
 
 class _SafeFormatDict(dict):
     def __missing__(self, key):
-        logger.warning(
-            f"Instructions: no input value for placeholder {{{key}}}; left as-is"
-        )
+        logger.warning(f"Instructions: no input value for placeholder {{{key}}}; left as-is")
         return "{" + key + "}"
 
 

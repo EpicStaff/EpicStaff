@@ -31,6 +31,7 @@ from app.sandbox.client import SandboxClient
 from app.tools.mcp.gateway import McpToolGateway
 from app.tools.registry import ToolRegistry
 from app.tools.registry_builder import ToolRegistryBuilder
+from shared.knowledge.client import KnowledgeClient
 from shared.models.agent_service import (
     AgentRequest,
     AgentSpec,
@@ -39,7 +40,6 @@ from shared.models.agent_service import (
     S3FileSpec,
 )
 from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
-from shared.knowledge.client import KnowledgeClient
 
 
 @dataclass
@@ -100,9 +100,7 @@ class AgentResolver:
         and must be passed as a parameter rather than stored on the resolver,
         which is built once at startup and shared across concurrent requests.
         """
-        tool_pool: dict[str, BaseToolData] = {
-            entry.unique_name: entry for entry in request.tools
-        }
+        tool_pool: dict[str, BaseToolData] = {entry.unique_name: entry for entry in request.tools}
         collection_pool: dict[str, CollectionSpec] = {
             spec.unique_name: spec for spec in request.collections
         }
@@ -145,6 +143,8 @@ class AgentResolver:
         collection_pool: dict[str, CollectionSpec],
         knowledge_sink: KnowledgeEventSink | None = None,
     ) -> ToolRegistry:
+        # System tools go onto every agent unconditionally, by design — see
+        # the contract on _system_registry in app/tools/system_registry.py.
         builder = ToolRegistryBuilder(
             self._sandbox,
             self._mcp_gateway,

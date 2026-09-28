@@ -1,15 +1,13 @@
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
-from tables.models import Graph, AgentNode
 from tables.import_export.serializers.inline_surface import serialize_inline_surface
+from tables.models import AgentNode, Graph
 
 
 class AgentNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 
     class Meta:
         model = AgentNode

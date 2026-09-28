@@ -1,8 +1,8 @@
 import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
 import { CollapseOnOverflowDirective } from '../../../shared/directives/collapse-on-overflow.directive';
+import { GraphSessionStatus } from '../../models';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({

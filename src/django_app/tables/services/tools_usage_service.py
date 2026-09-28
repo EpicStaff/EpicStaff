@@ -31,8 +31,6 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from django.db.models import Q
-
 from agents.models import (
     AgentInlineSurfaceMcpTool,
     AgentInlineSurfacePythonTool,
@@ -42,6 +40,7 @@ from agents.models import (
     SurfacePythonTool,
     ToolMode,
 )
+from django.db.models import Q
 from tables.models import McpTool, PythonCodeTool
 
 
@@ -64,9 +63,7 @@ class ToolNotFoundError(Exception):
     when the given tool id doesn't exist or isn't visible to `org_id`."""
 
 
-def get_tools_usage(
-    org_id: int, tool_class: type, ids: set[int] | None = None
-) -> list[dict]:
+def get_tools_usage(org_id: int, tool_class: type, ids: set[int] | None = None) -> list[dict]:
     config = _TOOL_KIND_REGISTRY.get(tool_class)
     if config is None:
         raise ValueError(f"Unsupported tool_class: {tool_class}")
@@ -77,9 +74,9 @@ def get_tools_usage(
 
 def _get_python_code_tool_usage(org_id: int, id_q: dict) -> list[dict]:
     tool_built_in = dict(
-        PythonCodeTool.objects.filter(
-            Q(built_in=True) | Q(org_id=org_id), **id_q
-        ).values_list("id", "built_in")
+        PythonCodeTool.objects.filter(Q(built_in=True) | Q(org_id=org_id), **id_q).values_list(
+            "id", "built_in"
+        )
     )
     return _get_tool_usage(org_id, tool_built_in, PythonCodeTool)
 
@@ -195,11 +192,14 @@ def _task_inline_surface_entries(org_id: int, tool_ids: list[int], tool_class: t
     )
 
     for tool_id, graph_id, graph_name, node_name, node_id in rows:
-        yield tool_id, {
-            "id": graph_id,
-            "name": f"{graph_name} - {node_name}",
-            "node_id": node_id,
-        }
+        yield (
+            tool_id,
+            {
+                "id": graph_id,
+                "name": f"{graph_name} - {node_name}",
+                "node_id": node_id,
+            },
+        )
 
 
 def _agent_inline_surface_entries(org_id: int, tool_ids: list[int], tool_class: type):
@@ -221,11 +221,14 @@ def _agent_inline_surface_entries(org_id: int, tool_ids: list[int], tool_class: 
     )
 
     for tool_id, graph_id, graph_name, node_name, node_id in rows:
-        yield tool_id, {
-            "id": graph_id,
-            "name": f"{graph_name} - {node_name}",
-            "node_id": node_id,
-        }
+        yield (
+            tool_id,
+            {
+                "id": graph_id,
+                "name": f"{graph_name} - {node_name}",
+                "node_id": node_id,
+            },
+        )
 
 
 def _python_tool_exists(tool_id: int, org_id: int) -> bool:
@@ -288,9 +291,7 @@ def _get_tool_usage_detail(
     if not exists_fn(tool_id, org_id):
         raise ToolNotFoundError(not_found_message)
 
-    return _surfaces_by_tool(org_id, [tool_id], tool_class).get(
-        tool_id, _empty_buckets()
-    )
+    return _surfaces_by_tool(org_id, [tool_id], tool_class).get(tool_id, _empty_buckets())
 
 
 def _build_rows(

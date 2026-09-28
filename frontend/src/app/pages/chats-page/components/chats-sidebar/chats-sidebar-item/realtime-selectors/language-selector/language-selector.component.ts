@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-
-import { Language } from '../../../../../../../shared/constants/languages-selector.constants';
-import { ClickOutsideDirective } from '../../../../../../../shared/directives/click-outside.directive';
+import { Language } from '@shared/constants';
+import { ClickOutsideDirective } from '@shared/directives';
 
 @Component({
     selector: 'app-language-selector',

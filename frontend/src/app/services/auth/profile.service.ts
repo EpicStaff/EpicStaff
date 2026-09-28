@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { ROLE_LABELS } from '@shared/constants';
 import {
     AccessToken,
     CreateApiKeyRequest,
@@ -16,7 +17,6 @@ import { AppStorageService } from '@shared/services';
 import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
-import { ROLE_LABELS } from '../../features/role-base-access/constants/role-labels.constant';
 import { ConfigService } from '../config';
 import { ActiveOrgService } from './active-org.service';
 import { PermissionsService } from './permissions.service';
@@ -118,6 +118,7 @@ export class ProfileService {
         this.appStorageService.clearAll();
         this.activeOrgService.set(orgId);
         return forkJoin({
+            user: this.getCurrentUser(),
             active: this.permissionsService.loadActivePermissions(),
             orgs: this.permissionsService.loadOrgPermissions(),
         }).pipe(map(() => undefined));

@@ -7,7 +7,7 @@ BASE_DIR: Path = Path(__file__).resolve().parent
 env = Env()
 
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(BASE_DIR / '../.env')
+    env.read_env(BASE_DIR / "../.env")
 
 DEBUG = env.bool("KNOWLEDGE_DEBUG")
 
@@ -22,12 +22,12 @@ DATABASE_DNS = env.dns(
     "DB_NAME",
 )
 
-MINIO_ENDPOINT = (
-    f"{'https' if env.bool('MINIO_SSL') else 'http'}://"
-    f"{env.str('MINIO_HOST')}:{env.int('MINIO_PORT')}"
+STORAGE_ENDPOINT = (
+    f"{'https' if env.bool('STORAGE_SSL') else 'http'}://"
+    f"{env.str('STORAGE_HOST')}:{env.int('STORAGE_PORT')}"
 )
-MINIO_ACCESS_KEY = env.str("MINIO_USER")
-MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
-MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
+STORAGE_ACCESS_KEY = env.str("STORAGE_USER")
+STORAGE_SECRET_KEY = env.str("STORAGE_PASSWORD")
+KNOWLEDGE_BUCKET = env.str("KNOWLEDGE_STORAGE_BUCKET")
 
 GRAPHRAG_ENCODING = "utf-8"

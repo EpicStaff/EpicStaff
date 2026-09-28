@@ -13,7 +13,7 @@ import { map, Observable, switchMap } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import { ApiGetResponse, RealtimeTranscriptionModelsService } from './transcription-models.service';
 
 @Injectable({

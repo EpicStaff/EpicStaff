@@ -10,10 +10,10 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export type EnableFilterMode = 'all' | 'enabled' | 'disabled';

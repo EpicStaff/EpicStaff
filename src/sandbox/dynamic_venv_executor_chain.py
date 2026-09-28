@@ -1,25 +1,25 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
+
 import asyncio
-from dataclasses import asdict
 import hashlib
 import json
 import os
 import pwd
 import signal
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import settings
-
 from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
-
+from network_policy import NetworkPolicy, decide_network_policy
 from secret_scrubber import scrub
-from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
+from src.shared.models import CodeResultData
 from utils.environment import build_base_env
 from utils.logger import logger
 
@@ -97,7 +97,7 @@ class Handler(ABC):
         pass
 
     @abstractmethod
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         pass
 
 
@@ -114,7 +114,7 @@ class AbstractHandler(Handler):
         return handler
 
     @abstractmethod
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         if self._next_handler:
             return await self._next_handler.handle(context)
 
@@ -127,12 +127,12 @@ class DummyHandler(AbstractHandler):
 
 
 class CreateVenvHandler(AbstractHandler):
-    def calculate_hash(self, libraries: List[str]) -> str:
+    def calculate_hash(self, libraries: list[str]) -> str:
         """Calculate a hash of the libraries list."""
         libraries_str = json.dumps(libraries, sort_keys=True)
         return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
 
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         """Create virtual environment task."""
 
         context["libraries"] = set(context["libraries"])
@@ -140,6 +140,7 @@ class CreateVenvHandler(AbstractHandler):
         predefined_libraries = {
             "/app/src/shared/dotdict",
             "/app/src/shared/epicstaff_secrets",
+            "/app/src/shared/epicstaff_common",
         }  # TODO: deal with hard coded path
         if context.get("use_storage"):
             predefined_libraries.add("/app/src/shared/epicstaff_storage")
@@ -177,7 +178,7 @@ class CreateVenvHandler(AbstractHandler):
 
 
 class InstallLibrariesHandler(AbstractHandler):
-    def calculate_hash(self, libraries: List[str]) -> str:
+    def calculate_hash(self, libraries: list[str]) -> str:
         """Calculate a hash of the libraries list."""
         libraries_str = json.dumps(libraries, sort_keys=True)
         return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
@@ -185,7 +186,7 @@ class InstallLibrariesHandler(AbstractHandler):
     def _hash_changed(self, lib_hash: str, hash_file: Path) -> bool:
         """Check if the hash of the libraries has changed."""
         if hash_file.exists():
-            with open(hash_file, "r") as f:
+            with open(hash_file) as f:
                 saved_hash = f.read().strip()
             return lib_hash != saved_hash
         return True
@@ -195,13 +196,11 @@ class InstallLibrariesHandler(AbstractHandler):
         with open(hash_file, "w") as f:
             f.write(lib_hash)
 
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         """Install libraries asynchronously."""
         python_executable = context["python_executable"]
         lib_hash = context.get("lib_hash")
-        hash_changed = self._hash_changed(
-            lib_hash=lib_hash, hash_file=context["hash_file"]
-        )
+        hash_changed = self._hash_changed(lib_hash=lib_hash, hash_file=context["hash_file"])
 
         if hash_changed:
             logger.info("Installing libraries...")
@@ -313,13 +312,64 @@ class ExecuteCodeHandler(AbstractHandler):
         global_kwargs: dict[str, Any] | None = None,
         storage_mutations_path: Path | None = None,
     ):
-        global_kwargs = global_kwargs or dict()
+        global_kwargs = global_kwargs or {}
         code_lines = code.split("\n")
         code_lines = ["    " + line for line in code_lines]
         code = "\n".join(code_lines)
         wrapped_code = f"""
+import errno
+import os
+import socket
 import sys
 import json
+
+# Message-quality aid only, NOT a security control -- the real boundary is
+# the kernel-enforced seccomp/Landlock filter launcher.py installs before
+# this interpreter starts. SANDBOX_NETWORK_BLOCKED mirrors that real state
+# ("all" / "storage_only"), set by ExecuteCodeHandler.handle.
+__sys_network_block_mode = os.environ.get("SANDBOX_NETWORK_BLOCKED")
+
+
+def __sys_network_block_message():
+    if __sys_network_block_mode == "storage_only":
+        return (
+            "Network access denied: the sandbox network policy allows outbound "
+            "network access only to the storage endpoint."
+        )
+    return "Network access denied: the sandbox network policy blocks all outbound network access."
+
+
+# Some in-sandbox tools catch socket.gaierror themselves and format it into
+# their own returned string, e.g. f"could not resolve host {{host}}: {{e}}",
+# so it never reaches __sys_is_network_denial() below. Monkeypatching
+# getaddrinfo makes the exception itself carry the policy message, so every
+# consumer that does str(e) gets it for free. Message-quality aid only, not a
+# security control. Gated on "all" only: under storage_only, DNS genuinely
+# still works over UDP, so a gaierror there is a real failure, not this.
+if __sys_network_block_mode == "all":
+    __sys_real_getaddrinfo = socket.getaddrinfo
+
+    def __sys_getaddrinfo(*args, **kwargs):
+        try:
+            return __sys_real_getaddrinfo(*args, **kwargs)
+        except socket.gaierror as exc:
+            raise socket.gaierror(exc.errno, __sys_network_block_message()) from None
+
+    socket.getaddrinfo = __sys_getaddrinfo
+
+
+def __sys_is_network_denial(exc):
+    # Partial coverage, deliberately: the raw OSError/PermissionError from
+    # seccomp/Landlock, socket.gaierror (DNS), and one level of unwrap for
+    # urllib's URLError (.reason). Other wrapper exceptions (requests, httpx,
+    # botocore, ...) fall through to the generic str(e) message below.
+    if isinstance(exc, socket.gaierror):
+        # Only a full block guarantees DNS itself fails; under storage_only,
+        # Landlock leaves DNS reachable, so a gaierror there is real and must
+        # not be misreported as a policy denial.
+        return __sys_network_block_mode == "all"
+    return isinstance(exc, OSError) and exc.errno == errno.EACCES and exc.filename is None
+
 
 try:
     from dotdict import DotDict, DotObject, DotList
@@ -334,6 +384,13 @@ try:
     sys_result_variable = {entrypoint}(**__sys_dot_kwargs)
     with open(r'{result_file_path.as_posix()}', 'w', encoding='utf-8') as file:
         file.write(json.dumps(sys_result_variable))
+except OSError as e:
+    __sys_candidate = getattr(e, "reason", e)
+    if __sys_network_block_mode and __sys_is_network_denial(__sys_candidate):
+        print(__sys_network_block_message(), file=sys.stderr)
+    else:
+        print(str(e), file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
@@ -356,7 +413,7 @@ except Exception:
 
         return wrapped_code
 
-    async def handle(self, context: Dict[str, Any]) -> Any:
+    async def handle(self, context: dict[str, Any]) -> Any:
         """Execute the provided code asynchronously."""
         python_executable = context["python_executable"]
 
@@ -378,7 +435,7 @@ except Exception:
         )
 
         # Write the code to a temporary file
-        with open(temp_code_path, "w") as f:
+        with open(temp_code_path, "w") as f:  # noqa: ASYNC230
             f.write(wrapped_code)
 
         # Execute the code asynchronously
@@ -386,9 +443,7 @@ except Exception:
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
         env["TMPDIR"] = context["tmp_path"]
-        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get(
-            "CONTAINER_SAVEFILES_PATH", "."
-        )
+        env["CONTAINER_SAVEFILES_PATH"] = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
         if context.get("use_storage"):
             env["STORAGE_ENDPOINT"] = settings.STORAGE_ENDPOINT
             env["STORAGE_BUCKET_NAME"] = settings.STORAGE_BUCKET_NAME
@@ -427,17 +482,65 @@ except Exception:
                 context["execution_id"],
                 REQUIRE_ISOLATION_ENV_VAR,
             )
-        else:
-            # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
-            # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
-            # ExecuteCodeHandler only receives "python_executable" when driven directly,
-            # without CreateVenvHandler ahead of it (as the unit tests do).
-            jail = build_jail(
-                exec_dir=Path(context["result_file_path"]).parent,
-                venv_path=Path(python_executable).parent.parent,
-                savefiles_root=Path(context["work_dir"]),
+
+        network_decision = decide_network_policy(
+            block_network=settings.BLOCK_NETWORK,
+            use_storage=bool(context.get("use_storage")),
+            landlock_abi=isolation_abi,
+            storage_port=int(settings.STORAGE_PORT),
+        )
+
+        # Lets wrap_code's preamble tell a genuine network denial apart from
+        # an unrelated Landlock filesystem EACCES, and pick the right wording
+        # for which policy is actually in effect; see the comment there.
+        if network_decision.policy is NetworkPolicy.BLOCK_ALL:
+            env["SANDBOX_NETWORK_BLOCKED"] = "all"
+        elif network_decision.policy is NetworkPolicy.ALLOW_PORTS:
+            env["SANDBOX_NETWORK_BLOCKED"] = "storage_only"
+
+        if network_decision.policy is NetworkPolicy.REFUSE:
+            message = (
+                "Sandbox network isolation unavailable: storage-enabled executions "
+                "require Landlock ABI 4+ (Linux 6.7+) to restrict outbound connections "
+                "to the storage port; refusing to execute. Set SANDBOX_BLOCK_NETWORK=false "
+                "to disable network isolation for this execution."
             )
-            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(asdict(jail)), *argv]
+            logger.error(
+                "Sandbox network isolation unavailable (Landlock ABI {} < 4); "
+                "refusing to execute {} because it uses storage.",
+                isolation_abi,
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=message,
+                stdout="",
+                returncode=1,
+            )
+
+        use_launcher = isolation_abi >= 1 or network_decision.policy is NetworkPolicy.BLOCK_ALL
+        if use_launcher:
+            jail = None
+            if isolation_abi >= 1:
+                # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
+                # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
+                # ExecuteCodeHandler only receives "python_executable" when driven directly,
+                # without CreateVenvHandler ahead of it (as the unit tests do).
+                jail = asdict(
+                    build_jail(
+                        exec_dir=Path(context["result_file_path"]).parent,
+                        venv_path=Path(python_executable).parent.parent,
+                        savefiles_root=Path(context["work_dir"]),
+                    )
+                )
+            if network_decision.policy is NetworkPolicy.BLOCK_ALL:
+                network = {"mode": "block_all"}
+            elif network_decision.policy is NetworkPolicy.ALLOW_PORTS:
+                network = {"mode": "allow_ports", "ports": list(network_decision.allowed_tcp_ports)}
+            else:
+                network = {"mode": "unrestricted"}
+            plan = {"jail": jail, "network": network}
+            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
         process = await asyncio.create_subprocess_exec(
             *argv,
@@ -485,12 +588,10 @@ except Exception:
 
         if returncode == 0:
             try:
-                with open(result_file_path, "r", encoding="utf-8") as file:
+                with open(result_file_path, encoding="utf-8") as file:  # noqa: ASYNC230
                     raw_result = file.read()
                 result_data = (
-                    scrub(text=raw_result, secrets=secrets)
-                    if mask_secrets
-                    else raw_result
+                    scrub(text=raw_result, secrets=secrets) if mask_secrets else raw_result
                 )
             except Exception:
                 logger.exception("Exception reading result file")
@@ -530,9 +631,7 @@ except Exception:
 
         stdout_bytes, stderr_bytes = b"", b""
         if killed:
-            done, _ = await asyncio.wait(
-                {comm_task}, timeout=_TIMEOUT_DRAIN_GRACE_SECONDS
-            )
+            done, _ = await asyncio.wait({comm_task}, timeout=_TIMEOUT_DRAIN_GRACE_SECONDS)
             if comm_task in done:
                 try:
                     stdout_bytes, stderr_bytes = comm_task.result()
@@ -561,9 +660,7 @@ except Exception:
 
         timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
-            timeout_message += (
-                " Process could not be terminated and may still be running."
-            )
+            timeout_message += " Process could not be terminated and may still be running."
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
 
         return CodeResultData(
@@ -615,7 +712,7 @@ class DynamicVenvExecutorChain:
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
         if func_kwargs is None:
-            func_kwargs = dict()
+            func_kwargs = {}
 
         output_path = Path(self.output_path) / execution_id
         os.makedirs(output_path, exist_ok=True)
@@ -667,9 +764,7 @@ class DynamicVenvExecutorChain:
         if use_storage:
             try:
                 if not storage_org_prefix:
-                    raise ValueError(
-                        "storage_org_prefix is required when use_storage is set"
-                    )
+                    raise ValueError("storage_org_prefix is required when use_storage is set")
                 policy = self.storage_credential_manager.build_policy(
                     allowed_bucket=settings.STORAGE_BUCKET_NAME,
                     org_prefix=storage_org_prefix,

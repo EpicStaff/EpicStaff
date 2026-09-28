@@ -12,7 +12,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from tables.models.realtime_models import RealtimeSessionItem
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.mark.django_db

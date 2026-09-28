@@ -1,10 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
 import { finalize, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
+import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
@@ -18,7 +18,12 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
     templateUrl: './collections-list-page.component.html',
     styleUrls: ['./collections-list-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, SpinnerComponent],
+    imports: [
+        CollectionDetailsComponent,
+        CollectionsListItemSidebarComponent,
+        SpinnerComponent,
+        FetchErrorStateComponent,
+    ],
 })
 export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private destroyRef = inject(DestroyRef);
@@ -29,6 +34,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private toastService = inject(ToastService);
 
     isLoading = signal<boolean>(true);
+    error = signal<string | null>(null);
     collections = this.collectionsStorageService.collections;
 
     ngOnInit(): void {
@@ -43,6 +49,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
 
     getCollections(): void {
         this.isLoading.set(true);
+        this.error.set(null);
 
         this.collectionsStorageService
             .getCollections(true)
@@ -54,8 +61,12 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
                 })
             )
             .subscribe({
-                error: () => this.toastService.error('Failed to get collections.'),
+                error: () => this.error.set('Failed to load knowledge sources.'),
             });
+    }
+
+    retryLoad(): void {
+        this.getCollections();
     }
 
     private handleDeepLink(): void {

@@ -1,12 +1,16 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    ButtonComponent,
+    ConfirmationDialogService,
+    CustomInputComponent,
+    HelpTooltipComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
+import { NodeType } from '@shared/models';
 
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';

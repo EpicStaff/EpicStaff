@@ -16,6 +16,13 @@ migration = importlib.import_module(
 migrate_to_variables = migration.migrate_to_variables
 _FIELD_TYPE_TO_VAR_TYPE = migration._FIELD_TYPE_TO_VAR_TYPE
 
+# These tests are pure-unit tests of a data transformation and never touch the
+# ORM (PythonCodeTool/PythonCodeToolConfigField are mocked). But tests/conftest.py
+# has an autouse `heal_builtin_roles` fixture that queries the database before
+# every test; without the marker pytest-django never swaps the connection to the
+# test database, so that fixture silently reads the real dev database instead.
+pytestmark = pytest.mark.django_db
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -113,7 +120,7 @@ def test_args_schema_properties_become_agent_input():
 
     lim = by_name["limit"]
     assert lim["input_type"] == "agent_input"
-    assert lim["type"] == "integer"
+    assert lim["type"] == "number"
     assert lim["required"] is False
     assert lim["default_value"] == 10
 
@@ -137,7 +144,7 @@ def test_config_fields_become_user_input():
     assert by_name["api_key"]["default_value"] is None
 
     assert by_name["timeout"]["input_type"] == "user_input"
-    assert by_name["timeout"]["type"] == "integer"
+    assert by_name["timeout"]["type"] == "number"
     assert by_name["timeout"]["required"] is False
 
 
@@ -164,12 +171,12 @@ def test_args_schema_and_config_fields_merged():
 def test_field_type_mapping():
     """All _FIELD_TYPE_TO_VAR_TYPE entries are applied correctly."""
     type_cases = [
-        ("llm_config", "integer"),
-        ("embedding_config", "integer"),
+        ("llm_config", "number"),
+        ("embedding_config", "number"),
         ("string", "string"),
         ("boolean", "boolean"),
         ("any", "any"),
-        ("integer", "integer"),
+        ("integer", "number"),
         ("float", "number"),
     ]
     for data_type, expected_var_type in type_cases:
@@ -204,9 +211,12 @@ def test_nested_object_properties_preserved():
     var = tool.variables[0]
     assert var["name"] == "person"
     assert var["type"] == "object"
+    # Nested properties go through the same node conversion as top-level
+    # properties, so each one carries "description" and "default_value"
+    # too, not just "type".
     assert var["properties"] == {
-        "first_name": {"type": "string"},
-        "last_name": {"type": "string"},
+        "first_name": {"type": "string", "description": "", "default_value": None},
+        "last_name": {"type": "string", "description": "", "default_value": None},
     }
     assert var["required_properties"] == ["first_name", "last_name"]
 
@@ -230,7 +240,9 @@ def test_array_items_preserved():
     var = tool.variables[0]
     assert var["name"] == "tags"
     assert var["type"] == "array"
-    assert var["items"] == {"type": "string"}
+    # The migration stores the array item schema under "item" (singular),
+    # not "items" — see _json_schema_node_to_nested_variable.
+    assert var["item"] == {"type": "string", "description": "", "default_value": None}
     assert "properties" not in var
 
 

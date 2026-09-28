@@ -14,7 +14,7 @@ from tables.models.knowledge_models.naive_rag_models import NaiveRag
 
 
 class RagTypeDescriptor:
-    __slots__ = ("model", "id_field")
+    __slots__ = ("id_field", "model")
 
     def __init__(self, model, id_field: str):
         self.model = model

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from tables.models.graph_models import AgentNode
-from tables.services.base_node_payload_service import BaseNodePayloadService
 from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import AgentNodeData, AgentNodeTaskData, CombinedSurfaceData
+from tables.models.graph_models import AgentNode
+from tables.services.base_node_payload_service import BaseNodePayloadService
 
 
 class AgentNodePayloadService(BaseNodePayloadService):
@@ -29,15 +29,11 @@ class AgentNodePayloadService(BaseNodePayloadService):
 
         return AgentNodeData(
             node_name=node_name,
-            agent_definition=self._build_agent_definition_data(
-                agent_node.agent_definition
-            ),
+            agent_definition=self._build_agent_definition_data(agent_node.agent_definition),
             input_map=agent_node.input_map or {},
             output_variable_path=agent_node.output_variable_path,
             surface=combined_surface,
-            tools=self._build_tool_pool(
-                combined_surface, graph_id, session_id, s3_files
-            ),
+            tools=self._build_tool_pool(combined_surface, graph_id, session_id, s3_files),
             collections=self._build_collection_pool(combined_surface),
             s3_files=s3_files,
             tasks=[
@@ -46,9 +42,7 @@ class AgentNodePayloadService(BaseNodePayloadService):
                     order=task.order,
                     instructions=task.instructions,
                     output_schema=task.output_schema or {},
-                    context_tasks=[
-                        context_task.name for context_task in task.context_tasks.all()
-                    ],
+                    context_tasks=[context_task.name for context_task in task.context_tasks.all()],
                 )
                 for task in agent_node.tasks.all()
             ],

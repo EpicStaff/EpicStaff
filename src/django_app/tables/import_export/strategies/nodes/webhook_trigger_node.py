@@ -1,20 +1,18 @@
-from typing import Optional
-
-from tables.models import WebhookTriggerNode, WebhookTrigger
-from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.serializers.webhook_trigger_node import (
     WebhookTriggerNodeImportSerializer,
 )
-from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import WebhookTrigger, WebhookTriggerNode
 
 
 class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.WEBHOOK_TRIGGER_NODE
     serializer_class = WebhookTriggerNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[WebhookTriggerNode]:
+    def get_instance(self, entity_id: int) -> WebhookTriggerNode | None:
         return WebhookTriggerNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: WebhookTriggerNode) -> dict:
@@ -29,15 +27,11 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: WebhookTriggerNode) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(
-        self, data: dict, id_mapper: IDMapper, **kwargs
-    ) -> WebhookTriggerNode:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> WebhookTriggerNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
         python_code_data = data.pop("python_code", None)
         old_trigger_id = data.pop("webhook_trigger", None)
-        new_trigger_id = id_mapper.get_or_none(
-            EntityType.WEBHOOK_TRIGGER, old_trigger_id
-        )
+        new_trigger_id = id_mapper.get_or_none(EntityType.WEBHOOK_TRIGGER, old_trigger_id)
         webhook_trigger = WebhookTrigger.objects.filter(id=new_trigger_id).first()
 
         python_code_serializer = PythonCodeImportSerializer(data=python_code_data)

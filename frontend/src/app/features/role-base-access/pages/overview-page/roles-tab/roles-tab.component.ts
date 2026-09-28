@@ -5,13 +5,16 @@ import {
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
-    AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
+    DeleteButtonComponent,
+    DuplicateButtonComponent,
+    EditButtonComponent,
     LoadingSpinnerComponent,
     SearchComponent,
     SelectItem,
     TableRow,
+    ViewButtonComponent,
 } from '@shared/components';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
 import { EMPTY, finalize, switchMap } from 'rxjs';
@@ -31,14 +34,24 @@ import {
 import { RoleInfoDialogComponent } from '../../../components/role-info-dialog/role-info-dialog.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { RolesService } from '../../../services/admin/roles.service';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
+import { rbacErrorMessage } from '../../../utils';
 
 @Component({
     selector: 'app-roles-tab',
     templateUrl: './roles-tab.component.html',
     styleUrls: ['./roles-tab.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppTableComponent, AppTableCellDirective, ButtonComponent, SearchComponent, LoadingSpinnerComponent],
+    imports: [
+        AppTableComponent,
+        AppTableCellDirective,
+        ButtonComponent,
+        SearchComponent,
+        LoadingSpinnerComponent,
+        DeleteButtonComponent,
+        DuplicateButtonComponent,
+        EditButtonComponent,
+        ViewButtonComponent,
+    ],
 })
 export class RolesTabComponent implements OnInit {
     private dialog = inject(Dialog);
@@ -76,33 +89,6 @@ export class RolesTabComponent implements OnInit {
         return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
     });
 
-    private readonly rowActions: AppTableRowAction[] = [
-        {
-            icon: 'eye',
-            tooltip: 'View role',
-            onClick: (row) => this.onViewRole(row),
-        },
-        {
-            icon: 'copy',
-            tooltip: 'Copy to another org',
-            hidden: (row) => !!row['isBuiltIn'] || !this.canCreateOrCopyAnywhere(),
-            onClick: (row) => this.onCopyRole(row),
-        },
-        {
-            icon: 'edit',
-            tooltip: 'Edit role',
-            hidden: (row) => !this.canEditRow(row),
-            onClick: (row) => this.onEditRole(row),
-        },
-        {
-            icon: 'trash',
-            tooltip: 'Delete role',
-            variant: 'danger',
-            hidden: (row) => !this.canDeleteRow(row),
-            onClick: (row) => this.onDeleteRole(row),
-        },
-    ];
-
     readonly columns = computed<AppTableColumnDef[]>(() => [
         { key: 'name', label: 'ROLE NAME', width: 'minmax(160px, 1.2fr)' },
         { key: 'description', label: 'DESCRIPTION', width: 'minmax(200px, 2.5fr)' },
@@ -116,7 +102,7 @@ export class RolesTabComponent implements OnInit {
             defaultValues: this.activeOrgDefault(),
         },
         { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)', align: 'center' },
-        { key: 'actions', label: 'ACTIONS', width: '160px', align: 'end', actions: this.rowActions },
+        { key: 'actions', label: 'ACTIONS', width: '160px', align: 'end' },
     ]);
 
     /** Combined rows: built-in roles first (org label = "All"), then custom roles. */
@@ -180,14 +166,14 @@ export class RolesTabComponent implements OnInit {
         };
     }
 
-    private canEditRow(row: TableRow): boolean {
+    canEditRow(row: TableRow): boolean {
         if (row['isBuiltIn']) return false;
         const orgId = row['orgId'] as number | null;
         if (orgId === null) return false;
         return this.permissionsService.canInOrg(orgId, ResourceCode.Roles, ActionCode.Update);
     }
 
-    private canDeleteRow(row: TableRow): boolean {
+    canDeleteRow(row: TableRow): boolean {
         if (row['isBuiltIn']) return false;
         const orgId = row['orgId'] as number | null;
         if (orgId === null) return false;

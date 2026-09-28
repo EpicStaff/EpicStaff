@@ -10,7 +10,6 @@ from ..models.knowledge import (
     RagSearchConfig,
 )
 from ..models.knowledge_new import FoundChunk, SearchConfig
-
 from .target import KnowledgeSearchTarget
 
 _SEARCH_CONFIG = TypeAdapter(SearchConfig)
@@ -44,9 +43,7 @@ class KnowledgeClient:
 
     async def start(self) -> None:
         if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self._base_url, timeout=self._default_timeout
-            )
+            self._client = httpx.AsyncClient(base_url=self._base_url, timeout=self._default_timeout)
             logger.info("KnowledgeClient started, base_url={}", self._base_url)
 
     async def stop(self) -> None:
@@ -58,9 +55,7 @@ class KnowledgeClient:
     async def search(
         self, target: KnowledgeSearchTarget, query: str, *, timeout: float
     ) -> list[FoundChunk] | str:
-        assert self._client is not None, (
-            "KnowledgeClient.start() must be called before search()"
-        )
+        assert self._client is not None, "KnowledgeClient.start() must be called before search()"
 
         response = await self._client.post(
             f"rags/{target.rag_type}/{target.rag_id}/search/",

@@ -132,18 +132,10 @@ class InlineSurfaceGraphDriftSearchConfigReadSerializer(serializers.ModelSeriali
 
 class InlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
     naive_search_config = InlineSurfaceNaiveSearchConfigReadSerializer(read_only=True)
-    graph_basic_search_config = InlineSurfaceGraphBasicSearchConfigReadSerializer(
-        read_only=True
-    )
-    graph_local_search_config = InlineSurfaceGraphLocalSearchConfigReadSerializer(
-        read_only=True
-    )
-    graph_global_search_config = InlineSurfaceGraphGlobalSearchConfigReadSerializer(
-        read_only=True
-    )
-    graph_drift_search_config = InlineSurfaceGraphDriftSearchConfigReadSerializer(
-        read_only=True
-    )
+    graph_basic_search_config = InlineSurfaceGraphBasicSearchConfigReadSerializer(read_only=True)
+    graph_local_search_config = InlineSurfaceGraphLocalSearchConfigReadSerializer(read_only=True)
+    graph_global_search_config = InlineSurfaceGraphGlobalSearchConfigReadSerializer(read_only=True)
+    graph_drift_search_config = InlineSurfaceGraphDriftSearchConfigReadSerializer(read_only=True)
 
     class Meta:
         model = InlineSurfaceKnowledge
@@ -180,13 +172,9 @@ class InlineSurfaceReadSerializer(serializers.ModelSerializer):
 
 class InlineSurfaceWriteSerializer(serializers.Serializer):
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
-    python_tools = SurfacePythonToolWriteSerializer(
-        many=True, required=False, default=list
-    )
+    python_tools = SurfacePythonToolWriteSerializer(many=True, required=False, default=list)
     mcp_tools = SurfaceMcpToolWriteSerializer(many=True, required=False, default=list)
-    storage_items = SurfaceStorageItemWriteSerializer(
-        many=True, required=False, default=list
-    )
+    storage_items = SurfaceStorageItemWriteSerializer(many=True, required=False, default=list)
     knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
@@ -196,7 +184,7 @@ class InlineSurfaceWriteSerializer(serializers.Serializer):
             SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
             SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
         except SurfaceValidationError as exc:
-            raise SurfaceValidationError(detail={"inline_surface": exc.detail})
+            raise SurfaceValidationError(detail={"inline_surface": exc.detail}) from exc
 
         return attrs
 
@@ -225,17 +213,13 @@ class AgentInlineSurfaceNaiveSearchConfigReadSerializer(serializers.ModelSeriali
         fields = ["search_limit", "similarity_threshold", "is_suggested"]
 
 
-class AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(
-    serializers.ModelSerializer
-):
+class AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentInlineSurfaceGraphBasicSearchConfig
         fields = ["prompt", "k", "max_context_tokens", "is_suggested"]
 
 
-class AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
-    serializers.ModelSerializer
-):
+class AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentInlineSurfaceGraphLocalSearchConfig
         fields = [
@@ -250,9 +234,7 @@ class AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
         ]
 
 
-class AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(
-    serializers.ModelSerializer
-):
+class AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentInlineSurfaceGraphGlobalSearchConfig
         fields = [
@@ -273,9 +255,7 @@ class AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(
         ]
 
 
-class AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
-    serializers.ModelSerializer
-):
+class AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentInlineSurfaceGraphDriftSearchConfig
         fields = [
@@ -306,17 +286,15 @@ class AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
 
 
 class AgentInlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
-    naive_search_config = AgentInlineSurfaceNaiveSearchConfigReadSerializer(
-        read_only=True
-    )
+    naive_search_config = AgentInlineSurfaceNaiveSearchConfigReadSerializer(read_only=True)
     graph_basic_search_config = AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(
         read_only=True
     )
     graph_local_search_config = AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
         read_only=True
     )
-    graph_global_search_config = (
-        AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(read_only=True)
+    graph_global_search_config = AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(
+        read_only=True
     )
     graph_drift_search_config = AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
         read_only=True
@@ -337,9 +315,7 @@ class AgentInlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
 class AgentInlineSurfaceReadSerializer(serializers.ModelSerializer):
     python_tools = AgentInlineSurfacePythonToolReadSerializer(many=True, read_only=True)
     mcp_tools = AgentInlineSurfaceMcpToolReadSerializer(many=True, read_only=True)
-    storage_items = AgentInlineSurfaceStorageItemReadSerializer(
-        many=True, read_only=True
-    )
+    storage_items = AgentInlineSurfaceStorageItemReadSerializer(many=True, read_only=True)
     knowledge = AgentInlineSurfaceKnowledgeReadSerializer(many=True, read_only=True)
 
     class Meta:
@@ -359,13 +335,9 @@ class AgentInlineSurfaceReadSerializer(serializers.ModelSerializer):
 
 class AgentInlineSurfaceWriteSerializer(serializers.Serializer):
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
-    python_tools = SurfacePythonToolWriteSerializer(
-        many=True, required=False, default=list
-    )
+    python_tools = SurfacePythonToolWriteSerializer(many=True, required=False, default=list)
     mcp_tools = SurfaceMcpToolWriteSerializer(many=True, required=False, default=list)
-    storage_items = SurfaceStorageItemWriteSerializer(
-        many=True, required=False, default=list
-    )
+    storage_items = SurfaceStorageItemWriteSerializer(many=True, required=False, default=list)
     knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
@@ -375,6 +347,6 @@ class AgentInlineSurfaceWriteSerializer(serializers.Serializer):
             SurfaceValidator.validate_storage_items(attrs.get("storage_items", []))
             SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
         except SurfaceValidationError as exc:
-            raise SurfaceValidationError(detail={"inline_surface": exc.detail})
+            raise SurfaceValidationError(detail={"inline_surface": exc.detail}) from exc
 
         return attrs

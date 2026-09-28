@@ -1,10 +1,10 @@
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass, field
 
-from tables.models.graph_models import Edge
-from tables.import_export.registry import EntityRegistry
 from tables.import_export.enums import EntityType
+from tables.import_export.registry import EntityRegistry
 from tables.import_export.serializers.graph import EdgeImportSerializer
+from tables.models.graph_models import Edge
 
 # Map bulk-save list_key -> EntityType for strategy lookup.
 # Start/end nodes are intentionally excluded: they are structural and every
@@ -107,9 +107,7 @@ class GraphPartialExportService:
             edges = list(Edge.objects.filter(id__in=edge_ids))
             missing = set(edge_ids) - {e.id for e in edges}
             for eid in missing:
-                result.errors.append(
-                    {"edge_id": eid, "error": f"Edge with id={eid} not found."}
-                )
+                result.errors.append({"edge_id": eid, "error": f"Edge with id={eid} not found."})
             if edges:
                 collected["edge_list"] = {e.id: e for e in edges}
 
@@ -157,9 +155,7 @@ class GraphPartialExportService:
         for entity_type, instances in collected.items():
             # Edges are serialized separately — they use a dedicated serializer
             if entity_type == "edge_list":
-                result["edge_list"] = [
-                    EdgeImportSerializer(e).data for e in instances.values()
-                ]
+                result["edge_list"] = [EdgeImportSerializer(e).data for e in instances.values()]
                 continue
 
             strategy = self.registry.get_strategy(entity_type)

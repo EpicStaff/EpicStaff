@@ -28,6 +28,8 @@ interface GroupedItems {
     items: SelectItem[];
 }
 
+export type MultiSelectOrigin = HTMLElement | { x: number; y: number; width?: number; height?: number };
+
 @Component({
     selector: 'app-multi-select',
     imports: [AppSvgIconComponent, CheckboxComponent, ButtonComponent],
@@ -189,7 +191,7 @@ export class MultiSelectComponent implements OnInit {
      *  with flip-above positions when `allowFlip` is set). Exists for side-opening submenu
      *  flyouts, which must fly out beside their anchor row rather than below it.
      */
-    openAt(originElement: HTMLElement, seedValues?: unknown[], positions?: ConnectedPosition[]): void {
+    openAt(originElement: MultiSelectOrigin, seedValues?: unknown[], positions?: ConnectedPosition[]): void {
         if (this.disabled()) return;
         const defaultPositions: ConnectedPosition[] = [
             // Below, left-aligned with trigger
@@ -209,7 +211,7 @@ export class MultiSelectComponent implements OnInit {
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
             .withPositions(resolvedPositions)
-            .withPush(false)
+            .withPush(this.allowFlip())
             .withFlexibleDimensions(true)
             .withViewportMargin(8);
 

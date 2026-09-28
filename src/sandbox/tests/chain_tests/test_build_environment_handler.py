@@ -1,7 +1,6 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -15,6 +14,8 @@ import settings
 from dynamic_venv_executor_chain import AbstractHandler, ExecuteCodeHandler
 from utils.environment import build_base_env
 
+from conftest import make_execute_context as _make_execute_context
+
 _SENSITIVE_KEYS = {
     "STORAGE_ENDPOINT",
     "STORAGE_BUCKET_NAME",
@@ -22,35 +23,9 @@ _SENSITIVE_KEYS = {
     "STORAGE_SECRET_KEY",
     "STORAGE_ALLOWED_PATHS",
     "STORAGE_ORG_PREFIX",
+    "STORAGE_USER",
+    "STORAGE_PASSWORD",
 }
-
-
-def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
-    """Build a minimal valid context for ExecuteCodeHandler.
-
-    The handler writes to temp_code_path (parent must exist) and reads
-    result_file_path after the subprocess returns.  The caller is responsible
-    for pre-writing result_file_path with valid JSON before driving the handler.
-    """
-    exec_dir = tmp_path / "exec"
-    exec_dir.mkdir(parents=True, exist_ok=True)
-
-    ctx: dict[str, Any] = {
-        "python_executable": tmp_path / "venv" / "bin" / "python",
-        "temp_code_path": exec_dir / "code.py",
-        "result_file_path": exec_dir / "output.txt",
-        "home_path": str(exec_dir / "home"),
-        "tmp_path": str(exec_dir / "tmp"),
-        "work_dir": str(exec_dir),
-        "code": "def main():\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "test-exec-id",
-        "use_storage": False,
-    }
-    ctx.update(overrides)
-    return ctx
 
 
 def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> None:
@@ -125,8 +100,10 @@ def test_build_base_env_path_ordering(tmp_path):
 def test_build_base_env_contains_no_sensitive_keys(tmp_path, monkeypatch):
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "root-ak-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "root-sk-must-not-leak")
-    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
     monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")
+    monkeypatch.setenv("STORAGE_USER", "root-user-must-not-leak")
+    monkeypatch.setenv("STORAGE_PASSWORD", "root-password-must-not-leak")
     monkeypatch.setenv("REDIS_PASSWORD", "redis-secret")
     monkeypatch.setenv("ARBITRARY_SECRET", "arbitrary")
 
@@ -172,11 +149,13 @@ async def test_execute_code_handler_home_equals_home_path(tmp_path, monkeypatch)
 async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(settings, "STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setattr(settings, "STORAGE_ENDPOINT", "http://storage:9000")
     monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     # Root credentials — must NOT appear in the subprocess env
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "ROOT-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "ROOT-must-not-leak")
+    monkeypatch.setenv("STORAGE_USER", "ROOT-must-not-leak")
+    monkeypatch.setenv("STORAGE_PASSWORD", "ROOT-must-not-leak")
 
     recorded: dict = {}
     context = _make_execute_context(
@@ -190,19 +169,21 @@ async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
     await ExecuteCodeHandler().handle(context)
 
     env = recorded["env"]
-    assert env["STORAGE_ENDPOINT"] == "http://minio:9000"
+    assert env["STORAGE_ENDPOINT"] == "http://storage:9000"
     assert env["STORAGE_BUCKET_NAME"] == "epicstaff"
     assert env["STORAGE_ACCESS_KEY"] == "scoped-ak"
     assert env["STORAGE_SECRET_KEY"] == "scoped-sk"
     assert env["STORAGE_ACCESS_KEY"] != "ROOT-must-not-leak"
     assert env["STORAGE_SECRET_KEY"] != "ROOT-must-not-leak"
+    assert "STORAGE_USER" not in env
+    assert "STORAGE_PASSWORD" not in env
 
 
 @pytest.mark.asyncio
 async def test_execute_code_handler_use_storage_false_omits_storage_vars(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "access")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "secret")
     monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")
@@ -285,7 +266,7 @@ async def test_execute_code_handler_storage_allowed_paths_missing_omits_key(
 ):
     recorded: dict = {}
     context = _make_execute_context(tmp_path)
-    # storage_allowed_paths not set at all
+    del context["storage_allowed_paths"]  # not set at all, as distinct from None
     _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
     await ExecuteCodeHandler().handle(context)
@@ -323,6 +304,7 @@ async def test_execute_code_handler_storage_org_prefix_missing_omits_key(
 ):
     recorded: dict = {}
     context = _make_execute_context(tmp_path)
+    del context["storage_org_prefix"]  # not set at all, as distinct from None
     _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
     await ExecuteCodeHandler().handle(context)
@@ -351,48 +333,10 @@ async def test_execute_code_handler_epicstaff_secrets_injected_as_json(
 @pytest.mark.asyncio
 async def test_execute_code_handler_uses_execution_env(tmp_path, monkeypatch):
     recorded: dict = {}
+    context = _make_execute_context(tmp_path, execution_id="x")
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    class FakeProcess:
-        returncode = 0
-
-        async def communicate(self):
-            return (b"", b"")
-
-    async def fake_create_subprocess_exec(*args, **kwargs):
-        recorded.update(kwargs)
-        return FakeProcess()
-
-    import dynamic_venv_executor_chain
-
-    monkeypatch.setattr(
-        dynamic_venv_executor_chain.asyncio,
-        "create_subprocess_exec",
-        fake_create_subprocess_exec,
-    )
-
-    exec_dir = tmp_path / "exec"
-    exec_dir.mkdir(parents=True, exist_ok=True)
-    temp_code_path = exec_dir / "code.py"
-    result_file_path = exec_dir / "output.txt"
-    result_file_path.write_text('"ok"')
-
-    context = {
-        "python_executable": tmp_path / "venv" / "bin" / "python",
-        "temp_code_path": temp_code_path,
-        "result_file_path": result_file_path,
-        "home_path": str(exec_dir / "home"),
-        "tmp_path": str(exec_dir / "tmp"),
-        "work_dir": str(exec_dir),
-        "code": "def main():\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "x",
-        "use_storage": False,
-    }
-
-    handler = ExecuteCodeHandler()
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
     # env must be present and must be a dict (built inline in the handler)
     assert "env" in recorded

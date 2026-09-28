@@ -1,7 +1,8 @@
-import copy
-from dataclasses import dataclass
 import ast
-from typing import Any, Mapping
+import copy
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -45,8 +46,8 @@ class DotDict(dict):
     def __getattr__(self, key):
         try:
             return self[key]
-        except KeyError:
-            raise AttributeError(f"'DotDict' object has no attribute '{key}'")
+        except KeyError as e:
+            raise AttributeError(f"'DotDict' object has no attribute '{key}'") from e
 
     def __setattr__(self, key, value):
         if key in {"_properties", "_setters"}:
@@ -79,9 +80,7 @@ class DotDict(dict):
         try:
             compiled_expr = compile(ast.parse(code, mode="eval"), "<string>", "eval")
 
-            func = lambda value: ast.literal_eval(  # noqa: E731
-                compiled_expr, {}, {**self, "value": value}
-            )
+            func = lambda value: ast.literal_eval(compiled_expr, {}, {**self, "value": value})
             self._setters[name] = Expression(code=code, func=func)
         except Exception as e:
             raise ValueError(f"Invalid expression for setter '{name}': {e}") from e
@@ -161,9 +160,7 @@ class DotList(list):
     def deep_dump(self):
         """Recursively convert to plain list — single-pass replacement for deepcopy(model_dump())."""
         return [
-            item.deep_dump()
-            if isinstance(item, (DotDict, DotList))
-            else copy.deepcopy(item)
+            item.deep_dump() if isinstance(item, (DotDict, DotList)) else copy.deepcopy(item)
             for item in self
         ]
 
@@ -195,7 +192,7 @@ class DotList(list):
         return handler(core_schema.list_schema(items_schema=core_schema.any_schema()))
 
 
-def DotObject(data):
+def DotObject(data):  # noqa: N802
     if isinstance(data, Mapping):
         return DotDict({k: DotObject(v) for k, v in data.items()})
     elif isinstance(data, (list, tuple, set)):

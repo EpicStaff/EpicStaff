@@ -9,7 +9,7 @@ from django.urls import reverse
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from tables.models.graph_models import ClassificationConditionGroup
-from tables.models.rbac_models import Organization, OrganizationUser
+from rbac.models import Organization, OrganizationUser
 from tables.import_export.enums import EntityType
 
 

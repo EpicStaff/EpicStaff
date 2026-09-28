@@ -1,11 +1,11 @@
 from django.utils.dateparse import parse_datetime
-
-from tables.models import Organization, StorageFile
+from rbac.models import Organization
+from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.db_sync import (
+    _ancestor_paths,
     _name_of,
     _parent_of,
-    _ancestor_paths,
 )
 
 

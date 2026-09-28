@@ -1,6 +1,6 @@
 import { IPoint } from '@foblex/2d';
+import { NodeType } from '@shared/models';
 
-import { NodeType } from '../enums/node-type';
 import { ConnectionModel } from '../models/connection.model';
 import { ConditionGroup } from '../models/decision-table.model';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../models/node.model';

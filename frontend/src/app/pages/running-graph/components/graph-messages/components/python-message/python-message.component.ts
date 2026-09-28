@@ -1,9 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { JsonViewerComponent } from '@shared/components';
+import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
 import { GraphMessage, MessageType, PythonMessageData } from '../../../../models/graph-session-message.model';
 

@@ -1,8 +1,8 @@
 import pytest
 
-from tables.models.rbac_models.rbac_enums import Permission
-from tables.services.rbac.rbac_exceptions import FormValidationError
-from tables.services.rbac.role_validation_service import RoleValidationService
+from rbac.models.enums import Permission
+from rbac.exceptions import FormValidationError
+from rbac.validation.role import RoleValidationService
 
 
 @pytest.fixture
@@ -16,9 +16,7 @@ def test_validate_create_happy_path(validator):
             "org_id": 10,
             "name": "  Billing Manager ",
             "description": "manage billing",
-            "permissions": [
-                {"resource_type": "secrets", "actions": ["read", "update"]}
-            ],
+            "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
         }
     )
     assert cleaned["org_id"] == 10
@@ -26,7 +24,7 @@ def test_validate_create_happy_path(validator):
     assert cleaned["permissions"] == [
         {
             "resource_type": "secrets",
-            "bitmask": int(Permission.READ | Permission.UPDATE),
+            "bitmask": int(Permission.READ | Permission.USE),
         }
     ]
 

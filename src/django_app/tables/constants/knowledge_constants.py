@@ -1,6 +1,5 @@
 from tables.models.knowledge_models import DocumentMetadata
 
-
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 
 

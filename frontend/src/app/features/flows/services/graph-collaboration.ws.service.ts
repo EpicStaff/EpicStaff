@@ -2,7 +2,7 @@ import { inject, Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 
 import { WsTicketService } from '../../../services/auth/ws-ticket.service';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 
 export interface EditorInfo {
     user_id: number;
