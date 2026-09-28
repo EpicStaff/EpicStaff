@@ -64,8 +64,8 @@ describe('FlowBaseNodeComponent persistence caption', () => {
     });
 
     const MODE_STRIPES: Record<PersistenceMode, string> = {
-        read: 'var(--color-status-processing)',
-        write: 'var(--success-color)',
+        read: 'var(--success-color)',
+        write: 'var(--color-status-processing)',
         delete: 'var(--color-status-error)',
     };
     for (const mode of Object.keys(MODE_STRIPES) as PersistenceMode[]) {

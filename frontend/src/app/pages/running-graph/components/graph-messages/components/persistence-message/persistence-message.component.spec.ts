@@ -369,8 +369,8 @@ describe('PersistenceMessageComponent', () => {
             )?.style.borderLeftColor;
 
         expect([stripe('read'), stripe('write'), stripe('delete')]).toEqual([
-            'var(--color-status-processing)',
             'var(--success-color)',
+            'var(--color-status-processing)',
             'var(--color-status-error)',
         ]);
     });
