@@ -1040,6 +1040,27 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             )
         },
     ),
+    preview=extend_schema(
+        summary="Preview the snapshot that restoring this version would apply.",
+        description=(
+            "Read-only: runs the same conversion and dependency filtering as restore and "
+            "create-graph, then returns the result without persisting anything. Missing "
+            "dependencies are nulled or dropped and reported in `warnings`, keyed by the "
+            "version's original node ids. Credential-named fields in the snapshot's "
+            "graph-level `metadata` are returned as null."
+        ),
+        responses={
+            200: inline_serializer(
+                name="GraphVersionPreviewResponse",
+                fields={
+                    "snapshot": serializers.DictField(),
+                    "warnings": serializers.ListField(child=serializers.DictField()),
+                },
+            ),
+            403: OpenApiResponse(description="The caller has no FLOWS READ permission."),
+            404: OpenApiResponse(description="No such version in the caller's organization."),
+        },
+    ),
     all=extend_schema(
         summary="List all graph versions including soft-deleted ones.",
         description=(
