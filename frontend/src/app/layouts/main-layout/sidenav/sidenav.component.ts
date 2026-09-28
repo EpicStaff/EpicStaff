@@ -30,6 +30,7 @@ import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
+import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
@@ -68,6 +69,7 @@ interface NavItem {
 export class LeftSidebarComponent implements AfterViewInit {
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
+    private readonly easterEggTrigger = inject(EasterEggTriggerService);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
@@ -248,6 +250,10 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     private onSettingsClick(): void {
         this.configureModelsDialogService.open();
+    }
+
+    public onLogoClick(): void {
+        this.easterEggTrigger.registerLogoClick();
     }
 
     public toggleEpicChat(): void {
