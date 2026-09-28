@@ -245,7 +245,7 @@ export const routes: Routes = [
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
                             },
                             {
-                                path: 'persistent-data',
+                                path: 'key-value-tables',
                                 loadComponent: () =>
                                     import('./features/persistent-data/pages/persistent-data-page/persistent-data-page.component').then(
                                         (m) => m.PersistentDataPageComponent

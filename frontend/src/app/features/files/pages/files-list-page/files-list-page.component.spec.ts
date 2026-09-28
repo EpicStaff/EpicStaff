@@ -34,7 +34,7 @@ describe('FilesListPageComponent header search', () => {
                         component: FilesListPageComponent,
                         children: [
                             { path: 'storage', component: TabStubComponent },
-                            { path: 'persistent-data', component: TabStubComponent },
+                            { path: 'key-value-tables', component: TabStubComponent },
                         ],
                     },
                 ]),
@@ -43,9 +43,9 @@ describe('FilesListPageComponent header search', () => {
         });
     });
 
-    it('is gone on Persistent Data, which searches keys in its own grid, and back on another tab', async () => {
+    it('is gone on Key-Value Tables, which searches keys in its own grid, and back on another tab', async () => {
         const harness = await RouterTestingHarness.create();
-        await harness.navigateByUrl('/files/persistent-data');
+        await harness.navigateByUrl('/files/key-value-tables');
         expect(headerSearch(harness)).toBeNull();
 
         await harness.navigateByUrl('/files/storage');
@@ -61,7 +61,7 @@ describe('FilesListPageComponent header search', () => {
         await harness.navigateByUrl('/files/storage?page=2');
         expect(search.searchTerm()).toBe('report');
 
-        await harness.navigateByUrl('/files/persistent-data');
+        await harness.navigateByUrl('/files/key-value-tables');
         expect(search.searchTerm()).toBe('');
     });
 });
@@ -70,7 +70,7 @@ describe('FilesListPageComponent header create button', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
 
-    it('has no top-right Create table button on Persistent Data, even with every permission', async () => {
+    it('has no top-right Create table button on Key-Value Tables, even with every permission', async () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([
@@ -79,7 +79,7 @@ describe('FilesListPageComponent header create button', () => {
                         component: FilesListPageComponent,
                         children: [
                             { path: 'storage', component: TabStubComponent },
-                            { path: 'persistent-data', component: TabStubComponent },
+                            { path: 'key-value-tables', component: TabStubComponent },
                         ],
                     },
                 ]),
@@ -93,7 +93,7 @@ describe('FilesListPageComponent header create button', () => {
         await harness.navigateByUrl('/files/storage');
         expect(headerButton()?.textContent?.trim()).toBe('Add files');
 
-        await harness.navigateByUrl('/files/persistent-data');
+        await harness.navigateByUrl('/files/key-value-tables');
         expect(headerButton()).toBeNull();
     });
 });

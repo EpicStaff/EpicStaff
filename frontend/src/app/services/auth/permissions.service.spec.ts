@@ -21,13 +21,13 @@ function serviceWith(readable: ResourceCode[]): PermissionsService {
 }
 
 describe('PermissionsService files tab', () => {
-    it('opens Persistent Data for a role that can read only persistent data', () => {
+    it('opens Key-Value Tables for a role that can read only key-value tables', () => {
         const service = serviceWith([ResourceCode.PersistentData]);
-        expect(service.resolveFilesTab()).toBe('/files/persistent-data');
-        expect(service.resolveDefaultRoute()).toBe('/files/persistent-data');
+        expect(service.resolveFilesTab()).toBe('/files/key-value-tables');
+        expect(service.resolveDefaultRoute()).toBe('/files/key-value-tables');
     });
 
-    it('prefers Knowledge Sources, then Storage, over Persistent Data', () => {
+    it('prefers Knowledge Sources, then Storage, over Key-Value Tables', () => {
         expect(
             serviceWith([
                 ResourceCode.PersistentData,

@@ -97,7 +97,7 @@ describe('forbiddenInterceptor', () => {
                     status_code: 403,
                     code: 'persistence_mode_denied',
                     message:
-                        "You need Persistent Data Create and Edit permission to configure a write node on the table 'profiles'.",
+                        "You need Key-Value Tables Create and Edit permission to configure a write node on the table 'profiles'.",
                 },
                 { status: 403, statusText: 'Forbidden' }
             );

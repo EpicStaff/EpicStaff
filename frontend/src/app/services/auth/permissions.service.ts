@@ -179,11 +179,11 @@ export class PermissionsService implements StorageService {
     }
 
     /** First `/files/*` tab the caller can read in the active org, or `null` if none.
-     *  Ordered like the tabs: knowledge-sources → storage → persistent-data. */
+     *  Ordered like the tabs: knowledge-sources → storage → key-value-tables. */
     resolveFilesTab(): string | null {
         if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';
         if (this.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
-        if (this.can(ResourceCode.PersistentData, ActionCode.Read)) return '/files/persistent-data';
+        if (this.can(ResourceCode.PersistentData, ActionCode.Read)) return '/files/key-value-tables';
         return null;
     }
 

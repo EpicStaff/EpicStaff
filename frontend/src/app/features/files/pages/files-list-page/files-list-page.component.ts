@@ -59,8 +59,8 @@ export class FilesListPageComponent {
             isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
         },
         {
-            label: 'Persistent Data',
-            link: 'persistent-data',
+            label: 'Key-Value Tables',
+            link: 'key-value-tables',
             isPermitted: () => this.permissionService.can(ResourceCode.PersistentData, ActionCode.Read),
         },
     ];
@@ -80,8 +80,8 @@ export class FilesListPageComponent {
         const url = this.currentUrl();
         return this.tabs.find((tab) => url?.includes(`/${tab.link}`))?.link ?? null;
     });
-    // Persistent Data searches keys in its own grid header, next to "Add entry".
-    readonly showSearch = computed(() => this.activeTabLink() !== 'persistent-data');
+    // Key-Value Tables searches keys in its own grid header, next to "Add entry".
+    readonly showSearch = computed(() => this.activeTabLink() !== 'key-value-tables');
     readonly clearSearchOnTabChange = effect(() => {
         this.activeTabLink();
         untracked(() => this.filesSearchService.clear());
