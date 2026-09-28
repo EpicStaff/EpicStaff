@@ -1,0 +1,30 @@
+[project]
+name = "sandbox-new"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "BogdanTimchenkoHYS", email = "bogdan.timchenko@hys-enterprise.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "litestar>=2.24.0",
+    "loguru>=0.7.3",
+    "miniopy-async>=1.23.5",
+    "piccolo>=1.36.0",
+    "pydantic>=2.13.5",
+    "redis>=8.1.0",
+]
+
+[project.scripts]
+sandbox-new = "sandbox_new:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "fakeredis>=2.38.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
