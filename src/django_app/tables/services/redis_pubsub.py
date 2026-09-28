@@ -8,6 +8,7 @@ from uuid import uuid4
 import redis
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, models, transaction
+from django.utils import timezone
 from loguru import logger
 from src.shared.models import (
     CodeResultData,
@@ -89,6 +90,18 @@ class RedisPubSub:
                         status=data["status"],
                         status_data=status_data,
                         token_usage=status_data["total_token_usage"],
+                        finished_at=session.finished_at
+                        or (
+                            timezone.now()
+                            if data["status"]
+                            in [
+                                Session.SessionStatus.END,
+                                Session.SessionStatus.ERROR,
+                                Session.SessionStatus.EXPIRED,
+                                Session.SessionStatus.STOP,
+                            ]
+                            else None
+                        ),
                     )
                     if updated_rows == 0:
                         logger.warning(
