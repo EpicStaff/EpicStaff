@@ -60,7 +60,7 @@ StorageAPIView (REST endpoints)
 | `tables/services/storage_service/s3_backend.py` | S3 implementation |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, archive handling) |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` — keeps DB in sync with storage mutations |
-| `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `UploadResult`, etc. |
+| `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `FileDownload`, etc. |
 | `tables/validators/file_upload_validator.py` | `FileValidator` — blocks executable uploads, scans archives |
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/views/storage_views.py` | `StorageAPIView` REST endpoints |
@@ -76,8 +76,12 @@ StorageAPIView (REST endpoints)
 `S3StorageBackend` implements `AbstractStorageBackend`:
 
 - `list_(prefix)` -- list files and folders
-- `upload(path, file)` -- upload a file
+- `upload_chunks(path, chunks, size_guard, before_commit)` -- store an async stream as multipart parts of `part_size`; `before_commit` runs before the object becomes visible and aborts it by raising
+- `upload_stream(path, file)` -- store a readable of unknown size, one part in memory
+- `put_bytes(path, data)` -- store bytes in one request
 - `download(path)` -- download a file
+- `download_range(path, first, last)` -- a byte range and its `Content-Range`
+- `unique_key(key, is_folder)` -- the key, or its first free `name (n)` variant
 - `delete(path)` -- delete a file or folder
 - `mkdir(path)` -- create a folder
 - `claim_folder(path)` -- create a folder marker only if none exists (atomic in S3); False if taken
@@ -87,8 +91,7 @@ StorageAPIView (REST endpoints)
 - `info(path)` -- file metadata
 - `head_file(path)` -- file metadata from one short, non-retried request (`None` if absent); used by the agent-write listener
 - `exists(path)` -- check existence
-- `download_zip(paths)` -- create a zip archive
-- `upload_archive(prefix, archive)` -- extract an archive (ZIP or TAR)
+- `iter_archive_members_streaming(archive, guard)` -- yield each archive member as a guarded reader, without buffering it
 
 Tests exercise the same interface against `InMemoryStorageBackend` (see `django_app/tests/storage_tests/in_memory_backend.py`), a fake that mirrors S3 semantics without touching a real bucket.
 
@@ -125,9 +128,12 @@ A plain file is capped at `DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE` (default `2gb`,
 `none` = unlimited), an archive at `DJANGO_MAX_ARCHIVE_FILE_SIZE` (default `50mb`,
 must be set); over either the upload fails with `413 upload_too_large`. A
 `Content-Length` already over the cap is rejected before the upload waits for a
-slot (`upload_admission`), and that pre-admission check does no DB work, so no
-Postgres connection is held through the wait (`asgi_upload` releases the auth
-query's connection first). The org quota is checked once the slot is held, in
+slot (`upload_admission`). So is, with one query (`_check_target`), a target
+whose parent folder is a file (`409 storage_path_is_file`) and, for a plain file,
+replacing an existing file without `FILES:UPDATE` (`403 overwrite_not_permitted`);
+the connection is released before the wait, so none is held through it. The
+overwrite is authorized again under the org row lock right before the row is
+written. The org quota is checked once the slot is held, in
 `_save_stream` before the body is read, and again on the real byte count under
 the org row lock (`record_files_within_quota`).
 

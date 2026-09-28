@@ -6,22 +6,23 @@ from asgiref.sync import ThreadSensitiveContext, sync_to_async
 from django.conf import settings
 from django.core import signals
 from django.core.handlers.asgi import ASGIHandler, ASGIRequest
-from django.db import close_old_connections
+from rbac.access.asserts import assert_org_permission
+from rbac.models.enums import Permission
 from rest_framework import status
 from rest_framework.exceptions import (
     APIException,
     AuthenticationFailed,
     MethodNotAllowed,
     NotAuthenticated,
+    PermissionDenied,
     ValidationError,
 )
 from rest_framework.request import Request
-
-# Reused so this endpoint renders errors exactly like every DRF view in the
-# project; duplicating the flattening would let the two envelopes drift apart.
-from utils.exception_handler import _flatten_detail
+from rest_framework.response import Response
+from utils.exception_handler import custom_exception_handler
 from utils.logger import logger
 
+from tables.exceptions import OverwriteNotPermitted
 from tables.services.storage_service import upload_stream_service
 from tables.services.storage_service.archive_formats import is_archive_name
 from tables.views.storage_views import StorageAPIView
@@ -56,9 +57,6 @@ async def _serve_upload(scope, receive, send) -> None:
 
         _reject_non_utf8_query(scope)
         request, org_id = await sync_to_async(_check_access)(scope)
-        # The wait for an upload slot and the body itself can take long: give the
-        # auth query's Postgres connection back now; later DB work opens a fresh one.
-        await sync_to_async(close_old_connections)()
 
         path = request.query_params.get("path", "")
         filename = request.query_params.get("filename", "")
@@ -67,14 +65,19 @@ async def _serve_upload(scope, receive, send) -> None:
 
         chunks = _request_body_chunks(receive)
         declared_size = _declared_size(request)
-        if is_archive_name(filename):
-            result = await upload_stream_service.upload_archive(
-                org_id, path, filename, chunks, declared_size
-            )
-        else:
-            result = await upload_stream_service.upload_file(
-                org_id, path, filename, chunks, declared_size
-            )
+        upload = (
+            upload_stream_service.upload_archive
+            if is_archive_name(filename)
+            else upload_stream_service.upload_file
+        )
+        result = await upload(
+            org_id,
+            path,
+            filename,
+            chunks,
+            declared_size,
+            authorize_overwrite=_overwrite_authorizer(request.user, org_id),
+        )
 
         await _send_json(send, scope, 200, {"status": "DONE", **result})
 
@@ -84,7 +87,7 @@ async def _serve_upload(scope, receive, send) -> None:
         logger.info("Streaming upload aborted: client disconnected")
     except Exception as exc:
         logger.exception("Streaming upload failed")
-        await _send_unexpected_error(send, scope, exc)
+        await _send_error(send, scope, exc)
 
 
 def _reject_non_utf8_query(scope) -> None:
@@ -120,6 +123,21 @@ def _check_access(scope) -> tuple[Request, int]:
             exc.status_code = status.HTTP_403_FORBIDDEN
         raise
     return request, view.get_active_org_id()
+
+
+def _overwrite_authorizer(user, org_id: int):
+    """The check the upload runs when a file is already at its target. Creating is
+    what the gate checked; replacing a file is an update, as rename and move are."""
+
+    def authorize_overwrite() -> None:
+        try:
+            assert_org_permission(
+                user, org_id, StorageAPIView.rbac_resource_type, Permission.UPDATE
+            )
+        except PermissionDenied as exc:
+            raise OverwriteNotPermitted() from exc
+
+    return authorize_overwrite
 
 
 def _declared_size(request: Request) -> int | None:
@@ -183,34 +201,14 @@ async def _send_json(
     await send({"type": "http.response.body", "body": body})
 
 
-def _error_headers(exc: APIException) -> dict[str, str]:
-    """The headers DRF's exception_handler plus custom_exception_handler would send:
-    WWW-Authenticate on a 401, Retry-After on a Throttled, and exc.headers."""
-    headers = {}
-    if auth_header := getattr(exc, "auth_header", None):
-        headers["WWW-Authenticate"] = auth_header
-    if wait := getattr(exc, "wait", None):
-        headers["Retry-After"] = str(wait)  # Throttled already rounds it up to whole seconds
-    headers.update(getattr(exc, "headers", None) or {})
-    return headers
-
-
-async def _send_error(send, scope, exc: APIException) -> None:
-    """Answer with the project's {status_code, code, message} error envelope."""
-    detail = exc.detail if exc.detail else exc.default_detail
-    payload = {
-        "status_code": exc.status_code,
-        "code": exc.default_code,
-        "message": _flatten_detail(detail),
-    }
-    await _send_json(send, scope, exc.status_code, payload, _error_headers(exc))
-
-
-async def _send_unexpected_error(send, scope, exc: Exception) -> None:
-    """A 500 in the envelope custom_exception_handler renders for a non-API error."""
-    payload = {
-        "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-        "code": exc.__class__.__name__,
-        "message": "Unpredictable error",
-    }
-    await _send_json(send, scope, status.HTTP_500_INTERNAL_SERVER_ERROR, payload)
+async def _send_error(send, scope, exc: Exception) -> None:
+    """Answer with what custom_exception_handler renders for `exc`, as any DRF view
+    of the project would. Like a DRF view, re-raises what it renders no answer for
+    (a non-API error while DEBUG is on)."""
+    response = await sync_to_async(custom_exception_handler)(exc, {})
+    if response is None:
+        raise exc
+    payload = response.data if isinstance(response, Response) else json.loads(response.content)
+    # _send_json sets its own Content-Type (and Content-Length).
+    headers = {name: value for name, value in response.items() if name.lower() != "content-type"}
+    await _send_json(send, scope, response.status_code, payload, headers)

@@ -175,14 +175,14 @@ The rename serializer additionally validates that the destination filename does 
 
 ## 6. Archive Handling Flow
 
-When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is.
+When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is (`upload_stream_service.upload_archive`).
 
-1. Upload receives the file
-2. `StorageManager._is_archive()` checks if it is a ZIP or TAR — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
-3. `AbstractStorageBackend._check_archive_password()` rejects password-protected ZIP files before any extraction
-4. Files are extracted into a subfolder named after the archive stem (e.g., `data.zip` → `data/`)
-5. If the subfolder already exists, the name auto-increments: `data` → `data (1)` → `data (2)`
-6. `StorageFileSync.on_upload()` is called for each extracted file to create DB records
+1. The name decides the route (`archive_formats.is_archive_name`) — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
+2. The body is buffered (up to `DJANGO_MAX_ARCHIVE_FILE_SIZE`, spilling to disk past one part)
+3. `archive_formats.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
+4. `_reserve_folder()` claims a subfolder named after the archive stem with a conditional marker write (e.g., `data.zip` → `data/`); a taken name auto-increments: `data` → `data (1)` → `data (2)`
+5. `archive_member_upload.upload_archive_members()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
+6. `quota_service.record_files_within_quota()` writes all rows under the org lock; any failure removes exactly the objects this upload created
 
 ### Document Extensions Treated as Regular Files (Not Extracted)
 

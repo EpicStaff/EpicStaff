@@ -15,7 +15,6 @@ from tables.services.storage_service.dataclasses import (
     FileListItem,
     FolderInfo,
     TreeNode,
-    UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
@@ -121,12 +120,6 @@ class StorageManager:
                 )
 
         return items
-
-    def upload(self, org_id: int, path: str, file_object) -> UploadResult:
-        result = self._backend.upload(self._build_storage_key(org_id, path), file_object)
-        relative_path = self._strip_org_prefix(org_id, result.path)
-        StorageFileSync.on_upload(org_id, relative_path, size=result.size)
-        return UploadResult(path=relative_path, size=result.size)
 
     def download(self, org_id: int, path: str, range_header: str | None = None) -> FileDownload:
         clean_path = path.rstrip("/")

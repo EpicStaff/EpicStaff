@@ -7,7 +7,6 @@ Real InMemoryStorageBackend, real StorageFileSync and quota_service, real DB.
 """
 
 import json
-from io import BytesIO
 
 import fakeredis
 import pytest
@@ -28,6 +27,7 @@ from tests.storage_tests.in_memory_backend import (
     InMemoryStorageBackend,
     client_error,
     make_s3_backend,
+    seed_file,
 )
 
 
@@ -63,7 +63,7 @@ def _object_keys(backend):
 
 class TestCopy:
     def test_copy_records_the_source_size(self, manager, org):
-        manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, org.id, "a.txt", b"0123456789")
 
         manager.copy(org.id, "a.txt", "")
 
@@ -71,8 +71,8 @@ class TestCopy:
         assert org_used_bytes(org.id) == 20
 
     def test_folder_copy_records_every_nested_size(self, manager, org):
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"abc"))
-        manager.upload(org.id, "docs/sub/b.txt", BytesIO(b"hello"))
+        seed_file(manager._backend, org.id, "docs/a.txt", b"abc")
+        seed_file(manager._backend, org.id, "docs/sub/b.txt", b"hello")
         manager.mkdir(org.id, "docs/empty")
 
         manager.copy(org.id, "docs", "")
@@ -87,7 +87,7 @@ class TestCopy:
 
     @override_settings(ORG_STORAGE_QUOTA=35)
     def test_repeated_copies_count_against_the_quota(self, manager, org):
-        manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, org.id, "a.txt", b"0123456789")
         manager.copy(org.id, "a.txt", "")
         manager.copy(org.id, "a.txt", "")
         assert org_used_bytes(org.id) == 30
@@ -99,7 +99,7 @@ class TestCopy:
 
     @override_settings(ORG_STORAGE_QUOTA=15)
     def test_copy_over_quota_is_rejected_before_copying(self, manager, backend, org):
-        manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, org.id, "a.txt", b"0123456789")
         keys_before = _object_keys(backend)
 
         with pytest.raises(StorageQuotaExceeded):
@@ -109,7 +109,7 @@ class TestCopy:
         assert _row_sizes(org) == {"a.txt": 10}
 
     def test_copy_api_over_quota_returns_413(self, auth_client, default_org, manager, monkeypatch):
-        manager.upload(default_org.id, "a.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, default_org.id, "a.txt", b"0123456789")
         monkeypatch.setattr(storage_views, "get_storage_manager", lambda: manager)
 
         with override_settings(ORG_STORAGE_QUOTA=15):
@@ -125,7 +125,7 @@ class TestCopy:
     def test_copy_api_within_quota_copies_to_the_root(
         self, auth_client, default_org, manager, monkeypatch
     ):
-        manager.upload(default_org.id, "a.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, default_org.id, "a.txt", b"0123456789")
         monkeypatch.setattr(storage_views, "get_storage_manager", lambda: manager)
 
         response = auth_client.post(
@@ -177,8 +177,8 @@ class TestCrossOrg:
     def test_cross_org_writes_over_the_destination_quota_leave_both_orgs_untouched(
         self, manager, backend, org, second_org, operation
     ):
-        manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
-        manager.upload(second_org.id, "full.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, org.id, "a.txt", b"0123456789")
+        seed_file(manager._backend, second_org.id, "full.txt", b"0123456789")
         keys_before = _object_keys(backend)
 
         with pytest.raises(StorageQuotaExceeded):
@@ -191,8 +191,8 @@ class TestCrossOrg:
     def test_cross_org_move_records_nested_sizes_and_removes_the_source(
         self, manager, backend, org, second_org
     ):
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"abc"))
-        manager.upload(org.id, "docs/sub/b.txt", BytesIO(b"hello"))
+        seed_file(manager._backend, org.id, "docs/a.txt", b"abc")
+        seed_file(manager._backend, org.id, "docs/sub/b.txt", b"hello")
         manager.mkdir(second_org.id, "inbox")
 
         manager.move_cross_org(org.id, "docs", second_org.id, "inbox")
@@ -206,8 +206,8 @@ class TestCrossOrg:
     def test_cross_org_move_rejected_under_the_lock_keeps_the_source(
         self, manager, backend, org, second_org, skip_early_quota_reject
     ):
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"abcdefgh"))
-        manager.upload(second_org.id, "full.txt", BytesIO(b"0123456789"))
+        seed_file(manager._backend, org.id, "docs/a.txt", b"abcdefgh")
+        seed_file(manager._backend, second_org.id, "full.txt", b"0123456789")
         keys_before = _object_keys(backend)
 
         with pytest.raises(StorageQuotaExceeded):
@@ -270,7 +270,7 @@ class TestAgentWrites:
         assert org_used_bytes(org.id) == 5
 
     def test_overwrite_updates_the_recorded_size(self, pubsub, backend, manager, org):
-        manager.upload(org.id, "report.txt", BytesIO(b"12"))
+        seed_file(manager._backend, org.id, "report.txt", b"12")
         backend.put_bytes(f"org_{org.id}/report.txt", b"1234567")
 
         pubsub.storage_mutations_handler(self._mutation_message(org, "report.txt"))

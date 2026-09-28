@@ -12,9 +12,9 @@ from tables.services.storage_service.dataclasses import (
     FolderInfo,
     FileListItem,
     TreeNode,
-    UploadResult,
 )
-from tables.services.storage_service.path_utils import sanitize_storage_path
+from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.quota_service import record_files_within_quota
 from tables.services.storage_service.s3_backend import S3StorageBackend
 
 MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -101,12 +101,6 @@ class InMemoryStorageBackend(AbstractStorageBackend):
                 return candidate
 
     # --- Basic operations ---
-
-    def upload(self, path: str, file_object) -> UploadResult:
-        full_path = self._full_path(path)
-        content = file_object.read()
-        self._store(full_path, (content, datetime.now(timezone.utc)))
-        return UploadResult(path=path, size=len(content))
 
     @property
     def part_size(self) -> int:
@@ -653,6 +647,13 @@ def make_s3_backend(client: FakeS3Client, part_size: int = 16 * 1024 * 1024) -> 
     backend._head_file_client = client
     backend._part_size = part_size
     return backend
+
+
+def seed_file(backend, org_id: int, path: str, content: bytes) -> None:
+    """Store a file of the org and record its row within the quota, as a finished
+    upload leaves it."""
+    backend.put_bytes(storage_key(org_id, path), content)
+    record_files_within_quota(org_id, [(path, len(content))])
 
 
 async def async_chunks(*chunks: bytes):

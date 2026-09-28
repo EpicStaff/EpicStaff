@@ -493,6 +493,28 @@ class UploadTooLarge(CustomAPIExeption):
     default_code = "upload_too_large"
 
 
+class StoragePathIsFile(CustomAPIExeption):
+    """A folder is needed at a path where a file of that name, or of one of its parent
+    folders, already exists."""
+
+    status_code = 409
+    default_code = "storage_path_is_file"
+
+    def __init__(self, path: str):
+        super().__init__(
+            f"{path!r} cannot be a folder: a file exists at that path or at one of its parents."
+        )
+
+
+class OverwriteNotPermitted(CustomAPIExeption):
+    """The upload would replace an existing file, and replacing needs FILES:UPDATE
+    on top of the FILES:CREATE that uploading does."""
+
+    status_code = 403
+    default_detail = "Replacing an existing file requires permission to edit files."
+    default_code = "overwrite_not_permitted"
+
+
 class RangeNotSatisfiable(CustomAPIExeption):
     status_code = 416
     default_detail = "Requested range starts past the end of the file."

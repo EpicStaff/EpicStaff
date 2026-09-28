@@ -7,7 +7,7 @@ from django.db import connection
 from django.test import override_settings
 from rest_framework.exceptions import ValidationError
 
-from tables.exceptions import StorageQuotaExceeded, StorageUnavailable
+from tables.exceptions import StoragePathIsFile, StorageQuotaExceeded, StorageUnavailable
 from tables.models import StorageFile
 from tables.services.storage_service import upload_stream_service as svc
 from tables.services.storage_service.base import StorageUnreachable
@@ -401,8 +401,10 @@ async def test_a_failed_unpack_removes_what_it_created_but_keeps_a_file_named_li
         backend = FailingInMemoryBackend("/report (1)/c.txt")
     else:
         backend = InMemoryStorageBackend()
-        monkeypatch.setattr(svc, "record_files_within_quota", _quota_raced)
     report_key = await _upload_report_file(org, backend)
+    if failure == "quota-race":
+        # Only the archive's row write races; the plain file above must land.
+        monkeypatch.setattr(svc, "record_files_within_quota", _quota_raced)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr(zipfile.ZipInfo("empty/"), b"")
@@ -475,7 +477,9 @@ def test_reserve_folder_moves_on_when_a_concurrent_upload_claims_the_same_name(o
     assert not any(in_transaction for _, in_transaction in backend.calls)
 
 
-def test_reserve_folder_gives_up_on_a_store_that_refuses_every_claim():
+def test_reserve_folder_takes_a_name_the_store_keeps_refusing_as_a_conflict():
+    # MinIO refuses a marker under a file at a parent path while the probe reports the
+    # name free: this must not spin through every claim into a 503.
     class _RefusesEveryClaim(InMemoryStorageBackend):
         claims = 0
 
@@ -485,8 +489,7 @@ def test_reserve_folder_gives_up_on_a_store_that_refuses_every_claim():
 
     backend = _RefusesEveryClaim()
 
-    with pytest.raises(StorageUnavailable) as caught:
+    with pytest.raises(StoragePathIsFile) as caught:
         svc._reserve_folder(7, "bundle", backend)
-    assert caught.value.status_code == 503
-    assert caught.value.headers == {"Retry-After": "30"}
-    assert backend.claims == svc._MAX_FOLDER_CLAIMS
+    assert caught.value.status_code == 409
+    assert backend.claims == svc._MAX_REFUSALS_OF_ONE_NAME

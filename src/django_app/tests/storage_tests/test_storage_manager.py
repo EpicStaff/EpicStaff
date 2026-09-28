@@ -1,12 +1,9 @@
-from io import BytesIO
-
 import pytest
 
 from tables.models import StorageFile
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FolderInfo,
-    UploadResult,
 )
 from tables.services.storage_service.manager import StorageManager
 
@@ -39,18 +36,6 @@ class TestPathHelpers:
 
 @pytest.mark.django_db
 class TestDelegation:
-    def test_upload_delegates_to_backend_with_org_key_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        mock_backend.upload.return_value = UploadResult(
-            path="org_{}/docs/f.txt".format(org.id), size=10
-        )
-        result = storage_manager.upload(org.id, "docs/f.txt", BytesIO(b"data"))
-        args = mock_backend.upload.call_args[0]
-        assert args[0] == f"org_{org.id}/docs/f.txt"
-        assert result.path == "docs/f.txt"
-        patch_sync.on_upload.assert_called_once_with(org.id, "docs/f.txt", size=10)
-
     def test_delete_delegates_to_backend_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):

@@ -14,7 +14,6 @@ from tables.services.storage_service.dataclasses import (
     FileListItem,
     FolderInfo,
     TreeNode,
-    UploadResult,
 )
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
@@ -189,8 +188,8 @@ class S3StorageBackend(AbstractStorageBackend):
 
     @_outage_as_storage_unreachable()
     def upload_stream(self, path: str, file_object) -> None:
-        """One part at a time on this thread; upload() instead uses boto's defaults
-        (8 MB chunks on up to 10 threads)."""
+        """One part at a time on this thread, instead of boto's defaults (8 MB chunks
+        on up to 10 threads)."""
         config = TransferConfig(
             multipart_threshold=self._part_size,
             multipart_chunksize=self._part_size,
@@ -203,7 +202,7 @@ class S3StorageBackend(AbstractStorageBackend):
 
     @_outage_as_storage_unreachable()
     def put_bytes(self, path: str, data: bytes) -> int:
-        """One PutObject; unlike upload() it skips the extra head_object request."""
+        """One PutObject, with no head_object request after it."""
         self.client.put_object(Bucket=self.bucket_name, Key=self._full_path(path), Body=data)
         return len(data)
 
@@ -299,13 +298,6 @@ class S3StorageBackend(AbstractStorageBackend):
                 )
 
         return results
-
-    def upload(self, path: str, file_object) -> UploadResult:
-        full_path = self._full_path(path)
-        self.client.upload_fileobj(file_object, self.bucket_name, full_path)
-        head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
-        logger.info("Uploaded S3 object {}", full_path)
-        return UploadResult(path=path, size=head["ContentLength"])
 
     def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
         full_path = self._full_path(path)

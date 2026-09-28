@@ -12,7 +12,6 @@ from tables.services.storage_service.dataclasses import (
     FileListItem,
     FolderInfo,
     TreeNode,
-    UploadResult,
 )
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
@@ -118,10 +117,6 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def list_(self, prefix: str) -> list[FileListItem]:
         """List files and folders at prefix."""
-
-    @abstractmethod
-    def upload(self, path: str, file_object) -> UploadResult:
-        """Upload file_object to path."""
 
     @property
     @abstractmethod

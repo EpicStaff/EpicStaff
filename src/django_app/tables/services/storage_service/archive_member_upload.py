@@ -1,10 +1,17 @@
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
 from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
 
 
 def upload_archive_members(
-    archive_file, guard: ArchiveExtractionGuard, backend, folder_key: str, *, workers
+    archive_file,
+    guard: ArchiveExtractionGuard,
+    backend,
+    folder_key: str,
+    *,
+    workers,
+    check_member: Callable[[str], None] | None = None,
 ) -> dict[str, int]:
     """Unpack archive_file into storage under folder_key; returns {path in archive: size}.
 
@@ -13,10 +20,13 @@ def upload_archive_members(
     part_size is sent from memory in one PUT, a bigger one is streamed, so RAM
     stays near workers x part_size. On any error the PUTs already running finish first,
     then every key this call wrote (or started to) is deleted again, so nothing
-    it created is left behind; the error is re-raised."""
+    it created is left behind; the error is re-raised. `check_member(name)` may raise
+    to reject a member before it is written."""
     started: list[str] = []
     try:
-        return _upload_members(archive_file, guard, backend, folder_key, workers, started)
+        return _upload_members(
+            archive_file, guard, backend, folder_key, workers, started, check_member
+        )
     except BaseException:
         # The pool has shut down by now, so no PUT can land after this delete.
         backend.discard_keys(started)
@@ -24,7 +34,7 @@ def upload_archive_members(
 
 
 def _upload_members(
-    archive_file, guard, backend, folder_key, workers, started: list[str]
+    archive_file, guard, backend, folder_key, workers, started: list[str], check_member
 ) -> dict[str, int]:
     """upload_archive_members without the cleanup; appends each key to `started`
     before writing it, so a failure knows what to take back."""
@@ -35,6 +45,8 @@ def _upload_members(
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="archive-put") as pool:
         try:
             for name, reader in backend.iter_archive_members_streaming(archive_file, guard):
+                if check_member is not None:
+                    check_member(name)
                 key = f"{folder_key}/{name}"
                 if name in pending:
                     # The same name twice in one archive: the later file must win.

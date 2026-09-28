@@ -12,6 +12,8 @@ export const UploadErrorCode = {
     StorageUnavailable: 'storage_unavailable',
     IdleTimeout: 'upload_idle_timeout',
     DurationExceeded: 'upload_duration_exceeded',
+    PathIsFile: 'storage_path_is_file',
+    OverwriteNotPermitted: 'overwrite_not_permitted',
 } as const;
 
 /** A file of a batch that was never sent, because an earlier file hit a stop condition. */
@@ -66,6 +68,17 @@ const TIMED_OUT: UploadErrorDescription = {
     message: 'The upload timed out before it finished. Please try again.',
     canRetry: true,
 };
+const PATH_IS_FILE: UploadErrorDescription = {
+    label: 'Folder is a file',
+    message:
+        'A file has the name of the target folder or of one of its parent folders. Rename it or choose another folder.',
+    canRetry: false,
+};
+const OVERWRITE_NOT_PERMITTED: UploadErrorDescription = {
+    label: 'Cannot replace',
+    message: 'A file with this name already exists; replacing it requires permission to edit files.',
+    canRetry: false,
+};
 const NOT_ALLOWED: UploadErrorDescription = {
     label: 'Not allowed',
     message: 'You do not have permission to upload files here.',
@@ -95,6 +108,8 @@ const DESCRIPTION_BY_CODE: Record<string, UploadErrorDescription> = {
     [UploadErrorCode.StorageUnavailable]: STORAGE_UNAVAILABLE,
     [UploadErrorCode.IdleTimeout]: TIMED_OUT,
     [UploadErrorCode.DurationExceeded]: TIMED_OUT,
+    [UploadErrorCode.PathIsFile]: PATH_IS_FILE,
+    [UploadErrorCode.OverwriteNotPermitted]: OVERWRITE_NOT_PERMITTED,
 };
 
 /** For answers without a known `code` (e.g. a proxy in front of Django answered). */

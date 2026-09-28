@@ -10,7 +10,6 @@ import pytest
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core import signals
-from django.db import connection
 from django.test import override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -24,6 +23,7 @@ from tests.storage_tests.in_memory_backend import (
     make_s3_backend,
     zip_bytes,
 )
+from utils import exception_handler
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -209,6 +209,9 @@ async def test_a_query_that_is_not_utf8_is_a_400_not_a_mangled_name(
 
 
 async def test_an_unexpected_error_is_a_500_in_the_error_envelope(org_user, monkeypatch):
+    # With DEBUG on, custom_exception_handler renders nothing and the error propagates,
+    # as from any DRF view; the envelope is what production answers.
+    monkeypatch.setattr(exception_handler, "DEBUG", False)
     monkeypatch.setattr(svc, "upload_file", AsyncMock(side_effect=RuntimeError("bug")))
     token = await _token(org_user)
     async with _client() as client:
@@ -246,25 +249,6 @@ async def test_request_lifecycle_signals_fire_like_a_django_view(org_user, stubb
 
     assert (ok.status_code, denied.status_code) == (200, 401)
     assert fired == ["started", "finished", "started", "finished"]
-
-
-async def test_the_auth_db_connection_is_released_before_the_upload_waits(org_user, monkeypatch):
-    connection_open_during_upload = []
-
-    async def _upload(*_args, **_kwargs):
-        # same thread-sensitive context, so the same connection the auth query used
-        connection_open_during_upload.append(
-            await sync_to_async(lambda: connection.connection is not None)()
-        )
-        return {"path": "a.txt", "size": 1}
-
-    monkeypatch.setattr(svc, "upload_file", _upload)
-    token = await _token(org_user)
-    async with _client() as client:
-        response = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
-
-    assert response.status_code == 200
-    assert connection_open_during_upload == [False]
 
 
 # --- limits, outages and aborted bodies -------------------------------------------

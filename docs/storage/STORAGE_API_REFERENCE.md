@@ -22,7 +22,7 @@ Access is gated by the caller's **FILES** permission in the active org:
 |---|---|
 | `READ` | list, tree, search, info, download, graph-files, upload-limits |
 | `EXPORT` | download-zip |
-| `CREATE` | upload, mkdir, add-to-graph |
+| `CREATE` | upload (replacing an existing file also needs `UPDATE`), mkdir, add-to-graph |
 | `UPDATE` | rename, move, copy |
 | `DELETE` | delete, remove-from-graph |
 
@@ -378,6 +378,14 @@ Note the exact path: there is **no trailing slash**.
 - Blocks executable extensions (see [Blocked Extensions Reference](#blocked-extensions-reference))
 - Blocks unsupported archive formats (see [Archive Format Reference](#archive-format-reference))
 - Rejects names with control characters or blank segments (file name and `path`)
+- Rejects a name segment over 255 bytes (UTF-8) and a path over 1000 characters
+  or whose storage key would exceed 1024 bytes — also for archive members and the
+  folder an archive unpacks into (`400`)
+- Rejects a `path` whose folder, or one of its parents, is an existing file
+  (`409 storage_path_is_file`)
+- Replacing an existing file needs `FILES:UPDATE` besides `FILES:CREATE`
+  (`403 overwrite_not_permitted`); an archive always unpacks into a new folder
+  and replaces nothing
 - Checks the whole archive before anything is written: executables inside,
   empty, password-protected or damaged archives, zip-slip and symlinked members,
   tar members that are not plain files or folders (hardlinks, FIFOs, devices,
@@ -402,15 +410,17 @@ Note the exact path: there is **no trailing slash**.
 }
 ```
 
-**Errors:** `400` blocked extension, malformed name or bad archive · `401` not
-authenticated (with `WWW-Authenticate`) · `403` missing `FILES:CREATE` in the
-active organization · `408` no body data for `DJANGO_UPLOAD_IDLE_TIMEOUT`
+**Errors:** `400` blocked extension, malformed or too long name/path, or bad
+archive · `401` not authenticated (with `WWW-Authenticate`) · `403` missing
+`FILES:CREATE` in the active organization (`permission_denied`), or replacing an
+existing file without `FILES:UPDATE` (`overwrite_not_permitted`) · `408` no body data for `DJANGO_UPLOAD_IDLE_TIMEOUT`
 (`upload_idle_timeout`) or the upload ran past `DJANGO_UPLOAD_MAX_DURATION`
 (`upload_duration_exceeded`) · `413` over `DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE` or
 `DJANGO_MAX_ARCHIVE_FILE_SIZE` (`upload_too_large`) or over the organization
 storage quota (`storage_quota_exceeded`) · `429` + `Retry-After` the organization already runs
 `DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG` uploads on this worker
-(`org_upload_limit_reached`) · `500` unexpected server error · `503` +
+(`org_upload_limit_reached`) · `409` the target folder or one of its parents is a
+file (`storage_path_is_file`) · `500` unexpected server error · `503` +
 `Retry-After` no upload slot freed up within `DJANGO_UPLOAD_SLOT_TIMEOUT`
 (`upload_slots_busy`) · `503` + `Retry-After: 30` object storage unreachable, or no
 folder name for an archive could be claimed in it (`storage_unavailable`).

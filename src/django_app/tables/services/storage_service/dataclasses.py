@@ -48,17 +48,6 @@ class FolderInfo:
 
 
 @dataclass(frozen=True, slots=True)
-class UploadResult:
-    """Raw result from a backend upload() call."""
-
-    path: str
-    size: int
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass(frozen=True, slots=True)
 class FileDownload:
     """Result of download(); content_range is set only when a part of the file was read."""
 
