@@ -1,7 +1,7 @@
 from application.commands import RunPrechunk
 from application.orchestrators.prechunking.base import AbstractPrechunkOrchestrator
 from application.results import PrechunkResult
-from domain.errors import NoPreviewChunksProducedError
+from domain.errors import NoPreviewChunksProducedError, NulCharacterContentError
 from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.naive.chunkers import build_chunker
 from loguru import logger
@@ -19,6 +19,8 @@ class NaivePrechunkOrchestrator(AbstractPrechunkOrchestrator):
 
         extractor = build_file_text_extractor(extension)
         text = await extractor.extract(content)
+        if "\x00" in text:
+            raise NulCharacterContentError(document_id=command.document_id, rag_id=command.rag_id)
 
         chunker = build_chunker(config.chunk_strategy, config)
         preview_chunks = await chunker.chunk(text)

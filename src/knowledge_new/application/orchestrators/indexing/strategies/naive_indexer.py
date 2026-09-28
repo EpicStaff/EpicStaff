@@ -9,6 +9,7 @@ from domain.errors import (
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     NoPreviewChunksProducedError,
+    NulCharacterContentError,
     RagNotFoundError,
     RepositoryError,
 )
@@ -53,6 +54,11 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
                 if not document.preview_chunks or document.has_config_changed():
                     extractor = build_file_text_extractor(document.extension)
                     text = await extractor.extract(document.content)
+                    if "\x00" in text:
+                        raise NulCharacterContentError(
+                            document_id=document.id,
+                            rag_id=rag.id,
+                        )
 
                     chuncker = build_chunker(document.config.chunk_strategy, document.config)
                     preview_chunks = await chuncker.chunk(text)
