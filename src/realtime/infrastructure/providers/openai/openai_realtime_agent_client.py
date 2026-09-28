@@ -225,8 +225,14 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
             )
             await self.send_function_result(call_id, str(tool_result))
         except Exception as e:
-            logger.error(f"OpenAI: Tool execution failed: {e}")
-            await self.send_function_result(call_id, f"Error: {e}")
+            # Never interpolate the exception itself into the log or the
+            # model-visible result: tool failures can carry secret plaintext
+            # or other sensitive detail (see the equivalent CodeTaskData
+            # ValidationError fix in python_code_executor_service.py).
+            logger.error(
+                "OpenAI: Tool execution failed (tool_name={}): {}", tool_name, type(e).__name__
+            )
+            await self.send_function_result(call_id, "Error: tool execution failed.")
 
         if self.is_twilio:
             # Appending a function_call_output item does NOT by itself make the

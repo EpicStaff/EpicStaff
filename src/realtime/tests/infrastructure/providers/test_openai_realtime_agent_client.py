@@ -171,8 +171,13 @@ def test_base_url_uses_custom_override():
 async def test_call_tool_error_handling_sends_error_result(client):
     """When tool execution fails, call_tool() must catch the error
     and send an error message to the API instead of raising.
-    This prevents the conversation from hanging."""
-    error_msg = "Tool execution failed"
+    This prevents the conversation from hanging.
+
+    The error text sent to the model must NOT echo the exception's own
+    message: tool failures can carry secret plaintext or other sensitive
+    detail (e.g. a CodeTaskData ValidationError repr), so only a fixed,
+    generic message is safe to surface here."""
+    error_msg = "leaked-secret-AKIAEXAMPLE1234"
     client.tool_manager_service.execute = AsyncMock(
         side_effect=RuntimeError(error_msg)
     )
@@ -185,7 +190,9 @@ async def test_call_tool_error_handling_sends_error_result(client):
     ]
     assert len(function_result_events) == 1
     assert function_result_events[0]["item"]["call_id"] == "call_1"
-    assert f"Error: {error_msg}" in function_result_events[0]["item"]["output"]
+    output = function_result_events[0]["item"]["output"]
+    assert output == "Error: tool execution failed."
+    assert error_msg not in output
 
 
 @pytest.mark.asyncio
