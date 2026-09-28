@@ -1,11 +1,13 @@
-"""Unit coverage for decide_network_policy(): a pure decision function, no
-chain, no Redis, no syscalls."""
+"""Unit coverage for the pure isolation decision functions:
+decide_network_policy() and decide_signal_isolation_policy(). No chain, no
+Redis, no syscalls."""
 
 import dataclasses
 
 import pytest
 
 from network_policy import NetworkDecision, NetworkPolicy, decide_network_policy
+from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 
 _STORAGE_PORT = 9000
 
@@ -87,3 +89,44 @@ class TestDecideNetworkPolicy:
 
         with pytest.raises(dataclasses.FrozenInstanceError):
             decision.policy = NetworkPolicy.UNRESTRICTED
+
+
+class TestDecideSignalIsolationPolicy:
+    @pytest.mark.parametrize("landlock_abi", [6, 7, 8])
+    @pytest.mark.parametrize("require_signal_isolation", [True, False])
+    def test_signal_isolation_is_always_enforced_when_the_kernel_supports_it(
+        self, landlock_abi, require_signal_isolation
+    ):
+        policy = decide_signal_isolation_policy(
+            landlock_abi=landlock_abi, require_signal_isolation=require_signal_isolation
+        )
+
+        assert policy is SignalIsolationPolicy.ENFORCE
+
+    @pytest.mark.parametrize("landlock_abi", [1, 4, 5])
+    def test_old_landlock_refuses_when_signal_isolation_is_required(self, landlock_abi):
+        policy = decide_signal_isolation_policy(
+            landlock_abi=landlock_abi, require_signal_isolation=True
+        )
+
+        assert policy is SignalIsolationPolicy.REFUSE
+
+    @pytest.mark.parametrize("landlock_abi", [1, 4, 5])
+    def test_old_landlock_runs_unisolated_when_signal_isolation_is_not_required(
+        self, landlock_abi
+    ):
+        policy = decide_signal_isolation_policy(
+            landlock_abi=landlock_abi, require_signal_isolation=False
+        )
+
+        assert policy is SignalIsolationPolicy.UNISOLATED
+
+    @pytest.mark.parametrize("require_signal_isolation", [True, False])
+    def test_no_landlock_defers_to_the_filesystem_isolation_decision(
+        self, require_signal_isolation
+    ):
+        policy = decide_signal_isolation_policy(
+            landlock_abi=0, require_signal_isolation=require_signal_isolation
+        )
+
+        assert policy is SignalIsolationPolicy.NOT_APPLICABLE
