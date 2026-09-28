@@ -23,6 +23,7 @@ import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FLOW_EDITOR_READ_ONLY } from '../../../core/providers/flow-editor-state.providers';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
@@ -177,7 +178,7 @@ export class NodePanelShellComponent {
         exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
-        if (this.isReadOnly) return false;
+        if (this.isReadOnly || this.flowReadOnly.isReadOnly()) return false;
         const panel = this.panelInstanceSig();
         return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
     });
@@ -187,11 +188,11 @@ export class NodePanelShellComponent {
     private lastHandledAutosaveTrigger = 0;
     private autosavePending = false;
     private readonly isReadOnly = inject(FLOW_EDITOR_READ_ONLY);
+    private readonly sidePanelService = inject(SidePanelService);
+    private readonly toastService = inject(ToastService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
-    constructor(
-        private sidePanelService: SidePanelService,
-        private toastService: ToastService
-    ) {
+    constructor() {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             this.tryAutosave(trigger);
@@ -282,6 +283,10 @@ export class NodePanelShellComponent {
             this.sidePanelService.clearSelection();
             return;
         }
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
             return;
         }
@@ -298,7 +303,7 @@ export class NodePanelShellComponent {
     }
 
     private saveSidePanel(): void {
-        if (this.isReadOnly) {
+        if (this.isReadOnly || this.flowReadOnly.isReadOnly()) {
             this.sidePanelService.clearSelection();
             return;
         }
@@ -339,9 +344,7 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
-        if (this.isReadOnly) {
-            return;
-        }
+        if (this.isReadOnly || this.flowReadOnly.isReadOnly()) return;
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&

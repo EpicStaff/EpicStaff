@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -10,6 +10,7 @@ import {
     ToggleSwitchComponent,
 } from '@shared/components';
 
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
 
 export interface FlowSettingsPanelData {
@@ -34,13 +35,16 @@ export interface FlowSettingsPanelData {
 export class FlowSettingsPanelComponent {
     protected readonly flowSettings = inject(FlowSettingsService);
     protected readonly dialogRef = inject(DialogRef);
-    protected readonly isReadOnly =
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly isPreview =
         inject<FlowSettingsPanelData | null>(DIALOG_DATA, { optional: true })?.readOnly ?? false;
+    /** Version preview (dialog data) or a Viewer (no Flows:Update). */
+    protected readonly isReadOnly = computed(() => this.isPreview || this.flowReadOnly.isReadOnly());
 
     protected readonly timezoneControl = new FormControl<string>(this.flowSettings.timezone(), { nonNullable: true });
 
     constructor() {
-        if (this.isReadOnly) {
+        if (this.isReadOnly()) {
             this.timezoneControl.disable({ emitEvent: false });
         }
         effect(() => {

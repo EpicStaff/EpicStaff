@@ -17,6 +17,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, JsonEditorComponent } from '@shared/components';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import {
     EMPTY_VALIDATION_RESULT,
     extractPathsFromArray,
@@ -69,7 +70,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     Here you can define your domain variables that will be available throughout your workflow execution.
                 </div>
 
-                @if (!isReadOnly) {
+                @if (!isReadOnly()) {
                     <div class="autocomplete-hint">
                         <app-svg-icon
                             icon="bulb"
@@ -96,11 +97,11 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     <app-json-editor
                         class="json-editor"
                         [jsonData]="initialStateJson"
+                        [readonly]="isReadOnly()"
                         (jsonChange)="onInitialStateChange($event)"
                         (validationChange)="onJsonValidChange($event)"
                         (editorReady)="onEditorReady($event)"
                         [fullHeight]="true"
-                        [readonly]="isReadOnly"
                     ></app-json-editor>
                 </div>
             </div>
@@ -264,9 +265,12 @@ export class DomainDialogComponent implements OnDestroy {
     public isJsonValid: boolean = true;
     public validationResult = signal<PersistentVariablesValidationResult>(EMPTY_VALIDATION_RESULT);
 
-    public readonly isReadOnly: boolean;
     public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
     public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
+
+    /** Version preview (dialog data) or a Viewer (no Flows:Update). */
+    public readonly isReadOnly = computed(() => (this.data?.readOnly ?? false) || this.flowReadOnly.isReadOnly());
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
@@ -297,7 +301,6 @@ export class DomainDialogComponent implements OnDestroy {
         private dialogRef: DialogRef<Record<string, unknown> | null>,
         @Inject(DIALOG_DATA) public data: DomainDialogData
     ) {
-        this.isReadOnly = data?.readOnly ?? false;
         this.initializeJsonEditor();
 
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
@@ -382,7 +385,7 @@ export class DomainDialogComponent implements OnDestroy {
     }
 
     public close(): void {
-        if (this.isReadOnly) {
+        if (this.isReadOnly()) {
             this.dialogRef.close(null);
             return;
         }
@@ -394,6 +397,7 @@ export class DomainDialogComponent implements OnDestroy {
 
     public onEditorReady(editor: import('monaco-editor').editor.IStandaloneCodeEditor): void {
         this.monacoEditor = editor;
+        if (this.isReadOnly()) return;
         this.setupAutocomplete();
     }
 

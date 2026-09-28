@@ -19,6 +19,7 @@ Anonymous → 401. Authenticated without the required permission → 403
 | POST | `/api/admin/organizations/` | **superadmin** | Create an organization |
 | POST | `/api/admin/organizations/{id}/deactivate/` | **superadmin** | Soft-deactivate |
 | POST | `/api/admin/organizations/{id}/reactivate/` | **superadmin** | Re-activate |
+| DELETE | `/api/admin/organizations/{id}/` | **superadmin**, JWT only | Permanently delete an organization |
 
 `ORGANIZATIONS.READ` gates only this **admin/settings surface**. Seeing which
 orgs you belong to (the org switcher, `/api/profile/` `memberships[]`) comes
@@ -96,6 +97,96 @@ to leave the system with zero active organizations → **400
 Deactivating an org removes it from delegated admins' scope — only a superadmin
 can manage or reactivate an inactive org.
 
+## DELETE `/api/admin/organizations/{id}/` (superadmin)
+
+Permanently removes an organization **and everything it owns**. Irreversible,
+and far larger in blast radius than `deactivate` — every flow, session,
+agent, crew, tool, LLM and embedding config, secret, knowledge collection,
+storage entry, custom role and membership in that organization is destroyed,
+along with its files in object storage. Nothing is transferable to another
+organization.
+
+Superadmin only, and **JWT only**: API keys are refused (403).
+
+**Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
+anything else, including absent, → perform the delete).
+
+**Request body (real delete only):**
+
+```json
+{"verification_phrase": "delete-Acme Inc"}
+```
+
+The phrase is `delete-` followed by the organization's `name`, matched exactly:
+case-sensitive, no trimming. It is checked on the current value when the
+delete runs, so a rename between preview and delete makes it fail. The body is
+ignored when `dry_run=true`, so a preview needs none. Swagger does not render
+request bodies on DELETE; send the body from an API client (e.g. Postman) as
+raw JSON.
+
+Returns **200** in both modes:
+
+```json
+{
+  "organization_id": 7,
+  "affected_resources": {
+    "sessions": 340,
+    "flow": 12,
+    "storage_files": 219
+  }
+}
+```
+
+`affected_resources` maps a short resource name to how many of that
+resource the delete removed (or would remove, under a preview). Only
+nonzero resources appear. The organization row itself is not listed — it
+is identified by `organization_id`. Most of the report is built from
+Django's own deletion collector, which counts exactly what the real call
+removes for every model it can reach by walking foreign keys from the
+organization. Four kinds of rows sit outside that walk and are swept
+separately, before the cascade runs: knowledge collection content
+(`SourceCollection`, its documents, and any `DocumentContent` left
+unreferenced elsewhere — the collector can see the first two but never the
+content, since that FK points the other way) and deprecated, non-org-scoped
+`Task`/`TemplateAgent`/`RealtimeAgentChat` rows currently linked to the
+organization (rather than left behind with their FKs nulled, which is what
+the collector alone would do). Their counts are folded into
+`affected_resources` identically whether `dry_run` is `true` or `false`, so
+for the resources these sweeps cover, a preview and the real delete always
+agree. `storage_files` is a single
+combined count: the MinIO objects under the organization's storage prefix,
+plus the `ConversationRecording` audio files orphaned by the swept
+`RealtimeAgentChat` rows.
+
+Running sessions in the organization are asked to stop via the same
+best-effort, fire-and-forget mechanism used elsewhere in the platform (Redis
+pub/sub, no delivery confirmation); a session owned by a crew replica other
+than the one currently listening for it may keep running until that
+replica's own reconciliation catches up. This delete does not wait for or
+verify that sessions actually stopped, and there is no need to deactivate
+the organization first.
+
+- `400 default_organization_not_deletable` — the org carries the
+  `is_default` flag. Promote another organization to default first.
+- `400 last_organization` — would leave the platform with no active organizations.
+- `400 invalid_verification_phrase` — real delete only: `verification_phrase`
+  is missing or does not match the organization's current name. Nothing is deleted.
+- `400 invalid` — real delete only: the body is not a JSON object, or
+  `verification_phrase` is not a string.
+- `404 organization_not_found` — unknown id.
+
+Platform-wide default configs are global, not org-scoped. If a superadmin
+pointed a default (agent LLM, memory embedding, voice model, …) at a config
+owned by this organization, that default is reset to null and must be set
+again.
+
+Blockers apply in **both** modes, so `dry_run=true` is a safe pre-flight
+check. The verification phrase is the exception: it is checked only on the
+real delete, after the `404` and the blockers above.
+
+Built-in roles are global (`org=NULL`) and survive; only the organization's
+own custom roles are removed.
+
 ---
 
 ## Notes for the FE
@@ -105,5 +196,7 @@ can manage or reactivate an inactive org.
 | Organizations tab visibility | Show it where the caller holds `ORGANIZATIONS.READ` (or is superadmin). Plain members don't see it, but still see their orgs in the switcher. |
 | Rename button | Enable per row where the caller holds `ORGANIZATIONS.UPDATE`. |
 | Create / deactivate | Superadmin-only — hide for everyone else. |
+| Delete button | Superadmin-only — hide for everyone else. Always call with `?dry_run=true` first and show the user the row counts before the real call. Keep the real delete disabled until the user types `delete-<organization name>` exactly, and send it as `verification_phrase`. |
+| Delete vs deactivate | Deactivate is reversible and preserves everything. Delete is permanent and destroys all org content. Do not present them as neighbouring actions. |
 | Default org | Identified by an internal `is_default` flag, not by name; renaming is safe. |
 | 401 vs 403 | 401 = no/expired credential. 403 = valid credential, insufficient permission. |

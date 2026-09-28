@@ -5,24 +5,27 @@
     [disabled]="isDisabled()"
     [class.tz-selector__btn--open]="open()"
     [class.tz-selector__btn--placeholder]="!selectedValue()"
+    [class.tz-selector__btn--readonly]="readonly()"
     (click)="toggle()"
 >
     <span class="tz-selector__text">{{ selectedOption()?.displayLabel ?? selectedValue() ?? 'Select timezone' }}</span>
-    <svg
-        class="tz-selector__chevron"
-        [class.tz-selector__chevron--open]="open()"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-    >
-        <path
-            d="M6 9l6 6 6-6"
-            stroke="currentColor"
-            stroke-width="2"
-            fill="none"
-            stroke-linecap="round"
-        />
-    </svg>
+    @if (!readonly()) {
+        <svg
+            class="tz-selector__chevron"
+            [class.tz-selector__chevron--open]="open()"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+        >
+            <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+            />
+        </svg>
+    }
 </button>
 
 <ng-template #dropdownTemplate>

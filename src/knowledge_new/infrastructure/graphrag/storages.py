@@ -20,17 +20,17 @@ def create_storage_config(
     if subdir:
         prefix += f"/{subdir}"
     return StorageConfig(
-        type="minio",
+        type="s3",
         prefix=prefix,
-        endpoint=settings.MINIO_ENDPOINT,
-        bucket=settings.MINIO_BUCKET,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
+        endpoint=settings.STORAGE_ENDPOINT,
+        bucket=settings.KNOWLEDGE_BUCKET,
+        access_key=settings.STORAGE_ACCESS_KEY,
+        secret_key=settings.STORAGE_SECRET_KEY,
         encoding=settings.GRAPHRAG_ENCODING,
     )
 
 
-class MinioStorage(Storage):
+class S3Storage(Storage):
     _MISSING_CODES = frozenset(("NoSuchKey", "NoSuchObject", "NoSuchBucket"))
 
     def __init__(
@@ -166,7 +166,7 @@ class MinioStorage(Storage):
         if name is None:
             return self
 
-        return MinioStorage(
+        return S3Storage(
             endpoint=self._endpoint,
             bucket=self._bucket,
             prefix=self._full_key(name),
@@ -205,4 +205,4 @@ class MinioStorage(Storage):
         return get_timestamp_formatted_with_local_tz(stat.last_modified)
 
 
-register_storage("minio", MinioStorage)
+register_storage("s3", S3Storage)

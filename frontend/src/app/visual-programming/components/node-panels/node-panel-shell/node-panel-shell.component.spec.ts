@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
 import { EndNodeModel, NodeModel } from '../../../core/models/node.model';
 import { FLOW_EDITOR_READ_ONLY } from '../../../core/providers/flow-editor-state.providers';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { NodePanelShellComponent } from './node-panel-shell.component';
@@ -27,7 +29,11 @@ const endNode: EndNodeModel = {
 
 async function mount(readOnly: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
     TestBed.configureTestingModule({
-        providers: [{ provide: FLOW_EDITOR_READ_ONLY, useValue: readOnly }],
+        providers: [
+            { provide: FLOW_EDITOR_READ_ONLY, useValue: readOnly },
+            // A user who may edit flows; Viewer read-only is FlowReadOnlyService's own concern.
+            { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false), notifyBlocked: vi.fn() } },
+        ],
         // The shell passes `graphId` to every panel; the End panel does not declare it
         // (a dev-mode console error in the app, a thrown error under TestBed's default).
         errorOnUnknownProperties: false,

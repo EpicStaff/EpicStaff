@@ -17,6 +17,15 @@
             fill: var(--vp-line-alignment-color);
         }
     }
+    .editor-wrapper.readonly {
+        .f-connection {
+            .f-connection-selection {
+                cursor: default;
+                pointer-events: none;
+            }
+        }
+    }
+
     .f-connection {
         z-index: 2;
         .f-connection-drag-handle {
@@ -131,6 +140,10 @@
             .f-connection-path {
                 stroke-dasharray: 6 4;
             }
+        }
+
+        &.is-reassign-follower {
+            opacity: 0.3;
         }
 
         .connection-center {

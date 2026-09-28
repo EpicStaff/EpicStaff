@@ -184,7 +184,12 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
   `X-Organization-Id` header the caller sends — identical to that owner authenticating with
   a JWT. Key management endpoints (`/api/profile/api-keys/`,
   `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
-  [api_keys.md](api_keys.md).
+  [api_keys.md](api_keys.md). Permanent deletion (`DELETE /api/admin/users/{id}/`,
+  `DELETE /api/admin/organizations/{id}/`) is JWT-only for the same reason
+  (`DenyApiKeyAuth`): a leaked credential must not be able to erase accounts or
+  tenants. These endpoints are superadmin-only by construction — they add no
+  `ResourceType` and no `Permission` bit, so no custom role can ever be granted
+  them.
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `rbac/identity/tickets.py`): `POST /api/auth/sse-ticket/`

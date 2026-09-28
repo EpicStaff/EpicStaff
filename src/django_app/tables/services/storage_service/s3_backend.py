@@ -16,9 +16,9 @@ from utils.logger import logger
 
 class S3StorageBackend(AbstractStorageBackend):
     """
-    Storage backend for S3-compatible services (MinIO, AWS S3, etc.).
+    Storage backend for S3-compatible services (RustFS, AWS S3, etc.).
 
-    Pass endpoint_url for MinIO or any non-AWS S3-compatible service.
+    Pass endpoint_url for RustFS or any non-AWS S3-compatible service.
     Leave endpoint_url as None to connect to AWS S3 directly.
     """
 
@@ -173,6 +173,29 @@ class S3StorageBackend(AbstractStorageBackend):
                     Delete={"Objects": objects},
                 )
                 logger.info("Deleted {} S3 objects under prefix {}", len(objects), prefix)
+
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
+        full_prefix = self._full_path(prefix)
+        if not full_prefix or full_prefix == "/":
+            raise ValueError(
+                "delete_prefix() refused an empty resolved prefix — this "
+                "would delete every object in the bucket."
+            )
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if objects:
+                self.client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={"Objects": objects},
+                )
+                logger.info(
+                    "Deleted {} S3 objects under prefix {}", len(objects), full_prefix
+                )
 
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)

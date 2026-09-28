@@ -8,8 +8,6 @@ created via the ApiKey model directly.
 """
 
 import io
-import pathlib
-import shutil
 
 import pytest
 from django.core.cache import cache
@@ -103,15 +101,9 @@ def api_client():
 
 @pytest.fixture
 def tmp_media_root(settings, tmp_path):
-    """Point MEDIA_ROOT at the project's tmp dir for the test, and wipe the
-    avatars/ subtree on exit. The project's tmp_path fixture in
-    tests/conftest.py is a fixed path that does NOT auto-clean, so without
-    this finalizer test artifacts accumulate."""
+    """Point MEDIA_ROOT at pytest's per-test temp dir, which it cleans up on its own."""
     settings.MEDIA_ROOT = str(tmp_path)
     yield tmp_path
-    avatars_dir = pathlib.Path(tmp_path) / "avatars"
-    if avatars_dir.exists():
-        shutil.rmtree(avatars_dir, ignore_errors=True)
 
 
 @pytest.fixture

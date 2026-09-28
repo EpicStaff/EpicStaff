@@ -40,6 +40,7 @@ import {
 import { CustomPortId } from '../../core/models/port.model';
 import { FLOW_EDITOR_READ_ONLY } from '../../core/providers/flow-editor-state.providers';
 import { FlowService } from '../../services/flow.service';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
@@ -73,6 +74,7 @@ export class FlowBaseNodeComponent {
     private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
     protected readonly isReadOnly = inject(FLOW_EDITOR_READ_ONLY);
+    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{

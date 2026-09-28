@@ -79,6 +79,7 @@ import {
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
+import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { buildFlowModelFromGraphDto, normalizeFlowPorts } from '../../../../visual-programming/utils/load';
@@ -122,6 +123,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
     private readonly injector = inject(Injector);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -430,11 +432,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public onHeaderSave(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         this.flowGraphComponent?.emitSave();
     }
 
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
 
         this.cleanupCdtGridState(flowState);
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
@@ -563,6 +573,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return EMPTY;
+        }
         if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
             return EMPTY;
         }
@@ -834,6 +848,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             event.preventDefault();
             if (this.previewedVersion()) {
                 this.toastService.info('Exit preview mode to save');
+                return;
+            }
+            if (this.flowReadOnly.isReadOnly()) {
+                this.flowReadOnly.notifyBlocked();
                 return;
             }
             this.onHeaderSave();
