@@ -11,10 +11,6 @@ users exposed while a fix is being written.
 
 Instead, email **security@epicstaff.com** with `SECURITY` in the subject line.
 
-If you would rather not use email, you can use GitHub's private vulnerability
-reporting on this repository (the **Report a vulnerability** button under the
-*Security* tab), which opens a channel visible only to the maintainers.
-
 ### What to include
 
 You do not need all of this, and a partial report is much better than no report.
