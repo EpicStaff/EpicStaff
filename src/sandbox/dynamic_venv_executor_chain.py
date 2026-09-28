@@ -493,14 +493,14 @@ except Exception:
         )
         if signal_isolation_policy is SignalIsolationPolicy.REFUSE:
             logger.error(
-                "Sandbox IPC isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
+                "Sandbox signal isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
                 isolation_abi,
                 context["execution_id"],
             )
             return CodeResultData(
                 execution_id=context["execution_id"],
                 stderr=(
-                    "Sandbox IPC isolation unavailable: executions require Landlock ABI 6+ "
+                    "Sandbox signal isolation unavailable: executions require Landlock ABI 6+ "
                     "(Linux 6.12+) to stop them signalling each other; refusing to execute. "
                     f"Set {settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR}=false to run without it."
                 ),
@@ -509,7 +509,7 @@ except Exception:
             )
         if signal_isolation_policy is SignalIsolationPolicy.UNISOLATED:
             logger.warning(
-                "Sandbox IPC isolation unavailable (Landlock ABI {} < 6); executing {} "
+                "Sandbox signal isolation unavailable (Landlock ABI {} < 6); executing {} "
                 "UNISOLATED because {}=false: it can signal other executions.",
                 isolation_abi,
                 context["execution_id"],
