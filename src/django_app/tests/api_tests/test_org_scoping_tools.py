@@ -7,8 +7,8 @@ from tables.models.python_models import (
     PythonCodeTool,
     PythonCodeToolConfig,
 )
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- fixtures ----

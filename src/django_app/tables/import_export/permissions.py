@@ -5,8 +5,9 @@ from the map are not permission-gated on import (e.g. SESSION is not importable)
 Tags map to their parent resource; provider models map to LLM_CONFIGS.
 """
 
+from rbac.models.enums import ResourceType
+
 from tables.import_export.enums import EntityType
-from tables.models.rbac_models.rbac_enums import ResourceType
 
 ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.AGENT: ResourceType.AGENTS,

@@ -9,6 +9,7 @@
         (contextmenu)="onContextMenu($event)"
         (click)="onFlowClick($event)"
         (pointerdown)="onFlowPointerDown($event)"
+        (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
         fDraggable
         [fMultiSelectTrigger]="multiSelectTrigger"
@@ -149,10 +150,14 @@
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
-                    [fReassignDisabled]="flowReadOnly.isReadOnly()"
+                    [fReassignableStart]="true"
+                    [fReassignDisabled]="
+                        flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
+                    "
                     [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
+                    [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()

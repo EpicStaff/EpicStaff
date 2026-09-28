@@ -2,8 +2,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Graph
-from tables.models.rbac_models import Organization, OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
 
 # These tests exercise the RBAC gating on StorageAPIView without touching the

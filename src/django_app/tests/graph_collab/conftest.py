@@ -67,7 +67,7 @@ def second_user(db):
 def fake_redis():
     fake = fakeredis.FakeStrictRedis()
     with unittest.mock.patch(
-        "tables.services.rbac.ticket_service.get_redis_connection",
+        "rbac.identity.tickets.get_redis_connection",
         return_value=fake,
     ):
         yield fake

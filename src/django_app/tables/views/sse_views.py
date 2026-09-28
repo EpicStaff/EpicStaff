@@ -14,8 +14,8 @@ from rest_framework.views import APIView
 from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
-from tables.services.rbac.session_access import assert_session_org_access
 from tables.services.redis_service import RedisService
+from tables.services.session_access import assert_session_org_access
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
 from tables.utils.mixins import SSEMixin
 

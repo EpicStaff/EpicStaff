@@ -1,6 +1,5 @@
 from django.db import models
-
-from tables.models.rbac_models.org_scoped import OrgScopedModel
+from rbac.models.org_scoped import OrgScopedModel
 
 from .base_models import MetadataMixin, TimestampMixin
 

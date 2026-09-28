@@ -2,8 +2,8 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import ApiKey, OrganizationUser
-from tables.services.rbac.api_key.generator import ApiKeyGenerator
+from rbac.models import ApiKey, OrganizationUser
+from rbac.identity.api_keys.generator import ApiKeyGenerator
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

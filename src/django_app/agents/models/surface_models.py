@@ -21,7 +21,7 @@ class StorageAccess(models.TextChoices):
 
 class Surface(TimestampMixin, models.Model):
     organization = models.ForeignKey(
-        "tables.Organization",
+        "rbac.Organization",
         on_delete=models.CASCADE,
         related_name="surfaces",
         help_text="Organization this surface belongs to.",

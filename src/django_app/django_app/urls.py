@@ -18,116 +18,11 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
-from tables.views.api_key_views import (
-    ProfileApiKeyDetailView,
-    ProfileApiKeyRevokeView,
-    ProfileApiKeysView,
-)
-from tables.views.auth_views import (
-    AdminPasswordResetView,
-    ApiKeyValidateView,
-    CookieTokenRefreshView,
-    FirstSetupView,
-    LoginView,
-    LogoutView,
-    PasswordResetConfirmView,
-    PasswordResetRequestView,
-    ResetUserView,
-    SseTicketView,
-    SwaggerTokenView,
-    TokenIntrospectView,
-    WsTicketView,
-)
-from tables.views.permission_views import (
-    MyOrgsPermissionsView,
-    MyPermissionsView,
-    PermissionCatalogView,
-)
-from tables.views.user_profile_views import (
-    PasswordChangeConfirmView,
-    PasswordChangeRequestView,
-    ProfileAvatarView,
-    ProfileView,
-)
 
 from .yasg import urlpatterns as doc_urls
 
 urlpatterns = [
-    path("api/auth/login/", LoginView.as_view(), name="login"),
-    path("api/auth/logout/", LogoutView.as_view(), name="logout"),
-    path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="refresh"),
-    path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
-    path("api/auth/ws-ticket/", WsTicketView.as_view(), name="ws_ticket"),
-    path("api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"),
-    path(
-        "api/auth/api-key/validate/",
-        ApiKeyValidateView.as_view(),
-        name="api_key_validate",
-    ),
-    path("api/auth/first-setup/", FirstSetupView.as_view(), name="first_setup"),
-    path("api/auth/reset-user/", ResetUserView.as_view(), name="reset_user"),
-    path(
-        "api/auth/password-reset/request/",
-        PasswordResetRequestView.as_view(),
-        name="password_reset_request",
-    ),
-    path(
-        "api/auth/password-reset/confirm/",
-        PasswordResetConfirmView.as_view(),
-        name="password_reset_confirm",
-    ),
-    path(
-        "api/auth/admin/password-reset/",
-        AdminPasswordResetView.as_view(),
-        name="admin_password_reset",
-    ),
-    path("api/auth/swagger-token/", SwaggerTokenView.as_view(), name="swagger_token"),
-    path("api/profile/", ProfileView.as_view(), name="profile"),
-    path(
-        "api/profile/avatar/",
-        ProfileAvatarView.as_view(),
-        name="profile_avatar",
-    ),
-    path(
-        "api/profile/password-change/request/",
-        PasswordChangeRequestView.as_view(),
-        name="profile_password_change_request",
-    ),
-    path(
-        "api/profile/password-change/confirm/",
-        PasswordChangeConfirmView.as_view(),
-        name="profile_password_change_confirm",
-    ),
-    path(
-        "api/profile/api-keys/",
-        ProfileApiKeysView.as_view(),
-        name="profile_api_keys",
-    ),
-    path(
-        "api/profile/api-keys/<int:key_id>/",
-        ProfileApiKeyDetailView.as_view(),
-        name="profile_api_key_detail",
-    ),
-    path(
-        "api/profile/api-keys/<int:key_id>/revoke/",
-        ProfileApiKeyRevokeView.as_view(),
-        name="profile_api_key_revoke",
-    ),
-    path(
-        "api/permissions/catalog/",
-        PermissionCatalogView.as_view(),
-        name="permissions_catalog",
-    ),
-    path(
-        "api/permissions/me/",
-        MyPermissionsView.as_view(),
-        name="permissions_me",
-    ),
-    path(
-        "api/permissions/me/orgs/",
-        MyOrgsPermissionsView.as_view(),
-        name="permissions_me_orgs",
-    ),
+    path("", include("rbac.urls")),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),
     path("ht/", include("health_check.urls")),
