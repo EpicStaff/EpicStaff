@@ -138,6 +138,10 @@ class AbstractStorageBackend(ABC):
         """Delete file or folder (folder = recursive)."""
 
     @abstractmethod
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
+
+    @abstractmethod
     def mkdir(self, path: str) -> None:
         """Create a folder."""
 
