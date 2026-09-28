@@ -19,7 +19,7 @@ class ResourceType(models.TextChoices):
     VOICE = "voice", "Voice"
     SURFACES = "surfaces", "Surfaces"
     WEBHOOKS = "webhooks", "Webhooks"
-    PERSISTENT_DATA = "persistent_data", "Persistent Data"
+    PERSISTENT_DATA = "persistent_data", "Key-Value Tables"
 
 
 class Permission(IntFlag):

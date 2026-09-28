@@ -99,12 +99,12 @@ def _entries_of(mode: str) -> list[dict]:
 
 
 DENIED_MESSAGES = {
-    "read": "You need Persistent Data View permission to configure a read node on the table 'Customers'.",
+    "read": "You need Key-Value Tables View permission to configure a read node on the table 'Customers'.",
     "write": (
-        "You need Persistent Data Create and Edit permission to configure a write node on the "
+        "You need Key-Value Tables Create and Edit permission to configure a write node on the "
         "table 'Customers'."
     ),
-    "delete": "You need Persistent Data Delete permission to configure a delete node on the table 'Customers'.",
+    "delete": "You need Key-Value Tables Delete permission to configure a delete node on the table 'Customers'.",
 }
 
 
@@ -644,7 +644,7 @@ def test_more_than_500_entries_are_rejected(auth_client, graph, table, mode):
                "persistence_node_list": [_node_payload(graph, table, mode=mode, entries=entries)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "A persistence node can have at most 500 keys." in str(response.data)
+    assert "A Key-Value node can have at most 500 keys." in str(response.data)
     assert not PersistenceNode.objects.filter(graph=graph).exists()
 
 

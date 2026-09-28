@@ -310,7 +310,7 @@ async def test_key_placeholder_value_with_braces_is_rejected():
         await run(node, {"name": "a{b}"})
 
     assert str(error.value) == (
-        "Persistence node 'persist_1': key 'profile_{variables.name}' resolved to "
+        "Key-Value node 'persist_1': key 'profile_{variables.name}' resolved to "
         f"'profile_a{{b}}', which is not a valid key: {persistence_node.KEY_RULE}."
     )
     client.read.assert_not_awaited()
@@ -582,7 +582,7 @@ async def test_render_key_rejects_too_long_key():
     with pytest.raises(PersistenceNodeError) as error:
         await run(node, {"long": "x" * 513})
     assert str(error.value) == (
-        "Persistence node 'persist_1': key '{variables.long}' resolved to "
+        "Key-Value node 'persist_1': key '{variables.long}' resolved to "
         f"'{'x' * 100}…', which is not a valid key: use only letters, digits and _, "
         "don't start with a digit, and keep it to at most 512 characters."
     )
@@ -634,7 +634,7 @@ async def test_invalid_resolved_key_is_rejected_before_calling_the_table(mode, r
 
     shown = resolved if len(resolved) <= 100 else f"{resolved[:100]}…"
     assert str(error.value) == (
-        f"Persistence node 'persist_1': key '{{variables.key}}' resolved to {shown!r}, "
+        f"Key-Value node 'persist_1': key '{{variables.key}}' resolved to {shown!r}, "
         f"which is not a valid key: {persistence_node.KEY_RULE}."
     )
     getattr(client, mode).assert_not_awaited()
@@ -662,7 +662,7 @@ async def test_node_without_table_raises():
 @pytest.mark.asyncio
 async def test_client_errors_are_wrapped_with_node_context():
     client = make_client()
-    client.read.side_effect = ClientValidationError("Persistence table 3 not found.")
+    client.read.side_effect = ClientValidationError("Key-value table 3 not found.")
     node = make_node("read", [{"value": "variables.out", "key": "k"}], client)
     with pytest.raises(PersistenceNodeError, match="persist_1.*not found"):
         await run(node, {})
@@ -858,7 +858,7 @@ async def test_write_accepts_canonical_list_indexes():
 @pytest.mark.parametrize("mode", ["read", "write", "delete"])
 async def test_client_error_emits_no_persistence_message(mode):
     client = make_client()
-    getattr(client, mode).side_effect = ClientValidationError("Persistence table 3 not found.")
+    getattr(client, mode).side_effect = ClientValidationError("Key-value table 3 not found.")
     node = make_node(mode, [{"key": "k", "value": "variables.a"}] if mode != "delete" else [{"key": "k"}], client)
     writer = MagicMock()
 

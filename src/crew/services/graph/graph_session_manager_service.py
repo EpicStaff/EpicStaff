@@ -87,7 +87,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice.
             persistence_client (PersistenceClient | None): The client used by PersistenceNode to read/write/delete
-                persistence table entries.
+                key-value table entries.
         """
 
         self.redis_service = redis_service

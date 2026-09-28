@@ -69,7 +69,7 @@ class PersistenceEntriesValidator:
             raise serializers.ValidationError({"entries": "Must be a list."})
         if len(entries) > MAX_KEYS_PER_REQUEST:
             raise serializers.ValidationError(
-                {"entries": f"A persistence node can have at most {MAX_KEYS_PER_REQUEST} keys."}
+                {"entries": f"A Key-Value node can have at most {MAX_KEYS_PER_REQUEST} keys."}
             )
         errors: list[str] = []
         # Entry index by exact key, for write entries only.

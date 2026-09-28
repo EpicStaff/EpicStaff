@@ -50,7 +50,7 @@ class EntryLookup:
 
 
 class PersistenceTableService:
-    """Owns every rule about persistence tables and their entries."""
+    """Owns every rule about key-value tables and their entries."""
 
     def read(self, table: PersistenceTable, keys: list[str]) -> dict[str, Any]:
         for key in keys:

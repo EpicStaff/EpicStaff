@@ -66,7 +66,7 @@ class SessionGraphBuilder:
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
             persistence_client (PersistenceClient | None): The client used by PersistenceNode to read/write/delete
-                persistence table entries. Required if the graph schema contains persistence nodes.
+                key-value table entries. Required if the graph schema contains Key-Value nodes.
         """
 
         self.session_id = session_id
@@ -278,7 +278,7 @@ class SessionGraphBuilder:
 
         if schema.persistence_node_list and self.persistence_client is None:
             raise RuntimeError(
-                f"Graph '{schema.name}' contains {len(schema.persistence_node_list)} persistence "
+                f"Graph '{schema.name}' contains {len(schema.persistence_node_list)} Key-Value "
                 "node(s) but no persistence_client was provided to SessionGraphBuilder."
             )
 

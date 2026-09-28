@@ -200,11 +200,11 @@ PERMITTED_MODES = {
     R | D: {"read", "delete"},
 }
 DENIED_MESSAGES = {
-    "read": "You need Persistent Data View permission to configure a read node on the table "
+    "read": "You need Key-Value Tables View permission to configure a read node on the table "
     "'Acme customers'.",
-    "write": "You need Persistent Data Create and Edit permission to configure a write node on "
+    "write": "You need Key-Value Tables Create and Edit permission to configure a write node on "
     "the table 'Acme customers'.",
-    "delete": "You need Persistent Data Delete permission to configure a delete node on the "
+    "delete": "You need Key-Value Tables Delete permission to configure a delete node on the "
     "table 'Acme customers'.",
 }
 

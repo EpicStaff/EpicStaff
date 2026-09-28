@@ -88,15 +88,15 @@ class PersistenceClient:
         assert self._client is not None, "PersistenceClient.start() must be called first"
         if not self._api_key:
             raise ClientNotAvailableError(
-                "DJANGO_API_KEY is not configured; persistence nodes can't reach Django."
+                "DJANGO_API_KEY is not configured; Key-Value nodes can't reach Django."
             )
         url = f"internal/sessions/{session_id}/persistence-tables/{table_id}/{operation}/"
         try:
             response = await self._send(url, payload)
         except httpx.TimeoutException as e:
-            raise ClientTimeoutError("Django persistence route timed out.") from e
+            raise ClientTimeoutError("Django did not respond in time.") from e
         except httpx.RequestError as e:
-            raise ClientNotAvailableError("Django persistence route is unreachable.") from e
+            raise ClientNotAvailableError("Django is unreachable.") from e
         if response.status_code >= 500:
             raise ClientBadGatewayError(response.text)
         if response.status_code >= 400:

@@ -521,7 +521,7 @@ class PersistenceModeDeniedError(CustomAPIExeption):
 
     def __init__(self, mode: str, table_name: str):
         super().__init__(
-            f"You need Persistent Data {self._PERMISSION_LABELS[mode]} permission to configure "
+            f"You need Key-Value Tables {self._PERMISSION_LABELS[mode]} permission to configure "
             f"a {mode} node on the table '{table_name}'.",
             code=self.default_code,
         )
@@ -540,4 +540,4 @@ class PersistenceTableNotFoundError(CustomAPIExeption):
     default_code = "persistence_table_not_found"
 
     def __init__(self, table_id: int):
-        super().__init__(f"Persistence table {table_id} not found.", code=self.default_code)
+        super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)

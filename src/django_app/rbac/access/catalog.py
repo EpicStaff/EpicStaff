@@ -155,7 +155,7 @@ RESOURCE_TYPE_METADATA = [
     },
     {
         "code": ResourceType.PERSISTENT_DATA.value,
-        "label": "Persistent Data",
+        "label": "Key-Value Tables",
         "group": "workspace",
         "description": "Key-value tables that flows read and write across runs",
         "applicable_actions": ["create", "read", "update", "delete"],

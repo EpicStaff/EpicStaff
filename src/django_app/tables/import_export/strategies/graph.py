@@ -189,7 +189,7 @@ class GraphStrategy(EntityImportExportStrategy):
         """Create a graph's nodes and edges from exported data.
 
         `user` is the acting user, handed to every node strategy so references that
-        need a permission check (e.g. a persistence table) can gate on it. `None` means
+        need a permission check (e.g. a key-value table) can gate on it. `None` means
         there is no acting user.
         """
         nodes_data = data.get("nodes", [])

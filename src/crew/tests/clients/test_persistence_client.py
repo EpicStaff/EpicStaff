@@ -91,10 +91,10 @@ async def test_4xx_raises_validation_error_with_django_message_without_retrying(
 
     def handler(request):
         calls.append(request)
-        return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Persistence table 3 not found."})
+        return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Key-value table 3 not found."})
 
     client = await _started(handler)
-    with pytest.raises(ClientValidationError, match="Persistence table 3 not found."):
+    with pytest.raises(ClientValidationError, match="Key-value table 3 not found."):
         await client.read(7, 3, ["a"])
     assert len(calls) == 1
     assert waits == []
@@ -160,7 +160,7 @@ async def test_connection_failing_on_every_attempt_raises_not_available_after_al
         raise httpx.ConnectError("refused", request=request)
 
     client = await _started(handler)
-    with pytest.raises(ClientNotAvailableError, match="Django persistence route is unreachable."):
+    with pytest.raises(ClientNotAvailableError, match="Django is unreachable."):
         await client.delete(7, 3, ["k"])
     assert len(calls) == 4
     assert waits == [0.2, 0.4, 0.8]
