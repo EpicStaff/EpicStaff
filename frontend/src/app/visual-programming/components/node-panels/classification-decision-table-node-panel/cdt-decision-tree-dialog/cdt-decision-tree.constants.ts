@@ -184,12 +184,6 @@ export const CDT_TREE_COPY = {
     endsFlow: 'Ends the flow',
     errorsEndFlow: 'Errors end the flow',
     /**
-     * Only for a rule that has a target but no route code. A rule with neither is
-     * an enrichment step that falls through on purpose — warning about those is
-     * what made this badge noise before.
-     */
-    unsavedTargetWarning: 'This rule has a target but no route code, so the target is never saved.',
-    /**
      * The chip beside the Explanation heading, and what hovering it says.
      *
      * Which of the two applies is decided by the canvas, not the grid: the engine

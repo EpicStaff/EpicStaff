@@ -187,7 +187,6 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
             subtitle: rowExpressionSubtitle(row),
             detail: rowExpressionDetail(row),
             chip: chipForSharedRoute(row, routeCodeCounts),
-            warning: rowWarning(row),
             note: rowNote(row, target),
             target,
         });
@@ -458,24 +457,6 @@ function terminatorContent(
 
     const label = resolveNodeLabel(targetId, nodes);
     return { target: { state: 'node', label }, title: label };
-}
-
-/**
- * What is off about a rule, if anything — one line, because a block shows one
- * badge, ordered by how much misreading it costs.
- *
- * A rule with a target but no route code loses that target on save: `payload.ts`
- * only persists one when a route code is present. A rule with neither is an
- * enrichment step that falls through by design and gets no badge.
- *
- * A rule that both routes and continues is the one that reads as broken tooling.
- * The engine checks `next_node` first and breaks, so `continue_flag` is never
- * read — the tick does nothing, and without a badge the diagram simply ignores
- * it in silence.
- */
-function rowWarning(row: ConditionGroup): string | null {
-    const routed = !!row.route_code?.trim();
-    return !routed && !!row.next_node ? CDT_TREE_COPY.unsavedTargetWarning : null;
 }
 
 /**
