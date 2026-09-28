@@ -2,35 +2,35 @@ import io
 import re
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 
+import settings
 from common.utils import run_async_to_sync
 from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
 from miniopy_async import Minio, S3Error
 from miniopy_async.deleteobjects import DeleteObject
-import settings
 
 
 def create_storage_config(
     rag_id: int,
-    subdir: Optional[str] = None,
+    subdir: str | None = None,
 ) -> StorageConfig:
     prefix = f"graphrag/rag_{rag_id}"
     if subdir:
         prefix += f"/{subdir}"
     return StorageConfig(
-        type="minio",
+        type="s3",
         prefix=prefix,
-        endpoint=settings.MINIO_ENDPOINT,
-        bucket=settings.MINIO_BUCKET,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
+        endpoint=settings.STORAGE_ENDPOINT,
+        bucket=settings.KNOWLEDGE_BUCKET,
+        access_key=settings.STORAGE_ACCESS_KEY,
+        secret_key=settings.STORAGE_SECRET_KEY,
         encoding=settings.GRAPHRAG_ENCODING,
     )
 
 
-class MinioStorage(Storage):
+class S3Storage(Storage):
     _MISSING_CODES = frozenset(("NoSuchKey", "NoSuchObject", "NoSuchBucket"))
 
     def __init__(
@@ -166,7 +166,7 @@ class MinioStorage(Storage):
         if name is None:
             return self
 
-        return MinioStorage(
+        return S3Storage(
             endpoint=self._endpoint,
             bucket=self._bucket,
             prefix=self._full_key(name),
@@ -205,4 +205,4 @@ class MinioStorage(Storage):
         return get_timestamp_formatted_with_local_tz(stat.last_modified)
 
 
-register_storage("minio", MinioStorage)
+register_storage("s3", S3Storage)

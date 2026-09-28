@@ -1,22 +1,20 @@
 from rest_framework import serializers
 
+from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import (
-    Graph,
-    ClassificationDecisionTableNode,
     ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    Graph,
     PythonCode,
 )
 from tables.models.graph_models import (
     ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
 )
-from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 
 
 class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
-    classification_decision_table_node = serializers.PrimaryKeyRelatedField(
-        read_only=True
-    )
+    classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     classification_decision_table_node_id = serializers.PrimaryKeyRelatedField(
         queryset=ClassificationDecisionTableNode.objects.all(),
         source="classification_decision_table_node",
@@ -56,9 +54,7 @@ class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSeriali
 
 class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     condition_groups = ClassificationConditionGroupImportSerializer(
         many=True, required=False, read_only=True
     )
@@ -68,9 +64,7 @@ class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerialize
     prompt_configs = ClassificationDecisionTablePromptImportSerializer(
         many=True, required=False, read_only=True
     )
-    pre_python_code = PythonCodeImportSerializer(
-        read_only=True, required=False, allow_null=True
-    )
+    pre_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
     pre_python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="pre_python_code",
@@ -78,9 +72,7 @@ class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerialize
         required=False,
         allow_null=True,
     )
-    post_python_code = PythonCodeImportSerializer(
-        read_only=True, required=False, allow_null=True
-    )
+    post_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
     post_python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="post_python_code",

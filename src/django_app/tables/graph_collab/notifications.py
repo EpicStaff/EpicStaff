@@ -1,16 +1,13 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from utils.logger import logger
 
-from tables.graph_collab.utils import build_editor_info
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
-    EditorInfo,
     GraphSavedMessage,
     PresenceStateUpdatedMessage,
 )
 from tables.graph_collab.utils import build_editor_info
-
-from utils.logger import logger
 
 
 def _group_name(graph_id: int) -> str:

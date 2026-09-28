@@ -70,6 +70,37 @@
             [icon]="row['status'] === 'deactivated' ? 'clock' : null"
         />
     </ng-template>
+
+    <!-- ACTIONS -->
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        <div
+            class="actions-cell"
+            (click)="$event.stopPropagation()"
+        >
+            @if (canEditRow(row)) {
+                <app-edit-button
+                    tooltip="Edit organization"
+                    (triggered)="onEditOrganization(row)"
+                />
+            }
+            @if (showReactivateOrg(row)) {
+                <app-activate-button
+                    tooltip="Activate organization"
+                    (triggered)="onReactivateOrganization(row)"
+                />
+            }
+            @if (showDeactivateOrg(row)) {
+                <app-stop-button
+                    tooltip="Deactivate organization"
+                    (triggered)="onDeactivateOrganization(row)"
+                />
+            }
+        </div>
+    </ng-template>
+
     <div tableEmpty>
         @if (isLoading()) {
             <app-loading-spinner size="sm" />

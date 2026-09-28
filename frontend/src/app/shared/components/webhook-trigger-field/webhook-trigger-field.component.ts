@@ -21,14 +21,14 @@ import {
     Validator,
     Validators,
 } from '@angular/forms';
-
 import {
     WebhookProviderType,
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
     WebhookTriggerModel,
     WebhookTriggerWrite,
-} from '../../../visual-programming/core/models/webhook-trigger.model';
+} from '@shared/models';
+
 import { SecretsStorageService } from '../../services/secrets/secrets-storage.service';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { CustomInputComponent } from '../form-input/form-input.component';

@@ -16,7 +16,7 @@ import pytest
 from rest_framework.exceptions import ValidationError
 
 from tables.models import Graph, PythonCode, WebhookTrigger, WebhookTriggerNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService

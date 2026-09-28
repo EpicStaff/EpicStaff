@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '@shared/components';
 
 export interface ToolPillEntry {
     callId: string;

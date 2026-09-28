@@ -1,5 +1,4 @@
 from django.db import transaction
-
 from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.mcp_models import McpTool
@@ -13,9 +12,7 @@ class McpToolCopyService(BaseCopyService):
     Duplicates all scalar fields and the tool-scope labels M2M.
     """
 
-    def copy(
-        self, tool: McpTool, name: str | None = None, org_id: int | None = None
-    ) -> McpTool:
+    def copy(self, tool: McpTool, name: str | None = None, org_id: int | None = None) -> McpTool:
         target_org_id = org_id if org_id is not None else tool.org_id
         base_name = name if name else tool.name
 
@@ -41,7 +38,5 @@ class McpToolCopyService(BaseCopyService):
                 init_timeout=tool.init_timeout,
             )
 
-        new_tool.labels.set(
-            tool.labels.filter(scope=Label.Scope.TOOL, org_id=new_tool.org_id)
-        )
+        new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL, org_id=new_tool.org_id))
         return new_tool

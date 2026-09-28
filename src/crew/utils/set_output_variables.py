@@ -1,13 +1,12 @@
 import re
 from typing import Any
-from loguru import logger
+
 from dotdict import DotDict
+from loguru import logger
 from models.state import State
 
 
-def set_output_variables(
-    state: State, output_variable_path: str | None, output: Any
-) -> None:
+def set_output_variables(state: State, output_variable_path: str | None, output: Any) -> None:
     """
     Saves output into state["variables"] at output_variable_path.
     """
@@ -28,9 +27,7 @@ def set_output_variables(
 
     if len(keys) == 0:
         if not isinstance(output, dict):
-            logger.warning(
-                f"Output `{output}` should be a dict to update the whole variables"
-            )
+            logger.warning(f"Output `{output}` should be a dict to update the whole variables")
             return
 
         # Deep-merge: for dict-type values where the existing variable is
@@ -62,9 +59,7 @@ def set_output_variables(
     if last_key_name.startswith("[") and last_key_name.endswith("]"):
         index = int(last_key_name[1:-1])
         value[index] = output
-    elif hasattr(value, last_key_name) and isinstance(
-        getattr(value, last_key_name), DotDict
-    ):
+    elif hasattr(value, last_key_name) and isinstance(getattr(value, last_key_name), DotDict):
         if isinstance(output, dict):
             getattr(value, last_key_name).update(output)
         else:

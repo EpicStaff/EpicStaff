@@ -1,6 +1,5 @@
-from datetime import datetime
-
 from django.db import models
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
     ActiveManager,
@@ -10,7 +9,6 @@ from tables.models.base_models import (
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class PythonCode(ContentHashMixin, models.Model):
@@ -34,9 +32,7 @@ class PythonCodeTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin, models.Mod
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE, null=False)
     built_in = models.BooleanField(default=False)
     use_storage = models.BooleanField(default=False)
-    labels = models.ManyToManyField(
-        "Label", blank=True, related_name="python_code_tools"
-    )
+    labels = models.ManyToManyField("Label", blank=True, related_name="python_code_tools")
 
     class Meta(OrgScopedModel.Meta):
         default_manager_name = "objects"
@@ -84,6 +80,4 @@ class PythonCodeResult(OrgScopedModel, models.Model):
     stderr = models.TextField(default="")
     stdout = models.TextField(default="")
     returncode = models.IntegerField(null=True, default=None)
-    status = models.CharField(
-        max_length=16, choices=Status.choices, default=Status.PENDING
-    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)

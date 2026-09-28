@@ -11,7 +11,7 @@ from tables.models import (
 )
 from agents.models import AgentDefinition
 from tables.models.label_models import Label
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.models.realtime_models import OpenAIRealtimeConfig
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper

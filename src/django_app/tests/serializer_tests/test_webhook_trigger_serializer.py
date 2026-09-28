@@ -9,7 +9,7 @@ that field).
 import pytest
 from rest_framework import serializers
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.models.webhook_models import ProviderType, WebhookTrigger
 from tables.serializers.model_serializers.webhook_serializers import (
     WebhookTriggerSerializer,

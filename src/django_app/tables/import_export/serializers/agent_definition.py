@@ -1,6 +1,5 @@
-from rest_framework import serializers
-
 from agents.models import AgentDefinition
+from rest_framework import serializers
 
 
 class AgentDefinitionImportSerializer(serializers.ModelSerializer):
@@ -10,10 +9,6 @@ class AgentDefinitionImportSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        ret["owned_surfaces"] = list(
-            instance.owned_surfaces.values_list("id", flat=True)
-        )
-        ret["default_surfaces"] = list(
-            instance.default_surfaces.values("surface_id", "place")
-        )
+        ret["owned_surfaces"] = list(instance.owned_surfaces.values_list("id", flat=True))
+        ret["default_surfaces"] = list(instance.default_surfaces.values("surface_id", "place"))
         return ret

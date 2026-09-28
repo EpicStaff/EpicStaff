@@ -28,6 +28,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
@@ -43,13 +44,12 @@ import {
 } from '../../../../features/agent-definitions/pages/agent-definitions-page/components/surface-summary-dialog/surface-summary-dialog.component';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
-import { AgentNodeTaskUi } from '../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
-import { NodeType } from '../../../core/enums/node-type';
+import { AgentNodeTaskUi } from '../../../core/models/agent-node.model';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { InlineSurface } from '../../../core/models/task-node.model';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import {
@@ -693,8 +693,11 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         if (incomingTasks.length === 0) return;
 
         const incomingByTempId = new Map<string, AgentNodeTaskUi>();
+        const resolvedIdByTempId = new Map<string, number>();
         for (const t of incomingTasks) {
-            if (t.tempId) incomingByTempId.set(t.tempId, t);
+            if (!t.tempId) continue;
+            incomingByTempId.set(t.tempId, t);
+            if (t.id != null) resolvedIdByTempId.set(t.tempId, t.id);
         }
         if (incomingByTempId.size === 0) return;
 
@@ -710,27 +713,21 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
                 changed = true;
             }
 
-            if (next.contextRefs?.length && incoming.contextRefs?.length) {
-                const resolvedIdByTempId = new Map<string, number>();
-                for (const ref of incoming.contextRefs) {
-                    if (ref.tempId && ref.id != null) resolvedIdByTempId.set(ref.tempId, ref.id);
-                }
-                if (resolvedIdByTempId.size > 0) {
-                    let refsChanged = false;
-                    const nextRefs = next.contextRefs.map((ref) => {
-                        if (ref.id == null && ref.tempId != null) {
-                            const resolvedId = resolvedIdByTempId.get(ref.tempId);
-                            if (resolvedId != null) {
-                                refsChanged = true;
-                                return { id: resolvedId };
-                            }
+            if (next.contextRefs?.length && resolvedIdByTempId.size > 0) {
+                let refsChanged = false;
+                const nextRefs = next.contextRefs.map((ref) => {
+                    if (ref.id == null && ref.tempId != null) {
+                        const resolvedId = resolvedIdByTempId.get(ref.tempId);
+                        if (resolvedId != null) {
+                            refsChanged = true;
+                            return { id: resolvedId };
                         }
-                        return ref;
-                    });
-                    if (refsChanged) {
-                        next = { ...next, contextRefs: nextRefs };
-                        changed = true;
                     }
+                    return ref;
+                });
+                if (refsChanged) {
+                    next = { ...next, contextRefs: nextRefs };
+                    changed = true;
                 }
             }
 

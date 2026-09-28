@@ -22,6 +22,10 @@ on:
         description: "Reset database (Nuke DB)? Only applies to test3, ignored for test2."
         type: boolean
         default: false
+      regenerate_env:
+        description: "Regenerate .env from env.yaml (envtool.py --dev)?"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -97,6 +101,7 @@ jobs:
         shell: bash
         env:
           IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
+          REGENERATE_ENV_INPUT: ${{ github.event.inputs.regenerate_env || 'true' }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory /home/developer/EpicStaff
@@ -106,6 +111,7 @@ jobs:
           git pull --ff-only origin main
           export NUKE_DB=false
           export IMAGE_TAG
+          export REGENERATE_ENV="$REGENERATE_ENV_INPUT"
           bash .github/scripts/deploy.sh main
 
   deploy_test_3:
@@ -130,6 +136,7 @@ jobs:
           IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
           BRANCH: ${{ github.event.inputs.branch }}
           NUKE_DB_INPUT: ${{ github.event.inputs.nuke_db }}
+          REGENERATE_ENV_INPUT: ${{ github.event.inputs.regenerate_env }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory /home/developer/EpicStaff
@@ -139,4 +146,5 @@ jobs:
           git pull --ff-only origin "$BRANCH"
           export IMAGE_TAG
           export NUKE_DB="$NUKE_DB_INPUT"
+          export REGENERATE_ENV="$REGENERATE_ENV_INPUT"
           bash .github/scripts/deploy.sh "$BRANCH"

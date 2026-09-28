@@ -1,7 +1,7 @@
 import pytest
 
-from tables.models.rbac_models import OrganizationUser
-from tables.serializers.membership_serializers import MembershipResponseSerializer
+from rbac.models import OrganizationUser
+from rbac.serializers.memberships import MembershipResponseSerializer
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

@@ -5,8 +5,8 @@ from tables.models import Secret
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import LLMConfig, LLMModel
 from tables.models.mcp_models import McpTool
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_encryption, secret_service
 
 

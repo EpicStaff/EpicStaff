@@ -1,23 +1,23 @@
-from typing import Dict, Any, Optional
-
-from loguru import logger
-from langgraph.types import StreamWriter
-from pydantic import TypeAdapter
+from collections.abc import Callable
+from typing import Any, ClassVar, Optional
 
 import settings
+from clients import KnowledgeClient
+from clients.errors import ClientTimeoutError
+from langgraph.types import StreamWriter
+from loguru import logger
 from models.graph_models import GraphMessage
+from pydantic import TypeAdapter
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import (
-    NaiveSearchConfig,
+    FoundChunk,
     GraphSearchConfig,
+    NaiveSearchConfig,
     SearchConfig,
     SearchRequest,
-    FoundChunk,
 )
-from clients import KnowledgeClient
-from clients.errors import ClientTimeoutError
 
 
 class RagSearchConfigFactory:
@@ -25,18 +25,18 @@ class RagSearchConfigFactory:
     Factory class to build RAG search configs from dict based on rag_type.
     """
 
-    _configs = {
+    _configs: ClassVar[dict[str, Callable]] = {
         "naive": NaiveSearchConfig.model_validate,
         "graph": TypeAdapter(GraphSearchConfig).validate_python,
     }
 
-    _timeouts = {
+    _timeouts: ClassVar[dict[str, float]] = {
         "naive": settings.NAIVE_RAG_SEARCH_TIMEOUT,
         "graph": settings.GRAPH_RAG_SEARCH_TIMEOUT,
     }
 
     @classmethod
-    def build(cls, rag_type: str, config_dict: Dict[str, Any]) -> SearchConfig:
+    def build(cls, rag_type: str, config_dict: dict[str, Any]) -> SearchConfig:
         """
         Build appropriate SearchConfig based on rag_type.
 
@@ -50,8 +50,7 @@ class RagSearchConfigFactory:
         config_class = cls._configs.get(rag_type)
         if not config_class:
             raise ValueError(
-                f"Unsupported RAG type: {rag_type}. "
-                f"Supported types: {list(cls._configs.keys())}"
+                f"Unsupported RAG type: {rag_type}. Supported types: {list(cls._configs.keys())}"
             )
 
         if rag_type == "naive":
@@ -97,9 +96,9 @@ class KnowledgeSearchService:
         knowledge_collection_id: int,
         rag_type_id: str,
         query: str,
-        rag_search_config: Dict[str, Any],
-        stop_event: Optional[StopEvent] = None,
-        timeout: Optional[int] = None,
+        rag_search_config: dict[str, Any],
+        stop_event: StopEvent | None = None,
+        timeout: int | None = None,
         rag_embedder_api_key: str | None = None,
         rag_llm_api_key: str | None = None,
         writer: Optional["StreamWriter"] = None,
@@ -138,13 +137,9 @@ class KnowledgeSearchService:
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
         resolved_embedder_key = (
-            rag_embedder_api_key
-            if rag_embedder_api_key is not None
-            else self.rag_embedder_api_key
+            rag_embedder_api_key if rag_embedder_api_key is not None else self.rag_embedder_api_key
         )
-        resolved_llm_key = (
-            rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
-        )
+        resolved_llm_key = rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
 
         try:
             with KnowledgeClient() as client:

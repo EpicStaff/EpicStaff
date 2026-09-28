@@ -7,9 +7,9 @@ Used by both ``AgentNodeStrategy`` and ``TaskNodeStrategy`` to avoid
 duplicating the recreation logic across the two node types.
 """
 
-from tables.models import AgentNode, AgentNodeTask
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.models import AgentNode, AgentNodeTask
 
 
 def create_inline_surface(
@@ -33,9 +33,7 @@ def create_inline_surface(
 
     python_rows = []
     for entry in tools.get(EntityType.PYTHON_CODE_TOOL, []):
-        new_id = id_mapper.get_or_none(
-            EntityType.PYTHON_CODE_TOOL, entry["python_tool_id"]
-        )
+        new_id = id_mapper.get_or_none(EntityType.PYTHON_CODE_TOOL, entry["python_tool_id"])
         if new_id is None:
             continue
 

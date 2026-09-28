@@ -12,7 +12,7 @@ class SecretReferenceGuardMixin:
         # Read through this method rather than the attribute directly so a per-path
         # subclass -- a `*BulkSerializer`, or an endpoint-specific variant -- can differ
         # from the class its siblings share, without every other user of that class
-        # moving with it. 
+        # moving with it.
         return self.secret_reference_fields
 
     def validate(self, attrs):

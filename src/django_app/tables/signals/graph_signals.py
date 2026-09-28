@@ -42,7 +42,7 @@ def _sync_nested_dict(original, current, path=""):
     removed_paths = []
     added_paths = []
 
-    for key in current.keys():
+    for key in current:
         current_path = f"{path}.{key}" if path else key
 
         if key in original:
@@ -62,7 +62,7 @@ def _sync_nested_dict(original, current, path=""):
             updated[key] = current[key]
             added_paths.append(current_path)
 
-    for key in original.keys():
+    for key in original:
         if key not in current:
             removed_path = f"{path}.{key}" if path else key
             removed_paths.append(removed_path)

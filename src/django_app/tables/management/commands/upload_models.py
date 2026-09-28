@@ -1,19 +1,19 @@
 from pathlib import Path
-from django.core.management.base import BaseCommand
 
+from django.core.management.base import BaseCommand
+from tables.management.commands.helpers import load_json_from_file
+from tables.management.commands.upload_tools import upload_tools
 from tables.models import (
+    DefaultRealtimeAgentConfig,
     EmbeddingModel,
     LLMModel,
     Provider,
     RealtimeModel,
     RealtimeTranscriptionModel,
-    DefaultRealtimeAgentConfig,
 )
 from tables.models.embedding_models import DefaultEmbeddingConfig
 from tables.models.llm_models import DefaultLLMConfig
-from tables.management.commands.helpers import load_json_from_file
-from tables.management.commands.upload_tools import upload_tools
-from tables.models.tag_models import LLMModelTag, EmbeddingModelTag
+from tables.models.tag_models import EmbeddingModelTag, LLMModelTag
 
 
 class Command(BaseCommand):
@@ -63,13 +63,9 @@ def upload_tags():
     embed_tag_names = PREDEFINED_TAGS["embedding_model"]
 
     for tag in embed_tag_names:
-        EmbeddingModelTag.objects.update_or_create(
-            name=tag, defaults={"predefined": True}
-        )
+        EmbeddingModelTag.objects.update_or_create(name=tag, defaults={"predefined": True})
 
-    EmbeddingModelTag.objects.filter(predefined=True).exclude(
-        name__in=embed_tag_names
-    ).delete()
+    EmbeddingModelTag.objects.filter(predefined=True).exclude(name__in=embed_tag_names).delete()
 
 
 def get_all_providers_from_files():
@@ -168,9 +164,9 @@ def upload_realtime_transcription_models():
 
     if not active_ids:
         return
-    RealtimeTranscriptionModel.objects.filter(
-        is_custom=False, org__isnull=True
-    ).exclude(pk__in=active_ids).delete()
+    RealtimeTranscriptionModel.objects.filter(is_custom=False, org__isnull=True).exclude(
+        pk__in=active_ids
+    ).delete()
 
 
 def upload_embedding_models():
@@ -208,9 +204,9 @@ def upload_embedding_models():
 
     if not active_ids:
         return
-    EmbeddingModel.objects.filter(
-        predefined=True, is_custom=False, org__isnull=True
-    ).exclude(pk__in=active_ids).delete()
+    EmbeddingModel.objects.filter(predefined=True, is_custom=False, org__isnull=True).exclude(
+        pk__in=active_ids
+    ).delete()
 
 
 def upload_default_llm_config():

@@ -3,16 +3,14 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AppSvgIconComponent, ButtonComponent, TabButtonComponent } from '@shared/components';
+import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
 import {

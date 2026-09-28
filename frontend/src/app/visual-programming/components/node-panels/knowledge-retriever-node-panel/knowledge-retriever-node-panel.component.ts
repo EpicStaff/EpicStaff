@@ -7,6 +7,7 @@ import {
     CopyButtonComponent,
     createColumnWidthState,
     CustomInputComponent,
+    RagTabComponent,
     SelectComponent,
     SelectItem,
     TemplateTextareaComponent,
@@ -14,6 +15,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
+import { RAG_SUGGEST_API } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -22,7 +24,7 @@ import {
     GetCollectionRequest,
 } from '../../../../features/knowledge-sources/models/collection.model';
 import { CollectionsApiService } from '../../../../features/knowledge-sources/services/collections-api.service';
-import { RagTabComponent } from '../../../../shared/components/create-agent-form-dialog/tabs/rag/rag-tab.component';
+import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
@@ -56,6 +58,7 @@ interface RagChoice {
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [{ provide: RAG_SUGGEST_API, useExisting: AgentsService }],
 })
 export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<KnowledgeRetrieverNodeModel> {
     public override readonly isExpanded = input<boolean>(false);

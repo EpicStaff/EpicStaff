@@ -1,5 +1,5 @@
 import zoneinfo
-from datetime import datetime, timezone as _datetime_timezone
+from datetime import UTC, datetime
 
 from loguru import logger
 from rest_framework import serializers
@@ -111,11 +111,7 @@ class ScheduleTriggerInputParser:
         )
 
         next_run = instance.next_run_date_time
-        if (
-            instance.is_active
-            and next_run is not None
-            and next_run < datetime.now(_datetime_timezone.utc)
-        ):
+        if instance.is_active and next_run is not None and next_run < datetime.now(UTC):
             logger.warning(
                 f"[ScheduleTriggerNode {instance.pk}] stored next_run_date_time "
                 f"{next_run.isoformat()} is in the past while node is active; "
@@ -228,7 +224,7 @@ class ScheduleTriggerValidator:
             parsed = raw
         else:
             try:
-                parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(str(raw))
             except ValueError as exc:
                 raise ValueError(f"Invalid ISO 8601 datetime: {raw!r}.") from exc
 
@@ -239,12 +235,10 @@ class ScheduleTriggerValidator:
                 raise ValueError(f"Unknown IANA timezone: {tz_name!r}.") from exc
             parsed = parsed.replace(tzinfo=tz)
 
-        return parsed.astimezone(_datetime_timezone.utc)
+        return parsed.astimezone(UTC)
 
     @staticmethod
-    def format_utc_to_local_naive_iso(
-        dt: datetime | None, tz_name: str | None
-    ) -> str | None:
+    def format_utc_to_local_naive_iso(dt: datetime | None, tz_name: str | None) -> str | None:
         """Render a UTC datetime as a naive ISO string in the given IANA tz.
 
         Falls back to UTC if `tz_name` is missing or unknown so a stored node is
@@ -270,11 +264,7 @@ class ScheduleTriggerValidator:
     def _validate_active_state(attrs: dict) -> None:
         if not attrs.get("is_active"):
             return
-        if not (
-            attrs.get("run_mode")
-            and attrs.get("start_date_time")
-            and attrs.get("end_type")
-        ):
+        if not (attrs.get("run_mode") and attrs.get("start_date_time") and attrs.get("end_type")):
             raise ScheduleTriggerValidationError(
                 {"is_active": "Cannot activate: schedule is not fully configured."}
             )
@@ -286,24 +276,18 @@ class ScheduleTriggerValidator:
             return
         try:
             zoneinfo.ZoneInfo(tz_name)
-        except zoneinfo.ZoneInfoNotFoundError:
+        except zoneinfo.ZoneInfoNotFoundError as e:
             raise ScheduleTriggerValidationError(
                 {"timezone": f"Unknown IANA timezone: {tz_name!r}."}
-            )
+            ) from e
 
     @staticmethod
     def _validate_run_mode_once(attrs: dict) -> None:
         if attrs.get("run_mode") != ScheduleTriggerNode.RunMode.ONCE:
             return
-        if (
-            attrs.get("every") is not None
-            or attrs.get("unit") is not None
-            or attrs.get("weekdays")
-        ):
+        if attrs.get("every") is not None or attrs.get("unit") is not None or attrs.get("weekdays"):
             raise ScheduleTriggerValidationError(
-                {
-                    "every": 'Fields every/unit/weekdays are not used for run_mode="once".'
-                }
+                {"every": 'Fields every/unit/weekdays are not used for run_mode="once".'}
             )
         if attrs.get("end_type") != ScheduleTriggerNode.EndType.NEVER:
             raise ScheduleTriggerValidationError(
@@ -316,13 +300,9 @@ class ScheduleTriggerValidator:
             return
         every = attrs.get("every")
         if every is None or every < 1:
-            raise ScheduleTriggerValidationError(
-                {"every": 'Must be >= 1 for run_mode="repeat".'}
-            )
+            raise ScheduleTriggerValidationError({"every": 'Must be >= 1 for run_mode="repeat".'})
         if attrs.get("unit") is None:
-            raise ScheduleTriggerValidationError(
-                {"unit": 'Required for run_mode="repeat".'}
-            )
+            raise ScheduleTriggerValidationError({"unit": 'Required for run_mode="repeat".'})
 
     def _validate_end_type(self, attrs: dict) -> None:
         end_type = attrs.get("end_type")
@@ -337,9 +317,7 @@ class ScheduleTriggerValidator:
     def _validate_end_never(attrs: dict) -> None:
         if attrs.get("end_date_time") is not None or attrs.get("max_runs") is not None:
             raise ScheduleTriggerValidationError(
-                {
-                    "end_type": 'end_date_time and max_runs must be empty for end_type="never".'
-                }
+                {"end_type": 'end_date_time and max_runs must be empty for end_type="never".'}
             )
 
     @staticmethod
@@ -370,7 +348,7 @@ class ScheduleTriggerValidator:
         if not set(weekdays).issubset(ScheduleTriggerNode.ALLOWED_WEEKDAYS):
             raise ScheduleTriggerValidationError(
                 {
-                    "weekdays": f'Allowed values: {", ".join(sorted(ScheduleTriggerNode.ALLOWED_WEEKDAYS))}.'
+                    "weekdays": f"Allowed values: {', '.join(sorted(ScheduleTriggerNode.ALLOWED_WEEKDAYS))}."
                 }
             )
         unit = attrs.get("unit")

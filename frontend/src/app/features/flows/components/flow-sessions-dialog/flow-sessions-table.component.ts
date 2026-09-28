@@ -18,22 +18,16 @@ import {
     CheckboxComponent,
     IconButtonComponent,
     LoadingSpinnerComponent,
-    StopSessionButtonComponent,
+    StopButtonComponent,
 } from '@shared/components';
+import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
-import {
-    DurationFilter,
-    GraphSessionLight,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-    SessionTrigger,
-    TriggerType,
-} from '../../services/flows-sessions.service';
+import { DurationFilter, GraphSessionLight, SessionTrigger, TriggerType } from '../../services/flows-sessions.service';
 import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
@@ -50,7 +44,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         FlowSessionStatusBadgeComponent,
         LoadingSpinnerComponent,
         IconButtonComponent,
-        StopSessionButtonComponent,
+        StopButtonComponent,
         GraphMessagesComponent,
         FlowSessionStatusFilterDropdownComponent,
         FlowNameFilterDropdownComponent,
@@ -197,12 +191,16 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         <span>{{ getTriggerChip(session.trigger).label }}</span>
                                     </span>
                                 </td>
-                                <td class="col-created">{{ session.created_at | date: 'medium' }}</td>
+                                <td class="col-created">{{ session.created_at | date: DATE_TIME_FORMAT_24H }}</td>
                                 <td class="col-duration">
                                     @if (showDuration) {
                                         {{ getDuration(session) }}
                                     } @else {
-                                        {{ session.finished_at ? (session.finished_at | date: 'medium') : 'Active' }}
+                                        {{
+                                            session.finished_at
+                                                ? (session.finished_at | date: DATE_TIME_FORMAT_24H)
+                                                : 'Active'
+                                        }}
                                     }
                                 </td>
                                 <td class="col-actions">
@@ -228,7 +226,10 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                             />
                                         </button>
                                         @if (canStop(session.status)) {
-                                            <app-stop-session-button (stopClick)="stopSession.emit(session.id)" />
+                                            <app-stop-button
+                                                tooltip="Stop session"
+                                                (triggered)="stopSession.emit(session.id)"
+                                            />
                                         }
                                         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
                                             @if (!canStop(session.status)) {
@@ -418,4 +419,5 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly DATE_TIME_FORMAT_24H = DATE_TIME_FORMAT_24H;
 }

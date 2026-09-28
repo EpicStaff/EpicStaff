@@ -1,6 +1,6 @@
 import pytest
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 
 

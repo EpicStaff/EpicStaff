@@ -19,6 +19,4 @@ class KnowledgeNodeSaveableFactory(NodeSaveableFactory):
         return data, {"search_configs": nested.validated_data}
 
     def build(self, serializer, extra: dict, instance=None):
-        return KnowledgeNodeSaveable(
-            serializer, extra.get("search_configs"), instance=instance
-        )
+        return KnowledgeNodeSaveable(serializer, extra.get("search_configs"), instance=instance)

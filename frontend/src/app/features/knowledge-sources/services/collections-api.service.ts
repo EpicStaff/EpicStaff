@@ -4,7 +4,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import {
     CreateCollectionDtoRequest,
     CreateCollectionDtoResponse,

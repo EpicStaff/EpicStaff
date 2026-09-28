@@ -1,71 +1,64 @@
 <div class="flow-grid-container">
-    @if (!isFlowsLoaded()) {
+    @if (error()) {
+        <app-fetch-error-state
+            title="Failed to load flows"
+            message="Your filters are still applied. Check your connection and try again."
+            (retry)="retryLoad()"
+        />
+    } @else if (!isFlowsLoaded()) {
         <app-loading-spinner
             size="md"
             message="Loading flows..."
         ></app-loading-spinner>
     } @else {
-        @if (error()) {
-            <div class="error-message">
-                {{ error() }}
-                <button
-                    type="button"
-                    (click)="retryLoad()"
-                    class="retry-button"
+        <div class="grid">
+            @if (recentFlows().length > 0) {
+                <div
+                    class="recent-section"
+                    #recentSection
                 >
-                    Retry
-                </button>
-            </div>
-        } @else {
-            <div class="grid">
-                @if (recentFlows().length > 0) {
-                    <div
-                        class="recent-section"
-                        #recentSection
+                    <h3 class="section-title-no-tabs">Last modified</h3>
+                    <ul
+                        class="recent-flows-list"
+                        [class.measuring]="isMeasuring()"
                     >
-                        <h3 class="section-title-no-tabs">Last modified</h3>
-                        <ul
-                            class="recent-flows-list"
-                            [class.measuring]="isMeasuring()"
-                        >
-                            @for (flow of recentFlows(); track flow.id) {
-                                <li
-                                    class="recent-flow-card"
-                                    #recentCard
-                                    appDragScroll
+                        @for (flow of recentFlows(); track flow.id) {
+                            <li
+                                class="recent-flow-card"
+                                #recentCard
+                                appDragScroll
+                            >
+                                <a
+                                    class="recent-flow-name"
+                                    [routerLink]="['/flows', flow.id]"
+                                    draggable="false"
+                                    >{{ flow.name }}</a
                                 >
-                                    <a
-                                        class="recent-flow-name"
-                                        [routerLink]="['/flows', flow.id]"
-                                        draggable="false"
-                                        >{{ flow.name }}</a
-                                    >
-                                </li>
-                            }
-                        </ul>
-                    </div>
-                }
-                @if (filteredFlows().length === 0) {
-                    <div class="empty-message">
-                        @if (activeLabelFilter() !== 'all' && activeLabelFilter() !== 'unlabeled') {
-                            <p>No flows found for this label.</p>
-                        } @else {
-                            <p>No flows found. Create your first flow to get started.</p>
+                            </li>
                         }
-                    </div>
-                } @else {
-                    @for (flow of filteredFlows(); track flow.id) {
-                        <app-flow-card
-                            [flow]="flow"
-                            [selectMode]="selectMode()"
-                            [isSelected]="isFlowSelected(flow.id)"
-                            (selectionToggle)="onFlowSelect(flow.id)"
-                            (cardClick)="handleFlowCardAction({ action: 'open', flow: $event })"
-                            (action)="handleFlowCardAction($event)"
-                        ></app-flow-card>
+                    </ul>
+                </div>
+            }
+            @if (filteredFlows().length === 0) {
+                <div class="empty-message">
+                    @if (activeLabelFilter() !== 'all' && activeLabelFilter() !== 'unlabeled') {
+                        <p>No flows found for this label.</p>
+                    } @else {
+                        <p>No flows found. Create your first flow to get started.</p>
                     }
+                </div>
+            } @else {
+                @for (flow of filteredFlows(); track flow.id) {
+                    <app-flow-card
+                        [flow]="flow"
+                        [selectMode]="selectMode()"
+                        [isSelected]="isFlowSelected(flow.id)"
+                        (selectionToggle)="onFlowSelect(flow.id)"
+                        (cardClick)="handleFlowCardAction({ action: 'open', flow: $event })"
+                        (action)="handleFlowCardAction($event)"
+                    ></app-flow-card>
                 }
-            </div>
-        }
+            }
+        </div>
     }
 </div>

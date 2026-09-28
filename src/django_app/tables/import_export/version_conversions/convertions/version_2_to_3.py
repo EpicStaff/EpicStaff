@@ -23,7 +23,8 @@ _ENTITY_TYPE_EXTRA_ALLOWED_FIELDS = {
     EntityType.PYTHON_CODE_TOOL: {"python_code", "python_code_tool_config"},
 }
 
-_STALE_FIELD_STRIPPED_ENTITY_TYPES = _GENERIC_CONFIG_ENTITY_TYPES + (
+_STALE_FIELD_STRIPPED_ENTITY_TYPES = (
+    *_GENERIC_CONFIG_ENTITY_TYPES,
     EntityType.MCP_TOOL,
     EntityType.PYTHON_CODE_TOOL,
 )
@@ -64,10 +65,7 @@ def _strip_stale_config_fields(data: dict) -> None:
             continue
 
         strategy = entity_registry.get_strategy(entity_type)
-        model = (
-            getattr(strategy, "config_model", None)
-            or _ENTITY_TYPE_FALLBACK_MODELS[entity_type]
-        )
+        model = getattr(strategy, "config_model", None) or _ENTITY_TYPE_FALLBACK_MODELS[entity_type]
         valid_fields = {
             field.name
             for field in model._meta.get_fields()

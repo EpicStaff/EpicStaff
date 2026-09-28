@@ -1,0 +1,28 @@
+.delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--red);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--red);
+    opacity: 1;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover:not(:disabled) {
+        background: var(--transparent-white-8);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    &--default {
+        border-color: var(--color-divider-subtle);
+        color: var(--text-secondary-60);
+    }
+}

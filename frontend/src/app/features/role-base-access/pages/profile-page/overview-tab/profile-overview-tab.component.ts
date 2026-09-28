@@ -1,11 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { AppSvgIconComponent, ListComponent, ListRowComponent, SelectComponent, SelectItem } from '@shared/components';
+import { ROLE_LABELS } from '@shared/constants';
 import { Role, UserRole } from '@shared/models';
 
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
-import { ROLE_LABELS } from '../../../constants/role-labels.constant';
 
 @Component({
     selector: 'app-profile-overview-tab',

@@ -1,11 +1,12 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET = dict(
-    summary="Get available fields for TelegramTriggerNode",
-    description="Returns all possible fields that can be created for a TelegramTriggerNode.",
-    responses={
+TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET = {
+    "summary": "Get available fields for TelegramTriggerNode",
+    "description": "Returns all possible fields that can be created for a TelegramTriggerNode.",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="List of available fields returned successfully.",
@@ -19,4 +20,4 @@ TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}

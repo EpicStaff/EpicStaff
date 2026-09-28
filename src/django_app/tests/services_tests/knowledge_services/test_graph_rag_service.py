@@ -16,7 +16,7 @@ from tables.models.knowledge_models import (
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.exceptions import (
-    InvalidGraphRagParametersException,
+    InvalidChunkParametersException,
     GraphRagDocumentNotFoundException,
 )
 
@@ -203,7 +203,9 @@ class TestCreateOrUpdateGraphRag:
         assert updated_rag.rag_status == GraphRag.GraphRagStatus.OUTDATED
         assert "changed_embedding_config" in updated_rag.outdated_reasons
 
-        outdated_count = updated_rag.graph_rag_documents.filter(status=S.OUTDATED).count()
+        outdated_count = updated_rag.graph_rag_documents.filter(
+            status=S.OUTDATED
+        ).count()
         assert outdated_count == len(multiple_documents)
 
 
@@ -421,7 +423,9 @@ class TestUpdateIndexConfig:
         updated_rag.refresh_from_db()
         assert updated_rag.rag_status == GraphRag.GraphRagStatus.OUTDATED
         assert "index_config_changed" in updated_rag.outdated_reasons
-        outdated_docs = updated_rag.graph_rag_documents.filter(status=S.OUTDATED).count()
+        outdated_docs = updated_rag.graph_rag_documents.filter(
+            status=S.OUTDATED
+        ).count()
         assert outdated_docs >= 1
 
     def test_chunk_overlap_gte_chunk_size_raises(
@@ -432,7 +436,7 @@ class TestUpdateIndexConfig:
             embedder_id=test_embedding_config.pk,
             llm_id=llm_config.pk,
         )
-        with pytest.raises(InvalidGraphRagParametersException):
+        with pytest.raises(InvalidChunkParametersException):
             GraphRagService.update_index_config(
                 graph_rag_id=rag.graph_rag_id,
                 data={"chunk_size": 100, "chunk_overlap": 100},

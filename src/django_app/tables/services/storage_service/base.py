@@ -1,7 +1,7 @@
 import tarfile
 import zipfile
 from abc import ABC, abstractmethod
-from typing import Iterator
+from collections.abc import Iterator
 
 from tables.services.storage_service.archive_limits import (
     ArchiveExtractionGuard,
@@ -9,8 +9,8 @@ from tables.services.storage_service.archive_limits import (
 )
 from tables.services.storage_service.dataclasses import (
     FileInfo,
-    FolderInfo,
     FileListItem,
+    FolderInfo,
     TreeNode,
     UploadResult,
 )
@@ -61,8 +61,8 @@ class AbstractStorageBackend(ABC):
                 for entry in zf.infolist():
                     if not entry.is_dir() and entry.flag_bits & 0x1:
                         raise ValueError(msg)
-        except (RuntimeError, zipfile.BadZipFile):
-            raise ValueError(msg)
+        except (RuntimeError, zipfile.BadZipFile) as e:
+            raise ValueError(msg) from e
         finally:
             archive_file.seek(pos)
 

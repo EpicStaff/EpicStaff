@@ -1,7 +1,7 @@
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-from tables.services.rbac.first_setup_mode import FirstSetupMode
+from rbac.identity.first_setup_mode import FirstSetupMode
 
 
 def test_open_allows_http():

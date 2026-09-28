@@ -38,7 +38,7 @@ import { DocumentConfigComponent } from './document-config/document-config.compo
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditFileParametersDialogComponent implements AfterViewInit {
-    private dialogRef = inject(DialogRef);
+    private dialogRef = inject<DialogRef<number>>(DialogRef);
     private destroyRef = inject(DestroyRef);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private permissionService = inject(PermissionsService);
@@ -114,8 +114,9 @@ export class EditFileParametersDialogComponent implements AfterViewInit {
     }
 
     onClose() {
-        this.captureFormAsPending(this.selectedDocumentId());
-        this.dialogRef.close();
+        const documentId = this.selectedDocumentId();
+        this.captureFormAsPending(documentId);
+        this.dialogRef.close(documentId);
     }
 
     private captureFormAsPending(documentId: number): boolean {

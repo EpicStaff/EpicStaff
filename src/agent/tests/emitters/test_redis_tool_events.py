@@ -12,14 +12,12 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.llm.client import LLMChunk
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
 from shared.models.knowledge import NaiveRagSearchConfig
 from shared.models.knowledge_new import FoundChunk
-from shared.knowledge.target import KnowledgeSearchTarget
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -33,17 +31,45 @@ def _make_emitter() -> tuple[RedisStreamToolEventEmitter, list[dict]]:
 
     client = MagicMock()
 
-    async def capture_publish(stream: str, fields: dict) -> None:
+    async def capture_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
         published.append(fields)
 
     client.publish = capture_publish
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
     return emitter, published
+
+
+def _make_recording_client() -> tuple[MagicMock, list[dict]]:
+    """Return (client, publish_calls) where publish_calls records the stream,
+    maxlen and ttl_s of every client.publish call."""
+    publish_calls: list[dict] = []
+    client = MagicMock()
+
+    async def record_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
+        publish_calls.append(
+            {"stream": stream, "fields": fields, "maxlen": maxlen, "ttl_s": ttl_s}
+        )
+
+    client.publish = record_publish
+    return client, publish_calls
 
 
 def _decode_payload(fields: dict) -> dict:
@@ -76,9 +102,7 @@ def _make_knowledge_target() -> KnowledgeSearchTarget:
 
 async def test_on_tool_call_publishes_live_envelope():
     emitter, published = _make_emitter()
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search", "arguments": '{"q": "x"}'}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": '{"q": "x"}'})
 
     assert len(published) == 1
     assert published[0]["type"] == "agent.tool_call"
@@ -180,9 +204,7 @@ async def test_on_tool_result_still_buffers_event():
 async def test_on_tool_call_truncates_long_arguments():
     emitter, published = _make_emitter()
     long_arguments = "x" * 3000
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search", "arguments": long_arguments}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": long_arguments})
 
     payload = _decode_payload(published[0])
     assert len(payload["arguments"]) == 2000
@@ -245,9 +267,7 @@ async def test_on_chunk_without_usage_leaves_totals_zero():
 async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
     emitter, published = _make_emitter()
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
 
@@ -261,9 +281,7 @@ async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
     }
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
-        )
+        LLMChunk(usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28})
     )
     await emitter.on_tool_call({"id": "call_2", "name": "search", "arguments": "{}"})
 
@@ -329,9 +347,7 @@ async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
 async def test_token_usage_on_tool_result_immediately_after_tool_call_is_zero():
     emitter, published = _make_emitter()
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
     await emitter.on_tool_result(
@@ -362,7 +378,7 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
     published: list[dict] = []
     call_count = {"n": 0}
 
-    async def flaky_publish(stream: str, fields: dict) -> None:
+    async def flaky_publish(stream: str, fields: dict, **options) -> None:
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("redis unavailable")
@@ -373,24 +389,21 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     # First live envelope's publish fails; its token delta (round 1) is
     # dropped from the stream, but the snapshot still advances so round 1
     # tokens are never re-emitted on the next event.
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
-        )
+        LLMChunk(usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28})
     )
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="result", is_error=False)
@@ -509,15 +522,16 @@ async def test_on_task_finish_truncates_long_final_text():
 async def test_on_task_finish_publish_failure_does_not_propagate():
     client = MagicMock()
 
-    async def failing_publish(stream: str, fields: dict) -> None:
+    async def failing_publish(stream: str, fields: dict, **options) -> None:
         raise RuntimeError("redis unavailable")
 
     client.publish = failing_publish
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     await emitter.on_task_finish("task_a", 0, _make_loop_result())
@@ -534,9 +548,7 @@ async def test_on_task_finish_resets_current_task():
 async def test_on_task_finish_consumes_token_delta_at_task_boundary():
     emitter, published = _make_emitter()
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
     result = LoopResult(
         final_text="task result",
@@ -598,7 +610,7 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
     client = MagicMock()
     call_count = {"n": 0}
 
-    async def flaky_publish(stream: str, fields: dict) -> None:
+    async def flaky_publish(stream: str, fields: dict, **options) -> None:
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("redis unavailable")
@@ -607,8 +619,9 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     # First publish (live tool_call) raises internally but must not propagate.
@@ -635,9 +648,7 @@ async def test_on_knowledge_search_publishes_full_payload_shape():
         )
     ]
 
-    await emitter.on_knowledge_search(
-        _make_knowledge_target(), "what is epicstaff", chunks
-    )
+    await emitter.on_knowledge_search(_make_knowledge_target(), "what is epicstaff", chunks)
 
     assert len(published) == 1
     assert published[0]["type"] == "agent.knowledge_search"
@@ -658,9 +669,7 @@ async def test_on_knowledge_search_publishes_full_payload_shape():
 async def test_on_knowledge_search_graph_answer_shape():
     emitter, published = _make_emitter()
 
-    await emitter.on_knowledge_search(
-        _make_knowledge_target(), "why", "the synthesised answer"
-    )
+    await emitter.on_knowledge_search(_make_knowledge_target(), "why", "the synthesised answer")
 
     payload = _decode_payload(published[0])
     assert payload["chunks"] == []
@@ -707,15 +716,16 @@ async def test_on_knowledge_search_success_payload_omits_error_key():
 async def test_on_knowledge_search_publish_failure_does_not_propagate():
     client = MagicMock()
 
-    async def failing_publish(stream: str, fields: dict) -> None:
+    async def failing_publish(stream: str, fields: dict, **options) -> None:
         raise RuntimeError("redis unavailable")
 
     client.publish = failing_publish
 
     emitter = RedisStreamToolEventEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     await emitter.on_knowledge_search(_make_knowledge_target(), "q", [])
@@ -730,9 +740,7 @@ async def test_registered_knowledge_tool_suppresses_live_tool_events():
     emitter, published = _make_emitter()
     emitter.register_knowledge_tool("search_docs_naive")
 
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search_docs_naive", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search_docs_naive", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="chunk text", is_error=False)
     )
@@ -747,9 +755,7 @@ async def test_unregistered_tool_still_publishes_live_events():
     emitter, published = _make_emitter()
     emitter.register_knowledge_tool("search_docs_naive")
 
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "other_tool", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "other_tool", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="result", is_error=False)
     )
@@ -765,25 +771,17 @@ async def test_suppressed_knowledge_tool_step_does_not_consume_usage_delta():
     emitter.register_knowledge_tool("search_docs_naive")
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
+        LLMChunk(usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
     )
-    await emitter.on_tool_call(
-        {"id": "call_1", "name": "search_docs_naive", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search_docs_naive", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="chunk text", is_error=False)
     )
 
     await emitter.on_chunk(
-        LLMChunk(
-            usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
-        )
+        LLMChunk(usage={"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28})
     )
-    await emitter.on_tool_call(
-        {"id": "call_2", "name": "other_tool", "arguments": "{}"}
-    )
+    await emitter.on_tool_call({"id": "call_2", "name": "other_tool", "arguments": "{}"})
 
     assert len(published) == 1
     payload = _decode_payload(published[0])
@@ -796,3 +794,32 @@ async def test_suppressed_knowledge_tool_step_does_not_consume_usage_delta():
         "cached_prompt_tokens": 0,
         "total_cost_usd": 0.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Per-run result stream + TTL
+# ---------------------------------------------------------------------------
+
+
+async def test_live_and_final_envelopes_all_go_to_per_run_stream_with_ttl():
+    client, publish_calls = _make_recording_client()
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="run-a",
+        result_stream_ttl_s=3600,
+    )
+
+    await emitter.on_task_start("task_a", 0)
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+    await emitter.on_tool_result(ToolResult(tool_call_id="call_1", content="hits"))
+    await emitter.on_final(_make_loop_result())
+
+    assert [call["fields"]["type"] for call in publish_calls] == [
+        "agent.task_start",
+        "agent.tool_call",
+        "agent.tool_result",
+        "agent.result",
+    ]
+    assert {call["stream"] for call in publish_calls} == {"agent.results:run-a"}
+    assert {call["ttl_s"] for call in publish_calls} == {3600}

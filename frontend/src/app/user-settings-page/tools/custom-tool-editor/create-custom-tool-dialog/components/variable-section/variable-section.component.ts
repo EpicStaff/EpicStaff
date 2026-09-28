@@ -1,8 +1,7 @@
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal, viewChild } from '@angular/core';
+import { AppSvgIconComponent, DynamicTableComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { DynamicTableComponent } from '../../../../../../shared/components/dynamic-table/dynamic-table.component';
 import { TableColumnDef, TableRow } from '../../../../../../shared/components/dynamic-table/dynamic-table.models';
 import {
     createCellExtraValidators,

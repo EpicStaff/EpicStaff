@@ -1,8 +1,9 @@
+from domain.models.realtime_tool import RealtimeTool, ToolParameters
+from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from src.shared.models import (
     PythonCodeToolData,
 )
-from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
-from domain.models.realtime_tool import RealtimeTool, ToolParameters
+
 from .base_tool_executor import BaseToolExecutor
 
 
@@ -16,9 +17,7 @@ class PythonCodeToolExecutor(BaseToolExecutor):
         super().__init__(tool_name=name)
         self.python_code_tool_data = python_code_tool_data
         self.python_code_executor_service = python_code_executor_service
-        self._realtime_model = self._gen_python_realtime_tool_model(
-            self.python_code_tool_data
-        )
+        self._realtime_model = self._gen_python_realtime_tool_model(self.python_code_tool_data)
 
     async def execute(self, **kwargs):
         return await self.python_code_executor_service.run_code(
@@ -33,7 +32,10 @@ class PythonCodeToolExecutor(BaseToolExecutor):
         for var in python_code_tool_data.variables:
             input_type = var.get("input_type")
             if input_type in ("agent_input", "mixed"):
-                prop = {"type": var.get("type", "string"), "description": var.get("description", "")}
+                prop = {
+                    "type": var.get("type", "string"),
+                    "description": var.get("description", ""),
+                }
                 if var.get("properties"):
                     prop["properties"] = var["properties"]
                 if var.get("items"):

@@ -29,7 +29,10 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
                     });
                     return next(retryReq);
                 }),
-                catchError(() => throwError(() => err))
+                catchError(() => {
+                    authService.removeTokenAndNavToLogin();
+                    return throwError(() => err);
+                })
             );
         })
     );

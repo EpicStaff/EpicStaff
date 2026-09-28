@@ -6,8 +6,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from app.tools.executors.python_code import PythonCodeToolExecutor
 from shared.models.agent_service import ToolResult
 from shared.models.tools import (
@@ -27,9 +25,7 @@ def _make_tool_data(**overrides) -> PythonCodeToolData:
         global_kwargs=None,
         use_storage=False,
     )
-    python_code = PythonCodeData(
-        **{**code_defaults, **overrides.pop("python_code_overrides", {})}
-    )
+    python_code = PythonCodeData(**{**code_defaults, **overrides.pop("python_code_overrides", {})})
     return PythonCodeToolData(
         id=1,
         name=overrides.pop("name", "my_tool"),
@@ -100,9 +96,7 @@ async def test_func_kwargs_is_llm_args_only():
 
 async def test_success_returns_tool_result_with_content():
     sandbox = MagicMock()
-    sandbox.submit = AsyncMock(
-        return_value=_make_success_result(result_data="the answer")
-    )
+    sandbox.submit = AsyncMock(return_value=_make_success_result(result_data="the answer"))
 
     executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
     result = await executor({})
@@ -114,9 +108,7 @@ async def test_success_returns_tool_result_with_content():
 
 async def test_nonzero_returncode_returns_error_with_stderr():
     sandbox = MagicMock()
-    sandbox.submit = AsyncMock(
-        return_value=_make_error_result(stderr="NameError: undefined")
-    )
+    sandbox.submit = AsyncMock(return_value=_make_error_result(stderr="NameError: undefined"))
 
     executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
     result = await executor({})
@@ -217,9 +209,7 @@ async def test_secrets_are_forwarded_to_sandbox_task():
     sandbox = MagicMock()
     sandbox.submit = AsyncMock(return_value=_make_success_result())
 
-    data = _make_tool_data(
-        python_code_overrides={"secrets": {"MY_SECRET": "sk-live-12345"}}
-    )
+    data = _make_tool_data(python_code_overrides={"secrets": {"MY_SECRET": "sk-live-12345"}})
     executor = PythonCodeToolExecutor(sandbox, data)
     await executor({"x": "hello"})
 
@@ -231,9 +221,7 @@ async def test_global_kwargs_are_forwarded_to_sandbox_task():
     sandbox = MagicMock()
     sandbox.submit = AsyncMock(return_value=_make_success_result())
 
-    data = _make_tool_data(
-        python_code_overrides={"global_kwargs": {"mode": "production"}}
-    )
+    data = _make_tool_data(python_code_overrides={"global_kwargs": {"mode": "production"}})
     executor = PythonCodeToolExecutor(sandbox, data)
     await executor({})
 

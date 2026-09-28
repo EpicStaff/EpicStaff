@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.gates import HasOrgPermission
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from agents.models.surface_models import Surface
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
-from tables.services.rbac.permissions import HasOrgPermission
-from tables.views.mixins import OrgScopedResolverMixin
 from agents.serializers.surface_serializers import (
     SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
@@ -113,17 +113,13 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 response=SurfaceReadSerializer,
                 description="Combined surface data merged from the requested surfaces.",
             ),
-            400: OpenApiResponse(
-                description="Invalid surface ids or conflicting RAG configs."
-            ),
+            400: OpenApiResponse(description="Invalid surface ids or conflicting RAG configs."),
         },
     )
     @action(detail=False, methods=["post"], url_path="combine")
     def combine(self, request):
         ctx = self.get_serializer_context()
-        request_serializer = SurfaceCombineRequestSerializer(
-            data=request.data, context=ctx
-        )
+        request_serializer = SurfaceCombineRequestSerializer(data=request.data, context=ctx)
         request_serializer.is_valid(raise_exception=True)
 
         validated_ids = {s.pk for s in request_serializer.validated_data["surface_ids"]}

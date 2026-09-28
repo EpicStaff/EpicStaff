@@ -23,8 +23,6 @@ always masks unconditionally.
 import json
 import re
 
-import settings
-
 # One fixed marker rather than one naming each secret: the name would then travel
 # into stdout, the SSE stream, and the tool observation handed to the LLM, and none
 # of those need it to understand that something was withheld.

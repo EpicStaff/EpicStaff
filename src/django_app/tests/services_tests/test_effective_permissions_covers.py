@@ -8,9 +8,9 @@ tests pin the comparison itself; the two call paths are tested where they live.
 
 import pytest
 
-from tables.models.rbac_models import Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.models import Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
+from rbac.access.effective import EffectivePermissions
 
 ROLES = ResourceType.ROLES.value
 FLOWS = ResourceType.FLOWS.value

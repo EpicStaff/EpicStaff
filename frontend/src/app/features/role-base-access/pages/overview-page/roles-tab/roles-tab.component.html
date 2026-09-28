@@ -54,6 +54,39 @@
         <span class="cell-text">{{ row['members'] }}</span>
     </ng-template>
 
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        <div
+            class="actions-cell"
+            (click)="$event.stopPropagation()"
+        >
+            <app-view-button
+                tooltip="View role"
+                (triggered)="onViewRole(row)"
+            />
+            @if (!row['isBuiltIn'] && canCreateOrCopyAnywhere()) {
+                <app-duplicate-button
+                    tooltip="Copy to another org"
+                    (triggered)="onCopyRole(row)"
+                />
+            }
+            @if (canEditRow(row)) {
+                <app-edit-button
+                    tooltip="Edit role"
+                    (triggered)="onEditRole(row)"
+                />
+            }
+            @if (canDeleteRow(row)) {
+                <app-delete-button
+                    tooltip="Delete role"
+                    (triggered)="onDeleteRole(row)"
+                />
+            }
+        </div>
+    </ng-template>
+
     <div tableEmpty>
         @if (isLoading()) {
             <app-loading-spinner size="sm" />

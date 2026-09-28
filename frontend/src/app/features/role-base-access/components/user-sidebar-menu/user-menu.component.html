@@ -7,67 +7,28 @@
         />
         <div class="user-info">
             <div class="user-name">{{ user().display_name || user().email }}</div>
-            <div class="user-role">{{ systemRole() }}</div>
+            <div class="user-email">{{ user().email }}</div>
         </div>
     </div>
 
-    <div class="menu-divider"></div>
-
-    <div class="section-label">Organizations</div>
-    <ul class="org-list">
-        @for (org of organizations(); track org.organization.id) {
-            <li
-                class="org-row"
-                [class.active]="activeOrgService.activeOrgId() === org.organization.id"
-                [class.disabled]="switching()"
-                (click)="onOrgClick(org.organization.id)"
-            >
-                <app-org-avatar [name]="org.organization.name" />
-                <span class="org-name">{{ org.organization.name }}</span>
-            </li>
-        }
-    </ul>
-
-    <div class="menu-divider"></div>
-
-    <!-- Navigation section -->
-    <div class="section-label">Navigation</div>
-    <div class="nav-list">
-        @if (canVisitWorkspace()) {
-            <button
-                class="nav-item"
-                (click)="onWorkspaceClick()"
-            >
-                <app-svg-icon
-                    size="20px"
-                    icon="workspace"
-                    class="nav-icon"
-                />
-                <span class="nav-label">Workspace</span>
-            </button>
-        }
-
-        <button
-            class="nav-item"
-            (click)="onProfileClick()"
-        >
-            <app-svg-icon
-                size="20px"
-                icon="profile"
-                class="nav-icon"
-            />
-            <span class="nav-label">My Profile</span>
-        </button>
-    </div>
-
-    <div class="menu-divider"></div>
+    <button
+        class="nav-item"
+        (click)="onProfileClick()"
+    >
+        <app-svg-icon
+            size="16px"
+            icon="profile"
+            class="nav-icon"
+        />
+        <span class="nav-label">My Profile</span>
+    </button>
 
     <button
-        class="nav-item danger"
+        class="nav-item"
         (click)="onSignOutClick()"
     >
         <app-svg-icon
-            size="20px"
+            size="16px"
             icon="sign-out"
             class="nav-icon"
         />

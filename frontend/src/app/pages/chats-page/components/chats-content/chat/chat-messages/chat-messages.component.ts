@@ -1,9 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
-import { JsonViewerComponent } from '@shared/components';
+import { AppSvgIconComponent, JsonViewerComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import type { ItemType } from '../../../../libs/openai/client';
 import { ChatsService } from '../../../../services/chats.service';
 import { ConsoleService } from '../../../../services/console.service';
@@ -169,6 +168,7 @@ export class ChatMessagesComponent {
         return timestamp.toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
+            hour12: false,
         });
     }
 

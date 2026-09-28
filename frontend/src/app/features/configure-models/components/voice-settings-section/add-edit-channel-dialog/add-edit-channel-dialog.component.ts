@@ -11,16 +11,16 @@ import {
     ToggleSwitchComponent,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
-import { SecretsStorageService, WebhookTriggerService } from '@shared/services';
+import { RealtimeChannel, TwilioChannel, WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
+import {
+    RealtimeChannelService,
+    SecretsStorageService,
+    TwilioPhoneNumber,
+    WebhookTriggerService,
+} from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable, of, switchMap } from 'rxjs';
 
-import { RealtimeChannel, TwilioChannel } from '../../../../../shared/models/realtime-voice/realtime-channel.model';
-import { RealtimeChannelService, TwilioPhoneNumber } from '../../../../../shared/services/realtime-channel.service';
-import {
-    WebhookTriggerModel,
-    WebhookTriggerWrite,
-} from '../../../../../visual-programming/core/models/webhook-trigger.model';
 import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../../agent-definitions/services/agent-definitions-api.service';
 

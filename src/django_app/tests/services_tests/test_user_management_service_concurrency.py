@@ -28,8 +28,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection
 
-from tables.services.rbac.rbac_exceptions import LastSuperadminError
-from tables.services.rbac.user_management_service import UserManagementService
+from rbac.exceptions import LastSuperadminError
+from rbac.governance.users import UserManagementService
 
 UserModel = get_user_model()
 

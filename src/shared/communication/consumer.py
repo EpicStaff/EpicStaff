@@ -1,8 +1,9 @@
 import json
-from typing import Iterator, AsyncIterator, Any
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
-from .message import Message
 from .brokers import AbstractBroker
+from .message import Message
 from .storages import AbstractStorage
 
 

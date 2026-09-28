@@ -1,13 +1,11 @@
 from rest_framework import serializers
 
-from tables.models import Graph, AudioTranscriptionNode
+from tables.models import AudioTranscriptionNode, Graph
 
 
 class AudioTranscriptionNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 
     class Meta:
         model = AudioTranscriptionNode

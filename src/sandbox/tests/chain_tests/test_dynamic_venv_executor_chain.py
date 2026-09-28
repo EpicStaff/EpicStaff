@@ -17,7 +17,7 @@ Design notes
 
 - create_subprocess_exec (InstallLibrariesHandler + ExecuteCodeHandler):
     InstallLibrariesHandler fires several exec calls (pip upgrade, pip freeze,
-    pip install × N).  ExecuteCodeHandler fires one exec call for the user
+    pip install x N).  ExecuteCodeHandler fires one exec call for the user
     script.  We distinguish the "user script" call from pip calls by checking
     whether the last positional arg ends with "code.py" (the temp_code_path
     written by ExecuteCodeHandler).  Only for that call do we pre-write the

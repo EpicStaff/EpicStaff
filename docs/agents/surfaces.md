@@ -49,7 +49,7 @@ The shared abstract bases in
 
 | Field | Type | Notes |
 |---|---|---|
-| `organization` | FK → `tables.Organization`, `CASCADE` | owning organization |
+| `organization` | FK → `rbac.Organization`, `CASCADE` | owning organization |
 | `name` | `CharField(max_length=255)` | unique per organization via `UniqueConstraint("organization", "name")` named `uniq_surface_org_name` |
 | `instructions` | `TextField`, blank/default `""` | appended to the agent prompt when the surface is active |
 | `owner_agent` | FK → `AgentDefinition`, `CASCADE`, nullable | `None` = shared (any agent may use it); set = agent-specific (only that agent) |
@@ -86,10 +86,11 @@ class ToolMode(models.TextChoices):
     ALLOW = "allow"
     DENY = "deny"
 
+
 class StorageAccess(models.TextChoices):
-    ALLOW = "allow"   # explicitly allowed
-    UNSET = "unset"   # default — neither granted nor forbidden
-    DENY = "deny"     # explicitly forbidden — hard deny, overrides any grant
+    ALLOW = "allow"  # explicitly allowed
+    UNSET = "unset"  # default — neither granted nor forbidden
+    DENY = "deny"  # explicitly forbidden — hard deny, overrides any grant
 ```
 
 - **`ToolMode`** is effectively tri-state through row *presence*: a tool with no

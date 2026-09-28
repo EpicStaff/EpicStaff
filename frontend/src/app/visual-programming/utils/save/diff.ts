@@ -1,4 +1,5 @@
-import { NodeType } from '../../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';

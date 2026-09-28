@@ -1,7 +1,7 @@
 import pytest
 
 from tables.models import ClassificationDecisionTableNode, PythonCode, Graph
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 
 

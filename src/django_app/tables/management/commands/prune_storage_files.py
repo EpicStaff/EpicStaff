@@ -22,7 +22,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from tables.models import Organization, StorageFile
+        from rbac.models import Organization
+        from tables.models import StorageFile
         from tables.services.storage_service import get_storage_manager
 
         dry_run: bool = options["dry_run"]

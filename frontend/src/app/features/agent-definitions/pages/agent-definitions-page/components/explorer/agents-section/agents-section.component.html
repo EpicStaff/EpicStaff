@@ -1,4 +1,11 @@
-@if (store.agentsTree().length === 0) {
+@if (store.agentsError()) {
+    <app-fetch-error-state
+        mod="small"
+        title="Failed to load agents"
+        message="Check your connection and try again."
+        (retry)="store.retryAgents()"
+    />
+} @else if (store.agentsTree().length === 0) {
     <div class="section-state">No agents yet</div>
 } @else {
     @for (node of store.agentsTree(); track trackByKey($index, node)) {

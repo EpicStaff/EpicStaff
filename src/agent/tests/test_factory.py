@@ -7,7 +7,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.enums import EmitterMode
@@ -50,7 +49,10 @@ def _factory() -> RunnerFactory:
 def test_build_single_task_returns_runner_and_tool_event_emitter():
     factory = _factory()
     runner, emitter = factory.build(
-        _request(), redis_client=MagicMock(), result_stream="agent.results"
+        _request(),
+        redis_client=MagicMock(),
+        result_stream_prefix="agent.results",
+        result_stream_ttl_s=3600,
     )
 
     assert isinstance(runner, SingleTaskRunner)
@@ -66,7 +68,10 @@ def test_build_list_of_tasks_returns_list_of_tasks_runner():
         payload={"tasks": [{"name": "t1", "instructions": "do it"}]},
     )
     runner, emitter = factory.build(
-        request, redis_client=MagicMock(), result_stream="agent.results"
+        request,
+        redis_client=MagicMock(),
+        result_stream_prefix="agent.results",
+        result_stream_ttl_s=3600,
     )
 
     assert isinstance(runner, ListOfTasksRunner)
@@ -80,8 +85,9 @@ def test_build_stream_mode_raises_not_implemented():
         factory._build_emitter(
             EmitterMode.STREAM,
             redis_client=MagicMock(),
-            result_stream="agent.results",
+            result_stream_prefix="agent.results",
             correlation_id="test-corr",
+            result_stream_ttl_s=3600,
         )
 
 
@@ -90,8 +96,36 @@ def test_build_batch_mode_returns_batch_emitter():
     emitter = factory._build_emitter(
         EmitterMode.BATCH,
         redis_client=MagicMock(),
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
 
     assert isinstance(emitter, RedisStreamBatchEmitter)
+
+
+async def test_built_emitter_publishes_to_stream_derived_from_request_correlation_id():
+    factory = _factory()
+    published: list[tuple[str, int | None]] = []
+    client = MagicMock()
+
+    async def capture_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
+        published.append((stream, ttl_s))
+
+    client.publish = capture_publish
+
+    _runner, emitter = factory.build(
+        _request(),
+        redis_client=client,
+        result_stream_prefix="agent.results",
+        result_stream_ttl_s=3600,
+    )
+    await emitter.on_error(RuntimeError("boom"))
+
+    assert published == [("agent.results:test-corr", 3600)]

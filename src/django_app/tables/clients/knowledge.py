@@ -1,8 +1,7 @@
-from typing import Literal
+from typing import Literal, Self
 
 import httpx
 from loguru import logger
-
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
 
@@ -21,7 +20,7 @@ class KnowledgeClient:
     def __init__(self, host: str = HOST, timeout: float = 10.0):
         self._client = httpx.Client(base_url=host, timeout=timeout)
 
-    def __enter__(self) -> "KnowledgeClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info) -> None:
@@ -70,9 +69,7 @@ class KnowledgeClient:
         rag_id: int,
         operation: Literal["index", "prechunk"],
     ) -> None:
-        self._request(
-            method="delete", url=f"rags/{strategy}/{rag_id}/cancel/{operation}/"
-        )
+        self._request(method="delete", url=f"rags/{strategy}/{rag_id}/cancel/{operation}/")
 
     def delete(self, strategy: RAGStrategy, rag_id: int):
         self._request(method="delete", url=f"rags/{strategy}/{rag_id}/")
@@ -81,9 +78,7 @@ class KnowledgeClient:
         response = self._request(method="get", url=f"rags/{strategy}/{rag_id}/metrics/")
         return response.json()
 
-    def _request(
-        self, method: str, url: str, *, json: dict | None = None
-    ) -> httpx.Response:
+    def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
         try:
             response = self._client.request(method, url, json=json)
         except httpx.TimeoutException as e:

@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { AppIconComponent, AppSvgIconComponent } from '@shared/components';
 
-import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { getIconForEntityType, getSpriteIcon, isInlineSvgIcon } from '../../utils/entity-icon.util';
 
 @Component({

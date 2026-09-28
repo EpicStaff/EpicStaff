@@ -1,6 +1,6 @@
 import time
 from collections import OrderedDict
-from typing import Optional
+
 from src.shared.models import RealtimeAgentChatData
 from utils.singleton_meta import SingletonMeta
 
@@ -33,7 +33,7 @@ class ConnectionRepository(metaclass=SingletonMeta):
         expires_at = time.monotonic() + self.ttl_seconds
         self._store[connection_key] = (data, expires_at)
 
-    def get_connection(self, connection_key: str) -> Optional[RealtimeAgentChatData]:
+    def get_connection(self, connection_key: str) -> RealtimeAgentChatData | None:
         """Retrieve connection data. Returns None (and evicts) if expired."""
         entry = self._store.get(connection_key)
         if entry is None:
@@ -51,6 +51,4 @@ class ConnectionRepository(metaclass=SingletonMeta):
     def get_all_connections(self):
         """Retrieve all stored, non-expired connections (for debugging)."""
         now = time.monotonic()
-        return [
-            data for data, expires_at in self._store.values() if expires_at > now
-        ]
+        return [data for data, expires_at in self._store.values() if expires_at > now]

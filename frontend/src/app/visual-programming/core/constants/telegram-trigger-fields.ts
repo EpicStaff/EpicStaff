@@ -1,7 +1,4 @@
-import {
-    TelegramFieldParent,
-    TelegramTriggerFieldWithModel,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
+import { TelegramFieldParent, TelegramTriggerFieldWithModel } from '../models/telegram-trigger.model';
 import {
     ANIMATION,
     AUDIO,

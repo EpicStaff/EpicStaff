@@ -1,8 +1,8 @@
 from django.db import transaction
 from django.db.models import Value
 from django.db.models.functions import Concat, Substr
-
-from tables.models import Organization, StorageFile
+from rbac.models import Organization
+from tables.models import StorageFile
 
 
 def _name_of(path: str) -> str:
@@ -164,17 +164,11 @@ class StorageFileSync:
                 src_prefix = src.rstrip("/") + "/"
                 dst_prefix = dst.rstrip("/") + "/"
 
-                qs = StorageFile.objects.filter(
-                    org_id=org_id, path__startswith=src_prefix
-                )
-                qs.update(
-                    path=Concat(Value(dst_prefix), Substr("path", len(src_prefix) + 1))
-                )
+                qs = StorageFile.objects.filter(org_id=org_id, path__startswith=src_prefix)
+                qs.update(path=Concat(Value(dst_prefix), Substr("path", len(src_prefix) + 1)))
 
                 moved_rows = list(
-                    StorageFile.objects.filter(
-                        org_id=org_id, path__startswith=dst_prefix
-                    )
+                    StorageFile.objects.filter(org_id=org_id, path__startswith=dst_prefix)
                 )
 
                 for row in moved_rows:
@@ -238,9 +232,7 @@ class StorageFileSync:
 
         with transaction.atomic():
             if not actual_dst_path.endswith("/"):
-                source_row = StorageFile.objects.filter(
-                    org_id=src_org_id, path=src_path
-                ).first()
+                source_row = StorageFile.objects.filter(org_id=src_org_id, path=src_path).first()
 
                 dest_row, created = StorageFile.objects.get_or_create(
                     org=dst_org,
@@ -275,9 +267,7 @@ class StorageFileSync:
 
             src_prefix = src_path.rstrip("/") + "/"
             source_rows = list(
-                StorageFile.objects.filter(
-                    org_id=src_org_id, path__startswith=src_prefix
-                )
+                StorageFile.objects.filter(org_id=src_org_id, path__startswith=src_prefix)
             )
 
             translated_rows = []
@@ -312,6 +302,4 @@ class StorageFileSync:
                     },
                 )
 
-            StorageFile.objects.filter(
-                org_id=src_org_id, path__startswith=src_prefix
-            ).delete()
+            StorageFile.objects.filter(org_id=src_org_id, path__startswith=src_prefix).delete()

@@ -1,5 +1,4 @@
 from django.db import models
-
 from tables.models.base_models import AbstractDefaultFillableModel
 
 
@@ -69,7 +68,7 @@ class DefaultAgentDefinitionConfig(models.Model):
 class AgentDefinition(AbstractDefaultFillableModel):
     # Identity
     organization = models.ForeignKey(
-        "tables.Organization",
+        "rbac.Organization",
         on_delete=models.CASCADE,
         related_name="agent_definitions",
         help_text="Organization this agent belongs to.",

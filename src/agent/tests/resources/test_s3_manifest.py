@@ -100,9 +100,7 @@ def test_folder_item_type_renders_without_size():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert line == (
-        "- reports/archive/ (folder) — may: list — may not: view, edit, delete"
-    )
+    assert line == ("- reports/archive/ (folder) — may: list — may not: view, edit, delete")
 
 
 def test_file_with_missing_size_omits_parenthetical_size():
@@ -130,9 +128,7 @@ def test_file_with_size_renders_parenthetical():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert line == (
-        "- reports/q1.pdf (file, 24 KB) — may: view — may not: list, edit, delete"
-    )
+    assert line == ("- reports/q1.pdf (file, 24 KB) — may: view — may not: list, edit, delete")
 
 
 def test_spec_with_empty_metadata_degrades_to_bare_path_line():
@@ -172,9 +168,7 @@ def test_content_ends_with_no_other_access_footer():
     attachment = build_s3_manifest([spec])
 
     assert attachment.content.startswith("Files and folders you have access to:")
-    assert attachment.content.endswith(
-        "You have no access to any other path in storage."
-    )
+    assert attachment.content.endswith("You have no access to any other path in storage.")
 
 
 def test_folder_edit_renders_create_wording_not_file_wording():
@@ -441,8 +435,7 @@ def test_legend_contains_non_implication_sentence():
     attachment = build_s3_manifest([spec])
 
     assert (
-        "each is granted independently — having one does NOT imply any other"
-        in attachment.content
+        "each is granted independently — having one does NOT imply any other" in attachment.content
     )
 
 
@@ -475,9 +468,7 @@ def test_no_legend_when_no_path_has_any_allowed_op():
     attachment = build_s3_manifest([spec])
 
     assert "What each permission means" not in attachment.content
-    assert attachment.content.endswith(
-        "You have no access to any other path in storage."
-    )
+    assert attachment.content.endswith("You have no access to any other path in storage.")
 
 
 def test_legend_appears_before_closing_footer_line():
@@ -486,9 +477,7 @@ def test_legend_appears_before_closing_footer_line():
     attachment = build_s3_manifest([spec])
 
     legend_index = attachment.content.index("What each permission means")
-    footer_index = attachment.content.index(
-        "You have no access to any other path in storage."
-    )
+    footer_index = attachment.content.index("You have no access to any other path in storage.")
     assert legend_index < footer_index
 
 
@@ -507,9 +496,7 @@ def test_multiple_specs_render_multiple_lines():
         path="reports/archive/",
         metadata={"item_type": "folder", "flags": _flags(can_list="allow")},
     )
-    spec_c = _spec(
-        file_id=3, path="inbox/notes.txt", metadata={"flags": _flags(can_view="allow")}
-    )
+    spec_c = _spec(file_id=3, path="inbox/notes.txt", metadata={"flags": _flags(can_view="allow")})
 
     attachment = build_s3_manifest([spec_a, spec_b, spec_c])
 

@@ -10,6 +10,7 @@ import {
     input,
     OnInit,
     signal,
+    ViewChild,
     WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -68,6 +69,8 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
     private deepLinkService = inject(ChunkDeepLinkService);
     private pollingService = inject(KnowledgeSourcesPollingService);
     private dialog = inject(Dialog);
+
+    @ViewChild(ConfigurationTableComponent) private table?: ConfigurationTableComponent;
 
     naiveRagId = input.required<number>();
     collectionId = input.required<number>();
@@ -174,7 +177,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     openTuneChunkModal({ ragDocumentId, allDocumentIds }: { ragDocumentId: number; allDocumentIds: number[] }) {
         this.tuneChunkOpened.set(true);
-        const dialogRef = this.dialog.open(EditFileParametersDialogComponent, {
+        const dialogRef = this.dialog.open<number>(EditFileParametersDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
             data: {
@@ -184,9 +187,14 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
                 allDocumentIds,
             },
             disableClose: true,
+            restoreFocus: false,
         });
 
-        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.tuneChunkOpened.set(false));
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((lastEditedDocumentId) => {
+            this.tuneChunkOpened.set(false);
+            if (lastEditedDocumentId === undefined) return;
+            requestAnimationFrame(() => this.table?.focusTuneButton(lastEditedDocumentId));
+        });
     }
 
     getConfigurationData(): unknown {

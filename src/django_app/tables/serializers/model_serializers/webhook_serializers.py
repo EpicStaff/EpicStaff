@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.webhook_trigger_service import validate_path_uniqueness
 

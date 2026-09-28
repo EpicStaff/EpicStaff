@@ -282,7 +282,7 @@ def test_create_graph_from_version_copies_labels_from_source(
 ):
     from tables.models import Label
 
-    label = Label.objects.create(name="urgent")
+    label = Label.objects.create(name="urgent", org=default_org)
     graph.labels.set([label])
 
     version = service.save_version(graph, name="labelled-snap")

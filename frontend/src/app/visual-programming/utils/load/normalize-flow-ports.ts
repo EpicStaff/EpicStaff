@@ -1,4 +1,5 @@
-import { NodeType } from '../../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { generatePortsForDecisionTableNode, generatePortsForNode } from '../../core/helpers/helpers';
 import { normalizeTableNodeSize } from '../../core/helpers/node-size.util';
 import { FlowModel } from '../../core/models/flow.model';

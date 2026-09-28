@@ -1,10 +1,9 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, ViewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, CopyFieldComponent } from '@shared/components';
 
 import { ReviewPythonCode } from '../../../../../../core/models/review-item.model';
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CopyFieldComponent } from '../../../../../../shared/components/copy-field/copy-field.component';
 import { CodeEditorComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import {
     CodeFileDetailsDialogComponent,

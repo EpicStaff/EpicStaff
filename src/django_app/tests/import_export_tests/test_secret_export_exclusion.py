@@ -52,7 +52,11 @@ SAFE_CREDENTIAL_SHAPED_FIELDS = {"max_tokens"}
     ids=lambda cls: cls.__module__.rsplit(".", 1)[-1] + "." + cls.__name__,
 )
 def test_import_serializer_exposes_no_credential_field(serializer_cls):
-    exposed = set(serializer_cls().get_fields())
+    # write_only fields (e.g. McpToolImportSerializer.auth, EST-3783) accept a
+    # credential on import but never appear in to_representation()/export
+    # output, so they are not an exposure and are excluded here.
+    fields = serializer_cls().get_fields()
+    exposed = {name for name, field in fields.items() if not field.write_only}
     leaked = exposed & FORBIDDEN_FIELD_NAMES
     assert not leaked, f"{serializer_cls.__name__} exposes {sorted(leaked)}"
 

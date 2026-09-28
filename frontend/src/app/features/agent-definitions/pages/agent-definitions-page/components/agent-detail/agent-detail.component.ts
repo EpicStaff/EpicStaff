@@ -20,7 +20,7 @@ import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflo
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
-import { ToastService } from '../../../../../../services/notifications/toast.service';
+import { ToastService } from '../../../../../../services/notifications';
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../files/services/storage-api.service';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';

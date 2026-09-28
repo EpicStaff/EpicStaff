@@ -2,7 +2,6 @@ import threading
 
 from django.db import transaction
 from django.db.models.signals import post_delete
-
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 _state = threading.local()

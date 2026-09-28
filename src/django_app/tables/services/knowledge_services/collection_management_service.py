@@ -1,9 +1,9 @@
-from typing import Dict, Any, List, Literal
-from django.conf import settings
-from django.db import transaction, models
-from django.db.models import Prefetch, Count, Avg
-from loguru import logger
+from typing import Any, Literal
 
+from django.conf import settings
+from django.db import models, transaction
+from django.db.models import Avg, Count, Prefetch
+from loguru import logger
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
@@ -12,19 +12,19 @@ from tables.clients.errors import (
     ClientNotAvailableError,
     ClientTimeoutError,
 )
-from tables.models import SourceCollection, DocumentMetadata, DocumentContent
-from tables.models.knowledge_models import BaseRagType, NaiveRag, GraphRag
+from tables.exceptions import (
+    CollectionNotFoundException,
+    GraphRagIndexNotReadyException,
+    GraphRagMetricsUnavailableException,
+    NaiveRagIndexNotReadyException,
+    NoGraphRagForCollectionException,
+    NoNaiveRagForCollectionException,
+)
+from tables.models import DocumentContent, DocumentMetadata, SourceCollection
+from tables.models.knowledge_models import GraphRag, NaiveRag
 from tables.models.knowledge_models.naive_rag_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
-)
-from tables.exceptions import (
-    CollectionNotFoundException,
-    NoGraphRagForCollectionException,
-    GraphRagIndexNotReadyException,
-    GraphRagMetricsUnavailableException,
-    NoNaiveRagForCollectionException,
-    NaiveRagIndexNotReadyException,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
@@ -56,8 +56,8 @@ class CollectionManagementService:
         """
         try:
             return SourceCollection.objects.get(collection_id=collection_id)
-        except SourceCollection.DoesNotExist:
-            raise CollectionNotFoundException(collection_id)
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
 
     @staticmethod
     def get_collection_metrics(
@@ -113,11 +113,11 @@ class CollectionManagementService:
     @staticmethod
     @transaction.atomic
     def create_collection(
-        collection_name: str = None,
+        collection_name: str | None = None,
         description: str = "",
-        user_id: str = None,
-        collection_origin: str = None,
-        org_id: int = None,
+        user_id: str | None = None,
+        collection_origin: str | None = None,
+        org_id: int | None = None,
     ) -> SourceCollection:
         """
         Create a new empty collection.
@@ -137,8 +137,7 @@ class CollectionManagementService:
             collection_name=collection_name or "Untitled Collection",
             description=description or "",
             user_id=user_id or "dummy_user",
-            collection_origin=collection_origin
-            or SourceCollection.SourceCollectionOrigin.USER,
+            collection_origin=collection_origin or SourceCollection.SourceCollectionOrigin.USER,
             org_id=org_id,
         )
 
@@ -152,8 +151,8 @@ class CollectionManagementService:
     @transaction.atomic
     def update_collection(
         collection_id: int,
-        collection_name: str = None,
-        description: str = None,
+        collection_name: str | None = None,
+        description: str | None = None,
     ) -> SourceCollection:
         """
         Update collection name and/or description.
@@ -184,15 +183,13 @@ class CollectionManagementService:
         if update_fields:
             collection.save()
 
-        logger.info(
-            f"Updated collection {collection_id} fields: {update_fields or 'none'}"
-        )
+        logger.info(f"Updated collection {collection_id} fields: {update_fields or 'none'}")
 
         return collection
 
     @staticmethod
     @transaction.atomic
-    def delete_collection(collection_id: int) -> Dict[str, Any]:
+    def delete_collection(collection_id: int) -> dict[str, Any]:
         """
         Delete collection and all its documents.
         Cleans up unreferenced DocumentContent.
@@ -213,9 +210,7 @@ class CollectionManagementService:
         if settings.SOFT_DELETE:
             # Soft delete keeps documents/content intact for restoration.
             collection.delete()
-            logger.info(
-                f"Soft-deleted collection '{collection_name}' (ID: {collection_id})"
-            )
+            logger.info(f"Soft-deleted collection '{collection_name}' (ID: {collection_id})")
             return {
                 "collection_id": collection_id,
                 "collection_name": collection_name,
@@ -248,9 +243,7 @@ class CollectionManagementService:
             unreferenced_count = unreferenced_content.count()
             if unreferenced_count > 0:
                 unreferenced_content.delete()
-                logger.info(
-                    f"Deleted {unreferenced_count} unreferenced content records"
-                )
+                logger.info(f"Deleted {unreferenced_count} unreferenced content records")
 
         logger.info(
             f"Deleted collection '{collection_name}' (ID: {collection_id}) "
@@ -266,7 +259,7 @@ class CollectionManagementService:
 
     @staticmethod
     @transaction.atomic
-    def bulk_delete_collections(collection_ids: list[int]) -> Dict[str, Any]:
+    def bulk_delete_collections(collection_ids: list[int]) -> dict[str, Any]:
         """
         Delete multiple collections in a single transaction.
         Cleans up unreferenced DocumentContent.
@@ -323,9 +316,7 @@ class CollectionManagementService:
             }
 
         # Count documents across all collections
-        total_documents = DocumentMetadata.objects.filter(
-            source_collection__in=collections
-        ).count()
+        total_documents = DocumentMetadata.objects.filter(source_collection__in=collections).count()
 
         # Collect content IDs before deletion
         content_ids = list(
@@ -367,8 +358,8 @@ class CollectionManagementService:
     @transaction.atomic
     def copy_collection(
         source_collection_id: int,
-        new_collection_name: str = None,
-        org_id: int = None,
+        new_collection_name: str | None = None,
+        org_id: int | None = None,
     ) -> SourceCollection:
         """
         Copy a collection without duplicating binary content.
@@ -386,14 +377,11 @@ class CollectionManagementService:
             CollectionNotFoundException: If source collection not found
         """
         # Get source collection
-        source_collection = CollectionManagementService.get_collection(
-            source_collection_id
-        )
+        source_collection = CollectionManagementService.get_collection(source_collection_id)
 
         # Create new collection (name auto-deduplicated by model.save())
         new_collection = SourceCollection.objects.create(
-            collection_name=new_collection_name
-            or f"{source_collection.collection_name} (Copy)",
+            collection_name=new_collection_name or f"{source_collection.collection_name} (Copy)",
             description=source_collection.description,
             org_id=org_id,
         )
@@ -454,7 +442,7 @@ class CollectionManagementService:
         )
 
     @staticmethod
-    def get_rag_configurations(collection_id: int) -> List[Dict[str, Any]]:
+    def get_rag_configurations(collection_id: int) -> list[dict[str, Any]]:
         """
         Get all RAG configurations for a collection.
 
@@ -483,8 +471,8 @@ class CollectionManagementService:
             collection = SourceCollection.objects.prefetch_related(
                 *CollectionManagementService.rag_configurations_prefetch()
             ).get(collection_id=collection_id)
-        except SourceCollection.DoesNotExist:
-            raise CollectionNotFoundException(collection_id)
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
 
         rag_configurations = []
         for base_rag_type in collection.rag_types.all():
@@ -499,7 +487,7 @@ class CollectionManagementService:
         return rag_configurations
 
     @staticmethod
-    def _get_naive_rag_summary(naive_rag: NaiveRag) -> Dict[str, Any]:
+    def _get_naive_rag_summary(naive_rag: NaiveRag) -> dict[str, Any]:
         """
         Get summary data for a NaiveRag configuration.
 
@@ -517,9 +505,7 @@ class CollectionManagementService:
         embeddings_count = naive_rag.embeddings_count
 
         # Determine if ready for indexing
-        is_ready_for_indexing = (
-            naive_rag.embedder is not None and document_configs_count > 0
-        )
+        is_ready_for_indexing = naive_rag.embedder is not None and document_configs_count > 0
 
         return {
             "rag_id": naive_rag.naive_rag_id,
@@ -527,9 +513,7 @@ class CollectionManagementService:
             "status": naive_rag.rag_status,
             "outdated_reasons": naive_rag.outdated_reasons,
             "is_ready_for_indexing": is_ready_for_indexing,
-            "embedder_name": (
-                naive_rag.embedder.custom_name if naive_rag.embedder else None
-            ),
+            "embedder_name": (naive_rag.embedder.custom_name if naive_rag.embedder else None),
             "embedder_id": naive_rag.embedder.id if naive_rag.embedder else None,
             "document_configs_count": document_configs_count,
             "chunks_count": chunks_count,
@@ -540,7 +524,7 @@ class CollectionManagementService:
         }
 
     @staticmethod
-    def _get_graph_rag_summary(graph_rag: GraphRag) -> Dict[str, Any]:
+    def _get_graph_rag_summary(graph_rag: GraphRag) -> dict[str, Any]:
         """
         Get summary data for a GraphRag configuration.
 
@@ -558,9 +542,7 @@ class CollectionManagementService:
 
         # Determine if ready for indexing
         is_ready_for_indexing = (
-            graph_rag.embedder is not None
-            and graph_rag.llm is not None
-            and documents_count > 0
+            graph_rag.embedder is not None and graph_rag.llm is not None and documents_count > 0
         )
 
         return {
@@ -569,9 +551,7 @@ class CollectionManagementService:
             "status": graph_rag.rag_status,
             "outdated_reasons": graph_rag.outdated_reasons,
             "is_ready_for_indexing": is_ready_for_indexing,
-            "embedder_name": (
-                graph_rag.embedder.custom_name if graph_rag.embedder else None
-            ),
+            "embedder_name": (graph_rag.embedder.custom_name if graph_rag.embedder else None),
             "embedder_id": graph_rag.embedder.id if graph_rag.embedder else None,
             "llm_name": graph_rag.llm.custom_name if graph_rag.llm else None,
             "llm_id": graph_rag.llm.id if graph_rag.llm else None,

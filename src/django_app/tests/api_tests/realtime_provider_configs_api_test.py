@@ -19,8 +19,8 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
     RealtimeAgent,
 )
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.models.webhook_models import RealtimeChannel
 from tables.services.secrets import secret_resolver, secret_service
 

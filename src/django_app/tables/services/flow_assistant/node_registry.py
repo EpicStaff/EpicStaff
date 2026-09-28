@@ -97,9 +97,7 @@ class NodeTypeSpec:
 FLOW_ASSISTANT_NODE_TYPES: tuple[NodeTypeSpec, ...] = (
     NodeTypeSpec("python", PythonNode, "python_node_list"),
     NodeTypeSpec("file_extractor", FileExtractorNode, "file_extractor_node_list"),
-    NodeTypeSpec(
-        "audio_transcription", AudioTranscriptionNode, "audio_transcription_node_list"
-    ),
+    NodeTypeSpec("audio_transcription", AudioTranscriptionNode, "audio_transcription_node_list"),
     NodeTypeSpec("subgraph", SubGraphNode, "subgraph_node_list"),
     NodeTypeSpec("start", StartNode, "start_node_list", node_name_source="property"),
     NodeTypeSpec("end", EndNode, "end_node", node_name_source="property"),

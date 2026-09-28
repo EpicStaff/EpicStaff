@@ -2,17 +2,15 @@ import asyncio
 import json
 import os
 import shutil
-from src.shared.models import CodeTaskData
 
-from services.storage_credential_manager import StorageCredentialManager
-from services.redis_service import RedisService
-from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 import isolation
 import landlock
-from utils.logger import logger
-
 import settings
-
+from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+from services.redis_service import RedisService
+from services.storage_credential_manager import StorageCredentialManager
+from src.shared.models import CodeTaskData
+from utils.logger import logger
 
 storage_credential_manager = StorageCredentialManager(
     host=settings.STORAGE_ENDPOINT,
@@ -74,9 +72,7 @@ def log_isolation_state():
     """Announce the Landlock filesystem-jail state once per process."""
     abi = landlock.abi_version()
     if abi >= 1:
-        logger.info(
-            "Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi
-        )
+        logger.info("Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi)
     elif isolation.isolation_required():
         logger.warning(
             "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
@@ -100,9 +96,7 @@ async def init():
 
 
 async def listen_redis():
-    logger.info(
-        f"Subscribed to channel '{settings.CODE_EXEC_CHANNEL}' for code execution tasks."
-    )
+    logger.info(f"Subscribed to channel '{settings.CODE_EXEC_CHANNEL}' for code execution tasks.")
 
     while True:
         try:
@@ -118,7 +112,7 @@ async def listen_redis():
                             "Received code execution task: {}",
                             code_task_data.log_summary(),
                         )
-                        asyncio.create_task(run(code_task_data=code_task_data))
+                        asyncio.create_task(run(code_task_data=code_task_data))  # noqa: RUF006
                     except Exception as e:
                         logger.error("Error processing message: {}", e)
         except Exception as e:
@@ -148,13 +142,11 @@ async def run(code_task_data: CodeTaskData):
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (
-                    settings.OUTPUT_PATH
-                    / code_task_data.execution_id
-                    / "storage_mutations.json"
+                    settings.OUTPUT_PATH / code_task_data.execution_id / "storage_mutations.json"
                 )
 
                 if mutations_path.exists():
-                    with open(mutations_path, "r") as f:
+                    with open(mutations_path) as f:  # noqa: ASYNC230
                         mutations = json.load(f)
 
                     if mutations:
