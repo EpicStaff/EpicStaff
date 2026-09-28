@@ -218,7 +218,10 @@ export const routes: Routes = [
                                 canActivate: [
                                     () => {
                                         const last = inject(LastVisitedTabService).get('/files');
-                                        return inject(Router).parseUrl(last ?? '/files/knowledge-sources');
+                                        const permissions = inject(PermissionsService);
+                                        return inject(Router).parseUrl(
+                                            last ?? permissions.resolveFilesTab() ?? permissions.resolveDefaultRoute()
+                                        );
                                     },
                                 ],
                                 children: [],

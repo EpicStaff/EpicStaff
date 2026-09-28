@@ -172,10 +172,19 @@ export class PermissionsService implements StorageService {
         if (this.can(ResourceCode.Agents, ActionCode.Read)) return '/agents';
         if (this.can(ResourceCode.Tools, ActionCode.Read)) return '/tools';
         if (this.can(ResourceCode.Flows, ActionCode.Read)) return '/flows/my';
-        if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';
-        if (this.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        const filesTab = this.resolveFilesTab();
+        if (filesTab) return filesTab;
 
         return '/profile';
+    }
+
+    /** First `/files/*` tab the caller can read in the active org, or `null` if none.
+     *  Ordered like the tabs: knowledge-sources → storage → persistent-data. */
+    resolveFilesTab(): string | null {
+        if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';
+        if (this.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        if (this.can(ResourceCode.PersistentData, ActionCode.Read)) return '/files/persistent-data';
+        return null;
     }
 
     clear(): void {
