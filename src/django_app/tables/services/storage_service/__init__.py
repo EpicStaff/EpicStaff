@@ -4,8 +4,9 @@ from django.conf import settings
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.s3_backend import S3StorageBackend
 
+_storage_manager = None
 
-@functools.cache
+
 def get_storage_manager() -> "StorageManager":  # noqa: F821
     """
     Return the singleton StorageManager backed by a prefix-free backend.
@@ -15,9 +16,12 @@ def get_storage_manager() -> "StorageManager":  # noqa: F821
     the manager holds no per-request state — org_id is always passed as an
     argument.
     """
-    from tables.services.storage_service.manager import StorageManager
+    global _storage_manager
+    if _storage_manager is None:
+        from tables.services.storage_service.manager import StorageManager
 
-    return StorageManager(get_storage_backend(organization_prefix=""))
+        _storage_manager = StorageManager(get_storage_backend(organization_prefix=""))
+    return _storage_manager
 
 
 @functools.cache

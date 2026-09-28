@@ -30,7 +30,7 @@ from tables.serializers.storage_serializers import (
     StorageTreeQuerySerializer,
     StorageUploadLimitsResponseSerializer,
 )
-from tables.services.storage_service import get_storage_manager
+from tables.services.storage_service import get_storage_manager, upload_stream_service
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,

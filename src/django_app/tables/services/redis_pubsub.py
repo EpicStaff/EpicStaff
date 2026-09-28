@@ -130,7 +130,7 @@ class RedisPubSub:
             try:
                 org_id = int(org_prefix.split("_", 1)[1])
             except (IndexError, ValueError):
-                logger.error("Invalid org_prefix format: {}", org_prefix)
+                logger.error(f"Invalid org_prefix format: {org_prefix}")
                 return
 
             close_old_connections()
@@ -185,7 +185,7 @@ class RedisPubSub:
                 )
 
         except Exception as e:
-            logger.error("Error handling storage_mutations message: {}", e)
+            logger.error(f"Error handling storage_mutations message: {e}")
 
     @staticmethod
     def _record_external_write(org_id: int, rel_path: str) -> None:
