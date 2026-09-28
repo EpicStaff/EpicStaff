@@ -1,0 +1,56 @@
+{
+  "Superadmin": {
+    "description": "Global administrator. Authority comes from the account's superadmin flag, so this role holds no permissions.",
+    "permissions": {}
+  },
+  "Org Admin": {
+    "description": "Full administrative authority within the organization.",
+    "permissions": {
+      "organizations": ["read", "update"],
+      "memberships": ["create", "read", "update", "delete"],
+      "roles": ["create", "read", "update", "delete"],
+      "api_keys": ["read", "delete"],
+      "flows": ["create", "read", "update", "delete", "export"],
+      "agents": ["create", "read", "update", "delete", "export"],
+      "tools": ["create", "read", "update", "delete", "export"],
+      "surfaces": ["create", "read", "update", "delete"],
+      "knowledge_sources": ["create", "read", "update", "delete", "export"],
+      "files": ["create", "read", "update", "delete", "export"],
+      "projects": ["create", "read", "update", "delete", "export"],
+      "llm_configs": ["create", "read", "update", "delete"],
+      "secrets": ["create", "read", "delete", "use"],
+      "voice": ["create", "read", "update", "delete"],
+      "webhooks": ["create", "read", "update", "delete"]
+    }
+  },
+  "Member": {
+    "description": "Builds and edits workspace resources; no organization administration.",
+    "permissions": {
+      "flows": ["create", "read", "update"],
+      "agents": ["create", "read", "update"],
+      "tools": ["create", "read", "update", "export"],
+      "surfaces": ["create", "read", "update"],
+      "knowledge_sources": ["read"],
+      "files": ["create", "read", "update", "export"],
+      "projects": ["create", "read", "update"],
+      "llm_configs": ["read"],
+      "voice": ["read"],
+      "webhooks": ["create", "read", "update", "delete"]
+    }
+  },
+  "Viewer": {
+    "description": "Read-only access to workspace resources; can run flows.",
+    "permissions": {
+      "flows": ["read"],
+      "agents": ["read"],
+      "tools": ["read"],
+      "surfaces": ["read"],
+      "knowledge_sources": ["read"],
+      "files": ["read"],
+      "projects": ["read"],
+      "llm_configs": ["read"],
+      "voice": ["read"],
+      "webhooks": ["read"]
+    }
+  }
+}
