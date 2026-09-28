@@ -19,6 +19,7 @@ from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
 from secret_scrubber import scrub
 from services.storage_credential_manager import StorageCredentialManager
+from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
 from utils.environment import build_base_env
 from utils.logger import logger
@@ -34,6 +35,9 @@ except KeyError:
     SANDBOX_GID = 1000
 
 
+# NOTE: the root -> sandboxuser drop below is the only thing that stops an
+# execution from signalling this supervisor process on kernels without
+# Landlock signal isolation (ABI < 6)
 def _can_drop_privileges() -> bool:
     """Return True only when the current process is root."""
     return os.geteuid() == 0
@@ -483,6 +487,35 @@ except Exception:
                 REQUIRE_ISOLATION_ENV_VAR,
             )
 
+        signal_isolation_policy = decide_signal_isolation_policy(
+            landlock_abi=isolation_abi,
+            require_signal_isolation=settings.REQUIRE_SIGNAL_ISOLATION,
+        )
+        if signal_isolation_policy is SignalIsolationPolicy.REFUSE:
+            logger.error(
+                "Sandbox IPC isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
+                isolation_abi,
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=(
+                    "Sandbox IPC isolation unavailable: executions require Landlock ABI 6+ "
+                    "(Linux 6.12+) to stop them signalling each other; refusing to execute. "
+                    f"Set {settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR}=false to run without it."
+                ),
+                stdout="",
+                returncode=1,
+            )
+        if signal_isolation_policy is SignalIsolationPolicy.UNISOLATED:
+            logger.warning(
+                "Sandbox IPC isolation unavailable (Landlock ABI {} < 6); executing {} "
+                "UNISOLATED because {}=false: it can signal other executions.",
+                isolation_abi,
+                context["execution_id"],
+                settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR,
+            )
+
         network_decision = decide_network_policy(
             block_network=settings.BLOCK_NETWORK,
             use_storage=bool(context.get("use_storage")),
@@ -539,7 +572,14 @@ except Exception:
                 network = {"mode": "allow_ports", "ports": list(network_decision.allowed_tcp_ports)}
             else:
                 network = {"mode": "unrestricted"}
-            plan = {"jail": jail, "network": network}
+            # Signal isolation is part of the Landlock ruleset, so it can only be
+            # enforced when a jail is built; ENFORCE implies ABI >= 6, which
+            # implies the jail branch above ran.
+            plan = {
+                "jail": jail,
+                "network": network,
+                "isolate_signals": signal_isolation_policy is SignalIsolationPolicy.ENFORCE,
+            }
             argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
         process = await asyncio.create_subprocess_exec(
