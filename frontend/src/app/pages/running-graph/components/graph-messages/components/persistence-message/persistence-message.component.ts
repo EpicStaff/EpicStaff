@@ -76,7 +76,6 @@ export class PersistenceMessageComponent {
     readonly message = input.required<GraphMessage>();
 
     protected readonly isExpanded = signal(false);
-    protected readonly isKeysExpanded = signal(true);
 
     protected readonly data = computed<PersistenceMessageData | null>(() => {
         const messageData = this.message().message_data;
@@ -146,10 +145,6 @@ export class PersistenceMessageComponent {
 
     protected toggle(): void {
         this.isExpanded.update((expanded) => !expanded);
-    }
-
-    protected toggleKeys(): void {
-        this.isKeysExpanded.update((expanded) => !expanded);
     }
 }
 

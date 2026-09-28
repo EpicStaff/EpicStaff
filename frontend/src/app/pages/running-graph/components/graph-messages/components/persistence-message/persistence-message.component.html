@@ -40,81 +40,56 @@
         >
             <div class="persistence-content">
                 @if (rows().length) {
-                    <div class="keys-container">
-                        <button
-                            type="button"
-                            class="section-heading"
-                            [attr.aria-expanded]="isKeysExpanded()"
-                            (click)="toggleKeys()"
-                        >
-                            <app-svg-icon
-                                [icon]="isKeysExpanded() ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Keys
-                        </button>
-                        <div
-                            class="collapsible-content keys-collapsible grid-collapsible"
-                            [class.expanded]="isKeysExpanded()"
-                        >
-                            <div class="collapsible-inner">
-                                <div class="keys-content">
-                                    <ul class="entries">
-                                        @for (row of rows(); track $index) {
-                                            <li class="entry">
-                                                <div class="entry__mapping">
-                                                    <code class="entry__target entry__{{ row.target.kind }}">{{
-                                                        row.target.text
-                                                    }}</code>
-                                                    @if (row.source; as source) {
-                                                        <span class="arrow">←</span>
-                                                        <code class="entry__source entry__{{ source.kind }}">{{
-                                                            source.text
-                                                        }}</code>
-                                                    }
-                                                    @if (row.tag; as tag) {
-                                                        <span
-                                                            class="tag"
-                                                            [class.tag--created]="tag === 'created'"
-                                                            >{{ tag }}</span
-                                                        >
-                                                    }
-                                                </div>
-                                                @if (row.notFound) {
-                                                    <div class="not-found">not found</div>
-                                                } @else if (row.json; as json) {
-                                                    <div class="value-content">
-                                                        <app-copy-button [text]="row.copyText ?? ''" />
-                                                        <app-json-viewer
-                                                            [json]="json"
-                                                            [expanded]="false"
-                                                        />
-                                                    </div>
-                                                } @else if (row.preview; as preview) {
-                                                    <div class="preview-box">
-                                                        @if (row.copyText !== null) {
-                                                            <app-copy-button [text]="row.copyText" />
-                                                        }
-                                                        <pre
-                                                            class="preview"
-                                                        >@for (token of preview; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
-                                                    </div>
-                                                }
-                                                @if (row.truncated) {
-                                                    <p class="truncated-note">
-                                                        Message size limit reached — first 200 characters shown
-                                                    </p>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                    @if (missingNote(); as note) {
-                                        <p class="muted-note">{{ note }}</p>
+                    <ul class="entries">
+                        @for (row of rows(); track $index) {
+                            <li class="entry">
+                                <div class="entry__mapping">
+                                    <code class="entry__target entry__{{ row.target.kind }}">{{
+                                        row.target.text
+                                    }}</code>
+                                    @if (row.source; as source) {
+                                        <span class="arrow">←</span>
+                                        <code class="entry__source entry__{{ source.kind }}">{{ source.text }}</code>
+                                    }
+                                    @if (row.tag; as tag) {
+                                        <span
+                                            class="tag"
+                                            [class.tag--created]="tag === 'created'"
+                                            >{{ tag }}</span
+                                        >
                                     }
                                 </div>
-                            </div>
-                        </div>
-                    </div>
+                                @if (row.notFound) {
+                                    <div class="not-found">not found</div>
+                                } @else if (row.json; as json) {
+                                    <div class="value-content">
+                                        <app-copy-button [text]="row.copyText ?? ''" />
+                                        <app-json-viewer
+                                            [json]="json"
+                                            [expanded]="false"
+                                        />
+                                    </div>
+                                } @else if (row.preview; as preview) {
+                                    <div class="preview-box">
+                                        @if (row.copyText !== null) {
+                                            <app-copy-button [text]="row.copyText" />
+                                        }
+                                        <pre
+                                            class="preview"
+                                        >@for (token of preview; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
+                                    </div>
+                                }
+                                @if (row.truncated) {
+                                    <p class="truncated-note">
+                                        Message size limit reached — first 200 characters shown
+                                    </p>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (missingNote(); as note) {
+                    <p class="muted-note">{{ note }}</p>
                 }
             </div>
         </div>

@@ -396,43 +396,27 @@ describe('PersistenceMessageComponent', () => {
         expect(element.querySelector('.muted-note')).toBeNull();
     });
 
-    it('starts collapsed with the keys section hidden, and expands on header click', () => {
-        const fixture = createFixture({ mode: 'delete', deleted_count: 1, entries: [entry({ key: 'a' })] });
+    it('starts collapsed, and shows the entries straight in the content once the header is expanded', () => {
+        const fixture = createFixture({
+            mode: 'delete',
+            deleted_count: 1,
+            entries: [entry({ key: 'a' }), entry({ key: 'b' })],
+        });
         const element = fixture.nativeElement as HTMLElement;
         const header = element.querySelector<HTMLButtonElement>('.persistence-header');
         const card = element.querySelector('.persistence-container > .collapsible-content');
 
         expect(card?.classList.contains('expanded')).toBe(false);
         expect(header?.getAttribute('aria-expanded')).toBe('false');
-        expect(card?.contains(element.querySelector('.entry'))).toBe(true);
 
         header?.click();
         fixture.detectChanges();
         expect(card?.classList.contains('expanded')).toBe(true);
         expect(header?.getAttribute('aria-expanded')).toBe('true');
-        expect(element.querySelector('.keys-collapsible')?.classList.contains('expanded')).toBe(true);
-    });
-
-    it('toggles the keys section independently of the card', () => {
-        const fixture = createFixture({
-            mode: 'read',
-            deleted_count: null,
-            entries: [entry({ key: 'a', path: 'variables.a', found: true, value: 1 })],
-        });
-        const element = fixture.nativeElement as HTMLElement;
-        element.querySelector<HTMLButtonElement>('.persistence-header')?.click();
-        fixture.detectChanges();
-        const heading = element.querySelector<HTMLButtonElement>('.section-heading');
-
-        expect(heading?.textContent?.trim()).toBe('Keys');
-        expect(heading?.getAttribute('aria-expanded')).toBe('true');
-        heading?.click();
-        fixture.detectChanges();
-        expect(element.querySelector('.keys-collapsible')?.classList.contains('expanded')).toBe(false);
-        expect(heading?.getAttribute('aria-expanded')).toBe('false');
-        expect(
-            element.querySelector('.persistence-container > .collapsible-content')?.classList.contains('expanded')
-        ).toBe(true);
+        // No nested collapsible between the card and its entries.
+        expect(element.querySelector('.persistence-content > ul.entries > .entry')).not.toBeNull();
+        expect(element.querySelector('.persistence-content > .muted-note')).not.toBeNull();
+        expect(card?.querySelectorAll('.collapsible-content, .grid-collapsible, [aria-expanded]').length).toBe(0);
     });
     it('shows only the key for a read row without a target path', () => {
         const element = render({
@@ -451,10 +435,9 @@ describe('PersistenceMessageComponent', () => {
         expect(text(element, '.title .table-name')).toBe('profiles');
     });
 
-    it('omits the keys section when there are no entries', () => {
+    it('omits the entry list when there are no entries', () => {
         const element = render({ mode: 'read', deleted_count: null, entries: [] });
 
-        expect(element.querySelector('.keys-container')).toBeNull();
-        expect(element.querySelector('.section-heading')).toBeNull();
+        expect(element.querySelector('.entries')).toBeNull();
     });
 });

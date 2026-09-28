@@ -1,5 +1,5 @@
-// Card, header, section heading and content box mirror the start / finish / python
-// session messages; only the accent comes from --color-persistence.
+// Card and header mirror the start / finish / python session messages;
+// only the accent comes from --color-persistence.
 
 .persistence-container {
     position: relative;
@@ -10,9 +10,8 @@
     border-left: 4px solid var(--color-persistence);
 }
 
-// Buttons (not divs as in the siblings) for keyboard access; reset to look like their divs.
-.persistence-header,
-.section-heading {
+// A button (not a div as in the siblings) for keyboard access; reset to look like their div.
+.persistence-header {
     display: flex;
     align-items: center;
     width: 100%;
@@ -23,9 +22,6 @@
     text-align: left;
     cursor: pointer;
     user-select: none;
-}
-
-.persistence-header {
     color: inherit;
 }
 
@@ -97,39 +93,12 @@
 .persistence-content {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     padding-left: 4.5rem;
+    color: var(--gray-200);
 }
 
 .persistence-content > :first-child {
     margin-top: 1.25rem;
-}
-
-.keys-container {
-    margin-bottom: 0.5rem;
-}
-
-.section-heading {
-    font-size: var(--text-body-medium-size);
-    font-weight: var(--text-body-medium-weight);
-    line-height: var(--text-body-medium-line-height);
-    color: var(--gray-300);
-    margin-bottom: 0.5rem;
-
-    app-svg-icon {
-        margin-right: 8px;
-        margin-left: -3px;
-        color: var(--color-persistence);
-    }
-}
-
-.keys-content {
-    background-color: var(--gray-800);
-    border: 1px solid var(--gray-750);
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    margin-left: 23px;
-    color: var(--gray-200);
 }
 
 // Plain block flow, no table / grid / flex sizing: every row is as wide as the box, so a
@@ -188,7 +157,7 @@ code {
 }
 
 // Same box as the finish message's variables (collapsed JSON viewer, own scroll past 400px),
-// with tighter padding because it already sits inside the indented Keys box.
+// with tighter padding because it sits in a list row.
 .value-content {
     position: relative;
     background-color: var(--gray-800);
