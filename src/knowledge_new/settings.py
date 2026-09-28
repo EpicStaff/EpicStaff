@@ -22,12 +22,12 @@ DATABASE_DNS = env.dns(
     "DB_NAME",
 )
 
-MINIO_ENDPOINT = (
-    f"{'https' if env.bool('MINIO_SSL') else 'http'}://"
-    f"{env.str('MINIO_HOST')}:{env.int('MINIO_PORT')}"
+STORAGE_ENDPOINT = (
+    f"{'https' if env.bool('STORAGE_SSL') else 'http'}://"
+    f"{env.str('STORAGE_HOST')}:{env.int('STORAGE_PORT')}"
 )
-MINIO_ACCESS_KEY = env.str("MINIO_USER")
-MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
-MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
+STORAGE_ACCESS_KEY = env.str("STORAGE_USER")
+STORAGE_SECRET_KEY = env.str("STORAGE_PASSWORD")
+KNOWLEDGE_BUCKET = env.str("KNOWLEDGE_STORAGE_BUCKET")
 
 GRAPHRAG_ENCODING = "utf-8"
