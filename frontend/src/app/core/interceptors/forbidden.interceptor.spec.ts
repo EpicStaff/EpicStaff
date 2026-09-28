@@ -74,7 +74,7 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
-    it('does not force a session refresh or toast for a persistence_table_use_denied 403', () =>
+    it('does not force a session refresh or toast for a persistence_mode_denied 403', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.post('/api/graphs/1/save-flow/', {}).subscribe({
                 next: () => reject(new Error('expected the request to error')),
@@ -95,8 +95,9 @@ describe('forbiddenInterceptor', () => {
             req.flush(
                 {
                     status_code: 403,
-                    code: 'persistence_table_use_denied',
-                    message: 'PersistenceTableUseDeniedError: You cannot use the persistent data table "profiles".',
+                    code: 'persistence_mode_denied',
+                    message:
+                        "You need Persistent Data Create and Edit permission to configure a write node on the table 'profiles'.",
                 },
                 { status: 403, statusText: 'Forbidden' }
             );

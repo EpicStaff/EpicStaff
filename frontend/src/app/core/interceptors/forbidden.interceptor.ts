@@ -19,8 +19,9 @@ let refresh$: Observable<unknown> | null = null;
 const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     'built_in_model_immutable',
     'permission_escalation_denied',
-    // A flow save binding a persistent data table without persistent_data:USE; the save's own error handling shows it.
-    'persistence_table_use_denied',
+    // A flow save with a Persistence node whose mode needs a persistent_data permission the role lacks
+    // (read: R, write: C and U, delete: D); the save's own error handling shows it.
+    'persistence_mode_denied',
 ]);
 
 /**
