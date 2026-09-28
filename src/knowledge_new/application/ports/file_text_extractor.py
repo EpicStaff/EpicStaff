@@ -1,6 +1,7 @@
 import abc
 
 from domain.errors import FileTextExtractingError
+from loguru import logger
 
 
 class AbstractFileTextExtractor(abc.ABC):
@@ -16,9 +17,26 @@ class AbstractFileTextExtractor(abc.ABC):
             FileTextExtractingError: If extraction fails for any reason.
         """
         try:
-            return await self._extract(content)
+            return self._sanitize(await self._extract(content))
         except Exception as e:
             raise FileTextExtractingError(extractor=type(self).__name__) from e
+
+    def _sanitize(self, text: str) -> str:
+        """Hook applied to every extracted text before it is returned.
+
+        Removes NUL characters, which PostgreSQL text columns reject. Subclasses
+        extending the hook should call `super()._sanitize(text)`.
+        """
+        nul_count = text.count("\x00")
+        if nul_count:
+            logger.warning(
+                "{} removed {} NUL characters from extracted text; "
+                "the file may be binary or in an unsupported encoding.",
+                type(self).__name__,
+                nul_count,
+            )
+            return text.replace("\x00", "")
+        return text
 
     @abc.abstractmethod
     async def _extract(self, content: bytes) -> str:
