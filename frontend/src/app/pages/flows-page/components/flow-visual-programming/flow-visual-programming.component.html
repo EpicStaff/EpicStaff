@@ -94,6 +94,13 @@
                 (restoreRequested)="onVersionRestoreRequested($event)"
             ></app-version-history-panel>
         }
+        @if (snakeGameBoard(); as board) {
+            <app-snake-game-overlay
+                [boardElement]="board"
+                [nodeColors]="snakeGameNodeColors()"
+                (closed)="closeSnakeGame()"
+            />
+        }
         @if (isSaving()) {
             <div
                 class="saving-lock-overlay"
