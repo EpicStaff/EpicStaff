@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from loguru import logger
@@ -12,8 +13,23 @@ from tables.models.graph_models import ScheduleTriggerNode
 from tables.services.redis_service import RedisService
 
 
-def _publish(message: ScheduleTriggerNodeUpdateMessage) -> None:
-    RedisService().redis_client.publish(settings.SCHEDULE_CHANNEL, message.model_dump_json())
+def _publish_on_commit(message: ScheduleTriggerNodeUpdateMessage) -> None:
+    """Publish to the Manager once the transaction commits; a rollback publishes nothing.
+
+    The message is built by the caller while the instance still exists; after
+    commit a deleted node is gone.
+    """
+    payload = message.model_dump_json()
+    action, node_id = message.data.action, message.data.node.id
+
+    def publish() -> None:
+        try:
+            RedisService().redis_client.publish(settings.SCHEDULE_CHANNEL, payload)
+            logger.info("[ScheduleSignal] Published '{}' for node ID: {}", action, node_id)
+        except Exception:
+            logger.exception("[ScheduleSignal] Error publishing '{}' for node {}", action, node_id)
+
+    transaction.on_commit(publish)
 
 
 @receiver(post_save, sender=ScheduleTriggerNode)
@@ -35,10 +51,10 @@ def schedule_trigger_post_save_handler(sender, instance: ScheduleTriggerNode, cr
                 node=node_payload,
             )
         )
-        _publish(message)
-        logger.info(f"[ScheduleSignal] Published '{action}' for node ID: {node_id}")
     except Exception:
-        logger.exception(f"[ScheduleSignal] Error publishing save event for node {node_id}")
+        logger.exception(f"[ScheduleSignal] Error building save event for node {node_id}")
+        return
+    _publish_on_commit(message)
 
 
 @receiver(post_delete, sender=ScheduleTriggerNode)
@@ -47,14 +63,11 @@ def schedule_trigger_post_delete_handler(sender, instance: ScheduleTriggerNode, 
     node_id = instance.pk
     logger.info(f"[ScheduleSignal] post_delete triggered for node ID: {node_id}")
 
-    try:
-        message = ScheduleTriggerNodeUpdateMessage(
+    _publish_on_commit(
+        ScheduleTriggerNodeUpdateMessage(
             data=ScheduleTriggerNodeUpdateData(
                 action="delete",
                 node=ScheduleTriggerNodeDeletePayload(id=node_id),
             )
         )
-        _publish(message)
-        logger.info(f"[ScheduleSignal] Published 'delete' for node ID: {node_id}")
-    except Exception:
-        logger.exception(f"[ScheduleSignal] Error publishing delete event for node {node_id}")
+    )

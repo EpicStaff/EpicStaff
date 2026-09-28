@@ -17,7 +17,8 @@
                     <app-help-tooltip
                         size="0.875rem"
                         class="help-icon"
-                        text="Imported flows keep the same IDs as the source system"
+                        text="Imported flows keep their UUIDs from the source system. If a flow already uses that UUID, the import gets a new one, unless that flow is in this organization and Replace existing is on."
+                        tooltipClass="builtin-copy-tooltip"
                         position="right"
                     />
                 </span>
@@ -46,14 +47,15 @@
                 </div>
             </div>
 
-            @if (settings().preserveUuids) {
+            @if (settings().preserveUuids && canReplaceExisting()) {
                 <div class="popover__row popover__row--nested">
                     <span class="popover__label">
                         Replace existing
                         <app-help-tooltip
                             size="0.875rem"
                             class="help-icon"
-                            text="Overwrite entities that already exist (matched by UUID)"
+                            text="Overwrite the flow in this organization with the same UUID instead of adding a copy; subflows in the file overwrite theirs too, for every flow that uses them. It keeps its id, sessions, versions and webhook/Telegram credentials, and flows that use it as a subflow keep working. Nodes come from the file, so schedules are switched off. A 'Before import' version is saved for rollback."
+                            tooltipClass="builtin-copy-tooltip"
                             position="right"
                         />
                     </span>
@@ -90,7 +92,8 @@
                 <app-help-tooltip
                     size="0.875rem"
                     class="help-icon"
-                    text="Include flow labels and categories during import"
+                    text="Include flow labels and categories during import. A replaced flow gets exactly the labels from the file."
+                    tooltipClass="builtin-copy-tooltip"
                     position="right"
                 />
             </span>

@@ -23,6 +23,7 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
     DenyApiKeyAuth,
     HasOrgPermission,
@@ -849,6 +850,12 @@ class GraphViewSet(
         file_serializer.is_valid(raise_exception=True)
 
         vd = file_serializer.validated_data
+        org_id = self.get_active_org_id()
+        if vd["replace_existing"]:
+            # Replacing overwrites existing flows in place, like partial_import and
+            # save_flow; the action map only gates CREATE.
+            assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.UPDATE)
+
         data = self.import_export_service.import_entity(
             vd["file"],
             user=request.user,
@@ -857,7 +864,7 @@ class GraphViewSet(
                 replace_existing=vd["replace_existing"],
                 import_labels=vd["import_labels"],
             ),
-            org_id=self.get_active_org_id(),
+            org_id=org_id,
         )
         return Response(data, status=status.HTTP_200_OK)
 
