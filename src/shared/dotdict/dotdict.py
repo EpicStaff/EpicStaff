@@ -16,6 +16,15 @@ class Expression:
 
 class DotDict(dict):
     def __init__(self, dictionary=None):
+        """Aliasing constructor: wraps `dictionary` without copying its contents.
+
+        Already-wrapped DotDict/DotList values inside `dictionary` are aliased (not copied),
+        so mutations on either the original or result affect both. Only safe at construction,
+        where the caller cannot keep a reference. External assignments use __setitem__ (via
+        `d[key] = value`), which copies via _copy_wrap.
+
+        To get a detached copy, use deep_dump().
+        """
         super().__init__()
         object.__setattr__(self, "_properties", {})
         object.__setattr__(self, "_setters", {})
@@ -234,5 +243,9 @@ def _copy_wrap(data):
 
 
 def DotObject(data):  # noqa: N802
-    """Wrap `data` into a DotDict/DotList, aliasing an already-wrapped argument."""
+    """Wrap `data` into a DotDict/DotList (aliasing constructor, not copying).
+
+    Already-wrapped DotDict/DotList values inside `data` are aliased, not copied.
+    To get a detached copy, call deep_dump() on the result.
+    """
     return _wrap(data)

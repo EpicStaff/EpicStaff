@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from dotdict import DotDict
 from langgraph.graph import StateGraph
 
@@ -133,3 +134,64 @@ def test_state_history_variables_snapshot_is_detached_from_later_mutations():
 
     assert history_variables["a"]["b"] == {"out": "subgraph_value"}
     assert history_variables["a"] is not state["variables"].a
+
+
+def test_whole_variables_output_path_does_not_alias_subgraph_containers():
+    """When output_variable_path='variables', returned containers should not alias the result."""
+    node = _make_subgraph_node(output_variable_path="variables")
+    state = _make_parent_state()
+    result = _make_result({"a": {"b": "sub"}})
+
+    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
+
+    # The nested dict should be a deep copy, not an alias
+    assert updated["variables"].a is not result["variables"].a
+
+    # Mutating the copy should not affect the original
+    updated["variables"].a["b"] = "mutated"
+    assert result["variables"].a["b"] == "sub"
+
+
+def test_whole_variables_output_path_keeps_state_history_immutable():
+    """State history should not be affected by mutations to returned variables when output_path is 'variables'."""
+    from utils.set_output_variables import set_output_variables
+
+    node = _make_subgraph_node(output_variable_path="variables")
+    state = _make_parent_state()
+    result = _make_result({"a": {"b": "sub"}})
+
+    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
+    history = updated["state_history"][0]
+
+    # Before mutation, check history values
+    assert history["variables"]["a"]["b"] == "sub"
+    assert history["output"]["a"]["b"] == "sub"
+
+    # Mutate the returned variables
+    set_output_variables(updated, "variables.a.b", "later")
+
+    # The history should still have the original values
+    assert history["variables"]["a"]["b"] == "sub"
+    assert history["output"]["a"]["b"] == "sub"
+
+
+@pytest.mark.parametrize(
+    "output_path", ["variables", "variables.a", "variables.a.b", "variables.new_key"]
+)
+def test_state_history_is_detached_from_returned_variables(output_path):
+    """State history variables should be deep-copied and not share references with returned
+    variables, regardless of which output_variable_path branch produced them."""
+    node = _make_subgraph_node(output_variable_path=output_path)
+    state = _make_parent_state()
+    # "a" and "records" mirror the parent state's own top-level keys so that every branch
+    # (whole-replace at "variables", or merge/overwrite via set_output_variables) ends up
+    # with both keys present at the top level.
+    result = _make_result({"a": {"b": "sub"}, "records": [{"name": "sub_record"}]})
+
+    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
+    history = updated["state_history"][0]
+
+    assert "a" in history["variables"]
+    assert "records" in history["variables"]
+    assert history["variables"]["a"] is not updated["variables"].a
+    assert history["variables"]["records"] is not updated["variables"].records
