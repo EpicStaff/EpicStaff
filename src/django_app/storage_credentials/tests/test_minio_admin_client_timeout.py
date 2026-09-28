@@ -274,7 +274,10 @@ class TestMinioAdminGatewayRetryBehavior:
 
     @pytest.mark.asyncio
     async def test_close_with_retry_client_session(self):
-        """Verify that close() properly closes RetryClient wrapped sessions."""
+        """close() closes a RetryClient-wrapped session via its own
+        close(), which already tears down the ClientSession it wraps
+        (RetryClient stores it on the private `_client` attribute --
+        there is no public `client_session` attribute to close separately)."""
         with patch(
             "storage_credentials.clients.minio_admin_client._MinioAdminClient"
         ) as mock_minio_admin_class, patch(
@@ -294,12 +297,9 @@ class TestMinioAdminGatewayRetryBehavior:
 
             # Mock the MinioAdmin's _session to be a RetryClient
             mock_retry_client = AsyncMock(spec=RetryClient)
-            mock_retry_client.client_session = AsyncMock()
             gateway._client._session = mock_retry_client
 
             # Close the gateway
             await gateway.close()
 
-            # Verify both close methods were called
             mock_retry_client.close.assert_called_once()
-            mock_retry_client.client_session.close.assert_called_once()

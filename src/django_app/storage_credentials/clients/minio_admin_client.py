@@ -94,13 +94,14 @@ class MinioAdminGateway:
         """`miniopy_async.MinioAdmin` lazily opens an aiohttp session on its
         first request and never exposes a public way to close it. Reaching
         into the private `_session` attribute is the only way to release
-        those sockets -- there is no public API on this library for it."""
+        those sockets -- there is no public API on this library for it.
+
+        `RetryClient.close()` already closes the `ClientSession` it wraps
+        (stored on its own private `_client` attribute) -- there is nothing
+        further to close here."""
         session = getattr(self._client, "_session", None)
         if session is not None:
             await session.close()
-            # Also close the underlying client_session if the session is a RetryClient
-            if isinstance(session, RetryClient):
-                await session.client_session.close()
 
     # --- org-level (long-lived) IAM user ---------------------------------
 
