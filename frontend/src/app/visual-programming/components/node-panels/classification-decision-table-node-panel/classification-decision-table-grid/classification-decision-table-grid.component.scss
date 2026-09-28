@@ -13,7 +13,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 0.5rem;
+    padding: 0 1rem;
     flex-shrink: 0;
 
     h3 {
@@ -56,28 +56,6 @@
     gap: 0.5rem;
 }
 
-.grid-header-secondary-btn {
-    height: 32px;
-    padding: 0 12px;
-    border-radius: 6px;
-    background: transparent;
-    border: 1px solid var(--graphite-750);
-    color: var(--color-text-primary);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.grid-header-secondary-btn:hover:not(:disabled) {
-    border-color: var(--accent-color);
-}
-
-.grid-header-secondary-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
 .grid-header-icon-btn {
     width: 32px;
     height: 32px;
@@ -118,163 +96,11 @@
     }
 }
 
-.grid-header-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.add-condition-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: var(--accent-color);
-    color: var(--white);
-    border: none;
-    border-radius: 6px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.2s ease;
-    flex-shrink: 0;
-
-    &:hover {
-        background: var(--purple-430);
-    }
-
-    i {
-        font-size: 0.9rem;
-    }
-}
-
-.field-column-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-}
-
-.field-controls-divider {
-    width: 1px;
-    height: 18px;
-    background: var(--white-alpha-15);
-    margin: 0 0.2rem;
-}
-
-.field-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    color: var(--white-alpha-85);
-    font-size: 0.75rem;
-    font-family: 'Menlo', 'Monaco', monospace;
-
-    .field-chip-prefix {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 15px;
-        height: 15px;
-        border-radius: 3px;
-        font-size: 0.6rem;
-        font-weight: 700;
-        font-family: system-ui, sans-serif;
-        flex-shrink: 0;
-    }
-
-    &--expr {
-        background: var(--purple-alpha-20);
-        border: 1px solid var(--purple-alpha-40);
-
-        .field-chip-prefix {
-            background: var(--purple-alpha-60);
-            color: var(--white);
-        }
-    }
-
-    &--manip {
-        background: var(--orange-600-alpha-15);
-        border: 1px solid var(--orange-600-alpha-40);
-
-        .field-chip-prefix {
-            background: var(--orange-600-alpha-60);
-            color: var(--white);
-        }
-    }
-
-    .field-chip-remove {
-        font-size: 0.65rem;
-        cursor: pointer;
-        opacity: 0.6;
-        transition: opacity 0.15s ease;
-
-        &:hover {
-            opacity: 1;
-            color: var(--red-415);
-        }
-    }
-
-    &--hidden {
-        opacity: 0.45;
-        border-style: dashed;
-        border-color: var(--orange-600-alpha-40);
-        background: var(--orange-600-alpha-8);
-        cursor: pointer;
-        transition:
-            opacity 0.15s ease,
-            background 0.15s ease;
-
-        i {
-            font-size: 0.75rem;
-            color: var(--orange-600-alpha-70);
-        }
-
-        &:hover {
-            opacity: 0.8;
-            background: var(--orange-600-alpha-15);
-        }
-    }
-}
-
-.field-picker-wrapper {
-    position: relative;
-}
-
-.add-field-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.6rem;
-    border: 1px solid var(--white-alpha-15);
-    border-radius: 4px;
-    background: var(--white-alpha-6);
-    color: var(--white-alpha-70);
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
-
-    &--expr:hover {
-        background: var(--purple-alpha-15);
-        border-color: var(--purple-alpha-40);
-        color: var(--white);
-    }
-
-    &--manip:hover {
-        background: var(--orange-600-alpha-12);
-        border-color: var(--orange-600-alpha-40);
-        color: var(--white);
-    }
-}
-
 .grid-wrapper {
     position: relative;
     width: 100%;
     overflow: visible;
-    padding-left: 28px;
+    padding-left: 1rem;
 
     // When at least one params group is absent, reserve space above the ag-grid
     // for the floating "+" button row.
@@ -467,31 +293,6 @@
             color: var(--purple-alpha-90);
         }
     }
-
-    &--danger {
-        color: var(--red-410);
-
-        i {
-            color: var(--red-410);
-            opacity: 0.8;
-        }
-
-        &:hover {
-            background: var(--red-410-alpha-15);
-            color: var(--red-410);
-
-            i {
-                color: var(--red-410);
-                opacity: 1;
-            }
-        }
-    }
-}
-
-.context-menu-divider {
-    height: 1px;
-    background: var(--white-alpha-10);
-    margin: 3px 0;
 }
 
 :host ::ng-deep {

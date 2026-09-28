@@ -28,7 +28,8 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
@@ -97,6 +98,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         MarkdownComponent,
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -788,4 +790,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     private initializeInputMap(form: FormGroup): void {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

@@ -176,6 +176,12 @@
                     (triggered)="onRemoveFromMyOrgs(row)"
                 />
             }
+            @if (showHardDelete(row)) {
+                <app-delete-button
+                    tooltip="Delete account permanently"
+                    (triggered)="onHardDeleteUser(row)"
+                />
+            }
         </div>
     </ng-template>
 

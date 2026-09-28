@@ -2,7 +2,7 @@ name: PR build
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, developer]
 
 concurrency:
   group: pr-${{ github.event.pull_request.number }}

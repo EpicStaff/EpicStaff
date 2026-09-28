@@ -24,15 +24,20 @@
                                 formControlName="node_name"
                                 placeholder="Enter node name"
                                 [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
                             ></app-custom-input>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
 
                         <div class="input-map">
-                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                            <app-input-map
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-input-map>
                         </div>
 
                         <app-inputs-you-can-use
+                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                             [names]="availableInputs()"
                             (insert)="insertInputToQuery($event)"
                         />
@@ -43,6 +48,7 @@
                             formControlName="output_variable_path"
                             placeholder="Enter output variable path (leave empty for null)"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
 
                         <div class="form-group">
@@ -53,6 +59,7 @@
                                 formControlName="knowledge_collection"
                                 [items]="collectionItems()"
                                 [loading]="loadingCollections()"
+                                [readonly]="isReadOnly()"
                             />
                         </div>
 
@@ -64,6 +71,7 @@
                                 formControlName="rag"
                                 [items]="ragItems()"
                                 [loading]="loadingRags()"
+                                [readonly]="isReadOnly()"
                             />
                         </div>
 
@@ -92,6 +100,7 @@
                                                 [agentRags]="[]"
                                                 [searchConfigs]="ragTabSearchConfigs()"
                                                 [llmConfigId]="null"
+                                                [readOnly]="isReadOnly()"
                                             />
                                         }
                                     </div>
@@ -153,12 +162,16 @@
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
                     <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                        <app-input-map
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-input-map>
                     </div>
 
                     <div class="template-textarea-wrapper">
@@ -177,6 +190,7 @@
                     </div>
 
                     <app-inputs-you-can-use
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                         [names]="availableInputs()"
                         (insert)="insertInputToQuery($event)"
                     />
@@ -187,6 +201,7 @@
                         formControlName="output_variable_path"
                         placeholder="Enter output variable path (leave empty for null)"
                         [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
 
                     <div class="form-group">
@@ -197,6 +212,7 @@
                             formControlName="knowledge_collection"
                             [items]="collectionItems()"
                             [loading]="loadingCollections()"
+                            [readonly]="isReadOnly()"
                         />
                     </div>
 
@@ -208,6 +224,7 @@
                             formControlName="rag"
                             [items]="ragItems()"
                             [loading]="loadingRags()"
+                            [readonly]="isReadOnly()"
                         />
                     </div>
 
@@ -236,6 +253,7 @@
                                             [agentRags]="[]"
                                             [searchConfigs]="ragTabSearchConfigs()"
                                             [llmConfigId]="null"
+                                            [readOnly]="isReadOnly()"
                                         />
                                     }
                                 </div>

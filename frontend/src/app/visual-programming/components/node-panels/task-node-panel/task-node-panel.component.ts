@@ -28,6 +28,8 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
 
@@ -92,6 +94,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         MarkdownComponent,
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -562,4 +565,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     private initializeInputMap(form: FormGroup): void {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

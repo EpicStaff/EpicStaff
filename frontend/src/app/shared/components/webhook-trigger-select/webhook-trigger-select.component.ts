@@ -58,6 +58,8 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     disallowedProviderTypes = input<WebhookProviderType[]>([]);
     disallowedAuthKinds = input<WebhookTriggerAuthKind[]>([]);
     disallowedProviderMessage = input<string>('This provider is not supported here.');
+    /** Readonly mode: renders the current selection as plain text (no dropdown, no create). */
+    readonly = input<boolean>(false);
 
     /** Emits the resolved trigger model (or null when cleared). */
     triggerResolved = output<WebhookTriggerModel | null>();
@@ -143,11 +145,12 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     toggle(): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.readonly()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
     openDropdown(): void {
+        if (this.readonly()) return;
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
                 .flexibleConnectedTo(this.triggerBtn)
@@ -188,7 +191,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     onSelect(trigger: WebhookTriggerModel): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.readonly()) return;
         if (this.isTriggerDisallowed(trigger)) return;
         const id = trigger.id ?? null;
         this.selectedId.set(id);
@@ -198,7 +201,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     onCreate(): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.readonly()) return;
         this.close();
         this.dialog
             .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {
