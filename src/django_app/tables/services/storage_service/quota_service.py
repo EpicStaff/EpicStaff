@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
+from rbac.models import Organization
 from tables.exceptions import StorageQuotaExceeded
-from tables.models import Organization, StorageFile
+from tables.models import StorageFile
 from tables.services.storage_service.db_sync import StorageFileSync
 
 

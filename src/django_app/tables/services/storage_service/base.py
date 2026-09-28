@@ -5,7 +5,6 @@ from collections.abc import Iterator
 from tables.services.storage_service.archive_limits import (
     ArchiveExtractionGuard,
     GuardedMemberReader,
-    default_guard,
 )
 from tables.services.storage_service.archive_readers import is_tar, open_tar
 from tables.services.storage_service.dataclasses import (
@@ -16,9 +15,22 @@ from tables.services.storage_service.dataclasses import (
     UploadResult,
 )
 from tables.services.storage_service.path_utils import sanitize_storage_path
+from utils.logger import logger
+
+
+class StorageUnreachable(Exception):  # noqa: N818
+    """The object store is unreachable, timed out or failed on its side."""
 
 
 class AbstractStorageBackend(ABC):
+    """Object storage of flat keys, where a key ending in "/" is a folder marker.
+
+    Only the streaming-upload methods (upload_chunks, upload_stream, put_bytes,
+    unique_key, claim_folder, mkdir, delete_keys) raise StorageUnreachable on an
+    outage, so their callers can tell an outage from a bug without knowing the
+    store's client library. The other methods raise whatever the store's client
+    raises."""
+
     @staticmethod
     def _increment_name(name: str, is_folder: bool = False) -> str:
         """
@@ -53,7 +65,7 @@ class AbstractStorageBackend(ABC):
         return sanitize_storage_path(name, allow_empty=False)
 
     def iter_archive_members_streaming(
-        self, archive_file, guard: ArchiveExtractionGuard | None = None
+        self, archive_file, guard: ArchiveExtractionGuard
     ) -> Iterator[tuple[str, "GuardedMemberReader"]]:
         """Yield (safe_name, GuardedMemberReader) per file member, streaming.
 
@@ -63,7 +75,6 @@ class AbstractStorageBackend(ABC):
         caller streams each reader to storage before advancing to the next
         member (member stays open during the yield)."""
         pos = archive_file.tell()
-        guard = guard or default_guard()
 
         if zipfile.is_zipfile(archive_file):
             archive_file.seek(pos)
@@ -111,6 +122,30 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def upload(self, path: str, file_object) -> UploadResult:
         """Upload file_object to path."""
+
+    @property
+    @abstractmethod
+    def part_size(self) -> int:
+        """Bytes per part of upload_chunks and upload_stream, so each holds about one
+        part in memory; callers size what they keep in memory by it too."""
+
+    @abstractmethod
+    async def upload_chunks(self, path: str, chunks, *, size_guard=None, before_commit=None) -> int:
+        """Store an async stream of byte chunks at path; returns the byte count.
+
+        Holds about one part_size in memory. size_guard(total) is called as bytes
+        arrive and raises to stop. `await before_commit(total)` runs once every byte
+        is in the store but before the object becomes visible: if it raises, the
+        upload is aborted and an object already at path stays untouched."""
+
+    @abstractmethod
+    def upload_stream(self, path: str, file_object) -> None:
+        """Store a readable of unknown size at path, holding about one part_size in
+        memory. file_object.read(n) must return n bytes until EOF."""
+
+    @abstractmethod
+    def put_bytes(self, path: str, data: bytes) -> int:
+        """Store data at path in one request; returns its size."""
 
     @abstractmethod
     def download(self, path: str) -> bytes:
@@ -170,6 +205,17 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def delete_keys(self, keys: list[str]) -> None:
         """Delete exactly these keys (as copy returns them), nothing else."""
+
+    def discard_keys(self, keys: list[str]) -> None:
+        """Best-effort removal of the keys a failed write created. A failure is only
+        logged, so the caller re-raises the error that made the write fail."""
+        if not keys:
+            return
+        try:
+            # One key twice (a name repeated in an archive) is deleted once.
+            self.delete_keys(list(dict.fromkeys(keys)))
+        except Exception:
+            logger.exception("Could not remove {} objects of a failed write", len(keys))
 
     @abstractmethod
     def info(self, path: str) -> FileInfo | FolderInfo:

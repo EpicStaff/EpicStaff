@@ -1,48 +1,34 @@
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
 from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
-from utils.logger import logger
 
 
 def upload_archive_members(
-    archive_file, guard: ArchiveExtractionGuard, backend, folder_key: str, *, part_size, workers
+    archive_file, guard: ArchiveExtractionGuard, backend, folder_key: str, *, workers
 ) -> dict[str, int]:
     """Unpack archive_file into storage under folder_key; returns {path in archive: size}.
 
     Files are read one after another (zip/tar can't be read in parallel), but
-    their uploads overlap in a pool of `workers`. A file up to part_size is
-    sent from memory in one PUT, a bigger one is streamed, so RAM stays near
-    workers x part_size. On any error the PUTs already running finish first,
+    their uploads overlap in a pool of `workers`. A file up to the backend's
+    part_size is sent from memory in one PUT, a bigger one is streamed, so RAM
+    stays near workers x part_size. On any error the PUTs already running finish first,
     then every key this call wrote (or started to) is deleted again, so nothing
     it created is left behind; the error is re-raised."""
     started: list[str] = []
     try:
-        return _upload_members(
-            archive_file, guard, backend, folder_key, part_size, workers, started
-        )
+        return _upload_members(archive_file, guard, backend, folder_key, workers, started)
     except BaseException:
         # The pool has shut down by now, so no PUT can land after this delete.
-        discard_keys(backend, started)
+        backend.discard_keys(started)
         raise
 
 
-def discard_keys(backend, keys: list[str]) -> None:
-    """Remove exactly these keys of an upload that failed. A failure is only
-    logged, so the caller re-raises the error that made the upload fail."""
-    if not keys:
-        return
-    try:
-        # One key twice (a name repeated in the archive) is deleted once.
-        backend.delete_keys(list(dict.fromkeys(keys)))
-    except Exception:
-        logger.exception("Could not remove {} objects of a failed archive upload", len(keys))
-
-
 def _upload_members(
-    archive_file, guard, backend, folder_key, part_size, workers, started: list[str]
+    archive_file, guard, backend, folder_key, workers, started: list[str]
 ) -> dict[str, int]:
     """upload_archive_members without the cleanup; appends each key to `started`
     before writing it, so a failure knows what to take back."""
+    part_size = backend.part_size
     written: dict[str, int] = {}
     pending: dict[str, Future] = {}
 
@@ -63,7 +49,7 @@ def _upload_members(
                 else:
                     member = _ReplayingReader(head, reader)
                     started.append(key)
-                    backend.upload_stream(key, member, part_size=part_size)
+                    backend.upload_stream(key, member)
                     written[name] = member.bytes_read
 
             for future in pending.values():
@@ -91,8 +77,9 @@ def _read_at_most(reader, limit: int) -> bytes:
 
 class _ReplayingReader:
     """File-like: gives back the bytes already read off a member, then the rest of
-    it, counting what it hands out. read(n) returns n bytes until EOF: boto turns
-    each read into one part, and a short one mid-upload is rejected by S3."""
+    it, counting what it hands out. read(n) returns n bytes until EOF, as
+    upload_stream requires (a read becomes one part, and a short part mid-upload
+    is rejected by S3-compatible stores)."""
 
     def __init__(self, head: bytes, rest):
         self._head = head

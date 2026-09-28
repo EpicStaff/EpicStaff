@@ -1,10 +1,12 @@
 import io
 import mimetypes
+import threading
+import zipfile
 from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
 from tables.exceptions import RangeNotSatisfiable
-from tables.services.storage_service.base import AbstractStorageBackend
+from tables.services.storage_service.base import AbstractStorageBackend, StorageUnreachable
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FolderInfo,
@@ -13,6 +15,9 @@ from tables.services.storage_service.dataclasses import (
     UploadResult,
 )
 from tables.services.storage_service.path_utils import sanitize_storage_path
+from tables.services.storage_service.s3_backend import S3StorageBackend
+
+MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 class InMemoryStorageBackend(AbstractStorageBackend):
@@ -26,8 +31,9 @@ class InMemoryStorageBackend(AbstractStorageBackend):
     write a key under a path that is a stored object (XMinioParentIsObject).
     """
 
-    def __init__(self, organization_prefix: str = ""):
+    def __init__(self, organization_prefix: str = "", part_size: int = 16 * 1024 * 1024):
         self.organization_prefix = organization_prefix
+        self._part_size = part_size
         self._objects: dict[str, tuple[bytes, datetime]] = {}
 
     def _full_path(self, path: str) -> str:
@@ -102,9 +108,11 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         self._store(full_path, (content, datetime.now(timezone.utc)))
         return UploadResult(path=path, size=len(content))
 
-    async def upload_chunks(
-        self, path: str, chunks, *, part_size, size_guard=None, before_commit=None
-    ) -> int:
+    @property
+    def part_size(self) -> int:
+        return self._part_size
+
+    async def upload_chunks(self, path: str, chunks, *, size_guard=None, before_commit=None) -> int:
         """Async twin of S3StorageBackend.upload_chunks; nothing is stored on abort."""
         buffer = bytearray()
         async for chunk in chunks:
@@ -115,7 +123,7 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             await before_commit(len(buffer))
         return self.put_bytes(path, buffer)
 
-    def upload_stream(self, path: str, file_object, *, part_size: int) -> None:
+    def upload_stream(self, path: str, file_object) -> None:
         self.put_bytes(path, file_object.read())
 
     def put_bytes(self, path: str, data: bytes) -> int:
@@ -509,5 +517,153 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             self._store(dest_prefix + relative, self._objects[key])
             del self._objects[key]
 
-    # --- Archives ---
 
+class FailingInMemoryBackend(InMemoryStorageBackend):
+    """In-memory storage that is unreachable for every key ending in failing_key_suffix."""
+
+    def __init__(self, failing_key_suffix: str, part_size: int = 16 * 1024 * 1024):
+        super().__init__(part_size=part_size)
+        self.failing_key_suffix = failing_key_suffix
+
+    def put_bytes(self, path: str, data: bytes) -> int:
+        if path.endswith(self.failing_key_suffix):
+            raise StorageUnreachable("storage went away")
+        return super().put_bytes(path, data)
+
+    def upload_stream(self, path: str, file_object) -> None:
+        if path.endswith(self.failing_key_suffix):
+            raise StorageUnreachable("storage went away")
+        super().upload_stream(path, file_object)
+
+
+def client_error(code: str, status: int, operation: str = "PutObject") -> ClientError:
+    return ClientError(
+        {"Error": {"Code": code}, "ResponseMetadata": {"HTTPStatusCode": status}}, operation
+    )
+
+
+class _Paginator:
+    def __init__(self, client, page_size):
+        self._client = client
+        self._page_size = page_size
+
+    def paginate(self, *, Bucket, Prefix):
+        keys = sorted(key for key in self._client.objects if key.startswith(Prefix))
+        for start in range(0, len(keys), self._page_size):
+            yield {
+                "Contents": [
+                    {"Key": key, "Size": len(self._client.objects[key]), "LastModified": MODIFIED}
+                    for key in keys[start : start + self._page_size]
+                ]
+            }
+
+
+class FakeS3Client:
+    """The slice of the boto3 S3 client that S3StorageBackend uses, over a dict."""
+
+    def __init__(self, page_size=2):
+        self.objects: dict[str, bytes] = {}
+        self.page_size = page_size
+        self.fail_copy_number: int | None = None  # 1-based copy_object call to fail
+        self.copy_error: BaseException = client_error("InternalError", 500, "CopyObject")
+        self.delete_error: BaseException | None = None
+        self.delete_batches: list[list[str]] = []
+        self.head_calls: list[str] = []
+        self.puts: list[bytes] = []
+        self.parts: dict[int, bytes] = {}
+        self.completed: list[dict] | None = None
+        self.aborted = False
+        self.peak_live_parts = 0
+        self._live_parts = 0
+        self._copies = 0
+        self._lock = threading.Lock()
+
+    def head_object(self, *, Bucket, Key):
+        self.head_calls.append(Key)
+        if Key not in self.objects:
+            raise client_error("404", 404, "HeadObject")
+        return {
+            "ContentLength": len(self.objects[Key]),
+            "LastModified": MODIFIED,
+            "ContentType": "text/plain",
+        }
+
+    def list_objects_v2(self, *, Bucket, Prefix, MaxKeys=1000, Delimiter=None):
+        keys = sorted(key for key in self.objects if key.startswith(Prefix))[:MaxKeys]
+        return {
+            "KeyCount": len(keys),
+            "Contents": [
+                {"Key": key, "Size": len(self.objects[key]), "LastModified": MODIFIED}
+                for key in keys
+            ],
+        }
+
+    def get_paginator(self, name):
+        assert name == "list_objects_v2"
+        return _Paginator(self, self.page_size)
+
+    def copy_object(self, *, CopySource, Bucket, Key):
+        self._copies += 1
+        if self._copies == self.fail_copy_number:
+            raise self.copy_error
+        self.objects[Key] = self.objects[CopySource["Key"]]
+
+    def delete_objects(self, *, Bucket, Delete):
+        keys = [entry["Key"] for entry in Delete["Objects"]]
+        assert len(keys) <= 1000
+        self.delete_batches.append(keys)
+        if self.delete_error is not None:
+            raise self.delete_error
+        for key in keys:
+            self.objects.pop(key, None)
+        return {}
+
+    def delete_object(self, *, Bucket, Key):
+        self.objects.pop(Key, None)
+
+    def put_object(self, *, Bucket, Key, Body, **_kwargs):
+        self.puts.append(bytes(Body))
+        self.objects[Key] = bytes(Body)
+
+    def create_multipart_upload(self, *, Bucket, Key):
+        return {"UploadId": "upload-1"}
+
+    def upload_part(self, *, Bucket, Key, UploadId, PartNumber, Body):
+        with self._lock:
+            self._live_parts += 1
+            self.peak_live_parts = max(self.peak_live_parts, self._live_parts)
+        self.parts[PartNumber] = bytes(Body)
+        with self._lock:
+            self._live_parts -= 1
+        return {"ETag": f"etag-{PartNumber}"}
+
+    def complete_multipart_upload(self, *, Bucket, Key, UploadId, MultipartUpload):
+        self.completed = MultipartUpload["Parts"]
+
+    def abort_multipart_upload(self, *, Bucket, Key, UploadId):
+        self.aborted = True
+
+
+def make_s3_backend(client: FakeS3Client, part_size: int = 16 * 1024 * 1024) -> S3StorageBackend:
+    """S3StorageBackend talking to `client`, without building real boto3 clients."""
+    backend = S3StorageBackend.__new__(S3StorageBackend)
+    backend.bucket_name = "bucket"
+    backend.organization_prefix = ""
+    backend.client = client
+    backend._head_file_client = client
+    backend._part_size = part_size
+    return backend
+
+
+async def async_chunks(*chunks: bytes):
+    """A request body arriving as `chunks`."""
+    for chunk in chunks:
+        yield chunk
+
+
+def zip_bytes(members: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()

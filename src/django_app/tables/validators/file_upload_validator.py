@@ -99,22 +99,6 @@ class FileValidator:
             )
         return None
 
-    # TODO: storage no longer validates through here (it streams via
-    # upload_stream_service with archive_formats.inspect_archive and
-    # ArchiveExtractionGuard); only knowledge document uploads reach validate().
-    # Consider dropping the archive scans below and moving knowledge uploads onto
-    # the storage streaming path.
-    def _archive_problem(self, file_obj, filename: str) -> str | None:
-        """Why this archive's contents are rejected (executables inside, unsafe
-        declared expansion), or None; a non-archive passes."""
-        archive_blocked = self.scan_archive_for_executables(file_obj)
-        if archive_blocked:
-            return f"Archive '{filename}' contains executable files: " + ", ".join(archive_blocked)
-        expansion_problem = self.scan_archive_expansion(file_obj)
-        if expansion_problem:
-            return f"Archive '{filename}' {expansion_problem}"
-        return None
-
     def validate_name(self, filename: str) -> None:
         """400 if the name may not be uploaded (blocked or unsupported extension)."""
         if problem := self._name_problem(filename, None):
@@ -249,10 +233,24 @@ class FileValidator:
 
         for f in files:
             total_bytes += f.size
-            # The name is checked first so an oversized or blocked file is never read.
-            problem = self._name_problem(f.name, f.size) or self._archive_problem(f, f.name)
+            # Block unsupported archives, executables and oversized files before reading
+            problem = self._name_problem(f.name, f.size)
             if problem:
                 detail_lines.append(problem)
+                continue
+
+            # Scan ZIP/TAR contents for executables
+            archive_blocked = self.scan_archive_for_executables(f)
+            if archive_blocked:
+                detail_lines.append(
+                    f"Archive '{f.name}' contains executable files: " + ", ".join(archive_blocked)
+                )
+                continue
+
+            # Reject an archive whose headers declare an unsafe expansion
+            expansion_problem = self.scan_archive_expansion(f)
+            if expansion_problem:
+                detail_lines.append(f"Archive '{f.name}' {expansion_problem}")
 
         if total_bytes > self._limits.max_total_bytes:
             detail_lines.append(

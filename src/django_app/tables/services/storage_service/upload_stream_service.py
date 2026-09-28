@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import functools
 import lzma
 import tarfile
 import tempfile
@@ -8,8 +7,6 @@ import zipfile
 import zlib
 
 from asgiref.sync import sync_to_async
-from botocore.exceptions import ClientError, HTTPClientError
-from botocore.exceptions import ConnectionError as StorageConnectionError
 from django.conf import settings
 from django.db import close_old_connections
 from rest_framework.exceptions import ValidationError
@@ -21,6 +18,7 @@ from tables.exceptions import (
     UploadTooLarge,
 )
 from tables.models import StorageFile
+from tables.services.storage_service import get_storage_backend
 from tables.services.storage_service.archive_formats import (
     ARCHIVE_SUFFIXES,
     DOCUMENT_EXTENSIONS,
@@ -28,12 +26,14 @@ from tables.services.storage_service.archive_formats import (
     strip_archive_suffix,
 )
 from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
-from tables.services.storage_service.archive_member_upload import (
-    discard_keys,
-    upload_archive_members,
-)
+from tables.services.storage_service.archive_member_upload import upload_archive_members
+from tables.services.storage_service.base import StorageUnreachable
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.path_utils import check_new_name, sanitize_storage_path
+from tables.services.storage_service.path_utils import (
+    check_new_name,
+    sanitize_storage_path,
+    storage_key,
+)
 from tables.services.storage_service.quota_service import (
     org_free_bytes,
     record_files_within_quota,
@@ -70,17 +70,13 @@ def _upload_admission() -> UploadAdmission:
 
 @contextlib.contextmanager
 def _storage_errors_as_unavailable():
-    """MinIO down, timing out or answering 5xx is an outage, not a bug in this
-    request: StorageUnavailable (503). A 4xx from MinIO (bad credentials, missing
-    bucket) is a misconfiguration and stays an unexpected error."""
+    """Object storage down, timing out or failing on its side (StorageUnreachable)
+    is an outage, not a bug in this request: StorageUnavailable (503). Any other
+    storage error (bad credentials, missing bucket) is a misconfiguration and
+    stays an unexpected error."""
     try:
         yield
-    except (StorageConnectionError, HTTPClientError, ClientError) as exc:
-        if (
-            isinstance(exc, ClientError)
-            and exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0) < 500
-        ):
-            raise
+    except StorageUnreachable as exc:
         logger.exception("Streaming upload failed: object storage unreachable")
         raise StorageUnavailable() from exc
 
@@ -88,11 +84,11 @@ def _storage_errors_as_unavailable():
 async def _within_time_limits(chunks):
     """Pass `chunks` through, aborting when the client sends nothing for
     UPLOAD_IDLE_TIMEOUT (slow-loris guard) or the upload outlives
-    UPLOAD_MAX_DURATION (kept under MinIO's stale-upload expiry, which would
-    otherwise drop the parts of a still-running multipart upload).
+    UPLOAD_MAX_DURATION (kept under the object storage's stale-upload expiry,
+    which would otherwise drop the parts of a still-running multipart upload).
 
     Only time spent waiting for the client counts as idle: while a part goes
-    to MinIO nothing is read, and the client is merely back-pressured."""
+    to object storage nothing is read, and the client is merely back-pressured."""
     loop = asyncio.get_running_loop()
     idle_timeout = settings.UPLOAD_IDLE_TIMEOUT
     max_duration = settings.UPLOAD_MAX_DURATION
@@ -112,18 +108,6 @@ async def _within_time_limits(chunks):
                 raise UploadDurationExceeded(max_duration) from None
             raise UploadIdleTimeout(idle_timeout) from None
         yield chunk
-
-
-@functools.cache
-def _storage_backend():
-    """One S3 client per process; boto3 clients are thread-safe."""
-    from tables.services.storage_service import get_storage_backend
-
-    return get_storage_backend(organization_prefix="")
-
-
-def _storage_key(org_id: int, path: str) -> str:
-    return f"org_{org_id}/{path}"
 
 
 def _join(folder: str, name: str) -> str:
@@ -186,9 +170,9 @@ async def upload_file(
     backend=None,
     validator: FileValidator | None = None,
 ) -> dict:
-    """Stream a plain file from the request body (`chunks`) into MinIO and record it.
-    Returns {"path", "size"}."""
-    backend = backend or _storage_backend()
+    """Stream a plain file from the request body (`chunks`) into object storage and
+    record it. Returns {"path", "size"}."""
+    backend = backend or get_storage_backend()
     target = _target_path(path, filename, validator or FileValidator())
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
     # Early reject before waiting for a slot, with no DB work so no connection is
@@ -213,10 +197,10 @@ async def upload_archive(
     validator: FileValidator | None = None,
 ) -> dict:
     """Collect an archive from the request body (up to MAX_ARCHIVE_FILE_SIZE), check
-    it and unpack it into a new folder in MinIO; the unpacked size is bounded only
-    by the org's free space. Returns {"path", "extracted"}, or
+    it and unpack it into a new folder in object storage; the unpacked size is
+    bounded only by the org's free space. Returns {"path", "extracted"}, or
     {"path", "size"} when the file only looked like an archive and was stored as is."""
-    backend = backend or _storage_backend()
+    backend = backend or get_storage_backend()
     validator = validator or FileValidator()
     target = _target_path(path, filename, validator)  # before the body is read
 
@@ -231,7 +215,7 @@ async def upload_archive(
             _storage_errors_as_unavailable(),
             # ZIP keeps its index at the end, so the whole archive must be at hand;
             # past one part it goes to disk instead of RAM.
-            tempfile.SpooledTemporaryFile(max_size=settings.UPLOAD_PART_SIZE) as buffered,
+            tempfile.SpooledTemporaryFile(max_size=backend.part_size) as buffered,
         ):
             total = 0
             async for chunk in _within_time_limits(chunks):
@@ -269,7 +253,7 @@ async def upload_archive(
 
 async def _save_stream(org_id: int, target: str, chunks, declared_size: int | None, backend):
     """Upload `chunks` to `target` and write its StorageFile row within the quota.
-    The row is written after the last byte but before MinIO commits the object,
+    The row is written after the last byte but before the store commits the object,
     so a rejected row aborts the upload and an overwritten file stays intact.
     The caller holds an upload slot."""
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
@@ -297,15 +281,14 @@ async def _save_stream(org_id: int, target: str, chunks, declared_size: int | No
     await sync_to_async(close_old_connections)()
     try:
         size = await backend.upload_chunks(
-            _storage_key(org_id, target),
+            storage_key(org_id, target),
             chunks,
-            part_size=settings.UPLOAD_PART_SIZE,
             size_guard=reject_if_too_big,
             before_commit=write_row,
         )
     except BaseException:
         if row_written:
-            # MinIO failed to commit after the row went in: the old object (or
+            # The store failed to commit after the row went in: the old object (or
             # none) is still there, so the row goes back to match it.
             await sync_to_async(_restore_file_row)(org_id, target, previous_row)
         raise
@@ -354,7 +337,7 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
 
     stem = sanitize_storage_path(strip_archive_suffix(filename), allow_empty=False)
     folder_key = _reserve_folder(org_id, _join(_clean_folder(path), stem), backend)
-    folder = folder_key.removeprefix(_storage_key(org_id, ""))
+    folder = folder_key.removeprefix(storage_key(org_id, ""))
 
     created = [f"{folder_key}/"]  # the marker _reserve_folder claimed
     try:
@@ -364,12 +347,11 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
             guard,
             backend,
             folder_key,
-            part_size=settings.UPLOAD_PART_SIZE,
             workers=settings.ARCHIVE_UPLOAD_CONCURRENCY,
         )
         created += [f"{folder_key}/{name}" for name in sizes]
         files = [(f"{folder}/{name}", size) for name, size in sizes.items()]
-        # A folder with nothing under it exists in MinIO only as a marker object.
+        # A folder with nothing under it exists in object storage only as a marker.
         parents = {name.rsplit("/", i)[0] for name in sizes for i in range(1, name.count("/") + 1)}
         empty_dirs = [d for d in archive_dirs if d not in parents]
         for directory in empty_dirs:
@@ -377,7 +359,7 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
             backend.mkdir(f"{folder_key}/{directory}")
         record_files_within_quota(org_id, files, [f"{folder}/{d}" for d in empty_dirs])
     except BaseException:
-        discard_keys(backend, created)
+        backend.discard_keys(created)
         raise
 
     return {"path": folder, "extracted": [file_path for file_path, _ in files]}
@@ -387,11 +369,11 @@ def _reserve_folder(org_id: int, folder: str, backend) -> str:
     """Storage key of the first free "<folder>", "<folder> (1)", ..., claimed with a
     conditional marker write, so two uploads of one archive never share a folder.
 
-    No DB lock is held: MinIO itself refuses the second claim of a name, and the
+    No DB lock is held: the store itself refuses the second claim of a name, and the
     loser probes again, now seeing the winner's marker. Every lost claim means a
     new marker exists, so the loop moves on to a later name; the cap only stops a
     store that refuses every claim from spinning here forever."""
-    wanted = _storage_key(org_id, folder)
+    wanted = storage_key(org_id, folder)
     for _ in range(_MAX_FOLDER_CLAIMS):
         key = backend.unique_key(wanted, is_folder=True)
         if backend.claim_folder(key):

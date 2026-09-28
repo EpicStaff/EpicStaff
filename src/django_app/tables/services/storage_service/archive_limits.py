@@ -1,6 +1,3 @@
-from tables.constants.upload_limits import default_upload_limits
-
-
 class ArchiveLimitExceeded(ValueError):  # noqa: N818
     """Raised when an archive expands past what one extraction is allowed to buffer."""
 
@@ -43,12 +40,3 @@ class GuardedMemberReader:
         if chunk:
             self._guard.account_bytes(len(chunk), self._name)
         return chunk
-
-
-def default_guard() -> ArchiveExtractionGuard:
-    """Build the guard applied to extractions that do not supply one."""
-    limits = default_upload_limits()
-    return ArchiveExtractionGuard(
-        max_entries=limits.max_archive_entries,
-        max_total_bytes=limits.max_archive_uncompressed_bytes,
-    )

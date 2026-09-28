@@ -1,5 +1,6 @@
 import math
 
+from rest_framework.exceptions import Throttled
 from utils.exceptions import CustomAPIExeption
 
 from tables.constants.knowledge_constants import (
@@ -546,12 +547,12 @@ class UploadDurationExceeded(CustomAPIExeption):
 
 
 class StorageUnavailable(CustomAPIExeption):
-    """Object storage (MinIO / S3) could not be reached or answered with a server error."""
+    """Object storage could not be reached or answered with a server error."""
 
     status_code = 503
     default_detail = "File storage is temporarily unavailable. Please retry later."
     default_code = "storage_unavailable"
-    # Long enough for a MinIO container restart, short enough not to strand a user.
+    # Long enough for a storage server restart, short enough not to strand a user.
     RETRY_AFTER_SECONDS = 30
 
     def __init__(self):

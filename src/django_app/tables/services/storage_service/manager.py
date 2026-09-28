@@ -18,12 +18,11 @@ from tables.services.storage_service.dataclasses import (
     UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.path_utils import sanitize_storage_path
+from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
 from tables.services.storage_service.quota_service import (
     ensure_fits_quota,
     record_files_within_quota,
 )
-from utils.logger import logger
 
 # Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
 _BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
@@ -65,15 +64,11 @@ class StorageManager:
 
     def _build_storage_key(self, org_id: int, relative_path: str) -> str:
         """Return the full storage key for a relative path inside an org."""
-        safe_path = sanitize_storage_path(relative_path, allow_empty=True, allow_leading_slash=True)
-        return f"org_{org_id}/{safe_path}"
+        return storage_key(org_id, relative_path)
 
-    def _strip_org_prefix(self, org_id: int, storage_key: str) -> str:
+    def _strip_org_prefix(self, org_id: int, full_key: str) -> str:
         """Convert a full storage key back to a relative path by removing the org prefix."""
-        prefix = f"org_{org_id}/"
-        if storage_key.startswith(prefix):
-            return storage_key[len(prefix) :]
-        return storage_key
+        return full_key.removeprefix(storage_key(org_id, ""))
 
     # --- Single-org operations ---
 
@@ -211,16 +206,8 @@ class StorageManager:
         try:
             record_files_within_quota(dst_org_id, files, folders)
         except BaseException:
-            self._discard_copies([key for key, _ in copied])
+            self._backend.discard_keys([key for key, _ in copied])
             raise
-
-    def _discard_copies(self, keys: list[str]) -> None:
-        """Remove the objects of a copy that was not recorded. A failure is only
-        logged, so the caller re-raises the error that rejected the copy."""
-        try:
-            self._backend.delete_keys(keys)
-        except Exception:
-            logger.exception("Could not remove {} objects of a rejected copy", len(keys))
 
     @staticmethod
     def _recorded_size(org_id: int, source_path: str) -> int:

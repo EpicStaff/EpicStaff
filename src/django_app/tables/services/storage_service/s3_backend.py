@@ -1,12 +1,14 @@
 import asyncio
+import contextlib
 
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as SdkConnectionError
 from django.conf import settings
 from tables.exceptions import RangeNotSatisfiable
-from tables.services.storage_service.base import AbstractStorageBackend
+from tables.services.storage_service.base import AbstractStorageBackend, StorageUnreachable
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
@@ -18,7 +20,7 @@ from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
 
 # For head_file: its caller (the shared pub/sub listener thread) must not stall for
-# minutes on a slow or unreachable MinIO, so one short attempt and no retries.
+# minutes on a slow or unreachable object store, so one short attempt and no retries.
 _HEAD_FILE_CONFIG = Config(
     connect_timeout=2, read_timeout=5, retries={"mode": "standard", "total_max_attempts": 1}
 )
@@ -26,12 +28,39 @@ _HEAD_FILE_CONFIG = Config(
 # S3 DeleteObjects accepts at most this many keys per request.
 _DELETE_OBJECTS_BATCH = 1000
 
+# Error codes that S3-compatible stores answer with. Vendor-specific codes (e.g.
+# MinIO's XMinio*) live only in these tables. A bare status ("412", "400") is the
+# code botocore reports when the response carries no error body.
+# The name is already taken: 412 the key exists; 409 a concurrent conditional write
+# is in flight; XMinioParentIsObject a file of that name exists where a folder goes.
+_NAME_TAKEN_CODES = frozenset(
+    {"PreconditionFailed", "412", "ConditionalRequestConflict", "409", "XMinioParentIsObject"}
+)
+# The store rejects the key itself.
+_INVALID_NAME_CODES = frozenset({"400", "XMinioInvalidObjectName"})
+
 
 def _drop_expect_on_empty_body(request, **kwargs):
-    # MinIO answers an empty PUT sent with "Expect: 100-continue" in a way that
-    # stalls the next request on that pooled connection for ~30 s.
+    # Some S3-compatible stores (e.g. MinIO) answer an empty PUT sent with
+    # "Expect: 100-continue" in a way that stalls the next request on that pooled
+    # connection for ~30 s.
     if request.headers.get("Content-Length") == "0":
         request.headers.pop("Expect", None)
+
+
+@contextlib.contextmanager
+def _outage_as_storage_unreachable():
+    """Re-raise a store that is unreachable, timing out or answering 5xx as
+    StorageUnreachable, so callers need no SDK types. A 4xx (bad credentials,
+    missing bucket) is a misconfiguration and propagates unchanged."""
+    try:
+        yield
+    except (SdkConnectionError, HTTPClientError) as error:
+        raise StorageUnreachable(str(error)) from error
+    except ClientError as error:
+        if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0) >= 500:
+            raise StorageUnreachable(str(error)) from error
+        raise
 
 
 class S3StorageBackend(AbstractStorageBackend):
@@ -49,9 +78,12 @@ class S3StorageBackend(AbstractStorageBackend):
         secret_key: str,
         organization_prefix: str = "org_1/",
         endpoint_url: str | None = None,
+        *,
+        part_size: int,
     ):
         self.bucket_name = bucket_name
         self.organization_prefix = organization_prefix
+        self._part_size = part_size
 
         def make_client(config: Config):
             return boto3.client(
@@ -74,17 +106,14 @@ class S3StorageBackend(AbstractStorageBackend):
         self.client.meta.events.register("before-send.s3.PutObject", _drop_expect_on_empty_body)
         self._head_file_client = make_client(_HEAD_FILE_CONFIG)
 
-    async def upload_chunks(
-        self, path, chunks, *, part_size, size_guard=None, before_commit=None
-    ) -> int:
-        """Upload an async stream of byte chunks to `path` as S3 multipart parts;
-        returns the byte count.
+    @property
+    def part_size(self) -> int:
+        return self._part_size
 
-        Holds one part in RAM (handed to boto as is, not copied). A body smaller than one part goes up as a single
-        PutObject. size_guard(total) is called as bytes arrive and raises to stop.
-        `await before_commit(total)` runs once every byte is in MinIO but before
-        the object becomes visible: if it raises, the upload is aborted and an
-        object already at `path` stays untouched."""
+    async def upload_chunks(self, path, chunks, *, size_guard=None, before_commit=None) -> int:
+        """As multipart parts of part_size, each handed to boto as is (not copied);
+        a body smaller than one part goes up as a single PutObject."""
+        part_size = self._part_size
         full_key = self._full_path(path)
         total = 0
         buffer = bytearray()
@@ -110,56 +139,61 @@ class S3StorageBackend(AbstractStorageBackend):
             )
             parts.append({"ETag": resp["ETag"], "PartNumber": number})
 
-        try:
-            async for chunk in chunks:
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if size_guard is not None:
-                    size_guard(total)
-                view = memoryview(chunk)
-                while view:
-                    room = part_size - len(buffer)
-                    buffer += view[:room]
-                    view = view[room:]
-                    if len(buffer) == part_size:
-                        await send_buffer_as_part()
+        with _outage_as_storage_unreachable():
+            try:
+                async for chunk in chunks:
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if size_guard is not None:
+                        size_guard(total)
+                    view = memoryview(chunk)
+                    while view:
+                        room = part_size - len(buffer)
+                        buffer += view[:room]
+                        view = view[room:]
+                        if len(buffer) == part_size:
+                            await send_buffer_as_part()
 
-            if upload_id is None:
+                if upload_id is None:
+                    if before_commit is not None:
+                        await before_commit(total)
+                    await asyncio.to_thread(self.put_bytes, path, buffer)
+                    return total
+
+                if buffer:
+                    await send_buffer_as_part()
                 if before_commit is not None:
                     await before_commit(total)
-                await asyncio.to_thread(self.put_bytes, path, buffer)
-                return total
-
-            if buffer:
-                await send_buffer_as_part()
-            if before_commit is not None:
-                await before_commit(total)
-            await asyncio.to_thread(
-                self.client.complete_multipart_upload,
-                Bucket=self.bucket_name,
-                Key=full_key,
-                UploadId=upload_id,
-                MultipartUpload={"Parts": parts},
-            )
-        except BaseException:
-            if upload_id is not None:
                 await asyncio.to_thread(
-                    self.client.abort_multipart_upload,
+                    self.client.complete_multipart_upload,
                     Bucket=self.bucket_name,
                     Key=full_key,
                     UploadId=upload_id,
+                    MultipartUpload={"Parts": parts},
                 )
-            raise
+            except BaseException:
+                if upload_id is not None:
+                    try:
+                        await asyncio.to_thread(
+                            self.client.abort_multipart_upload,
+                            Bucket=self.bucket_name,
+                            Key=full_key,
+                            UploadId=upload_id,
+                        )
+                    except Exception:
+                        # The error that made the upload fail is the one to report.
+                        logger.exception("Could not abort multipart upload of {}", full_key)
+                raise
         return total
 
-    def upload_stream(self, path: str, file_object, *, part_size: int) -> None:
-        """Upload a readable of unknown size as multipart parts of `part_size`, one
-        at a time on this thread, so it holds about one part in RAM; upload()
-        uses boto's defaults (8 MB chunks on up to 10 threads)."""
+    @_outage_as_storage_unreachable()
+    def upload_stream(self, path: str, file_object) -> None:
+        """One part at a time on this thread; upload() instead uses boto's defaults
+        (8 MB chunks on up to 10 threads)."""
         config = TransferConfig(
-            multipart_threshold=part_size,
-            multipart_chunksize=part_size,
+            multipart_threshold=self._part_size,
+            multipart_chunksize=self._part_size,
             max_concurrency=1,
             use_threads=False,
         )
@@ -167,9 +201,9 @@ class S3StorageBackend(AbstractStorageBackend):
             file_object, self.bucket_name, self._full_path(path), Config=config
         )
 
+    @_outage_as_storage_unreachable()
     def put_bytes(self, path: str, data: bytes) -> int:
-        """Store `data` at `path` in one PutObject; returns its size. Unlike upload()
-        it skips the extra head_object request."""
+        """One PutObject; unlike upload() it skips the extra head_object request."""
         self.client.put_object(Bucket=self.bucket_name, Key=self._full_path(path), Body=data)
         return len(data)
 
@@ -325,6 +359,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 )
                 logger.info("Deleted {} S3 objects under prefix {}", len(objects), prefix)
 
+    @_outage_as_storage_unreachable()
     def delete_keys(self, keys: list[str]) -> None:
         for start in range(0, len(keys), _DELETE_OBJECTS_BATCH):
             batch = keys[start : start + _DELETE_OBJECTS_BATCH]
@@ -340,14 +375,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 )
         logger.info("Deleted {} S3 objects", len(keys))
 
-    def _delete_created_keys(self, keys: list[str]) -> None:
-        """Best-effort cleanup after a failed copy: a failure is only logged, so the
-        caller re-raises the error that made the copy fail."""
-        try:
-            self.delete_keys(keys)
-        except Exception:
-            logger.exception("Could not remove {} objects of a failed copy", len(keys))
-
+    @_outage_as_storage_unreachable()
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)
         if not full_path.endswith("/"):
@@ -357,32 +385,25 @@ class S3StorageBackend(AbstractStorageBackend):
             logger.info("Created S3 folder {}", full_path)
         except ClientError as error:
             code = error.response["Error"]["Code"]
-            if code in ("400", "XMinioInvalidObjectName"):
+            if code in _INVALID_NAME_CODES:
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
 
+    @_outage_as_storage_unreachable()
     def claim_folder(self, path: str) -> bool:
         full_path = self._full_path(path)
         if not full_path.endswith("/"):
             full_path += "/"
         try:
-            # Conditional write: MinIO/S3 refuse it when the marker already exists.
+            # Conditional write: the store refuses it when the marker already exists.
             self.client.put_object(
                 Bucket=self.bucket_name, Key=full_path, Body=b"", IfNoneMatch="*"
             )
         except ClientError as error:
             code = error.response["Error"]["Code"]
-            # 412: the marker exists; 409: a concurrent conditional write is in flight;
-            # XMinioParentIsObject: a file of that name appeared since unique_key.
-            if code in (
-                "PreconditionFailed",
-                "412",
-                "ConditionalRequestConflict",
-                "409",
-                "XMinioParentIsObject",
-            ):
+            if code in _NAME_TAKEN_CODES:
                 return False
-            if code in ("400", "XMinioInvalidObjectName"):
+            if code in _INVALID_NAME_CODES:
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
         logger.info("Claimed S3 folder {}", full_path)
@@ -459,14 +480,15 @@ class S3StorageBackend(AbstractStorageBackend):
             raise
 
     def _name_taken(self, key: str, is_folder: bool) -> bool:
-        """A folder name is also taken by a file of that name: MinIO refuses to write
-        under a path whose parent is an object (XMinioParentIsObject)."""
+        """A folder name is also taken by a file of that name: some S3-compatible
+        stores (e.g. MinIO) refuse to write under a path whose parent is an object."""
         if is_folder:
             return self._key_exists(key, is_folder=True) or self._key_exists(
                 key.rstrip("/"), is_folder=False
             )
         return self._key_exists(key, is_folder=False)
 
+    @_outage_as_storage_unreachable()
     def unique_key(self, key: str, is_folder: bool = False) -> str:
         """Increment the name segment of *key* until nothing exists at that path."""
         if not self._name_taken(key, is_folder):
@@ -531,8 +553,7 @@ class S3StorageBackend(AbstractStorageBackend):
                     )
                     created.append((destination_key, obj["Size"]))
         except BaseException:
-            if created:
-                self._delete_created_keys([key for key, _ in created])
+            self.discard_keys([key for key, _ in created])
             raise
 
         if not created:
@@ -563,7 +584,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 pass
-            elif code in ("400", "XMinioInvalidObjectName"):
+            elif code in _INVALID_NAME_CODES:
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
@@ -581,7 +602,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 pass
-            elif code in ("400", "XMinioInvalidObjectName"):
+            elif code in _INVALID_NAME_CODES:
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
@@ -609,7 +630,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 return None
-            if code in ("400", "XMinioInvalidObjectName"):
+            if code in _INVALID_NAME_CODES:
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
         return FileInfo(

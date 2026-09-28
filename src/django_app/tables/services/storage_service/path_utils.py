@@ -51,3 +51,10 @@ def check_new_name(path: str) -> None:
         raise ValueError(f"Name contains a control character: {path!r}")
     if any(not segment.strip() for segment in path.split("/")):
         raise ValueError(f"Name must not be blank: {path!r}")
+
+
+def storage_key(org_id: int, path: str) -> str:
+    """Storage key of path inside the org's root; "" gives the org's own prefix
+    "org_<id>/". A leading "/" means the org root; ValueError if path escapes it."""
+    safe_path = sanitize_storage_path(path, allow_empty=True, allow_leading_slash=True)
+    return f"org_{org_id}/{safe_path}"
