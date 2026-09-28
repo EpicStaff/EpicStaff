@@ -117,7 +117,7 @@ class TestNetworkDenialMessageUnderFullBlock:
         assert "sandbox network policy" not in result.stderr
         assert "[Errno 2]" in result.stderr
 
-    def test_message_does_not_mention_minio_under_full_block(self, tmp_path):
+    def test_message_does_not_mention_storage_under_full_block(self, tmp_path):
         result = _run_wrapped(
             tmp_path,
             code="def main(**kwargs):\n    raise OSError(13, 'Permission denied')\n",
@@ -125,7 +125,7 @@ class TestNetworkDenialMessageUnderFullBlock:
         )
 
         assert result.returncode == 1
-        assert "MinIO" not in result.stderr
+        assert "storage endpoint" not in result.stderr
 
     def test_dns_gaierror_reports_network_denial_under_full_block(self, tmp_path):
         """The most common real path: `requests.get("https://...")` hits DNS
@@ -179,8 +179,8 @@ class TestNetworkDenialMessageUnderFullBlock:
 
 
 class TestNetworkDenialMessageUnderStorageOnlyBlock:
-    def test_eacces_with_no_filename_reports_minio_only_message(self, tmp_path):
-        """A Landlock ALLOW_PORTS denial when user code reaches a non-MinIO
+    def test_eacces_with_no_filename_reports_storage_only_message(self, tmp_path):
+        """A Landlock ALLOW_PORTS denial when user code reaches a non-storage
         host: PermissionError(EACCES), no filename -- same shape as the full
         block, different wording."""
         result = _run_wrapped(
@@ -191,7 +191,7 @@ class TestNetworkDenialMessageUnderStorageOnlyBlock:
 
         assert result.returncode == 1
         assert "sandbox network policy" in result.stderr
-        assert "MinIO" in result.stderr
+        assert "storage endpoint" in result.stderr
 
     def test_dns_gaierror_is_not_reported_as_network_denial(self, tmp_path):
         """Under storage_only, Landlock restricts TCP connect only -- DNS

@@ -20,16 +20,16 @@ CODE_EXEC_CHANNEL = env.str("CODE_EXEC_CHANNEL")
 OUTPUT_PATH = env.path("SANDBOX_OUTPUT_PATH")
 BASE_VENV_PATH = env.path("SANDBOX_BASE_VENV_PATH")
 
-# Non-secret MinIO connection details only. Deliberately no
+# Non-secret object storage connection details only. Deliberately no
 # STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here: sandbox never holds the admin
-# MinIO credential (finding #38). Temporary, per-execution credentials are
+# storage credential (finding #38). Temporary, per-execution credentials are
 # requested from the issuer running in django_app -- see
 # services/storage_credential_client.py and dynamic_venv_executor_chain.py.
-STORAGE_HOST = env.str("MINIO_HOST")
-STORAGE_PORT = env.str("MINIO_PORT")
-http = "https" if env.bool("MINIO_SSL") else "http"
+STORAGE_HOST = env.str("STORAGE_HOST")
+STORAGE_PORT = env.str("STORAGE_PORT")
+http = "https" if env.bool("STORAGE_SSL") else "http"
 STORAGE_ENDPOINT = f"{http}://{STORAGE_HOST}:{STORAGE_PORT}"
-STORAGE_BUCKET_NAME = env.str("MINIO_BUCKET")
+STORAGE_BUCKET_NAME = env.str("STORAGE_BUCKET")
 
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET")
 
