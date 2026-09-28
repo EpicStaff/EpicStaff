@@ -91,12 +91,12 @@
     }
 }
 <ng-template #interactiveNode>
-    @let persistenceAccentColor = persistenceHeaderAccentColor;
+    @let persistenceStripeColor = persistenceModeStripeColor;
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
-        [class.has-persistence-accent]="persistenceAccentColor"
-        [style.--persistence-accent]="persistenceAccentColor"
+        [class.has-persistence-accent]="persistenceStripeColor"
+        [style.--persistence-accent]="persistenceStripeColor"
         appClickOrDrag
         (actualClick)="onEditClick()"
     >
@@ -104,11 +104,11 @@
         @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
             <div class="header">
                 <div class="icon-wrapper">
-                    @if (persistenceHeaderIcon; as icon) {
+                    @if (persistenceHeader; as header) {
                         <!-- The caption under the node shows the summary on hover; this names it for screen readers. -->
                         <i
-                            [class]="icon"
-                            [style.color]="persistenceAccentColor"
+                            [class]="header.icon"
+                            [style.color]="header.color"
                             role="img"
                             [attr.aria-label]="persistenceSummary?.full"
                         ></i>

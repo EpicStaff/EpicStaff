@@ -1,4 +1,7 @@
-export type PersistenceMode = 'read' | 'write' | 'delete';
+import { PersistenceMode } from '@shared/models';
+
+// Shared with the session card, which colours its stripe by mode too.
+export type { PersistenceMode };
 
 /**
  * A read or write entry. Read writes the stored value of `key` into the flow state path `value`

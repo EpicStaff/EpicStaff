@@ -17,16 +17,14 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { AppSvgIconComponent, GoToButtonComponent } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { NODE_COLORS, NODE_ICONS, NodeType, PERSISTENCE_MODE_COLORS } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { flowUrl } from '@shared/utils';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
 import {
-    persistenceAccentVar,
     persistenceCaption,
-    persistenceNodeIcon,
     persistenceSubtitle as formatPersistenceSubtitle,
 } from '../../core/constants/persistence-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
@@ -233,19 +231,16 @@ export class FlowBaseNodeComponent implements OnInit {
         return this.node.type === NodeType.PERSISTENCE ? (this.node as PersistenceNodeModel) : null;
     }
 
-    /** Header icon for a Persistence node, derived from its current mode at render time
-     *  (ignores any icon saved on the node's metadata). */
-    public get persistenceHeaderIcon(): string | null {
-        const node = this.persistenceNode;
-        return node ? persistenceNodeIcon(node.data.mode) : null;
+    /** A Persistence node's header icon and its colour: the type's own, whatever its mode or saved metadata. */
+    public get persistenceHeader(): { icon: string; color: string } | null {
+        if (!this.persistenceNode) return null;
+        return { icon: NODE_ICONS[NodeType.PERSISTENCE], color: NODE_COLORS[NodeType.PERSISTENCE] };
     }
 
-    /** Header accent colour for a Persistence node, as a ready-to-use `var(--...)` string,
-     *  derived from its current mode at render time (ignores any color saved on the node's
-     *  metadata). */
-    public get persistenceHeaderAccentColor(): string | null {
+    /** The colour of a Persistence node's mode stripe, as a ready-to-use `var(--...)` string. */
+    public get persistenceModeStripeColor(): string | null {
         const node = this.persistenceNode;
-        return node ? `var(${persistenceAccentVar(node.data.mode)})` : null;
+        return node ? PERSISTENCE_MODE_COLORS[node.data.mode] : null;
     }
 
     /** "Mode · Table · N keys" in full, and as the caption under the node shows it, its table name cut short. */

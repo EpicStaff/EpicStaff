@@ -1,11 +1,13 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { NODE_COLORS, NodeType } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
 import { NodeModel } from '../../core/models/node.model';
+import { PersistenceMode } from '../../core/models/persistence-node.model';
 import { mapPersistenceNodeToModel } from '../../utils/load/nodes/persistence-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
@@ -60,6 +62,34 @@ describe('FlowBaseNodeComponent persistence caption', () => {
             'Write · Very very long table name · 2 keys'
         );
     });
+
+    const MODE_STRIPES: Record<PersistenceMode, string> = {
+        read: 'var(--color-status-processing)',
+        write: 'var(--success-color)',
+        delete: 'var(--color-status-error)',
+    };
+    for (const mode of Object.keys(MODE_STRIPES) as PersistenceMode[]) {
+        it(`draws the type's database icon in its colour in ${mode}, with the mode only on the left stripe`, () => {
+            // Neither a saved icon nor a saved colour is what the header shows.
+            render({
+                ...PERSISTENCE_NODE,
+                icon: 'ti ti-database-x',
+                color: '#000000',
+                data: { ...PERSISTENCE_NODE.data, mode },
+            });
+            const icon: HTMLElement = fixture.nativeElement.querySelector('.icon-wrapper i');
+            const typeColor = document.createElement('i');
+            typeColor.style.color = NODE_COLORS[NodeType.PERSISTENCE];
+
+            expect(icon.className).toBe('ti ti-database');
+            expect(icon.style.color).toBe(typeColor.style.color);
+            expect(
+                fixture.nativeElement
+                    .querySelector('.interactive-node-body')
+                    .style.getPropertyValue('--persistence-accent')
+            ).toBe(MODE_STRIPES[mode]);
+        });
+    }
 
     it('is only for persistence nodes', () => {
         render({
