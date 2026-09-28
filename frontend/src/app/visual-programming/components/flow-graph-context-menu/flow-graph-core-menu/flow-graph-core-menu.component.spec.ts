@@ -10,7 +10,7 @@ describe('FlowGraphCoreMenuComponent', () => {
         component.nodeSelected.subscribe((request) => emitted.push(request));
 
         expect(component.blocks.find((block) => block.type === NodeType.PERSISTENCE)).toEqual({
-            label: 'Persistence',
+            label: 'Key-Value',
             type: NodeType.PERSISTENCE,
             icon: NODE_ICONS[NodeType.PERSISTENCE],
             color: NODE_COLORS[NodeType.PERSISTENCE],

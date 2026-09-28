@@ -57,7 +57,7 @@ const READ_DEFAULT_HINT = 'Leave out the |default: a missing key reads None';
 const ROOTLESS_PATH = /^[A-Za-z]\w*(?:\.[A-Za-z0-9]\w*|\[(?:0|[1-9]\d*)\])*$/;
 
 // Mirrors MODE_PERMISSIONS in tables/services/persistence_table_service.py: what configuring a node
-// in each mode needs on Persistent Data. The server is the authority; the panel only offers what it allows.
+// in each mode needs on Key-Value Tables. The server is the authority; the panel only offers what it allows.
 export const PERSISTENCE_MODE_ACTIONS: Record<PersistenceMode, ActionCode[]> = {
     read: [ActionCode.Read],
     write: [ActionCode.Create, ActionCode.Update],

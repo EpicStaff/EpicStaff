@@ -7,7 +7,7 @@
             <div class="field-isolated">
                 <app-custom-input
                     label="Node Name"
-                    tooltipText="The unique identifier used to reference this Persistence node. This name must be unique within the flow."
+                    tooltipText="The unique identifier used to reference this Key-Value node. This name must be unique within the flow."
                     formControlName="node_name"
                     placeholder="Enter node name"
                     [activeColor]="activeColor"
@@ -31,7 +31,7 @@
                     <div class="field-isolated">
                         <app-tooltip
                             label="Table"
-                            tooltipText="The persistent data table this node reads from, writes to or deletes from."
+                            tooltipText="The key-value table this node reads from, writes to or deletes from."
                         />
                         <app-select-dropdown
                             mode="list"

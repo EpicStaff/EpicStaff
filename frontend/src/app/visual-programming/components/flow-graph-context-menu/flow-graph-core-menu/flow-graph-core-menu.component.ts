@@ -178,7 +178,7 @@ export class FlowGraphCoreMenuComponent {
             color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
         },
         {
-            label: 'Persistence',
+            label: 'Key-Value',
             type: NodeType.PERSISTENCE,
             icon: NODE_ICONS[NodeType.PERSISTENCE],
             color: NODE_COLORS[NodeType.PERSISTENCE],

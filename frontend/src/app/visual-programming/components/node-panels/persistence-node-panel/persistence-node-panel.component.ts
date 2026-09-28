@@ -115,13 +115,13 @@ const MODE_ITEMS: SelectItem<PersistenceMode>[] = [
     { name: 'Write', value: 'write' },
     { name: 'Delete', value: 'delete' },
 ];
-const NO_READ_NOTICE = 'You need View permission on Persistent Data to configure this node.';
+const NO_READ_NOTICE = 'You need View permission on Key-Value Tables to configure this node.';
 // Names the permissions PERSISTENCE_MODE_ACTIONS lists, as the role editor calls them.
 const MODE_LOCKED_NOTICE: Record<PersistenceMode, string> = {
     // Never shown: a user who can't configure read has no View, and NO_READ_NOTICE comes first.
-    read: 'Changing a Read node needs View permission on Persistent Data.',
-    write: 'Changing a Write node needs Create and Edit permission on Persistent Data.',
-    delete: 'Changing a Delete node needs Delete permission on Persistent Data.',
+    read: 'Changing a Read node needs View permission on Key-Value Tables.',
+    write: 'Changing a Write node needs Create and Edit permission on Key-Value Tables.',
+    delete: 'Changing a Delete node needs Delete permission on Key-Value Tables.',
 };
 // What a locked panel keeps as saved; the node name stays editable.
 const LOCKABLE_CONTROLS = ['persistence_table', 'mode', 'entries'];
@@ -228,7 +228,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     );
 
     protected readonly activeColor = 'var(--accent-color)';
-    protected readonly keyLimitHint = `A persistence node can have at most ${PERSISTENCE_MAX_KEYS} keys`;
+    protected readonly keyLimitHint = `A Key-Value node can have at most ${PERSISTENCE_MAX_KEYS} keys`;
     protected readonly keyPlaceholder = KEY_PLACEHOLDER_HINT;
     // The Input List's picker. Read rows each fill their own variable, so a row is not offered what
     // other rows fill, nor what lies inside or around it: those stay only as disabled parents of what

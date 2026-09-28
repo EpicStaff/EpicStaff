@@ -111,7 +111,7 @@ function createPanel(
         errorOnUnknownProperties = true,
     }: {
         renderTemplate?: boolean;
-        /** What the user may do on Persistent Data; everything by default. */
+        /** What the user may do on Key-Value Tables; everything by default. */
         actions?: ActionCode[];
         tables?: PersistenceTable[];
         /** What the create-table dialog closes with. */
@@ -135,7 +135,7 @@ function createPanel(
     loadTables: ReturnType<typeof vi.fn>;
     reloadTables: ReturnType<typeof vi.fn>;
     storedTables: WritableSignal<PersistenceTable[]>;
-    /** What the user may do on Persistent Data; set it to change permissions after opening. */
+    /** What the user may do on Key-Value Tables; set it to change permissions after opening. */
     permittedActions: WritableSignal<ActionCode[]>;
 } {
     const triggerAutosave = vi.fn();
@@ -1163,7 +1163,7 @@ describe('PersistenceNodePanelComponent', () => {
 
             expect(entriesOf(panel).length).toBe(500);
             expect(addKeyButton(fixture).disabled).toBe(true);
-            expect(hintsOf(fixture)).toEqual(['A persistence node can have at most 500 keys']);
+            expect(hintsOf(fixture)).toEqual(['A Key-Value node can have at most 500 keys']);
             // The empty row is not saved, so 499 keys still save.
             expect(panel.captureForValidation()).not.toBeNull();
 
@@ -2289,7 +2289,7 @@ describe('PersistenceNodePanelComponent', () => {
             TestBed.tick();
 
             expect(entriesOf(panel).length).toBe(500);
-            expect(hintsOf(fixture)).toEqual(['A persistence node can have at most 500 keys']);
+            expect(hintsOf(fixture)).toEqual(['A Key-Value node can have at most 500 keys']);
         });
     });
 
@@ -2395,7 +2395,7 @@ describe('PersistenceNodePanelComponent', () => {
         it('locks mode, table and keys of a node whose saved mode the user may not configure, keeping it as saved', () => {
             const { panel, fixture } = createPanel(writeNode, { renderTemplate: true, actions: [Read] });
 
-            expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Persistent Data.');
+            expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Key-Value Tables.');
             expect(modeNames(panel)).toEqual(['Write']);
             expect(lockable(panel)).toEqual([true, true, true]);
             expect(panel.form.get('node_name')!.enabled).toBe(true);
@@ -2425,7 +2425,7 @@ describe('PersistenceNodePanelComponent', () => {
                 actions: [Read, Create, Update],
             });
 
-            expect(notice(fixture)).toBe('Changing a Delete node needs Delete permission on Persistent Data.');
+            expect(notice(fixture)).toBe('Changing a Delete node needs Delete permission on Key-Value Tables.');
             expect(panel.form.get('entries')!.disabled).toBe(true);
             expect(panel.onSave()!.data).toEqual({
                 mode: 'delete',
@@ -2437,7 +2437,7 @@ describe('PersistenceNodePanelComponent', () => {
         it('locks the node and says so without the View permission, whatever else the user may do', () => {
             const { panel, fixture } = createPanel(writeNode, { renderTemplate: true, actions: [Create, Update] });
 
-            expect(notice(fixture)).toBe('You need View permission on Persistent Data to configure this node.');
+            expect(notice(fixture)).toBe('You need View permission on Key-Value Tables to configure this node.');
             expect(lockable(panel)).toEqual([true, true, true]);
             expect(panel.form.get('node_name')!.enabled).toBe(true);
         });
@@ -2448,7 +2448,7 @@ describe('PersistenceNodePanelComponent', () => {
                 renderTemplate: true,
                 actions: [],
             });
-            expect(notice(fixture)).toBe('You need View permission on Persistent Data to configure this node.');
+            expect(notice(fixture)).toBe('You need View permission on Key-Value Tables to configure this node.');
             expect(lockable(panel)).toEqual([true, true, true]);
 
             permittedActions.set([Create, Read, Update, Delete]);
@@ -2463,7 +2463,7 @@ describe('PersistenceNodePanelComponent', () => {
             permittedActions.set([Read]);
             fixture.detectChanges();
 
-            expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Persistent Data.');
+            expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Key-Value Tables.');
             expect(lockable(panel)).toEqual([true, true, true]);
         });
 
