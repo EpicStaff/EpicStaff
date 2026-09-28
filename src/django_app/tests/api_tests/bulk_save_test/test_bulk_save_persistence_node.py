@@ -5,7 +5,13 @@ from rest_framework.test import APIClient
 
 from tables.models import PersistenceNode, PersistenceTable
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission
 from tests.fixtures import *  # noqa: F401,F403
+
+R = int(Permission.READ)
+C = int(Permission.CREATE)
+U = int(Permission.UPDATE)
+D = int(Permission.DELETE)
 
 
 def _save_url(graph_id: int) -> str:
@@ -28,15 +34,21 @@ def foreign_table(db) -> PersistenceTable:
 
 
 @pytest.fixture
-def flows_only_client(db, django_user_model, default_org) -> APIClient:
-    role = Role.objects.create(name="Flows only", org=default_org, is_built_in=False)
-    RolePermission.objects.create(role=role, resource_type="flows", permissions=255)
-    user = django_user_model.objects.create_user(email="flows@example.com", password="pw")
-    OrganizationUser.objects.create(user=user, org=default_org, role=role)
-    client = APIClient()
-    client.force_authenticate(user=user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
-    return client
+def client_with_persistent_data(db, django_user_model, default_org):
+    """Factory: a client whose role has every flows permission and `bits` on persistent_data."""
+
+    def _make(bits: int) -> APIClient:
+        role = Role.objects.create(name=f"Persistent data {bits}", org=default_org, is_built_in=False)
+        RolePermission.objects.create(role=role, resource_type="flows", permissions=255)
+        RolePermission.objects.create(role=role, resource_type="persistent_data", permissions=bits)
+        user = django_user_model.objects.create_user(email=f"pd-{bits}@example.com", password="pw")
+        OrganizationUser.objects.create(user=user, org=default_org, role=role)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+        return client
+
+    return _make
 
 
 def _node_payload(graph, table, **overrides) -> dict:
@@ -80,36 +92,148 @@ def test_cross_org_table_is_rejected(auth_client, graph, foreign_table):
     assert not PersistenceNode.objects.filter(graph=graph).exists()
 
 
-@pytest.mark.django_db
-def test_table_requires_use_permission(flows_only_client, graph, table):
-    payload = {"save_version": graph.save_version, "persistence_node_list": [_node_payload(graph, table)]}
-    response = flows_only_client.post(_save_url(graph.id), payload, format="json")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.data["code"] == "persistence_table_use_denied"
-    assert "'Customers'" in response.data["message"]
-    assert not PersistenceNode.objects.filter(graph=graph).exists()
+def _entries_of(mode: str) -> list[dict]:
+    if mode == "delete":
+        return [{"key": "k"}]
+    return [{"key": "k", "value": "variables.a"}]
+
+
+DENIED_MESSAGES = {
+    "read": "You need Persistent Data View permission to configure a read node on the table 'Customers'.",
+    "write": (
+        "You need Persistent Data Create and Edit permission to configure a write node on the "
+        "table 'Customers'."
+    ),
+    "delete": "You need Persistent Data Delete permission to configure a delete node on the table 'Customers'.",
+}
 
 
 @pytest.mark.django_db
-def test_update_without_table_key_still_requires_use_permission(flows_only_client, graph, table):
+@pytest.mark.parametrize(
+    "bits, mode, allowed",
+    [
+        (0, "read", False),
+        (R, "read", True),
+        (R, "write", False),
+        (R, "delete", False),
+        (R | C, "write", False),
+        (R | U, "write", False),
+        (R | C | U, "write", True),
+        (R | D, "delete", True),
+    ],
+)
+def test_creating_a_node_needs_its_mode_permissions(
+    client_with_persistent_data, graph, table, bits, mode, allowed
+):
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [_node_payload(graph, table, mode=mode, entries=_entries_of(mode))],
+    }
+    response = client_with_persistent_data(bits).post(_save_url(graph.id), payload, format="json")
+
+    if allowed:
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert PersistenceNode.objects.get(graph=graph).mode == mode
+    else:
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.data["code"] == "persistence_mode_denied"
+        assert response.data["message"] == DENIED_MESSAGES[mode]
+        assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_write_node_without_table_needs_no_persistent_data_permission(
+    client_with_persistent_data, graph
+):
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [_node_payload(graph, None, mode="write", entries=_entries_of("write"))],
+    }
+    response = client_with_persistent_data(R).post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert PersistenceNode.objects.get(graph=graph).persistence_table_id is None
+
+
+@pytest.fixture
+def admin_write_node(graph, table) -> PersistenceNode:
+    return PersistenceNode.objects.create(
+        graph=graph, node_name="p", persistence_table=table, mode="write",
+        entries=[{"key": "k", "value": "variables.a"}], metadata={"position": {"x": 0, "y": 0}},
+    )
+
+
+@pytest.mark.django_db
+def test_changing_mode_without_its_permission_is_denied(client_with_persistent_data, graph, table):
     node = PersistenceNode.objects.create(
         graph=graph, node_name="p", persistence_table=table, mode="read",
         entries=[{"key": "k", "value": "variables.a"}],
     )
+    # The payload omits the table: the node's saved table is still the one checked.
     payload = {
         "save_version": graph.save_version,
         "persistence_node_list": [
             {"id": node.id, "graph": graph.id, "mode": "delete", "entries": [{"key": "x"}]}
         ],
     }
-    response = flows_only_client.post(_save_url(graph.id), payload, format="json")
+    response = client_with_persistent_data(R).post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.data["code"] == "persistence_table_use_denied"
-    assert "'Customers'" in response.data["message"]
+    assert response.data["code"] == "persistence_mode_denied"
+    assert response.data["message"] == DENIED_MESSAGES["delete"]
     node.refresh_from_db()
     assert node.mode == "read"
     assert node.entries == [{"key": "k", "value": "variables.a"}]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("sends_configuration", [True, False])
+def test_viewer_may_rename_and_move_a_write_node_it_cannot_configure(
+    client_with_persistent_data, graph, table, admin_write_node, sends_configuration
+):
+    node_payload = {
+        "id": admin_write_node.id,
+        "graph": graph.id,
+        "node_name": "renamed",
+        "metadata": {"position": {"x": 40, "y": 80}},
+    }
+    if sends_configuration:
+        node_payload |= {
+            "persistence_table": table.id,
+            "mode": "write",
+            "entries": [{"key": "k", "value": "variables.a"}],
+        }
+    payload = {"save_version": graph.save_version, "persistence_node_list": [node_payload]}
+
+    response = client_with_persistent_data(R).post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    admin_write_node.refresh_from_db()
+    assert admin_write_node.node_name == "renamed"
+    assert admin_write_node.metadata == {"position": {"x": 40, "y": 80}}
+    assert admin_write_node.persistence_table_id == table.id
+    assert admin_write_node.mode == "write"
+
+
+@pytest.mark.django_db
+def test_viewer_may_not_edit_entries_of_a_write_node(
+    client_with_persistent_data, graph, table, admin_write_node
+):
+    node_payload = {
+        "id": admin_write_node.id,
+        "graph": graph.id,
+        "persistence_table": table.id,
+        "mode": "write",
+        "entries": [{"key": "other", "value": "variables.a"}],
+    }
+    payload = {"save_version": graph.save_version, "persistence_node_list": [node_payload]}
+
+    response = client_with_persistent_data(R).post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.data["code"] == "persistence_mode_denied"
+    admin_write_node.refresh_from_db()
+    assert admin_write_node.entries == [{"key": "k", "value": "variables.a"}]
 
 
 @pytest.mark.django_db
@@ -339,13 +463,119 @@ def test_write_entries_must_use_different_keys(auth_client, graph, table):
 
 
 @pytest.mark.django_db
-def test_write_keys_are_compared_exactly(auth_client, graph, table):
-    # Crew renders templates at run time and rejects keys that collide there.
+def test_write_key_with_surrounding_whitespace_is_invalid(auth_client, graph, table):
     entries = [{"key": "k", "value": "variables.a"}, {"key": "k ", "value": "variables.b"}]
     payload = {"save_version": graph.save_version,
                "persistence_node_list": [_node_payload(graph, table, mode="write", entries=entries)]}
     response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Entry 1: 'key' must use only letters, digits and _" in str(response.data)
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+# Keep identical to the template parity table in the frontend persistence-node.helpers.spec.ts.
+VALID_KEY_TEMPLATES = [
+    "k",
+    "_",
+    "_private",
+    "User_1",
+    "profile_{variables.user.id}",
+    "{variables.id}",
+    "{variables.id}_x",
+    "{variables.a}{variables.b}",
+    "p_{ variables.user.id }",
+    "a" * 512,
+]
+INVALID_KEY_TEMPLATES = [
+    "1abc",
+    "9_{variables.id}",
+    "user-id",
+    "user id",
+    "k ",
+    " k",
+    "user.name",
+    "naïve",
+    "k\n",
+    "a" * 513,
+    "profile_{}",
+    "profile_{variables.x",
+    "{{variables.x}}",
+    "profile_{user.id}",
+    "profile_{variables._x}",
+    "profile_{variables.items}",
+]
+
+
+def _entry_with_key(mode: str, key: str) -> dict:
+    return {"key": key} if mode == "delete" else {"key": key, "value": "variables.customer"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize("key", VALID_KEY_TEMPLATES)
+def test_valid_key_templates_are_saved(auth_client, graph, table, mode, key):
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [
+            _node_payload(graph, table, mode=mode, entries=[_entry_with_key(mode, key)])
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
     assert response.status_code == status.HTTP_200_OK, response.content
+    assert PersistenceNode.objects.get(graph=graph).entries[0]["key"] == key
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize("key", INVALID_KEY_TEMPLATES)
+def test_invalid_key_templates_are_rejected(auth_client, graph, table, mode, key):
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [
+            _node_payload(graph, table, mode=mode, entries=[_entry_with_key(mode, key)])
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Entry 0: 'key' " in str(response.data)
+    assert not PersistenceNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "key, message",
+    [
+        (
+            "user-id",
+            "Entry 0: 'key' must use only letters, digits and _ outside {placeholders}, and must "
+            "not start with a digit, e.g. 'profile_{variables.user.id}'.",
+        ),
+        (
+            "profile_{user.id}",
+            "Entry 0: 'key' placeholder 'user.id' must be a state path like 'variables.user.name'.",
+        ),
+        (
+            "profile_{variables.items}",
+            "Entry 0: 'key' placeholder 'variables.items' names 'items', a built-in method; "
+            "use a different variable name.",
+        ),
+        (
+            "profile_{}",
+            "Entry 0: 'key' has an empty or unbalanced placeholder; use '{variables.<path>}', "
+            "e.g. 'profile_{variables.user.id}'.",
+        ),
+    ],
+)
+def test_invalid_key_template_messages(auth_client, graph, table, key, message):
+    payload = {
+        "save_version": graph.save_version,
+        "persistence_node_list": [
+            _node_payload(graph, table, entries=[{"key": key, "value": "variables.customer"}])
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert message in str(response.data)
 
 
 @pytest.mark.django_db

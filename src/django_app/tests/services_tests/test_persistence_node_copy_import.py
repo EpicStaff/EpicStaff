@@ -181,7 +181,34 @@ def test_import_rejects_write_value_that_is_not_a_state_path(source_node, source
         _import_into(source_org, exported, source_node.graph_id)
 
 
-# persistent_data:USE gates table binding on every path that has an acting user.
+@pytest.mark.django_db
+def test_full_import_rejects_invalid_key(source_node, source_org):
+    PersistenceNode.objects.filter(pk=source_node.pk).update(
+        entries=[{"key": "user-1", "value": "variables.a"}]
+    )
+    source_node.refresh_from_db()
+    graph_strategy = entity_registry.get_strategy(EntityType.GRAPH)
+    exported_graph = graph_strategy.export_entity(source_node.graph)
+
+    with pytest.raises(serializers.ValidationError, match="'key' must use only letters"):
+        graph_strategy.create_entity(dict(exported_graph), IDMapper(), org_id=source_org.id)
+
+
+# A node's mode decides which persistent_data permissions binding its table needs, on every
+# path that has an acting user. Without them the node is created with no table.
+
+R = int(Permission.READ)
+C = int(Permission.CREATE)
+U = int(Permission.UPDATE)
+
+# (persistent_data bits, source node mode, table stays bound)
+BINDING_CASES = [
+    pytest.param(0, "read", False, id="none-read"),
+    pytest.param(R, "read", True, id="R-read"),
+    pytest.param(R, "write", False, id="R-write"),
+    pytest.param(R | C, "write", False, id="RC-write"),
+    pytest.param(R | C | U, "write", True, id="RCU-write"),
+]
 
 
 def _member_of(django_user_model, orgs: list[Organization], email: str, persistent_data: int):
@@ -200,18 +227,19 @@ def _member_of(django_user_model, orgs: list[Organization], email: str, persiste
 
 
 @pytest.fixture
-def no_use_user(django_user_model, source_org, target_org):
-    return _member_of(django_user_model, [source_org, target_org], "no-use@example.com", 0)
+def acting_user(django_user_model, source_org, target_org):
+    def _make(bits: int):
+        return _member_of(
+            django_user_model, [source_org, target_org], f"bits-{bits}@example.com", bits
+        )
+
+    return _make
 
 
-@pytest.fixture
-def use_user(django_user_model, source_org, target_org):
-    return _member_of(
-        django_user_model,
-        [source_org, target_org],
-        "use@example.com",
-        int(Permission.READ | Permission.USE),
-    )
+def _set_mode(node: PersistenceNode, mode: str) -> PersistenceNode:
+    node.mode = mode
+    node.save(update_fields=["mode"])
+    return node
 
 
 def _paste(source_node: PersistenceNode, target_graph: Graph, user) -> PersistenceNode:
@@ -226,104 +254,137 @@ def _paste(source_node: PersistenceNode, target_graph: Graph, user) -> Persisten
 
 
 @pytest.mark.django_db
-def test_paste_without_use_permission_leaves_node_without_table(
-    source_node, source_org, no_use_user
+def test_paste_rejects_invalid_key(source_node, source_org, acting_user):
+    PersistenceNode.objects.filter(pk=source_node.pk).update(
+        entries=[{"key": "user-1", "value": "variables.a"}]
+    )
+    target_graph = Graph.objects.create(name="Paste target", org=source_org)
+
+    with pytest.raises(serializers.ValidationError, match="'key' must use only letters"):
+        _paste(source_node, target_graph, acting_user(R))
+
+    assert not PersistenceNode.objects.filter(graph=target_graph).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_paste_binds_table_only_with_mode_permissions(
+    source_node, source_org, acting_user, bits, mode, bound
 ):
+    _set_mode(source_node, mode)
     target_graph = Graph.objects.create(name="Paste target", org=source_org)
 
-    pasted = _paste(source_node, target_graph, no_use_user)
+    pasted = _paste(source_node, target_graph, acting_user(bits))
 
-    assert pasted.persistence_table_id is None
+    assert pasted.mode == mode
+    expected = source_node.persistence_table_id if bound else None
+    assert pasted.persistence_table_id == expected
 
 
 @pytest.mark.django_db
-def test_paste_with_use_permission_binds_table(source_node, source_org, use_user):
-    target_graph = Graph.objects.create(name="Paste target", org=source_org)
-
-    pasted = _paste(source_node, target_graph, use_user)
-
-    assert pasted.persistence_table_id == source_node.persistence_table_id
-
-
-@pytest.mark.django_db
-def test_cross_org_paste_binds_target_org_table(source_node, target_org, use_user):
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_cross_org_paste_binds_target_org_table_only_with_mode_permissions(
+    source_node, target_org, acting_user, bits, mode, bound
+):
+    _set_mode(source_node, mode)
     target_table = PersistenceTable.objects.create(org=target_org, name="customers")
     target_graph = Graph.objects.create(name="Paste target", org=target_org)
 
-    pasted = _paste(source_node, target_graph, use_user)
+    pasted = _paste(source_node, target_graph, acting_user(bits))
 
-    assert pasted.persistence_table_id == target_table.id
+    assert pasted.persistence_table_id == (target_table.id if bound else None)
 
 
 @pytest.mark.django_db
-def test_full_import_without_use_permission_leaves_node_without_table(
-    source_node, source_org, no_use_user
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_full_import_binds_table_only_with_mode_permissions(
+    source_node, source_org, acting_user, bits, mode, bound
 ):
+    _set_mode(source_node, mode)
     graph_strategy = entity_registry.get_strategy(EntityType.GRAPH)
     exported_graph = graph_strategy.export_entity(source_node.graph)
 
     new_graph = graph_strategy.create_entity(
-        dict(exported_graph), IDMapper(), org_id=source_org.id, user=no_use_user
+        dict(exported_graph), IDMapper(), org_id=source_org.id, user=acting_user(bits)
     )
 
-    assert new_graph.persistence_node_list.get().persistence_table_id is None
+    expected = source_node.persistence_table_id if bound else None
+    assert new_graph.persistence_node_list.get().persistence_table_id == expected
 
 
 @pytest.mark.django_db
-def test_graph_copy_without_use_permission_leaves_node_without_table(source_node, no_use_user):
-    new_graph = GraphCopyService().copy(source_node.graph, name="Flow copy", user=no_use_user)
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_graph_copy_binds_table_only_with_mode_permissions(
+    source_node, acting_user, bits, mode, bound
+):
+    _set_mode(source_node, mode)
 
-    assert _copied_node(new_graph).persistence_table_id is None
+    new_graph = GraphCopyService().copy(source_node.graph, name="Flow copy", user=acting_user(bits))
+
+    copied = _copied_node(new_graph)
+    assert copied.mode == mode
+    assert copied.persistence_table_id == (source_node.persistence_table_id if bound else None)
 
 
 @pytest.mark.django_db
-def test_copy_endpoint_passes_the_acting_user(source_node, source_org, no_use_user):
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_copy_endpoint_passes_the_acting_user(
+    source_node, source_org, acting_user, bits, mode, bound
+):
+    _set_mode(source_node, mode)
     client = APIClient()
-    client.force_authenticate(user=no_use_user)
+    client.force_authenticate(user=acting_user(bits))
     client.credentials(HTTP_X_ORGANIZATION_ID=str(source_org.id))
 
     response = client.post(reverse("graphs-copy", args=[source_node.graph_id]), {}, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     copied = PersistenceNode.objects.get(graph_id=response.data["id"])
-    assert copied.persistence_table_id is None
+    assert copied.persistence_table_id == (source_node.persistence_table_id if bound else None)
 
 
 @pytest.mark.django_db
-def test_version_restore_without_use_permission_leaves_node_without_table(
-    source_node, no_use_user
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_version_restore_binds_table_only_with_mode_permissions(
+    source_node, acting_user, bits, mode, bound
 ):
+    _set_mode(source_node, mode)
     graph = source_node.graph
     versioning = GraphVersioningService()
     version = versioning.save_version(graph=graph, name="v1")
     graph.refresh_from_db()
 
     versioning.restore_version(
-        version, expected_save_version=graph.save_version, user=no_use_user
+        version, expected_save_version=graph.save_version, user=acting_user(bits)
     )
 
-    assert graph.persistence_node_list.get().persistence_table_id is None
+    expected = source_node.persistence_table_id if bound else None
+    assert graph.persistence_node_list.get().persistence_table_id == expected
 
 
 @pytest.mark.django_db
-def test_create_graph_from_version_without_use_permission_leaves_node_without_table(
-    source_node, no_use_user
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_create_graph_from_version_binds_table_only_with_mode_permissions(
+    source_node, acting_user, bits, mode, bound
 ):
+    _set_mode(source_node, mode)
     versioning = GraphVersioningService()
     version = versioning.save_version(graph=source_node.graph, name="v1")
 
-    result = versioning.create_graph_from_version(version, user=no_use_user)
+    result = versioning.create_graph_from_version(version, user=acting_user(bits))
 
     new_graph = Graph.objects.get(pk=result["graph_id"])
-    assert new_graph.persistence_node_list.get().persistence_table_id is None
+    expected = source_node.persistence_table_id if bound else None
+    assert new_graph.persistence_node_list.get().persistence_table_id == expected
 
 
 @pytest.mark.django_db
-def test_system_principal_binds_table(source_node, source_org):
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+def test_system_principal_binds_table(source_node, source_org, mode):
     table = source_node.persistence_table
 
     resolved = PersistenceTableService().resolve_reference(
-        source_org.id, table.id, table.name, user=SystemServicePrincipal()
+        source_org.id, table.id, table.name, mode=mode, user=SystemServicePrincipal()
     )
 
     assert resolved == table

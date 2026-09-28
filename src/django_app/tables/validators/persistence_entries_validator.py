@@ -3,7 +3,12 @@ from typing import Any
 
 from rest_framework import serializers
 
-from tables.constants.persistence_constants import MAX_KEY_LENGTH, MAX_KEYS_PER_REQUEST
+from tables.constants.persistence_constants import (
+    KEY_PATTERN,
+    KEY_RULE,
+    MAX_KEY_LENGTH,
+    MAX_KEYS_PER_REQUEST,
+)
 
 _FIELDS = {
     "read": ("key", "value"),
@@ -17,6 +22,8 @@ _FIELDS = {
 _STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCII)
 _PATH_NAME = re.compile(r"\w+", re.ASCII)
 _PATH_SEGMENT = re.compile(r"\w+|\[(?:0|[1-9]\d*)\]", re.ASCII)
+# Same placeholder syntax crew renders: `{variables.user.id}`, spaces inside the braces allowed.
+_PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 # DotDict attribute access finds these before a stored key, so crew could never read a value
 # kept under one of these names: the dict methods plus DotDict's own public methods.
 DOTDICT_METHOD_NAMES = frozenset(
@@ -40,8 +47,18 @@ DOTDICT_METHOD_NAMES = frozenset(
 )
 
 
+def resolved_key_error(key: str) -> str | None:
+    """Return why `key`, a fully resolved key, cannot be stored, or None when it can."""
+    if len(key) > MAX_KEY_LENGTH or not KEY_PATTERN.fullmatch(key):
+        return KEY_RULE
+    return None
+
+
 class PersistenceEntriesValidator:
-    """Structural rules for PersistenceNode.entries. Key templates are rendered by crew.
+    """Rules for PersistenceNode.entries.
+
+    A key template is checked statically, each placeholder standing in for `_`; crew checks
+    the key it resolves to at run time.
 
     `value` is a flow state path in both modes that have one: the source of a write, the
     target a read stores into. Returned entries carry the stripped path.
@@ -87,6 +104,9 @@ class PersistenceEntriesValidator:
                 return f"'{field}' must be a non-empty string."
         if len(entry["key"]) > MAX_KEY_LENGTH:
             return f"'key' must be at most {MAX_KEY_LENGTH} characters."
+        key_error = self._key_template_error(entry["key"])
+        if key_error:
+            return key_error
         if mode == "delete":
             return None
         path = entry["value"].strip()
@@ -95,7 +115,26 @@ class PersistenceEntriesValidator:
                 "'value' is where the stored value goes: use a plain state path like "
                 "'variables.user.name', without '|default'."
             )
-        return self._state_path_error(path.split("|", 1)[0])
+        return self._state_path_error(path.split("|", 1)[0], "'value'")
+
+    def _key_template_error(self, key: str) -> str | None:
+        leftover = _PLACEHOLDER.sub("", key)
+        if "{" in leftover or "}" in leftover:
+            return (
+                "'key' has an empty or unbalanced placeholder; use '{variables.<path>}', "
+                "e.g. 'profile_{variables.user.id}'."
+            )
+        for placeholder in _PLACEHOLDER.findall(key):
+            path = placeholder.strip()
+            error = self._state_path_error(path, f"'key' placeholder '{path}'")
+            if error:
+                return error
+        if not KEY_PATTERN.fullmatch(_PLACEHOLDER.sub("_", key)):
+            return (
+                "'key' must use only letters, digits and _ outside {placeholders}, and must not "
+                "start with a digit, e.g. 'profile_{variables.user.id}'."
+            )
+        return None
 
     def _duplicate_key_error(
         self, key: str, index: int, written_keys: dict[str, int]
@@ -138,12 +177,13 @@ class PersistenceEntriesValidator:
         read_targets.append((segments, target, index))
         return None
 
-    def _state_path_error(self, state_path: str) -> str | None:
+    def _state_path_error(self, state_path: str, label: str) -> str | None:
+        """Return why `state_path` is not a usable state path; `label` names it in the message."""
         if not _STATE_PATH.fullmatch(state_path):
-            return "'value' must be a state path like 'variables.user.name'."
+            return f"{label} must be a state path like 'variables.user.name'."
         for name in _PATH_NAME.findall(state_path):
             if name.startswith("_"):
-                return f"'value' names '{name}'; use a variable name without the leading '_'."
+                return f"{label} names '{name}'; use a variable name without the leading '_'."
             if name in DOTDICT_METHOD_NAMES:
-                return f"'value' names '{name}', a built-in method; use a different variable name."
+                return f"{label} names '{name}', a built-in method; use a different variable name."
         return None

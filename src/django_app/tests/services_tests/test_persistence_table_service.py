@@ -4,12 +4,14 @@ from django.test.utils import CaptureQueriesContext
 
 from tables.exceptions import (
     PersistenceKeyInvalidError,
-    PersistenceTableUseDeniedError,
+    PersistenceModeDeniedError,
     PersistenceValueTooLargeError,
 )
+from tables.constants.persistence_constants import MAX_KEY_LENGTH
 from tables.models import PersistenceTable, PersistenceTableEntry, Session
 
-from rbac.models import OrganizationUser
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.services.persistence_table_service import PersistenceTableService
 from rbac.exceptions import OrgMembershipRequiredError
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -74,11 +76,53 @@ def test_write_rejects_oversized_value(service, table):
     assert not PersistenceTableEntry.objects.filter(table=table).exists()
 
 
+# Keep identical to the resolved-key parity table in crew tests/graph/test_persistence_node.py.
+VALID_RESOLVED_KEYS = ["k", "_", "user_42", "a" * 512]
+INVALID_RESOLVED_KEYS = [
+    "",
+    "4_user",
+    "user_4 2",
+    "user_-1",
+    "user_1.5",
+    "user_é",
+    "a{b}",
+    "k\n",
+    "a" * 513,
+]
+
+
 @pytest.mark.django_db
-@pytest.mark.parametrize("bad_key", ["", "k" * 513])
+@pytest.mark.parametrize("key", VALID_RESOLVED_KEYS)
+def test_valid_resolved_keys_are_written_read_and_deleted(service, table, key):
+    assert service.write(table, {key: 1}) == [key]
+    assert service.read(table, [key]) == {key: 1}
+    assert service.delete(table, [key]) == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bad_key", INVALID_RESOLVED_KEYS)
 def test_write_rejects_invalid_key(service, table, bad_key):
+    with pytest.raises(PersistenceKeyInvalidError) as error:
+        service.write(table, {"good": 1, bad_key: 1})
+    shown = bad_key if len(bad_key) <= 100 else f"{bad_key[:100]}…"
+    assert str(error.value.detail) == (
+        f"Key {shown!r} is not a valid key: use only letters, digits and _, don't start with a "
+        "digit, and keep it to at most 512 characters."
+    )
+    assert not PersistenceTableEntry.objects.filter(table=table).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["read", "delete"])
+@pytest.mark.parametrize("bad_key", INVALID_RESOLVED_KEYS)
+def test_read_and_delete_reject_invalid_key(service, table, operation, bad_key):
+    # An old row whose key predates the rule; the column cannot hold a longer key at all.
+    PersistenceTableEntry.objects.create(table=table, key=bad_key[:MAX_KEY_LENGTH], value=1)
+
     with pytest.raises(PersistenceKeyInvalidError):
-        service.write(table, {bad_key: 1})
+        getattr(service, operation)(table, ["good", bad_key])
+
+    assert PersistenceTableEntry.objects.filter(table=table).count() == 1
 
 
 @pytest.mark.django_db
@@ -129,25 +173,80 @@ def acme_table(acme) -> PersistenceTable:
     return PersistenceTable.objects.create(org=acme, name="Acme customers")
 
 
-@pytest.mark.django_db
-def test_assert_can_use_allows_member(service, acme_table, member_only):
-    service.assert_can_use(member_only, acme_table)
-
-
-@pytest.mark.django_db
-def test_assert_can_use_denies_viewer(service, acme_table, acme, role_viewer, django_user_model):
-    viewer = django_user_model.objects.create_user(
-        email="viewer-persistence@example.com", password="StrongPass123!"
+def _acme_user(django_user_model, acme, bits: int):
+    role = Role.objects.create(name=f"Persistent data {bits}", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=role, resource_type=ResourceType.PERSISTENT_DATA, permissions=bits
     )
-    OrganizationUser.objects.create(user=viewer, org=acme, role=role_viewer)
+    user = django_user_model.objects.create_user(
+        email=f"persistent-data-{bits}@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=acme, role=role)
+    return user
 
-    with pytest.raises(PersistenceTableUseDeniedError, match="'Acme customers'"):
-        service.assert_can_use(viewer, acme_table)
+
+R = int(Permission.READ)
+C = int(Permission.CREATE)
+U = int(Permission.UPDATE)
+D = int(Permission.DELETE)
+
+# bits -> the modes they may configure. Write needs C and U: C or U alone is not enough.
+PERMITTED_MODES = {
+    0: set(),
+    R: {"read"},
+    R | C: {"read"},
+    R | U: {"read"},
+    R | C | U: {"read", "write"},
+    R | D: {"read", "delete"},
+}
+DENIED_MESSAGES = {
+    "read": "You need Persistent Data View permission to configure a read node on the table "
+    "'Acme customers'.",
+    "write": "You need Persistent Data Create and Edit permission to configure a write node on "
+    "the table 'Acme customers'.",
+    "delete": "You need Persistent Data Delete permission to configure a delete node on the "
+    "table 'Acme customers'.",
+}
 
 
 @pytest.mark.django_db
-def test_assert_can_use_denies_member_of_another_org(service, beta, member_only):
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize("bits", list(PERMITTED_MODES))
+def test_assert_can_configure_needs_every_permission_of_the_mode(
+    service, acme_table, acme, django_user_model, bits, mode
+):
+    user = _acme_user(django_user_model, acme, bits)
+    permitted = mode in PERMITTED_MODES[bits]
+
+    assert service.can_configure(user, acme_table, mode) is permitted
+    if permitted:
+        service.assert_can_configure(user, acme_table, mode)
+    else:
+        with pytest.raises(PersistenceModeDeniedError) as error:
+            service.assert_can_configure(user, acme_table, mode)
+        assert str(error.value.detail) == DENIED_MESSAGES[mode]
+        assert error.value.get_codes() == "persistence_mode_denied"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+def test_assert_can_configure_denies_member_of_another_org(service, beta, admin_acme, mode):
     beta_table = PersistenceTable.objects.create(org=beta, name="Beta customers")
 
     with pytest.raises(OrgMembershipRequiredError):
-        service.assert_can_use(member_only, beta_table)
+        service.assert_can_configure(admin_acme, beta_table, mode)
+    assert service.can_configure(admin_acme, beta_table, mode) is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+def test_resolve_reference_binds_only_with_mode_permissions(
+    service, acme_table, acme, django_user_model, mode
+):
+    user = _acme_user(django_user_model, acme, R)
+
+    resolved = service.resolve_reference(
+        acme.id, acme_table.id, acme_table.name, mode=mode, user=user
+    )
+
+    assert resolved == (acme_table if mode == "read" else None)

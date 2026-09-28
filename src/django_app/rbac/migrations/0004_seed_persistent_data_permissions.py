@@ -1,8 +1,8 @@
 from django.db import migrations
 
 _INTENDED = {
-    ("Org Admin", "persistent_data"): 79,  # C R U D USE
-    ("Member", "persistent_data"): 66,  # R USE
+    ("Org Admin", "persistent_data"): 15,  # C R U D
+    ("Member", "persistent_data"): 2,  # R
     ("Viewer", "persistent_data"): 2,  # R
 }
 

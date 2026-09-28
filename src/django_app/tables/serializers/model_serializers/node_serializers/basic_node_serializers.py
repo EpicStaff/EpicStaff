@@ -145,15 +145,25 @@ class PersistenceNodeSerializer(ContentHashWritableMixin, serializers.ModelSeria
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        # Editing a table-bound node is using its table, so USE is checked against the
-        # effective table on every create/update, even when the payload omits it.
-        table = attrs.get("persistence_table", getattr(self.instance, "persistence_table", None))
-        if table is not None:
-            PersistenceTableService().assert_can_use(self.context["request"].user, table)
         mode = attrs.get("mode", getattr(self.instance, "mode", PersistenceNode.Mode.READ))
         entries = attrs.get("entries", getattr(self.instance, "entries", []))
         attrs["entries"] = PersistenceEntriesValidator().validate(mode, entries)
+        table = attrs.get("persistence_table", getattr(self.instance, "persistence_table", None))
+        # Only a change to what the node does with its table needs the mode's permissions, so
+        # a user who may only view the table can still move or rename someone else's node.
+        if table is not None and self._changes_table_use(table, mode, attrs["entries"]):
+            PersistenceTableService().assert_can_configure(
+                self.context["request"].user, table, mode
+            )
         return attrs
+
+    def _changes_table_use(self, table: PersistenceTable, mode: str, entries: list[dict]) -> bool:
+        return (
+            self.instance is None
+            or table.pk != self.instance.persistence_table_id
+            or mode != self.instance.mode
+            or entries != self.instance.entries
+        )
 
 
 class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):

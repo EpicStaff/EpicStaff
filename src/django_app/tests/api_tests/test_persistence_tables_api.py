@@ -313,6 +313,49 @@ def test_entry_rename_onto_existing_key_is_400(admin_client, table_a):
     assert entry.key == "mine"
 
 
+KEY_RULE_MESSAGE = (
+    "key: use only letters, digits and _, don't start with a digit, and keep it to at most "
+    "512 characters"
+)
+
+
+@pytest.mark.django_db
+def test_entry_create_with_invalid_key_is_400(admin_client, table_a):
+    response = admin_client.post(
+        ENTRIES_URL, {"table": table_a.id, "key": "user-1", "value": 1}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert response.data["message"] == KEY_RULE_MESSAGE
+    assert not PersistenceTableEntry.objects.filter(table=table_a).exists()
+
+
+@pytest.mark.django_db
+def test_entry_rename_to_invalid_key_is_400(admin_client, table_a):
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="mine", value=2)
+
+    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "my key"}, format="json")
+
+    assert response.status_code == 400
+    assert response.data["message"] == KEY_RULE_MESSAGE
+    entry.refresh_from_db()
+    assert entry.key == "mine"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["patch", "put"])
+def test_value_edit_of_entry_with_old_invalid_key_is_allowed(admin_client, table_a, method):
+    # Stored before the key rule existed.
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="user-1", value=1)
+    body = {"value": 2} if method == "patch" else {"table": table_a.id, "key": "user-1", "value": 2}
+
+    response = getattr(admin_client, method)(f"{ENTRIES_URL}{entry.id}/", body, format="json")
+
+    assert response.status_code == 200, response.content
+    entry.refresh_from_db()
+    assert (entry.key, entry.value) == ("user-1", 2)
+
+
 @pytest.mark.django_db
 def test_entry_rename_to_key_used_in_another_table_is_allowed(admin_client, org_a, table_a):
     other_table = PersistenceTable.objects.create(org=org_a, name="Other")

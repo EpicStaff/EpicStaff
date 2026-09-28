@@ -10,6 +10,7 @@ from tables.constants.persistence_constants import (
 )
 from tables.models import PersistenceTable, PersistenceTableEntry
 from tables.services.persistence_table_service import PersistenceTableService
+from tables.validators.persistence_entries_validator import resolved_key_error
 
 
 class PersistenceTableSerializer(serializers.ModelSerializer):
@@ -71,7 +72,13 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         return table
 
     def validate_key(self, key: str) -> str:
-        PersistenceTableService().validate_key(key)
+        # An unchanged key is not re-checked, so the value of an entry stored before the key
+        # rule existed stays editable. A ValidationError (not the service's API exception)
+        # keeps the "key: " prefix the exception handler adds to field errors.
+        if self.instance is None or key != self.instance.key:
+            error = resolved_key_error(key)
+            if error:
+                raise serializers.ValidationError(error)
         return key
 
     def validate_value(self, value):

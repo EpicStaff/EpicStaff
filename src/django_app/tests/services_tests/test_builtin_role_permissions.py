@@ -22,7 +22,7 @@ DELEGATED = [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER]
 # Resources where `USE` is actually checked, not just stored. Growing this set is
 # expected as more resources gain a USE-gated action -- unlike LIST, which is
 # checked nowhere and therefore has no such set.
-USE_ENFORCED_RESOURCES = {ResourceType.SECRETS.value, ResourceType.PERSISTENT_DATA.value}
+USE_ENFORCED_RESOURCES = {ResourceType.SECRETS.value}
 
 
 def _builtin(name):
@@ -86,8 +86,7 @@ def test_secrets_use_is_held_by_org_admin_only():
 @pytest.mark.parametrize("role_name", DELEGATED)
 def test_no_built_in_holds_use_where_it_is_unenforced(role_name):
     """`use` means something only where it is actually checked: `secrets`
-    (`SecretReferenceGuard`) and `persistent_data` (the `PersistenceNodeSerializer`
-    USE check). Everywhere else it is dead data."""
+    (`SecretReferenceGuard`). Everywhere else it is dead data."""
     role = _builtin(role_name)
 
     elsewhere = [

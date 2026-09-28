@@ -15,6 +15,14 @@ from services.graph.nodes.base_node import BaseNode
 from utils import map_variables_to_input
 
 MAX_KEY_LENGTH = 512
+# Mirrors KEY_PATTERN and KEY_RULE in Django's tables/constants/persistence_constants.py and
+# PERSISTENCE_KEY_PATTERN in the frontend. Always `fullmatch`: `$` also matches before a
+# trailing newline.
+KEY_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+KEY_RULE = (
+    "use only letters, digits and _, don't start with a digit, "
+    f"and keep it to at most {MAX_KEY_LENGTH} characters"
+)
 # Mirrors Django's MAX_KEYS_PER_REQUEST, which the internal routes enforce per call.
 MAX_ENTRIES = 500
 # Mirrors Django's VALUE_PREVIEW_CHARS: a value past the message budget is previewed the way
@@ -206,7 +214,8 @@ class PersistenceNode(BaseNode):
                 )
             return str(value)
 
-        # Checked on the template, not the rendered key: a resolved value may contain braces.
+        # Checked on the template, not the rendered key, so the message can name the
+        # malformed placeholder.
         leftover = _PLACEHOLDER.sub("", template)
         if "{" in leftover or "}" in leftover:
             raise PersistenceNodeError(
@@ -214,10 +223,12 @@ class PersistenceNode(BaseNode):
                 "unbalanced placeholder. Use '{variables.<path>}', e.g. 'profile_{variables.user.id}'."
             )
         key = _PLACEHOLDER.sub(substitute, template)
-        if not key or len(key) > MAX_KEY_LENGTH:
+        # Checked on the resolved key: placeholder values are free text until rendered.
+        if len(key) > MAX_KEY_LENGTH or not KEY_PATTERN.fullmatch(key):
+            shown = key if len(key) <= 100 else f"{key[:100]}…"
             raise PersistenceNodeError(
-                f"Persistence node '{self.node_name}': key must be 1-{MAX_KEY_LENGTH} characters, "
-                f"got {len(key)}."
+                f"Persistence node '{self.node_name}': key '{template}' resolved to {shown!r}, "
+                f"which is not a valid key: {KEY_RULE}."
             )
         return key
 

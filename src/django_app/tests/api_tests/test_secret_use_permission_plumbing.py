@@ -10,7 +10,7 @@ from rbac.models.enums import BuiltInRole, ResourceType
 # tests/services_tests/test_builtin_role_permissions.py::USE_ENFORCED_RESOURCES
 # for the authoritative definition and rationale). Duplicated here rather than
 # imported to avoid a test-to-test import.
-USE_ENFORCED_RESOURCES = {ResourceType.SECRETS.value, ResourceType.PERSISTENT_DATA.value}
+USE_ENFORCED_RESOURCES = {ResourceType.SECRETS.value}
 
 
 @pytest.fixture
@@ -40,6 +40,17 @@ class TestUseIsReportedToTheFrontend:
 
         assert response.status_code == 200
         assert "use" in response.json()["permissions"]["secrets"]
+
+    def test_permissions_me_reports_crud_without_use_on_persistent_data(self, admin_client):
+        response = admin_client.get("/api/permissions/me/")
+
+        assert response.status_code == 200
+        assert response.json()["permissions"]["persistent_data"] == [
+            "create",
+            "read",
+            "update",
+            "delete",
+        ]
 
     def test_catalog_lists_use_only_for_use_enforced_resources(self, admin_client):
         catalog = admin_client.get("/api/permissions/catalog/").json()

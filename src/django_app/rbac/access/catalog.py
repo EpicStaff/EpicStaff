@@ -158,7 +158,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Persistent Data",
         "group": "workspace",
         "description": "Key-value tables that flows read and write across runs",
-        "applicable_actions": ["create", "read", "update", "delete", "use"],
+        "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
 ]
@@ -287,7 +287,6 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("persistent_data", "read"),),
         "update": (("persistent_data", "read"),),
         "delete": (("persistent_data", "read"),),
-        "use": (("persistent_data", "read"),),
     },
 }
 
@@ -295,9 +294,9 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
 _ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
 
 # The bits a role can actually be granted, **per resource**. Grantability is a
-# per-resource property -- `use` is an action of `secrets` and `persistent_data`
-# only -- so a global union over ACTION_METADATA is the wrong granularity: enabling an
-# action for one resource would admit its bit on every other resource, where it
+# per-resource property -- `use` is an action of `secrets` only -- so a global
+# union over ACTION_METADATA is the wrong granularity: enabling an action for one
+# resource would admit its bit on every other resource, where it
 # is neither applicable nor enforced. A code that is not a rendered action
 # (`list`, today) contributes nothing.
 _GRANTABLE_BITS_BY_RESOURCE = {

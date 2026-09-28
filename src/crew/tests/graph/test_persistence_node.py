@@ -302,15 +302,18 @@ async def test_key_placeholder_ignores_surrounding_spaces():
 
 
 @pytest.mark.asyncio
-async def test_key_placeholder_value_may_contain_braces():
+async def test_key_placeholder_value_with_braces_is_rejected():
     client = make_client()
-    client.read.return_value = read_response({})
     node = make_node("read", [{"value": "variables.out", "key": "profile_{variables.name}"}], client)
 
-    await run(node, {"name": "a{b}"})
+    with pytest.raises(PersistenceNodeError) as error:
+        await run(node, {"name": "a{b}"})
 
-    _, _, keys = client.read.await_args.args
-    assert keys == ["profile_a{b}"]
+    assert str(error.value) == (
+        "Persistence node 'persist_1': key 'profile_{variables.name}' resolved to "
+        f"'profile_a{{b}}', which is not a valid key: {persistence_node.KEY_RULE}."
+    )
+    client.read.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -576,8 +579,77 @@ async def test_render_key_rejects_structured_placeholder(value):
 @pytest.mark.asyncio
 async def test_render_key_rejects_too_long_key():
     node = make_node("read", [{"value": "variables.out", "key": "{variables.long}"}])
-    with pytest.raises(PersistenceNodeError, match="512"):
+    with pytest.raises(PersistenceNodeError) as error:
         await run(node, {"long": "x" * 513})
+    assert str(error.value) == (
+        "Persistence node 'persist_1': key '{variables.long}' resolved to "
+        f"'{'x' * 100}…', which is not a valid key: use only letters, digits and _, "
+        "don't start with a digit, and keep it to at most 512 characters."
+    )
+
+
+# Keep identical to the resolved-key parity table in Django's
+# tests/services_tests/test_persistence_table_service.py.
+VALID_RESOLVED_KEYS = ["k", "_", "user_42", "a" * 512]
+INVALID_RESOLVED_KEYS = [
+    "",
+    "4_user",
+    "user_4 2",
+    "user_-1",
+    "user_1.5",
+    "user_é",
+    "a{b}",
+    "k\n",
+    "a" * 513,
+]
+
+
+def one_entry(mode: str, key: str) -> list[dict]:
+    return [{"key": key}] if mode == "delete" else [{"key": key, "value": "variables.source"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize("resolved", VALID_RESOLVED_KEYS)
+async def test_valid_resolved_key_is_sent_to_the_table(mode, resolved):
+    client = make_client()
+    node = make_node(mode, one_entry(mode, "{variables.key}"), client)
+
+    await run(node, {"key": resolved, "source": 1})
+
+    getattr(client, mode).assert_awaited_once()
+    sent = getattr(client, mode).await_args.args[2]
+    assert list(sent) == [resolved]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize("resolved", INVALID_RESOLVED_KEYS)
+async def test_invalid_resolved_key_is_rejected_before_calling_the_table(mode, resolved):
+    client = make_client()
+    node = make_node(mode, one_entry(mode, "{variables.key}"), client)
+
+    with pytest.raises(PersistenceNodeError) as error:
+        await run(node, {"key": resolved, "source": 1})
+
+    shown = resolved if len(resolved) <= 100 else f"{resolved[:100]}…"
+    assert str(error.value) == (
+        f"Persistence node 'persist_1': key '{{variables.key}}' resolved to {shown!r}, "
+        f"which is not a valid key: {persistence_node.KEY_RULE}."
+    )
+    getattr(client, mode).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+async def test_saved_static_key_with_invalid_characters_is_rejected(mode):
+    client = make_client()
+    node = make_node(mode, one_entry(mode, "user-1"), client)
+
+    with pytest.raises(PersistenceNodeError, match="key 'user-1' resolved to 'user-1', which is not a valid key"):
+        await run(node, {"source": 1})
+
+    getattr(client, mode).assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -482,10 +482,9 @@ class PersistenceKeyInvalidError(CustomAPIExeption):
     status_code = 400
     default_code = "persistence_key_invalid"
 
-    def __init__(self, key: str, max_length: int):
-        super().__init__(
-            f"Key must be 1-{max_length} characters, got {len(key)}.", code=self.default_code
-        )
+    def __init__(self, key: str, reason: str):
+        shown = key if len(key) <= 100 else f"{key[:100]}…"
+        super().__init__(f"Key {shown!r} is not a valid key: {reason}.", code=self.default_code)
 
 
 class PersistenceValueTooLargeError(CustomAPIExeption):
@@ -509,19 +508,21 @@ class PersistenceTableInUseError(CustomAPIExeption):
         )
 
 
-class PersistenceTableUseDeniedError(CustomAPIExeption):
-    """Raised when the caller lacks persistent_data:USE on a table a node binds.
+class PersistenceModeDeniedError(CustomAPIExeption):
+    """Raised when the caller lacks the persistent_data permissions a node's mode needs.
 
     Its own code keeps the frontend from treating this business-rule 403 as a
     changed-permissions 403, which reloads the app.
     """
 
     status_code = 403
-    default_code = "persistence_table_use_denied"
+    default_code = "persistence_mode_denied"
+    _PERMISSION_LABELS = {"read": "View", "write": "Create and Edit", "delete": "Delete"}
 
-    def __init__(self, table_name: str):
+    def __init__(self, mode: str, table_name: str):
         super().__init__(
-            f"You don't have permission to use the persistence table '{table_name}'.",
+            f"You need Persistent Data {self._PERMISSION_LABELS[mode]} permission to configure "
+            f"a {mode} node on the table '{table_name}'.",
             code=self.default_code,
         )
 

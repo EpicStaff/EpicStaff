@@ -6,19 +6,14 @@ from typing import Any
 from django.db.models import QuerySet, TextField, Value
 from django.db.models.functions import Cast, Coalesce, Left, Length
 from django.db.models.lookups import GreaterThan
-from rbac.access.asserts import assert_org_permission
+from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
-from rest_framework.exceptions import PermissionDenied
-from tables.constants.persistence_constants import (
-    MAX_KEY_LENGTH,
-    MAX_VALUE_BYTES,
-    VALUE_PREVIEW_CHARS,
-)
+from tables.constants.persistence_constants import MAX_VALUE_BYTES, VALUE_PREVIEW_CHARS
 from tables.exceptions import (
     PersistenceKeyInvalidError,
+    PersistenceModeDeniedError,
     PersistenceTableInUseError,
-    PersistenceTableUseDeniedError,
     PersistenceValueTooLargeError,
 )
 from tables.models import (
@@ -28,6 +23,15 @@ from tables.models import (
     Session,
     SubGraphNode,
 )
+from tables.validators.persistence_entries_validator import resolved_key_error
+
+# Every permission a node of that mode needs on its table. Checked one by one:
+# EffectivePermissions.can() passes when any bit of a combined flag is held.
+MODE_PERMISSIONS = {
+    PersistenceNode.Mode.READ: (Permission.READ,),
+    PersistenceNode.Mode.WRITE: (Permission.CREATE, Permission.UPDATE),
+    PersistenceNode.Mode.DELETE: (Permission.DELETE,),
+}
 
 
 def _value_text() -> Cast:
@@ -49,6 +53,8 @@ class PersistenceTableService:
     """Owns every rule about persistence tables and their entries."""
 
     def read(self, table: PersistenceTable, keys: list[str]) -> dict[str, Any]:
+        for key in keys:
+            self.validate_key(key)
         return dict(
             PersistenceTableEntry.objects.filter(table=table, key__in=keys).values_list(
                 "key", "value"
@@ -85,6 +91,8 @@ class PersistenceTableService:
         return sorted(set(entries) - existing)
 
     def delete(self, table: PersistenceTable, keys: list[str]) -> int:
+        for key in keys:
+            self.validate_key(key)
         deleted, _ = PersistenceTableEntry.objects.filter(table=table, key__in=keys).delete()
         return deleted
 
@@ -128,22 +136,28 @@ class PersistenceTableService:
             ),
         )
 
-    def assert_can_use(self, user, table: PersistenceTable) -> None:
-        """Assert `user` holds persistent_data:USE in the table's org.
+    def assert_can_configure(self, user, table: PersistenceTable, mode: str) -> None:
+        """Assert `user` holds every persistent_data permission a `mode` node needs on `table`.
 
         Raises:
-            PersistenceTableUseDeniedError (403): the user's role lacks USE.
+            PersistenceModeDeniedError (403): the user's role lacks one of MODE_PERMISSIONS[mode].
             OrgMembershipRequiredError (403): the user is not a member of the table's org.
         """
+        # Resolved once for all the mode's permissions; the resolver applies the superadmin
+        # bypass and raises OrgMembershipRequiredError, as assert_org_permission would.
+        effective = PermissionResolver().resolve(user=user, org_id=table.org_id)
+        if not all(
+            effective.can(ResourceType.PERSISTENT_DATA, permission)
+            for permission in MODE_PERMISSIONS[mode]
+        ):
+            raise PersistenceModeDeniedError(mode, table.name)
+
+    def can_configure(self, user, table: PersistenceTable, mode: str) -> bool:
         try:
-            assert_org_permission(
-                user=user,
-                org_id=table.org_id,
-                resource_type=ResourceType.PERSISTENT_DATA,
-                action=Permission.USE,
-            )
-        except PermissionDenied as error:
-            raise PersistenceTableUseDeniedError(table.name) from error
+            self.assert_can_configure(user, table, mode)
+        except (PersistenceModeDeniedError, OrgMembershipRequiredError):
+            return False
+        return True
 
     def assert_not_in_use(self, table: PersistenceTable) -> None:
         flow_names = list(
@@ -173,6 +187,7 @@ class PersistenceTableService:
         org_id: int,
         table_id: int | None,
         table_name: str | None,
+        mode: str,
         user=None,
     ) -> PersistenceTable | None:
         """Re-bind a copied, imported or restored node's table reference inside `org_id`.
@@ -183,13 +198,14 @@ class PersistenceTableService:
         nothing is created.
 
         Args:
+            mode: The node's mode, which decides the permissions `user` needs.
             user: The acting user. When given, the table is bound only if they hold
-                persistent_data:USE in `org_id`; otherwise `None`, so the node shows
-                "No table" instead of failing the whole operation. `None` means the
-                caller has no acting user and skips the check.
+                every permission in MODE_PERMISSIONS[mode] in `org_id`; otherwise `None`,
+                so the node shows "No table" instead of failing the whole operation.
+                `None` means the caller has no acting user and skips the check.
         """
         table = self._find_reference(org_id, table_id, table_name)
-        if table is None or user is None or self._can_use(user, table):
+        if table is None or user is None or self.can_configure(user, table, mode):
             return table
         return None
 
@@ -206,16 +222,15 @@ class PersistenceTableService:
                 return same_table
         return self.find_by_name(org_id, table_name)
 
-    def _can_use(self, user, table: PersistenceTable) -> bool:
-        try:
-            self.assert_can_use(user, table)
-        except (PersistenceTableUseDeniedError, OrgMembershipRequiredError):
-            return False
-        return True
-
     def validate_key(self, key: str) -> None:
-        if not key or len(key) > MAX_KEY_LENGTH:
-            raise PersistenceKeyInvalidError(key, MAX_KEY_LENGTH)
+        """Reject a resolved key that could not have come from a valid node.
+
+        Raises:
+            PersistenceKeyInvalidError (400): the key breaks KEY_PATTERN or MAX_KEY_LENGTH.
+        """
+        error = resolved_key_error(key)
+        if error:
+            raise PersistenceKeyInvalidError(key, error)
 
     def validate_value(self, value: Any) -> None:
         size_bytes = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))

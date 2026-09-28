@@ -173,3 +173,24 @@ def test_oversized_write_is_400(system_client, running_session, table):
                                   {"entries": {"k": "x" * 262144}}, format="json")
     assert response.status_code == 400
     assert response.data["code"] == "persistence_value_too_large"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "operation, body",
+    [
+        ("write", {"entries": {"user_4 2": 1}}),
+        ("read", {"keys": ["user_4 2"]}),
+        ("delete", {"keys": ["user_4 2"]}),
+    ],
+)
+def test_invalid_resolved_key_is_400(system_client, running_session, table, operation, body):
+    PersistenceTableEntry.objects.create(table=table, key="user_4 2", value="dev data")
+
+    response = system_client.post(_url(running_session.id, table.id, operation), body, format="json")
+
+    assert response.status_code == 400
+    assert response.data["code"] == "persistence_key_invalid"
+    assert list(PersistenceTableEntry.objects.filter(table=table).values_list("key", "value")) == [
+        ("user_4 2", "dev data")
+    ]

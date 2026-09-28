@@ -73,7 +73,11 @@ def copy_persistence_node(graph: Graph, node: PersistenceNode, user=None) -> Per
     return PersistenceNode.objects.create(
         graph=graph,
         persistence_table=PersistenceTableService().resolve_reference(
-            graph.org_id, node.persistence_table_id, table.name if table else None, user=user
+            graph.org_id,
+            node.persistence_table_id,
+            table.name if table else None,
+            mode=node.mode,
+            user=user,
         ),
         mode=node.mode,
         entries=copy.deepcopy(node.entries),
