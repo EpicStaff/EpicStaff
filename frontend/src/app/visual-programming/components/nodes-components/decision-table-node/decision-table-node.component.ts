@@ -9,6 +9,7 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
@@ -21,6 +22,7 @@ export class DecisionTableNodeComponent {
     @Output() actualClick = new EventEmitter<MouseEvent>();
 
     private flowService = inject(FlowService);
+    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
 
     public getPortConnections(portId: CustomPortId): CustomPortId[] {
         return this.flowService.portConnectionsMap()[portId] ?? ['__none__'];

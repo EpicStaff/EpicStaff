@@ -80,6 +80,7 @@ import {
 import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter-egg/snake-game/snake-game-overlay.component';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
+import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import {
@@ -139,6 +140,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -433,11 +435,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public onHeaderSave(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         this.flowGraphComponent?.emitSave();
     }
 
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
 
         this.cleanupCdtGridState(flowState);
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
@@ -566,6 +576,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return EMPTY;
+        }
         if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
             return EMPTY;
         }
@@ -835,6 +849,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
+            if (this.flowReadOnly.isReadOnly()) {
+                this.flowReadOnly.notifyBlocked();
+                return;
+            }
             this.onHeaderSave();
         }
     }

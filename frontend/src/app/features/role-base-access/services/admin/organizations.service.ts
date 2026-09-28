@@ -4,6 +4,7 @@ import {
     ActionCode,
     CreateOrganizationRequest,
     GetOrganizationResponse,
+    OrganizationDeleteReport,
     ResourceCode,
     UpdateOrganizationRequest,
 } from '@shared/models';
@@ -64,5 +65,13 @@ export class AdminOrganizationsService {
 
     reactivateOrganization(id: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${id}/reactivate/`, {});
+    }
+
+    /** The verification phrase is sent as the request body only when given (the real delete). */
+    deleteOrganization(id: number, dryRun: boolean, verificationPhrase?: string): Observable<OrganizationDeleteReport> {
+        return this.http.delete<OrganizationDeleteReport>(`${this.apiUrl}${id}/`, {
+            params: new HttpParams().set('dry_run', String(dryRun)),
+            body: verificationPhrase === undefined ? undefined : { verification_phrase: verificationPhrase },
+        });
     }
 }

@@ -291,3 +291,156 @@ def test_pydantic_serialize_non_none_dotlist_field_unchanged():
     m = Model(items=DotList([1, {"x": 2}, [3, {"y": 4}]]))
     dumped = m.model_dump()
     assert dumped == {"items": [1, {"x": 2}, [3, {"y": 4}]]}
+
+
+def test_dotobject_returns_same_instance_for_existing_dotdict():
+    """DotObject short-circuits on an already-constructed DotDict — no copy."""
+    nested = DotDict({"a": 1})
+    result = DotObject(nested)
+    assert result is nested
+
+
+def test_dotobject_returns_same_instance_for_existing_dotlist():
+    """DotObject short-circuits on an already-constructed DotList — no copy."""
+    nested = DotList([1, 2, 3])
+    result = DotObject(nested)
+    assert result is nested
+
+
+def test_nested_dotdict_identity_preserved_on_construction():
+    """Constructing an outer DotDict from data containing an already-built
+    nested DotDict aliases it instead of copying it."""
+    nested = DotDict({"c": 1})
+    outer = DotDict({"b": nested})
+    assert outer.b is nested
+
+
+def test_nested_dotdict_mutation_is_shared_not_copied():
+    nested = DotDict({"c": 1})
+    outer = DotDict({"b": nested})
+    nested.c = 2
+    assert outer.b.c == 2
+
+
+def test_nested_dotlist_identity_preserved_on_construction():
+    """Constructing a DotDict from data containing an already-built nested
+    DotList aliases it instead of copying it."""
+    nested = DotList([1, 2, 3])
+    outer = DotDict({"tags": nested})
+    assert outer.tags is nested
+
+
+def test_nested_dotlist_mutation_is_shared_not_copied():
+    nested = DotList([1, 2])
+    outer = DotDict({"tags": nested})
+    nested.append(3)
+    assert list(outer.tags) == [1, 2, 3]
+
+
+def test_self_assignment_no_cycle():
+    variables = DotDict({"a": 1, "b": {"c": 2}})
+    variables.snapshot = variables
+
+    assert variables.snapshot.b.c == 2
+    assert variables.snapshot is not variables
+    assert "snapshot" not in variables.snapshot
+
+    assert variables.deep_dump() == {
+        "a": 1,
+        "b": {"c": 2},
+        "snapshot": {"a": 1, "b": {"c": 2}},
+    }
+    assert json.loads(json.dumps(variables))["snapshot"]["b"]["c"] == 2
+
+
+def test_self_assignment_nested_in_plain_container_no_cycle():
+    variables = DotDict({"a": 1})
+    variables.history = [{"state": variables}]
+
+    assert variables.history[0].state.a == 1
+    assert variables.history[0].state is not variables
+    assert json.loads(json.dumps(variables))["history"][0]["state"] == {"a": 1}
+
+
+def test_mutation_after_assignment_isolated():
+    variables = DotDict({"b": {"k": 0, "nested": {"deep": 0}}})
+    variables.a = variables.b
+    variables.a.k = 1
+    variables.a.nested.deep = 1
+
+    assert variables.b.k == 0
+    assert variables.b.nested.deep == 0
+    assert variables.a.k == 1
+    assert variables.a.nested.deep == 1
+
+
+def test_setitem_copies_assigned_dotlist():
+    source = DotList([{"x": 1}])
+    target = DotDict()
+    target["rows"] = source
+    target.rows[0].x = 2
+
+    assert source[0].x == 1
+    assert target.rows is not source
+
+
+def test_append_in_loop_independent_copies():
+    variables = DotDict({"results": []})
+    row = DotDict({"value": None})
+
+    for index in range(3):
+        row.value = index
+        variables.results.append(row)
+
+    assert [item.value for item in variables.results] == [0, 1, 2]
+    assert len({id(item) for item in variables.results}) == 3
+
+
+def test_insert_copies_assigned_dotdict():
+    row = DotDict({"value": 0})
+    items = DotList()
+    items.insert(0, row)
+    row.value = 1
+
+    assert items[0].value == 0
+    assert items[0] is not row
+
+
+def test_extend_copies_assigned_dotdict():
+    row = DotDict({"value": 0})
+    items = DotList()
+    items.extend([row])
+    row.value = 1
+
+    assert items[0].value == 0
+
+
+def test_dotlist_setitem_copies_assigned_dotdict():
+    row = DotDict({"value": 0})
+    items = DotList([None])
+    items[0] = row
+    row.value = 1
+
+    assert items[0].value == 0
+
+
+def test_update_copies_assigned_dotdict():
+    source = DotDict({"k": 0})
+    target = DotDict()
+    target.update({"nested": source})
+    source.k = 1
+
+    assert target.nested.k == 0
+
+
+def test_setitem_preserves_identity_of_non_container_values():
+    class Sentinel:
+        pass
+
+    sentinel = Sentinel()
+    d = DotDict()
+    d.obj = sentinel
+    d.wrapper = {"inner": sentinel}
+
+    assert d.obj is sentinel
+    assert d.wrapper.inner is sentinel
