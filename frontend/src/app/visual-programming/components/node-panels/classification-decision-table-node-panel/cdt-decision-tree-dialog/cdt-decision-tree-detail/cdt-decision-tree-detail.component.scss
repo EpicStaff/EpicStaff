@@ -169,21 +169,32 @@
 // ---------------------------------------------------------------------------
 // Body
 //
-// One scroll container for the whole panel, not one per section: `grid-collapsible`
-// interpolates the row between `0fr` and `1fr`, and `1fr` resolves against the
-// container's own height — so a section given a height of its own would have
-// nothing left to animate.
+// The window's scroll container; the header above it stays put. Its scroll range
+// is exactly Explanation's height: the open code section below is one window tall,
+// so scrolling to the end brings that section to the top and nothing further.
 //
-// A flex column so the last section can claim the leftover height; every other
-// section stays content-sized, which is what keeps its collapse animating.
+// The code block inside keeps its bottom edge the section's bottom padding above
+// the window's bottom edge the whole way: the component sets
+// `--cdt-code-block-height`, which the block reads, from a passive, rAF-throttled
+// `scroll` listener (see `cdt-detail-geometry.util.ts`), so the block grows as
+// Explanation leaves. It scrolls by itself only at the end — `--at-end` — so until
+// then every input, native and unintercepted, scrolls the window.
+//
+// `flex-basis: 0` makes the body's height definite (flexbox §9.8), which is what
+// lets the code section's `height: 100%` resolve against it. The dialog pane is
+// 95vh and every box down to here is 100% or stretched, so the chain holds.
 // ---------------------------------------------------------------------------
 
 .cdt-tree-detail__body {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
+    --cdt-code-overflow-y: hidden;
+
+    flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
+}
+
+.cdt-tree-detail__body--at-end {
+    --cdt-code-overflow-y: auto;
 }
 
 // One block of the window: 24px top and bottom, the window's 30px sides.
@@ -204,41 +215,27 @@
     }
 }
 
-// Everything about the code section that must not change while its collapse runs:
-// `grid-collapsible` resolves its `1fr` row against the body in that frame, so
-// anything re-sizing the body at the click re-bases the animation under itself.
-// Only the grow and the floor are toggled, by `--fill`.
-.cdt-tree-detail__section--data {
-    // Shut, this section is its heading and holds that size — otherwise a long
-    // explanation squeezes it and the bottom rule climbs into the heading.
-    flex-shrink: 0;
-
-    // Zero rather than a flex item's `auto`: it is what `--fill`'s floor animates
-    // out of.
-    min-height: 0;
-
-    transition:
-        flex-grow var(--collapse-duration) var(--collapse-easing),
-        min-height var(--collapse-duration) var(--collapse-easing);
-
-    // `flex-basis: 0`, not `auto`, and load-bearing: a body measured from its own
-    // content measures the whole of the code, so the collapse started from that and
-    // painted the entire block for a frame before sweeping shut. At zero the section
-    // is its heading and the block is whatever the grow leaves.
-    > .cdt-tree-detail__section-body {
-        flex: 1 1 0;
-        min-height: 0;
-    }
+// Open, the code section is exactly one window tall. That fixed height is what
+// makes the geometry hold: the block inside changes height as the window scrolls,
+// and if the section followed it, the scroll range would grow with every pixel
+// scrolled. The block stops the section's bottom padding short of the window's
+// bottom, so it never pushes past the section either — at the end it meets the
+// padding exactly. Shut, the section is its heading in the normal flow.
+.cdt-tree-detail__section--open {
+    height: 100%;
 }
 
-// Open, the section takes every pixel the ones above leave, so the block's bottom
-// edge sits on the bottom of the window and its top rises as space frees up. Driven
-// by `dataOpen()` rather than `:last-child`, or a collapsed section would hold the
-// column open as an empty band. The floor is what a long explanation cannot take;
-// past it the body scrolls instead.
-.cdt-tree-detail__section--fill {
-    flex: 1 1 auto;
-    min-height: 12rem;
+// The shared button is built to float, invisible, in the corner of a code box and
+// appear on the box's hover. Here it sits in the heading row instead, so it takes
+// its place in the row's flex line; it still appears on hover of the section it
+// copies, as it does elsewhere in the app, and on keyboard focus within it.
+.cdt-tree-detail__section-row app-copy-button {
+    position: static;
+}
+
+.cdt-tree-detail__section--data:hover app-copy-button,
+.cdt-tree-detail__section--data:focus-within app-copy-button {
+    opacity: 1;
 }
 
 // Right end of the Explanation heading line: the heading takes `flex: 1 1 auto`,

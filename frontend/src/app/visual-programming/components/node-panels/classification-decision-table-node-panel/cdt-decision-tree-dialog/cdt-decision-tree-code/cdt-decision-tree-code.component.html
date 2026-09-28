@@ -4,6 +4,7 @@
         tab stop a keyboard user cannot reach past the right edge of a long line.
     -->
     <div
+        #scroller
         class="cdt-tree-code"
         role="group"
         aria-label="Source, read-only"
@@ -29,5 +30,9 @@
         }
     </div>
 } @else {
-    <pre class="cdt-tree-code cdt-tree-code--prose">{{ body() }}</pre>
+    <pre
+        #scroller
+        class="cdt-tree-code cdt-tree-code--prose"
+        >{{ body() }}</pre
+    >
 }

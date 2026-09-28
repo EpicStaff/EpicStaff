@@ -1,7 +1,8 @@
-// Local palette rather than theme tokens, on purpose: Monaco colours the code
-// with `vs-dark`, so this block stays dark in the light theme too — as the grid's
-// code cells already do — and a text colour that flipped with the theme would put
-// near-black on it.
+// Local palette rather than theme tokens, on purpose: the code is HTML from
+// `monaco.editor.colorize()`, coloured by Monaco's `vs-dark` token classes (no
+// editor instance), so this block stays dark in the light theme too — as the
+// grid's code cells already do — and a text colour that flipped with the theme
+// would put near-black on it.
 :host {
     // The design's #15151599.
     --cdt-code-surface: #15151599;
@@ -13,23 +14,31 @@
     --cdt-code-ink: #d9d9de;
     --cdt-code-ink-dim: #8a8f9c;
 
-    // A column so the block fills the host wherever something above gives the host a
-    // height; where it is content-sized the block still measures its own lines.
-    display: flex;
-    flex-direction: column;
+    display: block;
     min-width: 0;
 }
 
 .cdt-tree-code {
-    // So the block's bottom edge sits on the bottom of the panel and more code
-    // scrolls inside it rather than pushing that edge off screen.
-    flex: 1 1 auto;
-    min-height: 0;
+    // Two knobs for a parent, both inherited custom properties: the detail window
+    // sets the height so the block's bottom edge sits on the window's bottom edge,
+    // and gates vertical scrolling below. Unset, the block is just its lines.
+    //
+    // On the block, never on the host: the host is a `grid-collapsible` item, and a
+    // fixed height there becomes its minimum, which holds the collapsed row open.
+    height: var(--cdt-code-block-height, auto);
 
     // Code is never wrapped — a rewrapped line no longer matches its number, and
     // the design draws long lines running past the edge. So the block scrolls
-    // inside itself, sideways and now down, and the panel around it never does.
-    overflow: auto;
+    // sideways inside itself.
+    overflow-x: auto;
+
+    // Down only when the parent allows it: the detail window keeps this hidden until
+    // it has scrolled to its end, so every input moves the window first.
+    overflow-y: var(--cdt-code-overflow-y, auto);
+
+    // The vertical scrollbar comes and goes with the line above; reserving its
+    // gutter keeps the code from shifting sideways when it does.
+    scrollbar-gutter: stable;
     padding: 0.6rem 0;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 0.78rem;

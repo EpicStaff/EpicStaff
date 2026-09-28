@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    effect,
+    ElementRef,
+    input,
+    signal,
+    viewChild,
+} from '@angular/core';
 
 import {
     ensureMonacoLoaded,
@@ -35,6 +44,9 @@ interface CdtCodeRow {
 export class CdtDecisionTreeCodeComponent {
     public readonly body = input.required<string>();
     public readonly language = input.required<'python' | 'text'>();
+
+    /** The block itself: the element that scrolls when its parent lets it. */
+    private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
     /**
      * Carries the body it was produced from, so a stale result cannot colour the
@@ -86,6 +98,17 @@ export class CdtDecisionTreeCodeComponent {
                     .catch(() => undefined);
             });
         });
+    }
+
+    /** The block itself, for a parent that sizes it from where it sits. */
+    public blockElement(): HTMLElement | null {
+        return this.scroller()?.nativeElement ?? null;
+    }
+
+    /** Back to the first line, for a parent that is about to stop this block scrolling. */
+    public scrollToTop(): void {
+        const scroller = this.scroller()?.nativeElement;
+        if (scroller) scroller.scrollTop = 0;
     }
 }
 

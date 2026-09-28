@@ -1,12 +1,7 @@
-// On `:root`, not on `.grid-collapsible`: a consumer often has to move an ancestor
-// in step with the collapse, and an ancestor cannot read a property declared on its
-// own descendant. Override these on the collapser, never on something above it.
-:root {
+.grid-collapsible {
     --collapse-duration: 180ms;
     --collapse-easing: ease-in-out;
-}
 
-.grid-collapsible {
     display: grid;
     grid-template-rows: 0fr;
     opacity: 0;
@@ -45,8 +40,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    // `.expanded > *` is listed on its own: its `transition` shorthand above is more
+    // specific than `.grid-collapsible > *` and would put the duration back.
     .grid-collapsible,
-    .grid-collapsible > * {
+    .grid-collapsible > *,
+    .grid-collapsible.expanded > * {
         transition-duration: 0s;
         transition-delay: 0s;
     }

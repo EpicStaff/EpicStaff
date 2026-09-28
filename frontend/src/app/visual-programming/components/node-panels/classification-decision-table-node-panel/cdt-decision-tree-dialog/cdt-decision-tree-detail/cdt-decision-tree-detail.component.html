@@ -76,8 +76,14 @@
         </button>
     </header>
 
-    <div class="cdt-tree-detail__body">
-        <section class="cdt-tree-detail__section">
+    <div
+        #body
+        class="cdt-tree-detail__body"
+    >
+        <section
+            #explanationSection
+            class="cdt-tree-detail__section"
+        >
             <!--
                 No `aria-controls` on either section header: the body it would name
                 only exists while the section is open, and the collapse animates on
@@ -160,13 +166,13 @@
 
         @if (block().detail; as detail) {
             <!--
-                `--data` is permanent, `--fill` is the open state: the body must keep
-                handing its height down while the collapse runs, or the row
-                re-measures against the whole of the code mid-flight.
+                `--data` is permanent (sized code block, Copy on hover); `--open` makes
+                the section one window tall, and is dropped while shut.
             -->
             <section
+                #codeSection
                 class="cdt-tree-detail__section cdt-tree-detail__section--data"
-                [class.cdt-tree-detail__section--fill]="dataOpen()"
+                [class.cdt-tree-detail__section--open]="dataOpen()"
             >
                 <div class="cdt-tree-detail__section-row">
                     <h4 class="cdt-tree-detail__section-heading">
