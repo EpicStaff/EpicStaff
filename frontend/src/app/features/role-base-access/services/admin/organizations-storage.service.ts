@@ -79,8 +79,8 @@ export class OrganizationsStorageService implements StorageService {
         );
     }
 
-    deleteOrganization(id: number, dryRun: boolean): Observable<OrganizationDeleteReport> {
-        return this.apiService.deleteOrganization(id, dryRun).pipe(
+    deleteOrganization(id: number, dryRun: boolean, verificationPhrase?: string): Observable<OrganizationDeleteReport> {
+        return this.apiService.deleteOrganization(id, dryRun, verificationPhrase).pipe(
             tap(() => {
                 if (!dryRun) {
                     this.removeFromCache(id);

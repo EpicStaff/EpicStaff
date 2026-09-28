@@ -298,10 +298,11 @@ export class UsersTabComponent implements OnInit {
         const identity = { name: user.displayName, email: user.email };
         this.hardDeleteFlow
             .run(
-                (dryRun) => this.adminUserService.deleteUser(user.id, dryRun),
+                (dryRun, verificationPhrase) => this.adminUserService.deleteUser(user.id, dryRun, verificationPhrase),
                 (report) => buildUserDeleteContent(identity, report),
                 {
                     title: 'Delete User Account?',
+                    verificationTarget: user.email,
                     successMessage: 'Account deleted permanently.',
                     previewErrorFallback: 'Failed to preview account deletion.',
                     deleteErrorFallback: 'Failed to delete account.',

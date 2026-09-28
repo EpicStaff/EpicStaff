@@ -8,8 +8,13 @@ import { ToastService } from '../../../services/notifications';
 import { HardDeleteContent } from '../models/hard-delete-content.model';
 import { HardDeleteFlowService, HardDeleteOptions } from './hard-delete-flow.service';
 
+type DeleteRequest = (dryRun: boolean, verificationPhrase?: string) => Observable<UserDeleteReport>;
+
+const EXPECTED_PHRASE = 'delete-jane@example.com';
+
 const OPTIONS: HardDeleteOptions = {
     title: 'Delete user permanently',
+    verificationTarget: 'jane@example.com',
     successMessage: 'User deleted.',
     previewErrorFallback: 'Failed to preview user deletion.',
     deleteErrorFallback: 'Failed to delete user.',
@@ -24,13 +29,13 @@ describe('HardDeleteFlowService', () => {
     let service: HardDeleteFlowService;
     let confirmationService: { confirm: ReturnType<typeof vi.fn> };
     let toastService: { success: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
-    let deleteFunction: ReturnType<typeof vi.fn<(dryRun: boolean) => Observable<UserDeleteReport>>>;
+    let deleteFunction: ReturnType<typeof vi.fn<DeleteRequest>>;
     let buildContent: ReturnType<typeof vi.fn<(report: UserDeleteReport) => HardDeleteContent>>;
 
     beforeEach(() => {
         confirmationService = { confirm: vi.fn() };
         toastService = { success: vi.fn(), error: vi.fn() };
-        deleteFunction = vi.fn<(dryRun: boolean) => Observable<UserDeleteReport>>(() => of(PREVIEW_REPORT));
+        deleteFunction = vi.fn<DeleteRequest>(() => of(PREVIEW_REPORT));
         buildContent = vi.fn<(report: UserDeleteReport) => HardDeleteContent>((report) => ({
             message: `memberships=${report.affected_resources['memberships']}`,
         }));
@@ -61,6 +66,7 @@ describe('HardDeleteFlowService', () => {
             type: 'danger',
             confirmText: 'Delete permanently',
             cancelText: 'Cancel',
+            verification: { phrase: EXPECTED_PHRASE },
         });
         expect(toastService.error).not.toHaveBeenCalled();
     });
@@ -87,7 +93,7 @@ describe('HardDeleteFlowService', () => {
 
         expect(result).toBe(true);
         expect(deleteFunction).toHaveBeenNthCalledWith(1, true);
-        expect(deleteFunction).toHaveBeenNthCalledWith(2, false);
+        expect(deleteFunction).toHaveBeenNthCalledWith(2, false, EXPECTED_PHRASE);
         expect(toastService.success).toHaveBeenCalledWith(OPTIONS.successMessage);
     });
 
@@ -112,8 +118,27 @@ describe('HardDeleteFlowService', () => {
         const result = await firstValueFrom(service.run(deleteFunction, buildContent, OPTIONS));
 
         expect(result).toBe(false);
-        expect(deleteFunction).toHaveBeenNthCalledWith(2, false);
+        expect(deleteFunction).toHaveBeenNthCalledWith(2, false, EXPECTED_PHRASE);
         expect(toastService.error).toHaveBeenCalledWith(OPTIONS.deleteErrorFallback);
+        expect(toastService.success).not.toHaveBeenCalled();
+    });
+
+    it('shows the mapped message when the backend rejects the verification phrase', async () => {
+        confirmationService.confirm.mockReturnValue(of(true));
+        deleteFunction.mockImplementation((dryRun: boolean) =>
+            dryRun
+                ? of(PREVIEW_REPORT)
+                : throwError(
+                      () => new HttpErrorResponse({ status: 400, error: { code: 'invalid_verification_phrase' } })
+                  )
+        );
+
+        const result = await firstValueFrom(service.run(deleteFunction, buildContent, OPTIONS));
+
+        expect(result).toBe(false);
+        expect(toastService.error).toHaveBeenCalledWith(
+            'The confirmation phrase doesn’t match — reload and try again.'
+        );
         expect(toastService.success).not.toHaveBeenCalled();
     });
 

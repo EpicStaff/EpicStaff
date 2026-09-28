@@ -8,8 +8,12 @@ import { ToastService } from '../../../services/notifications';
 import { HardDeleteContent } from '../models/hard-delete-content.model';
 import { rbacErrorMessage } from '../utils';
 
+const HARD_DELETE_PHRASE_PREFIX = 'delete-';
+
 export interface HardDeleteOptions {
     title: string;
+    /** Organization name or user email the typed confirmation phrase is built from. */
+    verificationTarget: string;
     successMessage: string;
     previewErrorFallback: string;
     deleteErrorFallback: string;
@@ -23,10 +27,11 @@ export class HardDeleteFlowService {
     private readonly toast = inject(ToastService);
 
     run<Report extends DeleteReport>(
-        deleteRequest: (dryRun: boolean) => Observable<Report>,
+        deleteRequest: (dryRun: boolean, verificationPhrase?: string) => Observable<Report>,
         buildContent: (report: Report) => HardDeleteContent,
         options: HardDeleteOptions
     ): Observable<boolean> {
+        const verificationPhrase = `${HARD_DELETE_PHRASE_PREFIX}${options.verificationTarget}`;
         return deleteRequest(true).pipe(
             switchMap((report) =>
                 this.confirmation.confirm({
@@ -35,11 +40,12 @@ export class HardDeleteFlowService {
                     type: 'danger',
                     confirmText: 'Delete permanently',
                     cancelText: 'Cancel',
+                    verification: { phrase: verificationPhrase },
                 })
             ),
             filter((confirmed) => confirmed === true),
             switchMap(() =>
-                deleteRequest(false).pipe(
+                deleteRequest(false, verificationPhrase).pipe(
                     switchMap(() => {
                         this.toast.success(options.successMessage);
                         return of(true);

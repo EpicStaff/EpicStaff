@@ -194,6 +194,40 @@
     line-height: 1.5;
 }
 
+.verification {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.verification-label {
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line-height);
+    color: var(--color-ks-transparent-text-60);
+    overflow-wrap: anywhere;
+
+    strong {
+        color: var(--color-text-primary);
+        font-weight: 500;
+        white-space: pre-wrap;
+    }
+}
+
+.verification-input {
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background: var(--color-input-background);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+
+    &:focus-visible {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+}
+
 .dialog-actions {
     display: flex;
     justify-content: flex-end;
@@ -230,7 +264,12 @@
         border: 1px solid var(--accent-color);
         background: var(--accent-color);
 
-        &:hover {
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        &:hover:not(:disabled) {
             background: var(--accent-color-hover);
             border-color: var(--accent-color-hover);
         }
@@ -240,7 +279,7 @@
             background: var(--color-error);
             border: none;
 
-            &:hover {
+            &:hover:not(:disabled) {
                 background: color-mix(in srgb, var(--color-error) 92%, black);
             }
         }
@@ -250,7 +289,7 @@
             background: var(--accent-color);
             border-color: var(--accent-color);
 
-            &:hover {
+            &:hover:not(:disabled) {
                 background: var(--accent-color-hover);
                 border-color: var(--accent-color-hover);
             }
@@ -261,7 +300,7 @@
             background: var(--accent-color);
             border-color: var(--accent-color);
 
-            &:hover {
+            &:hover:not(:disabled) {
                 background: var(--accent-color-hover);
                 border-color: var(--accent-color-hover);
             }

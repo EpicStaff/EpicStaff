@@ -139,3 +139,82 @@ describe('ConfirmationDialogComponent breakdown', () => {
         ]);
     });
 });
+
+describe('ConfirmationDialogComponent verification', () => {
+    const PHRASE = 'delete-Acme';
+    const verificationData: ConfirmationDialogData = { ...BASE_DATA, verification: { phrase: PHRASE } };
+
+    function typePhrase(fixture: ComponentFixture<ConfirmationDialogComponent>, value: string): void {
+        const input = query(fixture, '.verification-input') as HTMLInputElement;
+        input.value = value;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    function confirmButton(fixture: ComponentFixture<ConfirmationDialogComponent>): HTMLButtonElement {
+        return query(fixture, '.confirm-button') as HTMLButtonElement;
+    }
+
+    it('renders no verification input and keeps confirm enabled without verification', () => {
+        const fixture = render(BASE_DATA);
+
+        expect(query(fixture, '.verification-input')).toBeNull();
+        expect(confirmButton(fixture).disabled).toBe(false);
+    });
+
+    it('disables confirm until the phrase is typed', () => {
+        const fixture = render(verificationData);
+
+        expect(confirmButton(fixture).disabled).toBe(true);
+
+        typePhrase(fixture, PHRASE);
+
+        expect(confirmButton(fixture).disabled).toBe(false);
+        confirmButton(fixture).click();
+        expect(dialogRef.close).toHaveBeenCalledWith('confirm');
+    });
+
+    it.each([
+        ['a trailing space', `${PHRASE} `],
+        ['a leading space', ` ${PHRASE}`],
+        ['different case', 'delete-acme'],
+        ['a different prefix', 'Delete-Acme'],
+        ['a partial phrase', 'delete-Acm'],
+    ])('keeps confirm disabled for %s', (_description, typed) => {
+        const fixture = render(verificationData);
+
+        typePhrase(fixture, typed);
+
+        expect(confirmButton(fixture).disabled).toBe(true);
+    });
+
+    it('does not close with confirm when onConfirm runs before the phrase matches', () => {
+        const fixture = render(verificationData);
+
+        fixture.componentInstance.onConfirm();
+
+        expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('shows the phrase as text inside strong and links the label to the input', () => {
+        const fixture = render(verificationData);
+        const label = query(fixture, '.verification-label') as HTMLLabelElement;
+        const input = query(fixture, '.verification-input') as HTMLInputElement;
+
+        expect(label.querySelector('strong')?.textContent).toBe(PHRASE);
+        expect(label.textContent?.replace(/\s+/g, ' ').trim()).toBe(`Type ${PHRASE} to confirm deletion.`);
+        expect(input.id).toBeTruthy();
+        expect(label.htmlFor).toBe(input.id);
+        expect(input.getAttribute('autocomplete')).toBe('off');
+        expect(input.getAttribute('spellcheck')).toBe('false');
+    });
+
+    it('renders markup in the phrase escaped, not as HTML', () => {
+        const phrase = 'delete-<img src=x onerror=alert(1)>';
+        const fixture = render({ ...BASE_DATA, verification: { phrase } });
+        const strong = query(fixture, '.verification-label strong') as HTMLElement;
+
+        expect(strong.querySelector('img')).toBeNull();
+        expect(strong.textContent).toBe(phrase);
+    });
+});

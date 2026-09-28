@@ -187,10 +187,12 @@ export class OrganizationsTabComponent implements OnInit {
         const name = row['name'] as string;
         this.hardDeleteFlow
             .run(
-                (dryRun) => this.organizationStorage.deleteOrganization(id, dryRun),
+                (dryRun, verificationPhrase) =>
+                    this.organizationStorage.deleteOrganization(id, dryRun, verificationPhrase),
                 (report) => buildOrganizationDeleteContent(name, report),
                 {
                     title: 'Delete the organization?',
+                    verificationTarget: name,
                     successMessage: 'Organization deleted successfully',
                     previewErrorFallback: 'Failed to preview organization deletion.',
                     deleteErrorFallback: 'Failed to delete organization.',

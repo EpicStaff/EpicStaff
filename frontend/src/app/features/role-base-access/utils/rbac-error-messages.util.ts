@@ -19,6 +19,7 @@ const CODE_TO_MESSAGE: Record<string, string> = {
         'This is the default organization and can’t be deleted — promote another organization to default first.',
     last_organization: 'At least one organization must remain on the platform.',
     cannot_delete_self: 'You can’t delete your own account.',
+    invalid_verification_phrase: 'The confirmation phrase doesn’t match — reload and try again.',
 };
 
 /** Best-effort resolver: prefer the mapped message for a known `code`,

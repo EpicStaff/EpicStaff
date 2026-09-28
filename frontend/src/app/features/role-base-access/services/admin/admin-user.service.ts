@@ -87,10 +87,12 @@ export class AdminUserService {
         return this.http.post<void>(`${this.apiUrl}${userId}/reset-password/`, {}, { headers: this.httpHeaders });
     }
 
-    deleteUser(userId: number, dryRun: boolean): Observable<UserDeleteReport> {
+    /** The verification phrase is sent as the request body only when given (the real delete). */
+    deleteUser(userId: number, dryRun: boolean, verificationPhrase?: string): Observable<UserDeleteReport> {
         return this.http.delete<UserDeleteReport>(`${this.apiUrl}${userId}/`, {
             headers: this.httpHeaders,
             params: new HttpParams().set('dry_run', String(dryRun)),
+            body: verificationPhrase === undefined ? undefined : { verification_phrase: verificationPhrase },
         });
     }
 }
