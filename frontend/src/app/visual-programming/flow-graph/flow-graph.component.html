@@ -152,6 +152,7 @@
                     [fReassignDisabled]="reassignSuppressedConnectionIds().has(connection.id)"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
+                    [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()

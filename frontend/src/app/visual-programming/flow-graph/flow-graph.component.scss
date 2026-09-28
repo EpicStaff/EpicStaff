@@ -133,6 +133,10 @@
             }
         }
 
+        &.is-reassign-follower {
+            opacity: 0.3;
+        }
+
         .connection-center {
             display: none;
             align-items: center;

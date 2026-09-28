@@ -1,9 +1,14 @@
+import asyncio
+import io
 import json
 import os
 import re
 from unittest.mock import AsyncMock
 
+import aiohttp
 import pytest
+from miniopy_async.crypto import decrypt, encrypt
+from miniopy_async.error import MinioAdminException
 
 from services.storage_credential_manager import (
     CredentialManagerError,
@@ -168,9 +173,9 @@ def test_normalize_path_plain_path_unchanged():
 
 
 def test_split_host_https():
-    secure, endpoint = StorageCredentialManager._split_host("https://minio:9000")
+    secure, endpoint = StorageCredentialManager._split_host("https://storage:9000")
     assert secure is True
-    assert endpoint == "minio:9000"
+    assert endpoint == "storage:9000"
 
 
 def test_split_host_http():
@@ -179,27 +184,62 @@ def test_split_host_http():
     assert endpoint == "localhost:9000"
 
 
-@_reopen_while_open_posix_only
-@pytest.mark.asyncio
-async def test_create_returns_credentials():
-    manager = make_manager()
-    policy = {"Version": "2012-10-17", "Statement": []}
-
-    recorded = {}
-
-    async def fake_add_service_account(policy_file, expiration):
+def fake_add_service_account(recorded: dict, error: BaseException | None = None):
+    async def add_service_account(access_key, secret_key, policy_file, expiration):
         with open(policy_file, "r") as handle:
             recorded["policy"] = json.load(handle)
-        recorded["expiration"] = expiration
+        recorded["access_key"] = access_key
+        recorded["secret_key"] = secret_key
         recorded["policy_file"] = policy_file
-        return json.dumps({"credentials": {"accessKey": "AK", "secretKey": "SK"}})
+        recorded["expiration"] = expiration
+        if error is not None:
+            raise error
+        return json.dumps({"credentials": {"accessKey": access_key}})
 
-    manager._client.add_service_account = fake_add_service_account
+    return add_service_account
 
-    access_key, secret_key = await manager.create(policy)
 
-    assert access_key == "AK"
-    assert secret_key == "SK"
+class FakeAdminResponse:
+    """Stands in for the aiohttp response miniopy decrypts."""
+
+    def __init__(self, body: bytes):
+        self.content = self
+        self.connection = None
+        self._body = io.BytesIO(body)
+
+    async def read(self, size: int = -1) -> bytes:
+        return self._body.read(size)
+
+    def close(self):
+        pass
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_passes_generated_keys_and_returns_them():
+    manager = make_manager()
+    recorded = {}
+    manager._client.add_service_account = fake_add_service_account(recorded)
+
+    access_key, secret_key = await manager.create({"Version": "2012-10-17"})
+
+    assert access_key == recorded["access_key"]
+    assert secret_key == recorded["secret_key"]
+    assert re.fullmatch(r"[A-Z0-9]{20}", access_key)
+    assert re.fullmatch(r"[A-Za-z0-9]{40}", secret_key)
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_generates_a_new_key_pair_per_call():
+    manager = make_manager()
+    manager._client.add_service_account = fake_add_service_account({})
+
+    first = await manager.create({"Version": "2012-10-17"})
+    second = await manager.create({"Version": "2012-10-17"})
+
+    assert first[0] != second[0]
+    assert first[1] != second[1]
 
 
 @_reopen_while_open_posix_only
@@ -207,17 +247,8 @@ async def test_create_returns_credentials():
 async def test_create_writes_policy_to_temp_file():
     manager = make_manager()
     policy = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow"}]}
-
     recorded = {}
-
-    async def fake_add_service_account(policy_file, expiration):
-        with open(policy_file, "r") as handle:
-            recorded["policy"] = json.load(handle)
-        recorded["expiration"] = expiration
-        recorded["policy_file"] = policy_file
-        return json.dumps({"credentials": {"accessKey": "AK", "secretKey": "SK"}})
-
-    manager._client.add_service_account = fake_add_service_account
+    manager._client.add_service_account = fake_add_service_account(recorded)
 
     await manager.create(policy)
 
@@ -228,20 +259,10 @@ async def test_create_writes_policy_to_temp_file():
 @pytest.mark.asyncio
 async def test_create_temp_file_has_json_suffix():
     manager = make_manager()
-    policy = {"Version": "2012-10-17", "Statement": []}
-
     recorded = {}
+    manager._client.add_service_account = fake_add_service_account(recorded)
 
-    async def capturing_add_service_account(policy_file, expiration):
-        with open(policy_file, "r") as handle:
-            recorded["policy"] = json.load(handle)
-        recorded["policy_file"] = policy_file
-        recorded["expiration"] = expiration
-        return json.dumps({"credentials": {"accessKey": "AK", "secretKey": "SK"}})
-
-    manager._client.add_service_account = capturing_add_service_account
-
-    await manager.create(policy)
+    await manager.create({"Version": "2012-10-17", "Statement": []})
 
     assert recorded["policy_file"].endswith(".json")
 
@@ -250,23 +271,138 @@ async def test_create_temp_file_has_json_suffix():
 @pytest.mark.asyncio
 async def test_create_expiration_rfc3339_utc_format():
     manager = make_manager()
-    policy = {"Version": "2012-10-17", "Statement": []}
-
     recorded = {}
+    manager._client.add_service_account = fake_add_service_account(recorded)
 
-    async def capturing_add_service_account(policy_file, expiration):
-        with open(policy_file, "r") as handle:
-            recorded["policy"] = json.load(handle)
-        recorded["policy_file"] = policy_file
-        recorded["expiration"] = expiration
-        return json.dumps({"credentials": {"accessKey": "AK", "secretKey": "SK"}})
-
-    manager._client.add_service_account = capturing_add_service_account
-
-    await manager.create(policy)
+    await manager.create({"Version": "2012-10-17", "Statement": []})
 
     rfc3339_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
     assert re.match(rfc3339_pattern, recorded["expiration"]) is not None
+
+
+# --- Real miniopy request/decrypt path; only the HTTP response is faked.
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_admin_api_response_returns_generated_keys():
+    manager = make_manager()
+    sent = {}
+
+    async def url_open(method, command, body=None, **kwargs):
+        sent["body"] = json.loads(await decrypt(FakeAdminResponse(body), "root-sk"))
+        reply = json.dumps({"credentials": {"accessKey": "SERVER-AK", "secretKey": "SERVER-SK"}})
+        return FakeAdminResponse(encrypt(reply.encode(), "root-sk"))
+
+    manager._client._url_open = url_open
+
+    access_key, secret_key = await manager.create({"Version": "2012-10-17"})
+
+    assert (access_key, secret_key) == (sent["body"]["accessKey"], sent["body"]["secretKey"])
+    assert sent["body"]["policy"] == {"Version": "2012-10-17"}
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_rustfs_aead_id_2_response_returns_generated_keys():
+    manager = make_manager()
+    manager._client.delete_service_account = AsyncMock()
+    sent = {}
+
+    async def url_open(method, command, body=None, **kwargs):
+        sent["body"] = json.loads(await decrypt(FakeAdminResponse(body), "root-sk"))
+        header = os.urandom(32) + b"\x02" + os.urandom(8)  # salt, AEAD ID 2, nonce
+        return FakeAdminResponse(header + os.urandom(64))
+
+    manager._client._url_open = url_open
+
+    access_key, secret_key = await manager.create({"Version": "2012-10-17"})
+
+    assert (access_key, secret_key) == (sent["body"]["accessKey"], sent["body"]["secretKey"])
+    manager._client.delete_service_account.assert_not_awaited()
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_rejected_by_server_propagates_without_revoke():
+    manager = make_manager()
+    manager._client.delete_service_account = AsyncMock()
+
+    async def url_open(method, command, body=None, **kwargs):
+        raise MinioAdminException("400", "InvalidRequest")
+
+    manager._client._url_open = url_open
+
+    with pytest.raises(MinioAdminException):
+        await manager.create({"Version": "2012-10-17"})
+
+    manager._client.delete_service_account.assert_not_awaited()
+
+
+# --- Failures after the request may have reached the server.
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_other_value_error_propagates_and_revokes():
+    manager = make_manager()
+    recorded = {}
+    manager._client.add_service_account = fake_add_service_account(
+        recorded, ValueError("MAC check failed")
+    )
+    manager._client.delete_service_account = AsyncMock()
+
+    with pytest.raises(ValueError, match="MAC check failed"):
+        await manager.create({"Version": "2012-10-17"})
+
+    manager._client.delete_service_account.assert_awaited_once_with(recorded["access_key"])
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_connection_error_propagates_and_revokes():
+    manager = make_manager()
+    recorded = {}
+    manager._client.add_service_account = fake_add_service_account(
+        recorded, aiohttp.ServerDisconnectedError()
+    )
+    manager._client.delete_service_account = AsyncMock()
+
+    with pytest.raises(aiohttp.ServerDisconnectedError):
+        await manager.create({"Version": "2012-10-17"})
+
+    manager._client.delete_service_account.assert_awaited_once_with(recorded["access_key"])
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_cancelled_revokes_and_propagates_cancellation():
+    manager = make_manager()
+    recorded = {}
+    manager._client.add_service_account = fake_add_service_account(
+        recorded, asyncio.CancelledError()
+    )
+    manager._client.delete_service_account = AsyncMock()
+
+    with pytest.raises(asyncio.CancelledError):
+        await manager.create({"Version": "2012-10-17"})
+
+    manager._client.delete_service_account.assert_awaited_once_with(recorded["access_key"])
+
+
+@_reopen_while_open_posix_only
+@pytest.mark.asyncio
+async def test_create_failed_cleanup_does_not_mask_original_error():
+    manager = make_manager()
+    manager._client.add_service_account = fake_add_service_account(
+        {}, aiohttp.ServerDisconnectedError()
+    )
+    manager._client.delete_service_account = AsyncMock(
+        side_effect=MinioAdminException("404", "not found")
+    )
+
+    with pytest.raises(aiohttp.ServerDisconnectedError):
+        await manager.create({"Version": "2012-10-17"})
 
 
 @pytest.mark.asyncio
