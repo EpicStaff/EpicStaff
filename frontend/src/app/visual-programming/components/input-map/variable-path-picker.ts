@@ -10,14 +10,20 @@ const VARIABLES_PREFIX = 'variables.';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
-/** The rows a picker serves, each with a value input that holds a `variables.` path. */
+/**
+ * The rows a picker serves, each with an input that holds a `variables.` path: a value input, or a
+ * persistence key whose `{…}` placeholder at the caret is the path (see pathOf).
+ */
 export interface VariablePathPickerRows {
     /** What the picker offers a row, e.g. the flow's variables minus those other rows use. */
     itemsFor(rowIndex: number): PickerItem[];
-    /** Puts a picked path into the row's value. */
-    insert(rowIndex: number, path: string): void;
-    /** The variable path in a typed value, e.g. without a `|default`. The whole value if left out. */
-    pathOf?(value: string): string;
+    /** Puts a picked path into the row's value; `input` is the row input the list is open under. */
+    insert(rowIndex: number, path: string, input: HTMLInputElement): void;
+    /**
+     * The variable path in a typed value, e.g. without a `|default`, or the placeholder at the
+     * input's caret. The whole value if left out.
+     */
+    pathOf?(value: string, input: HTMLInputElement): string;
 }
 
 /**
@@ -63,8 +69,9 @@ export function isPlainEnter(event: KeyboardEvent): boolean {
 }
 
 /**
- * The flow variable picker under the value inputs of the Input List (`InputMapComponent`), for any
- * list of rows: it opens on focus or typing once the value starts with `variables.`, filters by what
+ * The flow variable picker under the value inputs of the Input List (`InputMapComponent`) and the
+ * persistence node's value inputs and key placeholders, for any list of rows: it opens on focus or
+ * typing once the path (the value, or what pathOf takes from it) starts with `variables.`, filters by what
  * follows the prefix, closes on an exact match, a pick, Escape (which goes no further), a click
  * outside or the input's blur, and never covers more than one row. The arrow keys move a highlight
  * that Enter picks, while focus stays in the value input. Hosts pass the input's keydown and blur
@@ -79,7 +86,7 @@ export class VariablePathPicker {
     private readonly openRowIndex = signal<number | null>(null);
     private overlayRef: OverlayRef | null = null;
     private picker: VarPickerFlatComponent | null = null;
-    private anchor: HTMLElement | null = null;
+    private anchor: HTMLInputElement | null = null;
     private subscriptions: { unsubscribe(): void }[] = [];
 
     constructor(private readonly rows: VariablePathPickerRows) {
@@ -138,7 +145,8 @@ export class VariablePathPicker {
 
     /**
      * Closes once focus leaves the row's input, e.g. on Tab, unless it went into the picker itself
-     * (its search field). A click on a row keeps focus in the input, so it still lands.
+     * (one of its rows, e.g. from a screen reader). A click on a row keeps focus in the input, so it
+     * still lands.
      */
     public onBlur(rowIndex: number, event: FocusEvent): void {
         if (!this.isOpenFor(rowIndex)) return;
@@ -168,13 +176,13 @@ export class VariablePathPicker {
     }
 
     private pick(rowIndex: number, path: string): void {
-        this.rows.insert(rowIndex, path);
+        if (this.anchor !== null) this.rows.insert(rowIndex, path, this.anchor);
         this.close();
     }
 
     private pathOf(input: HTMLInputElement): string {
         const value = input.value ?? '';
-        return this.rows.pathOf ? this.rows.pathOf(value) : value;
+        return this.rows.pathOf ? this.rows.pathOf(value, input) : value;
     }
 
     private isExactVariableMatch(rowIndex: number, query: string): boolean {
@@ -209,7 +217,6 @@ export class VariablePathPicker {
 
         const picker = overlayRef.attach(new ComponentPortal(VarPickerFlatComponent, this.viewContainerRef)).instance;
         this.picker = picker;
-        picker.autofocusSearch = false;
         picker.setItems(this.rows.itemsFor(rowIndex));
 
         const currentPath = this.pathOf(anchor);

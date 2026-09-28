@@ -402,10 +402,20 @@ describe('VariablePathPicker', () => {
         expect(host.picker.isOpenFor(0)).toBe(true);
     });
 
-    it('closes when focus leaves the input, e.g. on Tab, but not for its own search field or a click on a row', () => {
+    it('has no search field of its own: the row input filters it', () => {
         focus(0);
-        const searchField = document.querySelector<HTMLElement>('app-var-picker-flat input')!;
-        input(0).dispatchEvent(new FocusEvent('blur', { relatedTarget: searchField }));
+
+        expect(document.querySelector('app-var-picker-flat input')).toBeNull();
+        type(0, 'variables.pl');
+        expect(Array.from(document.querySelectorAll<HTMLElement>('.vpf-item'), (item) => item.title)).toEqual([
+            'variables.plan',
+        ]);
+    });
+
+    it('closes when focus leaves the input, e.g. on Tab, but not for one of its rows or a click on a row', () => {
+        focus(0);
+        const row = document.querySelector<HTMLElement>('app-var-picker-flat .vpf-item')!;
+        input(0).dispatchEvent(new FocusEvent('blur', { relatedTarget: row }));
         expect(host.picker.isOpenFor(0)).toBe(true);
 
         // A click on a row does not take focus from the input, so no blur closes the list under it.

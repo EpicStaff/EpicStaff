@@ -1,14 +1,4 @@
-import {
-    AfterViewInit,
-    ChangeDetectionStrategy,
-    Component,
-    ElementRef,
-    Input,
-    output,
-    signal,
-    ViewChild,
-    viewChildren,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, output, signal, viewChildren } from '@angular/core';
 
 import { isPathUnder } from '../../core/helpers/variable-path.util';
 
@@ -29,16 +19,6 @@ let nextPickerId = 0;
     imports: [],
     template: `
         <div class="vpf-container">
-            <div class="vpf-search">
-                <input
-                    #searchInput
-                    type="text"
-                    placeholder="Search variables..."
-                    autocomplete="off"
-                    (input)="onSearchInput($event)"
-                    (keydown)="$event.stopPropagation()"
-                />
-            </div>
             <!-- mousedown keeps focus in the host's input, so its blur does not close the list before a click lands. -->
             <div
                 class="vpf-list"
@@ -91,31 +71,6 @@ let nextPickerId = 0;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
-            }
-
-            .vpf-search {
-                padding: 8px;
-                border-bottom: 1px solid var(--color-divider-subtle);
-
-                input {
-                    width: 100%;
-                    box-sizing: border-box;
-                    padding: 6px 10px;
-                    background: var(--color-input-background);
-                    border: 1px solid var(--color-input-border);
-                    border-radius: 4px;
-                    color: var(--color-text-primary);
-                    font-size: 0.8rem;
-                    outline: none;
-                    transition: border-color 0.15s;
-
-                    &:focus {
-                        border-color: var(--accent-color);
-                    }
-                    &::placeholder {
-                        color: var(--color-input-text-placeholder);
-                    }
-                }
             }
 
             .vpf-list {
@@ -191,11 +146,8 @@ let nextPickerId = 0;
         `,
     ],
 })
-export class VarPickerFlatComponent implements AfterViewInit {
-    @ViewChild('searchInput') private searchInputRef!: ElementRef<HTMLInputElement>;
+export class VarPickerFlatComponent {
     private readonly optionButtons = viewChildren<ElementRef<HTMLElement>>('option');
-
-    @Input() autofocusSearch = true;
 
     /** The row Enter picks, as an index into filteredItems; -1 for none. */
     protected readonly highlightedIndex = signal(-1);
@@ -207,12 +159,6 @@ export class VarPickerFlatComponent implements AfterViewInit {
     filteredItems: PickerItem[] = [];
 
     pathSelected = output<string>();
-
-    ngAfterViewInit(): void {
-        if (this.autofocusSearch) {
-            this.searchInputRef.nativeElement.focus();
-        }
-    }
 
     get hasFilteredItems(): boolean {
         return this.filteredItems.length > 0;
@@ -254,19 +200,8 @@ export class VarPickerFlatComponent implements AfterViewInit {
         return Math.min(8 + depth * 12, 80);
     }
 
-    onSearchInput(event: Event): void {
-        const query = (event.target as HTMLInputElement).value;
-        this.applyFilter(query);
-    }
-
-    /**
-     * Applies a filter query coming from an external source (e.g. the input-map row's
-     * value input) and keeps the picker's own search field in sync with it.
-     */
+    /** Filters by the path typed in the host's input, e.g. the Input List row's value. */
     setFilter(query: string): void {
-        if (this.searchInputRef) {
-            this.searchInputRef.nativeElement.value = query;
-        }
         this.applyFilter(query);
     }
 
