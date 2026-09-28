@@ -111,6 +111,19 @@ Superadmin only, and **JWT only**: API keys are refused (403).
 **Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
 anything else, including absent, → perform the delete).
 
+**Request body (real delete only):**
+
+```json
+{"verification_phrase": "delete-Acme Inc"}
+```
+
+The phrase is `delete-` followed by the organization's `name`, matched exactly:
+case-sensitive, no trimming. It is checked on the current value when the
+delete runs, so a rename between preview and delete makes it fail. The body is
+ignored when `dry_run=true`, so a preview needs none. Swagger does not render
+request bodies on DELETE; send the body from an API client (e.g. Postman) as
+raw JSON.
+
 Returns **200** in both modes:
 
 ```json
@@ -156,6 +169,10 @@ the organization first.
 - `400 default_organization_not_deletable` — the org carries the
   `is_default` flag. Promote another organization to default first.
 - `400 last_organization` — would leave the platform with no active organizations.
+- `400 invalid_verification_phrase` — real delete only: `verification_phrase`
+  is missing or does not match the organization's current name. Nothing is deleted.
+- `400 invalid` — real delete only: the body is not a JSON object, or
+  `verification_phrase` is not a string.
 - `404 organization_not_found` — unknown id.
 
 Platform-wide default configs are global, not org-scoped. If a superadmin
@@ -164,7 +181,8 @@ owned by this organization, that default is reset to null and must be set
 again.
 
 Blockers apply in **both** modes, so `dry_run=true` is a safe pre-flight
-check.
+check. The verification phrase is the exception: it is checked only on the
+real delete, after the `404` and the blockers above.
 
 Built-in roles are global (`org=NULL`) and survive; only the organization's
 own custom roles are removed.
@@ -178,7 +196,7 @@ own custom roles are removed.
 | Organizations tab visibility | Show it where the caller holds `ORGANIZATIONS.READ` (or is superadmin). Plain members don't see it, but still see their orgs in the switcher. |
 | Rename button | Enable per row where the caller holds `ORGANIZATIONS.UPDATE`. |
 | Create / deactivate | Superadmin-only — hide for everyone else. |
-| Delete button | Superadmin-only — hide for everyone else. Always call with `?dry_run=true` first and show the user the row counts before the real call. |
+| Delete button | Superadmin-only — hide for everyone else. Always call with `?dry_run=true` first and show the user the row counts before the real call. Keep the real delete disabled until the user types `delete-<organization name>` exactly, and send it as `verification_phrase`. |
 | Delete vs deactivate | Deactivate is reversible and preserves everything. Delete is permanent and destroys all org content. Do not present them as neighbouring actions. |
 | Default org | Identified by an internal `is_default` flag, not by name; renaming is safe. |
 | 401 vs 403 | 401 = no/expired credential. 403 = valid credential, insufficient permission. |

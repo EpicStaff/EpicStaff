@@ -254,6 +254,19 @@ so a leaked credential cannot erase accounts.
 **Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
 anything else, including absent, → perform the delete).
 
+**Request body (real delete only):**
+
+```json
+{"verification_phrase": "delete-jane@acme.com"}
+```
+
+The phrase is `delete-` followed by the account's `email`, matched exactly:
+case-sensitive, no trimming. It is checked on the current value when the
+delete runs, so an email change between preview and delete makes it fail. The body is
+ignored when `dry_run=true`, so a preview needs none. Swagger does not render
+request bodies on DELETE; send the body from an API client (e.g. Postman) as
+raw JSON.
+
 Returns **200** in both modes:
 
 ```json
@@ -283,10 +296,16 @@ renewed.
 
 - `400 cannot_delete_self` — a superadmin cannot delete their own account.
 - `400 last_superadmin` — cannot delete the last active superadmin.
+- `400 invalid_verification_phrase` — real delete only: `verification_phrase`
+  is missing or does not match the account's current email. Nothing is deleted.
+- `400 invalid` — real delete only: the body is not a JSON object, or
+  `verification_phrase` is not a string.
 - `404 user_not_found` — unknown id.
 
 Blockers apply in **both** modes: a `dry_run=true` call against a blocked
-target returns the same 400, so it doubles as a safe pre-flight check.
+target returns the same 400, so it doubles as a safe pre-flight check. The
+verification phrase is the exception: it is checked only on the real delete,
+after the `404` and the blockers above.
 
 ---
 
@@ -319,6 +338,7 @@ target returns the same 400, so it doubles as a safe pre-flight check.
 | `email_already_exists` | 400 | An account with that email exists |
 | `last_superadmin` | 400 | At least one active superadmin must remain |
 | `cannot_delete_self` | 400 | You cannot permanently delete your own account |
+| `invalid_verification_phrase` | 400 | Permanent delete: `verification_phrase` is missing or is not exactly `delete-<email>` |
 | `permission_denied` | 403 | You can see the membership but lack the required `MEMBERSHIPS` action (one you cannot see is a 404 instead) |
-| `invalid` | 400 | Field validation, or a bad list filter |
+| `invalid` | 400 | Field validation, a bad list filter, or a malformed permanent-delete body (not a JSON object, or a non-string `verification_phrase`) |
 | `org_context_required` | 400 | A non-integer value in `?org_ids=` |
