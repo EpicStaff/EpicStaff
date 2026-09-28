@@ -49,18 +49,24 @@ def create_condition_group_sections(apps, schema_editor):
         seen.setdefault(section_value, None)
 
     to_create = []
-    # (node_id, old legacy value) -> newly minted UUID, only for values that
-    # don't parse as one. Used afterwards to rewrite the raw `section` column
-    # on the affected groups, in one bulk_update rather than one query per
-    # distinct garbage value.
     replacements = {}
+    claimed_by = {}  # uuid -> node_id that first claimed it
     for node_id, section_values in sections_by_node.items():
         for index, section_value in enumerate(section_values, start=1):
             try:
-                section_id = uuid.UUID(section_value)
+                parsed = uuid.UUID(section_value)
             except (ValueError, AttributeError, TypeError):
+                parsed = None
+
+            if parsed is not None and claimed_by.setdefault(parsed, node_id) == node_id:
+                section_id = parsed
+            else:
                 section_id = uuid.uuid4()
+                while section_id in claimed_by:
+                    section_id = uuid.uuid4()
+                claimed_by[section_id] = node_id
                 replacements[(node_id, section_value)] = section_id
+            
             to_create.append(
                 ClassificationConditionGroupSection(
                     id=section_id,
