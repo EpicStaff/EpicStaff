@@ -17,6 +17,7 @@
     // one frame props the row open before it has started.
     > * {
         min-height: 0;
+        min-width: 0;
         overflow: hidden;
         transition:
             overflow 0s,

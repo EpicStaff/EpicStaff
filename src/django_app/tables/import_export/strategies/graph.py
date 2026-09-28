@@ -200,15 +200,6 @@ class GraphStrategy(EntityImportExportStrategy):
         self._remap_decision_table_references(graph, node_mapper)
         self._remap_classification_decision_table_references(graph, node_mapper)
 
-        # Metadata remapping is only correct for full-graph imports/versioning,
-        # where graph.metadata was rebuilt from the import and its node ids are
-        # old export ids. In a partial import the metadata belongs to the
-        # pre-existing graph; its node ids are real, current ids that collide
-        # with the old export ids in node_mapper, so remapping them would
-        # silently re-point existing nodes at the freshly imported duplicates.
-        if not is_partial:
-            self._update_metadata_node_ids(graph, node_mapper)
-
         # need only for versioning system
         return node_mapper
 
@@ -425,27 +416,6 @@ class GraphStrategy(EntityImportExportStrategy):
                     group.next_node_id = new_id
                     group.save(update_fields=["next_node_id"])
 
-    def _update_metadata_node_ids(self, graph: Graph, id_mapper: IDMapper):
-        metadata = graph.metadata
-        if not metadata:
-            return
-
-        nodes = metadata.get("nodes", [])
-        changed = False
-
-        for node in nodes:
-            data = node.get("data") or {}
-            node_id = data.get("id")
-            if node_id is not None:
-                new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, node_id)
-                if new_id and new_id != node_id:
-                    data["id"] = new_id
-                    changed = True
-
-        if changed:
-            graph.metadata = metadata
-            graph.save(update_fields=["metadata"])
-
     def _attach_labels(self, graph: Graph, id_mapper: IDMapper, label_ids: list) -> None:
         new_label_ids = [id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids]
         if new_label_ids:
@@ -457,22 +427,7 @@ class GraphStrategy(EntityImportExportStrategy):
 
         nodes = metadata_copy.get("nodes", [])
         for node in nodes:
-            if node["type"] == "webhook-trigger":
-                old_id = node["data"]["webhook_trigger"]
-
-                node["data"]["webhook_trigger"] = id_mapper.get_or_none(
-                    EntityType.WEBHOOK_TRIGGER, old_id
-                )
-            if node["type"] == "subgraph":
-                old_id = node["data"]["id"]
-                new_id = id_mapper.get_or_none(EntityType.GRAPH, old_id)
-
-                subgraph = Graph.objects.get(id=new_id)
-
-                node["data"]["id"] = new_id
-                node["data"]["name"] = subgraph.name
-                node["data"]["description"] = subgraph.description
-            if node["type"] == "telegram-trigger":
+            if node.get("type") == "telegram-trigger":
                 node["data"]["telegram_bot_api_key"] = None
 
         return metadata_copy

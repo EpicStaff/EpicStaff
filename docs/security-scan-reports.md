@@ -1,7 +1,8 @@
 # Dependency Scan Reports — How It Works
 
-The `Dependency scan` workflow finds dependencies with known vulnerabilities. Its
-findings are stored in a private **Google Shared Drive**, not published on the
+The `Dependency scan` workflow finds dependencies with known vulnerabilities. Scheduled
+and manual runs store their findings in a private **Google Shared Drive**; pull
+request runs do the checks but store nothing, and nothing is published on the
 pull request.
 
 ---
@@ -37,7 +38,7 @@ One plain-text file per run, in a month folder so the directory stays navigable:
 ```
 <SECURITY_GDRIVE_ROOT_ID>/        # a folder in the Shared Drive
 ├── 2026-08/
-│   ├── 2026-08-31T090359Z-pull_request-33370921430.txt
+│   ├── 2026-08-31T090359Z-workflow_dispatch-33370921430.txt
 │   └── 2026-08-31T060012Z-schedule-33370999001.txt
 └── 2026-09/
     └── ...
@@ -191,16 +192,16 @@ is currently green, and a failure means a specific fix did not land everywhere.
 
 ---
 
-## Fork pull requests
+## Pull requests
 
-GitHub does not expose secrets to workflows triggered by a pull request from a
-fork. The upload step is therefore skipped for fork PRs, and the run summary says
-so. It deliberately does **not** fall back to publishing the report — that would
-turn any outside contributor's PR into a disclosure.
+Pull request runs (to `main` or `developer`, fork or not) scan and run the
+dependency-floor check, but skip the Drive upload, and the run summary says so.
+One report per push would bury the weekly baseline in near-duplicates. The upload
+deliberately does **not** fall back to publishing the report — that would turn any
+PR into a disclosure.
 
-Findings introduced by a fork PR are caught by the next run on a branch in this
-repository, or by the Monday schedule. If you need one sooner, re-run the scan
-from a branch here.
+Findings introduced by a PR are caught by the Monday schedule. If you need a
+report sooner, run the workflow manually from the Actions tab.
 
 ---
 

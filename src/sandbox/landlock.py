@@ -10,6 +10,13 @@ No third-party dependency: the syscalls (`landlock_create_ruleset`,
 `landlock_add_rule`, `landlock_restrict_self`) have no libc wrapper, so they
 are invoked directly via `ctypes.CDLL(None).syscall()`. Numbers below are the
 x86_64 syscall table; this module only supports that architecture.
+
+Besides filesystem paths, this module can optionally restrict outbound TCP
+connections to a fixed set of ports (Landlock ABI 4+, kernel 6.7+). This
+control is **TCP-only and port-granular**: Landlock net has no notion of IP
+address or hostname -- it cannot express "only connect to host X" -- and it
+does not cover UDP at all, so UDP traffic (including DNS resolution) is
+completely unrestricted by it regardless of what is passed to `apply()`.
 """
 
 import ctypes
@@ -24,6 +31,7 @@ _SYS_LANDLOCK_RESTRICT_SELF = 446
 
 _LANDLOCK_CREATE_RULESET_VERSION = 1
 _LANDLOCK_RULE_PATH_BENEATH = 1
+_LANDLOCK_RULE_NET_PORT = 2
 
 _PR_SET_NO_NEW_PRIVS = 38
 
@@ -73,6 +81,12 @@ _DIRECTORY_ONLY_ACCESS_FS = (
     | _REFER
 )
 
+# --- LANDLOCK_ACCESS_NET_* bit flags, introduced in ABI 4 ----------------
+_LANDLOCK_ACCESS_NET_BIND_TCP = 1 << 0
+_LANDLOCK_ACCESS_NET_CONNECT_TCP = 1 << 1
+
+_MIN_ABI_FOR_NET = 4
+
 _READ_ONLY_ACCESS_FS = _READ_FILE | _READ_DIR
 _READ_EXEC_ACCESS_FS = _READ_FILE | _READ_DIR | _EXECUTE
 _READ_WRITE_ACCESS_FS = (
@@ -95,13 +109,41 @@ class LandlockUnavailableError(RuntimeError):
     """Raised when the running kernel does not support Landlock at all."""
 
 
+class LandlockNetworkUnavailableError(RuntimeError):
+    """Raised when TCP-port restriction is requested but the running kernel's
+    Landlock ABI (< 4) cannot enforce it. Callers must not treat this as
+    "no network restriction requested" and silently proceed unconfined --
+    that would fail open on exactly the executions that asked to be
+    confined."""
+
+
 class _RulesetAttr(ctypes.Structure):
-    _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+    # Both fields must always be declared: the size passed to
+    # landlock_create_ruleset() must match how many of these fields are
+    # actually populated (see apply()), and the kernel validates that size
+    # exactly. A struct that only ever declares handled_access_fs would make
+    # it impossible to opt into the net field at a later ctypes.sizeof() call.
+    _fields_ = [
+        ("handled_access_fs", ctypes.c_uint64),
+        ("handled_access_net", ctypes.c_uint64),
+    ]
+
+
+# Explicit sizes rather than ctypes.sizeof(): the kernel's EINVAL check on
+# landlock_create_ruleset()'s size argument is exactly what would regress if
+# a struct-size computation crept in a compiler-dependent extra byte.
+_RULESET_ATTR_SIZE_FS_ONLY = 8
+_RULESET_ATTR_SIZE_FS_AND_NET = 16
 
 
 class _PathBeneathAttr(ctypes.Structure):
     _pack_ = 1
     _fields_ = [("allowed_access", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
+
+
+class _NetPortAttr(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("allowed_access", ctypes.c_uint64), ("port", ctypes.c_uint64)]
 
 
 def _access_fs_mask(abi: int) -> int:
@@ -148,23 +190,41 @@ def _add_rule(ruleset_fd: int, path: str, access_fs: int) -> None:
         os.close(path_fd)
 
 
+def _add_net_rule(ruleset_fd: int, port: int, allowed_access: int) -> None:
+    rule = _NetPortAttr(allowed_access=allowed_access, port=port)
+    _raise_on_syscall_error(
+        _libc.syscall(
+            ctypes.c_long(_SYS_LANDLOCK_ADD_RULE),
+            ctypes.c_int(ruleset_fd),
+            ctypes.c_int(_LANDLOCK_RULE_NET_PORT),
+            ctypes.byref(rule),
+            ctypes.c_uint32(0),
+        ),
+        f"landlock_add_rule(tcp port {port})",
+    )
+
+
 def apply(
     rw_paths: Iterable[str],
     ro_paths: Iterable[str],
     roexec_paths: Iterable[str],
+    *,
+    allowed_tcp_ports: tuple[int, ...] | None = None,
 ) -> None:
     """Irreversibly confine this process, and every descendant of it, to the
     given paths. `rw_paths` get full read/write/create/delete access,
     `ro_paths` get read-only access, `roexec_paths` get read + execute
-    access. Paths that don't exist on disk are skipped rather than failing
-    the whole call -- the allowlists this is fed are intentionally generous
-    across environments that may not have every entry.
+    access. Missing paths are skipped rather than failing the call.
 
-    Every access right the running kernel's ABI knows about is handled (i.e.
-    denied unless a rule below grants it back). Handling only the rights this
-    jail happens to use would leave every other right -- e.g. IOCTL_DEV,
-    MAKE_CHAR -- completely unrestricted for every path on the filesystem,
-    defeating the point of an allowlist.
+    `allowed_tcp_ports`: `None` leaves net rights untouched (existing callers
+    unaffected). A tuple grants `CONNECT_TCP` to exactly those ports and
+    denies it elsewhere -- an empty tuple deliberately means "deny all TCP
+    connect", not a no-op. On Landlock ABI < 4, raises
+    `LandlockNetworkUnavailableError` rather than failing open.
+
+    Landlock network control is TCP-only and port-granular: it has no
+    IP/hostname dimension and no UDP coverage at all -- DNS and other UDP
+    traffic are unrestricted regardless of this parameter.
     """
     abi = abi_version()
     if abi < 1:
@@ -172,13 +232,30 @@ def apply(
             "Landlock is not supported by this kernel; cannot sandbox the execution."
         )
 
+    handle_net = allowed_tcp_ports is not None
+    if handle_net and abi < _MIN_ABI_FOR_NET:
+        raise LandlockNetworkUnavailableError(
+            f"Landlock ABI {abi} does not support network restriction "
+            f"(requires ABI {_MIN_ABI_FOR_NET}+, kernel 6.7+); refusing to "
+            "silently run without the requested TCP-port confinement."
+        )
+
     access_fs_mask = _access_fs_mask(abi)
-    ruleset_attr = _RulesetAttr(handled_access_fs=access_fs_mask)
+    if handle_net:
+        ruleset_attr = _RulesetAttr(
+            handled_access_fs=access_fs_mask,
+            handled_access_net=(_LANDLOCK_ACCESS_NET_BIND_TCP | _LANDLOCK_ACCESS_NET_CONNECT_TCP),
+        )
+        ruleset_attr_size = _RULESET_ATTR_SIZE_FS_AND_NET
+    else:
+        ruleset_attr = _RulesetAttr(handled_access_fs=access_fs_mask)
+        ruleset_attr_size = _RULESET_ATTR_SIZE_FS_ONLY
+
     ruleset_fd = _raise_on_syscall_error(
         _libc.syscall(
             ctypes.c_long(_SYS_LANDLOCK_CREATE_RULESET),
             ctypes.byref(ruleset_attr),
-            ctypes.c_size_t(ctypes.sizeof(ruleset_attr)),
+            ctypes.c_size_t(ruleset_attr_size),
             ctypes.c_uint32(0),
         ),
         "landlock_create_ruleset",
@@ -202,6 +279,10 @@ def apply(
                 if not os.path.isdir(path):
                     access_fs &= ~_DIRECTORY_ONLY_ACCESS_FS
                 _add_rule(ruleset_fd, path, access_fs)
+
+        if handle_net:
+            for port in allowed_tcp_ports:
+                _add_net_rule(ruleset_fd, port, _LANDLOCK_ACCESS_NET_CONNECT_TCP)
 
         _raise_on_syscall_error(
             _libc.prctl(_PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0),
