@@ -576,6 +576,32 @@ def main(**kwargs) -> dict:
 
             return state
 
+        def route_to_error_node(state: State, writer: StreamWriter, error: str):
+            """Route to the error node and publish error, then finish.
+
+            The finish closes the CDT message group in the UI, as on the
+            pre-computation error path."""
+            decision_vars = state["system_variables"]["nodes"][self.node_name]
+            decision_vars["result_node"] = self.node_data.next_error_node or END
+            msg = self.custom_session_message_writer.add_error_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                error=error,
+                writer=writer,
+                execution_order=self.execution_order(state),
+            )
+            self._publish_message(msg)
+            msg = self.custom_session_message_writer.add_finish_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                writer=writer,
+                output=decision_vars["result_node"],
+                execution_order=self.execution_order(state),
+                state=state,
+            )
+            self._publish_message(msg)
+            return state
+
         async def evaluate_node_function(state: State, writer: StreamWriter):
             """Evaluate all condition groups top-to-bottom with continue/stop logic."""
             logger.info(f"Evaluating classification decision table: {self.node_name}")
@@ -742,29 +768,11 @@ def main(**kwargs) -> dict:
                 except ClassificationDecisionTableNodeError as e:
                     error = f"Error in condition '{group.group_name}': {e}"
                     logger.info(f"ERROR {error}")
-                    decision_vars["result_node"] = self.node_data.next_error_node or END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        error=error,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                    )
-                    self._publish_message(msg)
-                    return state
+                    return route_to_error_node(state, writer, error)
                 except Exception as e:
                     error = f"Unexpected error in condition '{group.group_name}': {type(e).__name__}: {e}"
                     logger.info(f"ERROR {error}")
-                    decision_vars["result_node"] = self.node_data.next_error_node or END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        error=error,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                    )
-                    self._publish_message(msg)
-                    return state
+                    return route_to_error_node(state, writer, error)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -775,16 +783,7 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except ClassificationDecisionTableNodeError as e:
                 logger.error(f"Post-computation error: {e}")
-                decision_vars["result_node"] = self.node_data.next_error_node or END
-                msg = self.custom_session_message_writer.add_error_message(
-                    session_id=self.session_id,
-                    node_name=self.node_name,
-                    error=str(e),
-                    writer=writer,
-                    execution_order=self.execution_order(state),
-                )
-                self._publish_message(msg)
-                return state
+                return route_to_error_node(state, writer, str(e))
 
             logger.info(
                 f"Classification table '{self.node_name}' result: "
