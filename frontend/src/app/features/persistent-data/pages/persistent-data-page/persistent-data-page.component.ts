@@ -37,10 +37,16 @@ export class PersistentDataPageComponent {
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Delete));
 
+    // Reloads rather than joining a load already in flight: on opening the page, so the page starts
+    // from a fresh list, and on every refresh, which follows a change to the tables (create, rename,
+    // delete, org switch) that a load already in flight may predate.
     readonly loadTablesOnRefresh = effect((onCleanup) => {
         this.persistenceTablesStorage.refreshTick();
-        const subscription = this.persistenceTablesStorage.loadTables().subscribe({
+        const subscription = this.persistenceTablesStorage.reloadTables().subscribe({
             next: (tables) => {
+                // A superseded load's response never becomes the signal's value; it reaches here only
+                // when it ends before this effect reruns, and must not move the selection.
+                if (tables !== this.persistenceTablesStorage.tables()) return;
                 // Keep the current selection while it still exists; otherwise fall back to the first table.
                 const selectedId = this.selectedTableId();
                 if (selectedId === null || !tables.some((table) => table.id === selectedId)) {
@@ -49,7 +55,8 @@ export class PersistentDataPageComponent {
             },
             error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
         });
-        // A newer refresh supersedes an in-flight load, so a slow stale response can't overwrite it.
+        // The storage drops a superseded load's late response from `tables`; unsubscribing keeps it
+        // from reaching the selection fallback above too.
         onCleanup(() => subscription.unsubscribe());
     });
 

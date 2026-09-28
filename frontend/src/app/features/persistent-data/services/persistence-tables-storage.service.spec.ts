@@ -124,4 +124,51 @@ describe('PersistenceTablesStorageService', () => {
 
         expect(apiService.getTables).toHaveBeenCalledTimes(2);
     });
+
+    describe('reloadTables (after a create, rename or delete)', () => {
+        const before: PersistenceTable[] = [
+            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+        ];
+        const after: PersistenceTable[] = [
+            ...before,
+            { id: 2, name: 'Orders', description: '', entry_count: 0, created_at: '', updated_at: '' },
+        ];
+
+        it('does not join a pending load, and keeps its own response over the late stale one', () => {
+            const staleResponse$ = new Subject<PersistenceTable[]>();
+            const freshResponse$ = new Subject<PersistenceTable[]>();
+            apiService.getTables.mockReturnValueOnce(staleResponse$).mockReturnValueOnce(freshResponse$);
+            const reloaded = vi.fn();
+
+            service.loadTables().subscribe();
+            service.reloadTables().subscribe(reloaded);
+            expect(apiService.getTables).toHaveBeenCalledTimes(2);
+
+            freshResponse$.next(after);
+            freshResponse$.complete();
+            expect(reloaded).toHaveBeenCalledWith(after);
+            expect(service.tables().map((table) => table.name)).toEqual(['Customers', 'Orders']);
+
+            staleResponse$.next(before);
+            staleResponse$.complete();
+            expect(service.tables().map((table) => table.name)).toEqual(['Customers', 'Orders']);
+        });
+
+        it('stays the load later callers join, even once the superseded load completes', () => {
+            const staleResponse$ = new Subject<PersistenceTable[]>();
+            const freshResponse$ = new Subject<PersistenceTable[]>();
+            apiService.getTables.mockReturnValueOnce(staleResponse$).mockReturnValueOnce(freshResponse$);
+
+            service.loadTables().subscribe();
+            service.reloadTables().subscribe();
+            // The superseded load's finalize must not drop the reload from inFlightLoad.
+            staleResponse$.next(before);
+            staleResponse$.complete();
+            service.loadTables().subscribe();
+
+            expect(apiService.getTables).toHaveBeenCalledTimes(2);
+            freshResponse$.next(after);
+            expect(service.tables()).toEqual(after);
+        });
+    });
 });

@@ -58,6 +58,16 @@ export class PersistenceTablesStorageService implements StorageService {
         return request$;
     }
 
+    /** For callers that just changed the tables (create, rename, delete): unlike `loadTables()`,
+     *  never joins a load already in flight, which may have started before the change. Moving
+     *  `loadGeneration` on makes that load's late response a stale one, so its `tap` drops it and
+     *  its `finalize` leaves the new `inFlightLoad` alone (see `loadGeneration`, `inFlightGeneration`). */
+    reloadTables(): Observable<PersistenceTable[]> {
+        this.loadGeneration++;
+        this.inFlightLoad = null;
+        return this.loadTables();
+    }
+
     /** Resets the cache on org switch / logout (`AppStorageService.clearAll`, registered via
      *  `providePersistentDataStorages`) so a newly-active org never keeps showing the previous
      *  org's persistence tables. Bumps `refreshTick` (not reset to 0) so any effect watching it
