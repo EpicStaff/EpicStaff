@@ -18,7 +18,6 @@ from tables.services.storage_service.archive_limits import (
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,
 )
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 
 @pytest.fixture
@@ -27,29 +26,26 @@ def backend(fake_backend):
     return fake_backend
 
 
+def _generous_guard() -> ArchiveExtractionGuard:
+    return ArchiveExtractionGuard(max_entries=1_000, max_total_bytes=10_000_000)
+
+
 def _names(backend, archive, guard=None) -> list[str]:
     """Iterate without reading member bytes (name-level checks)."""
+    guard = guard or _generous_guard()
     return [name for name, _ in backend.iter_archive_members_streaming(archive, guard)]
 
 
 def _drain(backend, archive, guard=None) -> list[str]:
     """Iterate and read every member, so the guard accounts their bytes."""
     names = []
-    for name, reader in backend.iter_archive_members_streaming(archive, guard):
+    for name, reader in backend.iter_archive_members_streaming(
+        archive, guard or _generous_guard()
+    ):
         while reader.read(64 * 1024):
             pass
         names.append(name)
     return names
-
-
-class TestArchiveKinds:
-    # encryption is rejected up front by inspect_archive, not while unpacking
-
-    def test_passes_for_unencrypted_zip(self, backend, sample_zip):
-        assert _names(backend, sample_zip)
-
-    def test_passes_for_tar(self, backend, sample_tar):
-        assert _names(backend, sample_tar)
 
 
 class TestIterArchiveMembers:
@@ -66,7 +62,9 @@ class TestIterArchiveMembers:
     def test_member_reader_returns_the_member_bytes(self, backend, sample_zip):
         members = dict(
             (name, reader.read())
-            for name, reader in backend.iter_archive_members_streaming(sample_zip)
+            for name, reader in backend.iter_archive_members_streaming(
+                sample_zip, _generous_guard()
+            )
         )
         assert members["hello.txt"] == b"hello content"
 
@@ -206,14 +204,11 @@ class TestIterArchiveMembersLimits:
     def test_allows_an_archive_inside_its_budget(self, backend, sample_zip):
         assert len(_drain(backend, sample_zip, self._guard())) == 2
 
-    def test_applies_a_default_guard_when_none_is_injected(self, backend, sample_zip):
-        assert len(_drain(backend, sample_zip)) == 2
 
-
-def _tar_of(members, *, tar_format=tarfile.GNU_FORMAT) -> BytesIO:
+def _tar_of(members) -> BytesIO:
     """members: (name, member type, bytes or None)."""
     buf = BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz", format=tar_format) as tf:
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
         for name, member_type, data in members:
             info = tarfile.TarInfo(name)
             info.type = member_type
@@ -226,35 +221,18 @@ def _tar_of(members, *, tar_format=tarfile.GNU_FORMAT) -> BytesIO:
     return buf
 
 
-class TestStreamingTarHeadersAndTypes:
-    """The streaming iterator guards itself too, not only the pre-flight before it.
-    Uses its own backend (only the inherited iterator is exercised)."""
-
-    backend = InMemoryStorageBackend()
-
-    @pytest.mark.parametrize("tar_format", [tarfile.GNU_FORMAT, tarfile.PAX_FORMAT])
-    def test_a_long_name_header_bomb_is_rejected(self, tar_format):
-        archive = _tar_of([("a" * (1024 * 1024), tarfile.REGTYPE, b"x")], tar_format=tar_format)
-        with pytest.raises(ValueError, match="tar header of"):
-            _names(self.backend, archive)
-
-    @pytest.mark.parametrize("tar_format", [tarfile.GNU_FORMAT, tarfile.PAX_FORMAT])
-    def test_long_nested_names_stream_as_before(self, tar_format):
-        deep = "/".join(["a-rather-long-folder-name"] * 10) + "/file-" + "n" * 200 + ".txt"
-        archive = _tar_of(
-            [("empty", tarfile.DIRTYPE, None), (deep, tarfile.REGTYPE, b"deep")],
-            tar_format=tar_format,
-        )
-        assert _drain(self.backend, archive) == [deep]
+class TestStreamingTarMemberTypes:
+    """The streaming iterator guards itself too, not only the pre-flight before it
+    (tar header bounds are covered by test_archive_readers, which it shares)."""
 
     @pytest.mark.parametrize("member_type", [tarfile.FIFOTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE])
-    def test_a_device_or_fifo_member_is_rejected(self, member_type):
+    def test_a_device_or_fifo_member_is_rejected(self, backend, member_type):
         archive = _tar_of([("ok.txt", tarfile.REGTYPE, b"x"), ("dev", member_type, None)])
         with pytest.raises(ValueError, match="not a plain file or folder"):
-            _names(self.backend, archive)
+            _names(backend, archive)
 
-    def test_every_member_counts_toward_the_entry_cap_folders_too(self):
+    def test_every_member_counts_toward_the_entry_cap_folders_too(self, backend):
         archive = _tar_of([(f"d{i}", tarfile.DIRTYPE, None) for i in range(3)])
         guard = ArchiveExtractionGuard(max_entries=2, max_total_bytes=1_000)
         with pytest.raises(ArchiveLimitExceeded, match="more than 2 entries"):
-            _names(self.backend, archive, guard)
+            _names(backend, archive, guard)

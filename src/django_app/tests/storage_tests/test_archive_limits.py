@@ -103,21 +103,3 @@ def test_limit_error_is_a_value_error_so_the_upload_returns_400():
     """upload_archive maps ValueError to a ValidationError response."""
     assert issubclass(ArchiveLimitExceeded, ValueError)
 
-
-def test_replaying_reader_fills_every_read_until_eof():
-    # boto makes one multipart part per read(); a short read mid-stream would be
-    # a part under S3's 5 MiB minimum and fail CompleteMultipartUpload
-    import io
-
-    from tables.services.storage_service.archive_member_upload import _ReplayingReader
-
-    class _Trickle(io.BytesIO):
-        def read(self, size=-1):
-            return super().read(min(size, 3) if size and size > 0 else size)
-
-    reader = _ReplayingReader(b"0123456789A", _Trickle(b"B" * 25))
-    sizes = []
-    while chunk := reader.read(8):
-        sizes.append(len(chunk))
-    assert sizes == [8, 8, 8, 8, 4]
-    assert reader.bytes_read == 36

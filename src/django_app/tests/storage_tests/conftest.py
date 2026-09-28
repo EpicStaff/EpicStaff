@@ -109,32 +109,5 @@ def sample_tar():
 
 
 @pytest.fixture
-def password_zip():
-    """ZIP with password-protected (encrypted) entry flag set."""
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("secret.txt", "secret content")
-    # Manually set the encryption flag bit on the first entry
-    buf.seek(0)
-    data = bytearray(buf.read())
-    # Find the local file header flag field and set bit 0 (encrypted)
-    # Local file header signature: PK\x03\x04 at offset 0
-    # General purpose bit flag is at offset 6 from start of local header
-    flag_offset = 6
-    data[flag_offset] |= 0x01
-    # Also update the central directory entry flag
-    # Find central directory: PK\x01\x02
-    cd_sig = b"PK\x01\x02"
-    cd_offset = data.find(cd_sig)
-    if cd_offset >= 0:
-        cd_flag_offset = cd_offset + 8
-        data[cd_flag_offset] |= 0x01
-    buf = BytesIO(bytes(data))
-    buf.seek(0)
-    buf.name = "encrypted.zip"
-    return buf
-
-
-@pytest.fixture
 def api_client():
     return APIClient()

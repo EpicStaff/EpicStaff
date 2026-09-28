@@ -30,8 +30,9 @@ async def test_a_full_worker_answers_503_with_retry_after_once_the_wait_runs_out
 
 
 @pytest.mark.asyncio
-async def test_a_waiter_gets_the_slot_as_soon_as_it_frees_up():
-    admission = _admission(max_concurrency=1, slot_timeout=5)
+@pytest.mark.parametrize("slot_timeout", [5, None], ids=["bounded-wait", "no-slot-timeout"])
+async def test_a_waiter_gets_the_slot_as_soon_as_it_frees_up(slot_timeout):
+    admission = _admission(max_concurrency=1, slot_timeout=slot_timeout)
     release = asyncio.Event()
 
     async def _hold():
@@ -40,7 +41,7 @@ async def test_a_waiter_gets_the_slot_as_soon_as_it_frees_up():
 
     holder = asyncio.create_task(_hold())
     await asyncio.sleep(0)
-    asyncio.get_running_loop().call_later(0.02, release.set)
+    asyncio.get_running_loop().call_later(0.05, release.set)
 
     async with admission.admit(ORG_B):
         assert admission.uploads_of(ORG_B) == 1
@@ -136,24 +137,6 @@ async def test_a_waiter_cancelled_before_it_got_a_slot_leaves_nothing_behind():
     assert admission.uploads_of(ORG_A) == 0
     async with admission.admit(ORG_A):
         pass
-
-
-@pytest.mark.asyncio
-async def test_no_slot_timeout_waits_for_a_slot_however_long_it_takes():
-    admission = _admission(max_concurrency=1, slot_timeout=None)
-    release = asyncio.Event()
-
-    async def _hold():
-        async with admission.admit(ORG_A):
-            await release.wait()
-
-    holder = asyncio.create_task(_hold())
-    await asyncio.sleep(0)
-    asyncio.get_running_loop().call_later(0.05, release.set)
-
-    async with admission.admit(ORG_B):
-        assert admission.uploads_of(ORG_B) == 1
-    await holder
 
 
 @pytest.mark.asyncio

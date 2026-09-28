@@ -71,10 +71,10 @@ def _names(file_object) -> list[str]:
 
 
 class TestExtendedHeaderBound:
-    def test_a_gnu_long_name_over_the_bound_is_rejected_in_a_tar_gz(self):
+    @pytest.mark.parametrize("tar_format", [tarfile.GNU_FORMAT, tarfile.PAX_FORMAT])
+    def test_a_long_name_over_the_bound_is_rejected_in_a_tar_gz(self, tar_format):
         # 1 MiB of name compresses to about 1 KiB: the upload is tiny, the header is not
-        long_name = "a" * (1024 * 1024)
-        archive = _tar([(long_name, b"x")], mode="w:gz")
+        archive = _tar([("a" * (1024 * 1024), b"x")], tar_format=tar_format, mode="w:gz")
         assert len(archive.getvalue()) < 16 * 1024
 
         with pytest.raises(UnsafeTarHeader, match="tar header of"):
@@ -96,13 +96,6 @@ class TestExtendedHeaderBound:
         )
         with pytest.raises(UnsafeTarHeader):
             _names(io.BytesIO(raw))
-
-    def test_a_pax_header_over_the_bound_is_rejected(self):
-        long_name = "p" * (1024 * 1024)
-        archive = _tar([(long_name, b"x")], tar_format=tarfile.PAX_FORMAT, mode="w:gz")
-
-        with pytest.raises(UnsafeTarHeader, match="tar header of"):
-            _names(archive)
 
     def test_a_header_just_under_the_bound_is_read(self):
         name = "n" * (MAX_TAR_EXTENDED_HEADER_BYTES - 1)  # plus NUL = the bound exactly
@@ -163,27 +156,29 @@ class TestGlobalHeadersAndChains:
         assert _names(io.BytesIO(raw)) == ["real-name.txt"]
 
 
-class TestSparseMembers:
-    def test_an_old_gnu_sparse_member_is_rejected_before_its_map_is_read(self):
-        raw = _header("sparse.bin", tarfile.GNUTYPE_SPARSE, 0) + END_OF_ARCHIVE
-        with pytest.raises(UnsafeTarHeader, match="sparse"):
-            _names(io.BytesIO(raw))
+def _old_gnu_sparse() -> bytes:
+    return _header("sparse.bin", tarfile.GNUTYPE_SPARSE, 0) + END_OF_ARCHIVE
 
-    def test_a_gnu_sparse_1_0_member_is_rejected_before_its_map_is_read(self):
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tf:
-            info = tarfile.TarInfo("GNUSparseFile.0/sparse.bin")
-            info.size = BLOCK
-            info.pax_headers = {
-                "GNU.sparse.major": "1",
-                "GNU.sparse.minor": "0",
-                "GNU.sparse.name": "sparse.bin",
-                "GNU.sparse.realsize": "1000000",
-            }
-            tf.addfile(info, io.BytesIO(b"1\n0\n1\n" + b"\0" * (BLOCK - 6)))
-        buf.seek(0)
-        with pytest.raises(UnsafeTarHeader, match="sparse"):
-            _names(buf)
+
+def _gnu_sparse_1_0() -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tf:
+        info = tarfile.TarInfo("GNUSparseFile.0/sparse.bin")
+        info.size = BLOCK
+        info.pax_headers = {
+            "GNU.sparse.major": "1",
+            "GNU.sparse.minor": "0",
+            "GNU.sparse.name": "sparse.bin",
+            "GNU.sparse.realsize": "1000000",
+        }
+        tf.addfile(info, io.BytesIO(b"1\n0\n1\n" + b"\0" * (BLOCK - 6)))
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("raw", [_old_gnu_sparse(), _gnu_sparse_1_0()], ids=["old-gnu", "gnu-1.0"])
+def test_a_sparse_member_is_rejected_before_its_map_is_read(raw):
+    with pytest.raises(UnsafeTarHeader, match="sparse"):
+        _names(io.BytesIO(raw))
 
 
 class TestIteration:
@@ -259,9 +254,25 @@ def _as_zip64(raw: bytes, declared: int | None = None) -> bytes:
     return raw[:eocd] + record + locator + end
 
 
+def _self_extractor_style_zip() -> bytes:
+    buf = io.BytesIO()
+    buf.write(b"#!/bin/sh\nexit 0\n")  # self-extractor style prefix
+    with zipfile.ZipFile(buf, "a") as zf:
+        zf.comment = b"c" * 300
+        for i in range(4):
+            zf.writestr(f"f{i}", b"x")
+    return buf.getvalue()
+
+
 class TestZipEntryCount:
-    def test_counts_the_entries_of_a_normal_zip(self):
-        assert zip_entry_count(io.BytesIO(_zip_bytes(5)), stop_after=100) == 5
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [(_zip_bytes(5), 5), (_as_zip64(_zip_bytes(5)), 5), (_self_extractor_style_zip(), 4)],
+        ids=["normal", "zip64", "comment-and-prepended-bytes"],
+    )
+    def test_counts_the_entries(self, raw, expected):
+        assert len(zipfile.ZipFile(io.BytesIO(raw)).infolist()) == expected
+        assert zip_entry_count(io.BytesIO(raw), stop_after=100) == expected
 
     def test_answers_over_the_limit_for_a_zip_past_it(self):
         assert zip_entry_count(io.BytesIO(_zip_bytes(50)), stop_after=3) > 3
@@ -270,29 +281,15 @@ class TestZipEntryCount:
         raw = _with_declared_count(_zip_bytes(2), 1000)
         assert zip_entry_count(io.BytesIO(raw), stop_after=10) == 1000
 
-    def test_a_declared_count_that_lies_low_is_not_trusted(self):
+    @pytest.mark.parametrize(
+        "raw",
+        [_with_declared_count(_zip_bytes(6), 1), _as_zip64(_zip_bytes(6), declared=1)],
+        ids=["normal", "zip64"],
+    )
+    def test_a_declared_count_that_lies_low_is_not_trusted(self, raw):
         # zipfile ignores the declared count and parses the whole directory
-        raw = _with_declared_count(_zip_bytes(6), 1)
         assert len(zipfile.ZipFile(io.BytesIO(raw)).infolist()) == 6
         assert zip_entry_count(io.BytesIO(raw), stop_after=3) == 4
-
-    def test_counts_a_zip64_archive(self):
-        raw = _as_zip64(_zip_bytes(5))
-        assert len(zipfile.ZipFile(io.BytesIO(raw)).infolist()) == 5
-        assert zip_entry_count(io.BytesIO(raw), stop_after=100) == 5
-
-    def test_a_zip64_declared_count_that_lies_low_is_not_trusted(self):
-        raw = _as_zip64(_zip_bytes(6), declared=1)
-        assert zip_entry_count(io.BytesIO(raw), stop_after=3) == 4
-
-    def test_counts_a_zip_with_a_comment_and_prepended_bytes(self):
-        buf = io.BytesIO()
-        buf.write(b"#!/bin/sh\nexit 0\n")  # self-extractor style prefix
-        with zipfile.ZipFile(buf, "a") as zf:
-            zf.comment = b"c" * 300
-            for i in range(4):
-                zf.writestr(f"f{i}", b"x")
-        assert zip_entry_count(io.BytesIO(buf.getvalue()), stop_after=100) == 4
 
     def test_a_wrecked_directory_stops_the_count_and_is_left_to_zipfile(self):
         raw = bytearray(_zip_bytes(3))

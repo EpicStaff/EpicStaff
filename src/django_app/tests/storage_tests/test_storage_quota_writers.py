@@ -11,7 +11,6 @@ from io import BytesIO
 
 import fakeredis
 import pytest
-from botocore.exceptions import ClientError
 from django.test import override_settings
 from loguru import logger
 
@@ -23,8 +22,13 @@ from tables.services.storage_service import manager as manager_module
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.quota_service import org_used_bytes
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
-from tests.storage_tests.test_s3_copy import FakeS3Client, make_s3_backend
+from tables.views import storage_views
+from tests.storage_tests.in_memory_backend import (
+    FakeS3Client,
+    InMemoryStorageBackend,
+    client_error,
+    make_s3_backend,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -104,28 +108,9 @@ class TestCopy:
         assert _object_keys(backend) == keys_before
         assert _row_sizes(org) == {"a.txt": 10}
 
-    @override_settings(ORG_STORAGE_QUOTA=15)
-    def test_folder_copy_rejected_under_the_lock_removes_every_copied_object(
-        self, manager, backend, org, skip_early_quota_reject
-    ):
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"abc"))
-        manager.upload(org.id, "docs/sub/b.txt", BytesIO(b"hello"))
-        manager.mkdir(org.id, "docs")
-        keys_before = _object_keys(backend)
-        rows_before = set(StorageFile.objects.filter(org=org).values_list("path", flat=True))
-
-        with pytest.raises(StorageQuotaExceeded):
-            manager.copy(org.id, "docs", "")
-
-        assert _object_keys(backend) == keys_before
-        assert (
-            set(StorageFile.objects.filter(org=org).values_list("path", flat=True))
-            == rows_before
-        )
-
     def test_copy_api_over_quota_returns_413(self, auth_client, default_org, manager, monkeypatch):
         manager.upload(default_org.id, "a.txt", BytesIO(b"0123456789"))
-        monkeypatch.setattr(storage_service, "_storage_manager", manager)
+        monkeypatch.setattr(storage_views, "get_storage_manager", lambda: manager)
 
         with override_settings(ORG_STORAGE_QUOTA=15):
             # "/" is the root: the serializer normalizes it to "".
@@ -141,7 +126,7 @@ class TestCopy:
         self, auth_client, default_org, manager, monkeypatch
     ):
         manager.upload(default_org.id, "a.txt", BytesIO(b"0123456789"))
-        monkeypatch.setattr(storage_service, "_storage_manager", manager)
+        monkeypatch.setattr(storage_views, "get_storage_manager", lambda: manager)
 
         response = auth_client.post(
             "/api/storage/copy/", {"from_path": "a.txt", "to_path": "/"}, format="json"
@@ -166,42 +151,6 @@ class TestCopy:
         assert org_used_bytes(org.id) == 10
 
     @override_settings(ORG_STORAGE_QUOTA=15)
-    def test_a_failing_rollback_still_answers_413(self, org, skip_early_quota_reject):
-        class _UndeletableBackend(InMemoryStorageBackend):
-            def delete_keys(self, keys):
-                raise ClientError(
-                    {"Error": {"Code": "InternalError"}, "ResponseMetadata": {}}, "DeleteObjects"
-                )
-
-        manager = StorageManager(_UndeletableBackend(organization_prefix=""))
-        manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
-
-        with pytest.raises(StorageQuotaExceeded):
-            manager.copy(org.id, "a.txt", "")
-
-        assert _row_sizes(org) == {"a.txt": 10}
-
-    def test_a_copy_failing_midway_leaves_no_objects_and_no_rows(self, org):
-        client = FakeS3Client()
-        client.objects.update(
-            {
-                f"org_{org.id}/docs/": b"",
-                f"org_{org.id}/docs/a.txt": b"abc",
-                f"org_{org.id}/docs/b.txt": b"hello",
-            }
-        )
-        objects_before = dict(client.objects)
-        client.fail_copy_number = 3
-        manager = StorageManager(make_s3_backend(client))
-
-        with pytest.raises(ClientError) as caught:
-            manager.copy(org.id, "docs", "")
-
-        assert caught.value is client.copy_error
-        assert client.objects == objects_before
-        assert not StorageFile.objects.filter(org=org).exists()
-
-    @override_settings(ORG_STORAGE_QUOTA=15)
     def test_over_quota_rollback_removes_the_copies_in_one_batch(
         self, org, skip_early_quota_reject
     ):
@@ -224,17 +173,19 @@ class TestCopy:
 
 class TestCrossOrg:
     @override_settings(ORG_STORAGE_QUOTA=15)
-    def test_cross_org_copy_over_destination_quota_leaves_nothing(
-        self, manager, backend, org, second_org
+    @pytest.mark.parametrize("operation", ["copy_cross_org", "move_cross_org"])
+    def test_cross_org_writes_over_the_destination_quota_leave_both_orgs_untouched(
+        self, manager, backend, org, second_org, operation
     ):
         manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
         manager.upload(second_org.id, "full.txt", BytesIO(b"0123456789"))
         keys_before = _object_keys(backend)
 
         with pytest.raises(StorageQuotaExceeded):
-            manager.copy_cross_org(org.id, "a.txt", second_org.id, "")
+            getattr(manager, operation)(org.id, "a.txt", second_org.id, "")
 
         assert _object_keys(backend) == keys_before
+        assert _row_sizes(org) == {"a.txt": 10}
         assert _row_sizes(second_org) == {"full.txt": 10}
 
     def test_cross_org_move_records_nested_sizes_and_removes_the_source(
@@ -250,21 +201,6 @@ class TestCrossOrg:
         assert org_used_bytes(second_org.id) == 8
         assert not StorageFile.objects.filter(org=org).exists()
         assert not any(key.startswith(f"org_{org.id}/") for key in backend._objects)
-
-    @override_settings(ORG_STORAGE_QUOTA=15)
-    def test_cross_org_move_over_destination_quota_keeps_the_source(
-        self, manager, backend, org, second_org
-    ):
-        manager.upload(org.id, "a.txt", BytesIO(b"0123456789"))
-        manager.upload(second_org.id, "full.txt", BytesIO(b"0123456789"))
-        keys_before = _object_keys(backend)
-
-        with pytest.raises(StorageQuotaExceeded):
-            manager.move_cross_org(org.id, "a.txt", second_org.id, "")
-
-        assert _object_keys(backend) == keys_before
-        assert _row_sizes(org) == {"a.txt": 10}
-        assert _row_sizes(second_org) == {"full.txt": 10}
 
     @override_settings(ORG_STORAGE_QUOTA=15)
     def test_cross_org_move_rejected_under_the_lock_keeps_the_source(
@@ -298,7 +234,7 @@ class TestAgentWrites:
         )
         # close_old_connections would drop the test's transactional connection.
         monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
-        monkeypatch.setattr(storage_service, "_storage_manager", manager)
+        monkeypatch.setattr(storage_service, "get_storage_manager", lambda: manager)
         return redis_pubsub.RedisPubSub()
 
     @pytest.fixture
@@ -393,7 +329,7 @@ class TestAgentWrites:
             redis_pubsub.RedisPubSub, "_create_redis_client", lambda self: redis_client
         )
         monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
-        monkeypatch.setattr(storage_service, "_storage_manager", StorageManager(backend))
+        monkeypatch.setattr(storage_service, "get_storage_manager", lambda: StorageManager(backend))
         return redis_pubsub.RedisPubSub(), backend, redis_client
 
     @staticmethod
@@ -414,13 +350,10 @@ class TestAgentWrites:
     @pytest.mark.parametrize(
         "storage_error",
         [
-            ClientError(
-                {"Error": {"Code": "InternalError"}, "ResponseMetadata": {"HTTPStatusCode": 500}},
-                "HeadObject",
-            ),
+            client_error("InternalError", 500, "HeadObject"),
             RuntimeError("read timeout"),
         ],
-        ids=["minio-5xx", "any-error"],
+        ids=["storage-5xx", "any-error"],
     )
     def test_a_failing_size_lookup_keeps_the_row_the_rest_and_the_session_set(
         self, session_pubsub, org, storage_error

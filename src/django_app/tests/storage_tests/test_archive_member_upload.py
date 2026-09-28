@@ -2,7 +2,6 @@
 back exactly its own keys: never a neighbour that shares the folder's name."""
 
 import io
-import zipfile
 
 import pytest
 
@@ -10,44 +9,25 @@ from tables.services.storage_service.archive_limits import (
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,
 )
-from tables.services.storage_service.archive_member_upload import upload_archive_members
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tables.services.storage_service.archive_member_upload import (
+    _ReplayingReader,
+    upload_archive_members,
+)
+from tables.services.storage_service.base import StorageUnreachable
+from tests.storage_tests.in_memory_backend import (
+    FailingInMemoryBackend,
+    InMemoryStorageBackend,
+    zip_bytes,
+)
 from utils.logger import logger
 
 FOLDER = "org_1/report"
 
 
-def _zip(members: dict[str, bytes]) -> io.BytesIO:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        for name, data in members.items():
-            zf.writestr(name, data)
-    buf.seek(0)
-    return buf
-
-
-class _StoreFailingOn(InMemoryStorageBackend):
-    """Object store double that refuses one key, as MinIO would on an outage."""
-
-    def __init__(self, failing_key: str):
-        super().__init__()
-        self.failing_key = failing_key
-
-    def put_bytes(self, path: str, data: bytes) -> int:
-        if path == self.failing_key:
-            raise ConnectionError("minio went away")
-        return super().put_bytes(path, data)
-
-    def upload_stream(self, path: str, file_object, *, part_size: int) -> None:
-        if path == self.failing_key:
-            raise ConnectionError("minio went away")
-        super().upload_stream(path, file_object, part_size=part_size)
-
-
-def _upload(backend, archive, *, guard=None, part_size=1024, workers=2):
+def _upload(backend, members: dict[str, bytes], *, guard=None, workers=2):
     guard = guard or ArchiveExtractionGuard(max_entries=100, max_total_bytes=10_000)
     return upload_archive_members(
-        archive, guard, backend, FOLDER, part_size=part_size, workers=workers
+        io.BytesIO(zip_bytes(members)), guard, backend, FOLDER, workers=workers
     )
 
 
@@ -55,23 +35,34 @@ def _keys_under_folder(backend) -> list[str]:
     return [key for key in backend._objects if key.startswith(FOLDER + "/")]
 
 
-def test_returns_the_sizes_and_keeps_every_member():
-    backend = InMemoryStorageBackend()
-    sizes = _upload(backend, _zip({"a.txt": b"aa", "sub/b.txt": b"bbb"}))
-    assert sizes == {"a.txt": 2, "sub/b.txt": 3}
-    assert sorted(_keys_under_folder(backend)) == [f"{FOLDER}/a.txt", f"{FOLDER}/sub/b.txt"]
+def test_small_members_go_through_the_put_pool_and_big_ones_stream():
+    # part_size 4: "tiny" goes through the PUT pool, "big.bin" through upload_stream
+    backend = InMemoryStorageBackend(part_size=4)
+    members = {f"sub/s{index}.txt": b"tiny" for index in range(5)} | {"big.bin": b"0123456789"}
+
+    sizes = _upload(backend, members)
+
+    assert sizes == {name: len(data) for name, data in members.items()}
+    assert {key: backend._objects[key][0] for key in _keys_under_folder(backend)} == {
+        f"{FOLDER}/{name}": data for name, data in members.items()
+    }
 
 
-def test_a_failed_put_takes_back_the_members_but_no_neighbour_sharing_the_name():
-    # MinIO never holds a file at FOLDER itself (nothing could be written under it),
-    # but a file whose key starts like the folder's and another upload's file inside
+@pytest.mark.parametrize(
+    ("failing_key", "part_size"), [("c.txt", 1024), ("z.txt", 4)], ids=["put", "streamed"]
+)
+def test_a_failed_write_takes_back_the_members_but_no_neighbour_sharing_the_name(
+    failing_key, part_size
+):
+    # A file whose key starts like the folder's and another upload's file inside
     # the folder are not this call's to delete.
-    backend = _StoreFailingOn(f"{FOLDER}/c.txt")
+    backend = FailingInMemoryBackend(f"{FOLDER}/{failing_key}", part_size=part_size)
     backend.put_bytes(f"{FOLDER}.txt", b"the user's own file named like the folder")
     backend.put_bytes(f"{FOLDER}/other.txt", b"written by another upload")
+    members = {"big.bin": b"0123456789", "a.txt": b"a", "c.txt": b"c", "z.txt": b"z"}
 
-    with pytest.raises(ConnectionError, match="minio went away"):
-        _upload(backend, _zip({"a.txt": b"a", "b.txt": b"b", "c.txt": b"c", "d.txt": b"d"}))
+    with pytest.raises(StorageUnreachable):
+        _upload(backend, members)
 
     assert _keys_under_folder(backend) == [f"{FOLDER}/other.txt"]
     assert backend._objects[f"{FOLDER}.txt"][0] == b"the user's own file named like the folder"
@@ -82,24 +73,13 @@ def test_a_limit_hit_mid_archive_takes_back_the_members_already_written():
     guard = ArchiveExtractionGuard(max_entries=100, max_total_bytes=10)
 
     with pytest.raises(ArchiveLimitExceeded):
-        _upload(backend, _zip({"a.txt": b"x" * 6, "b.txt": b"y" * 6}), guard=guard)
-
-    assert _keys_under_folder(backend) == []
-
-
-def test_a_streamed_member_is_taken_back_too():
-    # part_size 4: "big.bin" goes through upload_stream, not the PUT pool
-    backend = _StoreFailingOn(f"{FOLDER}/z.txt")
-    archive = _zip({"big.bin": b"0123456789", "z.txt": b"z"})
-
-    with pytest.raises(ConnectionError):
-        _upload(backend, archive, part_size=4)
+        _upload(backend, {"a.txt": b"x" * 6, "b.txt": b"y" * 6}, guard=guard)
 
     assert _keys_under_folder(backend) == []
 
 
 def test_a_failing_cleanup_is_logged_and_the_original_error_still_raised():
-    backend = _StoreFailingOn(f"{FOLDER}/b.txt")
+    backend = FailingInMemoryBackend(f"{FOLDER}/b.txt")
 
     def _delete_fails(_keys):
         raise RuntimeError("delete failed too")
@@ -108,9 +88,25 @@ def test_a_failing_cleanup_is_logged_and_the_original_error_still_raised():
     messages: list[str] = []
     sink_id = logger.add(lambda message: messages.append(str(message)), level="ERROR")
     try:
-        with pytest.raises(ConnectionError, match="minio went away"):
-            _upload(backend, _zip({"a.txt": b"a", "b.txt": b"b"}))
+        with pytest.raises(StorageUnreachable):
+            _upload(backend, {"a.txt": b"a", "b.txt": b"b"})
     finally:
         logger.remove(sink_id)
 
     assert any("Could not remove" in message for message in messages)
+
+
+def test_a_streamed_member_fills_every_read_until_eof():
+    # one multipart part per read(): a short read mid-stream would be a part under
+    # the S3 minimum and fail CompleteMultipartUpload
+    class _Trickle(io.BytesIO):
+        def read(self, size=-1):
+            return super().read(min(size, 3) if size and size > 0 else size)
+
+    reader = _ReplayingReader(b"0123456789A", _Trickle(b"B" * 25))
+    sizes = []
+    while chunk := reader.read(8):
+        sizes.append(len(chunk))
+
+    assert sizes == [8, 8, 8, 8, 4]
+    assert reader.bytes_read == 36

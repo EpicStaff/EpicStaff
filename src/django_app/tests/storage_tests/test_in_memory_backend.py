@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tables.services.storage_service.dataclasses import FileInfo, FolderInfo
 
@@ -230,3 +231,11 @@ class TestListTree:
         assert len(root.children) <= 3
 
 
+def test_a_key_under_a_file_is_refused_like_the_s3_backend_reports_it(fake_backend):
+    fake_backend.put_bytes("org_7/report", b"keep me")
+
+    with pytest.raises(ClientError) as caught:
+        fake_backend.put_bytes("org_7/report/a.txt", b"a")
+    assert caught.value.response["Error"]["Code"] == "XMinioParentIsObject"
+    assert caught.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+    assert list(fake_backend._objects) == ["org_7/report"]

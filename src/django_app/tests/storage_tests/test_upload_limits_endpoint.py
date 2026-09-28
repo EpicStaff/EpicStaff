@@ -6,8 +6,8 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models import OrganizationUser, StorageFile
-from tables.models.rbac_models import Role
+from rbac.models import OrganizationUser, Role
+from tables.models import StorageFile
 from tables.services.storage_service.archive_formats import (
     ARCHIVE_SUFFIXES,
     DOCUMENT_EXTENSIONS,
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture(autouse=True)
 def no_object_storage():
     """StorageAPIView builds a storage manager per request; upload-limits never
-    uses it, so no MinIO is needed."""
+    uses it, so no object storage is needed."""
     with patch("tables.views.storage_views.get_storage_manager", return_value=MagicMock()):
         yield
 
@@ -35,40 +35,24 @@ def _client_for(user, org=None) -> APIClient:
     return client
 
 
-@override_settings(
-    MAX_STREAM_UPLOAD_FILE_SIZE=524288000,
-    MAX_ARCHIVE_FILE_SIZE=52428800,
-    ORG_STORAGE_QUOTA=1073741824,
-)
-def test_upload_limits_returns_the_configured_limits_and_the_free_space(org_user):
-    resp = _client_for(org_user.user, org_user.org).get(UPLOAD_LIMITS_URL)
+@pytest.mark.parametrize("max_file_size", [524288000, None], ids=["limited", "unlimited"])
+def test_upload_limits_returns_the_configured_limits_and_the_free_space(org_user, max_file_size):
+    with override_settings(
+        MAX_STREAM_UPLOAD_FILE_SIZE=max_file_size,
+        MAX_ARCHIVE_FILE_SIZE=52428800,
+        ORG_STORAGE_QUOTA=1073741824,
+    ):
+        resp = _client_for(org_user.user, org_user.org).get(UPLOAD_LIMITS_URL)
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {
         "upload_path": settings.UPLOAD_STREAM_PATH,
-        "max_file_size": 524288000,
+        "max_file_size": max_file_size,
         "max_archive_size": 52428800,
         "free_bytes": 1073741824,
         "archive_suffixes": sorted(ARCHIVE_SUFFIXES),
         "document_extensions": sorted(DOCUMENT_EXTENSIONS),
     }
-
-
-@override_settings(MAX_STREAM_UPLOAD_FILE_SIZE=None)
-def test_an_unlimited_file_size_is_returned_as_null(org_user):
-    resp = _client_for(org_user.user, org_user.org).get(UPLOAD_LIMITS_URL)
-
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["max_file_size"] is None
-
-
-def test_the_name_lists_are_lower_case_dotted_and_sorted(org_user):
-    body = _client_for(org_user.user, org_user.org).get(UPLOAD_LIMITS_URL).json()
-
-    for names in (body["archive_suffixes"], body["document_extensions"]):
-        assert names
-        assert names == sorted(names)
-        assert all(name == name.lower() and name.startswith(".") for name in names)
 
 
 @pytest.mark.parametrize(

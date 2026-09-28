@@ -172,7 +172,7 @@ async def upload_file(
 ) -> dict:
     """Stream a plain file from the request body (`chunks`) into object storage and
     record it. Returns {"path", "size"}."""
-    backend = backend or get_storage_backend()
+    backend = backend or get_storage_backend(organization_prefix="")
     target = _target_path(path, filename, validator or FileValidator())
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
     # Early reject before waiting for a slot, with no DB work so no connection is
@@ -200,7 +200,7 @@ async def upload_archive(
     it and unpack it into a new folder in object storage; the unpacked size is
     bounded only by the org's free space. Returns {"path", "extracted"}, or
     {"path", "size"} when the file only looked like an archive and was stored as is."""
-    backend = backend or get_storage_backend()
+    backend = backend or get_storage_backend(organization_prefix="")
     validator = validator or FileValidator()
     target = _target_path(path, filename, validator)  # before the body is read
 

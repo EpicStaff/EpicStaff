@@ -1,115 +1,26 @@
 """
-S3StorageBackend copy / delete_keys / head_file against a dict-backed fake S3
-client: copies return the sizes the store reports, a copy failing midway leaves
-no objects behind, and cleanup deletes exactly the created keys in batches.
+S3StorageBackend against a dict-backed fake S3 client: streamed uploads split
+into exact parts and abort on failure, copies return the sizes the store reports
+and leave nothing behind when they fail, cleanup deletes exactly the created keys
+in batches, and storage outages surface as StorageUnreachable.
 """
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
-from botocore.exceptions import ClientError, EndpointConnectionError
+from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
 
 from tables.services.storage_service import s3_backend as s3_backend_module
+from tables.services.storage_service.base import StorageUnreachable
 from tables.services.storage_service.dataclasses import FileInfo
 from tables.services.storage_service.s3_backend import S3StorageBackend
-
-_MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _client_error(code: str, status: int, operation: str) -> ClientError:
-    return ClientError(
-        {"Error": {"Code": code}, "ResponseMetadata": {"HTTPStatusCode": status}}, operation
-    )
-
-
-class _Paginator:
-    def __init__(self, client, page_size):
-        self._client = client
-        self._page_size = page_size
-
-    def paginate(self, *, Bucket, Prefix):
-        keys = sorted(key for key in self._client.objects if key.startswith(Prefix))
-        for start in range(0, len(keys), self._page_size):
-            yield {
-                "Contents": [
-                    {
-                        "Key": key,
-                        "Size": len(self._client.objects[key]),
-                        "LastModified": _MODIFIED,
-                    }
-                    for key in keys[start : start + self._page_size]
-                ]
-            }
-
-
-class FakeS3Client:
-    """The slice of the boto3 S3 client that copy and delete_keys use."""
-
-    def __init__(self, page_size=2):
-        self.objects: dict[str, bytes] = {}
-        self.page_size = page_size
-        self.fail_copy_number: int | None = None  # 1-based copy_object call to fail
-        self.copy_error: BaseException = _client_error("InternalError", 500, "CopyObject")
-        self.delete_error: BaseException | None = None
-        self.delete_batches: list[list[str]] = []
-        self.head_calls: list[str] = []
-        self._copies = 0
-
-    def head_object(self, *, Bucket, Key):
-        self.head_calls.append(Key)
-        if Key not in self.objects:
-            raise _client_error("404", 404, "HeadObject")
-        return {
-            "ContentLength": len(self.objects[Key]),
-            "LastModified": _MODIFIED,
-            "ContentType": "text/plain",
-        }
-
-    def list_objects_v2(self, *, Bucket, Prefix, MaxKeys=1000, Delimiter=None):
-        keys = sorted(key for key in self.objects if key.startswith(Prefix))[:MaxKeys]
-        return {
-            "KeyCount": len(keys),
-            "Contents": [
-                {"Key": key, "Size": len(self.objects[key]), "LastModified": _MODIFIED}
-                for key in keys
-            ],
-        }
-
-    def get_paginator(self, name):
-        assert name == "list_objects_v2"
-        return _Paginator(self, self.page_size)
-
-    def copy_object(self, *, CopySource, Bucket, Key):
-        self._copies += 1
-        if self._copies == self.fail_copy_number:
-            raise self.copy_error
-        self.objects[Key] = self.objects[CopySource["Key"]]
-
-    def delete_objects(self, *, Bucket, Delete):
-        keys = [entry["Key"] for entry in Delete["Objects"]]
-        assert len(keys) <= 1000
-        self.delete_batches.append(keys)
-        if self.delete_error is not None:
-            raise self.delete_error
-        for key in keys:
-            self.objects.pop(key, None)
-        return {}
-
-    def delete_object(self, *, Bucket, Key):
-        self.objects.pop(Key, None)
-
-    def put_object(self, *, Bucket, Key, Body, **_kwargs):
-        self.objects[Key] = bytes(Body)
-
-
-def make_s3_backend(client: FakeS3Client) -> S3StorageBackend:
-    backend = S3StorageBackend.__new__(S3StorageBackend)
-    backend.bucket_name = "bucket"
-    backend.organization_prefix = ""
-    backend.client = client
-    backend._head_file_client = client
-    return backend
+from tests.storage_tests.in_memory_backend import (
+    MODIFIED,
+    FakeS3Client,
+    async_chunks,
+    client_error,
+    make_s3_backend,
+)
 
 
 @pytest.fixture
@@ -119,7 +30,7 @@ def client():
 
 @pytest.fixture
 def backend(client):
-    return make_s3_backend(client)
+    return make_s3_backend(client, part_size=8)
 
 
 def _folder_source(client):
@@ -131,6 +42,87 @@ def _folder_source(client):
             "docs/sub/c.txt": b"0123456789",
         }
     )
+
+
+class TestStreamedUpload:
+    @pytest.mark.parametrize("chunks", [(b"abc", b"de"), ()], ids=["under-one-part", "empty"])
+    @pytest.mark.asyncio
+    async def test_a_body_under_one_part_is_a_single_put(self, backend, client, chunks):
+        body = b"".join(chunks)
+
+        assert await backend.upload_chunks("k", async_chunks(*chunks)) == len(body)
+        assert client.puts == [body]
+        assert client.completed is None
+
+    @pytest.mark.asyncio
+    async def test_parts_are_split_exactly_and_completed_in_order(self, backend, client):
+        body = bytes(range(20))
+
+        total = await backend.upload_chunks("k", async_chunks(body[:3], body[3:19], body[19:]))
+
+        assert total == 20
+        assert [part["PartNumber"] for part in client.completed] == [1, 2, 3]
+        assert b"".join(client.parts[number] for number in (1, 2, 3)) == body
+        assert [len(client.parts[number]) for number in (1, 2, 3)] == [8, 8, 4]
+        assert client.peak_live_parts <= 1
+
+    @pytest.mark.asyncio
+    async def test_a_size_guard_stop_mid_multipart_aborts_the_upload(self, backend, client):
+        def guard(total):
+            if total > 10:
+                raise ValueError("too big")
+
+        with pytest.raises(ValueError):
+            await backend.upload_chunks("k", async_chunks(b"x" * 9, b"x" * 9), size_guard=guard)
+        assert client.aborted
+        assert client.completed is None
+
+    @pytest.mark.asyncio
+    async def test_a_before_commit_failure_aborts_so_nothing_is_replaced(self, backend, client):
+        async def reject(_total):
+            raise ValueError("row rejected")
+
+        with pytest.raises(ValueError):
+            await backend.upload_chunks("k", async_chunks(b"x" * 20), before_commit=reject)
+        assert client.aborted
+        assert client.completed is None
+
+        with pytest.raises(ValueError):
+            await backend.upload_chunks("k", async_chunks(b"abc"), before_commit=reject)
+        assert client.puts == []
+
+
+class TestStorageOutages:
+    @pytest.mark.parametrize(
+        "error",
+        [
+            EndpointConnectionError(endpoint_url="http://storage:9000"),
+            ReadTimeoutError(endpoint_url="http://storage:9000"),
+            client_error("ServiceUnavailable", 503),
+        ],
+        ids=["unreachable", "read-timeout", "5xx"],
+    )
+    def test_an_outage_is_storage_unreachable(self, backend, client, monkeypatch, error):
+        def _fail(**_kwargs):
+            raise error
+
+        monkeypatch.setattr(client, "put_object", _fail)
+
+        with pytest.raises(StorageUnreachable) as caught:
+            backend.put_bytes("k", b"x")
+        assert caught.value.__cause__ is error
+
+    def test_a_4xx_is_a_misconfiguration_not_an_outage(self, backend, client, monkeypatch):
+        error = client_error("AccessDenied", 403)
+
+        def _fail(**_kwargs):
+            raise error
+
+        monkeypatch.setattr(client, "put_object", _fail)
+
+        with pytest.raises(ClientError) as caught:
+            backend.put_bytes("k", b"x")
+        assert caught.value is error
 
 
 class TestCopySizes:
@@ -159,23 +151,24 @@ class TestCopySizes:
 
 
 class TestFolderNaming:
-    """A folder name is taken by a folder or by a file of that name: MinIO refuses
-    keys under an object (XMinioParentIsObject)."""
+    """A folder name is taken by a folder or by a file of that name: some stores
+    (e.g. MinIO) refuse keys under an object."""
 
-    def test_a_file_of_the_same_name_takes_a_folder_name(self, backend, client):
-        client.objects["report"] = b"keep me"
+    @pytest.mark.parametrize(
+        ("existing", "expected"),
+        [
+            ({"report": b"keep me"}, "report (1)"),
+            ({"report/old.txt": b"x", "report (1)": b"y"}, "report (2)"),
+            ({"reports": b"x"}, "report"),
+        ],
+        ids=["same-name-file", "folder-and-file", "free"],
+    )
+    def test_unique_folder_key_skips_folders_and_files_of_that_name(
+        self, backend, client, existing, expected
+    ):
+        client.objects.update(existing)
 
-        assert backend.unique_key("report", is_folder=True) == "report (1)"
-
-    def test_folder_and_file_names_are_both_skipped(self, backend, client):
-        client.objects.update({"report/old.txt": b"x", "report (1)": b"y"})
-
-        assert backend.unique_key("report", is_folder=True) == "report (2)"
-
-    def test_a_free_name_is_kept(self, backend, client):
-        client.objects["reports"] = b"x"
-
-        assert backend.unique_key("report", is_folder=True) == "report"
+        assert backend.unique_key("report", is_folder=True) == expected
 
     def test_a_folder_copied_next_to_a_same_name_file_gets_the_next_name(self, backend, client):
         _folder_source(client)
@@ -191,19 +184,19 @@ class TestFolderNaming:
         }
         assert client.objects["dest/docs"] == b"a file named like the folder"
 
-    def test_a_claim_under_a_same_name_file_is_a_lost_claim(self, backend, client):
-        def put_object(*, Bucket, Key, Body, **_kwargs):
-            raise _client_error("XMinioParentIsObject", 400, "PutObject")
+    def test_a_claim_under_a_same_name_file_is_a_lost_claim(self, backend, client, monkeypatch):
+        def _refuse(**_kwargs):
+            raise client_error("XMinioParentIsObject", 400)
 
-        client.put_object = put_object
+        monkeypatch.setattr(client, "put_object", _refuse)
 
         assert backend.claim_folder("report") is False
 
-    def test_another_4xx_on_claim_still_raises(self, backend, client):
-        def put_object(*, Bucket, Key, Body, **_kwargs):
-            raise _client_error("AccessDenied", 403, "PutObject")
+    def test_another_4xx_on_claim_still_raises(self, backend, client, monkeypatch):
+        def _refuse(**_kwargs):
+            raise client_error("AccessDenied", 403)
 
-        client.put_object = put_object
+        monkeypatch.setattr(client, "put_object", _refuse)
 
         with pytest.raises(ClientError):
             backend.claim_folder("report")
@@ -227,7 +220,7 @@ class TestCopyFailureCleanup:
         _folder_source(client)
         objects_before = dict(client.objects)
         client.fail_copy_number = 2
-        client.copy_error = EndpointConnectionError(endpoint_url="http://minio:9000")
+        client.copy_error = EndpointConnectionError(endpoint_url="http://storage:9000")
 
         with pytest.raises(EndpointConnectionError):
             backend.move("docs", "dest")
@@ -237,7 +230,7 @@ class TestCopyFailureCleanup:
     def test_a_failing_cleanup_does_not_replace_the_copy_error(self, backend, client):
         _folder_source(client)
         client.fail_copy_number = 3
-        client.delete_error = _client_error("InternalError", 500, "DeleteObjects")
+        client.delete_error = client_error("InternalError", 500, "DeleteObjects")
 
         with pytest.raises(ClientError) as caught:
             backend.copy("docs", "dest")
@@ -272,22 +265,20 @@ class TestHeadFile:
     def test_returns_the_stored_metadata(self, backend, client):
         client.objects["out/report.txt"] = b"12345"
 
-        info = backend.head_file("out/report.txt")
-
-        assert info == FileInfo(
+        assert backend.head_file("out/report.txt") == FileInfo(
             id=None,
             name="report.txt",
             path="out/report.txt",
             size=5,
             content_type="text/plain",
-            modified=_MODIFIED.isoformat(),
+            modified=MODIFIED.isoformat(),
         )
 
     def test_missing_file_is_none(self, backend):
         assert backend.head_file("ghost.txt") is None
 
     def test_a_storage_error_propagates(self, backend, client, monkeypatch):
-        error = _client_error("InternalError", 500, "HeadObject")
+        error = client_error("InternalError", 500, "HeadObject")
 
         def _fail(**_kwargs):
             raise error
@@ -310,7 +301,9 @@ class TestHeadFile:
 
 def test_head_file_client_is_short_and_not_retried_while_the_main_client_is_unchanged():
     with patch.object(s3_backend_module.boto3, "client") as make_client:
-        S3StorageBackend(bucket_name="b", access_key="k", secret_key="s", organization_prefix="")
+        S3StorageBackend(
+            bucket_name="b", access_key="k", secret_key="s", organization_prefix="", part_size=8
+        )
 
     main_config, head_file_config = (call.kwargs["config"] for call in make_client.call_args_list)
     assert (main_config.connect_timeout, main_config.read_timeout) == (10, 300)

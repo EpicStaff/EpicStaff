@@ -11,7 +11,7 @@ from io import BytesIO
 import pytest
 
 from tables.exceptions import RangeNotSatisfiable
-from tables.models import Organization, StorageFile
+from tables.models import StorageFile
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
@@ -136,6 +136,12 @@ class TestDownloadFlow:
             ("bytes=0-4", b"known", "bytes 0-4/13"),
             ("bytes=6-", b"content", "bytes 6-12/13"),
             ("bytes=6-999", b"content", "bytes 6-12/13"),
+            # unsupported ranges (suffix, multi, reversed, other unit, huge) get the whole file
+            ("bytes=-5", b"known content", None),
+            ("bytes=0-1,4-5", b"known content", None),
+            ("bytes=5-2", b"known content", None),
+            ("items=0-4", b"known content", None),
+            ("bytes=" + "9" * 5000 + "-", b"known content", None),
         ],
     )
     def test_download_range_returns_only_that_part(
@@ -147,20 +153,6 @@ class TestDownloadFlow:
 
         assert download.content == content
         assert download.content_range == content_range
-
-    @pytest.mark.parametrize(
-        "range_header",
-        ["bytes=-5", "bytes=0-1,4-5", "bytes=5-2", "items=0-4", "bytes=" + "9" * 5000 + "-"],
-    )
-    def test_download_unsupported_range_returns_whole_file(
-        self, manager, org, org_user, range_header
-    ):
-        manager.upload(org.id, "known.txt", BytesIO(b"known content"))
-
-        download = manager.download(org.id, "known.txt", range_header)
-
-        assert download.content == b"known content"
-        assert download.content_range is None
 
     def test_download_range_past_end_raises_not_satisfiable(self, manager, org, org_user):
         manager.upload(org.id, "known.txt", BytesIO(b"known content"))
@@ -182,13 +174,12 @@ class TestDownloadFlow:
         assert download.content_range == "bytes 0-18/19"
 
     def test_download_range_of_another_org_file_raises_file_not_found(
-        self, manager, org, org_user
+        self, manager, org, org_user, second_org
     ):
         manager.upload(org.id, "known.txt", BytesIO(b"known content"))
-        other = Organization.objects.create(name="Other")
 
         with pytest.raises(FileNotFoundError):
-            manager.download(other.id, "known.txt", "bytes=0-4")
+            manager.download(second_org.id, "known.txt", "bytes=0-4")
 
 
 class TestDownloadZipFlow:
