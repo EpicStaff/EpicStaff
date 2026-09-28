@@ -49,11 +49,17 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 org_id=python_code_data.org_id,
                 secrets=python_code_data.secrets,
             )
-        except (ValidationError, ValueError) as error:
-            logger.error("Invalid storage scope for code execution: {}", error)
+        except (ValidationError, ValueError):
+            # Never log or return `error` itself: pydantic's ValidationError
+            # repr embeds the full constructor input, including `secrets`
+            # plaintext (see CodeTaskData.log_summary(), which exists for
+            # exactly this reason).
+            logger.error(
+                "Invalid storage scope for code execution (execution_id={})", unique_task_id
+            )
             return CodeResultData(
                 execution_id=unique_task_id,
-                stderr=f"Invalid storage scope for code execution: {error}",
+                stderr="Invalid storage scope for code execution.",
                 stdout="",
                 returncode=1,
             ).model_dump()
