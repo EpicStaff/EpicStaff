@@ -4,40 +4,39 @@
             Conditions
             <app-help-tooltip text="Configure routing rules with continue flag and route codes for dock visibility." />
         </h3>
-        <div
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
-            class="grid-header-actions"
-        >
-            @if (selectedRowCount() > 0) {
-                <button
-                    type="button"
-                    class="grid-header-icon-btn"
-                    title="Delete selected"
-                    (click)="deleteSelectedRows()"
-                >
-                    <app-svg-icon
-                        icon="trash"
-                        size="14px"
-                    ></app-svg-icon>
-                </button>
+        @if (!readonly()) {
+            <div class="grid-header-actions">
+                @if (selectedRowCount() > 0) {
+                    <button
+                        type="button"
+                        class="grid-header-icon-btn"
+                        title="Delete selected"
+                        (click)="deleteSelectedRows()"
+                    >
+                        <app-svg-icon
+                            icon="trash"
+                            size="14px"
+                        ></app-svg-icon>
+                    </button>
+                    <app-button
+                        type="outline-primary"
+                        [leftIcon]="'group'"
+                        [iconSize]="'12px'"
+                        (click)="groupSelectedRows()"
+                        [disabled]="!canGroupSelected()"
+                    >
+                        Group rows
+                    </app-button>
+                }
                 <app-button
-                    type="outline-primary"
-                    [leftIcon]="'group'"
-                    [iconSize]="'12px'"
-                    (click)="groupSelectedRows()"
-                    [disabled]="!canGroupSelected()"
+                    type="primary"
+                    [leftIcon]="'plus'"
+                    (click)="addRow()"
                 >
-                    Group rows
+                    Add Condition
                 </app-button>
-            }
-            <app-button
-                type="primary"
-                [leftIcon]="'plus'"
-                (click)="addRow()"
-            >
-                Add Condition
-            </app-button>
-        </div>
+            </div>
+        }
     </div>
 
     <div

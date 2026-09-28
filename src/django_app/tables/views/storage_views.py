@@ -29,6 +29,7 @@ from tables.serializers.storage_serializers import (
     StorageUploadSerializer,
 )
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.permission_assert import assert_org_permission
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.dataclasses import FolderInfo
@@ -68,12 +69,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "download_zip": Permission.EXPORT,
         "upload": Permission.CREATE,
         "mkdir": Permission.CREATE,
-        "add_to_graph": Permission.CREATE,
+        "add_to_graph": Permission.READ,
         "rename": Permission.UPDATE,
         "move": Permission.UPDATE,
         "copy": Permission.UPDATE,
         "delete_file": Permission.DELETE,
-        "remove_from_graph": Permission.DELETE,
+        "remove_from_graph": Permission.READ,
     }
 
     def __init__(self, **kwargs):
@@ -297,6 +298,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["post"], url_path="add-to-graph")
     def add_to_graph(self, request):
         org_id = self.get_active_org_id()
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.UPDATE)
         serializer = StorageAddToGraphSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         paths = serializer.validated_data["paths"]
@@ -338,6 +340,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["delete"], url_path="remove-from-graph")
     def remove_from_graph(self, request):
         org_id = self.get_active_org_id()
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.UPDATE)
         serializer = StorageRemoveFromGraphSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         paths = serializer.validated_data["paths"]

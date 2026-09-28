@@ -121,7 +121,7 @@
                             <app-suggested-value
                                 label="Search Type"
                                 tooltipText="Basic Search - uses vector-based RAG to find relevant information and generate accurate responses. Local search generates answers by combining relevant data from the AI-extracted knowledge-graph with text chunks of the raw documents. Global search runs a map-reduce across community reports. DRIFT search drills down iteratively for highest quality."
-                                [value]="selectedSearchTypeLabel"
+                                [value]="selectedSearchTypeLabel()"
                             />
                         } @else {
                             <app-radio-button

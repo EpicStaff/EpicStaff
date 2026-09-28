@@ -4,6 +4,7 @@ import {
     Component,
     computed,
     effect,
+    inject,
     input,
     output,
     Signal,
@@ -184,12 +185,11 @@ export class NodePanelShellComponent {
     private isAutosaving = false;
     private lastHandledAutosaveTrigger = 0;
     private autosavePending = false;
+    private readonly sidePanelService = inject(SidePanelService);
+    private readonly toastService = inject(ToastService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
-    constructor(
-        private sidePanelService: SidePanelService,
-        private toastService: ToastService,
-        private flowReadOnly: FlowReadOnlyService
-    ) {
+    constructor() {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             this.tryAutosave(trigger);

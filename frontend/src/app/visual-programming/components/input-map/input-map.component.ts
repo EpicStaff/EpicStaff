@@ -8,6 +8,7 @@ import {
     EventEmitter,
     inject,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -65,7 +66,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     position="right"
                     text="Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'."
                 ></app-help-tooltip>
-                @if (showTestMode && !readonly) {
+                @if (showTestMode && !readonly()) {
                     <div class="test-mode-header">
                         <span>Test mode</span>
                         <app-toggle-switch
@@ -76,7 +77,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
             </div>
 
-            @if (readonly) {
+            @if (readonly()) {
                 <div
                     class="readonly-table"
                     role="table"
@@ -538,12 +539,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     @Input() nodeName: string | null = null;
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
-    /**
-     * When true, renders the input map as a plain two-column table (key → value) with no
-     * add/remove buttons, no test-mode toggle, and no variable picker. Semantically distinct
-     * from a disabled form: `readonly` shows values as static text for read-only permission views.
-     */
-    @Input() readonly: boolean = false;
+    readonly = input<boolean>(false);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -593,7 +589,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     ngOnInit() {
-        if (this.readonly) {
+        if (this.readonly()) {
             // Read-only view is purely display: no auto-added empty pair, no key mirroring.
             return;
         }

@@ -6,6 +6,7 @@ import {
     EventEmitter,
     forwardRef,
     Input,
+    input,
     Output,
     signal,
     ViewChild,
@@ -37,7 +38,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                 </div>
             }
-            @if (readonly) {
+            @if (readonly()) {
                 <span class="readonly-value">{{ readonlyDisplayValue }}</span>
             } @else {
                 <div class="input-wrapper">
@@ -226,14 +227,8 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
     @Input() cautionMessage: string = '';
-    /**
-     * When true, renders a plain-text display of the current value instead of an editable input.
-     * Semantically distinct from `disabled`: `disabled` shows a greyed-out control, `readonly`
-     * shows the value as static text. Use this for read-only permission views.
-     */
-    @Input() readonly: boolean = false;
-    /** Placeholder shown in readonly mode when the value is empty. */
-    @Input() readonlyEmptyPlaceholder: string = '—';
+    readonly = input<boolean>(false);
+    readonlyEmptyPlaceholder = input<string>('—');
 
     @Output() blur = new EventEmitter<void>();
 
@@ -309,9 +304,9 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
      */
     get readonlyDisplayValue(): string {
         if (this.isSecret || this.isPassword) {
-            return this._value ? '••••••••' : this.readonlyEmptyPlaceholder;
+            return this._value ? '••••••••' : this.readonlyEmptyPlaceholder();
         }
-        return this._value?.length ? this._value : this.readonlyEmptyPlaceholder;
+        return this._value?.length ? this._value : this.readonlyEmptyPlaceholder();
     }
 
     togglePasswordVisibility(): void {

@@ -1,4 +1,4 @@
-import { computed, inject, Injectable } from '@angular/core';
+import { computed, effect, inject, Injectable } from '@angular/core';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -18,7 +18,13 @@ export class FlowReadOnlyService {
 
     private hasNotified = false;
 
-    /** Show the "read-only access" toast once per session-lived instance. */
+    private readonly resetNotificationEffect = effect(() => {
+        if (!this.isReadOnly()) {
+            this.hasNotified = false;
+        }
+    });
+
+    /** Show the "read-only access" toast once per readonly session. */
     public notifyBlocked(): void {
         if (this.hasNotified) return;
         this.hasNotified = true;

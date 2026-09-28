@@ -26,8 +26,6 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -83,14 +81,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 @Component({
     selector: 'app-classification-decision-table-grid',
-    imports: [
-        AgGridModule,
-        AppSvgIconComponent,
-        ButtonComponent,
-        HelpTooltipComponent,
-        MultiSelectComponent,
-        HasPermissionDirective,
-    ],
+    imports: [AgGridModule, AppSvgIconComponent, ButtonComponent, HelpTooltipComponent, MultiSelectComponent],
     templateUrl: './classification-decision-table-grid.component.html',
     styleUrls: ['./classification-decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -2253,7 +2244,4 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             commit();
         }
     }
-
-    protected readonly ResourceCode = ResourceCode;
-    protected readonly ActionCode = ActionCode;
 }

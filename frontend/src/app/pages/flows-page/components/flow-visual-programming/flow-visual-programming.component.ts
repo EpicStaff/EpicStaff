@@ -125,6 +125,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
     private readonly injector = inject(Injector);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -199,7 +200,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly createGraphWarningService: CreateGraphWarningsService,
         private readonly runSessionSSEService: RunSessionSSEService,
         private readonly permissionsService: PermissionsService,
-        private readonly flowReadOnly: FlowReadOnlyService,
         private readonly sidePanelService: SidePanelService,
         private readonly llmConfigStorageService: LlmConfigStorageService,
         private readonly agentDefinitionsApiService: AgentDefinitionsApiService,
