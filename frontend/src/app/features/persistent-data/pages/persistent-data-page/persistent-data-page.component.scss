@@ -9,7 +9,9 @@
         height: 100%;
         // The table list scrolls its own rows, so its header stays put.
         overflow: hidden;
-        border-right: 1px solid var(--color-divider-subtle);
+        // The regular divider, not the subtle one the other Files tabs use: next to the grid's own borders the
+        // subtle one did not read as a separation.
+        border-right: 1px solid var(--color-divider-regular);
     }
 
     &__content {

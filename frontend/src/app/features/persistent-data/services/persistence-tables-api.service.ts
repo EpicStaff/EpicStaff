@@ -13,6 +13,7 @@ import {
     PersistenceEntryLookupResponse,
     PersistenceTable,
     PersistenceTableEntry,
+    PersistenceTableEntryListItem,
     UpdatePersistenceTableEntryRequest,
     UpdatePersistenceTableRequest,
 } from '../models/persistence-table.model';
@@ -57,7 +58,7 @@ export class PersistenceTablesApiService {
         return this.http.delete<void>(`${this.tablesUrl}${id}/`);
     }
 
-    getEntries(query: PersistenceEntriesQuery): Observable<ApiGetRequest<PersistenceTableEntry>> {
+    getEntries(query: PersistenceEntriesQuery): Observable<ApiGetRequest<PersistenceTableEntryListItem>> {
         let params = new HttpParams().set('table', query.table).set('limit', query.limit).set('offset', query.offset);
         if (query.search) {
             params = params.set('search', query.search);
@@ -65,7 +66,11 @@ export class PersistenceTablesApiService {
         if (query.ordering) {
             params = params.set('ordering', query.ordering);
         }
-        return this.http.get<ApiGetRequest<PersistenceTableEntry>>(this.entriesUrl, { params });
+        return this.http.get<ApiGetRequest<PersistenceTableEntryListItem>>(this.entriesUrl, { params });
+    }
+
+    getEntry(id: number): Observable<PersistenceTableEntry> {
+        return this.http.get<PersistenceTableEntry>(`${this.entriesUrl}${id}/`);
     }
 
     createEntry(body: CreatePersistenceTableEntryRequest): Observable<PersistenceTableEntry> {

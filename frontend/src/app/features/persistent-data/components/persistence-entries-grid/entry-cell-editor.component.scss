@@ -1,0 +1,72 @@
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.entry-editor {
+    height: 100%;
+}
+
+.entry-editor--popup {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 520px;
+    max-width: 80vw;
+    padding: 8px;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    background: var(--color-input-background);
+    box-shadow: var(--shadow-panel-elevated);
+}
+
+.entry-editor__field {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0 8px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+
+    &::placeholder {
+        color: var(--color-input-text-placeholder);
+    }
+
+    &[aria-invalid='true'] {
+        box-shadow: inset 0 0 0 1px var(--color-status-error);
+    }
+
+    &--multiline {
+        height: 240px;
+        padding: 4px;
+        resize: vertical;
+        font-family: monospace;
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: pre;
+    }
+}
+
+// The key input inside its error popup.
+.entry-editor--popup > input.entry-editor__field {
+    height: 32px;
+}
+
+.entry-editor__hint,
+.entry-editor__error {
+    margin: 0;
+    font-size: 12px;
+}
+
+.entry-editor__hint {
+    color: var(--color-text-secondary);
+}
+
+.entry-editor__error {
+    color: var(--color-status-error);
+}

@@ -53,6 +53,13 @@ describe('PersistenceTablesApiService', () => {
         request.flush({ count: 0, next: null, previous: null, results: [] });
     });
 
+    it('gets one full entry by id', () => {
+        service.getEntry(7).subscribe();
+        const request = httpMock.expectOne('/api/persistence-table-entries/7/');
+        expect(request.request.method).toBe('GET');
+        request.flush({});
+    });
+
     it('posts keys to the lookup endpoint', () => {
         service.lookupEntries(3, ['a', 'b']).subscribe();
         const request = httpMock.expectOne('/api/persistence-tables/3/entries/lookup/');

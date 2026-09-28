@@ -1,110 +1,41 @@
 <section class="entries-grid">
     <header class="entries-grid__header">
         <h2 class="entries-grid__title">{{ table().name }}</h2>
-        @if (canCreate()) {
-            <app-button
-                type="primary-white"
-                leftIcon="plus"
-                (click)="onAdd()"
-            >
-                Add entry
-            </app-button>
-        }
+        <div class="entries-grid__actions-bar">
+            <app-search
+                class="entries-grid__search"
+                mod="small"
+                placeholder="Search keys..."
+                [(searchTerm)]="searchTerm"
+            />
+            @if (canCreate()) {
+                <app-button
+                    type="primary-white"
+                    leftIcon="plus"
+                    (click)="onAdd()"
+                >
+                    Add entry
+                </app-button>
+            }
+        </div>
     </header>
 
-    <div class="entries-grid__body">
-        <app-table
-            [columns]="columns()"
-            [data]="rows()"
-            [hasExternalFilter]="!!search()"
-            rowId="id"
-            (headerIconClick)="onSortToggle($event.key)"
-        >
-            <ng-template
-                appTableCell="key"
-                let-row
-            >
-                <div
-                    class="entries-grid__cell"
-                    [class.entries-grid__cell--editable]="canUpdate()"
-                    (dblclick)="onCellDoubleClick(row)"
-                >
-                    <span
-                        class="entries-grid__key"
-                        [attr.title]="canUpdate() ? 'Double-click to edit' : null"
-                        >{{ row['key'] }}</span
-                    >
-                    <!-- A fast double click on Copy must not also open the editor. -->
-                    <app-copy-button
-                        class="entries-grid__copy"
-                        ariaLabel="Copy key"
-                        [text]="row['key']"
-                        (dblclick)="$event.stopPropagation()"
-                    />
-                </div>
-            </ng-template>
-
-            <ng-template
-                appTableCell="preview"
-                let-row
-            >
-                <div
-                    class="entries-grid__cell"
-                    [class.entries-grid__cell--editable]="canUpdate()"
-                    (dblclick)="onCellDoubleClick(row)"
-                >
-                    <span
-                        class="entries-grid__preview"
-                        [attr.title]="canUpdate() ? 'Double-click to edit' : null"
-                        >{{ row['preview'] }}</span
-                    >
-                    <app-copy-button
-                        class="entries-grid__copy"
-                        ariaLabel="Copy value"
-                        [text]="row['copy_text']"
-                        (dblclick)="$event.stopPropagation()"
-                    />
-                </div>
-            </ng-template>
-
-            <ng-template
-                appTableCell="session_label"
-                let-row
-            >
-                @if (row['session_label']; as label) {
-                    <a
-                        class="entries-grid__session-link"
-                        [title]="label"
-                        [routerLink]="['/graph', row['updated_by_graph'], 'session', row['updated_by_session']]"
-                        >{{ label }}</a
-                    >
-                } @else {
-                    <span class="entries-grid__no-session">—</span>
-                }
-            </ng-template>
-
-            <ng-template
-                appTableCell="updated_at"
-                let-row
-            >
-                <span class="entries-grid__updated">{{ row['updated_at'] | date: dateFormat }}</span>
-            </ng-template>
-
-            <div
-                tableNoResults
-                class="entries-grid__empty"
-            >
-                No entries match your search.
-            </div>
-            @if (!loading()) {
-                <p
-                    tableEmpty
-                    class="entries-grid__empty"
-                >
-                    No entries yet
-                </p>
-            }
-        </app-table>
+    <div
+        class="entries-grid__body"
+        [attr.aria-busy]="loading()"
+    >
+        <ag-grid-angular
+            class="entries-grid__grid"
+            [gridOptions]="gridOptions"
+            [rowData]="gridRows()"
+            [columnDefs]="columnDefs()"
+            [loading]="loading()"
+            [overlayNoRowsTemplate]="noRowsTemplate()"
+            (gridReady)="onGridReady($event)"
+            (sortChanged)="onSortChanged($event)"
+            (cellEditingStopped)="onCellEditingStopped($event)"
+            (cellKeyDown)="onCellKeyDown($event)"
+        />
     </div>
 
     <app-pagination-controls
@@ -114,3 +45,93 @@
         (pageChange)="page.set($event)"
     />
 </section>
+
+<!-- Key and Value cells are not selectable for anyone, read-only users included, on purpose: the copy button
+     covers copying (see .entries-grid__cell). A fast double click or Enter on Copy must not also open the editor. -->
+<ng-template
+    #keyCell
+    let-row
+>
+    <div class="entries-grid__cell">
+        @if (row.entry) {
+            <span class="entries-grid__text">{{ row.key }}</span>
+            <app-copy-button
+                class="entries-grid__copy"
+                ariaLabel="Copy key (Ctrl+C)"
+                [text]="row.key"
+                (dblclick)="$event.stopPropagation()"
+                (keydown)="$event.stopPropagation()"
+            />
+        } @else {
+            <span
+                class="entries-grid__text"
+                [class.entries-grid__placeholder]="!row.key"
+                >{{ row.key || draftPlaceholder }}</span
+            >
+        }
+        @if (row.errors.key; as error) {
+            <span class="entries-grid__cell-error">{{ error }}</span>
+        }
+    </div>
+</ng-template>
+
+<ng-template
+    #valueCell
+    let-row
+>
+    <div class="entries-grid__cell">
+        <span class="entries-grid__text entries-grid__text--secondary">{{ row.preview }}</span>
+        @if (row.errors.value; as error) {
+            <span class="entries-grid__cell-error">{{ error }}</span>
+        }
+        @if (row.copyValue) {
+            <app-copy-button
+                class="entries-grid__copy"
+                ariaLabel="Copy value (Ctrl+C)"
+                [resolveText]="row.copyValue"
+                (dblclick)="$event.stopPropagation()"
+                (keydown)="$event.stopPropagation()"
+            />
+        }
+    </div>
+</ng-template>
+
+<ng-template
+    #sessionCell
+    let-row
+>
+    @if (row.entry; as entry) {
+        @if (row.sessionLabel; as label) {
+            <a
+                class="entries-grid__session-link"
+                [title]="label"
+                [routerLink]="row.sessionLink"
+                >{{ label }}</a
+            >
+        } @else {
+            <span
+                class="entries-grid__no-session"
+                title="Edited by hand, not by a session"
+                >—</span
+            >
+        }
+    }
+</ng-template>
+
+<ng-template
+    #deleteCell
+    let-row
+>
+    @if (row.entry; as entry) {
+        <button
+            type="button"
+            class="entries-grid__delete"
+            aria-label="Delete entry"
+            title="Delete entry"
+            (click)="onDelete(entry)"
+            (keydown)="$event.stopPropagation()"
+        >
+            <i class="ti ti-x"></i>
+        </button>
+    }
+</ng-template>

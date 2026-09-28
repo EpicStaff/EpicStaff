@@ -1,13 +1,22 @@
-import { Dialog } from '@angular/cdk/dialog';
 import { formatDate } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
+import { ConfirmationDialogService } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
-import { NEVER, of } from 'rxjs';
+import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
-import { PersistenceTable, PersistenceTableEntry } from '../../models/persistence-table.model';
+import { ToastService } from '../../../../services/notifications';
+import {
+    PersistenceTable,
+    PersistenceTableEntry,
+    PersistenceTableEntryListItem,
+} from '../../models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../services/persistence-tables-api.service';
 import { PersistenceEntriesGridComponent } from './persistence-entries-grid.component';
+
+// AG Grid in jsdom is slow to start on a loaded machine.
+vi.setConfig({ testTimeout: 20000 });
 
 const TABLE: PersistenceTable = {
     id: 1,
@@ -18,80 +27,12 @@ const TABLE: PersistenceTable = {
     updated_at: '2026-09-24T00:00:00Z',
 };
 
-function actionIcons(canUpdate: boolean, canDelete: boolean): string[] | undefined {
-    TestBed.configureTestingModule({
-        providers: [
-            {
-                provide: PersistenceTablesApiService,
-                useValue: { getEntries: () => of({ count: 0, next: null, previous: null, results: [] }) },
-            },
-        ],
-    });
-    const fixture = TestBed.createComponent(PersistenceEntriesGridComponent);
-    fixture.componentRef.setInput('table', TABLE);
-    fixture.componentRef.setInput('canUpdate', canUpdate);
-    fixture.componentRef.setInput('canDelete', canDelete);
-    const actionsColumn = fixture.componentInstance.columns().find((column) => column.key === 'actions');
-    return actionsColumn?.actions?.map((action) => action.icon);
-}
-
-describe('PersistenceEntriesGridComponent table switch', () => {
-    it("drops the previous table's rows while the new table loads", () => {
-        const entry: PersistenceTableEntry = {
-            id: 7,
-            table: 1,
-            key: 'k',
-            value: 'v',
-            created_at: '2026-09-24T00:00:00Z',
-            updated_at: '2026-09-24T00:00:00Z',
-            updated_by_session: null,
-            updated_by_graph: null,
-            updated_by_graph_name: null,
-        };
-        TestBed.configureTestingModule({
-            providers: [
-                {
-                    provide: PersistenceTablesApiService,
-                    // Table 2's load never answers, like a slow or failed request.
-                    useValue: {
-                        getEntries: (params: { table: number }) =>
-                            params.table === 1 ? of({ count: 1, next: null, previous: null, results: [entry] }) : NEVER,
-                    },
-                },
-            ],
-        });
-        const fixture = TestBed.createComponent(PersistenceEntriesGridComponent);
-        fixture.componentRef.setInput('table', TABLE);
-        fixture.detectChanges();
-        expect(fixture.componentInstance.entries()).toEqual([entry]);
-
-        fixture.componentRef.setInput('table', { ...TABLE, id: 2, name: 'orders' });
-        fixture.detectChanges();
-
-        expect(fixture.componentInstance.entries()).toEqual([]);
-        expect(fixture.componentInstance.totalCount()).toBe(0);
-    });
-});
-
-describe('PersistenceEntriesGridComponent permission gating', () => {
-    it('offers only edit with update permission only', () => {
-        expect(actionIcons(true, false)).toEqual(['edit']);
-    });
-
-    it('offers only delete with delete permission only', () => {
-        expect(actionIcons(false, true)).toEqual(['trash']);
-    });
-
-    it('omits the actions column without update or delete permission', () => {
-        expect(actionIcons(false, false)).toBeUndefined();
-    });
-});
-
-const RUN_ENTRY: PersistenceTableEntry = {
+const RUN_ENTRY: PersistenceTableEntryListItem = {
     id: 11,
     table: 1,
     key: 'profile_42',
-    value: { plan: 'pro' },
+    value_preview: '{"plan": "pro"}',
+    value_truncated: false,
     created_at: '2026-09-27T12:00:00Z',
     // Midday UTC, so the calendar day is the same in every test-runner timezone.
     updated_at: '2026-09-27T12:00:00Z',
@@ -99,7 +40,18 @@ const RUN_ENTRY: PersistenceTableEntry = {
     updated_by_graph: 5,
     updated_by_graph_name: 'Customer onboarding',
 };
-const HAND_EDITED_ENTRY: PersistenceTableEntry = {
+const RUN_ENTRY_FULL: PersistenceTableEntry = {
+    id: 11,
+    table: 1,
+    key: 'profile_42',
+    value: { plan: 'pro' },
+    created_at: RUN_ENTRY.created_at,
+    updated_at: RUN_ENTRY.updated_at,
+    updated_by_session: 123,
+    updated_by_graph: 5,
+    updated_by_graph_name: 'Customer onboarding',
+};
+const HAND_EDITED_ENTRY: PersistenceTableEntryListItem = {
     ...RUN_ENTRY,
     id: 12,
     key: 'manual',
@@ -108,132 +60,890 @@ const HAND_EDITED_ENTRY: PersistenceTableEntry = {
     updated_by_graph_name: null,
 };
 
-function renderGrid(options: { canUpdate?: boolean; entries?: PersistenceTableEntry[]; searchTerm?: string } = {}) {
-    const getEntries = vi.fn((query: { table: number; search: string; offset: number }) => {
-        const results = query.table === 1 ? (options.entries ?? [RUN_ENTRY, HAND_EDITED_ENTRY]) : [];
-        return of({ count: results.length, next: null, previous: null, results });
+// jsdom has no ResizeObserver; app-button's overflow directive and AG Grid only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+// jsdom has no layout: offsetParent is null, every rect is zero and nothing counts as visible. AG Grid positions
+// the value editor popup against the offset parent, and closes it once its cell looks gone (a zero rect).
+function stubLayout(): () => void {
+    const offsetParent = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent');
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+        configurable: true,
+        get(this: HTMLElement) {
+            return this.parentElement;
+        },
     });
-    const dialogOpen = vi.fn(() => ({ closed: NEVER }));
+    const checkVisibility =
+        'checkVisibility' in Element.prototype
+            ? vi.spyOn(Element.prototype, 'checkVisibility').mockReturnValue(true)
+            : null;
+    const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 100, 40));
+    return () => {
+        if (offsetParent) Object.defineProperty(HTMLElement.prototype, 'offsetParent', offsetParent);
+        checkVisibility?.mockRestore();
+        rect.mockRestore();
+    };
+}
+
+interface EntriesQuery {
+    table: number;
+    search: string;
+    ordering: string;
+    offset: number;
+}
+type EntriesPage = { count: number; next: null; previous: null; results: PersistenceTableEntryListItem[] };
+
+interface RenderOptions {
+    canCreate?: boolean;
+    canUpdate?: boolean;
+    canDelete?: boolean;
+    entries?: PersistenceTableEntryListItem[];
+    getEntries?: (query: EntriesQuery) => Observable<EntriesPage>;
+    getEntry?: (id: number) => Observable<PersistenceTableEntry>;
+    createEntry?: (body: unknown) => Observable<PersistenceTableEntry>;
+    updateEntry?: (id: number, body: unknown) => Observable<PersistenceTableEntry>;
+}
+
+function renderGrid(options: RenderOptions = {}) {
+    const getEntries = vi.fn(
+        options.getEntries ??
+            ((query: EntriesQuery) => {
+                const results = query.table === 1 ? (options.entries ?? [RUN_ENTRY, HAND_EDITED_ENTRY]) : [];
+                return of({ count: results.length, next: null, previous: null, results });
+            })
+    );
+    const api = {
+        getEntries,
+        getEntry: vi.fn(options.getEntry ?? (() => of(RUN_ENTRY_FULL))),
+        createEntry: vi.fn(options.createEntry ?? (() => NEVER)),
+        updateEntry: vi.fn(options.updateEntry ?? (() => NEVER)),
+        deleteEntry: vi.fn(() => of(undefined)),
+    };
+    const confirmDelete = vi.fn(() => of(true));
     TestBed.configureTestingModule({
         providers: [
             provideRouter([]),
-            { provide: PersistenceTablesApiService, useValue: { getEntries } },
-            { provide: Dialog, useValue: { open: dialogOpen } },
+            { provide: PersistenceTablesApiService, useValue: api },
+            { provide: ConfirmationDialogService, useValue: { confirmDelete } },
         ],
     });
+    const toastError = vi.spyOn(TestBed.inject(ToastService), 'error');
     const fixture = TestBed.createComponent(PersistenceEntriesGridComponent);
     fixture.componentRef.setInput('table', TABLE);
+    fixture.componentRef.setInput('canCreate', options.canCreate ?? false);
     fixture.componentRef.setInput('canUpdate', options.canUpdate ?? false);
-    fixture.componentRef.setInput('searchTerm', options.searchTerm ?? '');
+    fixture.componentRef.setInput('canDelete', options.canDelete ?? false);
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
-    return { fixture, element, getEntries, dialogOpen };
+    return { fixture, element, api, confirmDelete, toastError };
 }
 
-describe('PersistenceEntriesGridComponent session column', () => {
-    it('has its own "Session" column', () => {
-        const { fixture } = renderGrid();
-        const labels = fixture.componentInstance.columns().map((column) => column.label);
-        expect(labels).toEqual(['Key', 'Value', 'Session', 'Updated']);
-    });
+// AG Grid renders, starts and stops editing across a few macrotasks.
+async function settle(fixture: { detectChanges: () => void }): Promise<void> {
+    for (let round = 0; round < 4; round++) {
+        fixture.detectChanges();
+        await new Promise((resolve) => setTimeout(resolve));
+    }
+    fixture.detectChanges();
+}
 
-    it('links a run-written entry to its session as "<Flow name>, Session #<id>"', () => {
-        const { element } = renderGrid({ entries: [RUN_ENTRY] });
-        const link = element.querySelector<HTMLAnchorElement>('a.entries-grid__session-link');
+function cell(element: HTMLElement, rowId: string, colId: string): HTMLElement | null {
+    return element.querySelector<HTMLElement>(`.ag-row[row-id="${rowId}"] [col-id="${colId}"]`);
+}
+
+describe('PersistenceEntriesGridComponent rows', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('links a run-written entry to its session as "<Flow name>, Session #<id>"', async () => {
+        const { fixture, element } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
+        const link = cell(element, '11', 'session')?.querySelector<HTMLAnchorElement>('a.entries-grid__session-link');
         expect(link?.textContent?.trim()).toBe('Customer onboarding, Session #123');
         expect(link?.getAttribute('href')).toBe('/graph/5/session/123');
-        expect(link?.title).toBe('Customer onboarding, Session #123');
     });
 
-    it('shows a muted dash for a hand-edited entry', () => {
-        const { element } = renderGrid({ entries: [HAND_EDITED_ENTRY] });
-        expect(element.querySelector('a.entries-grid__session-link')).toBeNull();
-        expect(element.querySelector('.entries-grid__no-session')?.textContent?.trim()).toBe('—');
+    it('shows a muted dash for a hand-edited entry', async () => {
+        const { fixture, element } = renderGrid({ entries: [HAND_EDITED_ENTRY] });
+        await settle(fixture);
+        const session = cell(element, '12', 'session');
+        expect(session?.querySelector('a')).toBeNull();
+        expect(session?.querySelector('.entries-grid__no-session')?.textContent?.trim()).toBe('—');
+    });
+
+    it('shows the value preview, with an ellipsis when the server cut it', async () => {
+        const { fixture, element } = renderGrid({
+            entries: [RUN_ENTRY, { ...HAND_EDITED_ENTRY, value_preview: '"long', value_truncated: true }],
+        });
+        await settle(fixture);
+        expect(cell(element, '11', 'value')?.textContent?.trim()).toBe('{"plan": "pro"}');
+        expect(cell(element, '12', 'value')?.textContent?.trim()).toBe('"long…');
+    });
+
+    it('uses the app date-time format for Updated', async () => {
+        const { fixture, element } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
+        expect(cell(element, '11', 'updated_at')?.textContent?.trim()).toBe(
+            formatDate(RUN_ENTRY.updated_at, DATE_TIME_FORMAT_24H, 'en-US')
+        );
     });
 });
 
-describe('PersistenceEntriesGridComponent updated column', () => {
-    it('uses the app date-time format ("Sep 27, 2026, HH:mm:ss")', () => {
-        const { element } = renderGrid({ entries: [RUN_ENTRY] });
-        const text = element.querySelector('.entries-grid__updated')?.textContent?.trim();
-        expect(text).toBe(formatDate(RUN_ENTRY.updated_at, DATE_TIME_FORMAT_24H, 'en-US'));
-        expect(text).toMatch(/^Sep 27, 2026, \d{2}:\d{2}:\d{2}$/);
+function keydown(target: Element | null | undefined, key: string, init: KeyboardEventInit = {}): void {
+    target?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+}
+
+function type(field: HTMLInputElement | HTMLTextAreaElement | null, text: string): void {
+    if (!field) return;
+    field.value = text;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// A real double-click focuses the cell on its first press; jsdom does not, so focus it first.
+async function openEditor(fixture: { detectChanges: () => void }, target: HTMLElement | null): Promise<void> {
+    target?.focus();
+    target?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+    await settle(fixture);
+}
+
+// The key editor sits in its cell, or in a popup over it while it shows an error.
+function keyEditor(): HTMLInputElement | null {
+    return document.querySelector<HTMLInputElement>('app-entry-cell-editor input');
+}
+
+function editorError(field: HTMLElement | null): string | undefined {
+    const describedBy = field?.getAttribute('aria-describedby');
+    return describedBy ? document.getElementById(describedBy)?.textContent?.trim() : undefined;
+}
+
+function valueEditor(): HTMLTextAreaElement | null {
+    // The value editor is a popup, which AG Grid may attach outside the cell.
+    return document.querySelector<HTMLTextAreaElement>('app-entry-cell-editor textarea');
+}
+
+function badRequest(message: string): HttpErrorResponse {
+    return new HttpErrorResponse({ status: 400, error: { message } });
+}
+
+describe('PersistenceEntriesGridComponent in-place editing', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('renames a key on Enter', async () => {
+        const saved = { ...RUN_ENTRY_FULL, key: 'profile_43' };
+        const { fixture, element, api } = renderGrid({ canUpdate: true, updateEntry: () => of(saved) });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+
+        type(keyEditor(), 'profile_43');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        expect(api.updateEntry).toHaveBeenCalledWith(11, { key: 'profile_43' });
+        expect(keyEditor()).toBeNull();
+        // Reloaded, so the row shows the server's own key and preview.
+        expect(api.getEntries).toHaveBeenCalledTimes(2);
+    });
+
+    it('cancels a key edit on Escape', async () => {
+        const { fixture, element, api } = renderGrid({ canUpdate: true });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+
+        type(keyEditor(), 'other');
+        keydown(keyEditor(), 'Escape');
+        await settle(fixture);
+
+        expect(api.updateEntry).not.toHaveBeenCalled();
+        expect(keyEditor()).toBeNull();
+        expect(cell(element, '11', 'key')?.textContent).toContain('profile_42');
+    });
+
+    it('does not edit without update permission', async () => {
+        const { fixture, element } = renderGrid({ canUpdate: false });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+        expect(keyEditor()).toBeNull();
+    });
+
+    it('loads the full value into the editor, keeps Enter for new lines and saves on Ctrl+Enter', async () => {
+        onTestFinished(stubLayout());
+        const saved = { ...RUN_ENTRY_FULL, value: { plan: 'team' } };
+        const { fixture, element, api } = renderGrid({ canUpdate: true, updateEntry: () => of(saved) });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'value'));
+
+        expect(api.getEntry).toHaveBeenCalledWith(11);
+        expect(valueEditor()?.value).toBe('{\n  "plan": "pro"\n}');
+
+        type(valueEditor(), '{\n  "plan": "team"\n}');
+        keydown(valueEditor(), 'Enter');
+        await settle(fixture);
+        expect(valueEditor()).not.toBeNull();
+        expect(api.updateEntry).not.toHaveBeenCalled();
+
+        keydown(valueEditor(), 'Enter', { ctrlKey: true });
+        await settle(fixture);
+        expect(api.updateEntry).toHaveBeenCalledWith(11, { value: { plan: 'team' } });
+        expect(valueEditor()).toBeNull();
+    });
+
+    it('shows a loading state until the full value arrives', async () => {
+        onTestFinished(stubLayout());
+        const full = new Subject<PersistenceTableEntry>();
+        const { fixture, element } = renderGrid({ canUpdate: true, getEntry: () => full });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'value'));
+
+        expect(valueEditor()?.readOnly).toBe(true);
+        expect(valueEditor()?.getAttribute('aria-busy')).toBe('true');
+        full.next(RUN_ENTRY_FULL);
+        await settle(fixture);
+        expect(valueEditor()?.readOnly).toBe(false);
+        expect(valueEditor()?.value).toBe('{\n  "plan": "pro"\n}');
+    });
+
+    it('does not fetch the value again after saving it', async () => {
+        onTestFinished(stubLayout());
+        const saved = { ...RUN_ENTRY_FULL, value: { plan: 'team' }, updated_at: '2026-09-28T12:00:00Z' };
+        let row = RUN_ENTRY;
+        const { fixture, element, api } = renderGrid({
+            canUpdate: true,
+            getEntries: () => of({ count: 1, next: null, previous: null, results: [row] }),
+            updateEntry: () => {
+                row = { ...RUN_ENTRY, value_preview: '{"plan": "team"}', updated_at: saved.updated_at };
+                return of(saved);
+            },
+        });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'value'));
+        type(valueEditor(), '{"plan": "team"}');
+        keydown(valueEditor(), 'Enter', { ctrlKey: true });
+        await settle(fixture);
+
+        await openEditor(fixture, cell(element, '11', 'value'));
+        expect(api.getEntry).toHaveBeenCalledOnce();
+        expect(valueEditor()?.value).toBe('{\n  "plan": "team"\n}');
+    });
+
+    it('keeps invalid JSON in the editor with the reason, without saving', async () => {
+        onTestFinished(stubLayout());
+        const { fixture, element, api, toastError } = renderGrid({ canUpdate: true });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'value'));
+
+        type(valueEditor(), '{oops');
+        keydown(valueEditor(), 'Enter', { ctrlKey: true });
+        await settle(fixture);
+
+        expect(api.updateEntry).not.toHaveBeenCalled();
+        expect(toastError).toHaveBeenCalledWith('Value must be valid JSON');
+        expect(valueEditor()?.value).toBe('{oops');
+        expect(document.querySelector('.entry-editor__error')?.textContent).toContain('Value must be valid JSON');
+    });
+
+    it('puts a rejected key rename back into the key cell with the server reason', async () => {
+        onTestFinished(stubLayout());
+        const { fixture, element, toastError } = renderGrid({
+            canUpdate: true,
+            updateEntry: () => throwError(() => badRequest('key: An entry with this key already exists.')),
+        });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+
+        type(keyEditor(), 'manual');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        expect(toastError).toHaveBeenCalled();
+        const editor = keyEditor();
+        expect(editor?.value).toBe('manual');
+        expect(editor?.getAttribute('aria-invalid')).toBe('true');
+        expect(editorError(editor)).toBe('An entry with this key already exists.');
+    });
+
+    it('does not let a row be edited again until its save has landed', async () => {
+        const saved = new Subject<PersistenceTableEntry>();
+        const { fixture, element, api } = renderGrid({ canUpdate: true, updateEntry: () => saved });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+        type(keyEditor(), 'profile_43');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        await openEditor(fixture, cell(element, '11', 'key'));
+        expect(keyEditor()).toBeNull();
+        expect(cell(element, '11', 'key')?.classList).toContain('entries-grid__cell--saving');
+        expect(cell(element, '11', 'value')?.classList).toContain('entries-grid__cell--saving');
+
+        saved.next({ ...RUN_ENTRY_FULL, key: 'profile_43' });
+        await settle(fixture);
+        expect(api.getEntries).toHaveBeenCalledTimes(2);
+        expect(cell(element, '11', 'key')?.classList).not.toContain('entries-grid__cell--saving');
+        await openEditor(fixture, cell(element, '11', 'key'));
+        expect(keyEditor()).not.toBeNull();
+    });
+
+    it('keeps a row locked until its last overlapping save and the reload after it have landed', async () => {
+        onTestFinished(stubLayout());
+        const keySave = new Subject<PersistenceTableEntry>();
+        const valueSave = new Subject<PersistenceTableEntry>();
+        let listed = RUN_ENTRY;
+        let serverValue: unknown = { plan: 'pro' };
+        const { fixture, element, api } = renderGrid({
+            canUpdate: true,
+            getEntries: () => of({ count: 1, next: null, previous: null, results: [listed] }),
+            getEntry: () =>
+                of({ ...RUN_ENTRY_FULL, key: listed.key, value: serverValue, updated_at: listed.updated_at }),
+            updateEntry: (_id, body) => ('key' in (body as object) ? keySave : valueSave),
+        });
+        const locked = () => cell(element, '11', 'value')?.classList.contains('entries-grid__cell--saving');
+        await settle(fixture);
+
+        // Tab from the renamed key goes on to the value while the rename is on its way; both saves are now pending.
+        await openEditor(fixture, cell(element, '11', 'key'));
+        type(keyEditor(), 'profile_43');
+        keydown(keyEditor(), 'Tab');
+        await settle(fixture);
+        type(valueEditor(), '{"plan": "team"}');
+        keydown(valueEditor(), 'Enter', { ctrlKey: true });
+        await settle(fixture);
+        expect(api.updateEntry).toHaveBeenCalledTimes(2);
+
+        // The rename and its reload land first: the value save is still out, so the row stays locked.
+        listed = { ...RUN_ENTRY, key: 'profile_43', updated_at: '2026-09-28T12:00:00Z' };
+        keySave.next({ ...RUN_ENTRY_FULL, key: 'profile_43', updated_at: listed.updated_at });
+        await settle(fixture);
+        expect(api.getEntries).toHaveBeenCalledTimes(2);
+        expect(locked()).toBe(true);
+        await openEditor(fixture, cell(element, '11', 'value'));
+        expect(valueEditor()).toBeNull();
+
+        // The value save and its reload land: the row unlocks and shows the saved value, not the rename's copy.
+        serverValue = { plan: 'team' };
+        listed = { ...listed, value_preview: '{"plan": "team"}', updated_at: '2026-09-28T12:00:01Z' };
+        valueSave.next({ ...RUN_ENTRY_FULL, key: 'profile_43', value: serverValue, updated_at: listed.updated_at });
+        await settle(fixture);
+        expect(api.getEntries).toHaveBeenCalledTimes(3);
+        expect(locked()).toBe(false);
+        await openEditor(fixture, cell(element, '11', 'value'));
+        expect(valueEditor()?.value).toBe('{\n  "plan": "team"\n}');
+    });
+
+    it('unlocks the row with a reload when the last overlapping save fails, keeping its text', async () => {
+        onTestFinished(stubLayout());
+        const keySave = new Subject<PersistenceTableEntry>();
+        const valueSave = new Subject<PersistenceTableEntry>();
+        let listed = RUN_ENTRY;
+        const { fixture, element, api } = renderGrid({
+            canUpdate: true,
+            getEntries: () => of({ count: 1, next: null, previous: null, results: [listed] }),
+            updateEntry: (_id, body) => ('key' in (body as object) ? keySave : valueSave),
+        });
+        const locked = () => cell(element, '11', 'value')?.classList.contains('entries-grid__cell--saving');
+        await settle(fixture);
+
+        await openEditor(fixture, cell(element, '11', 'key'));
+        type(keyEditor(), 'profile_43');
+        keydown(keyEditor(), 'Tab');
+        await settle(fixture);
+        type(valueEditor(), '{"plan": "team"}');
+        keydown(valueEditor(), 'Enter', { ctrlKey: true });
+        await settle(fixture);
+
+        // The rename and its reload land while the value save is still out: the row stays locked.
+        listed = { ...RUN_ENTRY, key: 'profile_43', updated_at: '2026-09-28T12:00:00Z' };
+        keySave.next({ ...RUN_ENTRY_FULL, key: 'profile_43', updated_at: listed.updated_at });
+        await settle(fixture);
+        expect(api.getEntries).toHaveBeenCalledTimes(2);
+        expect(locked()).toBe(true);
+
+        // The value save fails: a follow-up reload brings the rename and unlocks the row.
+        valueSave.error(badRequest('value: Too large.'));
+        await settle(fixture);
+        expect(api.getEntries).toHaveBeenCalledTimes(3);
+        expect(locked()).toBe(false);
+
+        await openEditor(fixture, cell(element, '11', 'value'));
+        expect(valueEditor()?.value).toBe('{"plan": "team"}');
+        expect(editorError(valueEditor())).toBe('Too large.');
+    });
+
+    it('clears an old key error before trying the create again', async () => {
+        onTestFinished(stubLayout());
+        let attempt = 0;
+        const { fixture, element } = renderGrid({
+            canCreate: true,
+            createEntry: () => {
+                attempt += 1;
+                return throwError(() =>
+                    badRequest(attempt === 1 ? 'key: An entry with this key already exists.' : 'value: Too large.')
+                );
+            },
+        });
+        await settle(fixture);
+        element.querySelector<HTMLElement>('.entries-grid__header app-button')?.click();
+        await settle(fixture);
+        type(keyEditor(), 'manual');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+        expect(editorError(keyEditor())).toBe('An entry with this key already exists.');
+
+        type(keyEditor(), 'other');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+        expect(cell(element, 'new-entry', 'key')?.querySelector('.entries-grid__cell-error')).toBeNull();
+        expect(editorError(valueEditor())).toBe('Too large.');
+    });
+
+    // The grid picks the next cell before the rename locks the row. That is safe: each commit sends only its own
+    // field, so the value saved next cannot undo the rename.
+    it('goes on to the value on Tab from a renamed key, and saves only the value there', async () => {
+        onTestFinished(stubLayout());
+        const { fixture, element, api } = renderGrid({ canUpdate: true, updateEntry: () => NEVER });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+        type(keyEditor(), 'profile_43');
+        keydown(keyEditor(), 'Tab');
+        await settle(fixture);
+        expect(api.updateEntry).toHaveBeenCalledWith(11, { key: 'profile_43' });
+        expect(valueEditor()?.value).toBe('{\n  "plan": "pro"\n}');
+
+        type(valueEditor(), '{"plan": "team"}');
+        keydown(valueEditor(), 'Enter', { ctrlKey: true });
+        await settle(fixture);
+        expect(api.updateEntry).toHaveBeenLastCalledWith(11, { value: { plan: 'team' } });
+    });
+
+    it('keeps invalid JSON committed by a click outside, for the next time the cell opens', async () => {
+        onTestFinished(stubLayout());
+        const outside = document.body.appendChild(document.createElement('button'));
+        onTestFinished(() => outside.remove());
+        const { fixture, element, api } = renderGrid({ canUpdate: true });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'value'));
+        type(valueEditor(), '{oops');
+        // A real click outside: the press closes the popup editor, then focus moves.
+        outside.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        outside.focus();
+        await settle(fixture);
+
+        expect(api.updateEntry).not.toHaveBeenCalled();
+        expect(valueEditor()).toBeNull();
+        expect(document.activeElement).toBe(outside);
+        expect(cell(element, '11', 'value')?.querySelector('.entries-grid__cell-error')?.textContent).toContain(
+            'Value must be valid JSON'
+        );
+
+        // Opening another cell first does not throw the rejected edit away.
+        await openEditor(fixture, cell(element, '12', 'key'));
+        keydown(keyEditor(), 'Escape');
+        await settle(fixture);
+
+        await openEditor(fixture, cell(element, '11', 'value'));
+        expect(valueEditor()?.value).toBe('{oops');
+        expect(editorError(valueEditor())).toBe('Value must be valid JSON');
+
+        keydown(valueEditor(), 'Escape');
+        await settle(fixture);
+        expect(cell(element, '11', 'value')?.querySelector('.entries-grid__cell-error')).toBeNull();
+    });
+
+    it('leaves focus where the user put it when the reload after a rename lands', async () => {
+        const reload = new Subject<EntriesPage>();
+        let loads = 0;
+        const { fixture, element } = renderGrid({
+            canUpdate: true,
+            getEntries: () => {
+                loads += 1;
+                return loads === 1 ? of({ count: 1, next: null, previous: null, results: [RUN_ENTRY] }) : reload;
+            },
+            updateEntry: () => of({ ...RUN_ENTRY_FULL, key: 'profile_43' }),
+        });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'key'));
+        type(keyEditor(), 'profile_43');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        const search = element.querySelector<HTMLInputElement>('.entries-grid__header app-search input');
+        search?.focus();
+        reload.next({ count: 1, next: null, previous: null, results: [{ ...RUN_ENTRY, key: 'profile_43' }] });
+        await settle(fixture);
+        expect(document.activeElement).toBe(search);
     });
 });
 
-describe.each([
-    ['value', '.entries-grid__preview'],
-    ['key', '.entries-grid__key'],
-])('PersistenceEntriesGridComponent %s double-click', (_cell, selector) => {
-    it('opens the edit dialog for that entry when the user can update', () => {
-        const { element, dialogOpen } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        element.querySelector(selector)?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-        expect(dialogOpen).toHaveBeenCalledOnce();
-        expect(dialogOpen.mock.calls[0]).toEqual([
-            expect.anything(),
-            expect.objectContaining({ data: { tableId: 1, entry: RUN_ENTRY } }),
-        ]);
+describe('PersistenceEntriesGridComponent new entry row', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function addButton(element: HTMLElement): HTMLElement | null {
+        return element.querySelector<HTMLElement>('.entries-grid__header app-button');
+    }
+
+    it('is offered only with create permission', async () => {
+        const { fixture, element } = renderGrid({ canCreate: false });
+        await settle(fixture);
+        expect(addButton(element)).toBeNull();
     });
 
-    it('hints at double-click only for users who can update', () => {
-        const editable = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        expect(editable.element.querySelector<HTMLElement>(selector)?.title).toBe('Double-click to edit');
-        TestBed.resetTestingModule();
-        const readOnly = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        expect(readOnly.element.querySelector(selector)?.hasAttribute('title')).toBe(false);
+    it('opens an empty row at the top with its key in edit mode', async () => {
+        const { fixture, element } = renderGrid({ canCreate: true });
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+
+        expect(element.querySelector('.ag-row[row-index="0"]')?.getAttribute('row-id')).toBe('new-entry');
+        expect(keyEditor()?.placeholder).toBe('New entry — removed if left empty');
     });
 
-    it('does nothing without update permission', () => {
-        const { element, dialogOpen } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        element.querySelector(selector)?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-        expect(dialogOpen).not.toHaveBeenCalled();
+    it('creates the entry when its key is committed, with the default null value', async () => {
+        const created = { ...RUN_ENTRY_FULL, id: 99, key: 'fresh', value: null };
+        const { fixture, element, api } = renderGrid({ canCreate: true, createEntry: () => of(created) });
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+
+        type(keyEditor(), 'fresh');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        expect(api.createEntry).toHaveBeenCalledWith({ table: 1, key: 'fresh', value: null });
+        expect(element.querySelector('[row-id="new-entry"]')).toBeNull();
+        // Reloaded, so the new entry shows up where the server sorts it.
+        expect(api.getEntries).toHaveBeenCalledTimes(2);
+    });
+
+    it('disappears when left empty', async () => {
+        const { fixture, element, api } = renderGrid({ canCreate: true });
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+
+        keydown(keyEditor(), 'Escape');
+        await settle(fixture);
+
+        expect(element.querySelector('[row-id="new-entry"]')).toBeNull();
+        expect(api.createEntry).not.toHaveBeenCalled();
+    });
+
+    it('is only ever one row', async () => {
+        const { fixture, element } = renderGrid({ canCreate: true });
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+        type(keyEditor(), 'half');
+        addButton(element)?.click();
+        await settle(fixture);
+
+        expect(element.querySelectorAll('.ag-row[row-id="new-entry"]')).toHaveLength(1);
+    });
+
+    function rejectingGrid() {
+        return renderGrid({
+            canCreate: true,
+            createEntry: () => throwError(() => badRequest('key: An entry with this key already exists.')),
+        });
+    }
+
+    it('keeps the row and reopens its key with the reason when the server rejects the key', async () => {
+        onTestFinished(stubLayout());
+        const { fixture, element } = rejectingGrid();
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+        type(keyEditor(), 'manual');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        expect(element.querySelector('[row-id="new-entry"]')).not.toBeNull();
+        expect(keyEditor()?.value).toBe('manual');
+        expect(editorError(keyEditor())).toBe('An entry with this key already exists.');
+    });
+
+    it('drops the row on Escape after a rejected create, without sending it again', async () => {
+        onTestFinished(stubLayout());
+        const { fixture, element, api } = rejectingGrid();
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+        type(keyEditor(), 'manual');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+
+        keydown(keyEditor(), 'Escape');
+        await settle(fixture);
+        expect(element.querySelector('[row-id="new-entry"]')).toBeNull();
+        expect(api.createEntry).toHaveBeenCalledOnce();
+    });
+
+    it('drops the row on Escape in the value after Tab from the key, creating nothing', async () => {
+        onTestFinished(stubLayout());
+        const { fixture, element, api } = renderGrid({ canCreate: true });
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+        type(keyEditor(), 'fresh');
+        keydown(keyEditor(), 'Tab');
+        await settle(fixture);
+        expect(valueEditor()).not.toBeNull();
+
+        keydown(valueEditor(), 'Escape');
+        await settle(fixture);
+        expect(element.querySelector('[row-id="new-entry"]')).toBeNull();
+        expect(api.createEntry).not.toHaveBeenCalled();
+    });
+
+    it('lets focus go after a create rejected on a click outside, keeps the error and retries on the next commit', async () => {
+        onTestFinished(stubLayout());
+        const outside = document.body.appendChild(document.createElement('button'));
+        onTestFinished(() => outside.remove());
+        const { fixture, element, api } = rejectingGrid();
+        await settle(fixture);
+        addButton(element)?.click();
+        await settle(fixture);
+        type(keyEditor(), 'manual');
+        outside.focus();
+        await settle(fixture);
+
+        expect(api.createEntry).toHaveBeenCalledOnce();
+        expect(keyEditor()).toBeNull();
+        expect(document.activeElement).toBe(outside);
+        expect(cell(element, 'new-entry', 'key')?.querySelector('.entries-grid__cell-error')?.textContent).toContain(
+            'An entry with this key already exists.'
+        );
+
+        await openEditor(fixture, cell(element, 'new-entry', 'key'));
+        expect(keyEditor()?.value).toBe('manual');
+        keydown(keyEditor(), 'Enter');
+        await settle(fixture);
+        expect(api.createEntry).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('PersistenceEntriesGridComponent keyboard', () => {
+    let writeText: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        writeText = vi.fn(() => Promise.resolve());
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        Reflect.deleteProperty(navigator, 'clipboard');
+    });
+
+    it('copies a key and the full value with Ctrl/Cmd+C on their cells, for read-only users too', async () => {
+        const { fixture, element, api } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
+
+        keydown(cell(element, '11', 'key'), 'c', { ctrlKey: true });
+        await settle(fixture);
+        expect(writeText).toHaveBeenLastCalledWith('profile_42');
+
+        keydown(cell(element, '11', 'value'), 'c', { metaKey: true });
+        await settle(fixture);
+        expect(api.getEntry).toHaveBeenCalledWith(11);
+        expect(writeText).toHaveBeenLastCalledWith('{\n  "plan": "pro"\n}');
+    });
+
+    it("shows the server's reason when the value to copy cannot be fetched", async () => {
+        const { fixture, element, toastError } = renderGrid({
+            entries: [RUN_ENTRY],
+            getEntry: () => throwError(() => new HttpErrorResponse({ status: 404, error: { message: 'Not found.' } })),
+        });
+        await settle(fixture);
+        keydown(cell(element, '11', 'value'), 'c', { ctrlKey: true });
+        await settle(fixture);
+        expect(toastError).toHaveBeenCalledWith('Not found.', 3000, 'top-right');
+        expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('deletes with Enter on the actions cell, only with delete permission', async () => {
+        const { fixture, element, api, confirmDelete } = renderGrid({ canDelete: true, entries: [RUN_ENTRY] });
+        await settle(fixture);
+        keydown(cell(element, '11', 'actions'), 'Enter');
+        await settle(fixture);
+        expect(confirmDelete).toHaveBeenCalledWith('profile_42');
+        expect(api.deleteEntry).toHaveBeenCalledWith(11);
+    });
+
+    it('follows the session link with Enter on the session cell', async () => {
+        const { fixture, element } = renderGrid({ entries: [RUN_ENTRY] });
+        const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        await settle(fixture);
+        keydown(cell(element, '11', 'session'), 'Enter');
+        await settle(fixture);
+        expect(navigate).toHaveBeenCalledWith(['/graph', 5, 'session', 123]);
+    });
+
+    it('still starts editing an editable cell with Enter', async () => {
+        const { fixture, element } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
+        await settle(fixture);
+        keydown(cell(element, '11', 'key'), 'Enter');
+        await settle(fixture);
+        expect(keyEditor()?.value).toBe('profile_42');
+    });
+});
+
+describe('PersistenceEntriesGridComponent delete', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('deletes with a cross after confirmation', async () => {
+        const { fixture, element, api, confirmDelete } = renderGrid({ canDelete: true });
+        await settle(fixture);
+        const cross = cell(element, '11', 'actions')?.querySelector<HTMLButtonElement>('button');
+        expect(cross?.querySelector('i.ti-x')).not.toBeNull();
+
+        cross?.click();
+        await settle(fixture);
+        expect(confirmDelete).toHaveBeenCalledWith('profile_42');
+        expect(api.deleteEntry).toHaveBeenCalledWith(11);
+    });
+
+    it('has no delete column without delete permission', async () => {
+        const { fixture, element } = renderGrid({ canDelete: false });
+        await settle(fixture);
+        expect(element.querySelector('[col-id="actions"]')).toBeNull();
+    });
+});
+
+describe('PersistenceEntriesGridComponent sorting', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    function header(element: HTMLElement, colId: string): HTMLElement | null {
+        return element.querySelector<HTMLElement>(`.ag-header-cell[col-id="${colId}"]`);
+    }
+
+    async function clickHeader(fixture: { detectChanges: () => void }, element: HTMLElement, colId: string) {
+        header(element, colId)?.querySelector<HTMLElement>('.ag-header-cell-label')?.click();
+        await settle(fixture);
+    }
+
+    it('sorts by key ascending by default and shows it as aria-sort', async () => {
+        const { fixture, element, api } = renderGrid();
+        await settle(fixture);
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'key' }));
+        expect(header(element, 'key')?.getAttribute('aria-sort')).toBe('ascending');
+        expect(header(element, 'value')?.hasAttribute('aria-sort')).toBe(false);
+    });
+
+    it('flips the sorted column and starts a new column ascending, back on page 1', async () => {
+        const { fixture, element, api } = renderGrid();
+        await settle(fixture);
+        fixture.componentInstance.page.set(2);
+        await settle(fixture);
+
+        await clickHeader(fixture, element, 'key');
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-key', offset: 0 }));
+        await clickHeader(fixture, element, 'updated_at');
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'updated_at' }));
+        await clickHeader(fixture, element, 'updated_at');
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-updated_at' }));
+        expect(header(element, 'updated_at')?.getAttribute('aria-sort')).toBe('descending');
+        await clickHeader(fixture, element, 'session');
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'session' }));
+    });
+
+    it('does not sort by value', async () => {
+        const { fixture, element, api } = renderGrid();
+        await settle(fixture);
+        const calls = api.getEntries.mock.calls.length;
+        await clickHeader(fixture, element, 'value');
+        expect(api.getEntries).toHaveBeenCalledTimes(calls);
     });
 });
 
 describe('PersistenceEntriesGridComponent key search', () => {
-    afterEach(() => vi.useRealTimers());
-
-    it('has no search box of its own', () => {
-        const { element } = renderGrid();
-        expect(element.querySelector('app-search')).toBeNull();
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
     });
 
-    it('queries a term already typed on mount straight away, without an unfiltered first load', () => {
-        vi.useFakeTimers();
-        const { getEntries } = renderGrid({ searchTerm: ' profile ' });
-
-        expect(getEntries.mock.calls[0][0]).toEqual(expect.objectContaining({ table: 1, search: 'profile' }));
-        expect(getEntries.mock.calls.every(([query]) => query.search === 'profile')).toBe(true);
-    });
-
-    it('sends the settled search term to the server and keeps it across a table switch', () => {
-        vi.useFakeTimers();
-        const { fixture, getEntries } = renderGrid();
-
-        fixture.componentRef.setInput('searchTerm', '  profile ');
-        fixture.detectChanges();
-        vi.advanceTimersByTime(299);
-        fixture.detectChanges();
-        expect(getEntries).not.toHaveBeenCalledWith(expect.objectContaining({ search: 'profile' }));
-
-        vi.advanceTimersByTime(1);
-        fixture.detectChanges();
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ table: 1, search: 'profile' }));
-
-        fixture.componentRef.setInput('table', { ...TABLE, id: 2, name: 'orders' });
-        fixture.detectChanges();
-        expect(getEntries).toHaveBeenLastCalledWith(
-            expect.objectContaining({ table: 2, search: 'profile', offset: 0 })
+    it('sits in the grid header', async () => {
+        const { fixture, element } = renderGrid();
+        await settle(fixture);
+        expect(element.querySelector('.entries-grid__header app-search input')?.getAttribute('placeholder')).toBe(
+            'Search keys...'
         );
     });
 
-    it('applies a cleared term at once', () => {
+    it('sends the settled term, keeps it across a table switch and applies a cleared term at once', () => {
         vi.useFakeTimers();
-        const { fixture, getEntries } = renderGrid({ searchTerm: 'profile' });
+        const { fixture, api } = renderGrid();
 
-        fixture.componentRef.setInput('searchTerm', '');
+        fixture.componentInstance.searchTerm.set('  profile ');
         fixture.detectChanges();
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ search: '' }));
+        vi.advanceTimersByTime(299);
+        fixture.detectChanges();
+        expect(api.getEntries).not.toHaveBeenCalledWith(expect.objectContaining({ search: 'profile' }));
+        vi.advanceTimersByTime(1);
+        fixture.detectChanges();
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ table: 1, search: 'profile' }));
+
+        fixture.componentRef.setInput('table', { ...TABLE, id: 2, name: 'orders' });
+        fixture.detectChanges();
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ table: 2, search: 'profile' }));
+
+        fixture.componentInstance.searchTerm.set('');
+        fixture.detectChanges();
+        expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ search: '' }));
+    });
+});
+
+describe('PersistenceEntriesGridComponent loading', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('marks the grid busy while a page is on its way, and drops a stale answer', async () => {
+        const answers: Subject<EntriesPage>[] = [];
+        const { fixture, element } = renderGrid({
+            getEntries: () => {
+                const answer = new Subject<EntriesPage>();
+                answers.push(answer);
+                return answer;
+            },
+        });
+        const body = () => element.querySelector('.entries-grid__body');
+        await settle(fixture);
+        expect(body()?.getAttribute('aria-busy')).toBe('true');
+
+        answers[0].next({ count: 1, next: null, previous: null, results: [RUN_ENTRY] });
+        await settle(fixture);
+        expect(body()?.getAttribute('aria-busy')).toBe('false');
+
+        fixture.componentInstance.page.set(2);
+        await settle(fixture);
+        expect(body()?.getAttribute('aria-busy')).toBe('true');
+        // Back to page 1 before page 2 answered: page 2's late answer must not land.
+        fixture.componentInstance.page.set(1);
+        await settle(fixture);
+        answers[1].next({ count: 1, next: null, previous: null, results: [HAND_EDITED_ENTRY] });
+        await settle(fixture);
+        expect(fixture.componentInstance.entries()).toEqual([RUN_ENTRY]);
+    });
+
+    it("drops the previous table's rows while the new table loads", async () => {
+        const { fixture } = renderGrid({
+            getEntries: (query) =>
+                query.table === 1 ? of({ count: 1, next: null, previous: null, results: [RUN_ENTRY] }) : NEVER,
+        });
+        await settle(fixture);
+        expect(fixture.componentInstance.entries()).toEqual([RUN_ENTRY]);
+
+        fixture.componentRef.setInput('table', { ...TABLE, id: 2, name: 'orders' });
+        fixture.detectChanges();
+        expect(fixture.componentInstance.entries()).toEqual([]);
+        expect(fixture.componentInstance.totalCount()).toBe(0);
     });
 });
 
@@ -241,142 +951,55 @@ describe('PersistenceEntriesGridComponent copy key and value', () => {
     let writeText: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         writeText = vi.fn(() => Promise.resolve());
-        // jsdom has no Clipboard API.
+        // jsdom has no Clipboard API (nor ClipboardItem, so the copy falls back to writeText).
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     });
-    afterEach(() => Reflect.deleteProperty(navigator, 'clipboard'));
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        Reflect.deleteProperty(navigator, 'clipboard');
+    });
 
+    // The labels name the keyboard shortcut too, since the button is out of reach for Tab.
     function copyButton(element: HTMLElement, ariaLabel: 'Copy key' | 'Copy value'): HTMLButtonElement | null {
-        return element.querySelector<HTMLButtonElement>(`app-copy-button button[aria-label="${ariaLabel}"]`);
+        return element.querySelector<HTMLButtonElement>(`app-copy-button button[aria-label="${ariaLabel} (Ctrl+C)"]`);
     }
 
-    it('copies the key, for read-only users too', () => {
-        const { element } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
+    it('copies the key, for read-only users too', async () => {
+        const { fixture, element } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
         copyButton(element, 'Copy key')?.click();
         expect(writeText).toHaveBeenCalledWith('profile_42');
     });
 
-    it('copies an object value as indented JSON, for read-only users too', () => {
-        const { element } = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
+    it('fetches the full value and copies it as indented JSON, for read-only users too', async () => {
+        const { fixture, element, api } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
         copyButton(element, 'Copy value')?.click();
+        await settle(fixture);
+        expect(api.getEntry).toHaveBeenCalledWith(11);
         expect(writeText).toHaveBeenCalledWith('{\n  "plan": "pro"\n}');
     });
 
-    it('copies a string value as its raw text, without JSON quotes', () => {
-        const { element } = renderGrid({ entries: [{ ...RUN_ENTRY, value: 'hello "world"' }] });
+    it('copies a string value as its raw text, without JSON quotes', async () => {
+        const { fixture, element } = renderGrid({
+            entries: [RUN_ENTRY],
+            getEntry: () => of({ ...RUN_ENTRY_FULL, value: 'hello "world"' }),
+        });
+        await settle(fixture);
         copyButton(element, 'Copy value')?.click();
+        await settle(fixture);
         expect(writeText).toHaveBeenCalledWith('hello "world"');
     });
 
-    it('does not open the editor when Copy key or Copy value is double-clicked', () => {
-        const { element, dialogOpen } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        const copyHosts = [...element.querySelectorAll('app-copy-button')];
-        expect(copyHosts).toHaveLength(2);
-        copyHosts.forEach((host) => host.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
-        expect(dialogOpen).not.toHaveBeenCalled();
-    });
-});
-
-describe('PersistenceEntriesGridComponent editable cell hint', () => {
-    it('marks the key and value cells editable only for users who can update', () => {
-        const editable = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
-        expect(editable.element.querySelectorAll('.entries-grid__cell--editable')).toHaveLength(2);
-        TestBed.resetTestingModule();
-
-        const readOnly = renderGrid({ canUpdate: false, entries: [RUN_ENTRY] });
-        expect(readOnly.element.querySelectorAll('.entries-grid__cell')).toHaveLength(2);
-        expect(readOnly.element.querySelector('.entries-grid__cell--editable')).toBeNull();
-    });
-});
-
-describe('PersistenceEntriesGridComponent sorting', () => {
-    function sortHeader(element: HTMLElement, label: string): HTMLElement | undefined {
-        return [...element.querySelectorAll<HTMLElement>('.col-label-group--clickable')].find(
-            (header) => header.querySelector('.col-label')?.textContent?.trim() === label
-        );
-    }
-
-    it('sorts by key ascending by default', () => {
-        const { getEntries } = renderGrid();
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'key' }));
-    });
-
-    it('makes Key, Session and Updated sortable, but not Value', () => {
-        const { element } = renderGrid();
-        const labels = [...element.querySelectorAll('.col-label-group--clickable .col-label')].map((label) =>
-            label.textContent?.trim()
-        );
-        expect(labels).toEqual(['Key', 'Session', 'Updated']);
-    });
-
-    it('flips the sorted column and starts a new column ascending', () => {
-        const { fixture, element, getEntries } = renderGrid();
-        const clickHeader = (label: string) => {
-            sortHeader(element, label)?.click();
-            fixture.detectChanges();
-        };
-
-        clickHeader('Key');
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-key' }));
-        clickHeader('Updated');
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'updated_at' }));
-        clickHeader('Updated');
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-updated_at' }));
-        clickHeader('Session');
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'session' }));
-    });
-
-    it('shows the direction on the sorted column only', () => {
-        const { fixture } = renderGrid();
-        const icons = () =>
-            fixture.componentInstance
-                .columns()
-                .filter((column) => column.headerIcon)
-                .map((column) => [column.key, column.headerIcon, column.headerIconActive]);
-
-        expect(icons()).toEqual([
-            ['key', 'arrow-up', true],
-            ['session_label', 'arrow-up-down', false],
-            ['updated_at', 'arrow-up-down', false],
-        ]);
-        fixture.componentInstance.onSortToggle('key');
-        expect(icons()[0]).toEqual(['key', 'arrow-down', true]);
-    });
-
-    it('exposes the current sort as aria-sort on the sorted header only', () => {
-        const { fixture, element } = renderGrid();
-        const sortedLabels = () =>
-            [...element.querySelectorAll('[aria-sort]')].map((cell) => [
-                cell.querySelector('.col-label')?.textContent?.trim(),
-                cell.getAttribute('aria-sort'),
-            ]);
-        expect(sortedLabels()).toEqual([['Key', 'ascending']]);
-
-        sortHeader(element, 'Updated')?.click();
-        sortHeader(element, 'Updated')?.click();
-        fixture.detectChanges();
-        expect(sortedLabels()).toEqual([['Updated', 'descending']]);
-    });
-
-    it('ignores a click on a column that does not sort', () => {
-        const { fixture } = renderGrid();
-        fixture.componentInstance.onSortToggle('preview');
-        expect(fixture.componentInstance.ordering()).toBe('key');
-    });
-
-    it('goes back to page 1 on a sort change and keeps the search term', () => {
-        const entries = Array.from({ length: 20 }, (_, index) => ({ ...RUN_ENTRY, id: index + 1 }));
-        const { fixture, getEntries } = renderGrid({ entries, searchTerm: 'profile' });
-        fixture.componentInstance.page.set(2);
-        fixture.detectChanges();
-        expect(getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20 }));
-
-        fixture.componentInstance.onSortToggle('updated_at');
-        fixture.detectChanges();
-        expect(fixture.componentInstance.page()).toBe(1);
-        expect(getEntries).toHaveBeenLastCalledWith(
-            expect.objectContaining({ ordering: 'updated_at', search: 'profile', offset: 0 })
-        );
+    it('does not open the editor when Copy is double-clicked', async () => {
+        const { fixture, element } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
+        await settle(fixture);
+        for (const host of element.querySelectorAll('app-copy-button')) {
+            host.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+        }
+        await settle(fixture);
+        expect(element.querySelector('app-entry-cell-editor')).toBeNull();
     });
 });

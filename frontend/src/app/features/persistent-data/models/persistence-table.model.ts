@@ -14,6 +14,7 @@ export interface CreatePersistenceTableRequest {
 
 export type UpdatePersistenceTableRequest = Partial<CreatePersistenceTableRequest>;
 
+// The full entry: `GET persistence-table-entries/{id}/` and the create / update responses.
 export interface PersistenceTableEntry {
     id: number;
     table: number;
@@ -24,6 +25,13 @@ export interface PersistenceTableEntry {
     updated_by_session: number | null;
     updated_by_graph: number | null;
     updated_by_graph_name: string | null;
+}
+
+// A row of the entries list: no `value` (up to 256 KiB each), only the start of its JSON text.
+export interface PersistenceTableEntryListItem extends Omit<PersistenceTableEntry, 'value'> {
+    // The first 200 characters of the value as Postgres prints jsonb (`{"a": 1}`), not JSON.stringify.
+    value_preview: string;
+    value_truncated: boolean;
 }
 
 export interface CreatePersistenceTableEntryRequest {

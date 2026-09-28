@@ -45,33 +45,35 @@
                 }
             </div>
             <div class="tabs-right">
-                <div class="search-container">
-                    <app-svg-icon
-                        icon="search"
-                        class="search-icon"
-                        size="1rem"
-                    ></app-svg-icon>
-                    <input
-                        type="text"
-                        class="search-input"
-                        [placeholder]="searchPlaceholder()"
-                        [ngModel]="searchTerm()"
-                        (ngModelChange)="filesSearchService.setSearchTerm($event)"
-                    />
-                    @if (searchTerm()) {
-                        <button
-                            type="button"
-                            class="clear-btn"
-                            aria-label="Clear"
-                            (click)="filesSearchService.clear()"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="1.1rem"
-                            ></app-svg-icon>
-                        </button>
-                    }
-                </div>
+                @if (showSearch()) {
+                    <div class="search-container">
+                        <app-svg-icon
+                            icon="search"
+                            class="search-icon"
+                            size="1rem"
+                        ></app-svg-icon>
+                        <input
+                            type="text"
+                            class="search-input"
+                            placeholder="Search collections, folders, files..."
+                            [ngModel]="searchTerm()"
+                            (ngModelChange)="filesSearchService.setSearchTerm($event)"
+                        />
+                        @if (searchTerm()) {
+                            <button
+                                type="button"
+                                class="clear-btn"
+                                aria-label="Clear"
+                                (click)="filesSearchService.clear()"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="1.1rem"
+                                ></app-svg-icon>
+                            </button>
+                        }
+                    </div>
+                }
             </div>
         </nav>
     </div>

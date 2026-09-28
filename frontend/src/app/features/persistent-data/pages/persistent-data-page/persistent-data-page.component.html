@@ -17,7 +17,6 @@
         @if (selectedTable(); as table) {
             <app-persistence-entries-grid
                 [table]="table"
-                [searchTerm]="filesSearchService.searchTerm()"
                 [canCreate]="canCreate()"
                 [canUpdate]="canUpdate()"
                 [canDelete]="canDelete()"

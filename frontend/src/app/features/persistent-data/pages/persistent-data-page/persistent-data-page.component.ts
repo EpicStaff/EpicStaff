@@ -9,7 +9,6 @@ import { filter, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { FilesSearchService } from '../../../files/services/files-search.service';
 import { PersistenceEntriesGridComponent } from '../../components/persistence-entries-grid/persistence-entries-grid.component';
 import {
     PersistenceTableDialogComponent,
@@ -61,8 +60,6 @@ export class PersistentDataPageComponent {
     });
 
     readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
-    // The Files header search filters entry keys here; it lives above the tab, so a table switch keeps it.
-    protected readonly filesSearchService = inject(FilesSearchService);
 
     private readonly persistenceTablesApi = inject(PersistenceTablesApiService);
     private readonly permissions = inject(PermissionsService);

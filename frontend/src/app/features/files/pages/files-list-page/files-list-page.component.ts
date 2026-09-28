@@ -75,16 +75,13 @@ export class FilesListPageComponent {
         )
     );
 
-    // Persistent Data searches entry keys of the selected table; the other tabs search their own items.
-    readonly searchPlaceholder = computed(() =>
-        this.currentUrl()?.includes('/persistent-data') ? 'Search keys...' : 'Search collections, folders, files...'
-    );
-
     // The one search box means something different on each tab, so a term never carries over a tab switch.
     private readonly activeTabLink = computed(() => {
         const url = this.currentUrl();
         return this.tabs.find((tab) => url?.includes(`/${tab.link}`))?.link ?? null;
     });
+    // Persistent Data searches keys in its own grid header, next to "Add entry".
+    readonly showSearch = computed(() => this.activeTabLink() !== 'persistent-data');
     readonly clearSearchOnTabChange = effect(() => {
         this.activeTabLink();
         untracked(() => this.filesSearchService.clear());

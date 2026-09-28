@@ -17,13 +17,11 @@ class ResizeObserverStub {
 @Component({ template: '' })
 class TabStubComponent {}
 
-async function placeholderAt(url: string, harness?: RouterTestingHarness): Promise<string | undefined> {
-    const activeHarness = harness ?? (await RouterTestingHarness.create());
-    await activeHarness.navigateByUrl(url);
-    return activeHarness.routeNativeElement?.querySelector<HTMLInputElement>('.search-input')?.placeholder;
+function headerSearch(harness: RouterTestingHarness): HTMLInputElement | null | undefined {
+    return harness.routeNativeElement?.querySelector<HTMLInputElement>('.search-input');
 }
 
-describe('FilesListPageComponent header search placeholder', () => {
+describe('FilesListPageComponent header search', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
 
@@ -45,22 +43,25 @@ describe('FilesListPageComponent header search placeholder', () => {
         });
     });
 
-    it('reads "Search keys..." on Persistent Data and reverts on another tab', async () => {
+    it('is gone on Persistent Data, which searches keys in its own grid, and back on another tab', async () => {
         const harness = await RouterTestingHarness.create();
-        expect(await placeholderAt('/files/persistent-data', harness)).toBe('Search keys...');
-        expect(await placeholderAt('/files/storage', harness)).toBe('Search collections, folders, files...');
+        await harness.navigateByUrl('/files/persistent-data');
+        expect(headerSearch(harness)).toBeNull();
+
+        await harness.navigateByUrl('/files/storage');
+        expect(headerSearch(harness)?.placeholder).toBe('Search collections, folders, files...');
     });
 
     it('clears the search term when the Files tab changes, not within the same tab', async () => {
         const harness = await RouterTestingHarness.create();
-        await harness.navigateByUrl('/files/persistent-data');
+        await harness.navigateByUrl('/files/storage');
         const search = harness.routeDebugElement!.injector.get(FilesSearchService);
 
-        search.setSearchTerm('profile');
-        await harness.navigateByUrl('/files/persistent-data?page=2');
-        expect(search.searchTerm()).toBe('profile');
+        search.setSearchTerm('report');
+        await harness.navigateByUrl('/files/storage?page=2');
+        expect(search.searchTerm()).toBe('report');
 
-        await harness.navigateByUrl('/files/storage');
+        await harness.navigateByUrl('/files/persistent-data');
         expect(search.searchTerm()).toBe('');
     });
 });

@@ -24,6 +24,7 @@
 
     &__title {
         margin: 0;
+        min-width: 0;
         font-size: var(--text-h3-size);
         font-weight: var(--text-h3-weight);
         overflow: hidden;
@@ -31,57 +32,72 @@
         white-space: nowrap;
     }
 
+    &__actions-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-left: auto;
+    }
+
+    &__search {
+        width: 240px;
+    }
+
     &__body {
+        display: flex;
         flex: 1;
         min-height: 0;
-        overflow: auto;
+
+        // A page, sort or search on its way: the rows stay, dimmed, under the grid's loading overlay.
+        &[aria-busy='true'] ::ng-deep .ag-row {
+            opacity: 0.5;
+            transition: opacity 0.15s ease;
+        }
     }
 
-    &__key,
-    &__preview,
-    &__updated,
-    &__session-link {
-        font-size: var(--text-body-size);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    &__grid {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
     }
 
-    &__preview,
-    &__updated,
-    &__no-session {
-        color: var(--color-text-secondary);
-    }
-
-    // Fills the Key / Value cell, so a double-click anywhere in it opens the editor.
-    // Not selectable for everyone, read-only users included, on purpose: the copy button covers copying.
+    // Fills the cell renderer. Not selectable for everyone, read-only users included, on purpose: the copy button
+    // covers copying.
     &__cell {
         display: flex;
         align-items: center;
         gap: 4px;
+        height: 100%;
+        min-width: 0;
+        user-select: none;
+    }
+
+    &__text {
         flex: 1 1 0;
         min-width: 0;
-        margin: -4px -8px;
-        padding: 4px 8px;
-        border-radius: 4px;
-        user-select: none;
-        transition: background-color 0.15s ease;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
 
-        &:hover .entries-grid__copy,
-        &:focus-within .entries-grid__copy {
-            opacity: 1;
+        &--secondary {
+            color: var(--color-text-secondary);
         }
     }
 
-    // Double-click to edit is otherwise invisible: tint the cell on hover.
-    &__cell--editable:hover {
-        background-color: var(--color-ghost-btn-hover);
+    // Why the last commit of the cell failed, kept until it is saved, cancelled or leaves the page.
+    &__cell-error {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        color: var(--color-status-error);
     }
 
-    &__key,
-    &__preview {
-        flex: 1 1 0;
-        min-width: 0;
+    &__placeholder {
+        color: var(--color-input-text-placeholder);
+        font-style: italic;
     }
 
     // app-copy-button floats over a card by default; here it sits inline at the end of the cell.
@@ -97,6 +113,10 @@
     }
 
     &__session-link {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         color: var(--accent-color);
         text-decoration: none;
 
@@ -105,10 +125,74 @@
         }
     }
 
-    &__empty {
-        margin: 0;
-        padding: 20px;
-        text-align: center;
+    // Muted like the app's other empty cells (e.g. the permissions table).
+    &__no-session {
+        color: var(--color-text-secondary);
+        opacity: 0.5;
+    }
+
+    // The CDT grid's delete cross.
+    &__delete {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-text-secondary);
+        font-size: 1rem;
+        cursor: pointer;
+        transition: color 0.15s ease;
+
+        &:hover,
+        &:focus-visible {
+            color: var(--color-text-primary);
+        }
+    }
+}
+
+:host ::ng-deep {
+    .ag-cell:hover .entries-grid__copy,
+    .ag-cell:focus-within .entries-grid__copy {
+        opacity: 1;
+    }
+
+    // Edge to edge: the grid cell itself takes the tint, not a padded box inside it.
+    .ag-cell.entries-grid__cell--editable:not(.ag-cell-inline-editing):hover {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    .ag-cell.entries-grid__cell--saving {
+        opacity: 0.6;
+        cursor: progress;
+    }
+
+    .ag-cell.entries-grid__updated {
+        color: var(--color-text-secondary);
+    }
+
+    .ag-cell.entries-grid__actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+
+    // The CDT grid's focus ring: one accent border on the focused or edited cell, no second ring.
+    .ag-cell-focus:not(.ag-cell-inline-editing),
+    .ag-cell-inline-editing {
+        border: 1px solid var(--accent-color) !important;
+        box-shadow: none !important;
+    }
+
+    .ag-cell-inline-editing {
+        padding: 0;
+    }
+
+    .entries-grid__empty {
         font-size: var(--text-body-size);
         color: var(--color-text-secondary);
     }

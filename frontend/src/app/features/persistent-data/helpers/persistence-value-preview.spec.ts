@@ -1,16 +1,31 @@
-import { copyableValue, previewValue } from './persistence-value-preview';
+import { PersistenceTableEntryListItem } from '../models/persistence-table.model';
+import { copyableValue, editableValue, previewText } from './persistence-value-preview';
 
-describe('previewValue', () => {
-    it('renders JSON for objects and primitives', () => {
-        expect(previewValue({ a: 1 })).toBe('{"a":1}');
-        expect(previewValue('text')).toBe('"text"');
-        expect(previewValue(null)).toBe('null');
+const ROW: PersistenceTableEntryListItem = {
+    id: 1,
+    table: 1,
+    key: 'k',
+    value_preview: '',
+    value_truncated: false,
+    created_at: '',
+    updated_at: '',
+    updated_by_session: null,
+    updated_by_graph: null,
+    updated_by_graph_name: null,
+};
+
+describe('previewText', () => {
+    it('shows the server preview, with an ellipsis only when the value was cut', () => {
+        expect(previewText({ ...ROW, value_preview: '{"a": 1}', value_truncated: false })).toBe('{"a": 1}');
+        expect(previewText({ ...ROW, value_preview: '"xxx', value_truncated: true })).toBe('"xxx…');
     });
+});
 
-    it('truncates long values with an ellipsis', () => {
-        const preview = previewValue('x'.repeat(500), 20);
-        expect(preview.length).toBe(20);
-        expect(preview.endsWith('…')).toBe(true);
+describe('editableValue', () => {
+    it('indents JSON by two spaces, strings included', () => {
+        expect(editableValue({ plan: 'pro' })).toBe('{\n  "plan": "pro"\n}');
+        expect(editableValue('text')).toBe('"text"');
+        expect(editableValue(null)).toBe('null');
     });
 });
 

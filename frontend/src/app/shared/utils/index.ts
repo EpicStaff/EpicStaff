@@ -1,3 +1,4 @@
+export * from './clipboard.util';
 export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './download-blob.util';

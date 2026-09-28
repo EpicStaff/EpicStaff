@@ -7,7 +7,6 @@ import { NEVER, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { FilesSearchService } from '../../../files/services/files-search.service';
 import { PersistenceEntriesGridComponent } from '../../components/persistence-entries-grid/persistence-entries-grid.component';
 import { PersistenceTableDialogComponent } from '../../components/persistence-table-dialog/persistence-table-dialog.component';
 import { PersistenceTable } from '../../models/persistence-table.model';
@@ -20,12 +19,21 @@ const TABLES: PersistenceTable[] = [
     { id: 2, name: 'orders', description: '', entry_count: 0, created_at: '', updated_at: '' },
 ];
 
-describe('PersistentDataPageComponent header search', () => {
+// jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+describe('PersistentDataPageComponent key search', () => {
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
     it('filters entry keys of the selected table, not the table list, and survives a table switch', () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
-                FilesSearchService,
                 { provide: PermissionsService, useValue: { can: () => false } },
                 {
                     provide: PersistenceTablesApiService,
@@ -38,15 +46,14 @@ describe('PersistentDataPageComponent header search', () => {
         });
         const fixture = TestBed.createComponent(PersistentDataPageComponent);
         fixture.detectChanges();
-        TestBed.inject(FilesSearchService).setSearchTerm('profile_42');
+        const grid = () =>
+            fixture.debugElement.query(By.directive(PersistenceEntriesGridComponent))
+                .componentInstance as PersistenceEntriesGridComponent;
+        grid().searchTerm.set('profile_42');
         fixture.detectChanges();
 
         const element = fixture.nativeElement as HTMLElement;
         expect(element.querySelectorAll('.table-list__name')).toHaveLength(2);
-        const grid = () =>
-            fixture.debugElement.query(By.directive(PersistenceEntriesGridComponent))
-                .componentInstance as PersistenceEntriesGridComponent;
-        expect(grid().searchTerm()).toBe('profile_42');
 
         fixture.componentInstance.selectedTableId.set(2);
         fixture.detectChanges();
@@ -54,13 +61,6 @@ describe('PersistentDataPageComponent header search', () => {
         expect(grid().searchTerm()).toBe('profile_42');
     });
 });
-
-// jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
-class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-}
 
 describe('PersistentDataPageComponent create table', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
@@ -71,7 +71,6 @@ describe('PersistentDataPageComponent create table', () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
-                FilesSearchService,
                 // Only the create verb is granted, so the Add button is the one thing under test.
                 {
                     provide: PermissionsService,
