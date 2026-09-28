@@ -96,6 +96,32 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PersistenceTableEntryListSerializer(PersistenceTableEntrySerializer):
+    """A list row: `value` (up to 256 KiB) swapped for a preview of its JSON text.
+
+    Reads the `value_preview` / `value_truncated` annotations that
+    PersistenceTableService.with_value_preview adds; the full value is on the detail route.
+    """
+
+    value = None
+    value_preview = serializers.CharField(read_only=True)
+    value_truncated = serializers.BooleanField(read_only=True)
+
+    class Meta(PersistenceTableEntrySerializer.Meta):
+        fields = [
+            "id",
+            "table",
+            "key",
+            "value_preview",
+            "value_truncated",
+            "created_at",
+            "updated_at",
+            "updated_by_session",
+            "updated_by_graph",
+            "updated_by_graph_name",
+        ]
+
+
 class PersistenceKeysSerializer(serializers.Serializer):
     keys = serializers.ListField(
         child=serializers.CharField(max_length=MAX_KEY_LENGTH, trim_whitespace=False),

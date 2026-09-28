@@ -102,6 +102,28 @@ def test_lookup_reports_existence_and_truncated_preview(service, table):
     assert result["missing"].updated_at is None
 
 
+@pytest.mark.django_db
+def test_with_value_preview_defers_value(service, table):
+    service.write(table, {"k": {"a": 1}})
+
+    entry = service.with_value_preview(PersistenceTableEntry.objects.filter(table=table)).get()
+
+    assert entry.get_deferred_fields() == {"value"}
+    assert (entry.value_preview, entry.value_truncated) == ('{"a": 1}', False)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("characters", "truncated"), [(198, False), (199, True)])
+def test_with_value_preview_truncates_past_200_json_characters(service, table, characters, truncated):
+    # A string's JSON text is the string plus its two quotes: 198 characters render as 200.
+    service.write(table, {"k": "x" * characters})
+
+    entry = service.with_value_preview(PersistenceTableEntry.objects.filter(table=table)).get()
+
+    assert entry.value_preview == ('"' + "x" * characters + '"')[:200]
+    assert entry.value_truncated is truncated
+
+
 @pytest.fixture
 def acme_table(acme) -> PersistenceTable:
     return PersistenceTable.objects.create(org=acme, name="Acme customers")

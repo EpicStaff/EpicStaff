@@ -226,6 +226,7 @@ from tables.serializers.model_serializers.llm_serializers import (
 )
 from tables.serializers.model_serializers.persistence_serializers import (
     PersistenceKeysSerializer,
+    PersistenceTableEntryListSerializer,
     PersistenceTableEntrySerializer,
     PersistenceTableSerializer,
 )
@@ -2536,6 +2537,26 @@ class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
         table = NumberFilter(field_name="table_id")
 
     filterset_class = PersistenceTableEntryFilter
+
+    def list(self, request, *args, **kwargs):
+        # Page ids first, previews second: Postgres evaluates cheap select-list
+        # expressions below the Sort, so previewing the sorted query would render every
+        # matching row's value to text, not just the page's.
+        page_ids = self.paginate_queryset(
+            self.filter_queryset(self.get_queryset()).values_list("pk", flat=True)
+        )
+        entries = PersistenceTableService().with_value_preview(
+            self.get_queryset().filter(pk__in=page_ids)
+        )
+        entry_by_id = {entry.pk: entry for entry in entries}
+        # An entry deleted between the two queries is skipped, not a KeyError.
+        page = [entry_by_id[entry_id] for entry_id in page_ids if entry_id in entry_by_id]
+        return self.get_paginated_response(self.get_serializer(page, many=True).data)
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return PersistenceTableEntryListSerializer
+        return PersistenceTableEntrySerializer
 
     def perform_update(self, serializer) -> None:
         # A hand edit is no longer "written by run N". The instance still carries the

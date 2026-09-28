@@ -160,6 +160,67 @@ def test_entry_crud(admin_client, table_a):
 
 
 @pytest.mark.django_db
+def test_entry_list_sends_value_preview_instead_of_value(admin_client, table_a):
+    long_value = {"text": "x" * 500}
+    PersistenceTableEntry.objects.create(table=table_a, key="long", value=long_value)
+    PersistenceTableEntry.objects.create(table=table_a, key="null", value=None)
+    PersistenceTableEntry.objects.create(table=table_a, key="short", value={"a": 1})
+
+    rows = {row["key"]: row for row in _results(admin_client.get(ENTRIES_URL, {"table": table_a.id}))}
+
+    assert all("value" not in row for row in rows.values())
+    assert rows["long"]["value_preview"] == ('{"text": "' + "x" * 500)[:200]
+    assert rows["long"]["value_truncated"] is True
+    assert (rows["short"]["value_preview"], rows["short"]["value_truncated"]) == ('{"a": 1}', False)
+    assert (rows["null"]["value_preview"], rows["null"]["value_truncated"]) == ("null", False)
+
+
+@pytest.mark.django_db
+def test_entry_list_previews_only_the_page(admin_client, table_a):
+    for key in ("a", "b", "c"):
+        PersistenceTableEntry.objects.create(table=table_a, key=key, value={"key": key})
+
+    with CaptureQueriesContext(connection) as captured:
+        response = admin_client.get(ENTRIES_URL, {"table": table_a.id, "ordering": "-key", "limit": 2})
+
+    assert _keys(response) == ["c", "b"]
+    preview_queries = [query["sql"] for query in captured if 'AS "value_preview"' in query["sql"]]
+    assert len(preview_queries) == 1
+    assert '"tables_persistencetableentry"."id" IN (' in preview_queries[0]
+
+
+@pytest.mark.django_db
+def test_entry_detail_returns_full_value(admin_client, table_a):
+    long_value = {"text": "x" * 500}
+    entry = PersistenceTableEntry.objects.create(table=table_a, key="long", value=long_value)
+
+    response = admin_client.get(f"{ENTRIES_URL}{entry.id}/")
+
+    assert response.status_code == 200
+    assert response.data["value"] == long_value
+    assert "value_preview" not in response.data
+
+
+@pytest.mark.django_db
+def test_entry_write_responses_carry_full_value(admin_client, table_a):
+    long_value = {"text": "x" * 500}
+
+    created = admin_client.post(
+        ENTRIES_URL, {"table": table_a.id, "key": "k", "value": long_value}, format="json"
+    )
+    renamed = admin_client.patch(f"{ENTRIES_URL}{created.data['id']}/", {"key": "k2"}, format="json")
+    replaced = admin_client.put(
+        f"{ENTRIES_URL}{created.data['id']}/",
+        {"table": table_a.id, "key": "k2", "value": [1, 2]},
+        format="json",
+    )
+
+    assert (created.status_code, created.data["value"]) == (201, long_value)
+    assert (renamed.status_code, renamed.data["value"]) == (200, long_value)
+    assert (replaced.status_code, replaced.data["value"]) == (200, [1, 2])
+
+
+@pytest.mark.django_db
 def test_duplicate_entry_key_is_400(admin_client, table_a):
     PersistenceTableEntry.objects.create(table=table_a, key="k1", value=1)
     response = admin_client.post(ENTRIES_URL, {"table": table_a.id, "key": "k1", "value": 2}, format="json")

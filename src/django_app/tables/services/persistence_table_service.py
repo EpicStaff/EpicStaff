@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from django.db.models import TextField
-from django.db.models.functions import Cast, Left
+from django.db.models import QuerySet, TextField, Value
+from django.db.models.functions import Cast, Coalesce, Left, Length
+from django.db.models.lookups import GreaterThan
 from rbac.access.asserts import assert_org_permission
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
@@ -27,6 +28,14 @@ from tables.models import (
     Session,
     SubGraphNode,
 )
+
+
+def _value_text() -> Cast:
+    return Cast("value", TextField())
+
+
+def _value_preview() -> Left:
+    return Left(_value_text(), VALUE_PREVIEW_CHARS)
 
 
 @dataclass(frozen=True)
@@ -85,7 +94,7 @@ class PersistenceTableService:
         found = {
             row["key"]: row
             for row in PersistenceTableEntry.objects.filter(table=table, key__in=keys)
-            .annotate(preview=Left(Cast("value", TextField()), VALUE_PREVIEW_CHARS))
+            .annotate(preview=_value_preview())
             .values("key", "preview", "updated_at")
         }
         return {
@@ -96,6 +105,28 @@ class PersistenceTableService:
             )
             for key in keys
         }
+
+    def with_value_preview(
+        self, entries: QuerySet[PersistenceTableEntry]
+    ) -> QuerySet[PersistenceTableEntry]:
+        """Replace each entry's full `value` with `value_preview` and `value_truncated`.
+
+        Both are computed in the database and `value` is deferred, so a page of entries
+        never pulls values of up to MAX_VALUE_BYTES each into Python. The preview is the
+        first VALUE_PREVIEW_CHARS characters of the value's jsonb text; a NULL value
+        previews as "null", its JSON text.
+
+        Apply it to one page's rows (e.g. `pk__in` page ids), not to a sorted, limited
+        query: Postgres computes these cheap expressions below the Sort, for every row.
+        """
+        # NOTE: Postgres does not share the cast between the two expressions, so each row's
+        # value is rendered as text twice. Both stay inside the database.
+        return entries.defer("value").annotate(
+            value_preview=Coalesce(_value_preview(), Value("null")),
+            value_truncated=Coalesce(
+                GreaterThan(Length(_value_text()), VALUE_PREVIEW_CHARS), Value(False)
+            ),
+        )
 
     def assert_can_use(self, user, table: PersistenceTable) -> None:
         """Assert `user` holds persistent_data:USE in the table's org.
