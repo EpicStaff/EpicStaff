@@ -61,6 +61,10 @@ def url(org_id):
     return f"/api/admin/organizations/{org_id}/"
 
 
+def phrase_body(org):
+    return {"verification_phrase": f"delete-{org.name}"}
+
+
 @pytest.mark.django_db
 def test_anonymous_is_rejected(db, doomed_org):
     response = APIClient().delete(url(doomed_org.pk))
@@ -74,7 +78,7 @@ def test_anonymous_is_rejected(db, doomed_org):
 def test_org_admin_is_forbidden(org_admin, doomed_org, surviving_org):
     client = APIClient()
     client.force_authenticate(user=org_admin)
-    response = client.delete(url(doomed_org.pk))
+    response = client.delete(url(doomed_org.pk), data=phrase_body(doomed_org), format="json")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -85,7 +89,7 @@ def test_api_key_caller_is_forbidden(
     _, api_key = issue_api_key(user=superadmin)
     client = APIClient()
     client.force_authenticate(user=superadmin, token=api_key)
-    response = client.delete(url(doomed_org.pk))
+    response = client.delete(url(doomed_org.pk), data=phrase_body(doomed_org), format="json")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -120,7 +124,7 @@ def test_report_is_stable_across_calls(superadmin, doomed_org, surviving_org):
     client = APIClient()
     client.force_authenticate(user=superadmin)
     preview = client.delete(f"{url(doomed_org.pk)}?dry_run=true").data
-    actual = client.delete(url(doomed_org.pk)).data
+    actual = client.delete(url(doomed_org.pk), data=phrase_body(doomed_org), format="json").data
     assert preview["affected_resources"] == actual["affected_resources"]
 
 
@@ -130,7 +134,7 @@ def test_real_delete_removes_the_org_and_its_content(
 ):
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(url(doomed_org.pk))
+    response = client.delete(url(doomed_org.pk), data=phrase_body(doomed_org), format="json")
 
     assert response.status_code == status.HTTP_200_OK
     assert not Organization.objects.filter(pk=doomed_org.pk).exists()
@@ -147,7 +151,7 @@ def test_neighbour_org_is_untouched(superadmin, doomed_org, surviving_org):
     keeper = Graph.objects.create(name="keeper", org=surviving_org)
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    client.delete(url(doomed_org.pk))
+    client.delete(url(doomed_org.pk), data=phrase_body(doomed_org), format="json")
 
     assert Organization.objects.filter(pk=surviving_org.pk).exists()
     assert Graph.objects.filter(pk=keeper.pk).exists()
@@ -158,7 +162,7 @@ def test_default_org_is_blocked(superadmin, surviving_org, db):
     org = Organization.objects.create(name="Default API Org", is_default=True)
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(url(org.pk))
+    response = client.delete(url(org.pk), data=phrase_body(org), format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.data["code"] == "default_organization_not_deletable"
@@ -179,7 +183,9 @@ def test_blocker_applies_to_dry_run_too(superadmin, surviving_org, db):
 def test_unknown_org_is_404(superadmin):
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(url(999999))
+    response = client.delete(
+        url(999999), data={"verification_phrase": "delete-Doomed API Org"}, format="json"
+    )
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.data["code"] == "organization_not_found"
 
@@ -189,7 +195,9 @@ def test_unrecognized_dry_run_value_performs_a_real_delete(superadmin, doomed_or
     """Only `true`/`1` previews; any other value, like `RoleAdminViewSet`, is treated as a real delete."""
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(f"{url(doomed_org.pk)}?dry_run=maybe")
+    response = client.delete(
+        f"{url(doomed_org.pk)}?dry_run=maybe", data=phrase_body(doomed_org), format="json"
+    )
     assert response.status_code == status.HTTP_200_OK
     assert not Organization.objects.filter(pk=doomed_org.pk).exists()
 
@@ -199,6 +207,104 @@ def test_bare_dry_run_flag_performs_a_real_delete(superadmin, doomed_org, surviv
     """A `?dry_run` flag with no value is falsy, same as `RoleAdminViewSet._is_truthy`."""
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(f"{url(doomed_org.pk)}?dry_run")
+    response = client.delete(
+        f"{url(doomed_org.pk)}?dry_run", data=phrase_body(doomed_org), format="json"
+    )
     assert response.status_code == status.HTTP_200_OK
     assert not Organization.objects.filter(pk=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"verification_phrase": ""},
+        {"verification_phrase": "Delete-Doomed API Org"},
+        {"verification_phrase": "delete Doomed API Org"},
+        {"verification_phrase": "Doomed API Org"},
+        {"verification_phrase": "delete-Surviving API Org"},
+        {"verification_phrase": "delete-doomed api org"},
+        {"verification_phrase": "delete-Doomed API Org "},
+        {"verification_phrase": " delete-Doomed API Org"},
+    ],
+)
+def test_real_delete_with_a_wrong_phrase_is_rejected_and_deletes_nothing(
+    superadmin, doomed_org, surviving_org, body
+):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(url(doomed_org.pk), data=body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid_verification_phrase"
+    assert Organization.objects.filter(pk=doomed_org.pk).exists()
+    assert Graph.objects.filter(org_id=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_real_delete_without_a_body_is_rejected(superadmin, doomed_org, surviving_org):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(url(doomed_org.pk))
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid_verification_phrase"
+    assert Organization.objects.filter(pk=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_wrong_phrase_error_does_not_echo_the_phrase(superadmin, doomed_org, surviving_org):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(
+        url(doomed_org.pk), data={"verification_phrase": "delete-secret-guess"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "secret-guess" not in response.content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "body",
+    [[], ["delete-Doomed API Org"], {"verification_phrase": 1}, {"verification_phrase": ["x"]}],
+)
+def test_malformed_body_is_a_form_validation_error(superadmin, doomed_org, surviving_org, body):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(url(doomed_org.pk), data=body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid"
+    assert response.data["errors"][0]["field"] == "verification_phrase"
+    assert Organization.objects.filter(pk=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_dry_run_ignores_the_body(superadmin, doomed_org, surviving_org):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(
+        f"{url(doomed_org.pk)}?dry_run=true", data={"verification_phrase": 1}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert Organization.objects.filter(pk=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_rename_between_preview_and_delete_invalidates_the_phrase(
+    superadmin, doomed_org, surviving_org
+):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    stale_body = phrase_body(doomed_org)
+    client.delete(f"{url(doomed_org.pk)}?dry_run=true")
+    Organization.objects.filter(pk=doomed_org.pk).update(name="Renamed API Org")
+
+    response = client.delete(url(doomed_org.pk), data=stale_body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid_verification_phrase"
+    assert Organization.objects.filter(pk=doomed_org.pk).exists()

@@ -22,11 +22,13 @@ from tables.models.graph_models import Graph
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
+    InvalidVerificationPhraseError,
     LastSuperadminError,
     SelfAccountDeletionError,
     UserNotFoundError,
 )
 from rbac.governance.users import UserManagementService
+from rbac.identity.session_invalidation import SessionInvalidationService
 
 UserModel = get_user_model()
 
@@ -195,7 +197,7 @@ def test_self_account_deletion_error_shape():
 @pytest.fixture
 def actor(db, django_user_model):
     user = django_user_model.objects.create_user(
-        email="delete-actor@x.com", password="StrongPass123!"
+        email="actor@x.com", password="StrongPass123!"
     )
     user.is_superadmin = True
     user.save(update_fields=["is_superadmin"])
@@ -205,7 +207,7 @@ def actor(db, django_user_model):
 @pytest.fixture
 def target_user(db, django_user_model):
     return django_user_model.objects.create_user(
-        email="delete-target@x.com", password="StrongPass123!"
+        email="target@x.com", password="StrongPass123!"
     )
 
 
@@ -273,7 +275,11 @@ def test_delete_user_dry_run_prediction_matches_what_the_delete_actually_removes
 
     service = UserManagementService()
     preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
-    actual = service.delete_user(actor=actor, target_user_id=target_user.pk)
+    actual = service.delete_user(
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
+    )
 
     assert preview.affected_resources == actual.affected_resources
 
@@ -306,14 +312,20 @@ def test_delete_user_report_is_stable_across_calls(actor, target_user):
 
     service = UserManagementService()
     preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
-    actual = service.delete_user(actor=actor, target_user_id=target_user.pk)
+    actual = service.delete_user(
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
+    )
     assert preview.affected_resources == actual.affected_resources
 
 
 @pytest.mark.django_db
 def test_real_delete_removes_the_user(actor, target_user, django_user_model):
     UserManagementService().delete_user(
-        actor=actor, target_user_id=target_user.pk
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
     )
     assert not django_user_model.objects.filter(pk=target_user.pk).exists()
 
@@ -324,7 +336,9 @@ def test_deleting_a_user_preserves_their_authored_content(actor, target_user):
     graph = Graph.objects.create(name="kept", org=org, created_by=target_user)
 
     UserManagementService().delete_user(
-        actor=actor, target_user_id=target_user.pk
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
     )
 
     graph.refresh_from_db()
@@ -338,7 +352,9 @@ def test_deleting_a_user_removes_their_memberships(actor, target_user):
     OrganizationUser.objects.create(user=target_user, org=org, role=role)
 
     UserManagementService().delete_user(
-        actor=actor, target_user_id=target_user.pk
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
     )
 
     assert not OrganizationUser.objects.filter(org=org).exists()
@@ -354,7 +370,9 @@ def test_cannot_delete_self(actor):
 def test_cannot_delete_self_in_real_mode_too(actor):
     """The self-deletion guard applies whether or not dry_run is set."""
     with pytest.raises(SelfAccountDeletionError):
-        UserManagementService().delete_user(actor=actor, target_user_id=actor.pk)
+        UserManagementService().delete_user(
+            actor=actor, target_user_id=actor.pk, verification_phrase=f"delete-{actor.email}"
+        )
 
 
 @pytest.mark.django_db
@@ -368,9 +386,28 @@ def test_cannot_delete_the_last_superadmin(db, django_user_model, actor):
     django_user_model.objects.filter(pk=actor.pk).update(is_superadmin=False)
 
     with pytest.raises(LastSuperadminError):
-        UserManagementService().preview_delete(
-            actor=actor, target_user_id=other_actor.pk
+        UserManagementService().preview_delete(actor=actor, target_user_id=other_actor.pk)
+
+
+@pytest.mark.django_db
+def test_cannot_delete_the_last_superadmin_in_real_mode_with_a_correct_phrase(
+    db, django_user_model, actor
+):
+    other_actor = django_user_model.objects.create_user(
+        email="last-superadmin@x.com", password="StrongPass123!"
+    )
+    other_actor.is_superadmin = True
+    other_actor.save(update_fields=["is_superadmin"])
+    django_user_model.objects.filter(pk=actor.pk).update(is_superadmin=False)
+
+    with pytest.raises(LastSuperadminError):
+        UserManagementService().delete_user(
+            actor=actor,
+            target_user_id=other_actor.pk,
+            verification_phrase=f"delete-{other_actor.email}",
         )
+
+    assert django_user_model.objects.filter(pk=other_actor.pk).exists()
 
 
 @pytest.mark.django_db
@@ -389,7 +426,9 @@ def test_deleting_a_user_blacklists_their_refresh_tokens(actor, target_user):
     assert token_ids, "fixture failed to mint an outstanding token"
 
     UserManagementService().delete_user(
-        actor=actor, target_user_id=target_user.pk
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
     )
 
     assert BlacklistedToken.objects.filter(token_id__in=token_ids).count() == len(token_ids)
@@ -406,7 +445,9 @@ def test_delete_user_locked_recheck_takes_a_lock_on_the_target_row_even_when_not
     mock_select_for_update.return_value.get.return_value = target_user
     try:
         UserManagementService().delete_user(
-            actor=actor, target_user_id=target_user.pk
+            actor=actor,
+            target_user_id=target_user.pk,
+            verification_phrase=f"delete-{target_user.email}",
         )
     except Exception:
         pass
@@ -439,7 +480,11 @@ def test_user_avatar_is_previewed_and_removed_from_disk(
     assert stored.exists(), "a dry run must not touch the file"
 
     with django_capture_on_commit_callbacks(execute=True):
-        service.delete_user(actor=actor, target_user_id=target_user.pk)
+        service.delete_user(
+            actor=actor,
+            target_user_id=target_user.pk,
+            verification_phrase=f"delete-{target_user.email}",
+        )
 
     assert not stored.exists()
 
@@ -461,7 +506,9 @@ def test_avatar_cleanup_failure_does_not_undo_a_committed_delete(
 
     with django_capture_on_commit_callbacks(execute=True):
         UserManagementService().delete_user(
-            actor=actor, target_user_id=target_user.pk
+            actor=actor,
+            target_user_id=target_user.pk,
+            verification_phrase=f"delete-{target_user.email}",
         )
 
     assert not django_user_model.objects.filter(pk=target_user.pk).exists()
@@ -476,7 +523,9 @@ def test_delete_user_registers_cleanup_via_on_commit_not_synchronously(
         "rbac.governance.users.transaction.on_commit"
     )
     UserManagementService().delete_user(
-        actor=actor, target_user_id=target_user.pk
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
     )
     mock_on_commit.assert_called_once()
 
@@ -493,8 +542,87 @@ def test_on_commit_callback_does_not_fire_if_the_enclosing_transaction_rolls_bac
     with pytest.raises(RuntimeError):
         with dj_transaction.atomic():
             UserManagementService().delete_user(
-                actor=actor, target_user_id=target_user.pk
+                actor=actor,
+                target_user_id=target_user.pk,
+                verification_phrase=f"delete-{target_user.email}",
             )
             raise RuntimeError("force a rollback after on_commit was registered")
 
     mock_cleanup.assert_not_called()
+
+
+class _RecordingSessionInvalidator(SessionInvalidationService):
+    """Records which users the delete tried to log out."""
+
+    def __init__(self):
+        self.blacklisted = []
+
+    def blacklist_all_for_user(self, user) -> int:
+        self.blacklisted.append(user.pk)
+        return super().blacklist_all_for_user(user)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "phrase_template",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param("", id="empty"),
+        pytest.param("delete-", id="prefix-only"),
+        pytest.param("{target}", id="bare-email-without-prefix"),
+        pytest.param("Delete-{target}", id="capitalised-prefix"),
+        pytest.param("delete-{target_upper}", id="case-changed-email"),
+        pytest.param("delete-{target} ", id="trailing-space"),
+        pytest.param("delete-{actor}", id="another-users-email"),
+    ],
+)
+def test_delete_user_with_a_wrong_phrase_raises_before_any_side_effect(
+    actor, target_user, django_user_model, phrase_template
+):
+    invalidator = _RecordingSessionInvalidator()
+    phrase = (
+        None
+        if phrase_template is None
+        else phrase_template.format(
+            target=target_user.email,
+            target_upper=target_user.email.upper(),
+            actor=actor.email,
+        )
+    )
+
+    with pytest.raises(InvalidVerificationPhraseError):
+        UserManagementService(session_invalidator=invalidator).delete_user(
+            actor=actor, target_user_id=target_user.pk, verification_phrase=phrase
+        )
+
+    assert invalidator.blacklisted == []
+    assert django_user_model.objects.filter(pk=target_user.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_user_with_the_correct_phrase_invalidates_sessions(actor, target_user):
+    invalidator = _RecordingSessionInvalidator()
+
+    UserManagementService(session_invalidator=invalidator).delete_user(
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
+    )
+
+    assert invalidator.blacklisted == [target_user.pk]
+
+
+@pytest.mark.django_db
+def test_self_delete_guard_precedes_the_phrase_check(actor):
+    with pytest.raises(SelfAccountDeletionError):
+        UserManagementService().delete_user(
+            actor=actor, target_user_id=actor.pk, verification_phrase=None
+        )
+
+
+@pytest.mark.django_db
+def test_unknown_user_is_not_found_before_the_phrase_is_checked(actor):
+    with pytest.raises(UserNotFoundError):
+        UserManagementService().delete_user(
+            actor=actor, target_user_id=999_999, verification_phrase=None
+        )

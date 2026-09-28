@@ -232,7 +232,9 @@ def test_org_dry_run_prediction_matches_what_the_delete_actually_removes(
     predicted = {k: v for k, v in preview.affected_resources.items() if k != "storage_files"}
     before = _grouped_row_counts()
 
-    service.delete_organization(actor=actor, org_id=populated_org.pk)
+    service.delete_organization(
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+    )
 
     _assert_report_matched_reality(predicted, before, _grouped_row_counts())
 
@@ -275,7 +277,9 @@ def test_org_report_is_stable_across_calls(actor, populated_org, _surviving_org)
 
     service = OrganizationManagementService()
     preview = service.preview_delete(actor=actor, org_id=populated_org.pk)
-    actual = service.delete_organization(actor=actor, org_id=populated_org.pk)
+    actual = service.delete_organization(
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+    )
     assert preview.affected_resources == actual.affected_resources
 
 
@@ -297,7 +301,9 @@ def test_org_report_agrees_for_a_delete_touching_the_rag_family(
 
     service = OrganizationManagementService()
     preview = service.preview_delete(actor=actor, org_id=populated_org.pk)
-    actual = service.delete_organization(actor=actor, org_id=populated_org.pk)
+    actual = service.delete_organization(
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+    )
     assert preview.affected_resources == actual.affected_resources
 
 
@@ -307,7 +313,7 @@ def test_org_delete_removes_owned_rows(actor, populated_org, _surviving_org):
     from tables.models.label_models import Label
 
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
     assert not Organization.objects.filter(pk=populated_org.pk).exists()
     assert not Graph.all_objects.filter(org_id=populated_org.pk).exists()
@@ -325,7 +331,7 @@ def test_org_delete_leaves_other_orgs_untouched(actor, populated_org, _surviving
     keeper_graph = Graph.objects.create(name="keeper", org=_surviving_org)
 
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
 
     assert Organization.objects.filter(pk=_surviving_org.pk).exists()
@@ -336,7 +342,7 @@ def test_org_delete_leaves_other_orgs_untouched(actor, populated_org, _surviving
 def test_built_in_roles_survive_an_org_delete(actor, populated_org, _surviving_org):
     before = Role.objects.filter(is_built_in=True, org__isnull=True).count()
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
     assert Role.objects.filter(is_built_in=True, org__isnull=True).count() == before
 
@@ -345,7 +351,7 @@ def test_built_in_roles_survive_an_org_delete(actor, populated_org, _surviving_o
 def test_custom_roles_of_the_org_are_deleted(actor, populated_org, _surviving_org):
     custom = Role.objects.create(name="Custom", is_built_in=False, org=populated_org)
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
     assert not Role.objects.filter(pk=custom.pk).exists()
 
@@ -379,7 +385,7 @@ def test_org_delete_sweeps_orphaned_document_content(actor, populated_org, _surv
     )
 
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
 
     assert not SourceCollection.objects.filter(pk=collection.pk).exists()
@@ -410,7 +416,7 @@ def test_org_delete_sweeps_orphan_prone_deprecated_rows(actor, populated_org, _s
     chat = RealtimeAgentChat.objects.create(connection_key="k", openai_config=openai_config)
 
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
 
     assert not Task.objects.filter(pk=task.pk).exists()
@@ -472,7 +478,9 @@ def test_org_delete_sweeps_conversation_recordings_and_purges_their_files(
     assert stored.exists(), "a dry run must not touch the file"
 
     with django_capture_on_commit_callbacks(execute=True):
-        actual = service.delete_organization(actor=actor, org_id=populated_org.pk)
+        actual = service.delete_organization(
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+        )
 
     assert actual.affected_resources.get("storage_files") == 3
     assert not ConversationRecording.objects.filter(pk=recording.pk).exists()
@@ -499,7 +507,7 @@ def test_org_delete_purges_content_even_when_soft_delete_enabled(
     )
 
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
 
     assert not SourceCollection.all_objects.filter(pk=collection.pk).exists()
@@ -523,13 +531,13 @@ def test_org_delete_sweeps_already_soft_deleted_collections(actor, populated_org
     )
     collection.delete()  # SoftDeleteMixin.delete() under SOFT_DELETE=True -- soft delete
     assert not SourceCollection.objects.filter(pk=collection.pk).exists()
-    assert SourceCollection.all_objects.filter(pk=collection.pk).exists(), (
-        "fixture failed to produce a soft-deleted (not hard-deleted) row"
-    )
+    assert SourceCollection.all_objects.filter(
+        pk=collection.pk
+    ).exists(), "fixture failed to produce a soft-deleted (not hard-deleted) row"
 
     settings.SOFT_DELETE = False  # the platform default; the org sweep must not depend on this
     OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )
 
     assert not SourceCollection.all_objects.filter(pk=collection.pk).exists()
@@ -551,7 +559,7 @@ def test_default_org_blocker_applies_in_real_mode_too(db, actor, _surviving_org)
     org = Organization.objects.create(name="Default Org Real", is_default=True)
     with pytest.raises(DefaultOrganizationNotDeletableError):
         OrganizationManagementService().delete_organization(
-            actor=actor, org_id=org.pk
+            actor=actor, org_id=org.pk, verification_phrase=f"delete-{org.name}"
         )
 
 
@@ -625,7 +633,7 @@ def test_storage_purge_runs_after_a_real_delete(
 ):
     with django_capture_on_commit_callbacks(execute=True):
         OrganizationManagementService().delete_organization(
-            actor=actor, org_id=populated_org.pk
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
         )
     _no_storage_calls.return_value.delete_prefix.assert_called_once_with("")
 
@@ -642,7 +650,7 @@ def test_storage_failure_does_not_undo_the_delete(
 
     with django_capture_on_commit_callbacks(execute=True):
         OrganizationManagementService().delete_organization(
-            actor=actor, org_id=populated_org.pk
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
         )
 
     assert not Organization.objects.filter(pk=populated_org.pk).exists()
@@ -693,7 +701,7 @@ def test_storage_purge_does_not_short_circuit_on_a_folder_marker(
 
     with django_capture_on_commit_callbacks(execute=True):
         OrganizationManagementService().delete_organization(
-            actor=actor, org_id=populated_org.pk
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
         )
 
     backend.client.delete_object.assert_not_called()
@@ -722,7 +730,7 @@ def test_org_delete_clears_the_platform_default_config_cache(
 
     with django_capture_on_commit_callbacks(execute=True):
         OrganizationManagementService().delete_organization(
-            actor=actor, org_id=populated_org.pk
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
         )
 
     assert not LLMConfig.objects.filter(pk=config.pk).exists()

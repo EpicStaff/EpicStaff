@@ -23,6 +23,7 @@ from rbac.serializers.delete import UserDeleteReportSerializer
 from rbac.serializers.users import (
     UserResponseSerializer,
 )
+from rbac.validation.hard_delete import HardDeleteValidationService
 from rbac.validation.user import UserValidationService
 from rbac.views.cross_org_base import CrossOrgAdminViewSet
 
@@ -64,6 +65,7 @@ class UserAdminViewSet(viewsets.ViewSet):
 
     _service = UserManagementService()
     _validator = UserValidationService()
+    _hard_delete_validator = HardDeleteValidationService()
 
     def get_permissions(self):
         """Permanent deletion is JWT-only; a leaked key must not erase accounts."""
@@ -153,7 +155,13 @@ class UserAdminViewSet(viewsets.ViewSet):
         if self._is_truthy(request.query_params.get("dry_run")):
             report = self._service.preview_delete(actor=request.user, target_user_id=int(pk))
         else:
-            report = self._service.delete_user(actor=request.user, target_user_id=int(pk))
+            report = self._service.delete_user(
+                actor=request.user,
+                target_user_id=int(pk),
+                verification_phrase=self._hard_delete_validator.extract_verification_phrase(
+                    request.data
+                ),
+            )
         return Response(UserDeleteReportSerializer(dataclasses.asdict(report)).data)
 
     @staticmethod

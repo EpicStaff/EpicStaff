@@ -68,6 +68,11 @@ ORGANIZATIONS_REACTIVATE_POST = {
 
 ORGANIZATIONS_DESTROY_DELETE = {
     "summary": "Permanently delete an organization (superadmin) — or preview with ?dry_run=true",
+    "description": (
+        "Real delete (dry_run=false) requires the JSON body "
+        '`{"verification_phrase": "delete-<organization name>"}`, matched exactly '
+        "(case-sensitive, no trimming). The body is ignored when dry_run=true."
+    ),
     "parameters": [
         OpenApiParameter(
             name="dry_run",
@@ -79,7 +84,11 @@ ORGANIZATIONS_DESTROY_DELETE = {
     "responses": {
         200: OrganizationDeleteReportSerializer,
         400: OpenApiResponse(
-            description="default_organization_not_deletable or last_organization"
+            description=(
+                "default_organization_not_deletable, last_organization, "
+                "invalid_verification_phrase (phrase missing or not matching), "
+                "or invalid (malformed body or non-string phrase)"
+            )
         ),
         404: OpenApiResponse(description="Organization not found"),
     },

@@ -159,6 +159,11 @@ USERS_REACTIVATE_POST = {
 
 USERS_DESTROY_DELETE = {
     "summary": "Permanently delete a user (superadmin) — or preview with ?dry_run=true",
+    "description": (
+        "Real delete (dry_run=false) requires the JSON body "
+        '`{"verification_phrase": "delete-<user email>"}`, matched exactly '
+        "(case-sensitive, no trimming). The body is ignored when dry_run=true."
+    ),
     "parameters": [
         OpenApiParameter(
             name="dry_run",
@@ -169,8 +174,13 @@ USERS_DESTROY_DELETE = {
     ],
     "responses": {
         200: UserDeleteReportSerializer,
-        400: OpenApiResponse(description="cannot_delete_self or last_superadmin"),
+        400: OpenApiResponse(
+            description=(
+                "cannot_delete_self, last_superadmin, "
+                "invalid_verification_phrase (phrase missing or not matching), "
+                "or invalid (malformed body or non-string phrase)"
+            )
+        ),
         404: OpenApiResponse(description="User not found"),
     },
 }
-

@@ -57,6 +57,10 @@ def url(user_id):
     return f"/api/admin/users/{user_id}/"
 
 
+def phrase_body(user):
+    return {"verification_phrase": f"delete-{user.email}"}
+
+
 @pytest.mark.django_db
 def test_anonymous_is_rejected(db, victim):
     response = APIClient().delete(url(victim.pk))
@@ -70,7 +74,7 @@ def test_anonymous_is_rejected(db, victim):
 def test_plain_member_is_forbidden(member, victim):
     client = APIClient()
     client.force_authenticate(user=member)
-    response = client.delete(url(victim.pk))
+    response = client.delete(url(victim.pk), data=phrase_body(victim), format="json")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -79,7 +83,7 @@ def test_api_key_caller_is_forbidden(superadmin, victim, issue_api_key):
     _, api_key = issue_api_key(user=superadmin)
     client = APIClient()
     client.force_authenticate(user=superadmin, token=api_key)
-    response = client.delete(url(victim.pk))
+    response = client.delete(url(victim.pk), data=phrase_body(victim), format="json")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -112,7 +116,7 @@ def test_report_is_stable_across_calls(superadmin, victim):
     client = APIClient()
     client.force_authenticate(user=superadmin)
     preview = client.delete(f"{url(victim.pk)}?dry_run=true").data
-    actual = client.delete(url(victim.pk)).data
+    actual = client.delete(url(victim.pk), data=phrase_body(victim), format="json").data
     assert preview["affected_resources"] == actual["affected_resources"]
 
 
@@ -120,7 +124,7 @@ def test_report_is_stable_across_calls(superadmin, victim):
 def test_delete_without_dry_run_removes_the_user(superadmin, victim, django_user_model):
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(url(victim.pk))
+    response = client.delete(url(victim.pk), data=phrase_body(victim), format="json")
     assert response.status_code == status.HTTP_200_OK
     assert not django_user_model.objects.filter(pk=victim.pk).exists()
 
@@ -130,7 +134,7 @@ def test_authored_content_survives_with_null_author(superadmin, victim, org):
     graph = Graph.objects.create(name="authored", org=org, created_by=victim)
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    client.delete(url(victim.pk))
+    client.delete(url(victim.pk), data=phrase_body(victim), format="json")
     graph.refresh_from_db()
     assert graph.created_by is None
 
@@ -139,7 +143,7 @@ def test_authored_content_survives_with_null_author(superadmin, victim, org):
 def test_cannot_delete_self(superadmin):
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(url(superadmin.pk))
+    response = client.delete(url(superadmin.pk), data=phrase_body(superadmin), format="json")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.data["code"] == "cannot_delete_self"
 
@@ -148,7 +152,9 @@ def test_cannot_delete_self(superadmin):
 def test_unknown_user_is_404(superadmin):
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(url(999999))
+    response = client.delete(
+        url(999999), data={"verification_phrase": "delete-victim@x.com"}, format="json"
+    )
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.data["code"] == "user_not_found"
 
@@ -158,7 +164,9 @@ def test_unrecognized_dry_run_value_performs_a_real_delete(superadmin, victim, d
     """Only `true`/`1` previews; any other value, like `RoleAdminViewSet`, is treated as a real delete."""
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(f"{url(victim.pk)}?dry_run=maybe")
+    response = client.delete(
+        f"{url(victim.pk)}?dry_run=maybe", data=phrase_body(victim), format="json"
+    )
     assert response.status_code == status.HTTP_200_OK
     assert not django_user_model.objects.filter(pk=victim.pk).exists()
 
@@ -168,6 +176,110 @@ def test_bare_dry_run_flag_performs_a_real_delete(superadmin, victim, django_use
     """A `?dry_run` flag with no value is falsy, same as `RoleAdminViewSet._is_truthy`."""
     client = APIClient()
     client.force_authenticate(user=superadmin)
-    response = client.delete(f"{url(victim.pk)}?dry_run")
+    response = client.delete(f"{url(victim.pk)}?dry_run", data=phrase_body(victim), format="json")
     assert response.status_code == status.HTTP_200_OK
     assert not django_user_model.objects.filter(pk=victim.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"verification_phrase": ""},
+        {"verification_phrase": "Delete-victim@x.com"},
+        {"verification_phrase": "delete victim@x.com"},
+        {"verification_phrase": "victim@x.com"},
+        {"verification_phrase": "delete-other@x.com"},
+        {"verification_phrase": "delete-VICTIM@x.com"},
+        {"verification_phrase": "delete-victim@x.com "},
+    ],
+)
+def test_real_delete_with_a_wrong_phrase_is_rejected_and_deletes_nothing(
+    superadmin, victim, django_user_model, body
+):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(url(victim.pk), data=body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid_verification_phrase"
+    assert django_user_model.objects.filter(pk=victim.pk).exists()
+
+
+@pytest.mark.django_db
+def test_real_delete_without_a_body_is_rejected(superadmin, victim, django_user_model):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(url(victim.pk))
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid_verification_phrase"
+    assert django_user_model.objects.filter(pk=victim.pk).exists()
+
+
+@pytest.mark.django_db
+def test_wrong_phrase_error_does_not_echo_the_email(superadmin, victim):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(
+        url(victim.pk), data={"verification_phrase": "delete-victim@x.co"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "victim@x.co" not in response.content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "body",
+    [[], ["delete-victim@x.com"], {"verification_phrase": 1}, {"verification_phrase": {"a": 1}}],
+)
+def test_malformed_body_is_a_form_validation_error(superadmin, victim, django_user_model, body):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(url(victim.pk), data=body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid"
+    assert response.data["errors"][0]["field"] == "verification_phrase"
+    assert django_user_model.objects.filter(pk=victim.pk).exists()
+
+
+@pytest.mark.django_db
+def test_non_string_phrase_is_redacted_in_the_error(superadmin, victim):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(
+        url(victim.pk), data={"verification_phrase": ["victim@x.com"]}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "victim@x.com" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_dry_run_ignores_the_body(superadmin, victim, django_user_model):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    response = client.delete(f"{url(victim.pk)}?dry_run=true", data=[], format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert django_user_model.objects.filter(pk=victim.pk).exists()
+
+
+@pytest.mark.django_db
+def test_email_change_between_preview_and_delete_invalidates_the_phrase(
+    superadmin, victim, django_user_model
+):
+    client = APIClient()
+    client.force_authenticate(user=superadmin)
+    stale_body = phrase_body(victim)
+    client.delete(f"{url(victim.pk)}?dry_run=true")
+    django_user_model.objects.filter(pk=victim.pk).update(email="renamed-victim@x.com")
+
+    response = client.delete(url(victim.pk), data=stale_body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "invalid_verification_phrase"
+    assert django_user_model.objects.filter(pk=victim.pk).exists()

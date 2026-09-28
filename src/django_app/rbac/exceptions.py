@@ -403,8 +403,7 @@ class DefaultOrganizationNotDeletableError(CustomAPIExeption):
 
     status_code = 400
     default_detail = (
-        "Cannot delete the default organization. Promote another organization "
-        "to default first."
+        "Cannot delete the default organization. Promote another organization to default first."
     )
     default_code = "default_organization_not_deletable"
 
@@ -413,9 +412,7 @@ class LastOrganizationError(CustomAPIExeption):
     """Raised when deleting an organization would leave the platform with none."""
 
     status_code = 400
-    default_detail = (
-        "Cannot delete the last organization. At least one organization must remain."
-    )
+    default_detail = "Cannot delete the last organization. At least one organization must remain."
     default_code = "last_organization"
 
 
@@ -425,3 +422,11 @@ class SelfAccountDeletionError(CustomAPIExeption):
     status_code = 400
     default_detail = "You cannot delete your own account."
     default_code = "cannot_delete_self"
+
+
+class InvalidVerificationPhraseError(CustomAPIExeption):
+    """Raised when a hard delete's typed verification phrase is missing or does not match its target."""
+
+    status_code = 400
+    default_detail = "The verification phrase does not match the deletion target."
+    default_code = "invalid_verification_phrase"

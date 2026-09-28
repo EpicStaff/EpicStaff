@@ -284,11 +284,12 @@ def test_two_concurrent_deletes_of_the_only_two_superadmins_leave_at_least_one()
 
     results = {}
 
-    def _delete(actor_id, target_id, key):
+    def _delete(actor_id, target_id, target_email, key):
         try:
             UserManagementService().delete_user(
                 actor=UserModel.objects.get(pk=actor_id),
                 target_user_id=target_id,
+                verification_phrase=f"delete-{target_email}",
             )
             results[key] = "succeeded"
         except Exception as exc:
@@ -296,8 +297,8 @@ def test_two_concurrent_deletes_of_the_only_two_superadmins_leave_at_least_one()
         finally:
             connection.close()
 
-    t1 = threading.Thread(target=_delete, args=(a.pk, b.pk, "a_deletes_b"))
-    t2 = threading.Thread(target=_delete, args=(b.pk, a.pk, "b_deletes_a"))
+    t1 = threading.Thread(target=_delete, args=(a.pk, b.pk, b.email, "a_deletes_b"))
+    t2 = threading.Thread(target=_delete, args=(b.pk, a.pk, a.email, "b_deletes_a"))
     t1.start()
     t2.start()
     t1.join(timeout=10)

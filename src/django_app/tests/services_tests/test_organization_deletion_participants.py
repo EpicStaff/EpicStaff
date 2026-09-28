@@ -1,5 +1,6 @@
 import pytest
 
+from rbac.exceptions import InvalidVerificationPhraseError, OrganizationNotFoundError
 from rbac.governance.delete_resource_names import register_resource_names, resource_name
 from rbac.governance import organization_deletion
 from rbac.governance.organization_deletion import (
@@ -131,7 +132,9 @@ def test_task_referencing_two_organizations_survives_deleting_one_of_them(actor,
 
     service = OrganizationManagementService()
     preview = service.preview_delete(actor=actor, org_id=acme.pk)
-    actual = service.delete_organization(actor=actor, org_id=acme.pk)
+    actual = service.delete_organization(
+        actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+    )
 
     assert preview.affected_resources.get("tasks") == 1
     assert actual.affected_resources.get("tasks") == 1
@@ -154,7 +157,9 @@ def test_template_agent_referencing_two_organizations_survives_deleting_one_of_t
         role="r", goal="g", backstory="b", llm_config=acme_config, fcm_llm_config=beta_config
     )
 
-    OrganizationManagementService().delete_organization(actor=actor, org_id=acme.pk)
+    OrganizationManagementService().delete_organization(
+        actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+    )
 
     shared_template.refresh_from_db()
     assert shared_template.llm_config_id is None
@@ -182,7 +187,9 @@ def test_realtime_agent_chat_referencing_two_organizations_survives_deleting_one
         connection_key="acme-only", openai_config=acme_openai
     )
 
-    report = OrganizationManagementService().delete_organization(actor=actor, org_id=acme.pk)
+    report = OrganizationManagementService().delete_organization(
+        actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+    )
 
     assert report.affected_resources.get("realtime_agent_chats") == 1
     assert not RealtimeAgentChat.objects.filter(pk=acme_only_chat.pk).exists()
@@ -221,7 +228,9 @@ def test_preview_counts_equal_real_delete_counts_with_the_participant_in_place(a
 
     service = OrganizationManagementService()
     preview = service.preview_delete(actor=actor, org_id=acme.pk)
-    actual = service.delete_organization(actor=actor, org_id=acme.pk)
+    actual = service.delete_organization(
+        actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+    )
 
     assert preview.affected_resources == actual.affected_resources
     assert actual.affected_resources["tasks"] == 1
@@ -240,7 +249,9 @@ def test_a_failing_participant_cleanup_is_contained_after_commit(
     _FailingCleanupParticipant.cleanup_calls = 0
 
     with django_capture_on_commit_callbacks(execute=True):
-        OrganizationManagementService().delete_organization(actor=actor, org_id=acme.pk)
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+        )
 
     assert not Organization.objects.filter(pk=acme.pk).exists()
     assert _FailingCleanupParticipant.cleanup_calls == 1
@@ -258,7 +269,85 @@ def test_a_failing_participant_sweep_rolls_back_the_whole_delete(
     extra_participant(_FailingSweepParticipant())
 
     with pytest.raises(RuntimeError, match="sweep exploded"):
-        OrganizationManagementService().delete_organization(actor=actor, org_id=acme.pk)
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+        )
 
     assert Organization.objects.filter(pk=acme.pk).exists()
     assert Task.objects.filter(pk=task.pk).exists()
+
+
+class _SpyParticipant:
+    """A participant that records every hook the delete invokes on it."""
+
+    def __init__(self):
+        self.calls = []
+
+    def count_external_artifacts(self, organization):
+        self.calls.append("count_external_artifacts")
+        return {}
+
+    def count(self, organization):
+        self.calls.append("count")
+        return OrganizationDeletionCounts()
+
+    def sweep(self, organization):
+        self.calls.append("sweep")
+        return None
+
+    def resource_names(self):
+        return {}
+
+    def excluded_resource_labels(self):
+        return frozenset()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("phrase", [None, "", "delete-", "Delete-{name}", "delete-{name} "])
+def test_a_wrong_phrase_raises_before_any_participant_runs(
+    actor, acme, beta, extra_participant, _no_storage_calls, phrase
+):
+    spy = _SpyParticipant()
+    extra_participant(spy)
+    submitted = phrase.format(name=acme.name) if phrase is not None else None
+
+    with pytest.raises(InvalidVerificationPhraseError):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=acme.pk, verification_phrase=submitted
+        )
+
+    assert spy.calls == []
+    _no_storage_calls.return_value.list_all_objects.assert_not_called()
+    assert Organization.objects.filter(pk=acme.pk).exists()
+
+
+@pytest.mark.django_db
+def test_the_correct_phrase_runs_every_participant_hook(actor, acme, beta, extra_participant):
+    spy = _SpyParticipant()
+    extra_participant(spy)
+
+    OrganizationManagementService().delete_organization(
+        actor=actor, org_id=acme.pk, verification_phrase=f"delete-{acme.name}"
+    )
+
+    assert spy.calls == ["count_external_artifacts", "count", "sweep"]
+    assert not Organization.objects.filter(pk=acme.pk).exists()
+
+
+@pytest.mark.django_db
+def test_a_phrase_for_a_different_org_is_rejected(actor, acme, beta):
+    with pytest.raises(InvalidVerificationPhraseError):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=acme.pk, verification_phrase=f"delete-{beta.name}"
+        )
+
+    assert Organization.objects.filter(pk=acme.pk).exists()
+    assert Organization.objects.filter(pk=beta.pk).exists()
+
+
+@pytest.mark.django_db
+def test_unknown_org_is_not_found_before_the_phrase_is_checked(actor, acme, beta):
+    with pytest.raises(OrganizationNotFoundError):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=999_999, verification_phrase=None
+        )

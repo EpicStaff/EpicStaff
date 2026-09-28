@@ -24,6 +24,7 @@ from rbac.serializers.organizations import (
     OrganizationListResponseSerializer,
     OrganizationResponseSerializer,
 )
+from rbac.validation.hard_delete import HardDeleteValidationService
 from rbac.validation.organization import (
     OrganizationValidationService,
 )
@@ -60,12 +61,13 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
 
     _service = OrganizationManagementService()
     _validator = OrganizationValidationService()
+    _hard_delete_validator = HardDeleteValidationService()
 
     def get_permissions(self):
         """Permanent deletion is JWT-only; a leaked key must not erase a tenant."""
         permissions = super().get_permissions()
         if getattr(self, "action", None) == "destroy":
-            return permissions + [DenyApiKeyAuth()]
+            return [*permissions, DenyApiKeyAuth()]
         return permissions
 
     @extend_schema(**ORGANIZATIONS_LIST_GET)
@@ -131,7 +133,13 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
         if self._is_truthy(request.query_params.get("dry_run")):
             report = self._service.preview_delete(actor=request.user, org_id=int(pk))
         else:
-            report = self._service.delete_organization(actor=request.user, org_id=int(pk))
+            report = self._service.delete_organization(
+                actor=request.user,
+                org_id=int(pk),
+                verification_phrase=self._hard_delete_validator.extract_verification_phrase(
+                    request.data
+                ),
+            )
         return Response(OrganizationDeleteReportSerializer(dataclasses.asdict(report)).data)
 
     def _apply_ordering(self, qs, raw):

@@ -19,6 +19,7 @@ from rbac.governance.delete_collector import (
     build_collector,
     summarize,
 )
+from rbac.governance.delete_verification import assert_delete_phrase
 from rbac.governance.organization_deletion import (
     OrganizationDeletionCounts,
     participants,
@@ -207,10 +208,16 @@ class OrganizationManagementService(CrossOrgResourceService):
         return payload
 
     @transaction.atomic
-    def delete_organization(self, actor: User, org_id: int) -> OrganizationDeleteReport:
-        """Permanently delete an organization and everything it owns, refusing the default organization and the last remaining active one."""
+    def delete_organization(
+        self, actor: User, org_id: int, *, verification_phrase: str | None
+    ) -> OrganizationDeleteReport:
+        """Permanently delete an organization and everything it owns, refusing the default organization and the last remaining active one.
+
+        `verification_phrase` must be exactly `delete-<organization name>`, compared against the unlocked read of the organization before external I/O or any lock.
+        """
         instance = self._target_org_or_404(org_id)
         self._assert_deletable_org(instance)
+        assert_delete_phrase(verification_phrase, instance.name)
 
         registered = participants()
         # External artifact counts may do network I/O (a MinIO listing); they

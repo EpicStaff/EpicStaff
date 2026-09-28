@@ -20,6 +20,7 @@ from rbac.governance.delete_collector import (
     build_collector,
     summarize,
 )
+from rbac.governance.delete_verification import assert_delete_phrase
 from rbac.governance.guards import UserManagementGuards
 from rbac.identity.session_invalidation import (
     SessionInvalidationService,
@@ -302,11 +303,17 @@ class UserManagementService(CrossOrgResourceService):
         return payload
 
     @transaction.atomic
-    def delete_user(self, actor: User, target_user_id: int) -> UserDeleteReport:
-        """Permanently delete a user account, refusing self-deletion and removal of the last active superadmin."""
+    def delete_user(
+        self, actor: User, target_user_id: int, *, verification_phrase: str | None
+    ) -> UserDeleteReport:
+        """Permanently delete a user account, refusing self-deletion and removal of the last active superadmin.
+
+        `verification_phrase` must be exactly `delete-<user email>`, compared against the unlocked read of the user before any lock is taken.
+        """
         UserModel = get_user_model()  # noqa: N806
         instance = self._target_user_or_404(target_user_id)
         self._assert_deletable_user(actor=actor, instance=instance)
+        assert_delete_phrase(verification_phrase, instance.email)
 
         # Computed before any lock is taken, so it never extends how long the
         # locks taken below are held (this check is a no-op here, but the same
