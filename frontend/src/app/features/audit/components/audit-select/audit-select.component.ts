@@ -19,6 +19,7 @@ import { AuditEnumOption } from '../../models/audit-filter.models';
 export class AuditSelectComponent {
     public options = input<AuditEnumOption[]>([]);
     public value = model.required<string>();
+    public ariaLabel = input<string>('');
 
     protected readonly items = computed<SelectDropdownListItem<string>[]>(() =>
         this.options().map((option) => ({ value: option.value, name: option.label, icon: option.icon }))

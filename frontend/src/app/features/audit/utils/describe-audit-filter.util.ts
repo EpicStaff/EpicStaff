@@ -1,12 +1,14 @@
 import {
     AuditCondition,
+    AuditConditionGroup,
+    AuditConditionJoin,
     AuditEnumOption,
     AuditFilterState,
     AuditIdFilter,
     AuditIdMode,
     AuditMatchScopeState,
     AuditNumberFilter,
-    createAuditCondition,
+    createAuditConditionGroup,
     DEFAULT_MATCH_SCOPE,
     isUsableCondition,
 } from '../models/audit-filter.models';
@@ -78,6 +80,32 @@ function describeConditions(conditions: AuditCondition[]): string | null {
     }
 
     return text;
+}
+
+function describeConditionGroups(groups: AuditConditionGroup[]): string | null {
+    const described: { join: AuditConditionJoin; text: string; isCompound: boolean }[] = [];
+    for (const group of groups) {
+        const text = describeConditions(group.conditions);
+        if (text !== null) {
+            described.push({
+                join: group.join,
+                text,
+                isCompound: group.conditions.filter(isUsableCondition).length > 1,
+            });
+        }
+    }
+    if (described.length <= 1) {
+        return described[0]?.text ?? null;
+    }
+
+    return described.reduce((combined, part, index) => {
+        const text = part.isCompound ? `(${part.text})` : part.text;
+        if (index === 0) {
+            return text;
+        }
+        const left = index > 1 ? `(${combined})` : combined;
+        return `${left} ${part.join.toUpperCase()} ${text}`;
+    }, '');
 }
 
 function describeDate(from: string | null, to: string | null): string | null {
@@ -176,22 +204,22 @@ export function describeAuditFilter(
         });
     }
 
-    const inputText = describeConditions(state.input);
+    const inputText = describeConditionGroups(state.input);
     if (inputText !== null) {
         chips.push({ key: 'input', label: 'Input', value: inputText });
     }
 
-    const outputText = describeConditions(state.output);
+    const outputText = describeConditionGroups(state.output);
     if (outputText !== null) {
         chips.push({ key: 'output', label: 'Output', value: outputText });
     }
 
-    const errorText = describeConditions(state.error);
+    const errorText = describeConditionGroups(state.error);
     if (errorText !== null) {
         chips.push({ key: 'error', label: 'Error', value: errorText });
     }
 
-    const detailsText = describeConditions(state.details);
+    const detailsText = describeConditionGroups(state.details);
     if (detailsText !== null) {
         chips.push({ key: 'details', label: 'Details', value: detailsText });
     }
@@ -200,22 +228,22 @@ export function describeAuditFilter(
     if (dateValue !== null) {
         chips.push({ key: 'date', label: 'Date', value: dateValue });
     }
-    const taskText = describeConditions(state.task);
+    const taskText = describeConditionGroups(state.task);
     if (taskText !== null) {
         chips.push({ key: 'task', label: 'Task', value: taskText });
     }
 
-    const promptText = describeConditions(state.prompt);
+    const promptText = describeConditionGroups(state.prompt);
     if (promptText !== null) {
         chips.push({ key: 'prompt', label: 'Prompt', value: promptText });
     }
 
-    const messageTextText = describeConditions(state.messageText);
+    const messageTextText = describeConditionGroups(state.messageText);
     if (messageTextText !== null) {
         chips.push({ key: 'messageText', label: 'Message text', value: messageTextText });
     }
 
-    const messageThoughtText = describeConditions(state.messageThought);
+    const messageThoughtText = describeConditionGroups(state.messageThought);
     if (messageThoughtText !== null) {
         chips.push({ key: 'messageThought', label: 'Message thought', value: messageThoughtText });
     }
@@ -245,13 +273,13 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
         case 'run':
             return { ...state, runTypes: [] };
         case 'input':
-            return { ...state, input: [createAuditCondition()] };
+            return { ...state, input: [createAuditConditionGroup()] };
         case 'output':
-            return { ...state, output: [createAuditCondition()] };
+            return { ...state, output: [createAuditConditionGroup()] };
         case 'error':
-            return { ...state, error: [createAuditCondition()] };
+            return { ...state, error: [createAuditConditionGroup()] };
         case 'details':
-            return { ...state, details: [createAuditCondition()] };
+            return { ...state, details: [createAuditConditionGroup()] };
         case 'date':
             return { ...state, dateFrom: null, dateTo: null };
         case 'agent':
@@ -259,13 +287,13 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
         case 'tool':
             return { ...state, tool: { op: 'in', values: [] } };
         case 'task':
-            return { ...state, task: [createAuditCondition()] };
+            return { ...state, task: [createAuditConditionGroup()] };
         case 'prompt':
-            return { ...state, prompt: [createAuditCondition()] };
+            return { ...state, prompt: [createAuditConditionGroup()] };
         case 'messageText':
-            return { ...state, messageText: [createAuditCondition()] };
+            return { ...state, messageText: [createAuditConditionGroup()] };
         case 'messageThought':
-            return { ...state, messageThought: [createAuditCondition()] };
+            return { ...state, messageThought: [createAuditConditionGroup()] };
         case 'tokens':
             return { ...state, tokens: { op: 'gt', value: '' } };
         default:

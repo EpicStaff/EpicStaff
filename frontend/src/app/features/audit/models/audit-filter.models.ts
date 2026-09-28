@@ -99,19 +99,24 @@ export interface AuditFilterState {
     runTypes: AuditRunBucket[];
     flow: AuditValuesFilter;
     id: AuditIdFilter;
-    error: AuditCondition[];
-    input: AuditCondition[];
-    output: AuditCondition[];
-    details: AuditCondition[];
+    error: AuditConditionGroup[];
+    input: AuditConditionGroup[];
+    output: AuditConditionGroup[];
+    details: AuditConditionGroup[];
     agent: AuditValuesFilter;
     tool: AuditValuesFilter;
-    task: AuditCondition[];
-    prompt: AuditCondition[];
-    messageText: AuditCondition[];
-    messageThought: AuditCondition[];
+    task: AuditConditionGroup[];
+    prompt: AuditConditionGroup[];
+    messageText: AuditConditionGroup[];
+    messageThought: AuditConditionGroup[];
     tokens: AuditNumberFilter;
 }
 
+export interface AuditConditionGroup {
+    id: string;
+    join: AuditConditionJoin;
+    conditions: AuditCondition[];
+}
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
 
 export const EMPTY_AUDIT_FILTER: AuditFilterState = {
@@ -124,21 +129,39 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     runTypes: [],
     flow: { op: 'in', values: [] },
     id: { mode: 'in', from: '', to: '', value: '', values: [] },
-    error: [createAuditCondition()],
-    input: [createAuditCondition()],
-    output: [createAuditCondition()],
-    details: [createAuditCondition()],
+    error: [createAuditConditionGroup()],
+    input: [createAuditConditionGroup()],
+    output: [createAuditConditionGroup()],
+    details: [createAuditConditionGroup()],
     agent: { op: 'in', values: [] },
     tool: { op: 'in', values: [] },
-    task: [createAuditCondition()],
-    prompt: [createAuditCondition()],
-    messageText: [createAuditCondition()],
-    messageThought: [createAuditCondition()],
+    task: [createAuditConditionGroup()],
+    prompt: [createAuditConditionGroup()],
+    messageText: [createAuditConditionGroup()],
+    messageThought: [createAuditConditionGroup()],
     tokens: { op: 'gt', value: '' },
 };
 
 export function createAuditCondition(): AuditCondition {
     return { id: generateUuid(), join: 'and', key: '', op: 'contains', value: '' };
+}
+
+export function createAuditConditionGroup(): AuditConditionGroup {
+    return { id: generateUuid(), join: 'or', conditions: [createAuditCondition()] };
+}
+
+export function removeAuditCondition(
+    groups: AuditConditionGroup[],
+    groupId: string,
+    conditionId: string
+): AuditConditionGroup[] {
+    const next = groups.map((group) =>
+        group.id === groupId
+            ? { ...group, conditions: group.conditions.filter((item) => item.id !== conditionId) }
+            : group
+    );
+    const nonEmpty = next.filter((group) => group.conditions.length > 0);
+    return nonEmpty.length > 0 ? nonEmpty : next.slice(0, 1);
 }
 
 export const VALUE_FREE_OPS: AuditFilterOp[] = ['is_empty', 'is_not_empty', 'key_exists', 'key_not_exists'];

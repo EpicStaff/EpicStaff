@@ -1,5 +1,6 @@
 import {
     AuditCondition,
+    AuditConditionGroup,
     AuditFilterNode,
     AuditFilterState,
     AuditMatchScopeState,
@@ -39,6 +40,18 @@ function compileConditions(root: string, conditions: AuditCondition[]): AuditFil
     let combined = nodes[0];
     for (let index = 1; index < nodes.length; index++) {
         combined = { op: usable[index].join, children: [combined, nodes[index]] };
+    }
+    return combined;
+}
+
+function compileConditionGroups(root: string, groups: AuditConditionGroup[]): AuditFilterNode | null {
+    let combined: AuditFilterNode | null = null;
+    for (const group of groups) {
+        const node = compileConditions(root, group.conditions);
+        if (node === null) {
+            continue;
+        }
+        combined = combined === null ? node : { op: group.join, children: [combined, node] };
     }
     return combined;
 }
@@ -126,42 +139,42 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: TOKENS_FIELD, op: tokens.op, value: Number(tokens.value) });
     }
 
-    const errorNode = compileConditions('error', state.error);
+    const errorNode = compileConditionGroups('error', state.error);
     if (errorNode !== null) {
         leaves.push(errorNode);
     }
 
-    const inputNode = compileConditions('input', state.input);
+    const inputNode = compileConditionGroups('input', state.input);
     if (inputNode !== null) {
         leaves.push(inputNode);
     }
 
-    const outputNode = compileConditions('output', state.output);
+    const outputNode = compileConditionGroups('output', state.output);
     if (outputNode !== null) {
         leaves.push(outputNode);
     }
 
-    const detailsNode = compileConditions('details', state.details);
+    const detailsNode = compileConditionGroups('details', state.details);
     if (detailsNode !== null) {
         leaves.push(detailsNode);
     }
 
-    const taskNode = compileConditions('task', state.task);
+    const taskNode = compileConditionGroups('task', state.task);
     if (taskNode !== null) {
         leaves.push(taskNode);
     }
 
-    const promptNode = compileConditions('prompt', state.prompt);
+    const promptNode = compileConditionGroups('prompt', state.prompt);
     if (promptNode !== null) {
         leaves.push(promptNode);
     }
 
-    const messageTextNode = compileConditions('message_text', state.messageText);
+    const messageTextNode = compileConditionGroups('message_text', state.messageText);
     if (messageTextNode !== null) {
         leaves.push(messageTextNode);
     }
 
-    const messageThoughtNode = compileConditions('message_thought', state.messageThought);
+    const messageThoughtNode = compileConditionGroups('message_thought', state.messageThought);
     if (messageThoughtNode !== null) {
         leaves.push(messageThoughtNode);
     }

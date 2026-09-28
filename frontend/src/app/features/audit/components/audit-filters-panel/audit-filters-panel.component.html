@@ -128,8 +128,8 @@
                     [hint]="isInputEnabled() ? '' : 'Only events carry input'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().input"
-                        (conditionsChange)="setInput($event)"
+                        [groups]="filter().input"
+                        (groupsChange)="setInput($event)"
                         [operators]="jsonOperators"
                     />
                 </app-audit-filter-group>
@@ -141,8 +141,8 @@
                     [hint]="isOutputEnabled() ? '' : 'Only events carry output'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().output"
-                        (conditionsChange)="setOutput($event)"
+                        [groups]="filter().output"
+                        (groupsChange)="setOutput($event)"
                         [operators]="jsonOperators"
                     />
                 </app-audit-filter-group>
@@ -154,8 +154,8 @@
                     [hint]="isErrorEnabled() ? '' : 'Only events carry an error'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().error"
-                        (conditionsChange)="setError($event)"
+                        [groups]="filter().error"
+                        (groupsChange)="setError($event)"
                         [operators]="errorOperators"
                         [showKey]="false"
                     />
@@ -168,8 +168,8 @@
                     [hint]="isDetailsEnabled() ? '' : 'Only events carry details'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().details"
-                        (conditionsChange)="setDetails($event)"
+                        [groups]="filter().details"
+                        (groupsChange)="setDetails($event)"
                         [operators]="jsonOperators"
                     />
                 </app-audit-filter-group>
@@ -228,8 +228,8 @@
                     [hint]="isTaskEnabled() ? '' : 'Only events carry a task'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().task"
-                        (conditionsChange)="setTask($event)"
+                        [groups]="filter().task"
+                        (groupsChange)="setTask($event)"
                         [operators]="deepTextOperators"
                         [showKey]="false"
                     />
@@ -242,8 +242,8 @@
                     [hint]="isPromptEnabled() ? '' : 'Only events carry a prompt'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().prompt"
-                        (conditionsChange)="setPrompt($event)"
+                        [groups]="filter().prompt"
+                        (groupsChange)="setPrompt($event)"
                         [operators]="deepTextOperators"
                         [showKey]="false"
                     />
@@ -256,8 +256,8 @@
                     [hint]="isMessageTextEnabled() ? '' : 'Only events carry a message'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().messageText"
-                        (conditionsChange)="setMessageText($event)"
+                        [groups]="filter().messageText"
+                        (groupsChange)="setMessageText($event)"
                         [operators]="deepTextOperators"
                         [showKey]="false"
                     />
@@ -270,8 +270,8 @@
                     [hint]="isMessageThoughtEnabled() ? '' : 'Only events carry a message'"
                 >
                     <app-audit-condition-filter
-                        [conditions]="filter().messageThought"
-                        (conditionsChange)="setMessageThought($event)"
+                        [groups]="filter().messageThought"
+                        (groupsChange)="setMessageThought($event)"
                         [operators]="deepTextOperators"
                         [showKey]="false"
                     />

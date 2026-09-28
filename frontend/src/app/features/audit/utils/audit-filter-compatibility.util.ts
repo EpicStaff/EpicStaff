@@ -1,4 +1,4 @@
-import { AuditCondition, AuditFilterState, isUsableCondition } from '../models/audit-filter.models';
+import { AuditConditionGroup, AuditFilterState, isUsableCondition } from '../models/audit-filter.models';
 import { AuditEventKind } from '../models/audit-session.models';
 
 const ALL_KINDS: AuditEventKind[] = ['session', 'node', 'event'];
@@ -92,8 +92,8 @@ export function allowedKinds(state: AuditFilterState): AuditEventKind[] {
     return allowed;
 }
 
-function hasUsableCondition(conditions: AuditCondition[]): boolean {
-    return conditions.some(isUsableCondition);
+function hasUsableCondition(groups: AuditConditionGroup[]): boolean {
+    return groups.some((group) => group.conditions.some(isUsableCondition));
 }
 
 //shows can filter be used with chosen kinds or not

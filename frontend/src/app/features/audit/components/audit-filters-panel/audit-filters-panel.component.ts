@@ -3,7 +3,7 @@ import { AppSvgIconComponent } from '@shared/components';
 import { DateRangeFilter } from 'src/app/shared/models';
 
 import {
-    AuditCondition,
+    AuditConditionGroup,
     AuditEnumOption,
     AuditFilterState,
     AuditIdFilter,
@@ -172,19 +172,19 @@ export class AuditFiltersPanelComponent {
         this.filter.update((current) => ({ ...current, id }));
     }
 
-    public setError(error: AuditCondition[]): void {
+    public setError(error: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, error }));
     }
 
-    public setInput(input: AuditCondition[]): void {
+    public setInput(input: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, input }));
     }
 
-    public setOutput(output: AuditCondition[]): void {
+    public setOutput(output: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, output }));
     }
 
-    public setDetails(details: AuditCondition[]): void {
+    public setDetails(details: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, details }));
     }
 
@@ -196,19 +196,19 @@ export class AuditFiltersPanelComponent {
         this.filter.update((current) => ({ ...current, tool }));
     }
 
-    public setTask(task: AuditCondition[]): void {
+    public setTask(task: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, task }));
     }
 
-    public setPrompt(prompt: AuditCondition[]): void {
+    public setPrompt(prompt: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, prompt }));
     }
 
-    public setMessageText(messageText: AuditCondition[]): void {
+    public setMessageText(messageText: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, messageText }));
     }
 
-    public setMessageThought(messageThought: AuditCondition[]): void {
+    public setMessageThought(messageThought: AuditConditionGroup[]): void {
         this.filter.update((current) => ({ ...current, messageThought }));
     }
 
