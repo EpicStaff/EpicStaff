@@ -810,8 +810,6 @@ class DynamicVenvExecutorChain:
 
         try:
             result = await self.chain.handle(context)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
             # Mirrors the storage-credential-request failure branch above:
             # once a temporary credential has been acquired for this

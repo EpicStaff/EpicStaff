@@ -152,6 +152,28 @@ async def run(code_task_data: CodeTaskData):
                 storage_org_prefix=code_task_data.storage_org_prefix,
                 secrets=code_task_data.secrets,
             )
+        except asyncio.CancelledError:
+            # A temporary storage credential may already have been minted
+            # for this execution_id (dynamic_venv_executor_chain.py acquires
+            # it before running the chain). Cancellation must still reach
+            # the code_results publish below, or django_app's result_listener
+            # never revokes it and it leaks until the TTL sweep. Publish the
+            # same way the two error paths below do, then re-raise so the
+            # task correctly reports as cancelled.
+            logger.warning(
+                "Execution cancelled (execution_id={}); revoking any minted storage credential",
+                code_task_data.execution_id,
+            )
+            await redis_service.async_publish(
+                channel=settings.CODE_RESULT_CHANNEL,
+                message=CodeResultData(
+                    execution_id=code_task_data.execution_id,
+                    stderr="Execution cancelled.",
+                    stdout="",
+                    returncode=1,
+                ).model_dump(),
+            )
+            raise
         except Exception as e:
             # executor_chain.run() is already expected to fail closed and
             # return an error CodeResultData rather than raise (see

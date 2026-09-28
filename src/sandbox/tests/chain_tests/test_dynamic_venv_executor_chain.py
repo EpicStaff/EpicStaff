@@ -187,9 +187,10 @@ async def test_chain_run_propagates_cancelled_error(tmp_path, monkeypatch):
 
     Assertions:
     - When a task running chain.run() is cancelled, asyncio.CancelledError
-      propagates out (not suppressed by the except Exception handler).
-    - The except asyncio.CancelledError: raise clause before except Exception
-      ensures cancellation semantics are correct.
+      propagates out (not suppressed by the except Exception handler --
+      asyncio.CancelledError derives from BaseException, so it was never
+      caught there in the first place; this guards against a regression
+      such as replacing `except Exception` with `except BaseException`).
     """
     import asyncio
 
