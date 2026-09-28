@@ -3,9 +3,9 @@
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Organization
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,

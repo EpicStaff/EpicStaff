@@ -1,11 +1,11 @@
 import pytest
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import OrganizationUser
-from tables.services.rbac.membership_management_service import (
+from rbac.models import OrganizationUser
+from rbac.governance.memberships import (
     MembershipManagementService,
 )
-from tables.services.rbac.rbac_exceptions import (
+from rbac.exceptions import (
     MembershipAlreadyExistsError,
     MembershipNotFoundError,
     OrganizationNotFoundError,

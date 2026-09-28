@@ -20,6 +20,7 @@ from app.sandbox.client import SandboxClient
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
 from loguru import logger
+
 from shared.knowledge.client import KnowledgeClient
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
@@ -78,7 +79,8 @@ async def main() -> None:
         loader=loader,
         factory=factory,
         redis_client=client,
-        result_stream=settings.AGENT_RESULT_STREAM,
+        result_stream_prefix=settings.AGENT_RESULT_STREAM,
+        result_stream_ttl_s=settings.AGENT_RESULT_STREAM_TTL,
         request_stream=settings.AGENT_REQUEST_STREAM,
         consumer_group=settings.AGENT_CONSUMER_GROUP,
     )

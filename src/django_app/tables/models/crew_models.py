@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import CheckConstraint
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
     AbstractDefaultFillableModel,
@@ -9,7 +10,6 @@ from tables.models.base_models import (
     SoftDeleteFields,
     soft_delete_consistency_constraint,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class DefaultCrewConfig(DefaultBaseModel):

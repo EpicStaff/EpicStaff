@@ -36,7 +36,7 @@ Startup sequence (`main()`):
    - `RunnerDependencies(resolver=AgentResolver(sandbox_client, mcp_gateway, knowledge_client), loop=DefaultAgentLoop(llm, settings.agent_context_warning_ratio))`.
    - `RunnerFactory(deps)`, with `factory.register(RunType.SINGLE_TASK, SingleTaskRunner)`
      and `factory.register(RunType.LIST_OF_TASKS, ListOfTasksRunner)`.
-   - `RequestHandler(loader, factory, redis_client, result_stream, request_stream, consumer_group)`.
+   - `RequestHandler(loader, factory, redis_client, result_stream_prefix, result_stream_ttl_s, request_stream, consumer_group)`.
 6. Consume loop: `client.read(streams={agent_request_stream: ">"}, group=..., consumer=consumer_name, count=10, block_ms=5000)`.
    For each message, `StreamEnvelope.from_fields(message.fields)` is parsed;
    a parse failure is logged, the message is **acked and dropped** (poison
@@ -414,7 +414,9 @@ a Bridge between the execution layers (`Runner`, `AgentLoop`) and the output
 transport. Hooks: `on_start`, `on_chunk`, `on_tool_call`, `on_tool_result`,
 `on_warning`, `on_final`, `on_error` (all abstract), plus optional
 `on_task_start` / `on_task_finish` (default no-ops, overridden only by
-`RedisStreamToolEventEmitter`). All publish to the `agent.results` stream.
+`RedisStreamToolEventEmitter`). All publish to the run's own stream
+`agent_result_stream(prefix, correlation_id)` (`agent.results:<correlation_id>`)
+and refresh its TTL (`AGENT_RESULT_STREAM_TTL`) on every publish.
 
 `redis_batch.py` ([`src/agent/app/emitters/redis_batch.py`](../../src/agent/app/emitters/redis_batch.py)):
 `RedisStreamBatchEmitter` buffers every event internally and publishes
@@ -519,7 +521,7 @@ sequenceDiagram
     participant Backend as Sandbox / MCP / Knowledge
     participant Enforcer as StructuredOutputEnforcer
     participant Emitter as Emitter (RedisStreamToolEventEmitter)
-    participant Results as Redis Stream (agent.results)
+    participant Results as Redis Stream (agent.results:correlation_id)
 
     Stream->>Main: XREADGROUP (agent.requests)
     Main->>Main: parse StreamEnvelope (poison pill ack+drop on failure)
@@ -527,7 +529,7 @@ sequenceDiagram
     Handler->>Loader: load(envelope)
     Loader->>Loader: GET request_key from Redis K/V
     Loader-->>Handler: AgentRequest
-    Handler->>Factory: build(request, redis_client, result_stream)
+    Handler->>Factory: build(request, redis_client, result_stream_prefix, result_stream_ttl_s)
     Factory-->>Handler: (Runner, Emitter)
     Handler->>Runner: execute(request, emitter)
     Runner->>Emitter: on_start(request)

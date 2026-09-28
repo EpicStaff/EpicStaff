@@ -1,4 +1,8 @@
 from agents.models.agent_models import AgentDefinition
+from rbac.scoping.fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+)
 from rest_framework import serializers
 from tables.models.realtime_models import (
     ConversationRecording,
@@ -19,10 +23,6 @@ from tables.models.webhook_models import (
     WebhookTriggerAuthKind,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
-from tables.serializers.org_scoped_fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_resolver
 

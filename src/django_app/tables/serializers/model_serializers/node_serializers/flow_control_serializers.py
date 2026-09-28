@@ -1,4 +1,7 @@
 from django.db import transaction
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+)
 from rest_framework import serializers
 from tables.models.graph_models import (
     ClassificationConditionGroup,
@@ -18,9 +21,6 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-)
 from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,

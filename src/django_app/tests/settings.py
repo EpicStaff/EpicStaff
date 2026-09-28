@@ -10,7 +10,7 @@ REST_FRAMEWORK = {
     # IsAuthenticated) built on top of `auth_client` false-403s regardless of
     # the actual permission logic under test.
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "tables.services.rbac.authentication.JwtOrApiKeyAuthentication",
+        "rbac.identity.authentication.JwtOrApiKeyAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [],
 }

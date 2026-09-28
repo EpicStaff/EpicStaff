@@ -1,3 +1,9 @@
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
+)
 from rest_framework import serializers
 from tables.models.llm_models import (
     LLMConfig,
@@ -12,12 +18,6 @@ from tables.models.tag_models import LLMConfigTag, LLMModelTag
 from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
-)
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgScopedUniqueTogetherValidator,
-    OrgScopedUniqueValidator,
-    OrgVisiblePrimaryKeyRelatedField,
 )
 
 from ..utils.mixins import TagHandlingMixin
