@@ -9,7 +9,6 @@ __all__ = [
     "KnowledgeError",
     "NoPreviewChunksProducedError",
     "NotRunningOperationError",
-    "NulCharacterContentError",
     "RagInProcessingError",
     "RagNotFoundError",
     "RepositoryError",
@@ -34,13 +33,6 @@ class UnsupportedError(KnowledgeError):
 
 class FileTextExtractingError(KnowledgeError):
     default_message = "{extractor} failed to extract text from binary content."
-
-
-class NulCharacterContentError(KnowledgeError):
-    default_message = (
-        "Document(id={document_id}) of RAG(id={rag_id}) contains NUL characters; "
-        "the file may be binary or in an unsupported encoding (e.g. UTF-16)."
-    )
 
 
 class ChunkingError(KnowledgeError):
