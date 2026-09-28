@@ -31,6 +31,38 @@
     }
 }
 
+// The agent panel's picker trigger, with the border and height of the Mode select beside it.
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    height: 40px;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover {
+        border-color: var(--accent-color);
+    }
+
+    &__label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+    }
+}
+
 .table-hint {
     margin-top: 4px;
     @include controls.hint-text;

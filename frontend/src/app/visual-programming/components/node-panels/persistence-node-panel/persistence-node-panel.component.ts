@@ -1,7 +1,8 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, effect, inject, signal, untracked, ViewContainerRef } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked, viewChild, ViewContainerRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     AbstractControl,
@@ -16,6 +17,10 @@ import {
     AppSvgIconComponent,
     CustomInputComponent,
     SelectComponent,
+    SelectDropdownComponent,
+    SelectDropdownHeaderAction,
+    SelectDropdownListItem,
+    SelectDropdownTriggerDirective,
     SelectItem,
     TooltipComponent,
     ValidationErrorsComponent,
@@ -25,16 +30,22 @@ import {
     catchError,
     debounceTime,
     distinctUntilChanged,
+    finalize,
     map,
     Observable,
     of,
     skip,
     startWith,
     Subject,
+    Subscription,
     switchMap,
 } from 'rxjs';
 
-import { PersistenceEntryLookupResponse } from '../../../../features/persistent-data/models/persistence-table.model';
+import { PersistenceTableDialogComponent } from '../../../../features/persistent-data/components/persistence-table-dialog/persistence-table-dialog.component';
+import {
+    PersistenceEntryLookupResponse,
+    PersistenceTable,
+} from '../../../../features/persistent-data/models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
 import { PersistenceTablesStorageService } from '../../../../features/persistent-data/services/persistence-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -77,6 +88,7 @@ const CANVAS_SYNC_DEBOUNCE_MS = 300;
 const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
 const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
 const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
+const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table' };
 const KEYS_LABEL: Record<PersistenceMode, string> = {
     read: 'Keys to Read',
     write: 'Keys to Write',
@@ -105,6 +117,8 @@ interface EntryFormValue {
         CustomInputComponent,
         ValidationErrorsComponent,
         SelectComponent,
+        SelectDropdownComponent,
+        SelectDropdownTriggerDirective,
         AppSvgIconComponent,
         TooltipComponent,
         NgTemplateOutlet,
@@ -113,6 +127,8 @@ interface EntryFormValue {
     styleUrls: ['./persistence-node-panel.component.scss'],
 })
 export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNodeModel> {
+    private readonly tableDropdown = viewChild(SelectDropdownComponent);
+
     protected readonly mode = signal<PersistenceMode>('read');
     protected readonly loadingTables = signal(false);
     protected readonly lookups = signal<PersistenceEntryLookupResponse>({});
@@ -124,10 +140,32 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     // The key input the suggestions belong to; null once they are dismissed, so a late search is dropped.
     private readonly suggestionTarget = signal<{ entryIndex: number; input: HTMLInputElement } | null>(null);
     protected readonly canReadData = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Read));
-    protected readonly tableItems = computed<SelectItem<number | null>[]>(() => [
-        { name: 'Select a table', value: null },
+    // The "+" next to the search; hidden without the right to create a table.
+    protected readonly createTableAction = computed(() =>
+        this.permissions.can(ResourceCode.PersistentData, ActionCode.Create) ? CREATE_TABLE_ACTION : null
+    );
+    // "No table" clears the table; search filters it by its name like any other row.
+    protected readonly tableItems = computed<SelectDropdownListItem<number | null>[]>(() => [
+        { name: 'No table', value: null },
         ...this.persistenceTablesStorage.tables().map((table) => ({ name: table.name, value: table.id })),
     ]);
+    // The form is not a signal: node() covers a re-initialized form, dirtyCheckTick its value changes.
+    protected readonly selectedTableId = computed<number | null>(() => {
+        this.node();
+        this.dirtyCheckTick();
+        return this.form?.get('persistence_table')?.value ?? null;
+    });
+    // [null] checks the "No table" row.
+    protected readonly selectedTableValue = computed<(number | null)[]>(() => [this.selectedTableId()]);
+    // Null for a table that is gone or out of reach too, which then shows the placeholder.
+    protected readonly selectedTableName = computed<string | null>(() => {
+        const tableId = this.selectedTableId();
+        return this.persistenceTablesStorage.tables().find((table) => table.id === tableId)?.name ?? null;
+    });
+    protected readonly tableTriggerLabel = computed(() => {
+        if (this.loadingTables()) return 'Loading tables...';
+        return this.selectedTableName() ?? 'Select a table';
+    });
     protected readonly keysLabel = computed(() => KEYS_LABEL[this.mode()]);
     // Leaves out names a persistence node can't use, such as `user-name` or `_private`.
     private readonly variableItems = computed(() =>
@@ -161,10 +199,12 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private readonly valueDrafts = inject(PersistenceValueDraftsService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
+    private readonly dialog = inject(Dialog);
     private readonly overlay = inject(Overlay);
     private readonly viewContainerRef = inject(ViewContainerRef);
     private readonly keySearch$ = new Subject<KeySearch>();
     private suggestionOverlay: OverlayRef | null = null;
+    private tablesLoad: Subscription | null = null;
     private suggestionDropdown: VariableDropdownOverlayComponent | null = null;
     // The value a row had before a switch to delete removed its value field, so switching back restores it.
     private readonly hiddenValues = new WeakMap<FormGroup, string>();
@@ -172,14 +212,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     constructor() {
         super();
         if (this.persistenceTablesStorage.tables().length === 0) {
-            this.loadingTables.set(true);
-            this.persistenceTablesStorage
-                .loadTables()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                    next: () => this.loadingTables.set(false),
-                    error: () => this.loadingTables.set(false),
-                });
+            this.trackTablesLoad(this.persistenceTablesStorage.loadTables());
         }
 
         this.keySearch$
@@ -326,6 +359,26 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         };
     }
 
+    protected onTableSelectionChange(values: unknown[]): void {
+        this.selectTable((values[0] as number | undefined) ?? null);
+    }
+
+    /** Creates a table without leaving the flow and selects it. */
+    protected openCreateTable(): void {
+        this.tableDropdown()?.close();
+        this.dialog
+            .open<PersistenceTable | null>(PersistenceTableDialogComponent, { width: '480px' })
+            .closed.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((table) => {
+                if (!table) return;
+                this.toastService.success(`Table "${table.name}" created`);
+                this.selectTable(table.id);
+                // Through the shared cache, so the Files page and other panels list the new table too;
+                // a reload, as a load already in flight may have started before the create.
+                this.trackTablesLoad(this.persistenceTablesStorage.reloadTables());
+            });
+    }
+
     /** Every row counts here, empty or not, so "Add key" stops where the saved keys would. */
     protected get atKeyLimit(): boolean {
         return this.entries.length >= PERSISTENCE_MAX_KEYS;
@@ -449,6 +502,26 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
                 value: row.get('value')?.value ?? this.hiddenValues.get(row),
             }))
         );
+    }
+
+    private selectTable(tableId: number | null): void {
+        const control = this.form.controls['persistence_table'];
+        control.setValue(tableId);
+        control.markAsDirty();
+        control.markAsTouched();
+    }
+
+    // A failed load keeps the list it had; the panel still works with it. A newer load replaces the
+    // one running, so the older one's end can't stop the spinner while the newer one still runs.
+    private trackTablesLoad(load$: Observable<PersistenceTable[]>): void {
+        this.tablesLoad?.unsubscribe();
+        this.loadingTables.set(true);
+        this.tablesLoad = load$
+            .pipe(
+                finalize(() => this.loadingTables.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({ error: () => undefined });
     }
 
     private readTargetItemsFor(rowIndex: number): PickerItem[] {

@@ -17,15 +17,40 @@
 
             <div class="table-mode-row">
                 <div class="field-isolated">
-                    <app-select
+                    <app-tooltip
                         label="Table"
                         tooltipText="The persistent data table this node reads from, writes to or deletes from."
-                        placeholder="Select a table"
-                        formControlName="persistence_table"
-                        [items]="tableItems()"
-                        [loading]="loadingTables()"
                     />
-                    @if (form.get('persistence_table')?.value === null) {
+                    <app-select-dropdown
+                        mode="list"
+                        selectionMode="single"
+                        searchPlaceholder="Search tables..."
+                        emptyText="No tables yet"
+                        [items]="tableItems()"
+                        [selected]="selectedTableValue()"
+                        [headerAction]="createTableAction()"
+                        (selectionChange)="onTableSelectionChange($event)"
+                        (headerActionClick)="openCreateTable()"
+                    >
+                        <button
+                            type="button"
+                            appSelectDropdownTrigger
+                            class="dropdown-trigger"
+                        >
+                            <span
+                                class="dropdown-trigger__label"
+                                [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
+                                [attr.title]="selectedTableName()"
+                            >
+                                {{ tableTriggerLabel() }}
+                            </span>
+                            <app-svg-icon
+                                icon="chevron-down-filled"
+                                size="8px"
+                            />
+                        </button>
+                    </app-select-dropdown>
+                    @if (selectedTableId() === null) {
                         <div class="table-hint">Select a table for this node to run</div>
                     }
                 </div>

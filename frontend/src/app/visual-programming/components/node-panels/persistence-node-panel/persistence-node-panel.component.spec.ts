@@ -1,5 +1,6 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
     AbstractControl,
@@ -8,13 +9,15 @@ import {
     NG_VALUE_ACCESSOR,
     ReactiveFormsModule,
 } from '@angular/forms';
-import { NodeType } from '@shared/models';
+import { SelectDropdownComponent, SelectDropdownTriggerDirective } from '@shared/components';
+import { ActionCode, NodeType } from '@shared/models';
 import { NEVER, Observable, of, Subject } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import {
     PersistenceEntryLookupResponse,
+    PersistenceTable,
     PersistenceTableEntry,
 } from '../../../../features/persistent-data/models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
@@ -92,6 +95,11 @@ function createPanel(
     {
         renderTemplate = false,
         canRead = false,
+        canCreate = false,
+        tables = [],
+        createdTable = NEVER,
+        tablesLoad,
+        tablesReload,
         getEntries = () => NEVER,
         lookupEntries = () => of({}),
         initialState = {},
@@ -100,6 +108,13 @@ function createPanel(
     }: {
         renderTemplate?: boolean;
         canRead?: boolean;
+        canCreate?: boolean;
+        tables?: PersistenceTable[];
+        /** What the create-table dialog closes with. */
+        createdTable?: Observable<PersistenceTable | null>;
+        /** What the storage's loadTables() and reloadTables() answer; by default the stored tables. */
+        tablesLoad?: Observable<PersistenceTable[]>;
+        tablesReload?: Observable<PersistenceTable[]>;
         getEntries?: () => Observable<ApiGetRequest<PersistenceTableEntry>>;
         lookupEntries?: () => Observable<PersistenceEntryLookupResponse>;
         initialState?: Record<string, unknown>;
@@ -112,9 +127,17 @@ function createPanel(
     fixture: ComponentFixture<PersistenceNodePanelComponent>;
     triggerAutosave: ReturnType<typeof vi.fn>;
     toastError: ReturnType<typeof vi.fn>;
+    openDialog: ReturnType<typeof vi.fn>;
+    loadTables: ReturnType<typeof vi.fn>;
+    reloadTables: ReturnType<typeof vi.fn>;
+    storedTables: WritableSignal<PersistenceTable[]>;
 } {
     const triggerAutosave = vi.fn();
     const toastError = vi.fn();
+    const openDialog = vi.fn(() => ({ closed: createdTable }));
+    const storedTables = signal<PersistenceTable[]>(tables);
+    const loadTables = vi.fn(() => tablesLoad ?? of(storedTables()));
+    const reloadTables = vi.fn(() => tablesReload ?? of(storedTables()));
     TestBed.configureTestingModule({
         errorOnUnknownProperties,
         providers: [
@@ -122,8 +145,14 @@ function createPanel(
                 provide: PersistenceTablesApiService,
                 useValue: { lookupEntries, getEntries },
             },
-            { provide: PersistenceTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
-            { provide: PermissionsService, useValue: { can: () => canRead } },
+            { provide: PersistenceTablesStorageService, useValue: { tables: storedTables, loadTables, reloadTables } },
+            {
+                provide: PermissionsService,
+                useValue: {
+                    can: (_resource: string, action: string) => (action === ActionCode.Create ? canCreate : canRead),
+                },
+            },
+            { provide: Dialog, useValue: { open: openDialog } },
             {
                 provide: UniqueNodeNameValidatorService,
                 useValue: { createSyncUniqueNameValidator: () => () => null, getValidationErrorMessage: () => '' },
@@ -139,7 +168,7 @@ function createPanel(
                     clearSelection: vi.fn(),
                 },
             },
-            { provide: ToastService, useValue: { error: toastError } },
+            { provide: ToastService, useValue: { error: toastError, success: vi.fn() } },
             { provide: FlowService, useValue: flowService ?? { startNodeInitialState: signal(initialState) } },
             // FlowGraphComponent provides it in the app, so it outlives any one panel.
             PersistenceValueDraftsService,
@@ -148,13 +177,28 @@ function createPanel(
     TestBed.overrideComponent(PersistenceNodePanelComponent, {
         set: renderTemplate
             ? {
-                  imports: [ReactiveFormsModule, NgTemplateOutlet, FormControlStubComponent],
+                  imports: [
+                      ReactiveFormsModule,
+                      NgTemplateOutlet,
+                      FormControlStubComponent,
+                      SelectDropdownComponent,
+                      SelectDropdownTriggerDirective,
+                  ],
                   schemas: [CUSTOM_ELEMENTS_SCHEMA],
               }
             : { template: '', imports: [] },
     });
     const fixture = openPanel(node);
-    return { panel: fixture.componentInstance, fixture, triggerAutosave, toastError };
+    return {
+        panel: fixture.componentInstance,
+        fixture,
+        triggerAutosave,
+        toastError,
+        openDialog,
+        loadTables,
+        reloadTables,
+        storedTables,
+    };
 }
 
 function flowOf(node: PersistenceNodeModel): FlowModel {
@@ -1082,7 +1126,8 @@ describe('PersistenceNodePanelComponent', () => {
         const addKeyButton = (fixture: ComponentFixture<PersistenceNodePanelComponent>): HTMLButtonElement =>
             fixture.nativeElement.querySelector('.add-entry');
 
-        it('stops Add key at 500 rows and says why', () => {
+        // Renders 500 rows: about 4s on its own, close to Vitest's 5s default under a full run's load.
+        it('stops Add key at 500 rows and says why', { timeout: 20_000 }, () => {
             const { panel, fixture } = createPanel(nodeWith('delete', keys(499)), { renderTemplate: true });
 
             expect(addKeyButton(fixture).disabled).toBe(false);
@@ -1975,6 +2020,200 @@ describe('PersistenceNodePanelComponent', () => {
             expect(entriesOf(panel).at(0).get('key')!.value).toBe('greeting');
             expect(keyInput(fixture).value).toBe('greeting');
             expect(backdrop(fixture).textContent).toBe('greeting');
+        });
+    });
+
+    describe('table picker', () => {
+        const table = (id: number, name: string): PersistenceTable =>
+            ({ id, name, description: '', entry_count: 0 }) as PersistenceTable;
+        const TABLES = [table(3, 'profiles'), table(4, 'orders')];
+
+        const trigger = (fixture: ComponentFixture<PersistenceNodePanelComponent>): HTMLElement =>
+            fixture.nativeElement.querySelector('.dropdown-trigger');
+        const tableHint = (fixture: ComponentFixture<PersistenceNodePanelComponent>): Element | null =>
+            fixture.nativeElement.querySelector('.table-hint');
+        const openDropdown = (fixture: ComponentFixture<PersistenceNodePanelComponent>): void => {
+            trigger(fixture).click();
+            fixture.detectChanges();
+        };
+        const rowNames = (): string[] =>
+            Array.from(document.querySelectorAll('.select-dropdown__row-name'), (row) => row.textContent!.trim());
+        const clickRow = (name: string): void =>
+            Array.from(document.querySelectorAll<HTMLElement>('.select-dropdown__row'))
+                .find((row) => row.textContent!.trim() === name)!
+                .click();
+        const selectedRowNames = (): string[] =>
+            Array.from(document.querySelectorAll('.select-dropdown__row--selected'), (row) => row.textContent!.trim());
+        const createButton = (): HTMLButtonElement | null =>
+            document.querySelector<HTMLButtonElement>('.select-dropdown__action');
+
+        it('shows the selected table and sets the control from the dropdown', () => {
+            const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                tables: TABLES,
+            });
+            expect(trigger(fixture).textContent!.trim()).toBe('profiles');
+
+            openDropdown(fixture);
+            expect(rowNames()).toEqual(['No table', 'profiles', 'orders']);
+            clickRow('orders');
+            fixture.detectChanges();
+
+            const control = panel.form.get('persistence_table')!;
+            expect(control.value).toBe(4);
+            expect(control.dirty).toBe(true);
+            expect(trigger(fixture).textContent!.trim()).toBe('orders');
+            expect(panel.onSave()!.data.persistence_table).toBe(4);
+        });
+
+        it('clears the table with "No table", which then asks for one', () => {
+            vi.useFakeTimers();
+            const { panel, fixture, triggerAutosave } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                tables: TABLES,
+            });
+            expect(tableHint(fixture)).toBeNull();
+
+            openDropdown(fixture);
+            clickRow('No table');
+            fixture.detectChanges();
+
+            const control = panel.form.get('persistence_table')!;
+            expect(control.value).toBeNull();
+            expect(control.dirty).toBe(true);
+            expect(trigger(fixture).textContent!.trim()).toBe('Select a table');
+            expect(tableHint(fixture)?.textContent!.trim()).toBe('Select a table for this node to run');
+            vi.advanceTimersByTime(300);
+            expect(triggerAutosave).toHaveBeenCalledTimes(1);
+            expect(panel.onSave()!.data.persistence_table).toBeNull();
+
+            openDropdown(fixture);
+            expect(selectedRowNames()).toEqual(['No table']);
+        });
+
+        it('asks for a table while none is selected', () => {
+            const { fixture } = createPanel(mapPersistenceNodeToModel({ ...DTO, persistence_table: null }), {
+                renderTemplate: true,
+                tables: TABLES,
+            });
+
+            expect(trigger(fixture).textContent!.trim()).toBe('Select a table');
+            expect(tableHint(fixture)?.textContent!.trim()).toBe('Select a table for this node to run');
+        });
+
+        it('shows the placeholder, without the hint, for a table that is not in the list', () => {
+            const { fixture } = createPanel(mapPersistenceNodeToModel({ ...DTO, persistence_table: 99 }), {
+                renderTemplate: true,
+                tables: TABLES,
+            });
+
+            expect(trigger(fixture).textContent!.trim()).toBe('Select a table');
+            expect(tableHint(fixture)).toBeNull();
+        });
+
+        it('offers no "Create table" without the right to create one', () => {
+            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true, tables: TABLES });
+
+            openDropdown(fixture);
+
+            expect(rowNames()).toEqual(['No table', 'profiles', 'orders']);
+            expect(createButton()).toBeNull();
+        });
+
+        it('offers "Create table" with the right to create one', () => {
+            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                tables: TABLES,
+                canCreate: true,
+            });
+
+            openDropdown(fixture);
+
+            expect(createButton()?.textContent!.trim()).toBe('Create table');
+        });
+
+        it('adds a created table to the list and selects it', () => {
+            const created = new Subject<PersistenceTable | null>();
+            const { panel, fixture, openDialog, reloadTables, storedTables } = createPanel(
+                mapPersistenceNodeToModel(DTO),
+                { renderTemplate: true, tables: TABLES, canCreate: true, createdTable: created }
+            );
+            reloadTables.mockImplementation(() => {
+                storedTables.set([...TABLES, table(7, 'sessions')]);
+                return of(storedTables());
+            });
+
+            openDropdown(fixture);
+            createButton()!.click();
+            fixture.detectChanges();
+            expect(openDialog).toHaveBeenCalledTimes(1);
+            // The dropdown closes, so it is not left open under the dialog.
+            expect(createButton()).toBeNull();
+
+            created.next(table(7, 'sessions'));
+            fixture.detectChanges();
+
+            const control = panel.form.get('persistence_table')!;
+            expect(control.value).toBe(7);
+            expect(control.dirty).toBe(true);
+            // A reload, not loadTables(): a load in flight may predate the new table.
+            expect(reloadTables).toHaveBeenCalledTimes(1);
+            expect(trigger(fixture).textContent!.trim()).toBe('sessions');
+            openDropdown(fixture);
+            expect(rowNames()).toEqual(['No table', 'profiles', 'orders', 'sessions']);
+        });
+
+        it('keeps showing the reload after a create when the load from opening ends first', () => {
+            const openingLoad = new Subject<PersistenceTable[]>();
+            const reload = new Subject<PersistenceTable[]>();
+            const created = new Subject<PersistenceTable | null>();
+            const { fixture, storedTables } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                canCreate: true,
+                createdTable: created,
+                tablesLoad: openingLoad,
+                tablesReload: reload,
+            });
+            expect(trigger(fixture).textContent!.trim()).toBe('Loading tables...');
+
+            openDropdown(fixture);
+            createButton()!.click();
+            created.next(table(7, 'sessions'));
+            fixture.detectChanges();
+
+            // The storage drops this late response; what matters is that it ends before the reload.
+            openingLoad.next(TABLES);
+            openingLoad.complete();
+            fixture.detectChanges();
+            expect(trigger(fixture).textContent!.trim()).toBe('Loading tables...');
+
+            const withCreated = [...TABLES, table(7, 'sessions')];
+            storedTables.set(withCreated);
+            reload.next(withCreated);
+            reload.complete();
+            fixture.detectChanges();
+            expect(trigger(fixture).textContent!.trim()).toBe('sessions');
+        });
+
+        it('keeps the selection when the dialog is cancelled', () => {
+            const created = new Subject<PersistenceTable | null>();
+            const { panel, fixture, reloadTables } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                tables: TABLES,
+                canCreate: true,
+                createdTable: created,
+            });
+
+            openDropdown(fixture);
+            createButton()!.click();
+            created.next(null);
+            fixture.detectChanges();
+
+            const control = panel.form.get('persistence_table')!;
+            expect(control.value).toBe(3);
+            expect(control.dirty).toBe(false);
+            expect(reloadTables).not.toHaveBeenCalled();
+            expect(trigger(fixture).textContent!.trim()).toBe('profiles');
         });
     });
 });
