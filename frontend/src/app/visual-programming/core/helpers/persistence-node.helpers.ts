@@ -1,4 +1,4 @@
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType } from '@shared/models';
 
 import { PersistenceEntryLookup } from '../../../features/persistent-data/models/persistence-table.model';
 import { NodeModel, PersistenceNodeModel } from '../models/node.model';
@@ -55,6 +55,19 @@ const PRIVATE_NAME_HINT = "Variable names can't start with _";
 const READ_DEFAULT_HINT = 'Leave out the |default: a missing key reads None';
 // A bare path such as `user.id` or `items[0]`, which only lacks the `variables.` root.
 const ROOTLESS_PATH = /^[A-Za-z]\w*(?:\.[A-Za-z0-9]\w*|\[(?:0|[1-9]\d*)\])*$/;
+
+// Mirrors MODE_PERMISSIONS in tables/services/persistence_table_service.py: what configuring a node
+// in each mode needs on Persistent Data. The server is the authority; the panel only offers what it allows.
+export const PERSISTENCE_MODE_ACTIONS: Record<PersistenceMode, ActionCode[]> = {
+    read: [ActionCode.Read],
+    write: [ActionCode.Create, ActionCode.Update],
+    delete: [ActionCode.Delete],
+};
+
+/** Whether the user may configure a node in a mode: every action it needs, not any one of them. */
+export function canConfigureMode(mode: PersistenceMode, can: (action: ActionCode) => boolean): boolean {
+    return PERSISTENCE_MODE_ACTIONS[mode].every(can);
+}
 
 /** A read or write value starts as this so the user only types the rest of the path. */
 export const VALUE_PREFILL = 'variables.';

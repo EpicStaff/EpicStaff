@@ -63,6 +63,7 @@ import { PersistenceTablesStorageService } from '../../../../features/persistent
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import {
+    canConfigureMode,
     duplicateWriteKeys,
     existenceHint,
     isEmptyEntry,
@@ -109,6 +110,21 @@ const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
 const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
 const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
 const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table', iconOnly: true };
+const MODE_ITEMS: SelectItem<PersistenceMode>[] = [
+    { name: 'Read', value: 'read' },
+    { name: 'Write', value: 'write' },
+    { name: 'Delete', value: 'delete' },
+];
+const NO_READ_NOTICE = 'You need View permission on Persistent Data to configure this node.';
+// Names the permissions PERSISTENCE_MODE_ACTIONS lists, as the role editor calls them.
+const MODE_LOCKED_NOTICE: Record<PersistenceMode, string> = {
+    // Never shown: a user who can't configure read has no View, and NO_READ_NOTICE comes first.
+    read: 'Changing a Read node needs View permission on Persistent Data.',
+    write: 'Changing a Write node needs Create and Edit permission on Persistent Data.',
+    delete: 'Changing a Delete node needs Delete permission on Persistent Data.',
+};
+// What a locked panel keeps as saved; the node name stays editable.
+const LOCKABLE_CONTROLS = ['persistence_table', 'mode', 'entries'];
 const KEYS_LABEL: Record<PersistenceMode, string> = {
     read: 'Keys to Read',
     write: 'Keys to Write',
@@ -166,6 +182,19 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     // The key input the suggestions belong to; null once they are dismissed, so a late search is dropped.
     private readonly suggestionTarget = signal<{ entryIndex: number; input: HTMLInputElement } | null>(null);
     protected readonly canReadData = computed(() => this.permissions.can(ResourceCode.PersistentData, ActionCode.Read));
+    // The saved mode, not the form's: a node the user may not configure keeps its mode, table and keys.
+    protected readonly modeLocked = computed(() => !this.canConfigure(this.node().data.mode));
+    protected readonly configurationLocked = computed(() => !this.canReadData() || this.modeLocked());
+    protected readonly permissionNotice = computed<string | null>(() => {
+        if (!this.canReadData()) return NO_READ_NOTICE;
+        return this.modeLocked() ? MODE_LOCKED_NOTICE[this.node().data.mode] : null;
+    });
+    // Only the modes the user may configure; a locked select shows just the saved one.
+    protected readonly modeItems = computed(() => {
+        const savedMode = this.node().data.mode;
+        if (this.modeLocked()) return MODE_ITEMS.filter((item) => item.value === savedMode);
+        return MODE_ITEMS.filter((item) => this.canConfigure(item.value));
+    });
     // The "+" next to the search; hidden without the right to create a table.
     protected readonly createTableAction = computed(() =>
         this.permissions.can(ResourceCode.PersistentData, ActionCode.Create) ? CREATE_TABLE_ACTION : null
@@ -201,11 +230,6 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected readonly activeColor = 'var(--accent-color)';
     protected readonly keyLimitHint = `A persistence node can have at most ${PERSISTENCE_MAX_KEYS} keys`;
     protected readonly keyPlaceholder = KEY_PLACEHOLDER_HINT;
-    protected readonly modeItems: SelectItem<PersistenceMode>[] = [
-        { name: 'Read', value: 'read' },
-        { name: 'Write', value: 'write' },
-        { name: 'Delete', value: 'delete' },
-    ];
     // The Input List's picker. Read rows each fill their own variable, so a row is not offered what
     // other rows fill, nor what lies inside or around it: those stay only as disabled parents of what
     // is still offered. Write rows may share a source, so each is offered every variable.
@@ -270,6 +294,17 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             this.openSuggestionOverlay()?.updateItems(suggestions, activeIndex);
         });
         this.destroyRef.onDestroy(() => this.closeSuggestionOverlay());
+
+        // Permissions may arrive or change after the form is built, e.g. on an org switch.
+        effect(() => {
+            const locked = this.configurationLocked();
+            untracked(() => {
+                if (!this.form) return;
+                // A relock mid-edit: put back what is saved, so no edit the server would refuse is kept.
+                if (locked && this.form.get('mode')?.enabled) this.restoreSavedConfiguration(this.form);
+                this.applyConfigurationLock(this.form, locked);
+            });
+        });
     }
 
     /**
@@ -293,6 +328,9 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
      * the schedule-trigger panel does, with a toast pointing at the highlighted fields; the flow
      * save's own check covers a node whose panel is closed. Empty rows are never invalid.
      */
+    // Known limit: a locked node's disabled controls don't validate, so one with an old invalid key
+    // (dev data only) passes here; the flow save's own check (hasValidPersistenceEntries) still
+    // refuses it, and only a user allowed to configure the node can fix it.
     public override captureForValidation(): PersistenceNodeModel | null {
         if (!this.form) return null;
         this.form.markAllAsTouched();
@@ -373,21 +411,23 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             )
             .subscribe(() => this.sidePanelService.triggerAutosave());
 
+        this.applyConfigurationLock(form, untracked(this.configurationLocked));
         return form;
     }
 
+    /** Raw values: a locked panel's disabled controls still hold what the node saves. */
     protected createUpdatedNode(): PersistenceNodeModel {
-        const mode: PersistenceMode = this.form.value.mode;
+        const { node_name, mode, persistence_table } = this.form.getRawValue();
         const entryValues: EntryFormValue[] = this.entries.getRawValue();
 
         return {
             ...this.node(),
-            node_name: this.form.value.node_name,
+            node_name,
             // Entries reference flow state paths directly, for inputs and for read results alike.
             input_map: {},
             output_variable_path: null,
             data: {
-                persistence_table: this.form.value.persistence_table ?? null,
+                persistence_table: persistence_table ?? null,
                 mode,
                 entries: entryValues
                     .filter((entryValue) => !isEmptyEntry(entryValue))
@@ -544,6 +584,40 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
                 value: row.get('value')?.value ?? this.hiddenValues.get(row),
             }))
         );
+    }
+
+    /**
+     * Disables or enables what a locked panel keeps; the node name stays editable. See
+     * captureForValidation for what a locked node skips.
+     */
+    private applyConfigurationLock(form: FormGroup, locked: boolean): void {
+        LOCKABLE_CONTROLS.forEach((name) => {
+            const control = form.get(name);
+            if (!control || control.disabled === locked) return;
+            if (locked) control.disable({ emitEvent: false });
+            else control.enable({ emitEvent: false });
+        });
+        this.notifyExternalChange();
+    }
+
+    /**
+     * The node's saved mode, table and keys, without the form emitting (so nothing autosaves). Only
+     * for a relock: a fresh form already holds them, with the values a delete node keeps hidden.
+     */
+    private restoreSavedConfiguration(form: FormGroup): void {
+        const { mode, persistence_table, entries } = this.node().data;
+        this.mode.set(mode);
+        form.get('mode')?.setValue(mode, { emitEvent: false });
+        form.get('persistence_table')?.setValue(persistence_table, { emitEvent: false });
+        const rows = form.get('entries') as FormArray;
+        rows.clear({ emitEvent: false });
+        entries.forEach((entry) => rows.push(this.createEntryGroup(entry, mode), { emitEvent: false }));
+        this.refreshPlaceholderHints(form);
+        this.refreshKeyHighlights(form);
+    }
+
+    private canConfigure(mode: PersistenceMode): boolean {
+        return canConfigureMode(mode, (action) => this.permissions.can(ResourceCode.PersistentData, action));
     }
 
     private selectTable(tableId: number | null): void {

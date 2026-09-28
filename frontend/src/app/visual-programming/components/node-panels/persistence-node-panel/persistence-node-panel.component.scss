@@ -51,8 +51,14 @@
     cursor: pointer;
     transition: border-color 0.2s ease;
 
-    &:hover {
+    &:hover:not(:disabled) {
         border-color: var(--accent-color);
+    }
+
+    // Locked by permissions: dimmed as the Mode select beside it is (select.component.scss).
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
     }
 
     &__label {
@@ -63,6 +69,20 @@
         &--placeholder {
             color: var(--color-input-text-placeholder);
         }
+    }
+}
+
+.permission-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.permission-notice {
+    font-size: 0.875rem;
+    color: var(--color-warning);
+
+    &--shown {
+        margin-bottom: 12px;
     }
 }
 
@@ -114,6 +134,12 @@
         border-color: var(--accent-color);
     }
 
+    // Locked by permissions, dimmed as the Mode select is.
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
     // Both rows of a repeated write key or variable are red at once, touched or not.
     &.ng-invalid.ng-touched,
     &.duplicate {
@@ -155,6 +181,11 @@
     }
 }
 
+// The key's text is drawn by the backdrop, so a locked row dims it too.
+.entry-row.locked .key-backdrop {
+    opacity: 0.7;
+}
+
 .key-input {
     position: relative;
     z-index: 1;
@@ -189,8 +220,13 @@
     color: var(--color-text-secondary);
     cursor: pointer;
 
-    &:hover {
+    &:hover:not(:disabled) {
         color: var(--color-status-error);
+    }
+
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
     }
 }
 

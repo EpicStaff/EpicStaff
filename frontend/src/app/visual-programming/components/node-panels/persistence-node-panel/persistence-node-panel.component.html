@@ -15,52 +15,66 @@
                 <app-validation-errors [control]="form.get('node_name')!" />
             </div>
 
-            <div class="table-mode-row">
-                <div class="field-isolated">
-                    <app-tooltip
-                        label="Table"
-                        tooltipText="The persistent data table this node reads from, writes to or deletes from."
-                    />
-                    <app-select-dropdown
-                        mode="list"
-                        selectionMode="single"
-                        searchPlaceholder="Search tables..."
-                        emptyText="No tables yet"
-                        [items]="tableItems()"
-                        [selected]="selectedTableValue()"
-                        [headerAction]="createTableAction()"
-                        (selectionChange)="onTableSelectionChange($event)"
-                        (headerActionClick)="openCreateTable()"
-                    >
-                        <button
-                            type="button"
-                            appSelectDropdownTrigger
-                            class="dropdown-trigger"
-                        >
-                            <span
-                                class="dropdown-trigger__label"
-                                [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
-                                [attr.title]="selectedTableName()"
-                            >
-                                {{ tableTriggerLabel() }}
-                            </span>
-                            <app-svg-icon
-                                icon="chevron-down-filled"
-                                size="8px"
-                            />
-                        </button>
-                    </app-select-dropdown>
-                    @if (selectedTableId() === null) {
-                        <div class="table-hint">Select a table for this node to run</div>
+            <!-- Always rendered, so a notice that appears later, e.g. on an org switch, is announced. -->
+            <div class="permission-section">
+                <div
+                    class="permission-notice"
+                    role="status"
+                    [class.permission-notice--shown]="permissionNotice()"
+                >
+                    @if (permissionNotice(); as notice) {
+                        {{ notice }}
                     }
                 </div>
 
-                <app-select
-                    label="Mode"
-                    tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
-                    formControlName="mode"
-                    [items]="modeItems"
-                />
+                <div class="table-mode-row">
+                    <div class="field-isolated">
+                        <app-tooltip
+                            label="Table"
+                            tooltipText="The persistent data table this node reads from, writes to or deletes from."
+                        />
+                        <app-select-dropdown
+                            mode="list"
+                            selectionMode="single"
+                            searchPlaceholder="Search tables..."
+                            emptyText="No tables yet"
+                            [items]="tableItems()"
+                            [selected]="selectedTableValue()"
+                            [headerAction]="createTableAction()"
+                            (selectionChange)="onTableSelectionChange($event)"
+                            (headerActionClick)="openCreateTable()"
+                        >
+                            <button
+                                type="button"
+                                appSelectDropdownTrigger
+                                class="dropdown-trigger"
+                                [disabled]="configurationLocked()"
+                            >
+                                <span
+                                    class="dropdown-trigger__label"
+                                    [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
+                                    [attr.title]="selectedTableName()"
+                                >
+                                    {{ tableTriggerLabel() }}
+                                </span>
+                                <app-svg-icon
+                                    icon="chevron-down-filled"
+                                    size="8px"
+                                />
+                            </button>
+                        </app-select-dropdown>
+                        @if (selectedTableId() === null) {
+                            <div class="table-hint">Select a table for this node to run</div>
+                        }
+                    </div>
+
+                    <app-select
+                        label="Mode"
+                        tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
+                        formControlName="mode"
+                        [items]="modeItems()"
+                    />
+                </div>
             </div>
 
             <div class="entries">
@@ -76,6 +90,7 @@
                         <div
                             class="entry-row"
                             [formGroupName]="i"
+                            [class.locked]="configurationLocked()"
                         >
                             <ng-template #keyField>
                                 <div class="entry-field">
@@ -164,6 +179,7 @@
                                 type="button"
                                 class="remove-entry"
                                 title="Remove"
+                                [disabled]="configurationLocked()"
                                 (click)="removeEntry(i)"
                             >
                                 <app-svg-icon
@@ -177,7 +193,7 @@
                 <button
                     type="button"
                     class="add-entry"
-                    [disabled]="atKeyLimit"
+                    [disabled]="atKeyLimit || configurationLocked()"
                     (click)="addEntry()"
                 >
                     <app-svg-icon

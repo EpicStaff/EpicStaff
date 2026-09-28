@@ -18,13 +18,16 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
 import {
     PersistenceEntryLookupResponse,
     PersistenceTable,
-    PersistenceTableEntry,
+    PersistenceTableEntryListItem,
 } from '../../../../features/persistent-data/models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../../../features/persistent-data/services/persistence-tables-api.service';
 import { PersistenceTablesStorageService } from '../../../../features/persistent-data/services/persistence-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { hasValidPersistenceEntries } from '../../../core/helpers/persistence-node.helpers';
+import {
+    hasValidPersistenceEntries,
+    invalidPersistenceNodeMessages,
+} from '../../../core/helpers/persistence-node.helpers';
 import { FlowModel } from '../../../core/models/flow.model';
 import { NodeModel, PersistenceNodeModel } from '../../../core/models/node.model';
 import {
@@ -41,6 +44,8 @@ import { mapPersistenceNodeToModel } from '../../../utils/load/nodes/persistence
 import { getNodeDiff } from '../../../utils/save/diff';
 import { NodePanelShellComponent } from '../node-panel-shell/node-panel-shell.component';
 import { PersistenceNodePanelComponent } from './persistence-node-panel.component';
+
+const ALL_ACTIONS = [ActionCode.Create, ActionCode.Read, ActionCode.Update, ActionCode.Delete];
 
 const DTO: GetPersistenceNodeRequest = {
     id: 12,
@@ -94,8 +99,7 @@ function createPanel(
     node: PersistenceNodeModel,
     {
         renderTemplate = false,
-        canRead = false,
-        canCreate = false,
+        actions = ALL_ACTIONS,
         tables = [],
         createdTable = NEVER,
         tablesLoad,
@@ -107,15 +111,15 @@ function createPanel(
         errorOnUnknownProperties = true,
     }: {
         renderTemplate?: boolean;
-        canRead?: boolean;
-        canCreate?: boolean;
+        /** What the user may do on Persistent Data; everything by default. */
+        actions?: ActionCode[];
         tables?: PersistenceTable[];
         /** What the create-table dialog closes with. */
         createdTable?: Observable<PersistenceTable | null>;
         /** What the storage's loadTables() and reloadTables() answer; by default the stored tables. */
         tablesLoad?: Observable<PersistenceTable[]>;
         tablesReload?: Observable<PersistenceTable[]>;
-        getEntries?: () => Observable<ApiGetRequest<PersistenceTableEntry>>;
+        getEntries?: () => Observable<ApiGetRequest<PersistenceTableEntryListItem>>;
         lookupEntries?: () => Observable<PersistenceEntryLookupResponse>;
         initialState?: Record<string, unknown>;
         /** A real one, loaded with a flow; else a stand-in offering initialState. */
@@ -131,11 +135,14 @@ function createPanel(
     loadTables: ReturnType<typeof vi.fn>;
     reloadTables: ReturnType<typeof vi.fn>;
     storedTables: WritableSignal<PersistenceTable[]>;
+    /** What the user may do on Persistent Data; set it to change permissions after opening. */
+    permittedActions: WritableSignal<ActionCode[]>;
 } {
     const triggerAutosave = vi.fn();
     const toastError = vi.fn();
     const openDialog = vi.fn(() => ({ closed: createdTable }));
     const storedTables = signal<PersistenceTable[]>(tables);
+    const permittedActions = signal<ActionCode[]>(actions);
     const loadTables = vi.fn(() => tablesLoad ?? of(storedTables()));
     const reloadTables = vi.fn(() => tablesReload ?? of(storedTables()));
     TestBed.configureTestingModule({
@@ -149,7 +156,7 @@ function createPanel(
             {
                 provide: PermissionsService,
                 useValue: {
-                    can: (_resource: string, action: string) => (action === ActionCode.Create ? canCreate : canRead),
+                    can: (_resource: string, action: ActionCode) => permittedActions().includes(action),
                 },
             },
             { provide: Dialog, useValue: { open: openDialog } },
@@ -198,6 +205,7 @@ function createPanel(
         loadTables,
         reloadTables,
         storedTables,
+        permittedActions,
     };
 }
 
@@ -479,7 +487,7 @@ describe('PersistenceNodePanelComponent', () => {
                 { key: 'plan', value: 'variables.plan' },
                 { key: 'profile_{variables.user.id}', value: 'variables.user' },
             ]),
-            { renderTemplate: true, canRead: true, lookupEntries }
+            { renderTemplate: true, lookupEntries }
         );
 
         vi.advanceTimersByTime(300);
@@ -500,7 +508,6 @@ describe('PersistenceNodePanelComponent', () => {
         );
         const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
             renderTemplate: true,
-            canRead: true,
             lookupEntries,
         });
 
@@ -1263,11 +1270,11 @@ describe('PersistenceNodePanelComponent', () => {
     });
 
     describe('key suggestions', () => {
-        const page = (keys: string[]): ApiGetRequest<PersistenceTableEntry> => ({
+        const page = (keys: string[]): ApiGetRequest<PersistenceTableEntryListItem> => ({
             count: keys.length,
             next: null,
             previous: null,
-            results: keys.map((key) => ({ key }) as PersistenceTableEntry),
+            results: keys.map((key) => ({ key }) as PersistenceTableEntryListItem),
         });
         const typeKey = (fixture: ComponentFixture<PersistenceNodePanelComponent>, text: string): HTMLInputElement => {
             const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
@@ -1286,7 +1293,6 @@ describe('PersistenceNodePanelComponent', () => {
             const getEntries = vi.fn(() => of(page(['greeting', 'greeting_formal'])));
             const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries,
             });
 
@@ -1305,7 +1311,6 @@ describe('PersistenceNodePanelComponent', () => {
         it('marks the key input as a combobox that is expanded while the list is open', () => {
             const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () => of(page(['greeting'])),
             });
             const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
@@ -1319,7 +1324,6 @@ describe('PersistenceNodePanelComponent', () => {
         it('picks the hovered suggestion on Enter', () => {
             const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () => of(page(['greeting', 'greeting_formal', 'greeting_short'])),
             });
 
@@ -1334,7 +1338,6 @@ describe('PersistenceNodePanelComponent', () => {
         it('keeps Escape on an open list from reaching the window shortcut listener', () => {
             const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () => of(page(['greeting'])),
             });
             const windowKeydown = vi.fn();
@@ -1357,10 +1360,9 @@ describe('PersistenceNodePanelComponent', () => {
         });
 
         it('drops a response that arrives after a pick, Escape or blur', () => {
-            const responses = new Subject<ApiGetRequest<PersistenceTableEntry>>();
+            const responses = new Subject<ApiGetRequest<PersistenceTableEntryListItem>>();
             const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () => responses,
             });
             const respond = (): void => {
@@ -1390,7 +1392,6 @@ describe('PersistenceNodePanelComponent', () => {
         it('picks with the arrow keys and Enter, and closes on Escape', () => {
             const { panel, fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () => of(page(['greeting', 'greeting_formal'])),
             });
             const press = (input: HTMLInputElement, key: string): void => {
@@ -1413,7 +1414,6 @@ describe('PersistenceNodePanelComponent', () => {
             const getEntries = vi.fn(() => of(page(['profile_1'])));
             const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries,
             });
 
@@ -1944,13 +1944,12 @@ describe('PersistenceNodePanelComponent', () => {
             vi.useFakeTimers();
             const { fixture } = createPanel(nodeWith('write', [{ key: 'profile', value: 'variables.' }]), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () =>
                     of({
                         count: 1,
                         next: null,
                         previous: null,
-                        results: [{ key: 'profile_1' } as PersistenceTableEntry],
+                        results: [{ key: 'profile_1' } as PersistenceTableEntryListItem],
                     }),
                 initialState,
             });
@@ -2005,13 +2004,12 @@ describe('PersistenceNodePanelComponent', () => {
         const openWithStoredKey = (): ReturnType<typeof createPanel> =>
             createPanel(nodeWith('write', [{ key: '', value: 'variables.plan' }]), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () =>
                     of({
                         count: 1,
                         next: null,
                         previous: null,
-                        results: [{ key: 'profile_1' } as PersistenceTableEntry],
+                        results: [{ key: 'profile_1' } as PersistenceTableEntryListItem],
                     }),
                 initialState,
             });
@@ -2239,13 +2237,12 @@ describe('PersistenceNodePanelComponent', () => {
             vi.useFakeTimers();
             const { panel, fixture } = createPanel(nodeWith('write', [{ key: '', value: 'variables.a' }]), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () =>
                     of({
                         count: 1,
                         next: null,
                         previous: null,
-                        results: [{ key: 'greeting' } as PersistenceTableEntry],
+                        results: [{ key: 'greeting' } as PersistenceTableEntryListItem],
                     }),
             });
             const key = fieldsOf(fixture, 0)[0];
@@ -2341,13 +2338,12 @@ describe('PersistenceNodePanelComponent', () => {
             vi.useFakeTimers();
             const { panel, fixture } = createPanel(nodeWith('write', [{ key: '', value: 'variables.user' }]), {
                 renderTemplate: true,
-                canRead: true,
                 getEntries: () =>
                     of({
                         count: 1,
                         next: null,
                         previous: null,
-                        results: [{ key: 'greeting' } as PersistenceTableEntry],
+                        results: [{ key: 'greeting' } as PersistenceTableEntryListItem],
                     }),
             });
 
@@ -2366,6 +2362,149 @@ describe('PersistenceNodePanelComponent', () => {
             expect(entriesOf(panel).at(0).get('key')!.value).toBe('greeting');
             expect(keyInput(fixture).value).toBe('greeting');
             expect(backdrop(fixture).textContent).toBe('greeting');
+        });
+    });
+
+    describe('mode permissions', () => {
+        const { Create, Read, Update, Delete } = ActionCode;
+        const modeNames = (panel: PersistenceNodePanelComponent): string[] =>
+            panel['modeItems']().map((item) => item.name);
+        const notice = (fixture: ComponentFixture<PersistenceNodePanelComponent>): string | null =>
+            fixture.nativeElement.querySelector('.permission-notice').textContent.trim() || null;
+        const lockable = (panel: PersistenceNodePanelComponent): boolean[] =>
+            ['mode', 'persistence_table', 'entries'].map((name) => panel.form.get(name)!.disabled);
+        const readNode = nodeWith('read', [{ key: 'profile', value: 'variables.user' }]);
+        const writeNode = nodeWith('write', [{ key: 'profile', value: 'variables.user' }]);
+
+        it.each<[string, ActionCode[], string[]]>([
+            ['View', [Read], ['Read']],
+            ['View, Create and Edit', [Read, Create, Update], ['Read', 'Write']],
+            // Write needs both Create and Edit.
+            ['View and Create', [Read, Create], ['Read']],
+            ['View and Delete', [Read, Delete], ['Read', 'Delete']],
+            // As for a superadmin too: PermissionsService.can() allows a superadmin every action.
+            ['every action', [Create, Read, Update, Delete], ['Read', 'Write', 'Delete']],
+        ])('offers only the modes the user may configure, with %s', (_label, actions, names) => {
+            const { panel, fixture } = createPanel(readNode, { renderTemplate: true, actions });
+
+            expect(modeNames(panel)).toEqual(names);
+            expect(lockable(panel)).toEqual([false, false, false]);
+            expect(notice(fixture)).toBeNull();
+        });
+
+        it('locks mode, table and keys of a node whose saved mode the user may not configure, keeping it as saved', () => {
+            const { panel, fixture } = createPanel(writeNode, { renderTemplate: true, actions: [Read] });
+
+            expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Persistent Data.');
+            expect(modeNames(panel)).toEqual(['Write']);
+            expect(lockable(panel)).toEqual([true, true, true]);
+            expect(panel.form.get('node_name')!.enabled).toBe(true);
+            expect(fixture.nativeElement.querySelector('.dropdown-trigger').disabled).toBe(true);
+            expect(fixture.nativeElement.querySelector('.add-entry').disabled).toBe(true);
+            expect(fixture.nativeElement.querySelector('.remove-entry').disabled).toBe(true);
+            expect(fixture.nativeElement.querySelector('input[aria-label="Key"]').disabled).toBe(true);
+            expect(fixture.nativeElement.querySelector('.entry-row').classList).toContain('locked');
+
+            // A locked node with valid entries still passes the flow save's panel check.
+            expect(panel.captureForValidation()).not.toBeNull();
+
+            // The name is still editable, and the save keeps mode, table and keys as they were.
+            panel.form.get('node_name')!.setValue('Renamed');
+            const saved = panel.onSave()!;
+            expect(saved.node_name).toBe('Renamed');
+            expect(saved.data).toEqual({
+                mode: 'write',
+                persistence_table: 3,
+                entries: [{ key: 'profile', value: 'variables.user' }],
+            });
+        });
+
+        it('locks a delete node without the Delete permission', () => {
+            const { panel, fixture } = createPanel(nodeWith('delete', [{ key: 'profile' }]), {
+                renderTemplate: true,
+                actions: [Read, Create, Update],
+            });
+
+            expect(notice(fixture)).toBe('Changing a Delete node needs Delete permission on Persistent Data.');
+            expect(panel.form.get('entries')!.disabled).toBe(true);
+            expect(panel.onSave()!.data).toEqual({
+                mode: 'delete',
+                persistence_table: 3,
+                entries: [{ key: 'profile' }],
+            });
+        });
+
+        it('locks the node and says so without the View permission, whatever else the user may do', () => {
+            const { panel, fixture } = createPanel(writeNode, { renderTemplate: true, actions: [Create, Update] });
+
+            expect(notice(fixture)).toBe('You need View permission on Persistent Data to configure this node.');
+            expect(lockable(panel)).toEqual([true, true, true]);
+            expect(panel.form.get('node_name')!.enabled).toBe(true);
+        });
+
+        it('follows permissions that arrive or change after the panel opens, e.g. on an org switch', () => {
+            vi.useFakeTimers();
+            const { panel, fixture, permittedActions, triggerAutosave } = createPanel(writeNode, {
+                renderTemplate: true,
+                actions: [],
+            });
+            expect(notice(fixture)).toBe('You need View permission on Persistent Data to configure this node.');
+            expect(lockable(panel)).toEqual([true, true, true]);
+
+            permittedActions.set([Create, Read, Update, Delete]);
+            fixture.detectChanges();
+            vi.advanceTimersByTime(1000);
+
+            expect(notice(fixture)).toBeNull();
+            expect(lockable(panel)).toEqual([false, false, false]);
+            expect(triggerAutosave).not.toHaveBeenCalled();
+            expect(panel.isDirty()).toBe(false);
+
+            permittedActions.set([Read]);
+            fixture.detectChanges();
+
+            expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Persistent Data.');
+            expect(lockable(panel)).toEqual([true, true, true]);
+        });
+
+        it('puts the saved mode, table and keys back when a relock comes mid-edit', () => {
+            vi.useFakeTimers();
+            const { panel, fixture, permittedActions, triggerAutosave } = createPanel(writeNode, {
+                renderTemplate: true,
+            });
+            panel.form.get('mode')!.setValue('delete');
+            panel.form.get('persistence_table')!.setValue(4);
+            entriesOf(panel).at(0).patchValue({ key: 'edited' });
+            fixture.detectChanges();
+            vi.advanceTimersByTime(1000);
+            triggerAutosave.mockClear();
+
+            permittedActions.set([Read]);
+            fixture.detectChanges();
+            vi.advanceTimersByTime(1000);
+
+            expect(lockable(panel)).toEqual([true, true, true]);
+            expect(panel.onSave()!.data).toEqual({
+                mode: 'write',
+                persistence_table: 3,
+                entries: [{ key: 'profile', value: 'variables.user' }],
+            });
+            // The rows are the saved mode's again: key = variable, the key drawn as saved.
+            expect(fixture.nativeElement.querySelectorAll('.entry-row input').length).toBe(2);
+            expect(fixture.nativeElement.querySelector('.key-backdrop').textContent).toBe('profile');
+            expect(triggerAutosave).not.toHaveBeenCalled();
+        });
+
+        it('lets a locked node with an old invalid key past the panel check, which the flow save still refuses', () => {
+            const node = nodeWith('write', [{ key: 'user-1', value: 'variables.user' }]);
+            const { panel } = createPanel(node, { actions: [Read] });
+
+            const captured = panel.captureForValidation();
+
+            expect(captured).not.toBeNull();
+            expect(invalidPersistenceNodeMessages([captured!])).toEqual([
+                '"Persistence #1" has invalid keys or variable paths',
+            ]);
         });
     });
 
@@ -2458,7 +2597,11 @@ describe('PersistenceNodePanelComponent', () => {
         });
 
         it('offers no "Create table" without the right to create one', () => {
-            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), { renderTemplate: true, tables: TABLES });
+            const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
+                renderTemplate: true,
+                tables: TABLES,
+                actions: [ActionCode.Read, ActionCode.Update, ActionCode.Delete],
+            });
 
             openDropdown(fixture);
 
@@ -2470,7 +2613,6 @@ describe('PersistenceNodePanelComponent', () => {
             const { fixture } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
                 tables: TABLES,
-                canCreate: true,
             });
 
             openDropdown(fixture);
@@ -2486,7 +2628,7 @@ describe('PersistenceNodePanelComponent', () => {
             const created = new Subject<PersistenceTable | null>();
             const { panel, fixture, openDialog, reloadTables, storedTables } = createPanel(
                 mapPersistenceNodeToModel(DTO),
-                { renderTemplate: true, tables: TABLES, canCreate: true, createdTable: created }
+                { renderTemplate: true, tables: TABLES, createdTable: created }
             );
             reloadTables.mockImplementation(() => {
                 storedTables.set([...TABLES, table(7, 'sessions')]);
@@ -2519,7 +2661,6 @@ describe('PersistenceNodePanelComponent', () => {
             const created = new Subject<PersistenceTable | null>();
             const { fixture, storedTables } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
-                canCreate: true,
                 createdTable: created,
                 tablesLoad: openingLoad,
                 tablesReload: reload,
@@ -2550,7 +2691,6 @@ describe('PersistenceNodePanelComponent', () => {
             const { panel, fixture, reloadTables } = createPanel(mapPersistenceNodeToModel(DTO), {
                 renderTemplate: true,
                 tables: TABLES,
-                canCreate: true,
                 createdTable: created,
             });
 

@@ -1,8 +1,9 @@
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType } from '@shared/models';
 
 import { NodeModel } from '../models/node.model';
 import { PersistenceEntry, PersistenceMode } from '../models/persistence-node.model';
 import {
+    canConfigureMode,
     duplicateWriteKeys,
     existenceHint,
     extractPlaceholders,
@@ -517,6 +518,22 @@ describe('persistence node helpers', () => {
             expect(JSON.stringify(normalizeEntry({ value: 'v', key: 'k' }, mode))).toBe('{"key":"k","value":"v"}');
         }
         expect(normalizeEntry({ key: 'k', value: 'v' }, 'delete')).toStrictEqual({ key: 'k' });
+    });
+
+    it('lets a mode be configured only with every action it needs', () => {
+        const withActions =
+            (...actions: ActionCode[]) =>
+            (action: ActionCode): boolean =>
+                actions.includes(action);
+
+        expect(canConfigureMode('read', withActions(ActionCode.Read))).toBe(true);
+        expect(canConfigureMode('read', withActions())).toBe(false);
+        // Write needs Create and Edit: either alone is not enough.
+        expect(canConfigureMode('write', withActions(ActionCode.Create, ActionCode.Update))).toBe(true);
+        expect(canConfigureMode('write', withActions(ActionCode.Read, ActionCode.Create))).toBe(false);
+        expect(canConfigureMode('write', withActions(ActionCode.Update))).toBe(false);
+        expect(canConfigureMode('delete', withActions(ActionCode.Delete))).toBe(true);
+        expect(canConfigureMode('delete', withActions(ActionCode.Read))).toBe(false);
     });
 
     it('compares lookup requests by table and keys', () => {
