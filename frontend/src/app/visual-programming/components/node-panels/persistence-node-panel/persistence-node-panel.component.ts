@@ -2,7 +2,19 @@ import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, effect, inject, signal, untracked, viewChild, ViewContainerRef } from '@angular/core';
+import {
+    afterNextRender,
+    Component,
+    computed,
+    effect,
+    ElementRef,
+    inject,
+    Injector,
+    signal,
+    untracked,
+    viewChild,
+    ViewContainerRef,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     AbstractControl,
@@ -58,6 +70,7 @@ import {
     isSameLookupRequest,
     isStatePath,
     isStaticKey,
+    KEY_PLACEHOLDER_HINT,
     keyError,
     keyOccurrences,
     keyTemplateHint,
@@ -79,16 +92,23 @@ import { FlowService } from '../../../services/flow.service';
 import { PersistenceValueDraftsService } from '../../../services/persistence-value-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { PickerItem } from '../../input-map/var-picker-flat.component';
-import { buildVariablePickerItems, VariablePathPicker, withoutUsedPaths } from '../../input-map/variable-path-picker';
+import {
+    buildVariablePickerItems,
+    isPlainEnter,
+    VariablePathPicker,
+    withoutUsedPaths,
+} from '../../input-map/variable-path-picker';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
 const SUGGESTION_LIMIT = 20;
+// Keys that move the caret in a key input without typing, so its placeholder may change.
+const CARET_KEYS: ReadonlySet<string> = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
 const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
 const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
 const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
-const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table' };
+const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table', iconOnly: true };
 const KEYS_LABEL: Record<PersistenceMode, string> = {
     read: 'Keys to Read',
     write: 'Keys to Write',
@@ -103,6 +123,12 @@ interface KeySearch {
 interface KeySearchResult {
     entryIndex: number;
     keys: string[];
+}
+
+/** A `{` placeholder in a key, still open at the caret: where its `{` is and what is typed after it. */
+interface OpenPlaceholder {
+    start: number;
+    text: string;
 }
 
 interface EntryFormValue {
@@ -174,6 +200,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
 
     protected readonly activeColor = 'var(--accent-color)';
     protected readonly keyLimitHint = `A persistence node can have at most ${PERSISTENCE_MAX_KEYS} keys`;
+    protected readonly keyPlaceholder = KEY_PLACEHOLDER_HINT;
     protected readonly modeItems: SelectItem<PersistenceMode>[] = [
         { name: 'Read', value: 'read' },
         { name: 'Write', value: 'write' },
@@ -191,6 +218,14 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         },
         pathOf: writeSourcePath,
     });
+    // The same picker for a `{variables.…` placeholder at a key's caret; any flow variable may go into a key.
+    protected readonly keyVariablePicker = new VariablePathPicker({
+        itemsFor: () => this.variableItems(),
+        insert: (rowIndex, path, input) => this.insertIntoKeyPlaceholder(rowIndex, path, input),
+        // trimStart: crew allows spaces inside the braces, as in `{ variables.user.id }`.
+        pathOf: (value, input) =>
+            openPlaceholderAt(value, input.selectionStart ?? value.length)?.text.trimStart() ?? '',
+    });
 
     private readonly persistenceTablesApi = inject(PersistenceTablesApiService);
     private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
@@ -202,6 +237,8 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     private readonly dialog = inject(Dialog);
     private readonly overlay = inject(Overlay);
     private readonly viewContainerRef = inject(ViewContainerRef);
+    private readonly injector = inject(Injector);
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly keySearch$ = new Subject<KeySearch>();
     private suggestionOverlay: OverlayRef | null = null;
     private tablesLoad: Subscription | null = null;
@@ -386,49 +423,54 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
 
     protected addEntry(): void {
         if (this.atKeyLimit) return;
-        this.entries.push(this.createEntryGroup({ key: '', value: VALUE_PREFILL }, this.mode()));
+        this.entries.push(this.createNewEntryGroup());
     }
 
     protected removeEntry(index: number): void {
         this.entries.removeAt(index);
     }
 
+    /**
+     * Inside a `{` placeholder the variable snippets apply. Stored keys are static text, so a key
+     * with braces has no stored key to suggest.
+     */
     protected onKeyInput(entryIndex: number, event: Event): void {
         const input = event.target as HTMLInputElement;
+        this.keyVariablePicker.onInput(entryIndex, event);
+        if (input.value.includes('{')) {
+            this.dismissSuggestions();
+            return;
+        }
         this.suggestionTarget.set({ entryIndex, input });
         this.keySearch$.next({ entryIndex, search: input.value });
     }
 
-    protected onSuggestionKeydown(event: KeyboardEvent): void {
-        const count = this.suggestions().length;
-        if (count === 0) return;
-        switch (event.key) {
-            case 'ArrowDown':
-            case 'ArrowUp': {
-                event.preventDefault();
-                const step = event.key === 'ArrowDown' ? 1 : -1;
-                this.activeSuggestionIndex.update((index) => (index + step + count) % count);
-                break;
-            }
-            case 'Enter':
-                event.preventDefault();
-                this.pickSuggestion(this.suggestions()[this.activeSuggestionIndex()]);
-                break;
-            case 'Escape':
-                // Keeps the shortcut listener from closing the whole panel.
-                event.preventDefault();
-                event.stopPropagation();
-                this.dismissSuggestions();
-                break;
-        }
+    /** An open list takes the keys it uses first, Enter included; Enter then moves on (moveOnEnter). */
+    protected onKeyKeydown(entryIndex: number, event: KeyboardEvent): void {
+        this.keyVariablePicker.onKeydown(entryIndex, event);
+        if (!event.defaultPrevented) this.onSuggestionKeydown(event);
+        this.moveOnEnter(entryIndex, event);
     }
 
-    protected onSuggestionBlur(): void {
+    /** The caret moved without typing, so the placeholder it is in, if any, may be another one. */
+    protected onKeyCaretMove(entryIndex: number, event: Event): void {
+        if (event instanceof KeyboardEvent && !CARET_KEYS.has(event.key)) return;
+        this.keyVariablePicker.onInput(entryIndex, event);
+    }
+
+    protected onKeyBlur(entryIndex: number, event: FocusEvent): void {
+        this.keyVariablePicker.onBlur(entryIndex, event);
         this.dismissSuggestions();
     }
 
-    protected isSuggestionListOpen(entryIndex: number): boolean {
-        return this.suggestionTarget()?.entryIndex === entryIndex && this.suggestions().length > 0;
+    protected onValueKeydown(entryIndex: number, event: KeyboardEvent): void {
+        this.variablePicker.onKeydown(entryIndex, event);
+        this.moveOnEnter(entryIndex, event);
+    }
+
+    protected isKeyListOpen(entryIndex: number): boolean {
+        const suggestionsOpen = this.suggestionTarget()?.entryIndex === entryIndex && this.suggestions().length > 0;
+        return suggestionsOpen || this.keyVariablePicker.isOpenFor(entryIndex);
     }
 
     protected isDuplicateKey(index: number): boolean {
@@ -537,6 +579,54 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return withoutUsedPaths(items, new Set(unusable));
     }
 
+    /**
+     * Enter goes through the fields in the order the row shows them (read shows `variables.x = key`):
+     * to the row's next field, and from its last field to a new row below, prefilled as by Add key.
+     * At the key limit it adds none. A list open under the field has taken Enter by then if it picked.
+     */
+    private moveOnEnter(entryIndex: number, event: KeyboardEvent): void {
+        if (event.isComposing || !isPlainEnter(event) || event.defaultPrevented) return;
+        event.preventDefault();
+        const fields = this.rowFields(entryIndex);
+        const nextField = fields[fields.indexOf(event.target as HTMLInputElement) + 1];
+        if (nextField) {
+            nextField.focus();
+            return;
+        }
+        if (this.atKeyLimit) return;
+        this.entries.insert(entryIndex + 1, this.createNewEntryGroup());
+        afterNextRender(() => this.rowFields(entryIndex + 1)[0]?.focus(), { injector: this.injector });
+    }
+
+    /** A row's inputs in the order they show. */
+    private rowFields(entryIndex: number): HTMLInputElement[] {
+        // A DOM query, not viewChildren: the inputs sit in ng-templates stamped in a per-mode order,
+        // which a query list does not keep by row, and a new row only exists after the next render.
+        const row = this.host.nativeElement.querySelectorAll('.entry-row')[entryIndex];
+        return row ? Array.from(row.querySelectorAll<HTMLInputElement>('input.entry-input')) : [];
+    }
+
+    /** Puts a picked path into the placeholder at the key's caret, closed with `}` unless it is, the caret after it. */
+    private insertIntoKeyPlaceholder(entryIndex: number, path: string, input: HTMLInputElement): void {
+        const control = this.entries.at(entryIndex).get('key');
+        const key: string = control?.value ?? '';
+        const caret = input.selectionStart ?? key.length;
+        const placeholder = openPlaceholderAt(key, caret);
+        if (!control || placeholder === null) return;
+        // What is typed on up to the placeholder's `}` belongs to it and is replaced too.
+        const rest = key.slice(caret);
+        const nextBrace = rest.search(/[{}]/);
+        const afterPlaceholder = rest[nextBrace] === '}' ? rest.slice(nextBrace + 1) : rest;
+        const throughPlaceholder = `${key.slice(0, placeholder.start + 1)}${path}}`;
+        control.setValue(throughPlaceholder + afterPlaceholder);
+        control.markAsDirty();
+        input.setSelectionRange(throughPlaceholder.length, throughPlaceholder.length);
+    }
+
+    private createNewEntryGroup(): FormGroup {
+        return this.createEntryGroup({ key: '', value: VALUE_PREFILL }, this.mode());
+    }
+
     private createEntryGroup(entry: PersistenceEntry, mode: PersistenceMode): FormGroup {
         const group = this.fb.group(this.entryControls(entry, mode));
         // Each field's validity depends on whether the whole row is empty, so typing in one field
@@ -552,6 +642,30 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         const key = [entry.key, unlessEmptyEntry(...keyValidators(mode))];
         if (mode === 'delete') return { key };
         return { key, value: ['value' in entry ? entry.value : '', unlessEmptyEntry(...valueValidators(mode))] };
+    }
+
+    private onSuggestionKeydown(event: KeyboardEvent): void {
+        const count = this.suggestions().length;
+        if (count === 0) return;
+        switch (event.key) {
+            case 'ArrowDown':
+            case 'ArrowUp': {
+                event.preventDefault();
+                const step = event.key === 'ArrowDown' ? 1 : -1;
+                this.activeSuggestionIndex.update((index) => (index + step + count) % count);
+                break;
+            }
+            case 'Enter':
+                event.preventDefault();
+                this.pickSuggestion(this.suggestions()[this.activeSuggestionIndex()]);
+                break;
+            case 'Escape':
+                // Keeps the shortcut listener from closing the whole panel.
+                event.preventDefault();
+                event.stopPropagation();
+                this.dismissSuggestions();
+                break;
+        }
     }
 
     private pickSuggestion(suggestion: string): void {
@@ -643,8 +757,7 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
 
     private fetchKeySuggestions({ entryIndex, search }: KeySearch): Observable<KeySearchResult> {
         const table: number | null = this.form.get('persistence_table')?.value ?? null;
-        // Stored keys are static text, so a key built from placeholders has nothing to match.
-        if (table === null || !this.canReadData() || search.includes('{')) {
+        if (table === null || !this.canReadData()) {
             return of({ entryIndex, keys: [] });
         }
         return this.persistenceTablesApi.getEntries({ table, search, limit: SUGGESTION_LIMIT, offset: 0 }).pipe(
@@ -655,6 +768,14 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
             catchError(() => of({ entryIndex, keys: [] }))
         );
     }
+}
+
+/** The `{` placeholder before the caret that no `}` has closed yet, or null. */
+function openPlaceholderAt(key: string, caret: number): OpenPlaceholder | null {
+    const start = caret === 0 ? -1 : key.lastIndexOf('{', caret - 1);
+    if (start === -1) return null;
+    const text = key.slice(start + 1, caret);
+    return text.includes('}') ? null : { start, text };
 }
 
 /** An empty row is left out of the save, so its fields are not validated. */
@@ -697,7 +818,7 @@ function savedEntries(control: AbstractControl): EntryFormValue[] {
 
 function uniqueWriteKeyValidator(control: AbstractControl<string | null>): ValidationErrors | null {
     const duplicates = duplicateWriteKeys(savedEntries(control).map((row) => row.key ?? ''));
-    return duplicates.has((control.value ?? '').trim()) ? { duplicateKey: true } : null;
+    return duplicates.has(control.value ?? '') ? { duplicateKey: true } : null;
 }
 
 function uniqueReadTargetValidator(control: AbstractControl<string | null>): ValidationErrors | null {

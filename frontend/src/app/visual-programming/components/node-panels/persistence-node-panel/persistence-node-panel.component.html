@@ -91,16 +91,20 @@
                                             type="text"
                                             class="entry-input key-input"
                                             formControlName="key"
-                                            placeholder="Key, e.g. profile_{variables.user.id}"
                                             aria-label="Key"
                                             autocomplete="off"
                                             role="combobox"
                                             aria-autocomplete="list"
+                                            [placeholder]="keyPlaceholder"
                                             [class.duplicate]="isDuplicateKey(i)"
-                                            [attr.aria-expanded]="isSuggestionListOpen(i)"
+                                            [attr.aria-expanded]="isKeyListOpen(i)"
+                                            [attr.aria-controls]="keyVariablePicker.listboxIdFor(i)"
+                                            [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
                                             (input)="onKeyInput(i, $event)"
-                                            (keydown)="onSuggestionKeydown($event)"
-                                            (blur)="onSuggestionBlur()"
+                                            (keydown)="onKeyKeydown(i, $event)"
+                                            (blur)="onKeyBlur(i, $event)"
+                                            (click)="onKeyCaretMove(i, $event)"
+                                            (keyup)="onKeyCaretMove(i, $event)"
                                             (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
                                         />
                                     </div>
@@ -132,7 +136,7 @@
                                         [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
                                         (focus)="variablePicker.onFocus(i, $event)"
                                         (input)="variablePicker.onInput(i, $event)"
-                                        (keydown)="variablePicker.onKeydown(i, $event)"
+                                        (keydown)="onValueKeydown(i, $event)"
                                         (blur)="variablePicker.onBlur(i, $event)"
                                     />
                                     @if (valueHintFor(i); as hint) {

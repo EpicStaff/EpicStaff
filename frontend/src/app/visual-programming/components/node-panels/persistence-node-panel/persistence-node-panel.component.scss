@@ -11,6 +11,9 @@
 
 .panel-content {
     @include mixins.panel-content;
+    // Grows with its rows instead of overflowing, so the bottom padding stays under "Add key" when the panel scrolls.
+    flex: 1 0 auto;
+    padding-bottom: var(--space-2xl);
 }
 
 .form-container {
