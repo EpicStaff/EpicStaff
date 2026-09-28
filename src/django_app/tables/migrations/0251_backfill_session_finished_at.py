@@ -1,8 +1,5 @@
-from datetime import timedelta
-
 from django.db import migrations
-from django.db.models import F, Max, OuterRef, Subquery
-from django.db.models.functions import Coalesce
+from django.db.models import Max, OuterRef, Subquery
 
 TERMINAL_STATUSES = ["end", "error", "expired", "stop"]
 
@@ -19,11 +16,7 @@ def backfill_finished_at(apps, schema_editor):
     )
     Session.objects.filter(
         status__in=TERMINAL_STATUSES, finished_at__isnull=True
-    ).update(finished_at=Coalesce(Subquery(last_message_created_at), F("created_at")))
-
-    Session.objects.filter(finished_at=F("created_at")).update(
-        finished_at=F("created_at") + timedelta(minutes=1)
-    )
+    ).update(finished_at=Subquery(last_message_created_at))
 
 
 class Migration(migrations.Migration):
