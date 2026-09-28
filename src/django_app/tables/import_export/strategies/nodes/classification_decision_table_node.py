@@ -104,13 +104,9 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
                 group_data["prompt"] = prompt_id_mapping.get(old_prompt_id)
             old_section_id = group_data.get("section")
             group_data["section"] = (
-                section_id_mapping.get(str(old_section_id))
-                if old_section_id is not None
-                else None
+                section_id_mapping.get(str(old_section_id)) if old_section_id is not None else None
             )
-            group_serializer = ClassificationConditionGroupImportSerializer(
-                data=group_data
-            )
+            group_serializer = ClassificationConditionGroupImportSerializer(data=group_data)
             group_serializer.is_valid(raise_exception=True)
             group_serializer.save()
 

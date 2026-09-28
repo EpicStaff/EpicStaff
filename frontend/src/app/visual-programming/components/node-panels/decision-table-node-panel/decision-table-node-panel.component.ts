@@ -5,7 +5,6 @@ import {
     ButtonComponent,
     ConfirmationDialogService,
     CustomInputComponent,
-    HelpTooltipComponent,
     SelectComponent,
     SelectItem,
 } from '@shared/components';

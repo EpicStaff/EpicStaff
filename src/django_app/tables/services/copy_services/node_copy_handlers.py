@@ -251,9 +251,7 @@ def copy_classification_decision_table_node(
             group_name=group.group_name,
             order=group.order,
             expression=group.expression,
-            prompt=new_prompt_map.get(group.prompt.prompt_key)
-            if group.prompt
-            else None,
+            prompt=new_prompt_map.get(group.prompt.prompt_key) if group.prompt else None,
             section=new_section_map.get(group.section_id),
             manipulation=group.manipulation,
             continue_flag=group.continue_flag,

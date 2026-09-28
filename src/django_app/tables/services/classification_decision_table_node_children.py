@@ -103,13 +103,8 @@ def _sync_condition_group_sections(node, sections_data):
     node.sections.exclude(id__in=incoming_ids).delete()
     sections_by_id = {}
     for section_data in sections_data:
-        existing = ClassificationConditionGroupSection.objects.filter(
-            id=section_data["id"]
-        ).first()
-        if (
-            existing is not None
-            and existing.classification_decision_table_node_id != node.id
-        ):
+        existing = ClassificationConditionGroupSection.objects.filter(id=section_data["id"]).first()
+        if existing is not None and existing.classification_decision_table_node_id != node.id:
             raise SectionIdConflictError(section_data["id"])
 
         section, _ = ClassificationConditionGroupSection.objects.update_or_create(

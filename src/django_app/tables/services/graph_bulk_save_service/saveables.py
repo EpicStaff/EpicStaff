@@ -328,19 +328,16 @@ class ClassificationDecisionTableNodeSaveable:
                 ).first()
                 if (
                     existing_section is not None
-                    and existing_section.classification_decision_table_node_id
-                    != node.id
+                    and existing_section.classification_decision_table_node_id != node.id
                 ):
                     raise SectionIdConflictError(section_data["id"])
-                section, _ = (
-                    ClassificationConditionGroupSection.objects.update_or_create(
-                        id=section_data["id"],
-                        defaults={
-                            "classification_decision_table_node": node,
-                            "name": section_data.get("name", ""),
-                            "metadata": section_data.get("metadata", {}),
-                        },
-                    )
+                section, _ = ClassificationConditionGroupSection.objects.update_or_create(
+                    id=section_data["id"],
+                    defaults={
+                        "classification_decision_table_node": node,
+                        "name": section_data.get("name", ""),
+                        "metadata": section_data.get("metadata", {}),
+                    },
                 )
                 sections_by_id[str(section.id)] = section
         elif self._instance is not None:

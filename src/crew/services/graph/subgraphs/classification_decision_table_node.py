@@ -383,20 +383,14 @@ def main(**kwargs) -> dict:
 
         cached_tokens = 0
         details = (
-            getattr(resp.usage, "prompt_tokens_details", None)
-            if hasattr(resp, "usage")
-            else None
+            getattr(resp.usage, "prompt_tokens_details", None) if hasattr(resp, "usage") else None
         )
         if details is not None:
             cached_tokens = getattr(details, "cached_tokens", 0) or 0
 
         usage = TokenUsage(
-            total_tokens=getattr(resp.usage, "total_tokens", 0)
-            if hasattr(resp, "usage")
-            else 0,
-            prompt_tokens=getattr(resp.usage, "prompt_tokens", 0)
-            if hasattr(resp, "usage")
-            else 0,
+            total_tokens=getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
+            prompt_tokens=getattr(resp.usage, "prompt_tokens", 0) if hasattr(resp, "usage") else 0,
             completion_tokens=getattr(resp.usage, "completion_tokens", 0)
             if hasattr(resp, "usage")
             else 0,

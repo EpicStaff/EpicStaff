@@ -1,4 +1,5 @@
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
@@ -8,7 +9,6 @@ import {
     CreateConditionGroupRequest,
     CreateDecisionTableNodeRequest,
 } from '../../core/models/decision-table-node.model';
-import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
     ClassificationDecisionTableNodeModel,

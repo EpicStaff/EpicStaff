@@ -229,9 +229,7 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)
-    prompt_configs = ClassificationDecisionTablePromptSerializer(
-        many=True, required=False
-    )
+    prompt_configs = ClassificationDecisionTablePromptSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     pre_python_code = PythonCodeSerializer(required=False, allow_null=True)
     post_python_code = PythonCodeSerializer(required=False, allow_null=True)
