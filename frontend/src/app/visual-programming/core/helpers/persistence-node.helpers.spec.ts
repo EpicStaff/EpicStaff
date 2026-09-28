@@ -15,6 +15,7 @@ import {
     isStatePath,
     isStaticKey,
     isWriteSource,
+    keyError,
     keyOccurrences,
     keyTemplateHint,
     nonStatePathPlaceholders,
@@ -28,6 +29,8 @@ import {
 } from './persistence-node.helpers';
 
 describe('persistence node helpers', () => {
+    const BRACES_HINT = 'Close each { with } around a state path, like {variables.user.id}';
+
     it('treats a row with nothing typed as empty, counting the untouched value prefill as nothing', () => {
         for (const row of [
             { key: '' },
@@ -175,15 +178,100 @@ describe('persistence node helpers', () => {
         expect(keyTemplateHint('p_{variables.cart.items}')).toBe("Use a different name — 'items' is reserved");
         expect(keyTemplateHint('p_{cart.keys}')).toBe("Use a different name — 'keys' is reserved");
         expect(keyTemplateHint('{user_id}_{user_id}')).toBe('Use {variables.user_id}');
-        expect(keyTemplateHint('p_{}_{user_id}')).toBe('Write placeholders as {variables.user.id}');
-        expect(keyTemplateHint('p_{variables.}')).toBe('Write placeholders as {variables.user.id}');
-        expect(keyTemplateHint('p_{user id}')).toBe('Write placeholders as {variables.user.id}');
+        expect(keyTemplateHint('p_{}_{user_id}')).toBe(BRACES_HINT);
+        expect(keyTemplateHint('p_{')).toBe(BRACES_HINT);
+        expect(keyTemplateHint('}x')).toBe(BRACES_HINT);
+        expect(keyTemplateHint('p_{variables.}')).toBe(BRACES_HINT);
+        expect(keyTemplateHint('p_{user id}')).toBe(BRACES_HINT);
         // Never suggests an index straight after `variables`: flow variables are a dict.
-        expect(keyTemplateHint('p_{variables[0]}')).toBe('Write placeholders as {variables.user.id}');
+        expect(keyTemplateHint('p_{variables[0]}')).toBe(BRACES_HINT);
         expect(keyTemplateHint('p_{variables.user-id}')).toBe(
             'Use letters, digits and _ in variable names, like variables.user_name'
         );
         expect(keyTemplateHint('p_{user id}_{variables._id}')).toBe("Variable names can't start with _");
+    });
+
+    // Keep identical to the Django and crew parity tables (keys-and-modes-plan.md). The panel only
+    // sees templates; a resolved key is static text, which keyError judges the same way.
+    const VALID_TEMPLATES = [
+        'k',
+        '_',
+        '_private',
+        'User_1',
+        'profile_{variables.user.id}',
+        '{variables.id}',
+        '{variables.id}_x',
+        '{variables.a}{variables.b}',
+        'p_{ variables.user.id }',
+        'a'.repeat(512),
+    ];
+    const INVALID_TEMPLATES = [
+        '1abc',
+        '9_{variables.id}',
+        'user-id',
+        'user id',
+        'k ',
+        ' k',
+        'user.name',
+        'naïve',
+        'k\n',
+        'a'.repeat(513),
+        'profile_{}',
+        'profile_{variables.x',
+        '{{variables.x}}',
+        'profile_{user.id}',
+        'profile_{variables._x}',
+        'profile_{variables.items}',
+    ];
+    const VALID_RESOLVED_KEYS = ['k', '_', 'user_42', 'a'.repeat(512)];
+    const INVALID_RESOLVED_KEYS = [
+        '',
+        '4_user',
+        'user_4 2',
+        'user_-1',
+        'user_1.5',
+        'user_é',
+        'a{b}',
+        'k\n',
+        'a'.repeat(513),
+    ];
+
+    it('accepts and rejects key templates as Django and crew do', () => {
+        for (const template of VALID_TEMPLATES) {
+            expect(keyError(template), template).toBeNull();
+        }
+        for (const template of INVALID_TEMPLATES) {
+            expect(['keyTemplate', 'maxlength'], template).toContain(keyError(template));
+        }
+        expect(keyError('a'.repeat(513))).toBe('maxlength');
+        expect(keyError('')).toBe('required');
+    });
+
+    it('accepts and rejects resolved keys as Django and crew do', () => {
+        for (const key of VALID_RESOLVED_KEYS) {
+            expect(keyError(key), key).toBeNull();
+        }
+        for (const key of INVALID_RESOLVED_KEYS) {
+            expect(keyError(key), key).not.toBeNull();
+        }
+        expect(keyError('   ')).toBe('required');
+    });
+
+    it('says which characters a key may use outside its placeholders', () => {
+        const hint = 'Use letters, digits and _ outside {placeholders}, not starting with a digit';
+        expect(keyTemplateHint('user-id')).toBe(hint);
+        expect(keyTemplateHint('1abc')).toBe(hint);
+        expect(keyTemplateHint('9_{variables.id}')).toBe(hint);
+        // Every placeholder counts as a letter, however many there are.
+        expect(keyTemplateHint('{variables.a}-{variables.b}')).toBe(hint);
+        expect(keyTemplateHint('{variables.a}{variables.b}')).toBeNull();
+        // A placeholder that is not a state path gets its own hint first.
+        expect(keyTemplateHint('user-{user_id}')).toBe('Use {variables.user_id}');
+        // A blank key is left to keyError's 'required', so an empty row shows no hint.
+        expect(keyTemplateHint('')).toBeNull();
+        expect(keyTemplateHint('   ')).toBeNull();
+        // Checked repeatedly, the pattern gives the same answer: it keeps no lastIndex.
+        expect([keyTemplateHint('k'), keyTemplateHint('k'), keyTemplateHint('k')]).toEqual([null, null, null]);
     });
 
     it('builds a value path hint from what was typed', () => {
@@ -220,8 +308,10 @@ describe('persistence node helpers', () => {
         expect(keyOccurrences([])).toEqual([]);
     });
 
-    it('finds repeated write keys, trimmed, leaving invalid keys to their own rule', () => {
-        expect(duplicateWriteKeys(['a', ' a ', 'b'])).toEqual(new Set(['a']));
+    it('finds repeated write keys, leaving invalid keys to their own rule', () => {
+        expect(duplicateWriteKeys(['a', 'a', 'b'])).toEqual(new Set(['a']));
+        // A key with spaces around it breaks the key rule, which keyError reports instead.
+        expect(duplicateWriteKeys(['a', ' a ', 'b'])).toEqual(new Set());
         expect(duplicateWriteKeys(['p_{variables.x}', 'p_{variables.x}'])).toEqual(new Set(['p_{variables.x}']));
         expect(duplicateWriteKeys(['A', 'a', 'p_{', 'p_{', '', ''])).toEqual(new Set());
     });
@@ -285,6 +375,8 @@ describe('persistence node helpers', () => {
         expect(isValid('read', [{ key: 'a', value: 'variables.a|0' }])).toBe(false);
         expect(isValid('read', [{ key: 'a', value: 'variables._a' }])).toBe(false);
         expect(isValid('delete', [{ key: 'p_{variables.user-id}' }])).toBe(false);
+        expect(isValid('delete', [{ key: 'user id' }])).toBe(false);
+        expect(isValid('write', [{ key: 'user-id', value: 'variables.a' }])).toBe(false);
         expect(
             isValid('read', [
                 { key: 'a', value: 'variables.a' },

@@ -7,7 +7,12 @@ import { isPathUnder } from './variable-path.util';
 
 // Mirrors crew's key-template parsing: placeholders match this regex, and a key with braces left over
 // once they are removed is malformed. Keep both identical to crew so the panel flags what crew rejects.
+// Global, so .replace() replaces every placeholder. Only matchAll() and .replace() use it, and neither
+// leaves a lastIndex behind, so it carries no state between calls.
 const PLACEHOLDER = /\{([^{}]+)\}/g;
+// Mirrors KEY_PATTERN in tables/constants/persistence_constants.py and crew persistence_node.py.
+// A key, with each placeholder counted as one `_`. No `g` flag: .test() on it must not keep a lastIndex.
+export const PERSISTENCE_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // Mirrors MAX_KEY_LENGTH in tables/constants/persistence_constants.py.
 export const PERSISTENCE_KEY_MAX_LENGTH = 512;
 // Mirrors MAX_KEYS_PER_REQUEST in tables/constants/persistence_constants.py.
@@ -40,7 +45,10 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set([
 ]);
 // Loosely rooted, so a path that only misspells its names gets the naming hint.
 const ROOTED_PATH = /^variables\.\w/;
-const KEY_PLACEHOLDER_HINT = 'Write placeholders as {variables.user.id}';
+/** The key input's placeholder, which shows while the key is empty. */
+export const KEY_PLACEHOLDER_HINT = 'Write placeholders as {variables.user.id}';
+const KEY_BRACES_HINT = 'Close each { with } around a state path, like {variables.user.id}';
+const KEY_CHARACTERS_HINT = 'Use letters, digits and _ outside {placeholders}, not starting with a digit';
 const VALUE_PATH_HINT = 'Use a state path like variables.user.name';
 const NAME_CHARACTERS_HINT = 'Use letters, digits and _ in variable names, like variables.user_name';
 const PRIVATE_NAME_HINT = "Variable names can't start with _";
@@ -135,13 +143,19 @@ export function suggestStatePath(text: string): string | null {
     return `variables.${path}`;
 }
 
+/** A template starting with a placeholder passes here; crew checks the key it resolves to at run time. */
 export function keyTemplateHint(template: string): string | null {
-    if (isMalformedKey(template)) return KEY_PLACEHOLDER_HINT;
+    if (isMalformedKey(template)) return KEY_BRACES_HINT;
     const invalid = Array.from(new Set(nonStatePathPlaceholders(template)));
-    if (invalid.length === 0) return null;
-    const fixes = invalid.map(suggestStatePath);
-    if (fixes.every((fix): fix is string => fix !== null)) return `Use ${fixes.map((fix) => `{${fix}}`).join(', ')}`;
-    return invalid.map(namingHint).find((hint) => hint !== null) ?? KEY_PLACEHOLDER_HINT;
+    if (invalid.length > 0) {
+        const fixes = invalid.map(suggestStatePath);
+        if (fixes.every((fix): fix is string => fix !== null))
+            return `Use ${fixes.map((fix) => `{${fix}}`).join(', ')}`;
+        return invalid.map(namingHint).find((hint) => hint !== null) ?? KEY_BRACES_HINT;
+    }
+    // A blank key is keyError's 'required', which has no hint: an empty row must stay quiet.
+    if (template.trim() === '') return null;
+    return PERSISTENCE_KEY_PATTERN.test(template.replace(PLACEHOLDER, '_')) ? null : KEY_CHARACTERS_HINT;
 }
 
 /** Read targets are plain state paths; write sources may add `|default`. */
@@ -183,12 +197,13 @@ function repeated(texts: string[]): Set<string> {
 }
 
 /**
- * Keys written by more than one write row, trimmed: the later row would overwrite the earlier one.
- * A key keyError rejects is left to it, so it never counts here. Read and delete allow repeated
- * keys, and write rows may share a source variable.
+ * Keys written by more than one write row: the later row would overwrite the earlier one. A key
+ * keyError rejects is left to it, so it never counts here; one it accepts has no spaces around it,
+ * so keys compare as typed. Read and delete allow repeated keys, and write rows may share a source
+ * variable.
  */
 export function duplicateWriteKeys(keys: string[]): Set<string> {
-    return repeated(keys.filter((key) => keyError(key) === null).map((key) => key.trim()));
+    return repeated(keys.filter((key) => keyError(key) === null));
 }
 
 /** A read target valueError accepts, trimmed; null for one it rejects, which is left to it. */
@@ -228,7 +243,7 @@ export function hasValidPersistenceEntries({ mode, entries }: PersistenceNodeDat
         entries.every(
             (entry, index) =>
                 keyError(entry.key) === null &&
-                !duplicateKeys.has(entry.key.trim()) &&
+                !duplicateKeys.has(entry.key) &&
                 (mode !== 'read' || readTargetConflict(values[index], values) === null) &&
                 (mode === 'delete' || valueError(values[index], mode) === null)
         )
