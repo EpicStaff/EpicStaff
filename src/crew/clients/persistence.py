@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Literal
 
 import httpx
@@ -11,6 +12,17 @@ from clients.errors import (
 )
 
 Operation = Literal["read", "write", "delete"]
+
+# Django's app server closes a keep-alive connection after 2 s idle (gunicorn's --keep-alive
+# default, which UvicornWorker applies). Ours must expire first: a request sent on a connection
+# the server is closing at that moment is reset and surfaces as httpx.ReadError.
+KEEPALIVE_EXPIRY_SECONDS = 1.0
+# Wait before each retry of a call whose connection failed; a call gets one attempt more than
+# there are waits.
+RETRY_BACKOFF_SECONDS = (0.2, 0.4, 0.8)
+# Django either never received the request or dropped it with the connection. Timeouts are not
+# here: after a ReadTimeout, Django may still be running the request.
+_RETRYABLE_ERRORS = (httpx.NetworkError, httpx.RemoteProtocolError)
 
 
 class PersistenceClient:
@@ -42,6 +54,11 @@ class PersistenceClient:
                 timeout=self._timeout,
                 transport=self._transport,
                 headers=headers,
+                limits=httpx.Limits(
+                    max_connections=100,
+                    max_keepalive_connections=20,
+                    keepalive_expiry=KEEPALIVE_EXPIRY_SECONDS,
+                ),
             )
             logger.info("PersistenceClient started, base_url={}", self._base_url)
 
@@ -75,7 +92,7 @@ class PersistenceClient:
             )
         url = f"internal/sessions/{session_id}/persistence-tables/{table_id}/{operation}/"
         try:
-            response = await self._client.post(url, json=payload)
+            response = await self._send(url, payload)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Django persistence route timed out.") from e
         except httpx.RequestError as e:
@@ -85,6 +102,30 @@ class PersistenceClient:
         if response.status_code >= 400:
             raise ClientValidationError(self._error_message(response))
         return response.json()
+
+    async def _send(self, url: str, payload: dict) -> httpx.Response:
+        """POST, retrying _RETRYABLE_ERRORS after each RETRY_BACKOFF_SECONDS wait.
+
+        Every operation is safe to replay: write upserts by key and delete removes by key, so
+        a retry after an attempt that committed leaves the same rows. Only the reported
+        `created` keys and `deleted` count can come back low on such a retry. The last
+        attempt's error, and any timeout, propagate unchanged.
+        """
+        assert self._client is not None
+        for attempt, wait in enumerate(RETRY_BACKOFF_SECONDS, start=1):
+            try:
+                return await self._client.post(url, json=payload)
+            except _RETRYABLE_ERRORS as e:
+                # The path names the session, table and operation; it carries no secrets.
+                logger.warning(
+                    "Persistence call {} attempt {} failed with {}; retrying in {}s",
+                    url,
+                    attempt,
+                    type(e).__name__,
+                    wait,
+                )
+                await asyncio.sleep(wait)
+        return await self._client.post(url, json=payload)
 
     @staticmethod
     def _error_message(response: httpx.Response) -> str:

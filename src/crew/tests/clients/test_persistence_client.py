@@ -1,15 +1,17 @@
+import asyncio
 import json
 
 import httpx
 import pytest
 
+from clients import persistence as persistence_module
 from clients.errors import (
     ClientBadGatewayError,
     ClientNotAvailableError,
     ClientTimeoutError,
     ClientValidationError,
 )
-from clients.persistence import PersistenceClient
+from clients.persistence import KEEPALIVE_EXPIRY_SECONDS, RETRY_BACKOFF_SECONDS, PersistenceClient
 
 BASE_URL = "http://django:8000/api/"
 
@@ -71,31 +73,146 @@ async def test_delete_sends_keys_and_returns_response():
     assert seen["body"] == {"keys": ["k"]}
 
 
+@pytest.fixture
+def waits(monkeypatch):
+    """Record retry waits instead of sleeping."""
+    recorded = []
+
+    async def fake_sleep(seconds):
+        recorded.append(seconds)
+
+    monkeypatch.setattr(persistence_module.asyncio, "sleep", fake_sleep)
+    yield recorded
+
+
 @pytest.mark.asyncio
-async def test_4xx_raises_validation_error_with_django_message():
+async def test_4xx_raises_validation_error_with_django_message_without_retrying(waits):
+    calls = []
+
     def handler(request):
+        calls.append(request)
         return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Persistence table 3 not found."})
 
     client = await _started(handler)
     with pytest.raises(ClientValidationError, match="Persistence table 3 not found."):
         await client.read(7, 3, ["a"])
+    assert len(calls) == 1
+    assert waits == []
 
 
 @pytest.mark.asyncio
-async def test_5xx_raises_bad_gateway():
-    client = await _started(lambda request: httpx.Response(500, text="boom"))
+async def test_5xx_raises_bad_gateway_without_retrying(waits):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(500, text="boom")
+
+    client = await _started(handler)
     with pytest.raises(ClientBadGatewayError):
         await client.read(7, 3, ["a"])
+    assert len(calls) == 1
+    assert waits == []
 
 
 @pytest.mark.asyncio
-async def test_timeout_raises_client_timeout():
+async def test_timeout_raises_client_timeout_without_retrying(waits):
+    calls = []
+
     def handler(request):
+        calls.append(request)
         raise httpx.ReadTimeout("slow", request=request)
 
     client = await _started(handler)
     with pytest.raises(ClientTimeoutError):
         await client.read(7, 3, ["a"])
+    assert len(calls) == 1
+    assert waits == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [httpx.ReadError, httpx.RemoteProtocolError],
+    ids=["read_error", "remote_protocol_error"],
+)
+async def test_connection_reset_is_retried_and_the_retry_response_is_returned(waits, error):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise error("reset", request=request)
+        return httpx.Response(200, json={"written": 1, "created": ["k"], "table_name": "Customers"})
+
+    client = await _started(handler)
+    assert await client.write(7, 3, {"k": 1}) == {"written": 1, "created": ["k"], "table_name": "Customers"}
+    assert len(calls) == 2
+    assert waits == [RETRY_BACKOFF_SECONDS[0]]
+
+
+@pytest.mark.asyncio
+async def test_connection_failing_on_every_attempt_raises_not_available_after_all_retries(waits):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise httpx.ConnectError("refused", request=request)
+
+    client = await _started(handler)
+    with pytest.raises(ClientNotAvailableError, match="Django persistence route is unreachable."):
+        await client.delete(7, 3, ["k"])
+    assert len(calls) == 4
+    assert waits == [0.2, 0.4, 0.8]
+
+
+def test_keepalive_expires_before_djangos_two_second_server_keepalive():
+    assert KEEPALIVE_EXPIRY_SECONDS < 2
+
+
+@pytest.mark.asyncio
+async def test_idle_connection_is_replaced_after_keepalive_expiry(monkeypatch):
+    # A real socket: MockTransport bypasses the connection pool this test is about.
+    monkeypatch.setattr(persistence_module, "KEEPALIVE_EXPIRY_SECONDS", 0.3)
+    accepted = []
+    body = b'{"written": 1, "created": [], "table_name": "Customers"}'
+
+    async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        accepted.append(writer)
+        try:
+            while head := await reader.readuntil(b"\r\n\r\n"):
+                length = next(
+                    int(line.split(b":", 1)[1])
+                    for line in head.split(b"\r\n")
+                    if line.lower().startswith(b"content-length:")
+                )
+                await reader.readexactly(length)
+                writer.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+                )
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(serve, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    client = PersistenceClient(f"http://127.0.0.1:{port}/api/", api_key="secret", timeout=5.0)
+    await client.start()
+    try:
+        await client.write(7, 3, {"k": 1})
+        await client.write(7, 3, {"k": 1})
+        # Within the expiry the connection is reused, so pooling is still on.
+        assert len(accepted) == 1
+        await asyncio.sleep(0.6)
+        await client.write(7, 3, {"k": 1})
+        assert len(accepted) == 2
+    finally:
+        await client.stop()
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio
