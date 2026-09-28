@@ -26,6 +26,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
             <div class="storage-header">
                 <span class="section-label">Enable Storage</span>
                 <app-toggle-switch
+                    [disabled]="readonly()"
                     [checked]="enabled()"
                     (checkedChange)="onToggle($event)"
                 ></app-toggle-switch>
@@ -37,6 +38,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 })
 export class NodeStorageSectionComponent implements OnInit {
     readonly useStorage = input.required<boolean>();
+    readonly readonly = input<boolean>(false);
 
     readonly onInsertCode = output<string>();
     readonly onRemoveCode = output<string>();

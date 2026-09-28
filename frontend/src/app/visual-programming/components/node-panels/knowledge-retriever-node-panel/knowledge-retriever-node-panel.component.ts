@@ -14,7 +14,8 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, AgentSearchConfigs, GraphSearchMethod, ResourceCode } from '@shared/models';
 import { RAG_SUGGEST_API } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -54,6 +55,7 @@ interface RagChoice {
         RagTabComponent,
         InputsYouCanUseComponent,
         ValidationErrorsComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
@@ -262,4 +264,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
         this.form.get('rag')!.setValue({ rag_id: match.rag_id, rag_type: savedKind });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
