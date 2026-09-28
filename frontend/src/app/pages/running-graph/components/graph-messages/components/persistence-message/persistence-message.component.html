@@ -1,5 +1,8 @@
 @if (data(); as data) {
-    <div class="persistence-container">
+    <div
+        class="persistence-container"
+        [style.border-left-color]="accent()"
+    >
         <button
             type="button"
             class="persistence-header"
@@ -13,15 +16,15 @@
                 />
             </span>
             <span class="icon-container">
-                @if (icon(); as modeIcon) {
-                    <app-svg-icon
-                        [icon]="modeIcon.name"
-                        [size]="modeIcon.size"
-                    />
-                }
+                <app-svg-icon
+                    icon="database"
+                    size="1.25rem"
+                />
             </span>
             <span class="header-text">
-                <span class="title"
+                <span
+                    class="title"
+                    [title]="data.table_name"
                     >{{ titlePrefix() }} <span class="table-name">{{ data.table_name }}</span></span
                 >
                 @for (chip of chips(); track chip.label) {
@@ -61,28 +64,28 @@
                                 </div>
                                 @if (row.notFound) {
                                     <div class="not-found">not found</div>
-                                } @else if (row.json; as json) {
+                                } @else if (row.value; as value) {
                                     <div class="value-content">
-                                        <app-copy-button [text]="row.copyText ?? ''" />
-                                        <app-json-viewer
-                                            [json]="json"
-                                            [expanded]="false"
-                                        />
-                                    </div>
-                                } @else if (row.preview; as preview) {
-                                    <div class="preview-box">
-                                        @if (row.copyText !== null) {
-                                            <app-copy-button [text]="row.copyText" />
+                                        @if (value.copyText !== null) {
+                                            <app-copy-button [text]="value.copyText" />
                                         }
-                                        <pre
-                                            class="preview"
-                                        >@for (token of preview; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
+                                        @if (value.kind === 'viewer') {
+                                            <app-json-viewer
+                                                [json]="value.json"
+                                                [expanded]="false"
+                                                [showScalarType]="false"
+                                            />
+                                        } @else {
+                                            <pre
+                                                class="preview"
+                                            >@for (token of value.tokens; track $index) {<span class="json-{{ token.type }}">{{ token.text }}</span>}</pre>
+                                        }
                                     </div>
-                                }
-                                @if (row.truncated) {
-                                    <p class="truncated-note">
-                                        Message size limit reached — first 200 characters shown
-                                    </p>
+                                    @if (value.kind === 'preview' && value.truncated) {
+                                        <p class="truncated-note">
+                                            Message size limit reached — first 200 characters shown
+                                        </p>
+                                    }
                                 }
                             </li>
                         }

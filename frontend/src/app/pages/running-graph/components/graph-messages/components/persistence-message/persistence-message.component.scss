@@ -1,5 +1,5 @@
-// Card and header mirror the start / finish / python session messages;
-// only the accent comes from --color-persistence.
+// Card and header mirror the start / finish / python session messages; the accent comes from
+// --color-persistence, except the left stripe, whose colour the template sets per mode.
 
 .persistence-container {
     position: relative;
@@ -58,7 +58,14 @@
     color: var(--gray-900);
 }
 
+// One line, cut with an ellipsis (a long table name must not stretch the header); the full
+// name is in the title attribute. As a wrapping flex item it takes at most a full row, so the
+// chips stay visible, wrapping below it.
 .title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--gray-100);
     font-size: var(--text-body-medium-size);
     font-weight: var(--text-body-medium-weight);
@@ -72,7 +79,7 @@
 
 .chip {
     padding: 0.15rem 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     font-size: var(--text-body-small-large-size);
     font-weight: var(--text-body-small-large-weight);
     white-space: nowrap;
@@ -144,7 +151,7 @@ code {
 .tag {
     margin-left: 0.5rem;
     padding: 1px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     font-size: var(--text-body-small-large-size);
     white-space: nowrap;
     background-color: var(--gray-570-alpha-15);
@@ -157,7 +164,7 @@ code {
 }
 
 // Same box as the finish message's variables (collapsed JSON viewer, own scroll past 400px),
-// with tighter padding because it sits in a list row.
+// with tighter padding because it sits in a list row. Inline previews share it.
 .value-content {
     position: relative;
     background-color: var(--gray-800);
@@ -165,35 +172,20 @@ code {
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     margin-top: 0.25rem;
+    // The absolutely placed copy button (28px at top: 8px) counts toward the scroll area even while
+    // hidden, so a one-line box must be tall enough for it: 8px + 28px + the 2px border.
+    min-height: 38px;
     max-height: 400px;
     overflow: auto;
 }
 
-.value-content,
-.preview-box {
-    &:hover app-copy-button {
-        opacity: 1;
-    }
+.value-content:hover app-copy-button {
+    opacity: 1;
 }
 
-.preview-box {
-    position: relative;
-    margin-top: 0.25rem;
-
-    // A one-line preview is shorter than the default 28px button offset 8px from the top.
-    app-copy-button {
-        --copy-btn-size: 20px;
-        top: 0;
-        right: 0;
-    }
-}
-
-// Font matches app-json-viewer (styles/json-viewer.scss) so inline and object values look alike;
-// capped like .value-content so one huge string cannot push every row down.
+// Font matches app-json-viewer (styles/json-viewer.scss) so inline and viewer values look alike.
 .preview {
     margin: 0;
-    max-height: 400px;
-    overflow: auto;
     font-family: 'Courier New', monospace;
     color: var(--gray-400);
     white-space: pre-wrap;

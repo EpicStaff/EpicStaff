@@ -1,5 +1,6 @@
 import { Component, computed, input, signal } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
+import { PERSISTENCE_MODE_COLORS } from '@shared/models';
 
 import {
     GraphMessage,
@@ -29,36 +30,20 @@ interface JsonToken {
 
 // Rendered assignment-style, `target ← source`, matching the data flow:
 // read `variables.path ← key`, write `key ← variables.path`, delete just the key.
-// A non-empty object / array value goes to the JSON viewer (`json`); a scalar, an empty
-// container or a truncated JSON prefix is highlighted inline (`preview`). `copyText` is the full
-// value (pretty JSON, strings raw); null for a truncated prefix, which is not the value.
 interface PersistenceRow {
     target: MappingPart;
     source: MappingPart | null;
-    json: object | null;
-    preview: JsonToken[] | null;
-    truncated: boolean;
-    copyText: string | null;
+    value: RowValue | null;
     notFound: boolean;
     tag: 'created' | 'updated' | null;
 }
 
-type PersistenceRowValue = Pick<PersistenceRow, 'json' | 'preview' | 'truncated' | 'copyText'>;
-
-const NO_VALUE: PersistenceRowValue = { json: null, preview: null, truncated: false, copyText: null };
-
-interface ModeIcon {
-    name: string;
-    size: string;
-}
-
-// download / upload-outline are 24-box outlines with ~3px of padding; trash fills its 13x16 box
-// edge to edge, so it is drawn smaller to match their visible height.
-const MODE_ICONS: Record<PersistenceMessageMode, ModeIcon> = {
-    read: { name: 'download', size: '1.25rem' },
-    write: { name: 'upload-outline', size: '1.25rem' },
-    delete: { name: 'trash', size: '0.9rem' },
-};
+// A scalar or a non-empty object / array goes to the JSON viewer; an empty container (which the
+// viewer would draw as an empty box) or a truncated JSON prefix is highlighted inline. `copyText`
+// is the full value (pretty JSON, strings raw); null for a truncated prefix, which is not the value.
+type RowValue =
+    | { kind: 'viewer'; json: unknown; copyText: string }
+    | { kind: 'preview'; tokens: JsonToken[]; truncated: boolean; copyText: string | null };
 
 // One JSON token per match: a string (then `:` if it is an object key), number, literal or
 // punctuation. A truncated value is the first 200 chars of the JSON text, so a string may end
@@ -82,9 +67,10 @@ export class PersistenceMessageComponent {
         return messageData?.message_type === MessageType.PERSISTENCE ? messageData : null;
     });
 
-    protected readonly icon = computed<ModeIcon | null>(() => {
+    protected readonly accent = computed(() => {
         const data = this.data();
-        return data ? MODE_ICONS[data.mode] : null;
+        // The left stripe takes the mode colour of the canvas node; everything else keeps --color-persistence.
+        return data ? PERSISTENCE_MODE_COLORS[data.mode] : null;
     });
 
     // The title text before the table name, which the template renders in the accent colour.
@@ -136,7 +122,7 @@ export class PersistenceMessageComponent {
             const notFound = data.mode === 'read' && entry.found === false;
             return {
                 ...toAssignment(data.mode, entry),
-                ...(data.mode === 'delete' || notFound ? NO_VALUE : toRowValue(entry)),
+                value: data.mode === 'delete' || notFound ? null : toRowValue(entry),
                 notFound,
                 tag: data.mode === 'write' ? (entry.created ? 'created' : 'updated') : null,
             };
@@ -164,17 +150,17 @@ function toAssignment(
     }
 }
 
-function toRowValue({ value, truncated }: PersistenceMessageEntry): PersistenceRowValue {
+function toRowValue({ value, truncated }: PersistenceMessageEntry): RowValue {
     if (truncated) {
-        const preview: JsonToken[] = [...tokenizeJson(String(value)), { text: '…', type: 'plain' }];
-        return { json: null, preview, truncated, copyText: null };
+        const tokens: JsonToken[] = [...tokenizeJson(String(value)), { text: '…', type: 'plain' }];
+        return { kind: 'preview', tokens, truncated, copyText: null };
     }
     const json = value ?? null;
     const copyText = typeof json === 'string' ? json : JSON.stringify(json, null, 2);
-    if (typeof json === 'object' && json !== null && Object.keys(json).length > 0) {
-        return { json, preview: null, truncated, copyText };
+    if (typeof json === 'object' && json !== null && Object.keys(json).length === 0) {
+        return { kind: 'preview', tokens: tokenizeJson(JSON.stringify(json)), truncated, copyText };
     }
-    return { json: null, preview: tokenizeJson(JSON.stringify(json)), truncated, copyText };
+    return { kind: 'viewer', json, copyText };
 }
 
 function tokenizeJson(text: string): JsonToken[] {

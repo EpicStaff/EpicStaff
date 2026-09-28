@@ -1,3 +1,5 @@
+import { PersistenceMode } from '@shared/models';
+
 // Base GraphMessage interface
 export interface GraphMessage {
     id: number;
@@ -202,7 +204,7 @@ export interface FindingsMessageData {
     message_type: MessageType.FINDINGS;
 }
 
-export type PersistenceMessageMode = 'read' | 'write' | 'delete';
+export type PersistenceMessageMode = PersistenceMode;
 
 // read: `path` is the target variable and `found` is set.
 // write: `path` is the source path (may carry a `|default` suffix) and `created` is set.

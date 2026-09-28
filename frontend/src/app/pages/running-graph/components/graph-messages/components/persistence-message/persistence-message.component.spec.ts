@@ -22,7 +22,7 @@ function entry(overrides: Partial<PersistenceMessageEntry>): PersistenceMessageE
     };
 }
 
-type RenderData = Omit<PersistenceMessageData, 'message_type' | 'table_id' | 'table_name'>;
+type RenderData = Omit<PersistenceMessageData, 'message_type' | 'table_id' | 'table_name'> & { table_name?: string };
 
 function createFixture(data: RenderData): ComponentFixture<PersistenceMessageComponent> {
     const message: GraphMessage = {
@@ -32,7 +32,7 @@ function createFixture(data: RenderData): ComponentFixture<PersistenceMessageCom
         execution_order: 1,
         created_at: '2026-09-26T00:00:00Z',
         metadata: {},
-        message_data: { ...data, table_id: 7, table_name: 'profiles', message_type: MessageType.PERSISTENCE },
+        message_data: { table_name: 'profiles', ...data, table_id: 7, message_type: MessageType.PERSISTENCE },
     };
     const fixture = TestBed.createComponent(PersistenceMessageComponent);
     fixture.componentRef.setInput('message', message);
@@ -89,7 +89,7 @@ describe('PersistenceMessageComponent', () => {
         ]);
         expect(mappings(element)).toEqual(['variables.a ← a', 'variables.b ← b']);
         const rows = element.querySelectorAll('.entry');
-        expect(text(rows[0] as HTMLElement, '.preview')).toBe('1');
+        expect(text(rows[0] as HTMLElement, '.value-content app-json-viewer .segment-value')).toBe('1');
         expect(rows[0].querySelector('.not-found')).toBeNull();
         expect(text(rows[1] as HTMLElement, '.not-found')).toBe('not found');
         expect(rows[1].querySelector('.preview, app-json-viewer, .truncated-note')).toBeNull();
@@ -141,13 +141,13 @@ describe('PersistenceMessageComponent', () => {
         });
 
         const rows = element.querySelectorAll('.entry');
-        expect(text(rows[0] as HTMLElement, '.preview')).toBe('"abc…');
+        expect(text(rows[0] as HTMLElement, '.value-content .preview')).toBe('"abc…');
+        expect(rows[0].querySelector('app-json-viewer, app-copy-button')).toBeNull();
         expect(text(rows[0] as HTMLElement, '.truncated-note')).toBe(
             'Message size limit reached — first 200 characters shown'
         );
-        expect(text(rows[1] as HTMLElement, '.preview')).toBe('"ab"');
-        expect(rows[1].querySelector('.truncated-note')).toBeNull();
-        expect(element.querySelector('app-json-viewer')).toBeNull();
+        expect(text(rows[1] as HTMLElement, 'app-json-viewer .segment-value')).toBe('"ab"');
+        expect(rows[1].querySelector('.preview, .truncated-note')).toBeNull();
     });
 
     it('renders an object value in the JSON viewer, collapsed by default', () => {
@@ -209,7 +209,7 @@ describe('PersistenceMessageComponent', () => {
             entries: [entry({ key: 'a', path: 'variables.a', found: true, value: null })],
         });
 
-        expect(text(element, '.preview')).toBe('null');
+        expect(text(element, '.value-content .segment-type-null .segment-value')).toBe('null');
         expect(element.querySelector('.not-found')).toBeNull();
     });
 
@@ -244,10 +244,9 @@ describe('PersistenceMessageComponent', () => {
         });
 
         expect(element.querySelector('app-json-viewer')).toBeNull();
-        expect(Array.from(element.querySelectorAll('.preview')).map((preview) => preview.textContent)).toEqual([
-            '{}',
-            '[]',
-        ]);
+        expect(
+            Array.from(element.querySelectorAll('.value-content .preview')).map((preview) => preview.textContent)
+        ).toEqual(['{}', '[]']);
     });
 
     it('highlights a truncated object preview token by token and keeps the ellipsis', () => {
@@ -304,7 +303,7 @@ describe('PersistenceMessageComponent', () => {
         ]);
     });
 
-    it('highlights scalar values inline, as JSON', () => {
+    it('renders scalar values in the JSON viewer box with a copy button, like objects', () => {
         const element = render({
             mode: 'write',
             deleted_count: null,
@@ -316,13 +315,19 @@ describe('PersistenceMessageComponent', () => {
             ],
         });
 
-        expect(Array.from(element.querySelectorAll('.preview')).map(tokens)).toEqual([
-            [['json-string', '"say \\"hi\\""']],
-            [['json-number', '-1.5e-7']],
-            [['json-boolean', 'true']],
-            [['json-null', 'null']],
+        const values = Array.from(element.querySelectorAll('.entry')).map((row) => {
+            const segment = row.querySelector('.value-content app-json-viewer .segment');
+            return [segment?.className, segment?.querySelector('.segment-value')?.textContent];
+        });
+        expect(values).toEqual([
+            ['segment segment-type-string', '"say "hi""'],
+            ['segment segment-type-number', '-1.5e-7'],
+            ['segment segment-type-boolean', 'true'],
+            ['segment segment-type-null', 'null'],
         ]);
-        expect(element.querySelector('app-json-viewer, .truncated-note')).toBeNull();
+        expect(element.querySelectorAll('.value-content app-copy-button').length).toBe(4);
+        expect(element.querySelector('.preview, .truncated-note, .segment-key, .segment-separator')).toBeNull();
+        expect(element.textContent).not.toMatch(/\((string|number|boolean|object)\)/);
     });
 
     it('colours table keys and state paths by kind, whichever side of the arrow they are on', () => {
@@ -346,14 +351,27 @@ describe('PersistenceMessageComponent', () => {
         expect(read.querySelectorAll('.entry__path.entry__key').length).toBe(0);
     });
 
-    it('uses the download / upload-outline / trash icon per mode', () => {
+    it('uses the same database icon for every mode', () => {
         const icon = (mode: PersistenceMessageData['mode']): string | null =>
             iconHref(render({ mode, deleted_count: mode === 'delete' ? 0 : null, entries: [] }));
 
         expect([icon('read'), icon('write'), icon('delete')]).toEqual([
-            '#icon-download',
-            '#icon-upload-outline',
-            '#icon-trash',
+            '#icon-database',
+            '#icon-database',
+            '#icon-database',
+        ]);
+    });
+
+    it('colours the left stripe by mode, like the canvas node', () => {
+        const stripe = (mode: PersistenceMessageData['mode']): string | undefined =>
+            render({ mode, deleted_count: mode === 'delete' ? 0 : null, entries: [] }).querySelector<HTMLElement>(
+                '.persistence-container'
+            )?.style.borderLeftColor;
+
+        expect([stripe('read'), stripe('write'), stripe('delete')]).toEqual([
+            'var(--color-status-processing)',
+            'var(--success-color)',
+            'var(--color-status-error)',
         ]);
     });
 
@@ -433,6 +451,18 @@ describe('PersistenceMessageComponent', () => {
         const element = render({ mode: 'read', deleted_count: null, entries: [entry({ path: 'variables.a' })] });
 
         expect(text(element, '.title .table-name')).toBe('profiles');
+    });
+
+    it('cuts a long title to one line with an ellipsis and keeps the full table name in its tooltip', () => {
+        const longName = 'customer_profiles_'.repeat(12);
+        const element = render({ mode: 'read', deleted_count: null, entries: [], table_name: longName });
+        const title = element.querySelector('.title') as HTMLElement;
+        const style = getComputedStyle(title);
+
+        expect(title.getAttribute('title')).toBe(longName);
+        expect(text(element, '.title .table-name')).toBe(longName);
+        expect(chips(element)).toEqual([{ label: '0 found', neutral: false }]);
+        expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis']);
     });
 
     it('omits the entry list when there are no entries', () => {
