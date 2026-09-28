@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { of } from 'rxjs';
@@ -32,6 +34,15 @@ describe('VersionHistoryPanelComponent', () => {
     let deleted: GraphVersionDto[];
 
     beforeEach(() => {
+        // The card's overflow tooltips observe their size; jsdom has no ResizeObserver.
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                observe(): void {}
+                unobserve(): void {}
+                disconnect(): void {}
+            }
+        );
         flowsApi = {
             getGraphVersions: vi.fn().mockReturnValue(of(VERSIONS)),
             deleteGraphVersion: vi.fn().mockReturnValue(of(undefined)),
@@ -70,6 +81,7 @@ describe('VersionHistoryPanelComponent', () => {
     });
 
     afterEach(() => {
+        vi.unstubAllGlobals();
         document.querySelectorAll('.cdk-overlay-container').forEach((container) => container.remove());
     });
 
@@ -219,6 +231,19 @@ describe('VersionHistoryPanelComponent', () => {
         expect(cards().length).toBe(1);
     });
 
+    it('emits the updated version after a successful rename', () => {
+        const renamed = { ...VERSIONS[0], name: 'Renamed' };
+        flowsApi.updateGraphVersion.mockReturnValue(of(renamed));
+        const updated: GraphVersionDto[] = [];
+        component.versionUpdated.subscribe((version) => updated.push(version));
+        component.startEdit(VERSIONS[0], 'name');
+        component.editingValue = 'Renamed';
+
+        component.saveEdit(VERSIONS[0]);
+
+        expect(updated).toEqual([renamed]);
+    });
+
     it('rejects a blank rename with a message instead of sending it', () => {
         component.startEdit(VERSIONS[0], 'name');
         component.editingValue = '   ';
@@ -228,6 +253,15 @@ describe('VersionHistoryPanelComponent', () => {
         expect(flowsApi.updateGraphVersion).not.toHaveBeenCalled();
         expect(toast.warning).toHaveBeenCalledWith('Version name is required');
         expect(component.editingVersionId).toBeNull();
+    });
+
+    it('offers the full name and description as tooltips on the card', () => {
+        const tooltips = fixture.debugElement
+            .queryAll(By.directive(MatTooltip))
+            .map((element) => element.injector.get(MatTooltip).message);
+
+        expect(tooltips).toContain(VERSIONS[1].name);
+        expect(tooltips).toContain(VERSIONS[1].description);
     });
 
     it('highlights the previewed version', () => {

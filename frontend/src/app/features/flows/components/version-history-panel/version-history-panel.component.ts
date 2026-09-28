@@ -23,6 +23,7 @@ import {
     IconButtonComponent,
     SpinnerComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { filter, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -43,6 +44,7 @@ const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
         AppSvgIconComponent,
         MatTooltipModule,
         OverlayModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './version-history-panel.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -75,6 +77,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     public restoreRequested = output<GraphVersionDto>();
     public readonly previewRequested = output<GraphVersionDto>();
     public readonly versionDeleted = output<GraphVersionDto>();
+    public readonly versionUpdated = output<GraphVersionDto>();
 
     @HostListener('document:mousedown', ['$event'])
     onDocumentMouseDown(event: MouseEvent): void {
@@ -196,6 +199,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                     if (idx !== -1) {
                         this.versionsList[idx] = updated;
                     }
+                    this.versionUpdated.emit(updated);
                     this.toastService.success(field === 'name' ? 'Version was renamed' : 'Description was updated');
                     this.cancelEdit();
                 },

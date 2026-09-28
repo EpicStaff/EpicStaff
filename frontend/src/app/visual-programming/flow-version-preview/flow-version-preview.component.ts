@@ -41,10 +41,12 @@ export class FlowVersionPreviewComponent {
 
     private readonly flowGraph = viewChild(FlowGraphComponent);
 
+    // A computed so a renamed version (same id, new object) does not reload the preview.
+    private readonly versionId = computed(() => this.version().id);
     // Keyed on the version id: a newer version cancels the request still in flight, and so does
     // destroying the component.
     protected readonly preview = rxResource({
-        params: () => this.version().id,
+        params: () => this.versionId(),
         stream: ({ params: versionId }) =>
             forkJoin({
                 response: this.flowsApiService.previewGraphVersion(versionId),

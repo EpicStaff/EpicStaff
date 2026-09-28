@@ -51,6 +51,10 @@
                     } @else {
                         <div
                             class="version-name"
+                            appTooltipOnOverflow
+                            [matTooltip]="version.name"
+                            matTooltipPosition="left"
+                            matTooltipDisabled
                             (click)="onRenameableTextClick($event, version)"
                             (dblclick)="startEdit(version, 'name')"
                         >
@@ -69,6 +73,10 @@
                     } @else if (version.description) {
                         <div
                             class="version-description"
+                            appTooltipOnOverflow
+                            [matTooltip]="version.description"
+                            matTooltipPosition="left"
+                            matTooltipDisabled
                             (click)="onRenameableTextClick($event, version)"
                             (dblclick)="startEdit(version, 'description')"
                         >

@@ -31,6 +31,16 @@ def _scrub_plaintext_secrets(value):
     return value
 
 
+def _backup_version_name(restored_name: str) -> str:
+    # The restored version's name may already use the full column length.
+    max_length = GraphVersion._meta.get_field("name").max_length
+    prefix, suffix = "Before restore to '", "'"
+    available = max_length - len(prefix) - len(suffix)
+    if len(restored_name) > available:
+        restored_name = restored_name[: available - 1] + "…"
+    return f"{prefix}{restored_name}{suffix}"
+
+
 @dataclass(frozen=True)
 class PreparedVersion:
     """A version snapshot converted and filtered against the dependencies that still exist.
@@ -193,7 +203,7 @@ class GraphVersioningService:
         if backup:
             backup_version = self.save_version(
                 graph=graph,
-                name=f"Before restore to '{version.name}'",
+                name=_backup_version_name(version.name),
                 description=f"Auto-backup created before restoring version #{version.id}",
             )
             auto_backup_id = backup_version.id

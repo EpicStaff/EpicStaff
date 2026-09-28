@@ -1162,6 +1162,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
+    /** A renamed or re-described version keeps the preview bar in step; same id, so nothing reloads. */
+    public onVersionUpdated(version: GraphVersionDto): void {
+        if (this.previewedVersion()?.id === version.id) {
+            this.previewedVersion.set(version);
+        }
+    }
+
     public onVersionRestoreRequested(version: GraphVersionDto): void {
         // The dirty check and the optional backup read the live flow (root state, which the preview
         // never touches), so the preview stays open behind the dialog. It closes only once the user

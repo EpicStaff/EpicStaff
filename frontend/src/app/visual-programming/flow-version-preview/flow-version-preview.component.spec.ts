@@ -5,7 +5,7 @@ import { By } from '@angular/platform-browser';
 import { FDragStartedEvent } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
 import {
@@ -233,6 +233,70 @@ describe('FlowVersionPreviewComponent', () => {
         expect(liveClipboard).not.toBe(previewClipboard);
         expect(liveClipboard.getClipboardData()?.nodes.map((node) => node.node_name)).toEqual(['Copied python']);
         expect(success).toHaveBeenCalledWith('Copied', 2000, 'bottom-right');
+    });
+
+    it('does not reload when the previewed version is only renamed', async () => {
+        fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+        await render(1);
+        const firstResponse = responses.get(1)!;
+        await respond(1, 'Python');
+
+        fixture.componentRef.setInput('version', { ...version(1), name: 'Renamed' });
+        fixture.detectChanges();
+        TestBed.tick();
+
+        expect(responses.get(1)).toBe(firstResponse);
+        expect((fixture.nativeElement as HTMLElement).querySelector('.preview-bar__title')?.textContent).toContain(
+            'Renamed'
+        );
+    });
+
+    // F-01: slow network, then the user exits before the response arrives.
+    it('shows the loading state with Exit available, and cancels the request on exit', async () => {
+        fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+        await render(1);
+        const element = fixture.nativeElement as HTMLElement;
+
+        expect(element.querySelector('app-spinner')).not.toBeNull();
+        expect(element.querySelector('.preview-bar__exit')).not.toBeNull();
+
+        fixture.destroy();
+        expect(responses.get(1)!.observed).toBe(false);
+    });
+
+    // F-06: six fast clicks; only the last version's request stays alive and renders.
+    it('keeps only the last of several fast version switches', async () => {
+        fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+        for (let versionId = 1; versionId <= 6; versionId++) {
+            await render(versionId);
+        }
+
+        for (let versionId = 1; versionId <= 5; versionId++) {
+            expect(responses.get(versionId)!.observed).toBe(false);
+        }
+        await respond(6, 'Sixth');
+        expect(
+            previewFlowService()
+                .nodes()
+                .map((node) => node.node_name)
+        ).toContain('Sixth');
+    });
+
+    // F-05: the secrets list failing must not block the preview.
+    it('still renders when the secrets list cannot be loaded', async () => {
+        TestBed.overrideProvider(SecretsStorageService, {
+            useValue: { getSecrets: () => throwError(() => new Error('secrets down')) },
+        });
+        fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+        await render(1);
+        await respond(1, 'Without secrets');
+
+        expect((fixture.nativeElement as HTMLElement).querySelector('.preview-state--error')).toBeNull();
+        expect(
+            previewFlowService()
+                .nodes()
+                .map((node) => node.node_name)
+        ).toContain('Without secrets');
     });
 
     it('keeps Exit available when the version fails to load', async () => {

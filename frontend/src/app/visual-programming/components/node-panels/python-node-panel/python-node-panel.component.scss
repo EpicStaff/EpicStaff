@@ -65,8 +65,9 @@
         gap: 1rem;
         overflow: visible;
 
+        // Content height only: growing here pushed the fixed-height editor to the panel bottom.
         .form-fields {
-            flex: 1 1 auto;
+            flex: 0 0 auto;
             max-width: none;
             height: auto;
             overflow-y: visible;

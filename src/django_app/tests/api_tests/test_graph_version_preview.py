@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.models import OrganizationUser, Role, RolePermission
-from rbac.models.enums import Permission, ResourceType
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models import GraphVersion, PythonCode, PythonNode
 from tables.models.graph_models import Edge, Graph, SubGraphNode
@@ -249,3 +249,112 @@ def test_preview_query_count_does_not_grow_with_node_count(
         large_response = _preview(client=client, version_id=large_version.id)
     assert large_response.status_code == status.HTTP_200_OK, large_response.content
     assert len(large_response.data["snapshot"]["nodes"]) == 5
+
+
+@pytest.mark.django_db
+def test_preview_response_has_exactly_snapshot_and_warnings(
+    client, graph_with_declared_secret
+):
+    graph, _ = graph_with_declared_secret
+    version_id = save_version(client=client, graph=graph)
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert set(response.data) == {"snapshot", "warnings"}
+    assert {
+        "nodes",
+        "edge_list",
+        "conditional_edge_list",
+        "metadata",
+        "secret_declarations",
+    } <= set(response.data["snapshot"])
+
+
+@pytest.mark.django_db
+def test_viewer_can_preview_but_not_change_versions(
+    django_user_model, org, graph_with_declared_secret
+):
+    graph, _ = graph_with_declared_secret
+    version = GraphVersioningService().save_version(graph, name="v1")
+    viewer_role = Role.objects.get(
+        name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="viewer-preview@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=viewer_role)
+    viewer = APIClient()
+    viewer.force_authenticate(user=user)
+    viewer.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    detail_url = reverse("graph-versions-detail", args=[version.id])
+
+    preview_response = _preview(client=viewer, version_id=version.id)
+    restore_response = viewer.post(
+        reverse("graph-versions-restore", args=[version.id]),
+        {"save_version": graph.save_version},
+        format="json",
+    )
+    rename_response = viewer.patch(detail_url, {"name": "renamed"}, format="json")
+    delete_response = viewer.delete(detail_url)
+
+    assert preview_response.status_code == status.HTTP_200_OK, preview_response.content
+    assert restore_response.status_code == status.HTTP_403_FORBIDDEN
+    assert rename_response.status_code == status.HTTP_403_FORBIDDEN
+    assert delete_response.status_code == status.HTTP_403_FORBIDDEN
+    assert GraphVersion.objects.get(pk=version.pk).name == "v1"
+
+
+@pytest.mark.django_db
+def test_preview_does_not_report_a_dropped_secret_that_restore_reports(
+    client, graph_with_declared_secret
+):
+    """Documents the known gap: secret declarations are only re-linked on restore."""
+    graph, secret = graph_with_declared_secret
+    version = GraphVersioningService().save_version(graph, name="v1")
+    secret.delete()
+
+    preview_response = _preview(client=client, version_id=version.id)
+    restore_result = GraphVersioningService().restore_version(
+        version, expected_save_version=Graph.objects.get(pk=graph.pk).save_version
+    )
+
+    assert preview_response.status_code == status.HTTP_200_OK, preview_response.content
+    assert "secret_declaration_dropped" not in {
+        warning["type"] for warning in preview_response.data["warnings"]
+    }
+    assert "secret_declaration_dropped" in {
+        warning["type"] for warning in restore_result["warnings"]
+    }
+
+
+@pytest.mark.django_db
+def test_preview_of_a_soft_deleted_version_returns_404(
+    client, graph_with_declared_secret, settings
+):
+    settings.SOFT_DELETE = True
+    graph, _ = graph_with_declared_secret
+    version_id = save_version(client=client, graph=graph)
+    delete_response = client.delete(reverse("graph-versions-detail", args=[version_id]))
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert GraphVersion.all_objects.filter(pk=version_id).exists()
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+def test_preview_rejects_every_method_but_get(client, graph_with_declared_secret, method):
+    """403, not 405: DRF leaves `view.action` unset for a method the action doesn't
+    accept, and the RBAC gate denies unmapped actions before DRF answers 405."""
+    graph, _ = graph_with_declared_secret
+    version_id = save_version(client=client, graph=graph)
+
+    response = getattr(client, method)(
+        reverse("graph-versions-preview", args=[version_id]), {}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert GraphVersion.objects.filter(pk=version_id).exists()

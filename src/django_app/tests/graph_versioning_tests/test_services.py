@@ -151,6 +151,21 @@ def test_restore_version_with_backup_true_creates_backup_version(service, graph)
 
 
 @pytest.mark.django_db
+def test_restore_version_with_backup_fits_a_max_length_version_name(service, graph):
+    long_name = "v" * GraphVersion._meta.get_field("name").max_length
+    version = service.save_version(graph, name=long_name)
+
+    result = service.restore_version(
+        version, backup=True, expected_save_version=graph.save_version
+    )
+
+    backup = GraphVersion.objects.get(id=result["auto_backup_version_id"])
+    assert len(backup.name) == GraphVersion._meta.get_field("name").max_length
+    assert backup.name.startswith("Before restore to 'vvv")
+    assert backup.name.endswith("…'")
+
+
+@pytest.mark.django_db
 def test_restore_version_with_backup_false_creates_no_backup(service, graph):
     version = service.save_version(graph, name="original")
     before_count = GraphVersion.objects.count()

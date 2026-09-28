@@ -116,6 +116,7 @@
                 (restoreRequested)="onVersionRestoreRequested($event)"
                 (previewRequested)="onVersionPreviewRequested($event)"
                 (versionDeleted)="onVersionDeleted($event)"
+                (versionUpdated)="onVersionUpdated($event)"
             ></app-version-history-panel>
         }
         @if (isSaving()) {

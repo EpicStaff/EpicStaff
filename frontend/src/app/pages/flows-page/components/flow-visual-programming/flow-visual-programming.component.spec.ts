@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, forwardRef, inject, input, output, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -5,7 +6,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
 import { LlmConfigStorageService } from '@shared/services';
-import { Observable, of, Subject } from 'rxjs';
+import { Observable, of, Subject, throwError } from 'rxjs';
 
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
@@ -141,6 +142,7 @@ class VersionHistoryStubComponent {
     readonly restoreRequested = output<GraphVersionDto>();
     readonly previewRequested = output<GraphVersionDto>();
     readonly versionDeleted = output<GraphVersionDto>();
+    readonly versionUpdated = output<GraphVersionDto>();
     loadVersions = vi.fn();
 }
 
@@ -330,6 +332,41 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
         expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
     });
 
+    // F-08 (version deleted in another tab), R-08 (stale save_version), R-10 (server error).
+    it.each([404, 409, 500])('reports a failed restore (%i) and reloads nothing', (httpStatus) => {
+        enterPreview(VERSION_A);
+        const graphLoadsBefore = flowsApi['getGraphById'].mock.calls.length;
+        flowsApi['restoreGraphVersion'].mockReturnValue(
+            throwError(() => new HttpErrorResponse({ status: httpStatus }))
+        );
+        unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+        component.onVersionRestoreRequested(VERSION_A);
+        fixture.detectChanges();
+
+        expect(toast['error']).toHaveBeenCalledWith('Failed to restore version');
+        expect(toast['success']).not.toHaveBeenCalled();
+        expect(flowsApi['getGraphById'].mock.calls.length).toBe(graphLoadsBefore);
+        expect(component.isCanvasReloading()).toBe(false);
+        expect(liveCanvas()).toBeDefined();
+    });
+
+    // F-09 / F-10: someone else saved or restored the flow while this tab was previewing.
+    it('warns about a concurrent change when saving the live flow after a preview', () => {
+        makeLiveFlowDirty();
+        enterPreview();
+        component.onPreviewExit();
+        fixture.detectChanges();
+        flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+
+        component.onGraphSave(flowService.getFlowState());
+
+        expect(toast['warning']).toHaveBeenCalledWith(expect.stringContaining('modified by another user'));
+        const payload = JSON.stringify(flowsApi['bulkSaveGraph'].mock.calls[0][1]);
+        expect(payload).not.toContain('snapshot-node');
+        expect(component.hasUnsavedChangesSignal()).toBe(true);
+    });
+
     it('saves only the live flow when leaving the page while previewing', () => {
         makeLiveFlowDirty();
         enterPreview();
@@ -383,6 +420,17 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
         expect(component.previewedVersion()).toBeNull();
         expect(component.selectedVersionId()).toBeNull();
         expect(liveCanvas()).toBeDefined();
+    });
+
+    it('shows the new name of the previewed version after a rename, and ignores other versions', () => {
+        enterPreview(VERSION_A);
+
+        component.onVersionUpdated({ ...VERSION_B, name: 'Other renamed' });
+        expect(component.previewedVersion()?.name).toBe(VERSION_A.name);
+
+        component.onVersionUpdated({ ...VERSION_A, name: 'Renamed' });
+        expect(component.previewedVersion()?.name).toBe('Renamed');
+        expect(component.previewedVersion()?.id).toBe(VERSION_A.id);
     });
 
     it('leaves the preview when the version history panel is closed', () => {
