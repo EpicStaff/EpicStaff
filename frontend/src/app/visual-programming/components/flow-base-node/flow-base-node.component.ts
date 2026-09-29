@@ -9,6 +9,7 @@ import {
     Input,
     input,
     Output,
+    output,
     signal,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -81,6 +82,7 @@ export class FlowBaseNodeComponent {
     }>();
     @Output() editClicked = new EventEmitter<NodeModel>();
     @Output() deleteClicked = new EventEmitter<NodeModel>();
+    readonly unpackClicked = output<void>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     @Input() showVariables: boolean = false;
@@ -131,6 +133,12 @@ export class FlowBaseNodeComponent {
             return;
         }
         this.editClicked.emit(this.node);
+    }
+
+    public onUnpackClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        this.unpackClicked.emit();
     }
 
     trackByPort(index: number, port: { id: string }): string {

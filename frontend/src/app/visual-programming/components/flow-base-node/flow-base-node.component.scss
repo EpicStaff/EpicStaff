@@ -110,6 +110,20 @@
             font-size: 1rem;
         }
 
+        &.unpack-button i {
+            color: var(--accent-color);
+            font-size: 1rem;
+        }
+
+        &.unpack-button.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+
+            &:hover {
+                background-color: var(--graphite-780);
+            }
+        }
+
         &.delete-button i {
             color: var(--gray-450);
             font-size: 1rem;

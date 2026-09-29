@@ -131,6 +131,7 @@
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
                     (deleteClicked)="onDeleteNode($event)"
+                    (unpackClicked)="onUnpackSubflow(node)"
                 >
                 </app-flow-base-node>
             }
@@ -294,6 +295,16 @@
 
         <div class="top-right-controls">
             <div class="top-right-actions">
+                @if (selectedNodeCount() > 0 && !flowReadOnly.isReadOnly()) {
+                    <button
+                        class="arrange-btn extract-subflow-btn"
+                        matTooltip="Extract to Subflow"
+                        matTooltipPosition="below"
+                        (click)="onExtractToSubflow()"
+                    >
+                        <i class="ti ti-git-branch"></i>
+                    </button>
+                }
                 <app-flow-export-import-button
                     [selectedCount]="selectedNodeCount()"
                     [allSelectedAreCdt]="allSelectedAreCdt()"

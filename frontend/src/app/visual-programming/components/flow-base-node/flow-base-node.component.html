@@ -28,6 +28,18 @@
                 <app-svg-icon icon="edit"></app-svg-icon>
             </div>
         }
+        <!-- Unpack Button for SubGraph -->
+        @if (node.type === NodeType.SUBGRAPH) {
+            <div
+                class="action-button unpack-button"
+                [class.disabled]="isBlockedSubgraph"
+                [matTooltip]="isBlockedSubgraph ? 'Cannot unpack: referenced flow is missing' : 'Unpack subflow'"
+                matTooltipPosition="above"
+                (click)="isBlockedSubgraph ? $event.stopPropagation() : onUnpackClick($event)"
+            >
+                <i class="ti ti-package-off"></i>
+            </div>
+        }
         <!-- Delete Button -->
         @if (node.type !== NodeType.START) {
             <div

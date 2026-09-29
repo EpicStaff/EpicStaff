@@ -19,10 +19,15 @@ import {
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ConfirmationDialogService,
+    SpinnerComponent,
+    UnsavedChangesDialogService,
+} from '@shared/components';
 import { ActionCode, GetLlmConfigRequest, NodeType, ResourceCode } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
+import { extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
     defaultIfEmpty,
@@ -45,6 +50,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
+import { CreateFlowDialogComponent } from '../../../../features/flows/components/create-flow-dialog/create-flow-dialog.component';
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
 import { RestoreWarningsDialogComponent } from '../../../../features/flows/components/restore-warnings-dialog/restore-warnings-dialog.component';
 import {
@@ -61,6 +67,7 @@ import {
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
+import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
@@ -73,6 +80,7 @@ import {
     AgentNodeModel,
     NodeModel,
     ScheduleTriggerNodeModel,
+    SubGraphNodeModel,
     TaskNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
@@ -80,6 +88,7 @@ import { FlowService } from '../../../../visual-programming/services/flow.servic
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { extractToSubflow } from '../../../../visual-programming/utils/extract/extract-to-subflow';
 import {
     createStartNode,
     hasStartNode,
@@ -98,6 +107,7 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
 } from '../../../../visual-programming/utils/save';
+import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
@@ -126,6 +136,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly profileService = inject(ProfileService);
     private readonly injector = inject(Injector);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly confirmationDialogService = inject(ConfirmationDialogService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -387,6 +398,152 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 finalize(() => this.cdr.markForCheck())
             )
             .subscribe();
+    }
+
+    public onExtractToSubflow(selectedNodeIds: Set<string>): void {
+        if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+
+        // Step 1: Save current parent graph to establish a clean baseline.
+        this.saveFlowState(this.currentFlowState(), false)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                // Step 2: Open the Create Flow dialog so the user names the new subflow.
+                switchMap(() => {
+                    const dialogRef = this.dialog.open<GraphDto | undefined>(CreateFlowDialogComponent, {
+                        width: '500px',
+                        providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
+                    });
+                    return dialogRef.closed;
+                }),
+                // If the user cancelled the dialog, stop.
+                filter((newGraphDto): newGraphDto is GraphDto => newGraphDto != null),
+                switchMap((newGraphDto) => {
+                    // Step 3: Run the extraction utility.
+                    const currentFlow = this.currentFlowState();
+                    const { subflowModel, parentModel } = extractToSubflow(
+                        currentFlow,
+                        selectedNodeIds,
+                        generateUuid(),
+                        newGraphDto.id
+                    );
+
+                    // Step 4: Build the subflow save payload (empty previous = all creates).
+                    const emptyFlow: FlowModel = { nodes: [], connections: [] };
+                    const subflowNodeDiff = getNodeDiff(emptyFlow, subflowModel);
+                    const subflowIdMap = buildUuidToBackendIdMap(subflowModel.nodes);
+                    const subflowConnectionDiff = getConnectionDiff(emptyFlow, subflowModel, subflowIdMap);
+                    const subflowPayload = buildBulkSavePayload(
+                        newGraphDto.id,
+                        subflowNodeDiff,
+                        subflowConnectionDiff,
+                        subflowModel,
+                        subflowIdMap,
+                        newGraphDto.save_version
+                    );
+
+                    // Step 5: Bulk-save the subflow nodes to the server.
+                    return this.flowApiService
+                        .bulkSaveGraph(newGraphDto.id, subflowPayload)
+                        .pipe(map(() => ({ newGraphDto, parentModel })));
+                }),
+                // Step 6: Update the parent flow with the extraction result and save it.
+                switchMap(({ newGraphDto, parentModel }) => {
+                    // Update the subgraph node name to match the newly created flow name.
+                    const namedParentModel: FlowModel = {
+                        ...parentModel,
+                        nodes: parentModel.nodes.map((node) => {
+                            if (node.type !== NodeType.SUBGRAPH) return node;
+                            const subgraphNode = node as SubGraphNodeModel;
+                            if (subgraphNode.data.id !== newGraphDto.id) return node;
+                            return {
+                                ...subgraphNode,
+                                node_name: newGraphDto.name,
+                                data: {
+                                    ...subgraphNode.data,
+                                    name: newGraphDto.name,
+                                    uuid: newGraphDto.uuid ?? '',
+                                    description: newGraphDto.description ?? '',
+                                },
+                            };
+                        }),
+                    };
+
+                    this.flowService.setFlow(normalizeFlowPorts(namedParentModel));
+                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => newGraphDto.name));
+                }),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Extract to subflow failed: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                })
+            )
+            .subscribe((subflowName) => {
+                this.toastService.success(`Extracted selection into subflow "${subflowName}"`);
+            });
+    }
+
+    public onUnpackSubflow(subGraphNodeId: string): void {
+        if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+
+        // Step 1: Find the SubGraphNode.
+        const subGraphNode = this.flowService
+            .nodes()
+            .find((node): node is SubGraphNodeModel => node.id === subGraphNodeId && node.type === NodeType.SUBGRAPH);
+        if (!subGraphNode) {
+            this.toastService.error('SubGraph node not found');
+            return;
+        }
+
+        const subgraphId = subGraphNode.data.id;
+        if (!subgraphId) {
+            this.toastService.error('SubGraph node has no linked flow');
+            return;
+        }
+
+        const subflowName = subGraphNode.data.name || subGraphNode.node_name || `Subflow #${subgraphId}`;
+
+        // Step 2: Show confirmation dialog.
+        this.confirmationDialogService
+            .confirm({
+                title: 'Unpack Subflow',
+                message: `Unpack <strong>${subflowName}</strong> into the current graph? The subgraph node will be replaced by its contents.`,
+                confirmText: 'Unpack',
+                cancelText: 'Cancel',
+                type: 'warning',
+            })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                // Only proceed on confirm.
+                filter((result) => result === true),
+                // Step 3: Fetch the subflow graph from the server.
+                switchMap(() => this.flowApiService.getGraphById(subgraphId, true)),
+                switchMap((graphDto) => {
+                    // Step 4: Map the subflow DTO to a FlowModel.
+                    const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(graphDto));
+
+                    // Step 5: Run the unpack utility.
+                    const currentFlow = this.currentFlowState();
+                    const unpackedModel = unpackSubflow(currentFlow, subGraphNodeId, subflowFlowModel);
+
+                    // Step 6: Update the parent flow and save.
+                    this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
+                    return this.saveFlowState(this.currentFlowState(), false);
+                }),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Unpack subflow failed: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                })
+            )
+            .subscribe(() => {
+                this.toastService.success(`Unpacked "${subflowName}" into the current graph`);
+            });
     }
 
     private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false): void {
