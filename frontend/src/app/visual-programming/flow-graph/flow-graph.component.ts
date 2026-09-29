@@ -12,6 +12,7 @@ import {
     inject,
     Injector,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -46,6 +47,7 @@ import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
+import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
@@ -150,6 +152,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() flowState!: FlowModel;
     @Input() currentFlowId: number | null = null;
+    public readonly availableFlows = input<GetGraphLightRequest[]>([]);
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
     @Input() initialNodeExpand: boolean = true;

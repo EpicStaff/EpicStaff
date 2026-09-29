@@ -13,7 +13,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { VersionHistoryPanelComponent } from '../../../../features/flows/components/version-history-panel/version-history-panel.component';
-import { GraphDto, GraphVersionDto } from '../../../../features/flows/models/graph.model';
+import { GetGraphLightRequest, GraphDto, GraphVersionDto } from '../../../../features/flows/models/graph.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
@@ -54,6 +54,7 @@ class FlowGraphStubComponent {
 
     readonly flowState = input<FlowModel>();
     readonly currentFlowId = input<number>();
+    readonly availableFlows = input<GetGraphLightRequest[]>([]);
     readonly flowName = input<string>();
     readonly initialNodeId = input<string | null>(null);
     readonly initialNodeExpand = input(true);

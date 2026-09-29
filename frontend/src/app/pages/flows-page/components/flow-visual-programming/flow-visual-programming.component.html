@@ -52,6 +52,7 @@
             <app-flow-graph
                 [flowState]="currentFlowState()"
                 [currentFlowId]="graph.id"
+                [availableFlows]="availableFlowLights()"
                 [flowName]="graph.name"
                 [initialNodeId]="initialNodeId"
                 [initialNodeExpand]="initialNodeExpand"
