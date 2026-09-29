@@ -181,6 +181,57 @@ describe('VariablePathPicker', () => {
         expect(listed()).toEqual(['variables.user', 'variables.user.tags[0]']);
     });
 
+    describe('with an object named as the object it sits in', () => {
+        // The flow state a developer reported the repeated `test` suggestions with.
+        const NESTED_STATE = { variables: { number: 0, test: { test: { a: 10 } } } };
+
+        beforeEach(() => (host.items = buildVariablePickerItems(NESTED_STATE)));
+
+        it('reopens after the exact match closes it with the children highlighted, which Enter picks', () => {
+            // Scroll is only mocked in the keyboard specs.
+            Element.prototype.scrollIntoView = vi.fn();
+            try {
+                type(0, 'variables.test');
+                expect(host.picker.isOpenFor(0)).toBe(false);
+
+                type(0, 'variables.test.');
+                expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+                expect(highlighted()).toEqual(['variables.test.test']);
+                expect(press(0, 'Enter').defaultPrevented).toBe(true);
+                expect(host.inserted).toEqual([[0, 'variables.test.test']]);
+            } finally {
+                delete (Element.prototype as Partial<Element>).scrollIntoView;
+            }
+        });
+
+        it('lists the children of a typed path, not the path itself again', () => {
+            type(0, 'variables.test.');
+            expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+
+            type(0, 'variables.test.test.');
+            expect(listed()).toEqual(['variables.test.test.a']);
+        });
+
+        it('filters the children of a typed path by what follows it', () => {
+            type(0, 'variables.test.te');
+            expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+
+            type(0, 'variables.test.x');
+            expect(listed()).toEqual([]);
+        });
+
+        it('lists the children of a typed path that another row uses, the used child kept disabled', () => {
+            host.items = withoutUsedPaths(
+                buildVariablePickerItems(NESTED_STATE),
+                new Set(['variables.test', 'variables.test.test'])
+            );
+            type(0, 'variables.test.');
+
+            expect(listed()).toEqual(['variables.test.test', 'variables.test.test.a']);
+            expect(disabled()).toEqual(['variables.test.test']);
+        });
+    });
+
     it('puts the clicked path into the row it is open for, then closes', () => {
         type(1, 'variables.pl');
         document.querySelector<HTMLElement>('.vpf-item')!.click();
@@ -259,9 +310,120 @@ describe('VariablePathPicker', () => {
 
         afterEach(() => delete (Element.prototype as Partial<Element>).scrollIntoView);
 
-        it('moves the highlight with the arrow keys, wrapping around, and scrolls it into view', () => {
+        it('highlights nothing when opened on focus, with no edit yet, leaving Enter to the host', () => {
             focus(0);
             expect(highlighted()).toEqual([]);
+            expect(input(0).getAttribute('aria-activedescendant')).toBeNull();
+
+            expect(press(0, 'Enter').defaultPrevented).toBe(false);
+            expect(host.inserted).toEqual([]);
+            expect(host.picker.isOpenFor(0)).toBe(true);
+        });
+
+        it('highlights the first row once the user types or deletes, so Enter picks it without an arrow key', () => {
+            focus(0);
+            type(0, 'variables.us');
+            expect(highlighted()).toEqual(['variables.user']);
+            type(0, 'variables.user.');
+            expect(highlighted()).toEqual(['variables.user.id']);
+
+            // Deleted back to nothing after the prefix: nothing to preselect by.
+            type(0, 'variables.');
+            expect(highlighted()).toEqual([]);
+            expect(press(0, 'Enter').defaultPrevented).toBe(false);
+
+            type(0, 'variables.p');
+            expect(press(0, 'Enter').defaultPrevented).toBe(true);
+            expect(host.inserted).toEqual([[0, 'variables.plan']]);
+            expect(host.picker.isOpenFor(0)).toBe(false);
+        });
+
+        it('highlights nothing when opened on focus, whatever the value, until the user edits it', () => {
+            input(1).value = 'variables.us';
+            focus(1);
+            expect(listed()).toEqual([
+                'variables.user',
+                'variables.user.id',
+                'variables.user.tags',
+                'variables.user.tags[0]',
+            ]);
+            expect(highlighted()).toEqual([]);
+
+            type(1, 'variables.use');
+            expect(highlighted()).toEqual(['variables.user']);
+        });
+
+        it('highlights the first row on the edit that opens the list, e.g. a paste, and on typing after Escape', () => {
+            // Pasted into a field the list is closed for.
+            type(0, 'plan');
+            type(0, 'variables.us');
+            expect(highlighted()).toEqual(['variables.user']);
+
+            input(0).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            expect(host.picker.isOpenFor(0)).toBe(false);
+            type(0, 'variables.p');
+            expect(highlighted()).toEqual(['variables.plan']);
+        });
+
+        it('scrolls the row it highlights by default into view', () => {
+            focus(0);
+            type(0, 'variables.p');
+            // It scrolls after the render, which the app's change detection runs.
+            TestBed.tick();
+
+            expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+            expect(scrollIntoView.mock.contexts.at(-1)).toBe(document.querySelector('.vpf-item--highlighted'));
+        });
+
+        it('restores the default highlight when the pointer leaves, without scrolling the list', () => {
+            focus(0);
+            type(0, 'variables.u');
+            TestBed.tick();
+            hover(2);
+            scrollIntoView.mockClear();
+
+            document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
+            fixture.detectChanges();
+            TestBed.tick();
+
+            expect(highlighted()).toEqual(['variables.user']);
+            expect(scrollIntoView).not.toHaveBeenCalled();
+        });
+
+        it('does not scroll after a filter change that highlights nothing', () => {
+            focus(0);
+            TestBed.tick();
+
+            expect(highlighted()).toEqual([]);
+            expect(scrollIntoView).not.toHaveBeenCalled();
+        });
+
+        it('refilters on a caret move without an edit, preselecting only once the user has edited', () => {
+            // As the persistence key does: the path is what comes before the caret.
+            host.rows.pathOf = (value, element) => value.slice(0, element.selectionStart ?? value.length);
+            const moveCaret = (row: number, caret: number): void => {
+                input(row).setSelectionRange(caret, caret);
+                host.picker.onCaretMove(row, { target: input(row) } as unknown as Event);
+                fixture.detectChanges();
+            };
+            input(0).value = 'variables.plan';
+
+            moveCaret(0, 'variables.pl'.length);
+            expect(listed()).toEqual(['variables.plan']);
+            expect(highlighted()).toEqual([]);
+
+            input(0).value = 'variables.pla';
+            input(0).dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+            expect(highlighted()).toEqual(['variables.plan']);
+
+            // Edited by now, so a caret move that refilters keeps the rule, without resetting it.
+            moveCaret(0, 'variables.p'.length);
+            expect(highlighted()).toEqual(['variables.plan']);
+        });
+
+        it('moves the highlight with the arrow keys, from the top or the bottom with nothing highlighted, wrapping around', () => {
+            focus(0);
 
             const down = press(0, 'ArrowDown');
             expect(highlighted()).toEqual(['variables.user']);
@@ -276,34 +438,35 @@ describe('VariablePathPicker', () => {
             expect(highlighted()).toEqual(['variables.plan']);
             press(0, 'ArrowDown');
             expect(highlighted()).toEqual(['variables.user']);
-            expect(host.picker.isOpenFor(0)).toBe(true);
-        });
+            host.picker.close();
 
-        it('starts from the bottom on ArrowUp, and from no highlight again once the filter changes', () => {
             focus(0);
             press(0, 'ArrowUp');
             expect(highlighted()).toEqual(['variables.plan']);
-
-            type(0, 'variables.u');
-            expect(highlighted()).toEqual([]);
+            expect(press(0, 'Enter').defaultPrevented).toBe(true);
+            expect(host.inserted).toEqual([[0, 'variables.plan']]);
         });
 
-        it('picks the highlighted path on Enter, and leaves Enter to the host with nothing highlighted', () => {
-            type(1, 'variables.us');
+        it('leaves Enter to the host once typed when nothing matches, or every row listed is in use', () => {
+            type(1, 'variables.nothing');
+            expect(listed()).toEqual([]);
+            expect(highlighted()).toEqual([]);
             expect(press(1, 'Enter').defaultPrevented).toBe(false);
+            host.picker.close();
+
+            host.items = buildVariablePickerItems(STATE).map((item) => ({ ...item, disabled: true }));
+            focus(0);
+            type(0, 'variables.u');
+            expect(listed().length).toBeGreaterThan(0);
+            expect(highlighted()).toEqual([]);
+            expect(press(0, 'ArrowDown').defaultPrevented).toBe(true);
+            expect(highlighted()).toEqual([]);
+            expect(press(0, 'Enter').defaultPrevented).toBe(false);
             expect(host.inserted).toEqual([]);
-
-            press(1, 'ArrowDown');
-            press(1, 'ArrowDown');
-            expect(press(1, 'Enter').defaultPrevented).toBe(true);
-
-            expect(host.inserted).toEqual([[1, 'variables.user.id']]);
-            expect(host.picker.isOpenFor(1)).toBe(false);
         });
 
         it('follows the pointer, so Enter picks the hovered row', () => {
             focus(0);
-            press(0, 'ArrowDown');
             hover(4);
             expect(highlighted()).toEqual(['variables.plan']);
 
@@ -311,15 +474,23 @@ describe('VariablePathPicker', () => {
             expect(host.inserted).toEqual([[0, 'variables.plan']]);
         });
 
-        it('drops the highlight when the pointer leaves the list, so Enter goes back to the host', () => {
+        it('drops the hovered row when the pointer leaves: to nothing while untouched, to the first row once typed', () => {
+            const leave = (): void => {
+                document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
+                fixture.detectChanges();
+            };
             focus(0);
             hover(4);
-            document.querySelector('.vpf-list')!.dispatchEvent(new MouseEvent('mouseleave'));
-            fixture.detectChanges();
-
+            leave();
             expect(highlighted()).toEqual([]);
             expect(press(0, 'Enter').defaultPrevented).toBe(false);
-            expect(host.inserted).toEqual([]);
+
+            type(0, 'variables.u');
+            hover(2);
+            leave();
+            expect(highlighted()).toEqual(['variables.user']);
+            expect(press(0, 'Enter').defaultPrevented).toBe(true);
+            expect(host.inserted).toEqual([[0, 'variables.user']]);
         });
 
         it('picks only on a plain Enter', () => {
@@ -374,7 +545,7 @@ describe('VariablePathPicker', () => {
             expect(press(0, 'Enter').defaultPrevented).toBe(false);
         });
 
-        it('passes a disabled row by, with the arrow keys and on hover', () => {
+        it('passes a disabled row by: the first row once typed, the arrow keys and hover', () => {
             host.items = withoutUsedPaths(buildVariablePickerItems(STATE), new Set(['variables.user']));
             focus(0);
 
@@ -384,6 +555,9 @@ describe('VariablePathPicker', () => {
             expect(highlighted()).toEqual(['variables.user.id']);
             press(0, 'ArrowUp');
             expect(highlighted()).toEqual(['variables.plan']);
+
+            type(0, 'variables.u');
+            expect(highlighted()).toEqual(['variables.user.id']);
         });
     });
 

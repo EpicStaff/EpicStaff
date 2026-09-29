@@ -909,7 +909,7 @@ export class InputMapComponent implements OnInit, OnChanges {
         this.variablePicker.onInput(rowIndex, event);
     }
 
-    /** Enter picks the highlighted variable; with none highlighted it adds a row, as in the key input. */
+    /** Enter picks the highlighted variable; with none highlighted, e.g. on the untouched prefill, it adds a row as in the key input. */
     onValueKeydown(rowIndex: number, event: KeyboardEvent): void {
         this.variablePicker.onKeydown(rowIndex, event);
         if (isPlainEnter(event) && !event.defaultPrevented) this.onEnterKey(event, rowIndex);

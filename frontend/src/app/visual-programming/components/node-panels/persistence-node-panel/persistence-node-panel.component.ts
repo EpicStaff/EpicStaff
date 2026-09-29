@@ -107,6 +107,7 @@ const SUGGESTION_LIMIT = 20;
 const CARET_KEYS: ReadonlySet<string> = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
 const CANVAS_SYNC_DEBOUNCE_MS = 300;
 const DUPLICATE_KEY_HINT = 'Duplicate key — use a different key';
+const KEY_HELP = 'Use {variables.name} to insert a variable into the key';
 const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
 const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
 const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table', iconOnly: true };
@@ -177,6 +178,8 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected readonly placeholderHints = signal<Record<number, string>>({});
     // Each key as backdrop HTML, its state path placeholders marked the way the task node marks variables.
     protected readonly keyHighlights = signal<string[]>([]);
+    // The row whose key was focused last, which alone carries the key help (keyHelpFor).
+    private readonly keyHelpRow = signal<AbstractControl | null>(null);
     private readonly suggestions = signal<string[]>([]);
     private readonly activeSuggestionIndex = signal(0);
     // The key input the suggestions belong to; null once they are dismissed, so a late search is dropped.
@@ -461,9 +464,12 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         return this.entries.length >= PERSISTENCE_MAX_KEYS;
     }
 
+    /** Focuses the new row's key, so its key help shows under it as the user starts typing. */
     protected addEntry(): void {
         if (this.atKeyLimit) return;
         this.entries.push(this.createNewEntryGroup());
+        const newIndex = this.entries.length - 1;
+        afterNextRender(() => this.keyInputOf(newIndex)?.focus(), { injector: this.injector });
     }
 
     protected removeEntry(index: number): void {
@@ -495,7 +501,11 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     /** The caret moved without typing, so the placeholder it is in, if any, may be another one. */
     protected onKeyCaretMove(entryIndex: number, event: Event): void {
         if (event instanceof KeyboardEvent && !CARET_KEYS.has(event.key)) return;
-        this.keyVariablePicker.onInput(entryIndex, event);
+        this.keyVariablePicker.onCaretMove(entryIndex, event);
+    }
+
+    protected onKeyFocus(entryIndex: number): void {
+        this.keyHelpRow.set(this.entries.at(entryIndex));
     }
 
     protected onKeyBlur(entryIndex: number, event: FocusEvent): void {
@@ -540,6 +550,20 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
     protected existenceHintFor(index: number): string | null {
         const key: string = this.entries.at(index).value.key ?? '';
         return existenceHint(this.mode(), this.lookups()[key]);
+    }
+
+    /**
+     * How to put a variable into a key, under the key focused last only, so a long list carries one
+     * line. It stays after blur, so rows below don't jump under a click. Any hint or error the key
+     * shows takes its place.
+     */
+    protected keyHelpFor(index: number): string | null {
+        const row = this.entries.at(index);
+        if (row !== this.keyHelpRow() || this.configurationLocked()) return null;
+        const key = row.get('key');
+        if (key === null || (key.invalid && key.touched)) return null;
+        const shownHint = this.placeholderHints()[index] ?? this.keyHintFor(index) ?? this.existenceHintFor(index);
+        return shownHint === null ? KEY_HELP : null;
     }
 
     /**
@@ -670,6 +694,10 @@ export class PersistenceNodePanelComponent extends BaseSidePanel<PersistenceNode
         if (this.atKeyLimit) return;
         this.entries.insert(entryIndex + 1, this.createNewEntryGroup());
         afterNextRender(() => this.rowFields(entryIndex + 1)[0]?.focus(), { injector: this.injector });
+    }
+
+    private keyInputOf(entryIndex: number): HTMLInputElement | null {
+        return this.rowFields(entryIndex).find((field) => field.classList.contains('key-input')) ?? null;
     }
 
     /** A row's inputs in the order they show. */

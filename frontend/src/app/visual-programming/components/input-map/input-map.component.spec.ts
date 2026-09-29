@@ -56,7 +56,7 @@ describe('InputMapComponent variable picker', () => {
 
     afterEach(() => fixture.destroy());
 
-    it('lists an object before its fields, and keeps it above the fields a filter matches', () => {
+    it('lists an object before its fields, keeps it above the fields a filter matches, and leaves it out once typed', () => {
         valueInput().dispatchEvent(new FocusEvent('focus'));
         fixture.detectChanges();
         expect(listed()).toEqual([
@@ -73,7 +73,7 @@ describe('InputMapComponent variable picker', () => {
         ]);
 
         typeValue('variables.my_object.user_e');
-        expect(listed()).toEqual(['variables.my_object', 'variables.my_object.user_email']);
+        expect(listed()).toEqual(['variables.my_object.user_email']);
     });
 
     describe('with another row using the object', () => {
@@ -110,10 +110,19 @@ describe('InputMapComponent variable picker', () => {
             expect(valueInputs()[1].getAttribute('aria-expanded')).toBe('true');
         });
 
-        it('picks a field with the arrow keys and Enter, passing the object by', () => {
-            Element.prototype.scrollIntoView = vi.fn();
+        it('adds a row on Enter on the untouched variables. prefill, as before', () => {
+            press('Enter');
 
-            press('ArrowDown');
+            expect(pairs().length).toBe(3);
+            expect(pairs().at(1).value.value).toBe('variables.');
+            expect(listed()).toEqual([]);
+        });
+
+        it('picks the first field on Enter once something is typed, passing the object by', () => {
+            valueInputs()[1].value = 'variables.my';
+            valueInputs()[1].dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+
             press('Enter');
 
             expect(pairs().at(1).value.value).toBe('variables.my_object.user_id');
@@ -122,11 +131,27 @@ describe('InputMapComponent variable picker', () => {
             expect(valueInputs()[1].getAttribute('aria-expanded')).toBe('false');
         });
 
-        it('still adds a row on Enter while nothing is highlighted', () => {
+        it('picks another field with the arrow keys and Enter', () => {
+            Element.prototype.scrollIntoView = vi.fn();
+
+            // From nothing highlighted, down passes the object by.
+            press('ArrowDown');
+            press('ArrowDown');
+            press('Enter');
+
+            expect(pairs().at(1).value.value).toBe('variables.my_object.user_email');
+            expect(pairs().length).toBe(2);
+        });
+
+        it('still adds a row on Enter while the list has nothing to pick', () => {
+            valueInputs()[1].value = 'variables.nothing';
+            valueInputs()[1].dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+
             press('Enter');
 
             expect(pairs().length).toBe(3);
-            expect(pairs().at(1).value.value).toBe('variables.');
+            expect(pairs().at(1).value.value).toBe('variables.nothing');
             expect(listed()).toEqual([]);
         });
 

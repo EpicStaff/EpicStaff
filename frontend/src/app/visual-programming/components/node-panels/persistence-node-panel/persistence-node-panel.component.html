@@ -117,6 +117,7 @@
                                             [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
                                             (input)="onKeyInput(i, $event)"
                                             (keydown)="onKeyKeydown(i, $event)"
+                                            (focus)="onKeyFocus(i)"
                                             (blur)="onKeyBlur(i, $event)"
                                             (click)="onKeyCaretMove(i, $event)"
                                             (keyup)="onKeyCaretMove(i, $event)"
@@ -131,6 +132,9 @@
                                     }
                                     @if (existenceHintFor(i); as hint) {
                                         <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                    @if (keyHelpFor(i); as help) {
+                                        <div class="entry-help">{{ help }}</div>
                                     }
                                 </div>
                             </ng-template>

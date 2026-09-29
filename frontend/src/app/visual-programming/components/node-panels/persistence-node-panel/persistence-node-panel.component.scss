@@ -203,7 +203,9 @@
     height: 34px;
 }
 
-.entry-hint {
+// The key help (.entry-help) is as muted as a hint, which takes its place.
+.entry-hint,
+.entry-help {
     @include controls.hint-text;
 }
 

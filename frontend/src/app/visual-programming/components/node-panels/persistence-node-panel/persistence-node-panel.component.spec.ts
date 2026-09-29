@@ -27,6 +27,7 @@ import { ToastService } from '../../../../services/notifications';
 import {
     hasValidPersistenceEntries,
     invalidPersistenceNodeMessages,
+    PERSISTENCE_KEY_MAX_LENGTH,
 } from '../../../core/helpers/persistence-node.helpers';
 import { FlowModel } from '../../../core/models/flow.model';
 import { NodeModel, PersistenceNodeModel } from '../../../core/models/node.model';
@@ -1679,7 +1680,7 @@ describe('PersistenceNodePanelComponent', () => {
         });
 
         for (const mode of ['read', 'write'] as const) {
-            it(`lists an object before its fields in ${mode}, as the Input List does, also when a filter matches only the fields`, () => {
+            it(`lists an object before its fields in ${mode}, as the Input List does, also when a filter matches only the fields, and only its fields once typed`, () => {
                 const { panel, fixture } = createPanel(nodeWith(mode, [{ key: 'profile', value: 'variables.' }]), {
                     renderTemplate: true,
                     initialState: {
@@ -1693,9 +1694,10 @@ describe('PersistenceNodePanelComponent', () => {
                 typeValue(fixture, 'variables.user');
                 expect(listed()).toEqual(all);
                 typeValue(fixture, 'variables.my_object.');
-                expect(listed()).toEqual(all);
+                expect(listed()).toEqual(['variables.my_object.user_id', 'variables.my_object.user_email']);
 
                 // The object itself is a valid read target and write source.
+                typeValue(fixture, 'variables.');
                 document.querySelector<HTMLElement>('.vpf-item')!.click();
                 fixture.detectChanges();
                 expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.my_object');
@@ -1909,7 +1911,7 @@ describe('PersistenceNodePanelComponent', () => {
                 expect(listed()).toEqual([]);
             });
 
-            it('picks nothing on Enter once the pointer has left the list', () => {
+            it('picks nothing on Enter once the pointer has left the list while the prefill is untouched', () => {
                 const { panel, fixture } = openLoaded();
                 const input = typeValue(fixture, 'variables.', 1);
                 document.querySelectorAll('.vpf-item')[2].dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
@@ -2082,6 +2084,64 @@ describe('PersistenceNodePanelComponent', () => {
             expect(listed()).toEqual([]);
             // The pick took Enter, so no row was added.
             expect(entriesOf(panel).length).toBe(1);
+        });
+
+        it('highlights nothing on the text that opened it, and the first snippet once typed past it, which Enter picks', () => {
+            const { panel, fixture } = openWithStoredKey();
+
+            typeKey(fixture, 'p_{variables.');
+            expect(document.querySelectorAll('.vpf-item--highlighted').length).toBe(0);
+            const input = typeKey(fixture, 'p_{variables.user.');
+            expect(listed()).toEqual(['variables.user.id']);
+            expect(press(fixture, input, 'Enter').defaultPrevented).toBe(true);
+
+            expect(keyOf(panel)).toBe('p_{variables.user.id}');
+            expect(entriesOf(panel).length).toBe(1);
+        });
+
+        it('leaves Enter to the row when no snippet matches, which moves on to the variable', () => {
+            const { panel, fixture } = openWithStoredKey();
+
+            const input = typeKey(fixture, 'p_{variables.nothing');
+            expect(listed()).toEqual([]);
+            input.focus();
+            expect(press(fixture, input, 'Enter').defaultPrevented).toBe(true);
+
+            expect(keyOf(panel)).toBe('p_{variables.nothing');
+            expect(document.activeElement?.getAttribute('aria-label')).toBe('Variable path');
+        });
+
+        it('highlights nothing on an empty placeholder, the first snippet once one is typed', () => {
+            const { fixture } = openWithStoredKey();
+            const highlighted = (): string[] =>
+                Array.from(document.querySelectorAll<HTMLElement>('.vpf-item--highlighted'), (item) => item.title);
+
+            typeKey(fixture, 'p_{variables.');
+            expect(highlighted()).toEqual([]);
+            typeKey(fixture, 'p_{variables.u');
+            expect(highlighted()).toEqual(['variables.user']);
+        });
+
+        it('follows the caret into a placeholder without preselecting, as moving it is no edit', () => {
+            const { fixture } = createPanel(
+                nodeWith('write', [{ key: 'p_{variables.user', value: 'variables.plan' }]),
+                {
+                    renderTemplate: true,
+                    initialState,
+                }
+            );
+            const input = keyInput(fixture);
+            input.focus();
+            input.setSelectionRange('p_{variables.use'.length, 'p_{variables.use'.length);
+            input.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true }));
+            fixture.detectChanges();
+
+            expect(listed()).toEqual(['variables.user', 'variables.user.id']);
+            expect(document.querySelectorAll('.vpf-item--highlighted').length).toBe(0);
+            expect(press(fixture, input, 'Enter').defaultPrevented).toBe(true);
+            // The picker left Enter alone, so the row moved on to its variable.
+            expect(entriesOf(fixture.componentInstance).at(0).get('key')!.value).toBe('p_{variables.user');
+            expect(document.activeElement?.getAttribute('aria-label')).toBe('Variable path');
         });
 
         it('shows the stored key suggestions or the snippets, never both', () => {
@@ -2258,7 +2318,36 @@ describe('PersistenceNodePanelComponent', () => {
             expect(document.activeElement).toBe(key);
         });
 
-        it('lets the open variable picker take Enter to pick its highlighted variable', () => {
+        for (const mode of ['read', 'write'] as const) {
+            it(`moves on in ${mode} from the untouched variables. prefill, the open picker highlighting nothing`, () => {
+                const { panel, fixture } = createPanel(nodeWith(mode, [{ key: 'a', value: 'variables.' }]), {
+                    renderTemplate: true,
+                    initialState: { variables: { plan: 'free' } },
+                });
+                const valueField = fieldsOf(fixture, 0).find(
+                    (field) => field.getAttribute('aria-label') === 'Variable path'
+                )!;
+                valueField.focus();
+                fixture.detectChanges();
+                expect(document.querySelector('app-var-picker-flat')).not.toBeNull();
+                expect(document.querySelectorAll('.vpf-item--highlighted').length).toBe(0);
+
+                expect(pressEnter(fixture, valueField).defaultPrevented).toBe(true);
+                TestBed.tick();
+
+                expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.');
+                // Read shows `variables.x = key`, so its variable moves on to the key; write's adds a row.
+                if (mode === 'read') {
+                    expect(document.activeElement).toBe(fieldsOf(fixture, 0)[1]);
+                    expect(entriesOf(panel).length).toBe(1);
+                } else {
+                    expect(entriesOf(panel).length).toBe(2);
+                    expect(document.activeElement).toBe(fieldsOf(fixture, 1)[0]);
+                }
+            });
+        }
+
+        it('lets the open variable picker take Enter to pick its first variable once something is typed', () => {
             const { panel, fixture } = createPanel(nodeWith('write', [{ key: 'a', value: 'variables.' }]), {
                 renderTemplate: true,
                 initialState: { variables: { plan: 'free' } },
@@ -2266,7 +2355,8 @@ describe('PersistenceNodePanelComponent', () => {
             const value = fieldsOf(fixture, 0)[1];
             value.focus();
             fixture.detectChanges();
-            value.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+            value.value = 'variables.p';
+            value.dispatchEvent(new Event('input'));
             fixture.detectChanges();
 
             pressEnter(fixture, value);
@@ -2274,6 +2364,35 @@ describe('PersistenceNodePanelComponent', () => {
             expect(entriesOf(panel).getRawValue()).toEqual([{ key: 'a', value: 'variables.plan' }]);
             expect(document.activeElement).toBe(value);
         });
+
+        for (const mode of ['read', 'write'] as const) {
+            it(`moves on in ${mode} when the open variable picker has nothing to pick`, () => {
+                const { panel, fixture } = createPanel(nodeWith(mode, [{ key: 'a', value: 'variables.nothing' }]), {
+                    renderTemplate: true,
+                    initialState: { variables: { plan: 'free' } },
+                });
+                const valueField = fieldsOf(fixture, 0).find(
+                    (field) => field.getAttribute('aria-label') === 'Variable path'
+                )!;
+                valueField.focus();
+                valueField.dispatchEvent(new Event('input'));
+                fixture.detectChanges();
+                expect(document.querySelector('app-var-picker-flat')).not.toBeNull();
+
+                expect(pressEnter(fixture, valueField).defaultPrevented).toBe(true);
+                TestBed.tick();
+
+                expect(entriesOf(panel).at(0).get('value')!.value).toBe('variables.nothing');
+                // Read shows `variables.x = key`, so its variable moves on to the key; write's adds a row.
+                if (mode === 'read') {
+                    expect(document.activeElement).toBe(fieldsOf(fixture, 0)[1]);
+                    expect(entriesOf(panel).length).toBe(1);
+                } else {
+                    expect(entriesOf(panel).length).toBe(2);
+                    expect(document.activeElement).toBe(fieldsOf(fixture, 1)[0]);
+                }
+            });
+        }
 
         // Renders 500 rows, as the Add key limit spec does.
         it('adds no row at the key limit, where the limit message shows', { timeout: 20_000 }, () => {
@@ -2290,6 +2409,123 @@ describe('PersistenceNodePanelComponent', () => {
 
             expect(entriesOf(panel).length).toBe(500);
             expect(hintsOf(fixture)).toEqual(['A Key-Value node can have at most 500 keys']);
+        });
+    });
+
+    describe('key help', () => {
+        const KEY_HELP = 'Use {variables.name} to insert a variable into the key';
+        const helpsOf = (fixture: ComponentFixture<PersistenceNodePanelComponent>): string[][] =>
+            Array.from(fixture.nativeElement.querySelectorAll('.entry-row'), (row: Element) =>
+                Array.from(row.querySelectorAll('.entry-help'), (help) => help.textContent!.trim())
+            );
+        const keyOfRow = (fixture: ComponentFixture<PersistenceNodePanelComponent>, row: number): HTMLInputElement =>
+            fixture.nativeElement.querySelectorAll('input[aria-label="Key"]')[row];
+        const focusKey = (fixture: ComponentFixture<PersistenceNodePanelComponent>, row: number): HTMLInputElement => {
+            const input = keyOfRow(fixture, row);
+            input.focus();
+            fixture.detectChanges();
+            return input;
+        };
+        const typeKey = (
+            fixture: ComponentFixture<PersistenceNodePanelComponent>,
+            row: number,
+            text: string
+        ): HTMLInputElement => {
+            const input = focusKey(fixture, row);
+            input.value = text;
+            input.dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+            return input;
+        };
+
+        for (const mode of ['read', 'write', 'delete'] as const) {
+            it(`shows under the new row's key in ${mode} once Add key focuses it`, () => {
+                const entries = mode === 'delete' ? [{ key: 'a' }] : [{ key: 'a', value: 'variables.a' }];
+                const { fixture } = createPanel(nodeWith(mode, entries), { renderTemplate: true });
+                expect(helpsOf(fixture)).toEqual([[]]);
+
+                fixture.nativeElement.querySelector('.add-entry').click();
+                fixture.detectChanges();
+                TestBed.tick();
+                fixture.detectChanges();
+
+                expect(document.activeElement).toBe(keyOfRow(fixture, 1));
+                expect(helpsOf(fixture)).toEqual([[], [KEY_HELP]]);
+            });
+        }
+
+        it('stays under the key focused last only, also after blur, so a long list carries one line', () => {
+            const { fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'a', value: 'variables.a' },
+                    { key: 'b', value: 'variables.b' },
+                    { key: 'c', value: 'variables.c' },
+                ]),
+                { renderTemplate: true }
+            );
+
+            focusKey(fixture, 2);
+            expect(helpsOf(fixture)).toEqual([[], [], [KEY_HELP]]);
+            focusKey(fixture, 0);
+            expect(helpsOf(fixture)).toEqual([[KEY_HELP], [], []]);
+
+            keyOfRow(fixture, 0).blur();
+            fixture.detectChanges();
+            expect(helpsOf(fixture)).toEqual([[KEY_HELP], [], []]);
+        });
+
+        it('goes with its row when the row is removed', () => {
+            const { fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'a', value: 'variables.a' },
+                    { key: 'b', value: 'variables.b' },
+                ]),
+                { renderTemplate: true }
+            );
+            focusKey(fixture, 0);
+
+            fixture.nativeElement.querySelector('.remove-entry').click();
+            fixture.detectChanges();
+
+            expect(helpsOf(fixture)).toEqual([[]]);
+        });
+
+        it('gives way to a hint or an error on its key, and comes back once it is fixed', () => {
+            const { fixture } = createPanel(
+                nodeWith('write', [
+                    { key: 'a', value: 'variables.a' },
+                    { key: 'b', value: 'variables.b' },
+                ]),
+                { renderTemplate: true }
+            );
+
+            let input = typeKey(fixture, 1, 'b_{variables.a');
+            expect(helpsOf(fixture)).toEqual([[], []]);
+            expect(hintsOf(fixture)).toEqual(['Close each { with } around a state path, like {variables.user.id}']);
+
+            input = typeKey(fixture, 1, 'b-c');
+            expect(helpsOf(fixture)).toEqual([[], []]);
+            expect(hintsOf(fixture)).toEqual([
+                'Use letters, digits and _ outside {placeholders}, not starting with a digit',
+            ]);
+
+            // A key repeated in write, which both rows flag.
+            input = typeKey(fixture, 1, 'a');
+            expect(helpsOf(fixture)).toEqual([[], []]);
+            expect(hintsOf(fixture)).toEqual([
+                'Duplicate key — use a different key',
+                'Duplicate key — use a different key',
+            ]);
+
+            // Too long: only the red border shows, which the help still gives way to once touched.
+            input = typeKey(fixture, 1, 'k'.repeat(PERSISTENCE_KEY_MAX_LENGTH + 1));
+            input.blur();
+            entriesOf(fixture.componentInstance).at(1).get('key')!.markAsTouched();
+            fixture.detectChanges();
+            expect(helpsOf(fixture)).toEqual([[], []]);
+
+            typeKey(fixture, 1, 'b_{variables.a}');
+            expect(helpsOf(fixture)).toEqual([[], [KEY_HELP]]);
         });
     });
 

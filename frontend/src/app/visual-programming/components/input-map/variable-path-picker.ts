@@ -73,10 +73,12 @@ export function isPlainEnter(event: KeyboardEvent): boolean {
  * persistence node's value inputs and key placeholders, for any list of rows: it opens on focus or
  * typing once the path (the value, or what pathOf takes from it) starts with `variables.`, filters by what
  * follows the prefix, closes on an exact match, a pick, Escape (which goes no further), a click
- * outside or the input's blur, and never covers more than one row. The arrow keys move a highlight
- * that Enter picks, while focus stays in the value input. Hosts pass the input's keydown and blur
- * to onKeydown and onBlur, and bind its combobox attributes to isOpenFor, listboxIdFor and
- * activeDescendantFor.
+ * outside or the input's blur, and never covers more than one row. Once the user has edited the
+ * input and something follows the prefix, its first row that can be picked is highlighted, so Enter
+ * picks it; the arrow keys move the highlight, while focus stays in the value input. Hosts pass the
+ * input's focus, input, keydown and blur to onFocus, onInput, onKeydown and onBlur, its caret moves
+ * without an edit to onCaretMove when pathOf reads the caret, and bind its combobox attributes to
+ * isOpenFor, listboxIdFor and activeDescendantFor.
  * Create it in an injection context, e.g. as a component field.
  */
 export class VariablePathPicker {
@@ -105,28 +107,22 @@ export class VariablePathPicker {
         this.open(rowIndex, input);
     }
 
+    /** The user changed the input (typing, deleting, pasting): the edit that lets the first row be preselected. */
     public onInput(rowIndex: number, event: Event): void {
-        const input = event.target as HTMLInputElement;
-        const path = this.pathOf(input);
+        this.follow(rowIndex, event.target as HTMLInputElement, true);
+    }
 
-        if (path.startsWith(VARIABLES_PREFIX)) {
-            const query = path.slice(VARIABLES_PREFIX.length);
-            if (this.isExactVariableMatch(rowIndex, query)) {
-                this.close();
-                return;
-            }
-            if (!this.isOpenFor(rowIndex)) {
-                this.open(rowIndex, input);
-            }
-            this.picker?.setFilter(query);
-        } else if (this.isOpenFor(rowIndex)) {
-            this.close();
-        }
+    /**
+     * The input's caret moved without an edit, e.g. on an arrow key or a click, so the path at it
+     * (see pathOf) may be another one: the list follows it, but no row is preselected for it.
+     */
+    public onCaretMove(rowIndex: number, event: Event): void {
+        this.follow(rowIndex, event.target as HTMLInputElement, false);
     }
 
     /**
      * ArrowDown and ArrowUp move the highlight, Enter picks it. A key the picker takes comes back
-     * defaultPrevented, so a host can give Enter its own meaning when nothing is highlighted.
+     * defaultPrevented, so a host can give Enter its own meaning while nothing is highlighted.
      * (Returns nothing: Angular prevents the default of any template handler that returns false.)
      */
     public onKeydown(rowIndex: number, event: KeyboardEvent): void {
@@ -175,6 +171,21 @@ export class VariablePathPicker {
         this.anchor = null;
     }
 
+    private follow(rowIndex: number, input: HTMLInputElement, byEdit: boolean): void {
+        const path = this.pathOf(input);
+        if (!path.startsWith(VARIABLES_PREFIX)) {
+            if (this.isOpenFor(rowIndex)) this.close();
+            return;
+        }
+        const query = path.slice(VARIABLES_PREFIX.length);
+        if (this.isExactVariableMatch(rowIndex, query)) {
+            this.close();
+            return;
+        }
+        this.open(rowIndex, input);
+        this.picker?.setFilter(query, byEdit);
+    }
+
     private pick(rowIndex: number, path: string): void {
         if (this.anchor !== null) this.rows.insert(rowIndex, path, this.anchor);
         this.close();
@@ -217,12 +228,9 @@ export class VariablePathPicker {
 
         const picker = overlayRef.attach(new ComponentPortal(VarPickerFlatComponent, this.viewContainerRef)).instance;
         this.picker = picker;
-        picker.setItems(this.rows.itemsFor(rowIndex));
-
         const currentPath = this.pathOf(anchor);
-        if (currentPath.startsWith(VARIABLES_PREFIX)) {
-            picker.setFilter(currentPath.slice(VARIABLES_PREFIX.length));
-        }
+        const query = currentPath.startsWith(VARIABLES_PREFIX) ? currentPath.slice(VARIABLES_PREFIX.length) : '';
+        picker.setItems(this.rows.itemsFor(rowIndex), query);
 
         this.subscriptions = [
             picker.pathSelected.subscribe((path: string) => this.pick(rowIndex, path)),
