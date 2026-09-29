@@ -737,7 +737,9 @@ class QuickstartView(APIView):
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
-            is_synced = quickstart_service.is_synced(last_config) if last_config else False
+            is_synced = (
+                quickstart_service.is_synced(last_config, org_id=org_id) if last_config else False
+            )
 
             data = QuickstartStatusSerializer(
                 {
@@ -809,11 +811,10 @@ class QuickstartApplyView(APIView):
     Applies a quickstart config to DefaultModels.
     If config_name is omitted, the most recently created quickstart config is used.
 
-    Writes the global DefaultModels singleton (install-wide defaults shared by
-    every organization), so it is restricted to superadmins.
+    Writes the active organization's DefaultModels row and is restricted to superadmins.
     """
 
-    # TODO: refactor to set default models per org based on user permissions
+    # TODO: refactor to set default models based on user permissions
     permission_classes = [IsAuthenticated, IsSuperadmin]
     _org_context = OrgContextService()
 
@@ -827,8 +828,11 @@ class QuickstartApplyView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        dm = quickstart_service.apply_to_default_models(last["config_name"])
-        return Response(DefaultModelsSerializer(dm).data, status=status.HTTP_200_OK)
+        dm = quickstart_service.apply_to_default_models(last["config_name"], org_id=org_id)
+        return Response(
+            DefaultModelsSerializer(dm, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
