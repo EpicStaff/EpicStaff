@@ -16,7 +16,8 @@ import {
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { WebhookTriggerModel } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
@@ -44,6 +45,7 @@ import { WebhookStatus } from './webhook-status.model';
         HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -187,4 +189,6 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     protected readonly WebhookStatus = WebhookStatus;
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

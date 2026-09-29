@@ -1,6 +1,7 @@
 <div
     class="editor-wrapper"
     [class.panel-open]="!!sidePanelService.selectedNode()"
+    [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
         appMouseTracker
@@ -120,6 +121,7 @@
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
+                    [fNodeDraggingDisabled]="flowReadOnly.isReadOnly()"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
@@ -149,7 +151,10 @@
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
                     [fReassignableStart]="true"
-                    [fReassignDisabled]="reassignSuppressedConnectionIds().has(connection.id)"
+                    [fReassignDisabled]="
+                        flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
+                    "
+                    [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
@@ -212,22 +217,24 @@
                             stroke="none"
                         ></path>
                     </svg>
-                    <div
-                        fConnectionContent
-                        class="connection-center"
-                        [position]="CONNECTION_DELETE_BUTTON_POSITION"
-                    >
-                        <button
-                            type="button"
-                            class="icon-button delete-icon"
-                            matTooltip="Delete connection"
-                            matTooltipPosition="above"
-                            aria-label="Delete connection"
-                            (click)="onDeleteConnection($event, connection.id)"
+                    @if (!flowReadOnly.isReadOnly()) {
+                        <div
+                            fConnectionContent
+                            class="connection-center"
+                            [position]="CONNECTION_DELETE_BUTTON_POSITION"
                         >
-                            <i class="ti ti-trash"></i>
-                        </button>
-                    </div>
+                            <button
+                                type="button"
+                                class="icon-button delete-icon"
+                                matTooltip="Delete connection"
+                                matTooltipPosition="above"
+                                aria-label="Delete connection"
+                                (click)="onDeleteConnection($event, connection.id)"
+                            >
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </div>
+                    }
 
                     <f-connection-waypoints
                         appWaypointTooltip
@@ -297,25 +304,27 @@
                 ></app-flow-export-import-button>
                 @if (currentFlowId) {
                     <app-flow-files-button
-                        *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                        *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
                         [flowId]="currentFlowId"
                         [flowName]="flowName"
                     ></app-flow-files-button>
                 }
-                <button
-                    #arrangeBtnRef
-                    class="arrange-btn"
-                    title="Auto arrange"
-                    matTooltip="Auto arrange"
-                    matTooltipPosition="below"
-                    [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
-                    (click)="onAutoArrange()"
-                >
-                    <app-svg-icon
-                        icon="auto-arrange"
-                        size="38px"
-                    ></app-svg-icon>
-                </button>
+                @if (!flowReadOnly.isReadOnly()) {
+                    <button
+                        #arrangeBtnRef
+                        class="arrange-btn"
+                        title="Auto arrange"
+                        matTooltip="Auto arrange"
+                        matTooltipPosition="below"
+                        [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                        (click)="onAutoArrange()"
+                    >
+                        <app-svg-icon
+                            icon="auto-arrange"
+                            size="38px"
+                        ></app-svg-icon>
+                    </button>
+                }
                 <button
                     class="arrange-btn settings-icon-btn"
                     (click)="openSettings()"
@@ -328,7 +337,9 @@
             </div>
         </div>
     </div>
-    <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
+    @if (!flowReadOnly.isReadOnly()) {
+        <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
+    }
 
     @if (showContextMenu()) {
         <app-flow-graph-context-menu

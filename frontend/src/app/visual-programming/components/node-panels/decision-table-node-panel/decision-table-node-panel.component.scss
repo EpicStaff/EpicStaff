@@ -59,35 +59,6 @@
     white-space: nowrap;
 }
 
-// Toggle switch — OFF state (DT = not a CDT)
-.cdt-toggle {
-    position: relative;
-    width: 50px;
-    height: 20px;
-    background: var(--white-alpha-15);
-    border-radius: 8px;
-    cursor: pointer;
-    border: none;
-    padding: 0;
-    transition: background 0.2s ease;
-    margin-top: 2px;
-
-    &:hover {
-        background: var(--purple-alpha-35);
-    }
-
-    .toggle-thumb {
-        position: absolute;
-        top: 3px;
-        left: 3px;
-        width: 14px;
-        height: 14px;
-        background: var(--white);
-        border-radius: 30%;
-        transition: transform 0.2s ease;
-    }
-}
-
 .grid-section {
     display: flex;
     flex-direction: column;

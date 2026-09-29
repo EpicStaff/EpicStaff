@@ -8,6 +8,7 @@ import {
     EventEmitter,
     inject,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -65,7 +66,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     position="right"
                     text="Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'."
                 ></app-help-tooltip>
-                @if (showTestMode) {
+                @if (showTestMode && !readonly()) {
                     <div class="test-mode-header">
                         <span>Test mode</span>
                         <app-toggle-switch
@@ -76,7 +77,37 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
             </div>
 
-            @if (!testMode) {
+            @if (readonly()) {
+                @if (hasNoMeaningfulPairs()) {
+                    <span class="readonly-empty">—</span>
+                } @else {
+                    <div
+                        class="readonly-table"
+                        role="table"
+                        aria-label="Input list"
+                    >
+                        @for (pair of pairs.controls; track pair) {
+                            <div
+                                class="readonly-row"
+                                role="row"
+                            >
+                                <div
+                                    class="readonly-cell"
+                                    role="cell"
+                                >
+                                    {{ pair.value.key || '—' }}
+                                </div>
+                                <div
+                                    class="readonly-cell"
+                                    role="cell"
+                                >
+                                    {{ pair.value.value || '—' }}
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            } @else if (!testMode) {
                 <!-- Normal mode: input map list -->
                 <div
                     formArrayName="input_map"
@@ -111,29 +142,33 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         (input)="onValueInput(i, $event)"
                                     />
                                 </div>
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
-                                    class="delete-icon"
-                                    matTooltip="Remove"
-                                    matTooltipPosition="above"
-                                    (click)="removePair(i)"
-                                ></app-svg-icon>
+                                @if (!parentForm.disabled) {
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                        class="delete-icon"
+                                        matTooltip="Remove"
+                                        matTooltipPosition="above"
+                                        (click)="removePair(i)"
+                                    ></app-svg-icon>
+                                }
                             </div>
                         </div>
                     }
                 </div>
-                <button
-                    type="button"
-                    class="add-pair-btn"
-                    (click)="addPair()"
-                >
-                    <app-svg-icon
-                        icon="plus"
-                        size="16px"
-                    ></app-svg-icon>
-                    Add Input
-                </button>
+                @if (!parentForm.disabled) {
+                    <button
+                        type="button"
+                        class="add-pair-btn"
+                        (click)="addPair()"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="16px"
+                        ></app-svg-icon>
+                        Add Input
+                    </button>
+                }
             } @else {
                 <!-- Test mode: editable test variables backed by parent form 'test_input' FormArray -->
                 <div
@@ -423,6 +458,43 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 margin-top: 8px;
             }
 
+            .readonly-empty {
+                font-size: 0.875rem;
+                color: var(--color-text-secondary);
+            }
+
+            .readonly-table {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                border: 1px solid var(--color-divider-subtle);
+                border-radius: 4px;
+                overflow: hidden;
+            }
+
+            .readonly-row {
+                display: contents;
+            }
+
+            .readonly-cell {
+                padding: 9px 8px;
+                font-size: 0.875rem;
+                color: var(--color-text-primary);
+                border-bottom: 1px solid var(--color-divider-subtle);
+                border-right: 1px solid var(--color-divider-subtle);
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                min-width: 0;
+                overflow: hidden;
+            }
+
+            .readonly-row:last-child .readonly-cell {
+                border-bottom: none;
+            }
+
+            .readonly-row .readonly-cell:last-child {
+                border-right: none;
+            }
+
             .test-input-dirty-warning {
                 display: grid;
                 grid-template-rows: 0fr;
@@ -476,6 +548,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     @Input() nodeName: string | null = null;
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
+    readonly = input<boolean>(false);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -525,6 +598,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     ngOnInit() {
+        if (this.readonly()) {
+            // Read-only view is purely display: no auto-added empty pair, no key mirroring.
+            return;
+        }
         if (this.pairs.length === 0) {
             this.addPair();
 
@@ -553,6 +630,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     get testPairs(): FormArray {
         return this.parentForm.get('test_input') as FormArray;
+    }
+
+    hasNoMeaningfulPairs(): boolean {
+        return this.pairs.controls.length === 0 || !this.pairs.controls.some((p) => p.value.key?.trim());
     }
 
     addPair() {

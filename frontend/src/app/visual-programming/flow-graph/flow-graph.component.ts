@@ -86,6 +86,7 @@ import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -300,6 +301,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
+    protected readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly undoRedoService = inject(UndoRedoService);
     private readonly clipboardService = inject(ClipboardService);
     private readonly nodeFactory = inject(NodeFactoryService);
@@ -660,6 +662,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onPaste(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -697,6 +700,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onUndo(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (this.isEditingLocked()) {
             return;
         }
@@ -707,6 +711,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onRedo(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (this.isEditingLocked()) {
             return;
         }
@@ -722,6 +727,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDelete(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -808,6 +814,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onContextMenu(event: MouseEvent): void {
         event.preventDefault();
+        if (this.flowReadOnly.isReadOnly()) return;
         this.contextMenuPosition.set({ x: event.clientX, y: event.clientY });
         this.showContextMenu.set(true);
     }
@@ -817,6 +824,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAddNodeFromContextMenu(event: CreateNodeRequest): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         this.undoRedoService.stateChanged();
         this.showContextMenu.set(false);
@@ -1567,6 +1575,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onImportNodes(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (!this.currentFlowId) return;
         if (this.hasUnsavedChanges) {
             this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');

@@ -14,6 +14,7 @@
                         placeholder="Enter node name"
                         [activeColor]="activeColor"
                         [errorMessage]="getNodeNameErrorMessage()"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
 
                     <app-select
@@ -22,6 +23,7 @@
                         placeholder="-- Select Node --"
                         formControlName="default_next_node"
                         [items]="availableNodeItems()"
+                        [readonly]="isReadOnly()"
                     />
 
                     <app-select
@@ -30,20 +32,18 @@
                         placeholder="-- Select Node --"
                         formControlName="next_error_node"
                         [items]="availableNodeItems()"
+                        [readonly]="isReadOnly()"
                     />
                     <div class="convert-toggle-field">
                         <label class="convert-toggle-label">
                             Classification Dec Table
                             <app-help-tooltip text="Convert this node to a Classification Decision Table" />
                         </label>
-                        <button
-                            type="button"
-                            class="cdt-toggle"
-                            aria-label="Convert to Classification Decision Table"
-                            (click)="convertToCdt()"
-                        >
-                            <span class="toggle-thumb"></span>
-                        </button>
+                        <app-toggle-switch
+                            [disabled]="isReadOnly()"
+                            [checked]="false"
+                            (click)="$event.preventDefault(); convertToCdt()"
+                        ></app-toggle-switch>
                     </div>
                 </div>
 
@@ -52,6 +52,7 @@
                         [conditionGroups]="conditionGroups()"
                         [activeColor]="activeColor"
                         [currentNodeId]="node().id"
+                        [readonly]="isReadOnly()"
                         title="Condition groups define branching paths evaluated in order"
                         (conditionGroupsChange)="onConditionGroupsChange($event)"
                     />
