@@ -15,7 +15,7 @@ from rest_framework import status
 
 from tables.graph_collab import graph_state_service as graph_state_service_module
 from tables.graph_collab.flush_service import FlushOutcome, FlushStatus, flush_service
-from tables.models import Graph, PythonNode, Session, SessionWarningMessage
+from tables.models import Edge, Graph, PythonNode, Session, SessionWarningMessage, StartNode
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -35,6 +35,20 @@ def auth_client(api_client, regular_user, default_org):
     api_client.force_authenticate(user=regular_user)
     api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
     return api_client
+
+
+@pytest.fixture
+def session_data(graph: Graph, python_code) -> dict:
+    """Override the shared `session_data` with a runnable graph.
+
+    The shared fixture holds only a start node, which the run path rejects
+    ("No node connected to start node") before the session warnings are
+    stored — so these tests would never reach the behaviour they check.
+    """
+    start_node = StartNode.objects.create(graph=graph, variables={})
+    python_node = PythonNode.objects.create(graph=graph, python_code=python_code)
+    Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=python_node.id)
+    return {"graph_id": graph.pk, "variables": {}}
 
 
 @pytest.fixture

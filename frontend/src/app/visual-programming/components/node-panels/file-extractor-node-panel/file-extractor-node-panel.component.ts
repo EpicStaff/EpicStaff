@@ -1,8 +1,7 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
 
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';
@@ -12,90 +11,16 @@ interface InputMapPair {
     value: string;
 }
 @Component({
-    standalone: true,
     selector: 'app-file-extractor-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CommonModule, LockableFieldComponent],
-    template: `
-        <div class="panel-container">
-            <div class="panel-content">
-                <form
-                    [formGroup]="form"
-                    class="form-container"
-                >
-                    <!-- Node Name Field -->
-                    <app-lockable-field
-                        fieldId="node_name"
-                        [nodeId]="node().id"
-                    >
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="The unique identifier used to reference this File Extractor node. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
-                    </app-lockable-field>
-
-                    <!-- Input Map Key-Value Pairs -->
-                    <app-lockable-field
-                        fieldId="input_map"
-                        [nodeId]="node().id"
-                    >
-                        <div class="input-map">
-                            <app-input-map [activeColor]="activeColor"></app-input-map>
-                        </div>
-                    </app-lockable-field>
-
-                    <!-- Output Variable Path -->
-                    <app-lockable-field
-                        fieldId="output_variable_path"
-                        [nodeId]="node().id"
-                    >
-                        <app-custom-input
-                            label="Output Variable Path"
-                            tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                            formControlName="output_variable_path"
-                            placeholder="Enter output variable path (leave empty for null)"
-                            [activeColor]="activeColor"
-                        ></app-custom-input>
-                    </app-lockable-field>
-                </form>
-            </div>
-        </div>
-    `,
-    styles: [
-        `
-            @use '../../../styles/node-panel-mixins.scss' as mixins;
-
-            .panel-container {
-                display: flex;
-                flex-direction: column;
-                height: 100%;
-                min-height: 0;
-            }
-
-            .panel-content {
-                @include mixins.panel-content;
-            }
-
-            .section-header {
-                @include mixins.section-header;
-            }
-
-            .form-container {
-                @include mixins.form-container;
-            }
-
-            .btn-primary {
-                @include mixins.primary-button;
-            }
-
-            .btn-secondary {
-                @include mixins.secondary-button;
-            }
-        `,
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        InputMapComponent,
+        ValidationErrorsComponent,
+        LockableFieldComponent,
     ],
+    templateUrl: './file-extractor-node-panel.component.html',
+    styleUrls: ['./file-extractor-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractorNodeModel> {
@@ -104,7 +29,7 @@ export class FileExtractorNodePanelComponent extends BaseSidePanel<FileExtractor
     }
 
     public get activeColor(): string {
-        return this.node().color || '#2196F3';
+        return 'var(--accent-color)';
     }
 
     public get inputMapPairs(): FormArray {

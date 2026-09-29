@@ -67,8 +67,8 @@ from django.contrib.auth import get_user_model
 from tables.graph_collab import graph_state_service as _gss_module
 from tables.graph_collab import lock_service as _ls_module
 from tables.graph_collab.constants import CURSOR_FLUSH_INTERVAL_SECONDS
-from tables.models import Graph, Organization
-from tables.models.rbac_models import OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role
+from tables.models import Graph
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )

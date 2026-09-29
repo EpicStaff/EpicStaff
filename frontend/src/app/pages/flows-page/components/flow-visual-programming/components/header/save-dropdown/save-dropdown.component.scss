@@ -4,7 +4,7 @@
     border-radius: 8px;
     min-width: 160px;
     overflow: hidden;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px var(--black-alpha-30);
 
     &__item {
         display: flex;
@@ -15,13 +15,13 @@
         background: transparent;
         border: none;
         color: var(--color-text-primary);
-        font-size: 14px;
+        font-size: 0.875rem;
         text-align: left;
         cursor: pointer;
         gap: 8px;
 
         &:hover {
-            background: rgba(255, 255, 255, 0.06);
+            background: var(--white-alpha-6);
         }
     }
 }

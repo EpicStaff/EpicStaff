@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -13,35 +12,35 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { FormsModule } from '@angular/forms';
+import { FormArray, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+    AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    ConfirmationDialogService,
+    createColumnWidthState,
+    CustomInputComponent,
+    HelpTooltipComponent,
+    LlmModelSelectorComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
+import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import {
-    ActionDropdownButtonComponent,
-    ActionDropdownItem,
-} from '../../../../shared/components/action-dropdown-button/action-dropdown-button.component';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
-import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
+import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import {
     ClassificationDecisionTableData,
-    ComputationConfig,
     PromptConfig,
 } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -65,7 +64,6 @@ const LOCKABLE_TABS: ReadonlySet<TabType> = new Set(['precomputation', 'postcomp
         ReactiveFormsModule,
         FormsModule,
         CustomInputComponent,
-        CommonModule,
         ClassificationDecisionTableGridComponent,
         LlmModelSelectorComponent,
         InputMapComponent,
@@ -77,6 +75,7 @@ const LOCKABLE_TABS: ReadonlySet<TabType> = new Set(['precomputation', 'postcomp
         LockableFieldComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -112,6 +111,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private pendingTabSwitchTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
+    protected readonly isSidebarCollapsed = signal<boolean>(false);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
@@ -126,10 +126,31 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private initialPostCode: string = '';
     private initialConditionGroupsSignature: string = '';
     private initialPromptsSignature: string = '';
+    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    public readonly preSecretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
+    );
+    public readonly postSecretsTooltip = computed(() =>
+        this.canEditSecrets()
+            ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+            : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+    );
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
-    public readonly preSecretNames = computed(() => this.namesFor(this.preSelectedSecretIds()));
-    public readonly postSecretNames = computed(() => this.namesFor(this.postSelectedSecretIds()));
+    public readonly preSecretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.preSelectedSecretIds())
+            : ((this.node().data as { table?: ClassificationDecisionTableData })?.table?.pre_computation
+                  ?.secret_names ?? [])
+    );
+    public readonly postSecretNames = computed(() =>
+        this.canEditSecrets()
+            ? this.secretsStorageService.namesForIds(this.postSelectedSecretIds())
+            : ((this.node().data as { table?: ClassificationDecisionTableData })?.table?.post_computation
+                  ?.secret_names ?? [])
+    );
     private readonly codeChange$ = new Subject<void>();
     private readonly reinitDestroy$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
@@ -138,8 +159,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
-    private secretsRestoredForNodeId: string | null = null;
+    private readonly permissionsService = inject(PermissionsService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -226,69 +246,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.destroyRef.onDestroy(() => this.setLockedTab(null));
-
-        effect(() => {
-            const graphId = this.graphId();
-            const node = this.node();
-            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
-            this.secretsRestoredForNodeId = node.id;
-
-            const tableData = (node.data as { table?: ClassificationDecisionTableData })?.table;
-            const preComp = tableData?.pre_computation;
-            const postComp = tableData?.post_computation;
-            if (preComp?.secret_ids !== undefined && postComp?.secret_ids !== undefined) return;
-
-            const nodeId = node.id;
-            const nodeName = node.node_name;
-            this.secretDeclarationIndexService
-                .getIndex()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((index) => {
-                    if (this.node().id !== nodeId) return;
-                    const preIds = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.CLASSIFICATION_TABLE,
-                        'pre_python_code'
-                    );
-                    const postIds = this.secretDeclarationIndexService.lookup(
-                        index,
-                        graphId,
-                        nodeName,
-                        NodeType.CLASSIFICATION_TABLE,
-                        'post_python_code'
-                    );
-                    this.applyRestoredSecrets(preComp, postComp, preIds, postIds);
-                });
-        });
-    }
-
-    /**
-     * Applies restored pre/post secret_ids to the picker signals and patches just those fields
-     * into the dirty-tracking baseline. Doesn't call resetBaseline(), which would recompute the
-     * whole node snapshot and bake in any other field the user edited while this async lookup
-     * (SecretDeclarationIndexService.getIndex()) was in flight.
-     */
-    private applyRestoredSecrets(
-        preComp: ComputationConfig | undefined,
-        postComp: ComputationConfig | undefined,
-        preIds: number[],
-        postIds: number[]
-    ): void {
-        const restorePre = preComp?.secret_ids === undefined && preIds.length > 0;
-        const restorePost = postComp?.secret_ids === undefined && postIds.length > 0;
-        if (!restorePre && !restorePost) return;
-
-        if (restorePre) this.preSelectedSecretIds.set(preIds);
-        if (restorePost) this.postSelectedSecretIds.set(postIds);
-
-        if (!this.initialNodeSnapshot) return;
-        const snapshot = JSON.parse(this.initialNodeSnapshot);
-        if (restorePre) snapshot.data.table.pre_computation.secret_ids = [...preIds].sort();
-        if (restorePost) snapshot.data.table.post_computation.secret_ids = [...postIds].sort();
-        this.initialNodeSnapshot = JSON.stringify(snapshot);
-        this.notifyExternalChange();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -310,11 +267,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 name: node.node_name || node.id,
             }));
 
-        return [{ name: 'Select Node', value: '' }, ...nodeItems];
+        return [{ name: 'Unselected', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     protected initializeForm(): FormGroup {
@@ -508,6 +465,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
+                secret_names: this.preSecretNames(),
             },
             post_computation: {
                 code: this.postCode,
@@ -515,6 +473,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
+                secret_names: this.postSecretNames(),
             },
             condition_groups: conditionGroups,
             route_variable_name: 'route_code',
@@ -878,14 +837,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.codeChange$.next();
     }
 
-    private namesFor(ids: number[]): string[] {
-        const selected = new Set(ids);
-        return this.secretsStorageService
-            .secrets()
-            .filter((secret) => selected.has(secret.id))
-            .map((secret) => secret.name);
-    }
-
     // ── Input map helpers ──
 
     private parseLibraries(value: string | null | undefined): string[] {
@@ -989,4 +940,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             next_error_node: null,
         };
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

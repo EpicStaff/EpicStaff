@@ -1,21 +1,20 @@
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from agents.models.agent_models import AgentDefinition
 from agents.models.surface_models import Surface
-
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     ConditionalEdge,
-    CrewNode,
     DecisionTableNode,
     Edge,
     EndNode,
     FileExtractorNode,
     Graph,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -31,11 +30,11 @@ from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
     ClassificationDecisionTableNodeBulkSerializer,
-    CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
     FileExtractorNodeBulkSerializer,
     GraphNoteBulkSerializer,
+    KnowledgeNodeBulkSerializer,
     PythonNodeBulkSerializer,
     ScheduleTriggerNodeBulkSerializer,
     StartNodeBulkSerializer,
@@ -46,19 +45,20 @@ from tables.serializers.graph_bulk_save_serializers import (
 )
 from tables.services.graph_bulk_save_service.factories import (
     ClassificationDecisionTableNodeSaveableFactory,
-    DefaultNodeSaveableFactory,
     DecisionTableNodeSaveableFactory,
+    DefaultNodeSaveableFactory,
+    KnowledgeNodeSaveableFactory,
     NodeSaveableFactory,
 )
-
 
 # Singletons — factories are stateless.
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()
 _CLASSIFICATION_DT_FACTORY = ClassificationDecisionTableNodeSaveableFactory()
 _DECISION_TABLE_FACTORY = DecisionTableNodeSaveableFactory()
+_KNOWLEDGE_FACTORY = KnowledgeNodeSaveableFactory()
 
 
-class ExternalRefKind(str, Enum):
+class ExternalRefKind(StrEnum):
     """Shape of one outward reference on a node payload — see ExternalRefField."""
 
     SCALAR = "scalar"  # top-level scalar FK, e.g. code_agent_node_list.llm_config
@@ -110,10 +110,10 @@ class ExternalRefField:
 class NodeTypeConfig:
     """NodeTypeConfig contains all required data about one node type"""
 
-    list_key: str  # key in the request payload, e.g. "crew_node_list"
-    delete_key: str  # key in the deleted dict, e.g. "crew_node_ids"
-    model_class: type  # Django model class, e.g. CrewNode
-    serializer_class: type  # bulk serializer class, e.g. CrewNodeBulkSerializer
+    list_key: str  # key in the request payload, e.g. "agent_node_list"
+    delete_key: str  # key in the deleted dict, e.g. "agent_node_ids"
+    model_class: type  # Django model class, e.g. AgentNode
+    serializer_class: type  # bulk serializer class, e.g. AgentNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
     is_singleton: bool = False  # True for at-most-one-per-graph node types (Start/End)
     # Outward (non-graph) FK/M2M refs this node type carries — see
@@ -148,12 +148,6 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
-    NodeTypeConfig(
-        "crew_node_list",
-        "crew_node_ids",
-        CrewNode,
-        CrewNodeBulkSerializer,
-    ),
     NodeTypeConfig(
         "python_node_list",
         "python_node_ids",
@@ -218,9 +212,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         ClassificationDecisionTableNodeBulkSerializer,
         saveable_factory=_CLASSIFICATION_DT_FACTORY,
         external_ref_fields=(
-            ExternalRefField(
-                "default_llm_config", "default_llm_config", LLMConfig, "org_id"
-            ),
+            ExternalRefField("default_llm_config", "default_llm_config", LLMConfig, "org_id"),
             ExternalRefField(
                 "prompt_configs",
                 "llm_config",
@@ -258,6 +250,13 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         GraphNoteBulkSerializer,
     ),
     NodeTypeConfig(
+        "knowledge_node_list",
+        "knowledge_node_ids",
+        KnowledgeNode,
+        KnowledgeNodeBulkSerializer,
+        saveable_factory=_KNOWLEDGE_FACTORY,
+    ),
+    NodeTypeConfig(
         "webhook_trigger_node_list",
         "webhook_trigger_node_ids",
         WebhookTriggerNode,
@@ -270,9 +269,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
                 None,
                 kind=ExternalRefKind.NESTED_OBJECT,
             ),
-            ExternalRefField(
-                "webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"
-            ),
+            ExternalRefField("webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"),
             ExternalRefField(
                 "python_code",
                 "secret_ids",
@@ -295,9 +292,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
                 None,
                 kind=ExternalRefKind.NESTED_OBJECT,
             ),
-            ExternalRefField(
-                "webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"
-            ),
+            ExternalRefField("webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"),
             ExternalRefField(
                 "telegram_bot_api_key_secret_id",
                 "telegram_bot_api_key_secret_id",

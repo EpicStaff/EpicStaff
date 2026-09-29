@@ -1,14 +1,16 @@
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     computed,
     DestroyRef,
     effect,
+    EventEmitter,
     inject,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -18,7 +20,6 @@ import {
     untracked,
     ViewContainerRef,
 } from '@angular/core';
-import { EventEmitter } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     AbstractControl,
@@ -30,14 +31,13 @@ import {
     ReactiveFormsModule,
 } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, HelpTooltipComponent, ToggleSwitchComponent } from '@shared/components';
+import { GraphSessionStatus } from '@shared/models';
 import { filter, Subscription } from 'rxjs';
 import { distinctUntilChanged, finalize } from 'rxjs/operators';
 
-import { GraphSessionService, GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
+import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
 import { RunSessionSSEService } from '../../../pages/running-graph/services/graph-session-sse.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
@@ -49,7 +49,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
     selector: 'app-input-map',
     imports: [
         ReactiveFormsModule,
-        CommonModule,
         HelpTooltipComponent,
         ToggleSwitchComponent,
         AppSvgIconComponent,
@@ -70,7 +69,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     position="right"
                     text="Maps function arguments to domain variables using key-value pairs. For example, 'project_id' = 'current_project' maps the function parameter 'project_id' to the flow variable 'current_project'."
                 ></app-help-tooltip>
-                @if (showTestMode) {
+                @if (showTestMode && !readonly()) {
                     <div class="test-mode-header">
                         <span>Test mode</span>
                         <app-toggle-switch
@@ -81,7 +80,33 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
             </div>
 
-            @if (!testMode) {
+            @if (readonly()) {
+                <div
+                    class="readonly-table"
+                    role="table"
+                    aria-label="Input list"
+                >
+                    @for (pair of pairs.controls; track pair) {
+                        <div
+                            class="readonly-row"
+                            role="row"
+                        >
+                            <div
+                                class="readonly-cell"
+                                role="cell"
+                            >
+                                {{ pair.value.key || '—' }}
+                            </div>
+                            <div
+                                class="readonly-cell"
+                                role="cell"
+                            >
+                                {{ pair.value.value || '—' }}
+                            </div>
+                        </div>
+                    }
+                </div>
+            } @else if (!testMode) {
                 <!-- Normal mode: input map list -->
                 <div
                     formArrayName="input_map"
@@ -116,29 +141,33 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         (input)="onValueInput(i, $event)"
                                     />
                                 </div>
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
-                                    class="delete-icon"
-                                    matTooltip="Remove"
-                                    matTooltipPosition="above"
-                                    (click)="removePair(i)"
-                                ></app-svg-icon>
+                                @if (!parentForm.disabled) {
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                        class="delete-icon"
+                                        matTooltip="Remove"
+                                        matTooltipPosition="above"
+                                        (click)="removePair(i)"
+                                    ></app-svg-icon>
+                                }
                             </div>
                         </div>
                     }
                 </div>
-                <button
-                    type="button"
-                    class="add-pair-btn"
-                    (click)="addPair()"
-                >
-                    <app-svg-icon
-                        icon="plus"
-                        size="16px"
-                    ></app-svg-icon>
-                    Add Input
-                </button>
+                @if (!parentForm.disabled) {
+                    <button
+                        type="button"
+                        class="add-pair-btn"
+                        (click)="addPair()"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="16px"
+                        ></app-svg-icon>
+                        Add Input
+                    </button>
+                }
             } @else {
                 <!-- Test mode: editable test variables backed by parent form 'test_input' FormArray -->
                 <div
@@ -221,6 +250,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .input-map-container {
@@ -237,9 +267,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .input-map-header label {
-                font-size: 0.875rem;
-                font-weight: 400;
-                color: var(--color-text-primary);
+                font-size: var(--text-body-size);
+                font-weight: var(--text-body-weight);
+                color: var(--color-text-secondary);
                 margin: 0;
             }
 
@@ -302,7 +332,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: 0.5rem 0.75rem;
                 background-color: var(--color-input-background);
                 border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
+                border-radius: 4px;
                 color: #fff;
                 font-size: 0.875rem;
                 outline: none;
@@ -359,7 +389,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: 1rem;
                 }
             }
 
@@ -375,8 +405,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: 8px 12px;
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
-                font-size: 0.875rem;
-                font-weight: 500;
+                font-size: var(--text-body-medium-size);
+                font-weight: var(--text-body-medium-weight);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 text-align: center;
@@ -416,11 +446,42 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 border-left: 1px solid rgba(255, 207, 0, 1);
                 border-radius: 10px;
                 padding: 10px 12px;
-                font-size: 13px;
+                font-size: 0.8125rem;
                 color: inherit;
                 margin-top: 8px;
             }
 
+            .readonly-table {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                border: 1px solid var(--color-divider-subtle);
+                border-radius: 4px;
+                overflow: hidden;
+            }
+
+            .readonly-row {
+                display: contents;
+            }
+
+            .readonly-cell {
+                padding: 9px 8px;
+                font-size: 0.875rem;
+                color: var(--color-text-primary);
+                border-bottom: 1px solid var(--color-divider-subtle);
+                border-right: 1px solid var(--color-divider-subtle);
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                min-width: 0;
+                overflow: hidden;
+            }
+
+            .readonly-row:last-child .readonly-cell {
+                border-bottom: none;
+            }
+
+            .readonly-row .readonly-cell:last-child {
+                border-right: none;
+            }
         `,
     ],
 })
@@ -432,6 +493,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     @Input() graphId: number | null = null;
     @Input() nodeName: string | null = null;
     @Input() testRunning: boolean = false;
+    readonly = input<boolean>(false);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -490,6 +552,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     ngOnInit() {
+        if (this.readonly()) {
+            // Read-only view is purely display: no auto-added empty pair, no key mirroring.
+            return;
+        }
         if (this.pairs.length === 0) {
             this.addPair();
 
@@ -913,9 +979,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     onValueFocus(rowIndex: number, event: FocusEvent): void {
         const inputEl = event.target as HTMLInputElement;
-        if ((inputEl.value ?? '').startsWith(this.variablesPrefix)) {
-            this.openPickerForInput(rowIndex, inputEl);
-        }
+        const value = inputEl.value ?? '';
+        if (!value.startsWith(this.variablesPrefix)) return;
+        if (this.isExactVariableMatch(rowIndex, value.slice(this.variablesPrefix.length))) return;
+        this.openPickerForInput(rowIndex, inputEl);
     }
 
     onValueInput(rowIndex: number, event: Event): void {
@@ -923,13 +990,35 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const value = inputEl.value ?? '';
 
         if (value.startsWith(this.variablesPrefix)) {
+            const query = value.slice(this.variablesPrefix.length);
+            if (this.isExactVariableMatch(rowIndex, query)) {
+                this.closePicker();
+                return;
+            }
             if (!(this.overlayRef && this.activeRowIndex === rowIndex)) {
                 this.openPickerForInput(rowIndex, inputEl);
             }
-            this.autocompleteInstance?.setFilter(value.slice(this.variablesPrefix.length));
+            this.autocompleteInstance?.setFilter(query);
         } else if (this.overlayRef && this.activeRowIndex === rowIndex) {
             this.closePicker();
         }
+    }
+
+    private usedVariablePaths(excludeRowIndex: number): Set<string> {
+        const used = new Set<string>();
+        this.pairs.controls.forEach((ctrl, idx) => {
+            if (idx === excludeRowIndex) return;
+            const value = ((ctrl.value.value as string) ?? '').trim();
+            if (value) used.add(value);
+        });
+        return used;
+    }
+
+    private isExactVariableMatch(rowIndex: number, query: string): boolean {
+        const trimmed = query.trim();
+        if (!trimmed) return false;
+        const usedPaths = this.usedVariablePaths(rowIndex);
+        return this.pickerItems().some((item) => !usedPaths.has(item.fullPath) && item.label === trimmed);
     }
 
     private openPickerForInput(rowIndex: number, anchorEl: HTMLInputElement): void {
@@ -961,7 +1050,8 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const componentRef = this.overlayRef.attach(portal);
         this.autocompleteInstance = componentRef.instance;
         this.autocompleteInstance.autofocusSearch = false;
-        this.autocompleteInstance.setItems(this.pickerItems());
+        const usedPaths = this.usedVariablePaths(rowIndex);
+        this.autocompleteInstance.setItems(this.pickerItems().filter((item) => !usedPaths.has(item.fullPath)));
 
         const currentValue = anchorEl.value ?? '';
         if (currentValue.startsWith(this.variablesPrefix)) {

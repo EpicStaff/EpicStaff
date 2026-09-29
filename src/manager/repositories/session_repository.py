@@ -1,8 +1,8 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+from db.config import AsyncSessionLocal
+from helpers.logger import logger
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from helpers.logger import logger
-from db.config import AsyncSessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SessionRepository:

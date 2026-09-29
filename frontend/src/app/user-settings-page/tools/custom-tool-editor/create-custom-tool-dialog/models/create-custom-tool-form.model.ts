@@ -1,5 +1,4 @@
-import { CreatePythonCodeToolPayload } from '../../../../../features/tools/models/python-code-tool.model';
-
+import { CreatePythonCodeToolPayload } from '@shared/models';
 export interface CreateCustomToolFormValue {
     name: string;
     description: string;

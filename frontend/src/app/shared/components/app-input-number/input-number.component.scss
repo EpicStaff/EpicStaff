@@ -20,12 +20,21 @@ input[type='number'] {
         width: 100%;
         display: inline-flex;
         align-items: center;
-        border-radius: 0.5rem;
+        border-radius: 4px;
         overflow: hidden;
         border: 1px solid var(--color-input-border);
 
         &--invalid {
             border-color: var(--color-ks-status-failed);
+        }
+
+        &--warning {
+            border-color: var(--color-ks-status-warning);
+        }
+
+        &--disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
     }
 
@@ -46,7 +55,7 @@ input[type='number'] {
             cursor: not-allowed;
         }
 
-        &:hover {
+        &:hover:not(:disabled) {
             background-color: var(--color-ks-button-activated);
         }
 
@@ -86,8 +95,22 @@ input[type='number'] {
     }
 
     &--mod-small {
-        height: 28px;
-        padding: 0.625rem 0.5rem;
-        font-size: 0.625rem;
+        height: 26px;
+        padding: 0.25rem 0.5rem;
+        font-size: 12px;
+    }
+}
+
+.input__message {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+
+    &--error {
+        color: var(--color-ks-status-failed);
+    }
+
+    &--warning {
+        color: var(--color-ks-status-warning);
     }
 }

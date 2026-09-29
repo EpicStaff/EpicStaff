@@ -1,13 +1,11 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, inline_serializer
 from rest_framework import serializers as drf_serializers
 
-_id_list_field = drf_serializers.ListField(
-    child=drf_serializers.IntegerField(), required=False
-)
+_id_list_field = drf_serializers.ListField(child=drf_serializers.IntegerField(), required=False)
 
-SAVE_FLOW_SWAGGER = dict(
-    summary="Bulk save all flow nodes and edges",
-    description=(
+SAVE_FLOW_SWAGGER = {
+    "summary": "Bulk save all flow nodes and edges",
+    "description": (
         "Atomically upserts and deletes all nodes/edges for a flow in one request.\n\n"
         "- Entity with `id` → update.\n"
         "- Entity without `id` → create.\n"
@@ -16,12 +14,9 @@ SAVE_FLOW_SWAGGER = dict(
         "All entities are validated first. If any fail, the entire request is rejected "
         "and no DB writes happen."
     ),
-    request=inline_serializer(
+    "request": inline_serializer(
         name="SaveFlowRequest",
         fields={
-            "crew_node_list": drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False
-            ),
             "python_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
@@ -46,6 +41,9 @@ SAVE_FLOW_SWAGGER = dict(
             "graph_note_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
+            "knowledge_node_list": drf_serializers.ListField(
+                child=drf_serializers.DictField(), required=False
+            ),
             "webhook_trigger_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
@@ -64,7 +62,6 @@ SAVE_FLOW_SWAGGER = dict(
             "deleted": inline_serializer(
                 name="DeletedIds",
                 fields={
-                    "crew_node_ids": _id_list_field,
                     "python_node_ids": _id_list_field,
                     "file_extractor_node_ids": _id_list_field,
                     "audio_transcription_node_ids": _id_list_field,
@@ -73,6 +70,7 @@ SAVE_FLOW_SWAGGER = dict(
                     "subgraph_node_ids": _id_list_field,
                     "decision_table_node_ids": _id_list_field,
                     "graph_note_ids": _id_list_field,
+                    "knowledge_node_ids": _id_list_field,
                     "webhook_trigger_node_ids": _id_list_field,
                     "telegram_trigger_node_ids": _id_list_field,
                     "schedule_trigger_node_ids": _id_list_field,
@@ -83,29 +81,10 @@ SAVE_FLOW_SWAGGER = dict(
             ),
         },
     ),
-    examples=[
+    "examples": [
         OpenApiExample(
             name="Typical bulk save",
             value={
-                "crew_node_list": [
-                    {
-                        "id": 5,
-                        "graph": 12,
-                        "crew_id": 3,
-                        "node_name": "crewnode_5",
-                        "input_map": {},
-                        "output_variable_path": None,
-                        "metadata": {"position": {"x": 100, "y": 200}},
-                    },
-                    {
-                        "graph": 12,
-                        "crew_id": 7,
-                        "node_name": "crewnode_new",
-                        "input_map": {},
-                        "output_variable_path": None,
-                        "metadata": {"position": {"x": 400, "y": 200}},
-                    },
-                ],
                 "python_node_list": [
                     {
                         "id": 9,
@@ -169,7 +148,7 @@ SAVE_FLOW_SWAGGER = dict(
                 "graph_note_list": [
                     {
                         "graph": 12,
-                        "content": "This flow processes user text through a crew.",
+                        "content": "This flow processes user text with a Python node.",
                         "metadata": {"position": {"x": 100, "y": -100}},
                     }
                 ],
@@ -192,18 +171,16 @@ SAVE_FLOW_SWAGGER = dict(
                 ],
                 "conditional_edge_list": [],
                 "deleted": {
-                    "crew_node_ids": [8],
+                    "python_node_ids": [8],
                     "edge_ids": [14],
                 },
             },
             request_only=True,
         )
     ],
-    responses={
+    "responses": {
         200: OpenApiResponse(description="Full updated graph state after save."),
-        400: OpenApiResponse(
-            description="Validation errors — no DB changes were made."
-        ),
+        400: OpenApiResponse(description="Validation errors — no DB changes were made."),
         404: OpenApiResponse(description="Graph not found."),
     },
-)
+}

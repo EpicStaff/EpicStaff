@@ -1,26 +1,23 @@
 from copy import deepcopy
 
-from tables.models import (
-    CrewTag,
-    AgentTag,
-    GraphTag,
-    LLMModelTag,
-    EmbeddingModelTag,
-    LLMConfigTag,
-)
-
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.tags import (
-    CrewTagImportSerializer,
-    GraphTagImportSerializer,
-    AgentTagImportSerializer,
-    LLMConfigTagImportSerializer,
-    LLMModelTagImportSerializer,
-    EmbeddingModelTagImportSerializer,
-)
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.tags import (
+    AgentTagImportSerializer,
+    EmbeddingModelTagImportSerializer,
+    GraphTagImportSerializer,
+    LLMConfigTagImportSerializer,
+    LLMModelTagImportSerializer,
+)
+from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import create_filters
+from tables.models import (
+    AgentTag,
+    EmbeddingModelTag,
+    GraphTag,
+    LLMConfigTag,
+    LLMModelTag,
+)
 
 
 class BaseTagStrategy(EntityImportExportStrategy):
@@ -45,7 +42,7 @@ class BaseTagStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper, org_id: int = None):
+    def find_existing(self, data, id_mapper, org_id: int | None = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
 
@@ -62,12 +59,6 @@ class AgentTagStrategy(BaseTagStrategy):
     entity_type = EntityType.AGENT_TAG
     serializer_class = AgentTagImportSerializer
     model_class = AgentTag
-
-
-class CrewTagStrategy(BaseTagStrategy):
-    entity_type = EntityType.CREW_TAG
-    serializer_class = CrewTagImportSerializer
-    model_class = CrewTag
 
 
 class GraphTagStrategy(BaseTagStrategy):

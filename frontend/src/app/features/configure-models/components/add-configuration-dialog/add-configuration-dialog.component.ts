@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -18,13 +17,12 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
-import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ModelTypes } from '@shared/models';
+import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
-import { LlmConfigStorageService } from '../../../../shared/services/llms/llm-config-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
@@ -38,7 +36,6 @@ export type ConfigTab = 'llm' | 'realtime';
     styleUrls: ['./add-configuration-dialog.component.scss'],
     imports: [
         ReactiveFormsModule,
-        NgIf,
         IconButtonComponent,
         HelpTooltipComponent,
         ButtonComponent,
@@ -121,7 +118,7 @@ export class AddConfigurationDialogComponent implements OnInit {
 
         this.llmForm = this.fb.group({
             custom_name: ['', [Validators.required]],
-            api_key: [''],
+            api_key_secret_id: [null as number | null],
             model: [null, [Validators.required]],
             temperature: [0.5, [Validators.min(0), Validators.max(1)]],
             top_p: [1, [Validators.min(0.1)]],
@@ -132,7 +129,6 @@ export class AddConfigurationDialogComponent implements OnInit {
             logit_bias: [null],
             response_format: [null],
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
-            headers: [{}],
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             is_visible: [true],
@@ -144,13 +140,6 @@ export class AddConfigurationDialogComponent implements OnInit {
                 this.onSubmit();
             }
         });
-    }
-
-    onModelChanged(data: { model: LLMModel; provider: LLMProvider }): void {
-        const nameControl = this.llmForm.get('custom_name');
-        if (nameControl && !nameControl.value) {
-            nameControl.setValue(`${data.provider.name}/${data.model.name}`);
-        }
     }
 
     selectProvider(provider: RealtimeProvider): void {

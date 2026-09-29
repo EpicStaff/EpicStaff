@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -32,6 +32,12 @@ class SystemToolRegistry:
         self._entries.clear()
 
 
+# Intentionally global: every tool registered here is attached to EVERY agent in
+# EVERY organization, with no per-agent or per-org allow-list. System tools are
+# platform capabilities, not tenant resources — anything that must be opt-in or
+# org-scoped belongs in the agent's tool_refs instead. The registry being empty
+# today is expected. A tool added here must therefore be safe for any tenant:
+# no org-specific data, credentials, or side effects that cross org boundaries.
 _system_registry = SystemToolRegistry()
 
 
@@ -53,8 +59,8 @@ def system_tool(
             async def executor(args: dict) -> ToolResult:
                 try:
                     validated = model.model_validate(args)
-                except Exception as exc:
-                    return ToolResult(tool_call_id="", content=str(exc), is_error=True)
+                except Exception as error:
+                    return ToolResult(tool_call_id="", content=str(error), is_error=True)
 
                 result = await func(validated.model_dump())
                 return ToolResult(tool_call_id="", content=str(result), is_error=False)

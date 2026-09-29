@@ -272,3 +272,13 @@ class TestUploadArchive:
             fake_backend.upload_archive("", buf, "malicious.zip")
 
         assert fake_backend._objects == {}
+
+    def test_upload_archive_rejects_traversal_in_archive_name(
+        self, fake_backend, sample_zip
+    ):
+        with pytest.raises(ValueError, match="escapes the target folder"):
+            fake_backend.upload_archive(
+                "org_1/uploads", sample_zip, "../org_2/evil.zip"
+            )
+
+        assert fake_backend._objects == {}

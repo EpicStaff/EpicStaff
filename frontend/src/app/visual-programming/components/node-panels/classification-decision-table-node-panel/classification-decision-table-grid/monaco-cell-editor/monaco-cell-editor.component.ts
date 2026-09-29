@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, NgZone } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
@@ -17,8 +16,7 @@ interface MonacoNamespace {
 
 @Component({
     selector: 'app-monaco-cell-editor',
-    standalone: true,
-    imports: [CommonModule, FormsModule, MonacoEditorModule],
+    imports: [FormsModule, MonacoEditorModule],
     template: `
         <div class="monaco-cell-editor">
             <ngx-monaco-editor

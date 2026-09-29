@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
-import { NODE_COLORS, NODE_ICONS } from '../../../core/enums/node-config';
-import { NodeType } from '../../../core/enums/node-type';
 import { FlowService } from '../../../services/flow.service';
 
 interface FlowGraphBlock {
@@ -13,7 +12,6 @@ interface FlowGraphBlock {
 
 @Component({
     selector: 'app-flow-graph-core-menu',
-    standalone: true,
     template: `
         <ul>
             @for (block of filteredBlocks(); track block.type) {
@@ -173,6 +171,12 @@ export class FlowGraphCoreMenuComponent {
             icon: NODE_ICONS[NodeType.AGENT],
             color: NODE_COLORS[NodeType.AGENT],
         },
+        {
+            label: 'Knowledge Retriever',
+            type: NodeType.KNOWLEDGE_RETRIEVER,
+            icon: NODE_ICONS[NodeType.KNOWLEDGE_RETRIEVER],
+            color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
+        },
     ];
 
     public onBlockClicked(type: NodeType): void {
@@ -243,6 +247,8 @@ export class FlowGraphCoreMenuComponent {
                 fields: [],
             };
         } else if (type === NodeType.SCHEDULE_TRIGGER) {
+            data = null;
+        } else if (type === NodeType.KNOWLEDGE_RETRIEVER) {
             data = null;
         } else if (type === NodeType.END) {
             data = null;

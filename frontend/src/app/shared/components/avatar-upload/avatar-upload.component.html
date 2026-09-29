@@ -6,7 +6,7 @@
             alt="Avatar preview"
         />
         <span class="name">{{ file.name }}</span>
-        <span class="size">{{ fileSizeLabel() }}</span>
+        <span class="size">{{ file.size | fileSize: 'auto' }}</span>
         <button
             class="clear"
             type="button"

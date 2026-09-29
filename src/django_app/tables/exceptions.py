@@ -1,22 +1,10 @@
-from rest_framework.exceptions import APIException
+from utils.exceptions import CustomAPIExeption
+
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
 
-
-class CustomAPIExeption(APIException):
-    """
-    A custom API exception class with dynamic status code support.
-
-    Extends the `APIException` class provided by Django REST Framework and adds
-    the ability to dynamically set a `status_code` when the exception is raised.
-
-    Inherit from this to create custom API exceptions"""
-
-    def __init__(self, detail=None, code=None, status_code=None):
-        if status_code is not None:
-            self.status_code = status_code
-        super().__init__(detail=detail, code=code)
+__all__ = ["CustomAPIExeption"]
 
 
 class GraphEntryPointException(CustomAPIExeption):
@@ -27,16 +15,6 @@ class GraphEntryPointException(CustomAPIExeption):
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
-
-
-class CrewMemoryValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in CrewMemoryValidator -> ConverterService during asigning memory_llm or embedder"
-
-
-class TaskValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in TaskValidator -> ConverterService during validate crews' tasks"
 
 
 class TaskSerializerError(CustomAPIExeption):
@@ -59,6 +37,11 @@ class FileNodeValidationError(CustomAPIExeption):
     default_detail = "FileExtractorNode requires input arguments"
 
 
+class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "KnowledgeNode is not fully configured to run"
+
+
 class InvalidTaskOrderError(CustomAPIExeption):
     status_code = 409
     default_detail = "A task cannot be placed before its context dependency. Please reorder the tasks or delete context."
@@ -67,17 +50,13 @@ class InvalidTaskOrderError(CustomAPIExeption):
 
 class ContentHashConflictError(CustomAPIExeption):
     status_code = 409
-    default_detail = (
-        "Node has been modified by another user. Please refresh and try again."
-    )
+    default_detail = "Node has been modified by another user. Please refresh and try again."
     default_code = "content_hash_conflict"
 
 
 class GraphSaveVersionConflictError(CustomAPIExeption):
     status_code = 409
-    default_detail = (
-        "Graph has been modified by another user. Please refresh and try again."
-    )
+    default_detail = "Graph has been modified by another user. Please refresh and try again."
     default_code = "graph_version_conflict"
 
     def __init__(self, current_version: int | None):
@@ -117,9 +96,7 @@ class GraphRestoreFlushFailedError(CustomAPIExeption):
 
 class SubGraphValidationError(CustomAPIExeption):
     status_code = 400
-    default_detail = (
-        "ValidationError occured in SubGraphValidator during subgraph validation"
-    )
+    default_detail = "ValidationError occured in SubGraphValidator during subgraph validation"
 
 
 class BuiltInToolModificationError(CustomAPIExeption):
@@ -152,8 +129,6 @@ class PythonCodeToolConfigSerializerError(CustomAPIExeption):
 class DocumentUploadException(CustomAPIExeption):
     """Base exception for document upload errors."""
 
-    pass
-
 
 class FileSizeExceededException(DocumentUploadException):
     """Raised when file size exceeds the allowed limit."""
@@ -161,9 +136,7 @@ class FileSizeExceededException(DocumentUploadException):
     def __init__(self, file_name, max_size_mb):
         self.file_name = file_name
         self.max_size_mb = max_size_mb
-        super().__init__(
-            f"File '{file_name}' exceeds the maximum allowed size of {max_size_mb}MB"
-        )
+        super().__init__(f"File '{file_name}' exceeds the maximum allowed size of {max_size_mb}MB")
 
 
 class InvalidFileTypeException(DocumentUploadException):
@@ -180,6 +153,8 @@ class InvalidFileTypeException(DocumentUploadException):
 
 class CollectionNotFoundException(DocumentUploadException):
     """Raised when source collection is not found."""
+
+    status_code = 404
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -220,9 +195,7 @@ class InvalidFieldType(CustomAPIExeption):
         self.field_name = field_name
         self.field_value = field_value
         self.expected_type = expected_type
-        super().__init__(
-            f"Invalid {field_name}: '{field_value}'. Must be a valid {expected_type}."
-        )
+        super().__init__(f"Invalid {field_name}: '{field_value}'. Must be a valid {expected_type}.")
 
 
 class RagException(CustomAPIExeption):
@@ -252,9 +225,12 @@ class NaiveRagNotFoundException(RagException):
 class DocumentConfigNotFoundException(RagException):
     """Raised when document config is not found."""
 
-    def __init__(self, config_id):
-        self.config_id = config_id
-        super().__init__(f"Document config with id {config_id} not found")
+    def __init__(self, msg: str = "", config_id=None):
+        if msg:
+            super().__init__(msg)
+        else:
+            self.config_id = config_id
+            super().__init__(f"Document config with id {config_id} not found")
 
 
 class EmbedderNotFoundException(RagException):
@@ -325,18 +301,17 @@ class GraphRagIndexConfigNotFoundException(RagException):
 class InvalidGraphRagParametersException(RagException):
     """Raised when GraphRag parameters are invalid."""
 
-    pass
-
 
 class GraphRagDocumentNotFoundException(RagException):
     """Raised when a document is not linked to the specified GraphRag."""
 
-    def __init__(self, document_id, graph_rag_id):
-        self.document_id = document_id
-        self.graph_rag_id = graph_rag_id
-        super().__init__(
-            f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
-        )
+    def __init__(self, msg: str = "", document_id=None, graph_rag_id=None):
+        if msg:
+            super().__init__(msg)
+        else:
+            self.document_id = document_id
+            self.graph_rag_id = graph_rag_id
+            super().__init__(f"Document {document_id} is not linked to GraphRag {graph_rag_id}")
 
 
 class AgentMissingCollectionException(RagException):
@@ -367,6 +342,14 @@ class UnknownRagTypeException(RagException):
         super().__init__(f"Unknown RAG type: '{rag_type}'")
 
 
+class KnowledgeNodeConfigurationError(RagException):
+    """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
+    or the rag_type has no built implementation to search."""
+
+    status_code = 400
+    default_code = "knowledge_node_misconfigured"
+
+
 class ScheduleTriggerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occurred in ScheduleTriggerValidator"
@@ -379,13 +362,77 @@ class BulkSaveValidationError(CustomAPIExeption):
         super().__init__(str(errors))
 
 
+class NoGraphRagForCollectionException(RagException):
+    """Raised when a collection has no GraphRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} does not exist. "
+            f"Create a GraphRag for this collection first."
+        )
+
+
+class GraphRagIndexNotReadyException(RagException):
+    """Raised when GraphRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
+
+
+class GraphRagMetricsUnavailableException(RagException):
+    """Raised when chunk metrics can't be fetched from the knowledge service."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG metrics for collection {collection_id} are temporarily "
+            f"unavailable. Retry shortly."
+        )
+
+
+class NoNaiveRagForCollectionException(RagException):
+    """Raised when a collection has no NaiveRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"NaiveRag for collection {collection_id} does not exist. "
+            f"Create a NaiveRag for this collection first."
+        )
+
+
+class NaiveRagIndexNotReadyException(RagException):
+    """Raised when NaiveRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"NaiveRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
+
+
 class LLMConfigMissingError(CustomAPIExeption):
     """Raised when FlowAssistant.llm_config is None."""
 
     status_code = 400
     default_detail = (
-        "No LLM config is set for this flow assistant. "
-        "Please configure one in the settings panel."
+        "No LLM config is set for this flow assistant. Please configure one in the settings panel."
     )
     default_code = "flow_assistant_llm_config_missing"
 
@@ -432,3 +479,26 @@ class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
             f"Classification decision table node {pk} not found.",
             code=self.default_code,
         )
+
+
+class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config doesn't resolve within the caller's org, or can't build a client."""
+
+    status_code = 404
+    default_code = "cdt_explain_llm_config_not_found"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} doesn't exist, belongs to another organization, "
+            "or has no usable model.",
+            code=self.default_code,
+        )
+
+
+class CdtExplainUpstreamError(CustomAPIExeption):
+    """Raised when every batch of the explain request failed upstream."""
+
+    status_code = 502
+    default_detail = "The explanation could not be generated. Please try again."
+    default_code = "cdt_explain_upstream_failed"

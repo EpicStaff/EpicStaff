@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -10,15 +9,14 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '@shared/components';
+import { ClickOutsideDirective } from '@shared/directives';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 import { DurationFilter, DurationOperator } from '../../services/flows-sessions.service';
 
 @Component({
     selector: 'app-duration-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [FormsModule, ClickOutsideDirective, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './duration-filter-dropdown.component.html',
     styleUrls: ['./duration-filter-dropdown.component.scss'],

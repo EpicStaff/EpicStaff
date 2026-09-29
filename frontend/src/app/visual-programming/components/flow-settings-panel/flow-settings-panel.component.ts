@@ -3,16 +3,18 @@ import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
+import {
+    AppIconComponent,
+    AppSvgIconComponent,
+    TimezoneSelectorComponent,
+    ToggleSwitchComponent,
+} from '@shared/components';
 
-import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.component';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { TimezoneSelectorComponent } from '../../../shared/components/timezone-selector/timezone-selector.component';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
 
 @Component({
     selector: 'app-flow-settings-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         ReactiveFormsModule,
@@ -28,6 +30,7 @@ import { FlowSettingsService } from '../../services/flow-settings.service';
 export class FlowSettingsPanelComponent {
     protected readonly flowSettings = inject(FlowSettingsService);
     protected readonly dialogRef = inject(DialogRef);
+    protected readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     protected readonly timezoneControl = new FormControl<string>(this.flowSettings.timezone(), { nonNullable: true });
 

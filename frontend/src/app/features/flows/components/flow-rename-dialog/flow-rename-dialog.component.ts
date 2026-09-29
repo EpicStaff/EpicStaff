@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -26,8 +25,7 @@ interface FlowRenameData {
 
 @Component({
     selector: 'app-flow-rename-dialog',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ButtonComponent, LabelDropdownComponent],
+    imports: [FormsModule, ButtonComponent, LabelDropdownComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dialog-container">
@@ -98,8 +96,8 @@ interface FlowRenameData {
                 margin-top: 0;
                 margin-bottom: 1.5rem;
                 color: var(--color-text-primary);
-                font-size: 1.25rem;
-                font-weight: 600;
+                font-size: var(--text-h3-size);
+                font-weight: var(--text-h3-weight);
             }
 
             .dialog-content {
@@ -144,7 +142,7 @@ interface FlowRenameData {
             .error-message-block {
                 padding: 0.5rem 0.75rem;
                 color: var(--color-error);
-                font-size: 12px;
+                font-size: 0.75rem;
                 margin-top: 4px;
             }
         `,

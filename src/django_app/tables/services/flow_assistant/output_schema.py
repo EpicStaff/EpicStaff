@@ -62,9 +62,7 @@ FLOW_ASSISTANT_OUTPUT_SCHEMA: dict = {
                                 "properties": {
                                     "key": {"type": "string"},
                                     "title": {"type": "string"},
-                                    "type": {
-                                        "enum": ["text", "number", "boolean", "date"]
-                                    },
+                                    "type": {"enum": ["text", "number", "boolean", "date"]},
                                     "visible": {"type": "boolean"},
                                     "editable": {"type": "boolean"},
                                 },

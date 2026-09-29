@@ -1,14 +1,11 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { NODE_COLORS, NODE_ICONS } from '../../../core/enums/node-config';
-import { NodeType } from '../../../core/enums/node-type';
 import {
     AgentNodeModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     TaskNodeModel,
     ToolNodeModel,
@@ -16,8 +13,7 @@ import {
 
 @Component({
     selector: 'app-search-node-item',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -36,12 +32,11 @@ import {
                     {{ getNodeDisplayName() }}
                 </div>
                 <div class="node-details">
-                    <div
-                        class="node-description"
-                        *ngIf="node.node_name"
-                    >
-                        {{ node.node_name }}
-                    </div>
+                    @if (node.node_name) {
+                        <div class="node-description">
+                            {{ node.node_name }}
+                        </div>
+                    }
                 </div>
             </div>
             <div class="show-in-canvas">
@@ -96,7 +91,7 @@ import {
                     transition: all 0.2s ease;
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                         transition: all 0.2s ease;
                     }
                 }
@@ -111,7 +106,7 @@ import {
 
                     .node-name {
                         color: var(--white, #fff);
-                        font-size: 13px;
+                        font-size: 0.8125rem;
                         font-weight: 500;
                         overflow: hidden;
                         text-overflow: ellipsis;
@@ -125,7 +120,7 @@ import {
 
                         .node-description {
                             color: var(--gray-400, #b4b4b4);
-                            font-size: 11px;
+                            font-size: 0.6875rem;
                             line-height: 1.3;
                             overflow: hidden;
                             text-overflow: ellipsis;
@@ -147,7 +142,7 @@ import {
                     border-radius: 4px;
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                     }
                 }
             }
@@ -183,8 +178,6 @@ export class SearchNodeItemComponent {
                 return 'Start';
             case NodeType.AGENT:
                 return (this.node as AgentNodeModel).data?.name || this.node.node_name;
-            case NodeType.PROJECT:
-                return (this.node as ProjectNodeModel).data?.name || this.node.node_name;
             case NodeType.TASK:
                 return (this.node as TaskNodeModel).data?.name || this.node.node_name;
             case NodeType.PYTHON:

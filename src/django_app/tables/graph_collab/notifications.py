@@ -1,26 +1,23 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from utils.logger import logger
 
 from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.groups import graph_group_name, org_group_name
-from tables.graph_collab.utils import build_editor_info
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     EditorInfo,
-    EntryDeleteRef,
     GraphFilesChangedMessage,
-    GraphSaveFailedMessage,
     GraphSavedMessage,
+    GraphSaveFailedMessage,
     GraphStateMessage,
-    NodesDeletedMessage,
     NodeUnlockedMessage,
     NodeUpdatedMessage,
     PresenceStateUpdatedMessage,
 )
-
-from utils.logger import logger
+from tables.graph_collab.utils import build_editor_info
 
 _SYSTEM_EDITOR = EditorInfo(user_id=0, display_name="Autosave", avatar_url=None)
 
@@ -138,35 +135,8 @@ class GraphEditNotifier:
             return
         editor = build_editor_info(user)
         for node_id, field in released_pairs:
-            message = NodeUnlockedMessage(
-                node_id=node_id, field=field, editor=editor
-            ).model_dump()
+            message = NodeUnlockedMessage(node_id=node_id, field=field, editor=editor).model_dump()
             GraphEditNotifier._send(graph_id, message)
-
-    @staticmethod
-    def broadcast_nodes_deleted(
-        graph_id: int,
-        node_ids: list[int],
-        editor: EditorInfo | None = None,
-    ) -> None:
-        """Broadcast nodes_deleted for a set of ``crew_node_list`` row ids."""
-
-        if async_to_sync(graph_state_service.get_snapshot)(graph_id) is None:
-            logger.debug(
-                "broadcast_nodes_deleted: no live snapshot for graph {} — skipping",
-                graph_id,
-            )
-            return
-
-        message = NodesDeletedMessage(
-            refs=[
-                EntryDeleteRef(list_key="crew_node_list", id=node_id)
-                for node_id in node_ids
-            ],
-            editor=editor or _SYSTEM_EDITOR,
-        )
-        async_to_sync(graph_state_service.apply_op)(graph_id, message)
-        GraphEditNotifier._send(graph_id, message.model_dump())
 
     @staticmethod
     def notify_schedule_node_deactivated(graph_id: int, node_id: int) -> None:
@@ -178,8 +148,7 @@ class GraphEditNotifier:
         """
         if async_to_sync(graph_state_service.get_snapshot)(graph_id) is None:
             logger.debug(
-                "notify_schedule_node_deactivated: no live snapshot for graph "
-                "{} — skipping",
+                "notify_schedule_node_deactivated: no live snapshot for graph {} — skipping",
                 graph_id,
             )
             return
@@ -199,11 +168,7 @@ class GraphEditNotifier:
         """Broadcast graph_files_changed after a graph's attached-files list
         changes
         """
-        editor = (
-            build_editor_info(user)
-            if user is not None and user.is_authenticated
-            else None
-        )
+        editor = build_editor_info(user) if user is not None and user.is_authenticated else None
         message = GraphFilesChangedMessage(graph_id=graph_id, editor=editor)
         GraphEditNotifier._send(graph_id, message.model_dump())
 
@@ -334,8 +299,7 @@ async def anotify_node_updated_system(
     layer = get_channel_layer()
     if layer is None:
         logger.warning(
-            "Channel layer is not configured — skipping node_updated broadcast "
-            "for graph {}",
+            "Channel layer is not configured — skipping node_updated broadcast for graph {}",
             graph_id,
         )
         return
@@ -370,7 +334,7 @@ async def anotify_save_failed(
     ``"validation_error"``, ``"bulk_save_validation"``, or ``"db_error"``.
     """
     if saved_at is None:
-        saved_at = datetime.now(tz=timezone.utc).isoformat()
+        saved_at = datetime.now(tz=UTC).isoformat()
     layer = get_channel_layer()
     if layer is None:
         logger.warning(
@@ -386,6 +350,4 @@ async def anotify_save_failed(
     try:
         await layer.group_send(graph_group_name(graph_id), message)
     except Exception as exc:
-        logger.error(
-            "Failed to async broadcast save_failed to graph {} group: {}", graph_id, exc
-        )
+        logger.error("Failed to async broadcast save_failed to graph {} group: {}", graph_id, exc)

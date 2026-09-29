@@ -3,7 +3,7 @@
 // Match app-select (app-tooltip) labels to the app-custom-input labels — scoped to this panel only.
 // Anchored to app-select to outrank the tooltip component's own .tooltip-label rule.
 :host ::ng-deep app-select .tooltip-label {
-    color: var(--color-ks-text);
+    color: var(--fog-200);
     font-weight: 400;
 }
 
@@ -25,6 +25,11 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    padding-top: 0;
+
+    &.editor-fullwidth {
+        padding: 0;
+    }
 }
 
 .section-header {
@@ -50,25 +55,10 @@
         gap: 0;
         height: 100%;
         width: 100%;
+        overflow: visible;
 
-        &.code-editor-fullwidth {
-            .form-fields {
-                display: none;
-            }
-
-            .code-editor-wrapper {
-                width: 100%;
-            }
-
-            .toggle-icon-button {
-                position: absolute;
-                left: 0;
-                top: 50%;
-                transform: translateY(-50%);
-                z-index: 10;
-                border-width: 1px 1px 1px 0px;
-                border-radius: 0 8px 8px 0;
-            }
+        &.form-collapsed .form-fields {
+            display: none;
         }
     }
 
@@ -77,6 +67,12 @@
         flex-direction: column;
         gap: 1rem;
         overflow: visible;
+
+        .code-editor-wrapper {
+            flex: 0 0 auto;
+            height: auto;
+            display: block;
+        }
     }
 }
 
@@ -84,13 +80,21 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    padding-top: 1rem;
+    padding-right: 0.75rem;
 
     .expanded & {
-        @include mixins.resizable-column(400px);
+        @include mixins.resizable-column(406px);
         height: 100%;
         overflow-y: auto;
     }
 }
+
+.form-layout.expanded:not(.form-collapsed) app-column-resize-divider {
+    @include mixins.resize-divider-bleed;
+}
+
+@include mixins.field-isolated-spacing;
 
 .code-editor-wrapper {
     display: flex;
@@ -101,46 +105,13 @@
     flex: 1;
     min-height: 0;
     min-width: 0;
-    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-    .toggle-icon-button {
-        flex-shrink: 0;
-        width: 28px;
-        height: 66px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-width: 1px 0px 1px 1px;
-        border-style: solid;
-        border-color: #2c2c2e;
-        background: #1e1e1e;
-        cursor: pointer;
-        border-radius: 8px 0 0 8px;
-        transition: all 0.2s ease;
-        padding: 0;
-        color: #d9d9d999;
-
-        svg {
-            transition: transform 0.3s ease;
-        }
-
-        &:hover:not(:disabled) {
-            color: #d9d9d9;
-            background: #2c2c2e;
-        }
-
-        &:active:not(:disabled) {
-            color: #d9d9d9;
-        }
-
-        &:disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-    }
 
     app-code-editor {
         min-width: 0;
+    }
+
+    .expanded:not(.form-collapsed) & {
+        @include mixins.editor-pane-bleed;
     }
 }
 
@@ -153,41 +124,30 @@
 }
 
 .code-editor-section {
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    overflow: hidden;
+    border: 1px solid var(--color-divider-subtle);
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-width: 0;
 
     .expanded & {
-        flex: 1;
         height: 100%;
         min-height: 0;
-        border-radius: 0 8px 8px 0;
-        transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-        transform: scaleX(0.3) translateX(-50px);
-        opacity: 0;
+        overflow: hidden;
+        @include mixins.editor-pane-corner;
     }
 
     .collapsed & {
         height: 300px;
         flex-shrink: 0;
         border-radius: 8px;
-    }
-
-    .form-layout.expanded:not(.code-editor-fullwidth) & {
-        transform: scaleX(1) translateX(0);
-        opacity: 1;
-    }
-
-    .form-layout.expanded.code-editor-fullwidth & {
-        transform: scaleX(1) translateX(0);
-        opacity: 1;
+        overflow: hidden;
     }
 }
 
 .webhook-url-display {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.8125rem;
+    color: var(--white-alpha-65);
     word-break: break-all;
     display: flex;
     align-items: center;
@@ -199,16 +159,16 @@
 }
 
 .webhook-url-placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--white-alpha-50);
 }
 
 .webhook-url-error {
-    color: #ef4444;
+    color: var(--crimson-500);
 }
 
 .webhook-warning {
-    font-size: 13px;
-    color: #ef4444;
+    font-size: 0.8125rem;
+    color: var(--crimson-500);
     word-break: break-word;
 }
 
@@ -221,7 +181,7 @@
     flex-shrink: 0;
     border: none;
     background: transparent;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--white-alpha-80);
     border-radius: 4px;
     cursor: pointer;
     transition:
@@ -229,8 +189,8 @@
         background-color 0.15s ease;
 
     &:hover:not(:disabled) {
-        color: white;
-        background: var(--transparent-white-8);
+        color: var(--white);
+        background: var(--fog-alpha-8);
     }
 
     &:disabled {
@@ -248,21 +208,21 @@
 .webhook-auth-pending {
     margin: 0;
     padding: 6px 8px;
-    border-left: 2px solid var(--color-ks-status-warning);
+    border-left: 2px solid var(--yellow-500);
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.5;
-    color: var(--color-ks-status-warning);
-    background: var(--color-ks-transparent-yellow);
+    color: var(--yellow-500);
+    background: var(--yellow-alpha-6);
 }
 
 .copy-button {
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--white-alpha-15);
     background: transparent;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--white-alpha-80);
     padding: 4px 8px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
     transition:
         border-color 0.2s ease,
@@ -272,8 +232,8 @@
 }
 
 .copy-button:hover:not(:disabled) {
-    border-color: var(--active-color, #685fff);
-    color: white;
+    border-color: var(--active-color);
+    color: var(--white);
 }
 
 .copy-button:disabled {

@@ -3,7 +3,6 @@ import audioop
 import base64
 import json
 import uuid
-from typing import Optional
 
 from loguru import logger
 
@@ -23,9 +22,9 @@ class GeminiServerEventHandler:
 
         self.client: GeminiRealtimeAgentClient = client
 
-        self._current_response_id: Optional[str] = None
-        self._current_item_id: Optional[str] = None
-        self._current_user_item_id: Optional[str] = None
+        self._current_response_id: str | None = None
+        self._current_item_id: str | None = None
+        self._current_user_item_id: str | None = None
         self._current_output_index = 0
         self._assistant_output_index = 0
         self._current_transcript = ""
@@ -100,9 +99,7 @@ class GeminiServerEventHandler:
                 }
             )
 
-            await self._send_to_client(
-                {"type": "conversation.item.created", "item": agent_item}
-            )
+            await self._send_to_client({"type": "conversation.item.created", "item": agent_item})
 
             self._current_output_index += 1
 
@@ -401,5 +398,4 @@ class GeminiServerEventHandler:
             logger.info(f"Gemini: Calling tool {tool_name}")
             # Run as a background task so the receive loop stays unblocked
             # while waiting for the tool result from Redis.
-            asyncio.ensure_future(self.client.call_tool(call_id, tool_name, args))
-
+            asyncio.ensure_future(self.client.call_tool(call_id, tool_name, args))  # noqa: RUF006

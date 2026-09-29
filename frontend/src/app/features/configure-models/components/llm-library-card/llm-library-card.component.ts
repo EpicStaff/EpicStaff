@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
@@ -7,7 +6,7 @@ import { ActionCode, LlmLibraryModel, ResourceCode } from '@shared/models';
 
 @Component({
     selector: 'app-llm-library-card',
-    imports: [CommonModule, MatTooltipModule, HasPermissionDirective, AppSvgIconComponent],
+    imports: [MatTooltipModule, HasPermissionDirective, AppSvgIconComponent],
     templateUrl: './llm-library-card.component.html',
     styleUrls: ['./llm-library-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

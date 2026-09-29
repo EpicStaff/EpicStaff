@@ -23,7 +23,6 @@
         "lib": ["ES2022", "dom"],
         "paths": {
             "*": ["./*"],
-            "@shared/animations": ["./src/app/shared/animations/index.ts"],
             "@shared/components": ["./src/app/shared/components/index.ts"],
             "@shared/constants": ["./src/app/shared/constants/index.ts"],
             "@shared/directives": ["./src/app/shared/directives/index.ts"],

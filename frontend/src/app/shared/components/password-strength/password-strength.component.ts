@@ -1,11 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-password-strength',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     templateUrl: './password-strength.component.html',
     styleUrls: ['./password-strength.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

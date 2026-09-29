@@ -1,7 +1,9 @@
 import os
-import psutil
 import tracemalloc
+
+import psutil
 from loguru import logger
+
 from utils.singleton_meta import SingletonMeta
 
 
@@ -28,7 +30,6 @@ class MemoryMonitor(metaclass=SingletonMeta):
                 logger.critical(f"Memory Delta from last change: {delta:.2f} KB")
                 self.last_change = mem
                 # self._log_tracemalloc_deltas()
-                pass
 
     def _log_tracemalloc_deltas(self, limit=5):
         snapshot = tracemalloc.take_snapshot()
@@ -42,14 +43,11 @@ class MemoryMonitor(metaclass=SingletonMeta):
         if stats_diff:
             logger.info("Top memory allocation deltas:")
             for stat in stats_diff[:limit]:
-                logger.info(
-                    f"{stat.size_diff / 1024:.2f} KB in {stat.count_diff} blocks"
-                )
+                logger.info(f"{stat.size_diff / 1024:.2f} KB in {stat.count_diff} blocks")
                 for line in stat.traceback.format()[-3:]:
                     logger.info(line)
         else:
             logger.info("No allocation deltas detected by tracemalloc.")
-        pass
 
 
 class MemoryMonitorContext:
@@ -76,9 +74,7 @@ class MemoryMonitorContext:
         delta = (end_mem - self.last_mem) / 1024
         total_delta = (end_mem - self.start_mem) / 1024
         logger.critical(f"[{self.label}] Final memory: {end_mem / 1024:.2f} KB")
-        logger.critical(
-            f"[{self.label}] Memory delta since enter: {total_delta:.2f} KB"
-        )
+        logger.critical(f"[{self.label}] Memory delta since enter: {total_delta:.2f} KB")
         logger.critical(f"[{self.label}] Memory delta since last log: {delta:.2f} KB")
 
         self._log_tracemalloc_deltas()
@@ -92,9 +88,7 @@ class MemoryMonitorContext:
         if stats_diff:
             logger.info("Top memory allocation deltas:")
             for stat in stats_diff[:limit]:
-                logger.info(
-                    f"{stat.size_diff / 1024:.2f} KB in {stat.count_diff} blocks"
-                )
+                logger.info(f"{stat.size_diff / 1024:.2f} KB in {stat.count_diff} blocks")
                 for line in stat.traceback.format()[-3:]:
                     logger.info(line)
         else:

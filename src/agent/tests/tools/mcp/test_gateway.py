@@ -12,12 +12,10 @@ from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app.exceptions import McpToolError
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
 from shared.models.tools import McpToolData
-
 
 # ---------------------------------------------------------------------------
 # Fakes / helpers
@@ -32,9 +30,7 @@ def _mcp_data(tool_name: str = "search") -> McpToolData:
 class FakeTool:
     name: str
     description: str = "A fake tool."
-    inputSchema: dict = field(
-        default_factory=lambda: {"type": "object", "properties": {}}
-    )
+    inputSchema: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
 
 
 @dataclass
@@ -111,7 +107,7 @@ async def test_describe_returns_description_and_schema():
 
     result = await gateway.describe(_mcp_data("search"))
 
-    assert result.description == "Search the web."
+    assert result.description == "[external MCP tool description] Search the web."
     assert result.input_schema == {
         "type": "object",
         "properties": {"query": {"type": "string"}},
@@ -120,6 +116,16 @@ async def test_describe_returns_description_and_schema():
 
 async def test_describe_falls_back_to_tool_name_when_description_empty():
     tool = FakeTool(name="do_thing", description="")
+    client = _make_client(list_tools_result=[tool])
+    gateway = McpToolGateway(_factory(client))
+
+    result = await gateway.describe(_mcp_data("do_thing"))
+
+    assert result.description == "do_thing"
+
+
+async def test_describe_falls_back_to_tool_name_when_description_whitespace_only():
+    tool = FakeTool(name="do_thing", description="   ")
     client = _make_client(list_tools_result=[tool])
     gateway = McpToolGateway(_factory(client))
 
@@ -142,6 +148,34 @@ async def test_describe_returns_empty_schema_when_input_schema_none():
 # ---------------------------------------------------------------------------
 # describe — failure paths
 # ---------------------------------------------------------------------------
+
+
+async def test_describe_truncates_long_description_strips_control_chars_and_prefixes():
+    raw_description = "A" * 2000 + "\x00\x07\x1f evil\x7f content" + "B" * 100
+    tool = FakeTool(name="search", description=raw_description)
+    client = _make_client(list_tools_result=[tool])
+    gateway = McpToolGateway(_factory(client))
+
+    result = await gateway.describe(_mcp_data("search"))
+
+    prefix = "[external MCP tool description] "
+    assert result.description.startswith(prefix)
+    assert len(result.description) == len(prefix) + 1024
+    assert "\x00" not in result.description
+    assert "\x07" not in result.description
+    assert "\x1f" not in result.description
+    assert "\x7f" not in result.description
+
+
+async def test_describe_leaves_input_schema_unchanged_when_description_truncated():
+    schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+    tool = FakeTool(name="search", description="A" * 2000, inputSchema=schema)
+    client = _make_client(list_tools_result=[tool])
+    gateway = McpToolGateway(_factory(client))
+
+    result = await gateway.describe(_mcp_data("search"))
+
+    assert result.input_schema == schema
 
 
 async def test_describe_raises_mcp_tool_error_when_tool_not_found():
@@ -177,9 +211,7 @@ async def test_call_returns_structured_content_as_json():
 
 
 async def test_call_returns_text_content_joined():
-    result = FakeCallResult(
-        content=[FakeTextContent("hello"), FakeTextContent("world")]
-    )
+    result = FakeCallResult(content=[FakeTextContent("hello"), FakeTextContent("world")])
     client = _make_client(call_tool_result=result)
     gateway = McpToolGateway(_factory(client))
 

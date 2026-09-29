@@ -1,6 +1,5 @@
 from django.db import models
-
-from tables.models.rbac_models.org_scoped import OrgScopedModel
+from rbac.models.org_scoped import OrgScopedModel
 
 from .base_models import MetadataMixin, TimestampMixin
 
@@ -19,12 +18,8 @@ class Secret(OrgScopedModel, TimestampMixin, MetadataMixin):
 
     class Meta(OrgScopedModel.Meta):
         constraints = [
-            models.UniqueConstraint(
-                fields=["org", "name"], name="unique_secret_name_per_org"
-            ),
-            models.CheckConstraint(
-                condition=~models.Q(value=""), name="secret_value_not_empty"
-            ),
+            models.UniqueConstraint(fields=["org", "name"], name="unique_secret_name_per_org"),
+            models.CheckConstraint(condition=~models.Q(value=""), name="secret_value_not_empty"),
         ]
 
     def __str__(self) -> str:

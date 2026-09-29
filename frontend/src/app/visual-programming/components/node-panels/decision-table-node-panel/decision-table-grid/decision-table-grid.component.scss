@@ -20,7 +20,7 @@
 
     h3 {
         margin: 0;
-        color: #ffffffb3;
+        color: var(--white-alpha-70);
         font-size: 1rem;
         font-weight: 400;
         display: flex;
@@ -35,7 +35,7 @@
             height: 18px;
             border-radius: 50%;
             color: var(--accent-color);
-            background: rgba(104, 95, 255, 0.1);
+            background: var(--purple-alpha-10);
             font-size: 0.75rem;
             cursor: help;
             transition:
@@ -43,8 +43,8 @@
                 color 0.2s ease;
 
             &:hover {
-                color: #fff;
-                background: rgba(104, 95, 255, 0.35);
+                color: var(--white);
+                background: var(--purple-alpha-35);
             }
         }
     }
@@ -60,20 +60,20 @@
         }
 
         .ti-trash {
-            color: #ff3b30;
+            color: var(--red-410);
             font-size: 1.1rem;
             transition: all 0.2s ease;
             cursor: pointer;
         }
 
         .ti-trash:hover {
-            color: #ff5449 !important;
+            color: var(--red-415) !important;
             transform: scale(1.1);
         }
 
         .cell-warning {
-            background-color: rgba(255, 59, 48, 0.15) !important;
-            border: 1px solid #ff3b30 !important;
+            background-color: var(--red-410-alpha-15) !important;
+            border: 1px solid var(--red-410) !important;
         }
 
         // Fix for "No Rows To Show" message being cut off - only when empty

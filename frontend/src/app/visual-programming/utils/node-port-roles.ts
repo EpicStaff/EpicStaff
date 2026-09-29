@@ -1,4 +1,5 @@
-import { NodeType } from '../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { getPortsForType } from '../core/helpers/helpers';
 
 export function getOutputPortRole(nodeType: NodeType): string {

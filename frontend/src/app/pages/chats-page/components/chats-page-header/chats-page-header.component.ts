@@ -1,30 +1,10 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 @Component({
     selector: 'app-chats-header',
-    standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [FormsModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [
-        trigger('modelSwitch', [
-            state(
-                'mini',
-                style({
-                    transform: 'translateX(0)',
-                })
-            ),
-            state(
-                'full',
-                style({
-                    transform: 'translateX(100%)',
-                })
-            ),
-            transition('mini <=> full', [animate('0.3s ease-in-out')]),
-        ]),
-    ],
     template: `
         <div class="header">
             <div class="title-container">
@@ -48,7 +28,7 @@ import { FormsModule } from '@angular/forms';
                 align-items: center;
             }
             .title {
-                font-size: 24px;
+                font-size: 1.5rem;
                 font-weight: 400;
                 letter-spacing: -0.02em;
                 line-height: 1.2;
@@ -73,11 +53,11 @@ import { FormsModule } from '@angular/forms';
                 color: var(--white);
                 border-radius: 6px;
                 cursor: pointer;
-                font-size: 14px;
+                font-size: 0.875rem;
             }
             .error-message {
                 color: red;
-                font-size: 12px;
+                font-size: 0.75rem;
             }
             .input-with-toggle {
                 position: relative;
@@ -92,7 +72,7 @@ import { FormsModule } from '@angular/forms';
                 color: var(--white);
                 width: 240px;
                 height: 38px;
-                font-size: 14px;
+                font-size: 0.875rem;
                 transition: all 0.2s ease;
             }
             .input-with-toggle input:focus {
@@ -119,7 +99,7 @@ import { FormsModule } from '@angular/forms';
                 color: var(--white);
             }
             .ti {
-                font-size: 18px;
+                font-size: 1.125rem;
             }
             .model-switcher {
                 position: relative;
@@ -141,7 +121,7 @@ import { FormsModule } from '@angular/forms';
                 border: none;
                 color: var(--gray-300);
                 padding: 6px 12px;
-                font-size: 14px;
+                font-size: 0.875rem;
                 border-radius: 4px;
                 cursor: pointer;
                 transition: all 0.2s ease;

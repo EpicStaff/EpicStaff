@@ -82,5 +82,45 @@
                 [activeColor]="activeColor()"
             ></app-custom-input>
         }
+
+        @if (showAuth()) {
+            @if (existingAuth(); as auth) {
+                <p class="wt-hint">
+                    Currently configured: {{ authKindLabel(auth.kind) }}
+                    @if (auth.secret_tail) {
+                        (secret ending in ****{{ auth.secret_tail }})
+                    } @else {
+                        — no secret set yet
+                    }
+                    . Leaving the fields below untouched will keep this configuration as-is.
+                </p>
+            }
+
+            <app-select
+                label="Auth Strategy"
+                [required]="true"
+                tooltipText="Fixed authentication strategy for inbound requests to this trigger: Webhook Node sends the EPICSTAFF_API_KEY header, Telegram Node sends the X-Telegram-Bot-Api-Secret-Token header, and Twilio is verified via its own X-Twilio-Signature header."
+                formControlName="auth_kind"
+                [items]="authKindItems()"
+            />
+
+            @if (authKindValue() === 'webhook' || authKindValue() === 'telegram') {
+                <app-select
+                    formControlName="auth_secret_id"
+                    label="Auth Secret"
+                    variant="boxed"
+                    tooltipText="The stored secret used to authenticate inbound requests to this trigger."
+                    placeholder="Select a secret"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
+                />
+            } @else if (authKindValue() === 'twilio') {
+                <p class="wt-hint">
+                    No secret needed — this reserves the trigger for a Twilio channel; its auth token is filled in
+                    automatically when a Twilio channel is linked to it.
+                </p>
+            }
+        }
     </form>
 }

@@ -13,18 +13,18 @@
         width: 36px;
         height: 36px;
         padding: 0;
-        background: rgba(255, 255, 255, 0.06);
+        background: var(--white-alpha-6);
         border: none;
         border-radius: 8px;
-        color: #d4d4dc;
+        color: var(--gray-213);
         cursor: pointer;
         transition:
             background-color 0.15s ease,
             color 0.15s ease;
 
         &:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            background: var(--white-alpha-10);
+            color: var(--white);
         }
 
         &:focus-visible {
@@ -53,17 +53,17 @@
         }
 
         &::-webkit-scrollbar-thumb {
-            background-color: rgba(255, 255, 255, 0.15);
+            background-color: var(--white-alpha-15);
             border-radius: 3px;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.25);
+                background-color: var(--white-alpha-25);
             }
         }
 
         // Firefox
         scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        scrollbar-color: var(--white-alpha-15) transparent;
     }
 
     .breadcrumb-item {
@@ -76,7 +76,7 @@
         flex-shrink: 0;
         box-sizing: border-box;
         padding: 0 14px;
-        background: rgba(255, 255, 255, 0.06);
+        background: var(--white-alpha-6);
         border-radius: 8px;
         color: var(--accent-color);
         border-left: 3px solid var(--accent-color);
@@ -85,7 +85,7 @@
             cursor: pointer;
 
             &:hover {
-                background: rgba(255, 255, 255, 0.1);
+                background: var(--white-alpha-10);
             }
         }
 
@@ -117,7 +117,7 @@
     }
 
     .breadcrumb-separator {
-        color: #9b9ba6;
+        color: var(--gray-609);
         font-size: 0.75rem;
         user-select: none;
         padding: 0 2px;
@@ -131,7 +131,7 @@
         width: 14px;
         height: 14px;
         flex-shrink: 0;
-        color: #9b9ba6;
+        color: var(--gray-609);
         transform: translateY(4px);
     }
 }

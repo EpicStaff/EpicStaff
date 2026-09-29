@@ -10,7 +10,7 @@ from asgiref.sync import sync_to_async
 from tables.exceptions import BulkSaveValidationError
 from tables.graph_collab.flush_service import FlushOutcome, FlushStatus
 from tables.graph_collab.graph_state_service import graph_state_service
-from tables.models import Organization
+from rbac.models import Organization
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tests.graph_collab.conftest import (

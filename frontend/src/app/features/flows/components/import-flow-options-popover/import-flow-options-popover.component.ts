@@ -1,12 +1,11 @@
 import { CdkOverlayOrigin, OverlayModule } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
+import { HelpTooltipComponent } from '@shared/components';
 
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 
 @Component({
     selector: 'app-import-flow-options-popover',
-    standalone: true,
     imports: [OverlayModule, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './import-flow-options-popover.component.html',

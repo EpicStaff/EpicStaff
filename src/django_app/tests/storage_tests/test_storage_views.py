@@ -4,7 +4,8 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 
-from tables.models import Graph, GraphStorageFile, Organization, StorageFile
+from rbac.models import Organization
+from tables.models import Graph, GraphStorageFile, StorageFile
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
@@ -167,9 +168,9 @@ class TestRename:
 
 class TestMove:
     def test_move_dispatches_to_cross_org_when_org_ids_differ(
-        self, superadmin_auth_client, mock_manager
+        self, superadmin_client_with_org, mock_manager
     ):
-        resp = superadmin_auth_client.post(
+        resp = superadmin_client_with_org.post(
             "/api/storage/move/",
             {
                 "from_path": "a.txt",
@@ -200,9 +201,9 @@ class TestMove:
 
 class TestCopy:
     def test_copy_dispatches_to_cross_org_when_org_ids_differ(
-        self, superadmin_auth_client, mock_manager
+        self, superadmin_client_with_org, mock_manager
     ):
-        resp = superadmin_auth_client.post(
+        resp = superadmin_client_with_org.post(
             "/api/storage/copy/",
             {
                 "from_path": "a.txt",
@@ -523,7 +524,7 @@ class TestSandboxMutationFeedsListing:
     """
 
     def test_on_upload_then_list_returns_file(self, auth_client):
-        from tables.models import Organization
+        from rbac.models import Organization
         from tables.services.storage_service.db_sync import StorageFileSync
         from tables.services.storage_service.manager import StorageManager
         from tests.storage_tests.in_memory_backend import InMemoryStorageBackend

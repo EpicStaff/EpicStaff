@@ -1,13 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { JsonEditorComponent } from '@shared/components';
 import type { editor as MonacoEditor } from 'monaco-editor';
-
-import { JsonEditorComponent } from '../../../../../../../../../shared/components/json-editor/json-editor.component';
 
 @Component({
     selector: 'app-value-preview-tooltip',
-    standalone: true,
-    imports: [CommonModule, JsonEditorComponent],
+    imports: [JsonEditorComponent],
     templateUrl: './value-preview-tooltip.component.html',
     styleUrls: ['./value-preview-tooltip.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

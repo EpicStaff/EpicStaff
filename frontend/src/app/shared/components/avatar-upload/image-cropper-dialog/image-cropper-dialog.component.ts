@@ -1,8 +1,10 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { ImageCroppedEvent, ImageCropperComponent } from 'ngx-image-cropper';
+
+import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
+import { ButtonComponent } from '../../buttons';
 
 @Component({
     selector: 'app-image-cropper-dialog',

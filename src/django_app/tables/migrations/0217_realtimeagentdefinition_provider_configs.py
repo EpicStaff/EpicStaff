@@ -39,6 +39,9 @@ manually reassigned.
 
 import django.db.models.deletion
 from django.db import migrations, models
+from loguru import logger
+
+from tables.services.secrets import SecretDecryptionError, secret_encryption
 
 
 def _provider_name(realtime_config) -> str | None:
@@ -51,6 +54,23 @@ def _provider_name(realtime_config) -> str | None:
     except Exception:
         pass
     return None
+
+
+def _api_key(cfg) -> str:
+    if hasattr(cfg, "api_key"):
+        return cfg.api_key or ""
+
+    secret = getattr(cfg, "api_key_secret", None)
+    if secret is None or not secret.value:
+        return ""
+    try:
+        return secret_encryption.decrypt(encryptedtext=secret.value)
+    except SecretDecryptionError:
+        logger.warning(
+            f"Could not decrypt Secret pk={secret.pk} for {type(cfg).__name__} "
+            f"pk={cfg.pk}; leaving the new config's api_key empty."
+        )
+        return ""
 
 
 def migrate_realtime_agent_definition_configs(apps, schema_editor):
@@ -81,7 +101,7 @@ def migrate_realtime_agent_definition_configs(apps, schema_editor):
             if old_cfg_id not in elevenlabs_cache:
                 el_cfg = ElevenLabsRealtimeConfig.objects.create(
                     custom_name=rt_cfg.custom_name,
-                    api_key=rt_cfg.api_key or "",
+                    api_key=_api_key(rt_cfg),
                     model_name=rt_cfg.realtime_model.name,
                     language=agent_definition.language or "",
                     org_id=org_id,
@@ -93,7 +113,7 @@ def migrate_realtime_agent_definition_configs(apps, schema_editor):
             if old_cfg_id not in gemini_cache:
                 g_cfg = GeminiRealtimeConfig.objects.create(
                     custom_name=rt_cfg.custom_name,
-                    api_key=rt_cfg.api_key or "",
+                    api_key=_api_key(rt_cfg),
                     model_name=rt_cfg.realtime_model.name,
                     voice_recognition_prompt=agent_definition.voice_recognition_prompt
                     or "",
@@ -108,7 +128,7 @@ def migrate_realtime_agent_definition_configs(apps, schema_editor):
                 transcription_cfg = agent_definition.realtime_transcription_config
                 openai_cfg = OpenAIRealtimeConfig.objects.create(
                     custom_name=rt_cfg.custom_name,
-                    api_key=rt_cfg.api_key or "",
+                    api_key=_api_key(rt_cfg),
                     model_name=rt_cfg.realtime_model.name,
                     transcription_model_name=(
                         transcription_cfg.realtime_transcription_model.name
@@ -116,7 +136,7 @@ def migrate_realtime_agent_definition_configs(apps, schema_editor):
                         else "whisper-1"
                     ),
                     transcription_api_key=(
-                        transcription_cfg.api_key if transcription_cfg else ""
+                        _api_key(transcription_cfg) if transcription_cfg else ""
                     ),
                     voice_recognition_prompt=agent_definition.voice_recognition_prompt
                     or "",

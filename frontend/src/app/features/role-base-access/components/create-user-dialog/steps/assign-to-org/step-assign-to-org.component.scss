@@ -28,7 +28,7 @@
 
             .count {
                 color: var(--purple-primary);
-                font-weight: 600;
+                font-weight: 500;
             }
         }
     }
@@ -38,14 +38,28 @@ app-select.row-unselected {
     opacity: 0.35;
 }
 
+.disabled-note {
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--transparent-white-16);
+    color: var(--text-secondary-60);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.assign-table--disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 .org-cell {
     display: flex;
     align-items: center;
     gap: 10px;
 
     .org-name {
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         color: var(--text);
     }
 }

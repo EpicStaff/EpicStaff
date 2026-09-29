@@ -1,0 +1,115 @@
+ghsa	severity	cvss	title	present_before	present_after
+GHSA-w7jw-789q-3m8p	critical	8.1	shell-quote quote() does not escape newlines in object .op values	yes	no
+GHSA-23hp-3jrh-7fpw	critical	7.5	node-tar: Decompression/parse DoS via unlimited input	yes	no
+GHSA-xv26-6w52-cph6	critical	0	websocket-driver: Message corruption via abuse of protocol length headers	yes	no
+GHSA-wf6x-7x77-mvgw	high	9.8	Immutable is vulnerable to Prototype Pollution	yes	no
+GHSA-g93w-mfhg-p222	high	9	Angular vulnerable to XSS in i18n attribute bindings	yes	no
+GHSA-r6q2-hw4h-h46w	high	8.8	Race Condition in node-tar Path Reservations via Unicode Ligature Collisions on macOS APFS	yes	no
+GHSA-fv7c-fp4j-7gwp	high	8.2	@babel/plugin-transform-modules-systemjs generates arbitrary code when compiling malicious input	yes	no
+GHSA-2p49-hgcm-8545	high	8.2	SVGO removeScripts plugin leaves some executable scripts intact	yes	no
+GHSA-34x7-hfp2-rc4v	high	8.2	node-tar Vulnerable to Arbitrary File Creation/Overwrite via Hardlink Path Traversal	yes	no
+GHSA-r5fr-rjxr-66jc	high	8.1	lodash vulnerable to Code Injection via `_.template` imports key names	yes	no
+GHSA-x9g3-xrwr-cwfg	high	8.1	piscina: Prototype Pollution Gadget → RCE via inherited options.filename	yes	no
+GHSA-5c6j-r48x-rmvq	high	8.1	Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()	yes	no
+GHSA-48r7-hpm6-gfxm	high	7.5	@angular/common: Denial of Service (DoS) via OOM in Date Formatting (formatDate)	yes	no
+GHSA-q6f4-qqrg-jv6x	high	7.5	@angular/common: Information Leak via Default Caching of Credentialed Requests in HttpTransferCache	yes	no
+GHSA-mh99-v99m-4gvg	high	7.5	brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash	yes	no
+GHSA-rgw5-rvv9-x895	high	7.5	brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation	yes	no
+GHSA-r635-g3xr-vw7x	high	7.5	Socket.IO: Engine.IO Polling Transport Connection Exhaustion	yes	no
+GHSA-v2hh-gcrm-f6hx	high	7.5	fast-uri vulnerable to host confusion via literal backslash authority delimiter	yes	no
+GHSA-7p8r-x3mc-p8w7	high	7.5	fast-uri vulnerable to host confusion via backslash authority introducer	yes	no
+GHSA-4c8g-83qw-93j6	high	7.5	fast-uri vulnerable to host confusion via failed IDN canonicalization	yes	no
+GHSA-q3j6-qgpj-74h6	high	7.5	fast-uri vulnerable to path traversal via percent-encoded dot segments	yes	no
+GHSA-v39h-62p7-jpjc	high	7.5	fast-uri vulnerable to host confusion via percent-encoded authority delimiters	yes	no
+GHSA-25h7-pfq9-p65f	high	7.5	flatted vulnerable to unbounded recursion DoS in parse() revive phase	yes	no
+GHSA-gcq2-9pq2-cxqm	high	7.5	http-proxy-middleware: multipart/form-data field injection via unescaped CRLF in `fixRequestBody`	yes	no
+GHSA-w3rx-r6r6-pgpr	high	7.5	image-size: ICNS parser allows denial of service through an infinite loop	yes	no
+GHSA-5p2g-fcmc-qvqq	high	7.5	image-size: JXL and HEIF parsers allow denial of service through infinite loops	yes	no
+GHSA-v56q-mh7h-f735	high	7.5	Immutable.js `List` 32-bit trie overflow → unrecoverable DoS	yes	no
+GHSA-52cp-r559-cp3m	high	7.5	js-yaml: YAML merge-key chains can force quadratic CPU consumption	yes	no
+GHSA-5p4m-2wfm-xmqj	high	7.5	JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported	yes	no
+GHSA-7r86-cg39-jmmj	high	7.5	minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments	yes	no
+GHSA-23c5-xmqv-rm74	high	7.5	minimatch ReDoS: nested *() extglobs generate catastrophically backtracking regular expressions	yes	no
+GHSA-q67f-28xg-22rw	high	7.5	Forge has signature forgery in Ed25519 due to missing S > L check	yes	no
+GHSA-5m6q-g25r-mvwx	high	7.5	Forge has Denial of Service via Infinite Loop in BigInteger.modInverse() with Zero Input	yes	no
+GHSA-ppp5-5v6c-4jwp	high	7.5	Forge has signature forgery in RSA-PKCS due to ASN.1 extra field 	yes	no
+GHSA-37ch-88jc-xwx2	high	7.5	path-to-regexp vulnerable to Regular Expression Denial of Service via multiple route parameters	yes	no
+GHSA-c2c7-rcm5-vvqj	high	7.5	Picomatch has a ReDoS vulnerability via extglob quantifiers	yes	no
+GHSA-6g55-p6wh-862q	high	7.5	PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments	yes	no
+GHSA-r28c-9q8g-f849	high	7.5	PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure	yes	no
+GHSA-395f-4hp3-45gv	high	7.5	shell-quote: Quadratic-complexity Denial of Service in `parse()` (CWE-407)	yes	no
+GHSA-52v5-jr5w-gjxr	high	7.5	sigstore's `certificateOIDs` verification constraints are silently dropped and never enforced	yes	no
+GHSA-2m8v-j782-fhvr	high	7.5	Socket.IO: Zero-attachment Memory Exhaustion	yes	no
+GHSA-8x88-c5mf-7j5w	high	7.5	node-tar: Negative tar entry size causes infinite loop in archive replace	yes	no
+GHSA-fx2h-pf6j-xcff	high	7.5	vite: `server.fs.deny` bypass on Windows alternate paths	yes	no
+GHSA-96hv-2xvq-fx4p	high	7.5	ws: Memory exhaustion DoS from tiny fragments and data chunks	yes	no
+GHSA-2328-f5f3-gj25	high	7.4	Forge has a basicConstraints bypass in its certificate chain verification (RFC 5280 violation)	yes	no
+GHSA-83g3-92jg-28cx	high	7.1	Arbitrary File Read/Write via Hardlink Target Escape Through Symlink Chain in node-tar Extraction	yes	no
+GHSA-39pv-4j6c-2g6v	high	6.1	@angular/common: Weak 32-Bit Cache Key Hashing in `HttpTransferCache` Leading to Cross-Request Data Leakage and State Poisoning	yes	no
+GHSA-p3vc-36g9-x9gr	high	6.1	@angular/common: Denial of Service (DoS) via OOM in Number Formatting (digitsInfo)	yes	no
+GHSA-prjf-86w9-mfqv	high	6.1	Angular i18n vulnerable to Cross-Site Scripting	yes	no
+GHSA-rgjc-h3x7-9mwg	high	6.1	Angular Client Hydration DOM Clobbering & Response-Cache Poisoning	yes	no
+GHSA-28wg-ghj8-5hjv	high	5.9	nanoid: non-secure generators can loop indefinitely with negative size	yes	no
+GHSA-2v37-7h3g-55p8	high	5.9	nanoid: custom generators can loop indefinitely when size is zero	yes	no
+GHSA-3jxr-9vmj-r5cp	high	5.3	brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups	yes	no
+GHSA-jhpw-976m-542j	high	0	Angular: Cache-Key Ambiguity in HttpTransferCache Leading to Cross-Request Response Reuse and State Poisoning	yes	no
+GHSA-jj27-h5hq-8x99	high	0	Angular i18n: Cross-Site Scripting (XSS) via event-handler attributes	yes	no
+GHSA-rf6f-7fwh-wjgh	high	0	Prototype Pollution via parse() in NodeJS flatted	yes	no
+GHSA-xvcm-6775-5m9r	high	0	Immutable: Hash-collision algorithmic complexity denial of service in Immutable.Map/Set	yes	no
+GHSA-mwp4-54f8-5fhr	high	0	ip-address: Address4 decodes leading-zero octets as decimal while resolvers decode them as octal, allowing SSRF and trust-boundary bypass	yes	no
+GHSA-3ppc-4f35-3m26	high	0	minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern	yes	no
+GHSA-mw96-cpmx-2vgc	high	0	Rollup 4 has Arbitrary File Write via Path Traversal	yes	no
+GHSA-677m-j7p3-52f9	high	0	socket.io allows an unbounded number of binary attachments	yes	no
+GHSA-8qq5-rm4j-mr97	high	0	node-tar is Vulnerable to Arbitrary File Overwrite and Symlink Poisoning via Insufficient Path Sanitization	yes	no
+GHSA-qffp-2rhf-9h96	high	0	tar has Hardlink Path Traversal via Drive-Relative Linkpath	yes	no
+GHSA-9ppj-qmqm-q256	high	0	node-tar Symlink Path Traversal via Drive-Relative Linkpath	yes	no
+GHSA-ph9p-34f9-6g65	high	0	tmp has Path Traversal via unsanitized prefix/postfix that enables directory escape	yes	no
+GHSA-p9ff-h696-f583	high	0	Vite Vulnerable to Arbitrary File Read via Vite Dev Server WebSocket	yes	no
+GHSA-w5hq-g745-h8pq	moderate	7.5	uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided	yes	no
+GHSA-f886-m6hf-6m8v	moderate	6.5	brace-expansion: Zero-step sequence causes process hang and memory exhaustion	yes	no
+GHSA-jxxr-4gwj-5jf2	moderate	6.5	brace-expansion: Large numeric range defeats documented `max` DoS protection	yes	no
+GHSA-f23m-r3pf-42rh	moderate	6.5	lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`	yes	no
+GHSA-xxjr-mmjv-4gpg	moderate	6.5	Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions	yes	no
+GHSA-58w9-8g37-x9v5	moderate	6.1	@angular/compiler: Two-Way Property Binding Sanitization Bypass (XSS)	yes	no
+GHSA-f3m7-gqxr-g87x	moderate	6.1	Angular: Template and Attribute Namespace Sanitization Bypass (XSS)	yes	no
+GHSA-692r-grfm-v8x7	moderate	6.1	@angular/core: Angular Template and Dynamic Component Namespace Bypass leading to Cross-Site Scripting (XSS)	yes	no
+GHSA-qx2v-qp2m-jg93	moderate	6.1	PostCSS has XSS via Unescaped </style> in its CSS Stringify Output	yes	no
+GHSA-qj8w-gfj5-8c6v	moderate	5.9	Serialize JavaScript has CPU Exhaustion Denial of Service via crafted array-like objects	yes	no
+GHSA-jfc7-64v2-mr8c	moderate	5.4	@sigstore/core has DSSE payloadType type-binding failure	yes	no
+GHSA-h67p-54hq-rp68	moderate	5.3	JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases	yes	no
+GHSA-6m6c-36f7-fhxh	moderate	5.3	Mermaid Gantt Charts are vulnerable to an Infinite Loop DoS	yes	no
+GHSA-3v7f-55p6-f55p	moderate	5.3	Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching	yes	no
+GHSA-q8mj-m7cp-5q26	moderate	5.3	qs has a remotely triggerable DoS: qs.stringify crashes with TypeError on null/undefined entries in comma-format arrays when encodeValuesOnly is set	yes	no
+GHSA-w8wr-v893-vjvp	moderate	5.3	node-tar: Process crash via PAX numeric path type confusion	yes	no
+GHSA-gvwx-54wh-qm9j	moderate	5.3	node-tar: Uncaught Exception DoS via NUL byte in PAX path/linkpath records	yes	no
+GHSA-r292-9mhp-454m	moderate	5.3	node-tar: Uncontrolled recursion in mapHas/filesFilter allows uncatchable stack-overflow DoS via crafted long-path tar with member selection	yes	no
+GHSA-79cf-xcqc-c78w	moderate	5.3	webpack-dev-server vulnerable to cross-origin source code exposure on non-HTTPS origins	yes	no
+GHSA-mx8g-39q3-5c79	moderate	5.3	webpack-dev-server vulnerable to HMR WebSocket interception via permissive user proxies	yes	no
+GHSA-m28w-2pqf-7qgj	moderate	5.3	webpack-dev-server vulnerable to denial of service via a malformed Host or Origin header	yes	no
+GHSA-8xcm-r25x-g524	moderate	4.8	undici vulnerable to downstream response desynchronization via retry interceptor	yes	no
+GHSA-v3r7-h72x-cjcm	moderate	4.8	undici vulnerable to cookie attribute injection via unsanitized domain and unparsed setCookie fields	yes	no
+GHSA-f5vj-f2hx-8m93	moderate	4.7	webpack-dev-server vulnerable to cross-site request forgery via internal developer endpoints	yes	no
+GHSA-58qx-3vcg-4xpx	moderate	4.4	ws: Uninitialized memory disclosure	yes	no
+GHSA-48c2-rrv3-qjmp	moderate	4.3	yaml is vulnerable to Stack Overflow via deeply nested YAML collections	yes	no
+GHSA-m8rv-5g2x-5cg5	moderate	4.2	undici vulnerable to CRLF Injection via blob-like body 'type' property	yes	no
+GHSA-2g4f-4pwh-qvx6	moderate	0	ajv has ReDoS when using `$data` option	yes	no
+GHSA-55q2-fjhq-7xh7	moderate	0	DOMPurify: IN_PLACE hook removal leaves a detached subtree executable, causing XSS	yes	no
+GHSA-r4q5-vmmm-2653	moderate	0	follow-redirects leaks Custom Authentication Headers to Cross-Domain Redirect Targets	yes	no
+GHSA-64mm-vxmg-q3vj	moderate	0	http-proxy-middleware `router` host+path substring matching allows Host-header-driven backend routing bypass	yes	no
+GHSA-v2v4-37r5-5v8g	moderate	0	ip-address has XSS in Address6 HTML-emitting methods	yes	no
+GHSA-v6wh-96g9-6wx3	moderate	0	launch-editor: NTLMv2 hash disclosure via UNC path handling on Windows	yes	no
+GHSA-ghcm-xqfw-q4vr	moderate	0	Mermaid: Improper sanitization of `classDef` in state diagrams leads to HTML injection	yes	no
+GHSA-xcj9-5m2h-648r	moderate	0	Mermaid: Improper sanitization of `classDefs` in diagrams leads to CSS injection	yes	no
+GHSA-87f9-hvmw-gh4p	moderate	0	Mermaid: Improper sanitization of configuration leads to CSS injection	yes	no
+GHSA-6x64-9x62-f2gx	moderate	0	Mermaid allows CSS injection applying to sibling elements of the diagram	yes	no
+GHSA-3rrr-jr9j-h3q3	moderate	0	Mermaid Architecture diagrams are vulnerable to prototype pollution	yes	no
+GHSA-2v8p-3f2j-5mp7	moderate	0	Mermaid XY Charts are vulnerable to an infinite loop DoS	yes	no
+GHSA-rhh3-jpg6-66xh	moderate	0	Mermaid radar diagrams are vulnerable to DoS	yes	no
+GHSA-fxqj-rqcc-2cmp	moderate	0	PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset	yes	no
+GHSA-vmf3-w455-68vh	moderate	0	node-tar applies PAX size override to intermediary GNU long-name/long-link headers, causing tar parser interpretation differential (file smuggling)	yes	no
+GHSA-4w7w-66w2-5vf9	moderate	0	Vite Vulnerable to Path Traversal in Optimized Deps `.map` Handling	yes	no
+GHSA-mp7j-qc5w-4988	moderate	0	websocket-driver: Resource limit bypass via message compression	yes	no
+GHSA-v422-hmwv-36x6	low	3.7	body-parser vulnerable to denial of service when invalid limit value silently disables size enforcement	yes	no
+GHSA-4x5r-pxfx-6jf8	low	3.2	@babel/core: Arbitrary File Read via sourceMappingURL Comment	yes	no
+GHSA-c2j3-45gr-mqc4	low	0	DOMPurify: `CUSTOM_ELEMENT_HANDLING` bypasses `afterSanitizeElements` for allowed custom elements.	yes	no
+GHSA-c4c3-pg64-4m4v	low	0	Mermaid configuration APIs allow prototype pollution	yes	no

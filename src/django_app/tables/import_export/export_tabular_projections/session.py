@@ -14,7 +14,6 @@ class SessionTabularProjection(TabularProjection):
         "name",
         "execution_order",
         "msg__type",
-        "msg__crew_id",
         "msg__agent_id",
         "msg__task_id",
         "msg__text",
@@ -36,6 +35,10 @@ class SessionTabularProjection(TabularProjection):
         "msg__expression",
         "msg__input_json",
         "msg__output_json",
+        "principal_kind",
+        "principal_email",
+        "principal_user_id",
+        "principal_api_key_id",
     ]
 
     def project(self, row: dict) -> dict:
@@ -52,16 +55,13 @@ class SessionTabularProjection(TabularProjection):
             "name": row["name"],
             "execution_order": row["execution_order"],
             "msg__type": mtype,
-            "msg__crew_id": d.get("crew_id"),
             "msg__agent_id": d.get("agent_id"),
             "msg__task_id": d.get("task_id"),
             "msg__text": d.get("text"),
             "msg__thought": d.get("thought"),
             "msg__tool": d.get("tool"),
             "msg__tool_input": d.get("tool_input"),
-            "msg__result": d.get("result")
-            if mtype in ("agent", "agent_finish")
-            else None,
+            "msg__result": d.get("result") if mtype in ("agent", "agent_finish") else None,
             "msg__task_raw": d.get("raw") if mtype == "task" else None,
             "msg__error": d.get("details") or d.get("error"),
             "msg__task_description": d.get("description"),
@@ -78,4 +78,18 @@ class SessionTabularProjection(TabularProjection):
             "msg__expression": d.get("expression"),
             "msg__input_json": _json(d.get("input")),
             "msg__output_json": _json(d.get("output")),
+            "principal_kind": row.get("principal_kind"),
+            "principal_email": row.get("principal_email"),
+            "principal_user_id": row.get("principal_user_id"),
+            "principal_api_key_id": row.get("principal_api_key_id"),
         }
+
+    def expand(self, item: dict) -> list[dict]:
+        principal = (item.get("session", {}) or {}).get("principal", {}) or {}
+        context = {
+            "principal_kind": principal.get("kind"),
+            "principal_email": principal.get("email"),
+            "principal_user_id": principal.get("user"),
+            "principal_api_key_id": principal.get("api_key"),
+        }
+        return [{**msg, **context} for msg in item.get("messages", [])]

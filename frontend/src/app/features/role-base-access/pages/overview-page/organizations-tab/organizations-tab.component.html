@@ -5,16 +5,18 @@
         [(searchTerm)]="searchTerm"
     />
 
-    <span class="count-label"> {{ filteredOrgs().length }} of {{ organizations().length }} organizations </span>
+    <span class="count-label"> {{ organizations().length }} organizations </span>
 
     <div class="toolbar-actions">
-        <app-button
-            type="primary"
-            leftIcon="plus"
-            (click)="onCreateOrganization()"
-        >
-            Create Organization</app-button
-        >
+        @if (isSuperadmin) {
+            <app-button
+                type="primary"
+                leftIcon="plus"
+                (click)="onCreateOrganization()"
+            >
+                Create Organization</app-button
+            >
+        }
     </div>
 </div>
 <app-table
@@ -68,6 +70,43 @@
             [icon]="row['status'] === 'deactivated' ? 'clock' : null"
         />
     </ng-template>
+
+    <!-- ACTIONS -->
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        <div
+            class="actions-cell"
+            (click)="$event.stopPropagation()"
+        >
+            @if (canEditRow(row)) {
+                <app-edit-button
+                    tooltip="Edit organization"
+                    (triggered)="onEditOrganization(row)"
+                />
+            }
+            @if (showReactivateOrg(row)) {
+                <app-activate-button
+                    tooltip="Activate organization"
+                    (triggered)="onReactivateOrganization(row)"
+                />
+            }
+            @if (showDeactivateOrg(row)) {
+                <app-stop-button
+                    tooltip="Deactivate organization"
+                    (triggered)="onDeactivateOrganization(row)"
+                />
+            }
+            @if (isSuperadmin) {
+                <app-delete-button
+                    tooltip="Delete organization"
+                    (triggered)="onDeleteOrganization(row)"
+                />
+            }
+        </div>
+    </ng-template>
+
     <div tableEmpty>
         @if (isLoading()) {
             <app-loading-spinner size="sm" />

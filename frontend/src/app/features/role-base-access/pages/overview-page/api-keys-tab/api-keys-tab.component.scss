@@ -6,8 +6,40 @@
     justify-content: space-between;
 }
 
-.org-filter {
-    width: 160px;
+.org-trigger {
+    cursor: pointer;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-start;
+    position: relative;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-input-border);
+    background-color: var(--color-input-background);
+    color: var(--color-text-primary);
+    transition:
+        color 0.2s ease,
+        border-color 0.2s ease;
+    min-width: 0;
+    height: 40px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+
+    &:hover {
+        border-color: var(--accent-color);
+    }
+
+    &--active {
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+
+    &__label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .owner-cell {

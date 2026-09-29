@@ -4,19 +4,10 @@ from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .agent_service import CollectionSpec, S3FileSpec
-from .agents import CrewData
 from .ai_providers import LLMData
+from .knowledge import RagSearchConfig
 from .surfaces import CombinedSurfaceData
 from .tools import BaseToolData, PythonCodeData
-
-
-class CrewNodeData(BaseModel):
-    node_name: str
-    crew: CrewData
-    input_map: dict[str, Any]
-    output_variable_path: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class PythonNodeData(BaseModel):
@@ -24,6 +15,22 @@ class PythonNodeData(BaseModel):
     python_code: PythonCodeData
     input_map: dict[str, Any]
     output_variable_path: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeNodeData(BaseModel):
+    node_name: str
+    collection_id: int | None = None
+    rag_type_id: str | None = None
+    query: str
+    rag_search_config: RagSearchConfig | None = None
+    input_map: dict[str, Any]
+    output_variable_path: str | None = None
+    embedder_api_key: str | None = None
+    embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    llm_api_key: str | None = None
+    llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -227,9 +234,7 @@ class ScheduleTriggerNodeData(BaseModel):
     run_mode: Literal["once", "repeat"] | None = None
     start_date_time: str | None = None
     every: int | None = None
-    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = (
-        None
-    )
+    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = None
     weekdays: list[str] = []
     end_type: Literal["never", "on_date", "after_n_runs"] | None = None
     end_date_time: str | None = None
@@ -250,9 +255,9 @@ class SubGraphNodeData(BaseModel):
 class GraphData(BaseModel):
     graph_id: int | None = None
     name: str
-    crew_node_list: list[CrewNodeData] = []
     webhook_trigger_node_data_list: list[WebhookTriggerNodeData] = []
     python_node_list: list[PythonNodeData] = []
+    knowledge_node_list: list[KnowledgeNodeData] = []
     file_extractor_node_list: list[FileExtractorNodeData] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []
@@ -261,9 +266,7 @@ class GraphData(BaseModel):
     edge_list: list[EdgeData] = []
     conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []
-    classification_decision_table_node_list: list[
-        ClassificationDecisionTableNodeData
-    ] = []
+    classification_decision_table_node_list: list[ClassificationDecisionTableNodeData] = []
     entrypoint: str
     end_node: EndNodeData | None
     telegram_trigger_node_data_list: list[TelegramTriggerNodeData] = []
@@ -291,9 +294,7 @@ class ScheduleTriggerNodePayload(BaseModel):
     run_mode: Literal["once", "repeat"] | None = None
     start_date_time: datetime | None = None
     every: int | None = None
-    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = (
-        None
-    )
+    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = None
     weekdays: list[str] | None = None
     end_type: Literal["never", "on_date", "after_n_runs"] | None = None
     end_date_time: datetime | None = None

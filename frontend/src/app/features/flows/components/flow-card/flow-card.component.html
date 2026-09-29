@@ -5,15 +5,14 @@
     [class.is-expanded]="isExpanded()"
     (click)="selectMode ? onSelectionToggle($event) : onCardClick()"
 >
-    @if (selectMode) {
-        <div class="selection-checkbox">
-            <app-checkbox [checked]="isSelected"></app-checkbox>
-        </div>
-    }
-
     <div class="card-main">
         <div class="card-info">
             <div class="name-row">
+                @if (selectMode) {
+                    <div class="selection-checkbox">
+                        <app-checkbox [checked]="isSelected"></app-checkbox>
+                    </div>
+                }
                 <span class="flow-name">{{ flow.name }}</span>
                 <span class="flow-id">- ID {{ flow.id }}</span>
             </div>

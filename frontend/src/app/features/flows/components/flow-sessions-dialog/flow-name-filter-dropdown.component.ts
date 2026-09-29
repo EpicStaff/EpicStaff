@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -11,8 +10,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
+import { ClickOutsideDirective } from '@shared/directives';
 
 interface FlowOption {
     id: number;
@@ -21,8 +19,7 @@ interface FlowOption {
 
 @Component({
     selector: 'app-flow-name-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `

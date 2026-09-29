@@ -20,7 +20,7 @@
         <!--        <app-validation-errors [control]="form.get('full_name')!" />-->
         <div class="control">
             <label class="label">
-                Email <span class="required">*</span>
+                <span>Email<span class="required">*</span></span>
                 <app-help-tooltip
                     [text]="'The user\'s login email address. Must be unique across the system.'"
                     position="right"
@@ -37,8 +37,7 @@
         @if (!editMode()) {
             <div class="control">
                 <label class="label">
-                    Password
-                    <span class="required">*</span>
+                    <span>Password<span class="required">*</span></span>
                     <app-help-tooltip
                         [text]="'Minimum 8 characters. The user can change it after their first login.'"
                         position="right"
@@ -65,17 +64,15 @@
         <!--            <app-avatar-upload (imageChange)="form.patchValue({ picture: $event })" />-->
         <!--        </div>-->
     </div>
-    @if (canToggleSuperadmin()) {
-        <div class="secondary">
-            <label class="label">
-                Make Superadmin
-                <app-help-tooltip
-                    [text]="'Superadmins have full access to all organizations and system settings.'"
-                    position="right"
-                ></app-help-tooltip>
-            </label>
+    <div class="secondary">
+        <label class="label">
+            Make Superadmin
+            <app-help-tooltip
+                [text]="'Superadmins have full access to all organizations and system settings.'"
+                position="right"
+            ></app-help-tooltip>
+        </label>
 
-            <app-toggle-switch formControlName="superadmin" />
-        </div>
-    }
+        <app-toggle-switch formControlName="superadmin" />
+    </div>
 </form>

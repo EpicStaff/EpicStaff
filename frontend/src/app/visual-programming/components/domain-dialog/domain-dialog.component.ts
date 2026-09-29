@@ -1,8 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -14,10 +14,10 @@ import {
     ViewEncapsulation,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent, JsonEditorComponent } from '@shared/components';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import {
     EMPTY_VALIDATION_RESULT,
     extractPathsFromArray,
@@ -49,9 +49,8 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 };
 
 @Component({
-    standalone: true,
     selector: 'app-domain-dialog',
-    imports: [CommonModule, JsonEditorComponent, OverlayModule, AppSvgIconComponent],
+    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent],
     encapsulation: ViewEncapsulation.None,
     template: `
         <div class="dialog-container">
@@ -70,16 +69,18 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     Here you can define your domain variables that will be available throughout your workflow execution.
                 </div>
 
-                <div class="autocomplete-hint">
-                    <app-svg-icon
-                        icon="bulb"
-                        size="1rem"
-                    ></app-svg-icon>
-                    <span>
-                        Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
-                        <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
-                    </span>
-                </div>
+                @if (!isReadOnly()) {
+                    <div class="autocomplete-hint">
+                        <app-svg-icon
+                            icon="bulb"
+                            size="1rem"
+                        ></app-svg-icon>
+                        <span>
+                            Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
+                            <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
+                        </span>
+                    </div>
+                }
 
                 @if (pathErrorMessages().length > 0) {
                     <ul class="path-validation-errors">
@@ -95,6 +96,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     <app-json-editor
                         class="json-editor"
                         [jsonData]="initialStateJson"
+                        [readonly]="isReadOnly()"
                         (jsonChange)="onInitialStateChange($event)"
                         (validationChange)="onJsonValidChange($event)"
                         (editorReady)="onEditorReady($event)"
@@ -104,6 +106,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .dialog-container {
@@ -264,6 +267,11 @@ export class DomainDialogComponent implements OnDestroy {
     public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
     public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
 
+    /** Read-only when the flow is read-only for this user, or when the opener asked for it. */
+    public readonly isReadOnly = computed(() => this.flowReadOnly.isReadOnly() || !!this.data.readonly);
+
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
+
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
     private viewContainerRef = inject(ViewContainerRef);
@@ -377,6 +385,10 @@ export class DomainDialogComponent implements OnDestroy {
     }
 
     public close(): void {
+        if (this.isReadOnly()) {
+            this.dialogRef.close(null);
+            return;
+        }
         if (!this.isJsonValid || this.hasPathErrors()) return;
         this.dialogRef.close(this.buildResult());
     }
@@ -385,11 +397,11 @@ export class DomainDialogComponent implements OnDestroy {
 
     public onEditorReady(editor: import('monaco-editor').editor.IStandaloneCodeEditor): void {
         this.monacoEditor = editor;
-        if (this.data.readonly) {
+        if (this.isReadOnly()) {
             editor.updateOptions({ readOnly: true });
-        } else {
-            this.setupAutocomplete();
+            return;
         }
+        this.setupAutocomplete();
     }
 
     private setupAutocomplete(): void {

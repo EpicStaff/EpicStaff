@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -15,13 +14,13 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, IconButtonComponent } from '@shared/components';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { from, of, Subject, Subscription } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
+import { ToastService } from '../../../../services/notifications';
 import type { RuffDiagnostic } from '../../../../shared/ruff-linter/models/ruff-result.model';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
@@ -30,11 +29,10 @@ const LINT_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-code-editor',
-    imports: [FormsModule, NgIf, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
+    imports: [FormsModule, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
     templateUrl: './code-editor.component.html',
     styleUrls: ['./code-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    standalone: true,
 })
 export class CodeEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
@@ -51,10 +49,11 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
     private completionDisposable: import('monaco-editor').IDisposable | null = null;
     private readonly lintCode$ = new Subject<string>();
     private lintSubscription: Subscription | null = null;
+    private containerResizeObserver: ResizeObserver | null = null;
 
     public editorLoaded = false;
 
-    public editorOptions = {
+    public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'python',
         automaticLayout: true,
@@ -62,7 +61,6 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
         scrollBeyondLastLine: false,
         wordWrap: 'on',
         wrappingIndent: 'indent',
-        wordWrapMinified: true,
         formatOnPaste: true,
         formatOnType: true,
         tabSize: 4,
@@ -91,6 +89,7 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
     ngOnDestroy(): void {
         this.lintSubscription?.unsubscribe();
         this.completionDisposable?.dispose();
+        this.containerResizeObserver?.disconnect();
     }
 
     private applyRuffDiagnostics(diagnostics: RuffDiagnostic[]): void {
@@ -121,9 +120,19 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
         }
 
         this.registerSecretCompletions();
+        this.observeContainerResize();
 
         this.lintCode$.next(this.pythonCode);
         this.cdr.markForCheck();
+    }
+
+    private observeContainerResize(): void {
+        this.zone.runOutsideAngular(() => {
+            this.containerResizeObserver = new ResizeObserver(() => {
+                this.monacoEditor?.layout();
+            });
+            this.containerResizeObserver.observe(this.editorContainer.nativeElement);
+        });
     }
 
     public ngOnChanges(changes: SimpleChanges): void {

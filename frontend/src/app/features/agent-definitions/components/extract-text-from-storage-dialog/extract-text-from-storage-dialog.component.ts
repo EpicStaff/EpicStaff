@@ -2,8 +2,8 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StorageApiService } from '../../../files/services/storage-api.service';
 import { getFileExtension } from '../../../files/utils/storage-file.utils';
@@ -98,7 +98,10 @@ export class ExtractTextFromStorageDialogComponent implements OnInit {
         if (node.type === 'folder') return 'folder-storage';
         const ext = getFileExtension(node.name);
         if (ext === 'txt') return 'file-txt';
+        if (ext === 'pdf') return 'file-pdf';
+        if (ext === 'docx') return 'file-docx';
         if (ext === 'json') return 'file-json';
+        if (ext === 'html') return 'file-html';
         return 'file';
     }
 

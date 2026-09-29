@@ -1,28 +1,22 @@
-:root {
-    --color-text: #ffffff;
-    --color-text-subtle: rgba(255, 255, 255, 0.7);
-    --color-nodes-sidepanel-bg: #1e1e1e;
-}
-
 .dialog-container {
-    background: var(--color-nodes-sidepanel-bg);
+    background: var(--graphite-875);
     border-radius: 8px;
     padding: 24px;
     min-width: 320px;
     max-width: 100%;
-    color: var(--color-text);
+    color: var(--white);
     display: flex;
     flex-direction: column;
     gap: 16px;
-    font-family: 'Inter', sans-serif;
 }
 
 .dialog-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 16px;
+    margin: 0 -24px;
+    padding: 0 24px 16px;
+    border-bottom: 1px solid var(--white-alpha-10);
 }
 
 .close-button {
@@ -31,10 +25,10 @@
 }
 
 .dialog-title {
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
     margin: 0;
-    color: var(--color-text);
+    color: var(--white);
 }
 
 .dialog-message {
@@ -49,16 +43,92 @@
 
 ::ng-deep .dialog-message strong {
     color: var(--color-text-primary);
-    font-weight: 600;
+    font-weight: 500;
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
 }
 
+.breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.breakdown-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+}
+
+.breakdown-chevron {
+    transition: transform 0.2s ease;
+
+    &.collapsed {
+        transform: rotate(-90deg);
+    }
+}
+
+.breakdown-total {
+    margin-left: auto;
+    color: var(--color-error);
+}
+
+.breakdown-list {
+    margin: 0;
+    padding: 4px 12px;
+    border-left: 3px solid var(--color-error);
+    border-radius: 10px;
+    list-style: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line-height);
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.breakdown-item-label {
+    color: var(--color-ks-transparent-text-80);
+    overflow-wrap: anywhere;
+}
+
+.breakdown-item-count {
+    flex-shrink: 0;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
 .caution-block {
     border-left: 3px solid var(--color-error);
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: 10px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -66,18 +136,26 @@
 
 .caution-title {
     color: var(--color-error);
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
 }
 
-.dialog-container.warning .caution-block {
+.dialog-container.warning .caution-block,
+.dialog-container.warning .breakdown-list {
     border-left-color: var(--color-ks-status-warning);
+}
+.dialog-container.warning .breakdown-total {
+    color: var(--color-ks-status-warning);
 }
 .dialog-container.warning .caution-title {
     color: var(--color-ks-status-warning);
 }
-.dialog-container.info .caution-block {
+.dialog-container.info .caution-block,
+.dialog-container.info .breakdown-list {
     border-left-color: var(--accent-color);
+}
+.dialog-container.info .breakdown-total {
+    color: var(--accent-color);
 }
 .dialog-container.info .caution-title {
     color: var(--accent-color);
@@ -93,8 +171,8 @@
 }
 
 ::ng-deep .caution-message strong {
-    color: var(--color-text);
-    font-weight: 600;
+    color: var(--white);
+    font-weight: 500;
 }
 
 ::ng-deep .caution-message details {
@@ -116,6 +194,40 @@
     line-height: 1.5;
 }
 
+.verification {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.verification-label {
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line-height);
+    color: var(--color-ks-transparent-text-60);
+    overflow-wrap: anywhere;
+
+    strong {
+        color: var(--color-text-primary);
+        font-weight: 500;
+        white-space: pre-wrap;
+    }
+}
+
+.verification-input {
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background: var(--color-input-background);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+
+    &:focus-visible {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+}
+
 .dialog-actions {
     display: flex;
     justify-content: flex-end;
@@ -125,11 +237,10 @@
 
 .button {
     height: 40px;
-    padding: 0 24px;
+    padding: 0 16px;
     border-radius: 8px;
-    font-family: 'Inter', sans-serif;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     line-height: 1;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -139,52 +250,57 @@
     justify-content: center;
 
     &.cancel-button {
-        color: #d9d9de;
-        border: 1px solid #2b2d30;
+        color: var(--color-text-primary);
+        border: 1px solid var(--graphite-750);
 
         &:hover {
-            background: rgba(255, 255, 255, 0.04);
-            border-color: #3a3d40;
+            background: var(--white-alpha-4);
+            border-color: var(--graphite-660);
         }
     }
 
     &.confirm-button {
-        color: #ffffff;
+        color: var(--white);
         border: 1px solid var(--accent-color);
         background: var(--accent-color);
 
-        &:hover {
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        &:hover:not(:disabled) {
             background: var(--accent-color-hover);
             border-color: var(--accent-color-hover);
         }
 
         &.danger {
-            color: #d9d9de;
+            color: var(--color-text-primary);
             background: var(--color-error);
             border: none;
 
-            &:hover {
+            &:hover:not(:disabled) {
                 background: color-mix(in srgb, var(--color-error) 92%, black);
             }
         }
 
         &.warning {
-            color: #ffffff;
+            color: var(--white);
             background: var(--accent-color);
             border-color: var(--accent-color);
 
-            &:hover {
+            &:hover:not(:disabled) {
                 background: var(--accent-color-hover);
                 border-color: var(--accent-color-hover);
             }
         }
 
         &.info {
-            color: #ffffff;
+            color: var(--white);
             background: var(--accent-color);
             border-color: var(--accent-color);
 
-            &:hover {
+            &:hover:not(:disabled) {
                 background: var(--accent-color-hover);
                 border-color: var(--accent-color-hover);
             }
@@ -218,7 +334,7 @@
 .dialog-icon {
     display: flex;
     align-items: center;
-    color: #2196f3;
+    color: var(--azure-500);
 }
 
 .dialog-container.danger .dialog-icon {

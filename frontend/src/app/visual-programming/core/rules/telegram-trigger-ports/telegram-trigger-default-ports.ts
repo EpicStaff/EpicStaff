@@ -18,6 +18,7 @@ export const DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS: BasePort[] = [
             'end-in',
             'task-in',
             'agent-in',
+            'knowledge-retriever-in',
         ],
         position: 'right',
         color: '#229ED9',

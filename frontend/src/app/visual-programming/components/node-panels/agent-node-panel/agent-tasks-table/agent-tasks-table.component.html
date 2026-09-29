@@ -1,4 +1,7 @@
-<div class="att">
+<div
+    class="att"
+    #tableWrapper
+>
     <div class="att__scroll">
         <div class="att__inner">
             <div class="att-row att-row--header">
@@ -8,17 +11,19 @@
                 <div class="att-cell att-cell--schema">Output Schema</div>
                 <div class="att-cell att-cell--context">Task Context</div>
                 <div class="att-cell att-cell--delete">
-                    <button
-                        type="button"
-                        class="att-clear-all"
-                        title="Clear all tasks"
-                        (click)="clearAll()"
-                    >
-                        <app-svg-icon
-                            icon="trash"
-                            size="14px"
-                        />
-                    </button>
+                    @if (!readonly()) {
+                        <button
+                            type="button"
+                            class="att-clear-all"
+                            title="Clear all tasks"
+                            (click)="clearAll()"
+                        >
+                            <app-svg-icon
+                                icon="trash"
+                                size="14px"
+                            />
+                        </button>
+                    }
                 </div>
             </div>
 
@@ -26,6 +31,7 @@
                 class="att-body"
                 cdkDropList
                 [cdkDropListData]="tasks()"
+                [cdkDropListDisabled]="readonly()"
                 (cdkDropListDropped)="onDrop($event)"
             >
                 @for (task of tasks(); track trackByTempId($index, task); let i = $index) {
@@ -33,27 +39,31 @@
                         class="att-row"
                         [class.att-row--even]="i % 2 === 1"
                         cdkDrag
+                        [cdkDragDisabled]="readonly()"
                     >
                         <div class="att-cell att-cell--index">
-                            <span
-                                class="att-drag-handle"
-                                cdkDragHandle
-                            >
-                                <app-svg-icon
-                                    icon="drag-handle"
-                                    size="14px"
-                                />
-                            </span>
+                            @if (!readonly()) {
+                                <span
+                                    class="att-drag-handle"
+                                    cdkDragHandle
+                                >
+                                    <app-svg-icon
+                                        icon="drag-handle"
+                                        size="14px"
+                                    />
+                                </span>
+                            }
                             <span class="att-row-number">{{ i + 1 }}</span>
                         </div>
 
                         <div class="att-cell att-cell--name">
                             <input
                                 class="att-input"
-                                [class.att-input--invalid]="isNameInvalid(task)"
+                                [class.att-input--invalid]="isNameInvalid(task) && !readonly()"
                                 type="text"
                                 placeholder="Enter name..."
                                 [value]="task.name"
+                                [readonly]="readonly()"
                                 (input)="onNameInput(i, $event)"
                             />
                         </div>
@@ -64,10 +74,11 @@
                         >
                             <app-variable-highlight-textarea
                                 class="att-textarea-highlight"
-                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task)"
+                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task) && !readonly()"
                                 placeholder="Describe what this task should do..."
                                 [value]="task.instructions"
                                 [variables]="variableNames()"
+                                [disabled]="readonly()"
                                 (valueChange)="onInstructionsInput(i, $event)"
                             ></app-variable-highlight-textarea>
                             <app-svg-icon
@@ -85,9 +96,10 @@
                         >
                             <textarea
                                 class="att-textarea att-textarea--schema"
-                                [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId)"
+                                [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId) && !readonly()"
                                 placeholder="Add schema..."
                                 [value]="getSchemaText(task)"
+                                [readonly]="readonly()"
                                 (input)="onSchemaInput(task.tempId, $event)"
                                 (blur)="onSchemaBlur(i, task)"
                             ></textarea>
@@ -102,10 +114,13 @@
 
                         <div
                             class="att-cell att-cell--context"
+                            [class.att-cell--readonly]="readonly()"
                             (click)="openContextPopup(i, $event)"
                         >
                             @if (getResolvedContext(task).length === 0) {
-                                <span class="att-context-placeholder">Add context...</span>
+                                @if (!readonly()) {
+                                    <span class="att-context-placeholder">Add context...</span>
+                                }
                             } @else {
                                 <div class="att-context-chips">
                                     @for (chip of getResolvedContext(task); track chip.tempId) {
@@ -119,17 +134,19 @@
                         </div>
 
                         <div class="att-cell att-cell--delete">
-                            <button
-                                type="button"
-                                class="att-remove-btn"
-                                title="Remove task"
-                                (click)="removeTask(i)"
-                            >
-                                <app-svg-icon
-                                    icon="x"
-                                    size="12px"
-                                />
-                            </button>
+                            @if (!readonly()) {
+                                <button
+                                    type="button"
+                                    class="att-remove-btn"
+                                    title="Remove task"
+                                    (click)="removeTask(i)"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="12px"
+                                    />
+                                </button>
+                            }
                         </div>
                     </div>
                 }
@@ -142,75 +159,18 @@
     </div>
 </div>
 
-<ng-template #contextPopupTemplate>
-    <div class="att-popup">
-        <div class="att-popup__header">
-            <app-svg-icon
-                icon="search"
-                size="14px"
-                class="att-popup__search-icon"
-            />
-            <input
-                type="text"
-                class="att-popup__search"
-                placeholder="Search tasks..."
-                [value]="contextSearch()"
-                (input)="onContextSearch($event)"
-            />
-        </div>
-
-        <div class="att-popup__list">
-            @for (candidate of contextCandidates(); track candidate.tempId) {
-                <div
-                    class="att-popup__item"
-                    [class.selected]="isContextSelected(candidate)"
-                    (click)="toggleContextSelection(candidate)"
-                >
-                    <span class="att-popup__order">{{ candidate.order }}</span>
-                    <span class="att-popup__name">{{ candidate.name || 'Untitled' }}</span>
-                    <span class="att-popup__checkbox-wrapper">
-                        <input
-                            type="checkbox"
-                            class="transparent-checkbox"
-                            [checked]="isContextSelected(candidate)"
-                            (click)="$event.stopPropagation()"
-                            (change)="toggleContextSelection(candidate)"
-                        />
-                        @if (isContextSelected(candidate)) {
-                            <span class="checkmark"></span>
-                        }
-                    </span>
-                </div>
-            }
-            @if (contextCandidates().length === 0) {
-                <div class="att-popup__empty">No earlier tasks available</div>
-            }
-        </div>
-
-        <div class="att-popup__footer">
-            <button
-                type="button"
-                class="att-btn att-btn--outline"
-                (click)="onContextClear()"
-            >
-                Clear
-            </button>
-            <div class="att-popup__footer-right">
-                <button
-                    type="button"
-                    class="att-btn att-btn--outline"
-                    (click)="onContextCancel()"
-                >
-                    Cancel
-                </button>
-                <button
-                    type="button"
-                    class="att-btn att-btn--primary"
-                    (click)="onContextSave()"
-                >
-                    Save Changes
-                </button>
-            </div>
-        </div>
-    </div>
-</ng-template>
+<app-multi-select
+    #contextMultiSelect
+    [hideTrigger]="true"
+    [items]="contextItems()"
+    [selectedValues]="contextSelectedValues()"
+    [allowFlip]="true"
+    checkboxPosition="left"
+    [showClearFilter]="true"
+    [readonlyView]="readonly()"
+    saveLabel="Save Changes"
+    panelWidth="390px"
+    searchPlaceholder="Search tasks..."
+    emptyText="No earlier tasks available"
+    (selectionChange)="onContextSelectionChange($event)"
+/>

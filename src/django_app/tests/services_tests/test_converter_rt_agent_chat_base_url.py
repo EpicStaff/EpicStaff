@@ -4,12 +4,11 @@ a local/self-hosted or proxy OpenAI-compatible endpoint instead of the
 hardcoded `api.openai.com` host. It is populated from the active
 `OpenAIRealtimeConfig.base_url` at conversion time.
 
-There are two independent build sites for `RealtimeAgentChatData` —
-`convert_rt_agent_chat_to_pydantic` (staff `RealtimeAgent`) and
-`convert_rt_agent_definition_chat_to_pydantic` (`RealtimeAgentDefinition`).
-Missing either one silently breaks one agent kind while leaving the other
-working, so both are covered here (mirroring
-`test_converter_rt_agent_chat_org_id.py`).
+`convert_rt_agent_chat_to_pydantic` (staff `RealtimeAgent`) was removed
+along with the `RealtimeAgent` conversion path (`AgentDefinition` is used
+instead) -- `convert_rt_agent_definition_chat_to_pydantic`
+(`RealtimeAgentDefinition`) is the sole surviving build site, covered below
+(mirroring `test_converter_rt_agent_chat_org_id.py`).
 """
 
 import pytest
@@ -17,7 +16,6 @@ import pytest
 from agents.models import AgentDefinition
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
-    RealtimeAgent,
     RealtimeAgentChat,
     RealtimeAgentDefinition,
 )
@@ -37,47 +35,6 @@ def _api_key_secret(org, name: str, text: str = "sk-test-key") -> Secret:
     secret_encryption.encrypt(text=text).write_to(secret)
     secret.save()
     return secret
-
-
-@pytest.mark.django_db
-def test_convert_rt_agent_chat_to_pydantic_populates_rt_base_url(
-    converter, wikipedia_agent, default_org
-):
-    config = OpenAIRealtimeConfig.objects.create(
-        custom_name="openai-cfg",
-        org=default_org,
-        model_name="gpt-4o-realtime-preview",
-        base_url="https://my-proxy.internal",
-        api_key_secret=_api_key_secret(default_org, "openai-cfg-api-key"),
-    )
-    rt_agent = RealtimeAgent.objects.create(agent=wikipedia_agent, openai_config=config)
-    chat = RealtimeAgentChat.objects.create(
-        rt_agent=rt_agent, connection_key="conn-base-url", openai_config=config
-    )
-
-    data = converter.convert_rt_agent_chat_to_pydantic(chat)
-
-    assert data.rt_base_url == "https://my-proxy.internal"
-
-
-@pytest.mark.django_db
-def test_convert_rt_agent_chat_to_pydantic_defaults_rt_base_url_to_none(
-    converter, wikipedia_agent, default_org
-):
-    config = OpenAIRealtimeConfig.objects.create(
-        custom_name="openai-cfg-no-override",
-        org=default_org,
-        model_name="gpt-4o-realtime-preview",
-        api_key_secret=_api_key_secret(default_org, "openai-cfg-no-override-key"),
-    )
-    rt_agent = RealtimeAgent.objects.create(agent=wikipedia_agent, openai_config=config)
-    chat = RealtimeAgentChat.objects.create(
-        rt_agent=rt_agent, connection_key="conn-base-url-default", openai_config=config
-    )
-
-    data = converter.convert_rt_agent_chat_to_pydantic(chat)
-
-    assert data.rt_base_url is None
 
 
 @pytest.mark.django_db

@@ -18,6 +18,7 @@
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
                             [errorMessage]="getNodeNameErrorMessage()"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                     </app-lockable-field>
 
@@ -31,6 +32,7 @@
                             placeholder="-- Select Node --"
                             formControlName="default_next_node"
                             [items]="availableNodeItems()"
+                            [readonly]="isReadOnly()"
                         />
                     </app-lockable-field>
 
@@ -44,8 +46,20 @@
                             placeholder="-- Select Node --"
                             formControlName="next_error_node"
                             [items]="availableNodeItems()"
+                            [readonly]="isReadOnly()"
                         />
                     </app-lockable-field>
+                    <div class="convert-toggle-field">
+                        <label class="convert-toggle-label">
+                            Classification Dec Table
+                            <app-help-tooltip text="Convert this node to a Classification Decision Table" />
+                        </label>
+                        <app-toggle-switch
+                            [disabled]="isReadOnly()"
+                            [checked]="false"
+                            (click)="$event.preventDefault(); convertToCdt()"
+                        ></app-toggle-switch>
+                    </div>
                 </div>
 
                 <app-lockable-field
@@ -58,6 +72,7 @@
                             [conditionGroups]="conditionGroups()"
                             [activeColor]="activeColor"
                             [currentNodeId]="node().id"
+                            [readonly]="isReadOnly()"
                             title="Condition groups define branching paths evaluated in order"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
                         />

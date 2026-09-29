@@ -7,7 +7,13 @@ import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
-import { permissionGuard, superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
+import {
+    permissionGuard,
+    superAdminGuard,
+    workspaceGuard,
+    workspaceIndexGuard,
+    workspacePermissionGuard,
+} from './core/guards/workspace.guard';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -81,56 +87,28 @@ export const routes: Routes = [
                         children: [],
                     },
                     {
-                        path: 'projects',
-                        loadComponent: () =>
-                            import('./features/projects/pages/projects-list-page/projects-list-page.component').then(
-                                (m) => m.ProjectsListPageComponent
-                            ),
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
-                        children: [
-                            { path: '', redirectTo: 'my', pathMatch: 'full' },
-                            {
-                                path: 'my',
-                                loadComponent: () =>
-                                    import('./features/projects/pages/projects-list-page/components/my-projects/my-projects.component').then(
-                                        (m) => m.MyProjectsComponent
-                                    ),
-                            },
-                            {
-                                path: 'templates',
-                                loadComponent: () =>
-                                    import('./features/projects/pages/projects-list-page/components/templates/project-templates.component').then(
-                                        (m) => m.ProjectTemplatesComponent
-                                    ),
-                            },
-                        ],
-                    },
-                    {
-                        path: 'projects/:projectId',
-                        loadComponent: () =>
-                            import('./open-project-page/open-project-page.component').then(
-                                (m) => m.OpenProjectPageComponent
-                            ),
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
-                        canDeactivate: [UnsavedChangesGuard],
-                    },
-                    {
-                        path: 'staff',
-                        loadComponent: () =>
-                            import('./pages/staff-page/staff-page.component').then((m) => m.StaffPageComponent),
-                        canDeactivate: [UnsavedChangesGuard],
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
-                    },
-                    {
                         path: 'agents',
                         loadComponent: () =>
                             import('./features/agent-definitions/pages/agent-definitions-page/agent-definitions-page.component').then(
                                 (m) => m.AgentDefinitionsPageComponent
                             ),
                         canDeactivate: [UnsavedChangesGuard],
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
+                    },
+                    // Legacy CrewAI routes. `**` only acts as a wildcard when it is the
+                    // whole path, so it has to live in children — `path: 'projects/**'`
+                    // would match the literal URL /projects/** and nothing else. Nesting
+                    // it here also swallows any depth (/projects/12/edit) instead of
+                    // carrying the leftover segments over to /agents.
+                    {
+                        path: 'projects',
+                        children: [{ path: '**', redirectTo: '/agents' }],
+                    },
+                    {
+                        path: 'staff',
+                        redirectTo: '/agents',
+                        pathMatch: 'full',
                     },
                     {
                         path: 'tools',
@@ -289,8 +267,9 @@ export const routes: Routes = [
                         children: [
                             {
                                 path: '',
-                                redirectTo: 'main',
                                 pathMatch: 'full',
+                                canActivate: [workspaceIndexGuard],
+                                children: [],
                             },
                             {
                                 path: 'main',
@@ -306,7 +285,7 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/organizations-tab/organizations-tab.component').then(
                                         (m) => m.OrganizationsTabComponent
                                     ),
-                                canActivate: [permissionGuard],
+                                canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.Organizations, ActionCode.Read] },
                             },
                             {
@@ -315,8 +294,8 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/users-tab/users-tab.component').then(
                                         (m) => m.UsersTabComponent
                                     ),
-                                canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.Users, ActionCode.Read] },
+                                canActivate: [workspacePermissionGuard],
+                                data: { permission: [ResourceCode.Memberships, ActionCode.Read] },
                             },
                             {
                                 path: 'roles',
@@ -324,7 +303,7 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
                                         (m) => m.RolesTabComponent
                                     ),
-                                canActivate: [permissionGuard],
+                                canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.Roles, ActionCode.Read] },
                             },
                             {
@@ -333,8 +312,8 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/api-keys-tab/api-keys-tab.component').then(
                                         (m) => m.ApiKeysTabComponent
                                     ),
-                                canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.Secrets, ActionCode.Read] },
+                                canActivate: [workspacePermissionGuard],
+                                data: { permission: [ResourceCode.ApiKeys, ActionCode.Read] },
                             },
                         ],
                     },

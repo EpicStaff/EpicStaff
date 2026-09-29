@@ -3,10 +3,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, si
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
+    AppSvgIconComponent,
     ButtonComponent,
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    HelpTooltipComponent,
     HintMessageComponent,
     JsonEditorComponent,
     SelectComponent,
@@ -14,21 +16,17 @@ import {
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
-import {
-    DisplayedTelegramField,
-    TelegramTriggerNodeField,
-} from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
+import { DisplayedTelegramField, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WebhookStatus } from './webhook-status.model';
@@ -50,6 +48,7 @@ import { WebhookStatus } from './webhook-status.model';
         HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -236,8 +235,10 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     protected readonly WebhookStatus = WebhookStatus;
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

@@ -1,25 +1,38 @@
 <div class="panel-container">
-    <div class="panel-content">
+    <div
+        class="panel-content"
+        [class.editor-fullwidth]="isFormCollapsed()"
+    >
         <form
             [formGroup]="form"
             class="form-container"
         >
             @if (isExpanded()) {
-                <div class="form-layout expanded">
-                    <div class="form-fields">
+                <div
+                    class="form-layout expanded"
+                    [class.form-collapsed]="isFormCollapsed()"
+                >
+                    <div
+                        #formColumn
+                        class="form-fields"
+                        [style.flex-basis.px]="leftColumnWidth.width()"
+                    >
                         <app-lockable-field
                             fieldId="node_name"
                             [nodeId]="node().id"
                         >
-                            <app-custom-input
-                                label="Node Name"
-                                [required]="true"
-                                tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [activeColor]="activeColor"
-                                [errorMessage]="getNodeNameErrorMessage()"
-                            ></app-custom-input>
+                            <div class="field-isolated">
+                                <app-custom-input
+                                    label="Node Name"
+                                    [required]="true"
+                                    tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-custom-input>
+                                <app-validation-errors [control]="form.get('node_name')!" />
+                            </div>
                         </app-lockable-field>
 
                         <app-lockable-field
@@ -42,12 +55,14 @@
                                     emptyText="No agents available"
                                     [items]="agentItems()"
                                     [selected]="selectedAgentValue()"
+                                    [readonly]="isReadOnly()"
                                     (selectionChange)="onAgentSelectionChange($event)"
                                 >
                                     <button
                                         type="button"
                                         appSelectDropdownTrigger
                                         class="dropdown-trigger"
+                                        [class.dropdown-trigger--readonly]="isReadOnly()"
                                         [class.dropdown-trigger--invalid]="agentInvalid()"
                                     >
                                         <span
@@ -57,6 +72,7 @@
                                             {{ selectedAgentName() || 'Select agent' }}
                                         </span>
                                         <app-svg-icon
+                                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                                             icon="chevron-down-filled"
                                             size="8px"
                                         />
@@ -74,7 +90,7 @@
                                 <div class="field__label-row">
                                     <label class="field__label">Surface (Group of Permissions)</label>
                                     <app-help-tooltip
-                                        text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                        text="Assign one or more surfaces (permission groups) this task's agent can use while executing. A collection may only appear in one surface per node."
                                         position="right"
                                         size="18px"
                                     />
@@ -85,6 +101,7 @@
                                         color="white"
                                         [grouped]="true"
                                         [label]="surfaceSummaryLabel()"
+                                        [readonlyView]="isReadOnly()"
                                         searchPlaceholder="Search item..."
                                         emptyText="No surfaces available"
                                         checkboxPosition="left"
@@ -121,9 +138,18 @@
                             [nodeId]="node().id"
                         >
                             <div class="input-map">
-                                <app-input-map [activeColor]="activeColor"></app-input-map>
+                                <app-input-map
+                                    [activeColor]="activeColor"
+                                    [readonly]="isReadOnly()"
+                                ></app-input-map>
                             </div>
                         </app-lockable-field>
+
+                        <app-inputs-you-can-use
+                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                            [names]="inputMapKeys()"
+                            (insert)="insertInputToInstructions($event)"
+                        />
 
                         <app-lockable-field
                             fieldId="output_variable_path"
@@ -135,6 +161,7 @@
                                 formControlName="output_variable_path"
                                 placeholder="e.g. task_reply"
                                 [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
                             ></app-custom-input>
                         </app-lockable-field>
 
@@ -185,6 +212,7 @@
                                             [allowExpand]="true"
                                             (expand)="toggleMainView()"
                                             [editorHeight]="220"
+                                            [readonly]="isReadOnly()"
                                         ></app-json-editor>
                                         @if (outputSchemaError) {
                                             <div class="task-error">{{ outputSchemaError }}</div>
@@ -224,6 +252,7 @@
                                         </div>
                                     </div>
                                     <app-variable-highlight-textarea
+                                        #instructionsTextareaSchemaView
                                         class="editor-block__textarea"
                                         formControlName="instructions"
                                         placeholder="Enter task instructions..."
@@ -237,7 +266,21 @@
                         }
                     </div>
 
-                    <div class="main-editor-pane">
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and instructions columns"
+                        [column]="formColumn"
+                        [opposite]="editorColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                        [collapsible]="true"
+                        [minWidth]="400"
+                        [(collapsed)]="isFormCollapsed"
+                    />
+
+                    <div
+                        #editorColumn
+                        class="main-editor-pane"
+                    >
                         @if (mainView() === 'instructions') {
                             <div class="main-editor-pane__header">
                                 <span class="main-editor-pane__title">
@@ -250,6 +293,7 @@
                                 </span>
                                 <div class="main-editor-pane__actions">
                                     <app-instructions-view-toggle
+                                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                                         [view]="instructionsView()"
                                         (viewChange)="setInstructionsView($event)"
                                     />
@@ -290,6 +334,7 @@
                                         [nodeId]="node().id"
                                     >
                                         <app-variable-highlight-textarea
+                                            #instructionsTextareaMainPane
                                             class="main-editor-pane__textarea"
                                             formControlName="instructions"
                                             placeholder="Enter task instructions..."
@@ -322,6 +367,7 @@
                                     (expand)="toggleMainView()"
                                     [fullHeight]="true"
                                     [exampleHint]="outputSchemaExampleHint"
+                                    [readonly]="isReadOnly()"
                                 ></app-json-editor>
                             </app-lockable-field>
                             @if (outputSchemaError) {
@@ -336,15 +382,18 @@
                         fieldId="node_name"
                         [nodeId]="node().id"
                     >
-                        <app-custom-input
-                            label="Node Name"
-                            [required]="true"
-                            tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                        <div class="field-isolated">
+                            <app-custom-input
+                                label="Node Name"
+                                [required]="true"
+                                tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
                     </app-lockable-field>
 
                     <app-lockable-field
@@ -366,6 +415,7 @@
                                 searchPlaceholder="Search agent..."
                                 emptyText="No agents available"
                                 [items]="agentItems()"
+                                [readonly]="isReadOnly()"
                                 [selected]="selectedAgentValue()"
                                 (selectionChange)="onAgentSelectionChange($event)"
                             >
@@ -374,6 +424,7 @@
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
                                     [class.dropdown-trigger--invalid]="agentInvalid()"
+                                    [class.dropdown-trigger--readonly]="isReadOnly()"
                                 >
                                     <span
                                         class="dropdown-trigger__label"
@@ -382,6 +433,7 @@
                                         {{ selectedAgentName() || 'Select agent' }}
                                     </span>
                                     <app-svg-icon
+                                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                                         icon="chevron-down-filled"
                                         size="8px"
                                     />
@@ -399,7 +451,7 @@
                             <div class="field__label-row">
                                 <label class="field__label">Surface (Group of Permissions)</label>
                                 <app-help-tooltip
-                                    text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                    text="Assign one or more surfaces (permission groups) this task's agent can use while executing. A collection may only appear in one surface per node."
                                     position="right"
                                     size="18px"
                                 />
@@ -423,6 +475,7 @@
                                     [showGroupCounts]="true"
                                     [uppercaseGroupLabels]="false"
                                     [showClearFilter]="true"
+                                    [readonlyView]="isReadOnly()"
                                     saveLabel="Save"
                                 ></app-multi-select>
                                 <button
@@ -446,9 +499,18 @@
                         [nodeId]="node().id"
                     >
                         <div class="input-map">
-                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                            <app-input-map
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-input-map>
                         </div>
                     </app-lockable-field>
+
+                    <app-inputs-you-can-use
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                        [names]="inputMapKeys()"
+                        (insert)="insertInputToInstructions($event)"
+                    />
 
                     <app-lockable-field
                         fieldId="output_variable_path"
@@ -460,6 +522,7 @@
                             formControlName="output_variable_path"
                             placeholder="e.g. task_reply"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                     </app-lockable-field>
 
@@ -486,6 +549,7 @@
                         [nodeId]="node().id"
                     >
                         <app-variable-highlight-textarea
+                            #instructionsTextareaCollapsed
                             label="Instructions"
                             [required]="true"
                             tooltipText="Instructions given to the agent describing what this task should accomplish."
@@ -496,7 +560,10 @@
                             [variables]="inputMapKeys()"
                         ></app-variable-highlight-textarea>
                     </app-lockable-field>
-                    <app-validation-errors [control]="form.get('instructions')!" />
+                    <app-validation-errors
+                        class="instructions-collapsed-validation"
+                        [control]="form.get('instructions')!"
+                    />
 
                     <app-lockable-field
                         class="lock-inset"
@@ -526,6 +593,7 @@
                                     [showHeader]="true"
                                     [allowCopy]="true"
                                     [allowExpand]="true"
+                                    [readonly]="isReadOnly()"
                                     (expand)="expandPanel()"
                                 ></app-json-editor>
                                 @if (outputSchemaError) {

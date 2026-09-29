@@ -1,12 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, Input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { ToastService } from '../../../services/notifications/toast.service';
+import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-copy-button',
-    standalone: true,
     imports: [AppSvgIconComponent, MatTooltipModule],
     templateUrl: './copy-button.component.html',
     styleUrls: ['./copy-button.component.scss'],

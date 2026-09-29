@@ -1,11 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Inject, OnDestroy, OnInit } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { Subscription } from 'rxjs';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 
 export interface SaveVersionDialogResult {
     name: string;
@@ -14,8 +11,7 @@ export interface SaveVersionDialogResult {
 
 @Component({
     selector: 'app-save-version-dialog',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, ButtonComponent, AppSvgIconComponent],
+    imports: [ReactiveFormsModule, ButtonComponent, AppSvgIconComponent],
     templateUrl: './save-version-dialog.component.html',
     styleUrls: ['./save-version-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

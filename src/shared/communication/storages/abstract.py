@@ -4,13 +4,13 @@ from abc import ABC, abstractmethod
 class AbstractStorage(ABC):
     """Abstraction of a key/value store for offloaded message payloads.
 
-    Implement it to back offloading with a new store (e.g. MinIO, S3); keep
+    Implement it to back offloading with a new store (e.g. S3); keep
     storage-specific configuration in the implementation's constructor.
     """
 
     @abstractmethod
     def put(self, key: str, payload: bytes):
-        """Store a payload under a key syncronously.
+        """Store a payload under a key synchronously.
 
         Persist `payload` under `key`. A TTL is allowed — callers must not
         assume the data lives forever.
@@ -22,7 +22,7 @@ class AbstractStorage(ABC):
 
     @abstractmethod
     async def aput(self, key: str, payload: bytes):
-        """Store a payload under a key asyncronously.
+        """Store a payload under a key asynchronously.
 
         Persist `payload` under `key`. A TTL is allowed — callers must not
         assume the data lives forever.

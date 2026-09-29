@@ -1,4 +1,4 @@
-import { GetDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
+import { GetDecisionTableNodeRequest } from '../../../core/models/decision-table-node.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 
 /**

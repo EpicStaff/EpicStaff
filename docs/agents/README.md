@@ -3,9 +3,9 @@
 This folder documents the **new agent execution path**: org-scoped agent
 definitions and reusable capability profiles (Surfaces) defined in the Django
 `agents` app, executed by a standalone async **agent service**
-(`src/agent/`) over Redis Streams. This is a **separate stack** from the
-legacy CrewAI `tables.Agent` / `tables.Crew` models, which still power the old
-`AGENT` / `CREW` node types — the two are not interchangeable.
+(`src/agent/`) over Redis Streams. This is the only agent execution path; the
+legacy `tables.Agent` / `tables.Crew` models still exist in the database but
+have no API surface and no execution path — do not build on them.
 
 ## How the pieces fit
 
@@ -25,8 +25,8 @@ At execution, the django/crew side serializes a definition plus its resolved
 surface into an `AgentSpec` wrapped in an `AgentRequest`, and dispatches it
 over the Redis Stream `agent.requests` to the **agent service**
 (`src/agent/`), which runs a streaming LiteLLM ReAct loop — calling Sandbox,
-MCP, and Knowledge tools as needed — and streams results back on the Redis
-Stream `agent.results`.
+MCP, and Knowledge tools as needed — and streams results back on a Redis
+Stream dedicated to that run, `agent.results:<correlation_id>`.
 
 ## Docs
 
@@ -69,7 +69,7 @@ flowchart LR
 
     REQ --> RUNNER
 
-    RES[["Redis Stream\nagent.results"]]
+    RES[["Redis Stream\nagent.results:correlation_id"]]
     LOOP --> RES
 
     RES --> CLIENT["Client / session\n(back through crew + django)"]

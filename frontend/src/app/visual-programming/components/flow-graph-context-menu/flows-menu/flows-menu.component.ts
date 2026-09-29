@@ -1,14 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { NodeType } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { NodeType } from '../../../core/enums/node-type';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 
 @Component({
     selector: 'app-flows-menu',
-    standalone: true,
     template: `
         <ul>
             @for (flow of filteredFlows(); track flow.id) {
@@ -42,7 +41,7 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
                 color: #fff;
             }
             li i {
-                font-size: 18px;
+                font-size: 1.125rem;
                 color: #00bfa5;
             }
 

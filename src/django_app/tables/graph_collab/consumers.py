@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 
 import pydantic
@@ -7,23 +8,26 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from pydantic import BaseModel
+from rbac.access.effective import EffectivePermissions
+from rbac.access.resolver import PermissionResolver
+from rbac.exceptions import OrgMembershipRequiredError
+from rbac.models.enums import Permission, ResourceType
+from utils.logger import logger
 
 from tables.graph_collab.autosave_loop import ensure_autosave_loop_running
-from tables.graph_collab.flush_service import flush_service
-from tables.graph_collab.graph_state_service import graph_state_service
-from tables.graph_collab.groups import graph_group_name, org_group_name
-from tables.graph_collab.notifications import _SYSTEM_EDITOR, anotify_graph_saved
-from tables.services.redis_service import RedisService
-from tables.graph_collab.lock_service import lock_service
-from tables.graph_collab.utils import build_editor_info
-from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.constants import (
+    _RELAY_MESSAGE_TYPES,
+    _STATE_OP_TYPES,
     CURSOR_FLUSH_INTERVAL_SECONDS,
     CURSOR_REDIS_CHANNEL_PREFIX,
     PERMISSION_RECHECK_INTERVAL_SECONDS,
-    _RELAY_MESSAGE_TYPES,
-    _STATE_OP_TYPES,
 )
+from tables.graph_collab.flush_service import flush_service
+from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.groups import graph_group_name, org_group_name
+from tables.graph_collab.lock_service import lock_service
+from tables.graph_collab.notifications import _SYSTEM_EDITOR, anotify_graph_saved
+from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     CursorMovedMessage,
     EditorInfo,
@@ -39,13 +43,8 @@ from tables.graph_collab.protocol import (
     UserJoinedMessage,
     UserLeftMessage,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
-from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
-
-from utils.logger import logger
-
+from tables.graph_collab.utils import build_editor_info
+from tables.services.redis_service import RedisService
 
 _permission_resolver = PermissionResolver()
 
@@ -128,15 +127,11 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
         effective = await sync_to_async(_resolve_flows_permissions)(user, org_id)
         if effective is None:
-            await self.close(
-                code=4403, reason="You are not a member of this organization."
-            )
+            await self.close(code=4403, reason="You are not a member of this organization.")
             return
 
         if not effective.can(ResourceType.FLOWS, Permission.READ):
-            await self.close(
-                code=4403, reason="You don't have permission to view this flow."
-            )
+            await self.close(code=4403, reason="You don't have permission to view this flow.")
             return
 
         # Read-only connections are welcome — only writes are gated per-message
@@ -171,9 +166,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.channel_layer.group_add(self.org_group, self.channel_name)
         await self.accept()
-        logger.info(
-            "User {} connected to graph {} edit channel", user.pk, self.graph_id
-        )
+        logger.info("User {} connected to graph {} edit channel", user.pk, self.graph_id)
 
         editor = build_editor_info(user)
         already_present = presence_service.has_user(self.graph_id, user.pk)
@@ -211,9 +204,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json(
                 LockStateMessage(
                     locks={
-                        node_id: {
-                            field: entry.editor for field, entry in fields.items()
-                        }
+                        node_id: {field: entry.editor for field, entry in fields.items()}
                         for node_id, fields in active_locks.items()
                     }
                 ).model_dump()
@@ -224,9 +215,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
         # Periodic backstop: re-checks this connection's edit permission even if
         # the event-driven permission_changed broadcast is missed.
-        self._permission_recheck_task = asyncio.ensure_future(
-            self._permission_recheck_loop()
-        )
+        self._permission_recheck_task = asyncio.ensure_future(self._permission_recheck_loop())
 
         # Ensure the global autosave loop is running (idempotent — no-op if already alive).
         ensure_autosave_loop_running()
@@ -248,9 +237,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                     self._lock_timers.clear()
 
                 # Release all locks held by this channel and broadcast unlocks.
-                released_pairs = lock_service.release_all_for_channel(
-                    graph_id, self.channel_name
-                )
+                released_pairs = lock_service.release_all_for_channel(graph_id, self.channel_name)
                 if released_pairs and user and not isinstance(user, AnonymousUser):
                     editor = build_editor_info(user)
                     for node_id, field in released_pairs:
@@ -262,12 +249,15 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
                 presence_service.remove(graph_id, self.channel_name)
 
-                if user and not isinstance(user, AnonymousUser):
-                    if not presence_service.has_user(graph_id, user.pk):
-                        await self.channel_layer.group_send(
-                            group,
-                            UserLeftMessage(user_id=user.pk).model_dump(),
-                        )
+                if (
+                    user
+                    and not isinstance(user, AnonymousUser)
+                    and not presence_service.has_user(graph_id, user.pk)
+                ):
+                    await self.channel_layer.group_send(
+                        group,
+                        UserLeftMessage(user_id=user.pk).model_dump(),
+                    )
 
                 # Flush to DB and then clear the live snapshot once the last editor leaves
                 if presence_service.count_editors(graph_id) == 0:
@@ -275,9 +265,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                         outcome = await flush_service.flush_if_dirty(graph_id)
                         if outcome.saved:
                             editor_user = (
-                                user
-                                if user and not isinstance(user, AnonymousUser)
-                                else None
+                                user if user and not isinstance(user, AnonymousUser) else None
                             )
                             await anotify_graph_saved(
                                 graph_id=graph_id,
@@ -296,9 +284,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                                 graph_id,
                             )
                     except Exception as exc:
-                        logger.error(
-                            "Last-leave flush failed for graph {}: {}", graph_id, exc
-                        )
+                        logger.error("Last-leave flush failed for graph {}: {}", graph_id, exc)
             await self.channel_layer.group_discard(group, self.channel_name)
 
         org_group = getattr(self, "org_group", None)
@@ -372,9 +358,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_send(self.group, event)
         else:
             # Send corrective signal to the loser — describes the current holder.
-            holder = lock_service.get_holder(
-                self.graph_id, message.node_id, message.field
-            )
+            holder = lock_service.get_holder(self.graph_id, message.node_id, message.field)
             if holder is None:
                 # Holder vanished between try_lock and get_holder — harmless, skip.
                 return
@@ -421,9 +405,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
     # --- Backstop inactivity timer ---
 
-    def _schedule_lock_timer(
-        self, node_id: str, field: str, editor: EditorInfo
-    ) -> None:
+    def _schedule_lock_timer(self, node_id: str, field: str, editor: EditorInfo) -> None:
         """Schedule (or reset) a backstop timer that auto-releases *node_id*/*field* after
         GRAPH_LOCK_TIMEOUT_SECONDS.  The timer lives on the consumer instance so
         that asyncio event-loop concerns stay out of the pure-registry lock_service.
@@ -445,9 +427,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         self, node_id: str, field: str, editor: EditorInfo, timeout: int
     ) -> None:
         await asyncio.sleep(timeout)
-        released = lock_service.release(
-            self.graph_id, node_id, field, self.channel_name
-        )
+        released = lock_service.release(self.graph_id, node_id, field, self.channel_name)
         if not released:
             return
 
@@ -458,9 +438,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             self.graph_id,
             self.channel_name,
         )
-        event = NodeUnlockedMessage(
-            node_id=node_id, field=field, editor=editor
-        ).model_dump()
+        event = NodeUnlockedMessage(node_id=node_id, field=field, editor=editor).model_dump()
         event["sender_channel"] = self.channel_name
         await self.channel_layer.group_send(self.group, event)
 
@@ -519,9 +497,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         """Forward a channel-layer event to the WebSocket, suppressing echo to sender."""
         if event.get("sender_channel") == self.channel_name:
             return
-        payload = {
-            key: value for key, value in event.items() if key != "sender_channel"
-        }
+        payload = {key: value for key, value in event.items() if key != "sender_channel"}
         await self.send_json(payload)
 
     # --- Channel layer handlers: relay ---
@@ -639,9 +615,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        effective = await sync_to_async(_resolve_flows_permissions)(
-            fresh_user, self.org_id
-        )
+        effective = await sync_to_async(_resolve_flows_permissions)(fresh_user, self.org_id)
         if effective is None or not effective.can(ResourceType.FLOWS, Permission.READ):
             await self.close(
                 code=4403,
@@ -651,9 +625,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
         new_can_edit = effective.can(ResourceType.FLOWS, Permission.UPDATE)
         if new_can_edit != self._can_edit:
-            await self.send_json(
-                EditRightsChangedMessage(can_edit=new_can_edit).model_dump()
-            )
+            await self.send_json(EditRightsChangedMessage(can_edit=new_can_edit).model_dump())
         self._can_edit = new_can_edit
         self._is_superadmin = effective.is_superadmin
 
@@ -716,10 +688,8 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         ):
             if task is not None:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
 
         pubsub = getattr(self, "_cursor_pubsub", None)
         if pubsub is not None:
@@ -754,9 +724,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
                 editor = data.get("editor")
                 if editor is None or "x" not in data or "y" not in data:
-                    logger.warning(
-                        "Cursor reader: malformed payload, missing fields: {}", data
-                    )
+                    logger.warning("Cursor reader: malformed payload, missing fields: {}", data)
                     continue
 
                 self._pending_cursors[sender_user_id] = {
@@ -767,9 +735,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(
-                "Cursor reader loop error for graph {}: {}", self.graph_id, exc
-            )
+            logger.error("Cursor reader loop error for graph {}: {}", self.graph_id, exc)
 
     async def _cursor_flush_loop(self) -> None:
         """Periodically send one batched cursor message to this consumer's browser.
@@ -808,23 +774,17 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(
-                "Permission recheck loop error for graph {}: {}", self.graph_id, exc
-            )
+            logger.error("Permission recheck loop error for graph {}: {}", self.graph_id, exc)
 
     async def _stop_permission_recheck_task(self) -> None:
         task = getattr(self, "_permission_recheck_task", None)
         if task is not None:
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
     @staticmethod
     def _get_graph_org_id(graph_id: int) -> int | None:
         from tables.models import Graph
 
-        return (
-            Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
-        )
+        return Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()

@@ -7,16 +7,16 @@ frontend late-join converter can still use them.
 """
 
 import copy
+
 from utils.logger import logger
 
-from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
-
 from tables.graph_collab.constants import (
-    _SINGLETON_LIST_KEYS,
     _ALL_LIST_KEYS,
     _DECISION_TABLE_LIST_KEYS,
+    _SINGLETON_LIST_KEYS,
 )
 from tables.graph_collab.external_refs import DeadRef, find_dead_external_refs
+from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 
 
 def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
@@ -34,8 +34,6 @@ def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
         DB-seeded entries already carry the correct value; op-created entries do
         not — this is what caused ``BulkSaveValidationError {'graph': ['This
         field is required.']}`` on flush.
-    crew_id (int)
-        Injected into crew_node_list entries from the nested ``crew`` object.
     schedule.end.type ("never")
         Coerced from None when the schedule end type was not set.
     """
@@ -51,14 +49,6 @@ def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
                 continue
             entry.setdefault("graph", graph_id)
 
-    # --- crew_node_list: inject crew_id from nested crew object ---
-    for node in snapshot.get("crew_node_list", []):
-        if node is None:
-            continue
-        crew = node.get("crew")
-        if isinstance(crew, dict) and "id" in crew:
-            node.setdefault("crew_id", crew["id"])
-
     # --- schedule_trigger_node_list: coerce schedule.end.type None → "never" ---
     for node in snapshot.get("schedule_trigger_node_list", []):
         if node is None:
@@ -68,12 +58,6 @@ def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
             end = schedule.get("end")
             if isinstance(end, dict) and end.get("type") is None:
                 end["type"] = "never"
-
-    for node in snapshot.get("webhook_trigger_node_list", []):
-        if node is None:
-            continue
-        if node.get("webhook_node_auth") is None:
-            node.pop("webhook_node_auth", None)
 
     return snapshot
 
@@ -120,9 +104,7 @@ def reconcile_against_db(payload: dict, graph) -> tuple[dict, list[DeadRef]]:
         gone_ids = requested_ids - existing_ids
         if gone_ids:
             payload[config.list_key] = [
-                entry
-                for entry in entries
-                if entry is None or entry.get("id") not in gone_ids
+                entry for entry in entries if entry is None or entry.get("id") not in gone_ids
             ]
             pruned_nodes[config.list_key] = sorted(gone_ids)
 
@@ -141,9 +123,9 @@ def reconcile_against_db(payload: dict, graph) -> tuple[dict, list[DeadRef]]:
                 continue
             start_id = entry.get("start_node_id")
             end_id = entry.get("end_node_id")
-            dangling = (
-                isinstance(start_id, int) and start_id not in surviving_node_ids
-            ) or (isinstance(end_id, int) and end_id not in surviving_node_ids)
+            dangling = (isinstance(start_id, int) and start_id not in surviving_node_ids) or (
+                isinstance(end_id, int) and end_id not in surviving_node_ids
+            )
             if dangling:
                 gone_edge_refs.append(entry.get("id") or entry.get("temp_id") or entry)
                 _enqueue_deletion(deleted, "edge_ids", entry.get("id"))
@@ -162,13 +144,9 @@ def reconcile_against_db(payload: dict, graph) -> tuple[dict, list[DeadRef]]:
                 surviving_conditional_edges.append(entry)
                 continue
             source_id = entry.get("source_node_id")
-            dangling = (
-                isinstance(source_id, int) and source_id not in surviving_node_ids
-            )
+            dangling = isinstance(source_id, int) and source_id not in surviving_node_ids
             if dangling:
-                gone_conditional_edge_refs.append(
-                    entry.get("id") or entry.get("temp_id") or entry
-                )
+                gone_conditional_edge_refs.append(entry.get("id") or entry.get("temp_id") or entry)
                 _enqueue_deletion(deleted, "conditional_edge_ids", entry.get("id"))
             else:
                 surviving_conditional_edges.append(entry)
@@ -226,9 +204,7 @@ def _collapse_singleton_lists(payload: dict) -> dict[str, int]:
             continue
 
         with_real_id = [
-            entry
-            for entry in entries
-            if entry is not None and isinstance(entry.get("id"), int)
+            entry for entry in entries if entry is not None and isinstance(entry.get("id"), int)
         ]
         survivor = with_real_id[0] if with_real_id else entries[0]
 
@@ -285,8 +261,6 @@ def _null_dangling_routing_refs(payload: dict, surviving_node_ids: set[int]) -> 
 
             if entry_nulled:
                 entry_ref = entry.get("id") or entry.get("temp_id")
-                nulled.setdefault(list_key, []).append(
-                    {"entry": entry_ref, **entry_nulled}
-                )
+                nulled.setdefault(list_key, []).append({"entry": entry_ref, **entry_nulled})
 
     return nulled

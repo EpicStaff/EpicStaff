@@ -69,7 +69,7 @@ export class OnboardingPageComponent {
 
     onStartWorking(): void {
         this.authService.defaultOrgId.set(null);
-        void this.router.navigate(['/projects']);
+        void this.router.navigate(['/agents']);
     }
 
     onSetupOrganizations(): void {

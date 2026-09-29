@@ -1,16 +1,14 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { JsonEditorComponent } from '@shared/components';
 
-import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { EndNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 @Component({
-    standalone: true,
     selector: 'app-end-node-panel',
-    imports: [ReactiveFormsModule, JsonEditorComponent, CommonModule, LockableFieldComponent],
+    imports: [ReactiveFormsModule, JsonEditorComponent, LockableFieldComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -27,9 +25,10 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
                             <app-json-editor
                                 class="json-editor"
                                 [jsonData]="outputMapJson"
+                                [readonly]="isReadOnly()"
+                                [fullHeight]="false"
                                 (jsonChange)="onOutputMapChange($event)"
                                 (validationChange)="onOutputMapValidChange($event)"
-                                [fullHeight]="false"
                             ></app-json-editor>
                         </div>
                     </app-lockable-field>
@@ -69,8 +68,8 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
 
             .label-container label {
                 display: block;
-                font-size: 14px;
-                color: rgba(255, 255, 255, 0.7);
+                font-size: 0.875rem;
+                color: var(--color-text-secondary);
                 margin: 0;
             }
 

@@ -8,8 +8,6 @@ created via the ApiKey model directly.
 """
 
 import io
-import pathlib
-import shutil
 
 import pytest
 from django.core.cache import cache
@@ -24,12 +22,8 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-)
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- shared fixtures ----
@@ -107,15 +101,9 @@ def api_client():
 
 @pytest.fixture
 def tmp_media_root(settings, tmp_path):
-    """Point MEDIA_ROOT at the project's tmp dir for the test, and wipe the
-    avatars/ subtree on exit. The project's tmp_path fixture in
-    tests/conftest.py is a fixed path that does NOT auto-clean, so without
-    this finalizer test artifacts accumulate."""
+    """Point MEDIA_ROOT at pytest's per-test temp dir, which it cleans up on its own."""
     settings.MEDIA_ROOT = str(tmp_path)
     yield tmp_path
-    avatars_dir = pathlib.Path(tmp_path) / "avatars"
-    if avatars_dir.exists():
-        shutil.rmtree(avatars_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -348,7 +336,7 @@ class TestProfileAvatarUpload:
     def test_reject_oversize(
         self, authed_client, member_acme, settings, tmp_media_root
     ):
-        settings.AVATAR_MAX_BYTES = 1024  # 1 KiB cap for this test
+        settings.AVATAR_MAX_SIZE = 1024  # 1 KiB cap for this test
         big = _make_image_bytes("PNG", size=(512, 512))
         upload = SimpleUploadedFile("big.png", big, content_type="image/png")
         resp = authed_client(member_acme).post(
@@ -666,7 +654,7 @@ def test_profile_valid_header_returns_active_permissions(
 
 @pytest.mark.django_db
 def test_profile_invalid_header_soft_fails(api_client, regular_user, jwt_tokens, db):
-    from tables.models.rbac_models import Organization
+    from rbac.models import Organization
 
     # Auth only, then pass an org the caller is not a member of as a per-request
     # header (auth_client's sticky default would otherwise override it).

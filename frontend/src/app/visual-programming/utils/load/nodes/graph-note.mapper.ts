@@ -1,8 +1,8 @@
-import { stableNodeId } from '../../stable-node-id';
+import { NodeType } from '@shared/models';
 
-import { GraphNote } from '../../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { GraphNote } from '../../../core/models/graph-note.model';
 import { GraphNoteModel } from '../../../core/models/node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapGraphNoteToModel(nn: GraphNote): GraphNoteModel {

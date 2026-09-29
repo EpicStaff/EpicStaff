@@ -2,8 +2,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Graph
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
 
 # These tests exercise the RBAC gating on StorageAPIView without touching the
@@ -118,3 +118,51 @@ def test_add_to_graph_nonexistent_graph_rejected(client_member):
     )
     assert resp.status_code == 400
     assert "not found" in str(resp.data).lower()
+
+
+# ---- Negative RBAC tests for add_to_graph / remove_from_graph ----
+# These two actions now require FLOWS:UPDATE, not FILES:CREATE / FILES:DELETE.
+# A user who has FILES:CREATE/DELETE but NOT FLOWS:UPDATE must be denied.
+
+
+@pytest.fixture
+def files_only_role(db, org_a):
+    """Custom role with full FILES permissions but no FLOWS permissions."""
+    role = Role.objects.create(name="Files Only", org=org_a, is_built_in=False)
+    RolePermission.objects.create(
+        role=role,
+        resource_type=ResourceType.FILES.value,
+        permissions=Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE,
+    )
+    return role
+
+
+@pytest.fixture
+def client_files_only(db, django_user_model, org_a, files_only_role):
+    user = django_user_model.objects.create_user(
+        email="files-only@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_a, role=files_only_role)
+    return _client(user, org_a)
+
+
+@pytest.mark.django_db
+def test_add_to_graph_denied_without_flows_update(client_files_only, org_a):
+    graph = Graph.objects.create(name="A flow", org=org_a)
+    resp = client_files_only.post(
+        "/api/storage/add-to-graph/",
+        {"paths": ["report.pdf"], "graph_ids": [graph.id]},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_remove_from_graph_denied_without_flows_update(client_files_only, org_a):
+    graph = Graph.objects.create(name="A flow", org=org_a)
+    resp = client_files_only.delete(
+        "/api/storage/remove-from-graph/",
+        {"paths": ["file.txt"], "graph_ids": [graph.id]},
+        format="json",
+    )
+    assert resp.status_code == 403

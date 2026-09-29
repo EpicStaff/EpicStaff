@@ -2,7 +2,6 @@ import { AfterViewInit, Directive, ElementRef, EventEmitter, Input, NgZone, OnDe
 
 @Directive({
     selector: '[appCollapseOnOverflow]',
-    standalone: true,
 })
 export class CollapseOnOverflowDirective implements AfterViewInit, OnDestroy {
     @Input('appCollapseOnOverflow') public collapseOnOverflowEnabled = true;

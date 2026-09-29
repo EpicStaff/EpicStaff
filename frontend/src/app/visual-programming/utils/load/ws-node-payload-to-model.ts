@@ -2,7 +2,6 @@ import { NodeModel } from '../../core/models/node.model';
 import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
-import { mapCrewNodeToModel } from './nodes/crew-node.mapper';
 import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper';
 import { mapEndNodeToModel } from './nodes/end-node.mapper';
 import { mapFileExtractorNodeToModel } from './nodes/file-extractor-node.mapper';
@@ -40,9 +39,6 @@ export function mapWsNodePayloadToModel(payload: Record<string, unknown>, listKe
             break;
         case 'python_node_list':
             model = mapPythonNodeToModel(dto);
-            break;
-        case 'crew_node_list':
-            model = mapCrewNodeToModel(dto);
             break;
         case 'task_node_list':
             model = mapTaskNodeToModel(dto);

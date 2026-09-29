@@ -28,6 +28,13 @@ export interface AppTableColumnDef {
     width?: string;
     /** If provided, renders a filter icon in the header opening a dropdown of these items. */
     filterItems?: SelectItem[];
+    /**
+     * Preselected values for this column's filter. When the reference changes (e.g. because the
+     * consumer builds columns inside a `computed()` that depends on a reactive value), the table
+     * overwrites the current selection with these values and emits `filterChange`.
+     * Pass `undefined` to opt out of the default behaviour entirely.
+     */
+    defaultValues?: unknown[];
     /** If provided (and filterItems isn't), renders this app-svg-icon next to the header label */
     headerIcon?: string;
     /** Highlights the header label + icon (e.g. while an external filter driven by headerIconClick is active) */

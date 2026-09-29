@@ -19,9 +19,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { WebhookProviderType, WebhookTriggerAuthKind, WebhookTriggerModel } from '@shared/models';
 
 import { ToastService } from '../../../services/notifications';
-import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 import {
@@ -57,10 +57,11 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     required = input<boolean>(false);
     tooltipText = input<string>('Pick an existing webhook trigger, or create a new one.');
     placeholder = input<string>('Select a trigger');
-    /** Allow the localhost provider. Off for Telegram (bot API can't reach localhost webhooks). */
-    allowLocalhost = input<boolean>(true);
-    /** Message shown when the currently selected trigger uses a disallowed provider. */
+    disallowedProviderTypes = input<WebhookProviderType[]>([]);
+    disallowedAuthKinds = input<WebhookTriggerAuthKind[]>([]);
     disallowedProviderMessage = input<string>('This provider is not supported here.');
+    /** Readonly mode: renders the current selection as plain text (no dropdown, no create). */
+    readonly = input<boolean>(false);
 
     /** Emits the resolved trigger model (or null when cleared). */
     triggerResolved = output<WebhookTriggerModel | null>();
@@ -78,8 +79,13 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         return this.triggers().find((t) => t.id === id) ?? null;
     });
 
-    isTriggerDisallowed = (t: WebhookTriggerModel): boolean =>
-        !this.allowLocalhost() && t.provider_type === 'localhost';
+    isTriggerDisallowed = (t: WebhookTriggerModel): boolean => {
+        const authKind = t.auth?.kind ?? t.auth_kind;
+        return (
+            (t.provider_type != null && this.disallowedProviderTypes().includes(t.provider_type)) ||
+            (authKind != null && this.disallowedAuthKinds().includes(authKind))
+        );
+    };
 
     selectedIsDisallowed = computed<boolean>(() => {
         const t = this.selectedTrigger();
@@ -146,11 +152,12 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     toggle(): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.readonly()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
     openDropdown(): void {
+        if (this.readonly()) return;
         this.loadTriggers();
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
@@ -192,7 +199,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     onSelect(trigger: WebhookTriggerModel): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.readonly()) return;
         if (this.isTriggerDisallowed(trigger)) return;
         const id = trigger.id ?? null;
         this.selectedId.set(id);
@@ -202,7 +209,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     onCreate(): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.readonly()) return;
         this.close();
         this.dialog
             .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {

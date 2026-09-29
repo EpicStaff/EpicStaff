@@ -40,20 +40,18 @@ def register_tunnel_path(tunnel_registry):
     """Register a path in `tunnel_registry` without connecting a real tunnel.
 
     Returns the `BaseTunnelConfigData` used, so tests can assert against its
-    `unique_id`/`auths`/`has_unauthenticated_node` if needed.
+    `unique_id`/`auth` if needed.
     """
 
     def _register(
         path: str,
-        auths: list | None = None,
-        has_unauthenticated_node: bool = False,
+        auth=None,
         org_id: int | None = 1,
     ) -> BaseTunnelConfigData:
         config = BaseTunnelConfigData(
             name=path,
             org_id=org_id,
-            auths=auths or [],
-            has_unauthenticated_node=has_unauthenticated_node,
+            auth=auth,
         )
         tunnel_registry._tunnel_pool[config.unique_id] = (None, config)
         return config

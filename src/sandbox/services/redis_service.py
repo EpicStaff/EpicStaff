@@ -1,15 +1,17 @@
 import json
+
 import redis.asyncio as aioredis
+from loguru import logger
+from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
-from redis.backoff import ExponentialBackoff
-from loguru import logger
 
 
 class RedisService:
-    def __init__(self, host: str, port: int, password: str):
+    def __init__(self, host: str, port: int, user: str, password: str):
         self.host = host
         self.port = port
+        self.user = user
         self.password = password
 
         self.aioredis_client: aioredis.Redis | None = None
@@ -18,6 +20,7 @@ class RedisService:
     async def connect(self):
         self.aioredis_client = await aioredis.from_url(
             f"redis://{self.host}:{self.port}",
+            username=self.user,
             password=self.password,
             decode_responses=True,
             retry=self._retry,

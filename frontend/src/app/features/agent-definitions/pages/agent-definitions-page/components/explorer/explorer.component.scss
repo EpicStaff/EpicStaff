@@ -40,8 +40,8 @@
 }
 
 .explorer__title {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
     color: var(--color-text-secondary);
     min-width: 0;
     white-space: nowrap;
@@ -50,8 +50,8 @@
 }
 
 .explorer__count {
-    font-size: 0.875rem;
-    font-weight: 400;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
     color: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
     flex-shrink: 0;
 }
@@ -118,6 +118,7 @@
     min-height: 0;
     flex-shrink: 0;
     overflow: hidden;
+    position: relative;
 }
 
 .explorer__section--bottom {
@@ -148,8 +149,39 @@
 
 .explorer__section-body--fill {
     flex: 1 1 auto;
-    min-height: 100px;
+    // Set by ExplorerComponent from FILL_BODY_MIN_HEIGHT (3 full tree rows — tree-node.component.scss:
+    // .row min-height 28px), which also reserves this same floor during drags. The 84px fallback only
+    // covers a render before the host binding applies; it isn't a second source of truth.
+    min-height: var(--fill-body-min-height, 84px);
     overflow-y: auto;
+}
+
+.explorer__section-body--resized {
+    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+.explorer__section-resize-handle {
+    flex-shrink: 0;
+    height: 10px;
+    margin-top: -5px;
+    cursor: row-resize;
+    touch-action: none;
+    z-index: 1;
+    position: relative;
+
+    &:hover,
+    &:active,
+    &.is-dragging {
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 4px 0;
+            border-radius: 2px;
+            background: var(--accent-color);
+            opacity: 0.4;
+        }
+    }
 }
 
 .explorer__state {

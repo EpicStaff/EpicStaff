@@ -1,0 +1,28 @@
+<div class="inputs-list-section">
+    <button
+        type="button"
+        class="inputs-list-toggle"
+        (click)="toggle()"
+    >
+        <span
+            class="chevron"
+            [class.open]="open()"
+            >▶</span
+        >
+        Inputs You Can Use
+    </button>
+    @if (open()) {
+        <div class="inputs-chip-list">
+            @for (name of names(); track name) {
+                <div
+                    class="inputs-chip"
+                    (click)="insert.emit(name)"
+                >
+                    {{ name }}
+                </div>
+            } @empty {
+                <span class="inputs-chip-empty"> Add entries to Input List to use them here. </span>
+            }
+        </div>
+    }
+</div>

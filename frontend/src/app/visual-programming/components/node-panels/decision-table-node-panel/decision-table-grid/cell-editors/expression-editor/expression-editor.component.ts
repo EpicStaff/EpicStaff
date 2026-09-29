@@ -1,6 +1,5 @@
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -16,10 +15,10 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowService } from '../../../../../../services/flow.service';
 import { AutocompleteItem, AutocompleteOverlayComponent } from './autocomplete-overlay/autocomplete-overlay.component';
 import { EditorToolbarComponent } from './editor-toolbar/editor-toolbar.component';
@@ -28,8 +27,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 @Component({
     selector: 'app-expression-editor',
-    standalone: true,
-    imports: [CommonModule, FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './expression-editor.component.html',
     styleUrls: ['./expression-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

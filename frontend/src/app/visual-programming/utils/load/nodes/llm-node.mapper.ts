@@ -1,8 +1,8 @@
-import { stableNodeId } from '../../stable-node-id';
+import { NodeType } from '@shared/models';
 
-import { GetLLMNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { GetLLMNodeRequest } from '../../../core/models/llm-node.model';
 import { LLMNodeModel } from '../../../core/models/node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapLLMNodeToModel(ln: GetLLMNodeRequest): LLMNodeModel {

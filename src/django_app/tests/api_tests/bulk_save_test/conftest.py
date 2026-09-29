@@ -3,7 +3,6 @@ import pytest
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from agents.models import AgentDefinition, Surface
 from tables.models.graph_models import (
-    CrewNode,
     DecisionTableNode,
     Edge,
     PythonNode,
@@ -12,7 +11,7 @@ from tables.models.graph_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.fixture
@@ -41,11 +40,6 @@ def python_node(graph, python_code) -> PythonNode:
 
 
 @pytest.fixture
-def crew_node(graph, crew) -> CrewNode:
-    return CrewNode.objects.create(graph=graph, crew=crew)
-
-
-@pytest.fixture
 def start_node(graph) -> StartNode:
     return StartNode.objects.create(graph=graph, variables={})
 
@@ -56,11 +50,11 @@ def decision_table_node(graph) -> DecisionTableNode:
 
 
 @pytest.fixture
-def edge(graph, python_node, crew_node) -> Edge:
+def edge(graph, start_node, python_node) -> Edge:
     return Edge.objects.create(
         graph=graph,
-        start_node_id=python_node.id,
-        end_node_id=crew_node.id,
+        start_node_id=start_node.id,
+        end_node_id=python_node.id,
     )
 
 

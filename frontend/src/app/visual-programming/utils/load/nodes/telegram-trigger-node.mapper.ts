@@ -1,8 +1,8 @@
-import { stableNodeId } from '../../stable-node-id';
+import { NodeType } from '@shared/models';
 
-import { GetTelegramTriggerNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
-import { NodeType } from '../../../core/enums/node-type';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
+import { GetTelegramTriggerNodeRequest } from '../../../core/models/telegram-trigger.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest): TelegramTriggerNodeModel {

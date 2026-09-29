@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from loguru import logger
+from shared.models.agent_service import AgentRequest
 
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
@@ -13,7 +14,6 @@ from app.runners.task_execution import (
     _schema_max_retries,
     run_task_through_loop,
 )
-from shared.models.agent_service import AgentRequest
 
 
 class SingleTaskRunner(Runner):
@@ -57,9 +57,7 @@ class SingleTaskRunner(Runner):
             if output_schema:
                 logger.opt(lazy=True).debug("output_schema={}", lambda: output_schema)
 
-            resolved = await self._deps.resolver.resolve(
-                agent, request, knowledge_sink=emitter
-            )
+            resolved = await self._deps.resolver.resolve(agent, request, knowledge_sink=emitter)
             logger.debug(
                 "resolved tools={} attachments={}",
                 [s.name for s in resolved.tools.tool_specs()],
@@ -114,17 +112,11 @@ class SingleTaskRunner(Runner):
                 request.correlation_id,
                 error,
             )
-            await emitter.on_error(
-                error
-            )  # expected domain failure → agent.error; do NOT re-raise
+            await emitter.on_error(error)  # expected domain failure → agent.error; do NOT re-raise
 
         except Exception as error:
-            logger.exception(
-                "single_task crashed correlation_id={}", request.correlation_id
-            )
-            await emitter.on_error(
-                error
-            )  # unexpected failure → agent.error; do NOT re-raise
+            logger.exception("single_task crashed correlation_id={}", request.correlation_id)
+            await emitter.on_error(error)  # unexpected failure → agent.error; do NOT re-raise
 
     def _parse_payload(self, payload: dict) -> tuple[str, dict | None]:
         instructions = payload.get("task_instructions") or payload.get("prompt")

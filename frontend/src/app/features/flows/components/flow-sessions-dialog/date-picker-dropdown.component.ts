@@ -1,6 +1,5 @@
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -13,18 +12,15 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { AppSvgIconComponent, DateRangePickerComponent } from '@shared/components';
 import { DateRangeFilter } from '@shared/models';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { DateRangePickerComponent } from '../../../../shared/components/date-range-picker/date-range-picker.component';
 
 @Component({
     selector: 'app-created-at-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
+    imports: [OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
-    changeDetection: ChangeDetectionStrategy.Default,
+    changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class DatePickerDropdownComponent {
     @Input() value: DateRangeFilter | null = null;

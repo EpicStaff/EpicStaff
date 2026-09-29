@@ -49,53 +49,106 @@ Two invariants shape everything:
 
 ## 2. Data model
 
-All RBAC models live in `tables/models/rbac_models/`. All business logic lives in
-`tables/services/rbac/`.
+Six of the seven RBAC models live in `rbac/models/` (the `rbac` Django app). All RBAC
+business logic — access control, governance, identity, profile, scoping, validation —
+lives under `src/django_app/rbac/`; see §10 for the full file index.
 
-| Model | Table | Purpose |
-|---|---|---|
-| `User` | `rbac_user` | Custom `AUTH_USER_MODEL` (`tables.User`). Email login, `display_name`, `avatar`, global `is_superadmin`, `is_active`. No username/is_staff; Django admin is removed. |
-| `Organization` | `rbac_organization` | Tenant. `name` (case-insensitive unique via `LOWER(name)` index), `is_active` (soft deactivation), `is_default` (partial unique constraint — at most one default org). |
-| `OrganizationUser` | `rbac_organization_user` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
-| `Role` | `rbac_role` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
-| `RolePermission` | `rbac_role_permission` | One row per (role, resource_type) with an integer permission **bitmask**. |
-| `ApiKey` | — | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
-| `PasswordResetToken` | `rbac_password_reset_token` | Single-use reset grant, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). Stores only `token_hash` (SHA-256 of a `secrets.token_urlsafe(32)` value) — the raw token exists once, in the emailed link, so a read of this table is not replayable. The row's existence *is* the grant: consuming or superseding one deletes it, so there is no `is_used` flag and no accumulation of spent verifiers. Generation, hashing and deletion live in `PasswordResetTokenRepository`. |
-| `OrgScopedModel` | abstract | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
+| Model | Table | File (`src/django_app/...`) | Purpose |
+|---|---|---|---|
+| `User` | `rbac_user` | `tables/models/user.py` (stays in `tables` — see note below) | Custom `AUTH_USER_MODEL` (`tables.User`). Email login, `display_name`, `avatar`, global `is_superadmin`, `value`. No username/is_staff; Django admin is removed. |
+| `Organization` | `rbac_organization` | `rbac/models/organization.py` | Tenant. `name` (case-insensitive unique via `LOWER(name)` index), `value` (soft deactivation), `is_default` (partial unique constraint — at most one default org). |
+| `OrganizationUser` | `rbac_organization_user` | `rbac/models/organization_user.py` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
+| `Role` | `rbac_role` | `rbac/models/role.py` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
+| `RolePermission` | `rbac_role_permission` | `rbac/models/role.py` | One row per (role, resource_type) with an integer permission **bitmask**. |
+| `ApiKey` | — | `rbac/models/api_key.py` | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
+| `PasswordResetToken` | `rbac_password_reset_token` | `rbac/models/password_reset_token.py` | Single-use reset grant, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). Stores only `token_hash` (SHA-256 of a `secrets.token_urlsafe(32)` value) — the raw token exists once, in the emailed link, so a read of this table is not replayable. The row's existence *is* the grant: consuming or superseding one deletes it, so there is no `is_used` flag and no accumulation of spent verifiers. Generation, hashing and deletion live in `PasswordResetTokenRepository`. |
+| `OrgScopedModel` | abstract | `rbac/models/org_scoped.py` | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 
-### 2.1 Enums (`rbac_enums.py`)
+**Why `User` stays in `tables`.** `AUTH_USER_MODEL` is re-resolved on every
+migration-graph build. Pointing it at `rbac.User` would retroactively change the
+dependencies of every one of the 17 already-applied migrations that reference the user
+model, aborting `migrate` on any existing database. See
+`docs/superpowers/specs/2026-09-21-rbac-app-extraction-design.md` §2 for the full
+argument. `rbac` models that need the user FK import it as `tables.models.user.User` —
+one of the two deliberate exceptions the `rbac`-must-not-import-`tables` CI check allows
+(the other is `tables.swagger_schemas.common_schemas`, a shared constants module).
+
+### 2.1 Enums (`rbac/models/enums.py`)
 
 ```python
 class ResourceType(models.TextChoices):
-    ORGANIZATIONS, FLOWS, AGENTS, TOOLS, KNOWLEDGE_SOURCES,
-    FILES, PROJECTS, LLM_CONFIGS, SECRETS, USERS, ROLES
+    (
+        ORGANIZATIONS,
+        ROLES,
+        MEMBERSHIPS,
+        API_KEYS,
+        FLOWS,
+        AGENTS,
+        TOOLS,
+    )
+    (
+        KNOWLEDGE_SOURCES,
+        FILES,
+        PROJECTS,
+        LLM_CONFIGS,
+        SECRETS,
+        VOICE,
+        SURFACES,
+    )
+    WEBHOOKS
+
 
 class Permission(IntFlag):
-    CREATE = 1; READ = 2; UPDATE = 4; DELETE = 8
-    EXPORT = 16          # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64; LIST = 128 # reserved — present in bitmasks, not yet in the catalog UI
+    CREATE = 1
+    READ = 2
+    UPDATE = 4
+    DELETE = 8
+    EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
+    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
+    LIST = 128  # reserved — not in the catalog, checked nowhere
 ```
 
-### 2.2 Built-in roles (seeded by migrations 0171 + 0183, idempotent)
+### 2.2 Built-in roles (seeded by a chain of idempotent data migrations)
 
 Superadmin role row has **zero** `RolePermission` rows — authority comes exclusively from
-`User.is_superadmin`. Current seeded bitmasks (`0183_seed_builtin_role_permissions.py`):
+`User.is_superadmin`. The seeds run 0171 → 0183 → 0205 → 0209 → 0210 → 0212 → 0236 → 0242 →
+0246, each overriding the last; `0242_reseed_builtin_role_permissions` is the authoritative
+end state for the resources it covers, and `0246_seed_webhooks_resource_permissions` seeds
+the `webhooks` resource introduced afterward. Current bitmasks:
 
 | resource_type | Org Admin | Member | Viewer |
 |---|---|---|---|
-| flows | 31 (CRUD+E) | 7 (CRU) | 66 (R+use) |
+| flows | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | agents | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
-| tools | 15 (CRUD) | 7 (CRU) | 2 (R) |
+| tools | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
+| surfaces | 15 (CRUD) | 7 (CRU) | 2 (R) |
 | knowledge_sources | 15 (CRUD) | 2 (R) | 2 (R) |
 | files | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
 | projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
 | llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
-| secrets | 207 (CRUD+use+list) | 192 (use+list) | 192 (use+list) |
-| users | 15 (CRUD) | 0 | 0 |
+| voice | 15 (CRUD) | 2 (R) | 2 (R) |
+| webhooks | 15 (CRUD) | 15 (CRUD) | 2 (R) |
+| secrets | 75 (CRD+use) | 0 | 0 |
+| memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
-| organizations | 0 | 0 | 0 |
+| organizations | 6 (R+U) | 0 | 0 |
+| api_keys | 10 (R+D) | 0 | 0 |
 
-If you change a seed, do it with a new idempotent data migration — never edit an applied one.
+Migration `0242` re-seeds all three roles so that every stored bit is one the
+code enforces **and** the catalog can grant. It removed three kinds of dead bit
+the earlier seeds had accumulated — `flows:USE` on Viewer (nothing enforces it;
+running a flow checks `FLOWS.READ`), `secrets:LIST` (`Permission.LIST` is
+checked nowhere), and `secrets:UPDATE` (`SecretViewSet` has no update route) —
+all behaviour-neutral, since none of them gated anything. This matters beyond
+tidiness: the escalation ceiling compares these masks when deciding whether the
+holder of one role may assign another, so a bit that grants nothing could still
+refuse a legitimate assignment. `use` is an action of `secrets` only, and among
+the built-ins only Org Admin holds it.
+
+If you change a seed, do it with a new idempotent data migration — never edit an
+applied one. `tests/conftest.py::seed_builtin_roles_and_permissions` replays the
+whole chain after `flush`; a new seed must be appended there too, and the
+re-seed must stay last.
 
 ---
 
@@ -106,8 +159,8 @@ Global defaults (`django_app/settings.py`):
 ```python
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "tables.services.rbac.authentication.JwtAuthentication",
-        "tables.services.rbac.authentication.ApiKeyAuthentication",
+        "rbac.identity.authentication.JwtAuthentication",
+        "rbac.identity.authentication.ApiKeyAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -119,23 +172,30 @@ REST_FRAMEWORK = {
 opening an endpoint requires an explicit `permission_classes = [AllowAny]` (currently only
 first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
-Two authentication classes (`tables/services/rbac/authentication.py`), both global defaults:
+Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
   refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`.
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
   `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
-  `PrincipalResolver` (`tables/services/rbac/api_key/principals.py`): a `system`-type key
+  `PrincipalResolver` (`rbac/identity/api_keys/principals.py`): a `system`-type key
   resolves to `SystemServicePrincipal` (superadmin-equivalent, no `email`/`pk`); a
   `user`-type key resolves to its owner. `request.user` is that principal, `request.auth`
   is the `ApiKey` row. A user key inherits the owner's live RBAC permissions per the
   `X-Organization-Id` header the caller sends — identical to that owner authenticating with
-  a JWT. Key management endpoints (`/api/profile/api-keys/`, `/api/api-keys/`) are JWT-only
-  (`DenyApiKeyAuth`) — see [api_keys.md](api_keys.md).
+  a JWT. Key management endpoints (`/api/profile/api-keys/`,
+  `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
+  [api_keys.md](api_keys.md). Permanent deletion (`DELETE /api/admin/users/{id}/`,
+  `DELETE /api/admin/organizations/{id}/`) is JWT-only for the same reason
+  (`DenyApiKeyAuth`): a leaked credential must not be able to erase accounts or
+  tenants. These endpoints are superadmin-only by construction — they add no
+  `ResourceType` and no `Permission` bit, so no custom role can ever be granted
+  them.
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
-(`TicketService`, `tables/services/rbac/ticket_service.py`): `POST /api/auth/sse-ticket/`
+(`TicketService`, `rbac/identity/tickets.py`): `POST /api/auth/sse-ticket/`
 or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomically via
-`GETDEL`, passed as `?ticket=` on the stream URL.
+`GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
+`sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
 
 Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
 
@@ -194,13 +254,13 @@ error, so zero-membership users can still boot the FE.
 
 ### 5.1 ViewSets — `HasOrgPermission`
 
-`tables/services/rbac/permissions.py`. Declare on the view:
+`rbac/access/gates.py`. Declare on the view:
 
 ```python
 class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]   # order is contractual
-    rbac_resource_type = ResourceType.AGENTS                   # REQUIRED
-    rbac_action_map = {                                        # optional per-view map
+    permission_classes = [IsAuthenticated, HasOrgPermission]  # order is contractual
+    rbac_resource_type = ResourceType.AGENTS  # REQUIRED
+    rbac_action_map = {  # optional per-view map
         **DEFAULT_ACTION_MAP,
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
@@ -223,10 +283,10 @@ A Redis cache seam is documented in the resolver for later.
 ### 5.2 Plain APIViews — `assert_org_permission`
 
 No DRF `action` exists, so use the functional gate
-(`tables/services/rbac/permission_assert.py`):
+(`rbac/access/asserts.py`):
 
 ```python
-org_id = OrgContextService().resolve(request=request)          # or the resolver mixin
+org_id = OrgContextService().resolve(request=request)  # or the resolver mixin
 assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.CREATE)
 ```
 
@@ -237,7 +297,7 @@ The quickstart endpoint (`tables/views/views.py`) is the reference example.
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
 `assert_session_org_access(user, session, action)`
-(`tables/services/rbac/session_access.py`): 404 when the session has no graph, then
+(`tables/services/session_access.py`): 404 when the session has no graph, then
 membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
 the single-use ticket first, then calls this.
 
@@ -247,23 +307,64 @@ the single-use ticket first, then calls this.
   admin password reset.
 - `IsSuperadminOrReadOnly` — global singletons exposed as plain APIViews (default-config
   singletons, voice settings): any authenticated user reads, superadmin writes.
-- `SuperadminWriteMixin` (`tables/views/mixins.py`) — same idea for ViewSets (global
+- `SuperadminWriteMixin` (`rbac/scoping/mixins.py`) — same idea for ViewSets (global
   registry/catalog rows): safe actions need `IsAuthenticated`, write actions (plus any
   action named in `superadmin_write_actions`) need `IsSuperadmin`. Not org-scoped.
+
+`CrossOrgResourceService` (`rbac/governance/cross_org_base.py`) is the base every cross-org
+admin surface (roles, memberships, organizations, API keys) extends for its precise per-org
+authorization. It splits the decision in two: **visibility decides the 404, the permission bit
+decides the 403.**
+
+`resolve_for_write(actor, org_id, action)` resolves the caller's permissions in one target org
+and raises the resource's own 404 unless the row is visible to them. A row is visible when the
+caller is a member of its org **and** holds either READ on the resource there **or** the
+`action` being attempted. So there are two 404 conditions — not a member, or a member who can
+neither read the resource nor perform this action on it — and only a visible row can go on to
+produce a 403 from `assert_can`. Returning 403 for an invisible row would confirm an id the
+read surface reports as missing. READ-**or**-action, rather than READ alone, is what keeps the
+deliberate write-without-read grant working: a role carrying `delete` but not `read` must be
+able to delete, not be told the row does not exist. `action` is a required argument precisely
+so every call site states which verb it authorizes.
+
+`authorize_any_org(actor, org_ids, action)` is the existential counterpart: it authorizes a row
+scoped through a *set* of orgs instead of a single column — an API key's scope is every
+organization its owner belongs to — and applies the same split over that set. The row is
+visible when **at least one** reachable org grants READ or `action`, and authorized when at
+least one grants `action`; sharing no org at all still 404s, exactly as `resolve_for_write`
+does for one.
+`delegated_scope_q`, an optional class attribute a subclass may declare, is an extra queryset
+restriction `apply_org_scope` applies only when a delegated (non-superadmin) caller is being
+org-scoped at all — never to a superadmin, who already bypasses the org filter entirely.
+`ApiKeyManagementService` sets it to exclude superadmin-owned keys from a delegated admin's
+list, since the superadmin's own request already reaches them without it.
 
 ### 5.5 Service-layer guards (defense in depth)
 
 Structural invariants are enforced inside services regardless of who the caller is, in
 transactions with `SELECT FOR UPDATE`:
 
-- `assert_not_last_active_superadmin` / `assert_not_last_org_admin` /
+- `assert_not_last_org_admin` /
   `assert_role_is_assignable` / `assert_batch_preserves_org_admin`
-  (`user_management_guards.py`)
+  (`user_management_guards.py`). `role_is_assignable` is the same rule as a
+  predicate, for the assignable-roles filter.
+- **the escalation ceiling** — `assert_within_ceiling`
+  (`rbac/access/asserts.py`) over
+  `EffectivePermissions.covers`: you cannot grant authority you do not hold.
+  One comparison, two call paths — authoring a custom role
+  (`RoleManagementService.create_role` / `update_role`, the bits written in) and
+  assigning any role (`MembershipManagementService.add_member` / `change_role`,
+  the bits it grants). It never inspects `is_built_in`, so built-in Org Admin
+  and an over-ceiling custom role are refused identically, and it compares only
+  the catalog's grantable action bits (`GRANTABLE_ACTION_BITS`) so ungranted
+  `use`/`list` seed data cannot block a legitimate grant. Superadmin bypasses
+  inside `covers`.
+- last-active-superadmin guard (`user_management_service.py`)
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
 - bootstrap advisory lock (`acquire_bootstrap_lock`,
-  `services/rbac/utils/bootstrap_lock.py`) — `FirstSetupService.setup()` and
+  `rbac/identity/bootstrap_lock.py`) — `FirstSetupService.setup()` and
   `ResetUserService.reset()` both take a PostgreSQL transaction-scoped
   advisory lock before checking whether a user exists, so concurrent callers
   cannot race past that check and create two bootstrap superadmins.
@@ -273,17 +374,60 @@ invariant.
 
 ---
 
+### 5.6 Serializer-level guards — `secrets:USE` on secret references
+
+One check lives in neither the view nor the service: whether the caller may change
+**which Secret a resource references**. It is enforced in the serializer layer, and
+the reason is worth understanding before you move it.
+
+`SecretReferenceGuardMixin` (`tables/serializers/utils/secret_reference_guard_mixin.py`)
+declares the guarded fields and hooks `validate()`; the decision lives in
+`SecretReferenceGuard` (`tables/services/secrets/reference_guard.py`):
+
+```python
+class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+    secret_reference_fields = ("auth_secret_id",)
+```
+
+**The delta rule.** A secret reference is *state, not an operation*. Omitted from the
+payload → skip; present but equal to the persisted value → skip; different → require
+`secrets:USE`. This is what makes the guard usable from `graph/{id}/save`, which
+submits the whole graph on every save and would otherwise demand `USE` from anyone
+editing an unrelated node.
+
+`_assert_may_use` denies when there is no `request` in serializer context, because the
+active org cannot be resolved without one — fail-safe, not fail-open. Any service that
+drives these serializers must thread the request through (`GraphBulkSaveService` does).
+
+**Diverging one request path.** `secret_reference_fields` is read through
+`get_secret_reference_fields()`, so a subclass may differ from the class its siblings
+share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an
+endpoint-specific variant:
+
+```python
+class McpToolBulkSerializer(McpToolSerializer):
+    def get_secret_reference_fields(self):
+        """Guard nothing on this path."""
+        return ()
+```
+
+The coverage checks ask instances, not classes, so an override stays inside the
+guarantee.
+
+---
+
 ## 6. Row scope layer (queryset scoping)
 
-All mixins live in `tables/views/mixins.py` and share `OrgScopedResolverMixin`
+All mixins live in `rbac/scoping/mixins.py` and share `OrgScopedResolverMixin`
 (`get_active_org_id()`). **Place the org mixin FIRST in the bases list** so its
 `get_queryset`/`perform_create` wrap the concrete ViewSet's.
 
 | Mixin | Use for | Declares | Behavior |
 |---|---|---|---|
-| `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, Agent, Crew, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
+| `OrgScopedViewSetMixin` | Top-level resources owning an `org` FK (Graph, AgentDefinition, LLMConfig, SourceCollection, Label, …) | — | filters `org_id=active`, stamps `org_id` + `created_by` on create |
 | `OrgScopedChildViewSetMixin` | Children scoped through a parent FK (nodes, edges, sessions, RealtimeAgent, …) | `org_filter_path = "graph__org_id"` | filters through the path; on create asserts the parent is in the active org (404 otherwise); does NOT stamp org |
 | `OrgScopedHybridViewSetMixin` | Shared built-ins + per-org custom rows (LLMModel via `is_custom`, PythonCodeTool via `built_in`, …) | `global_visibility_q`, `custom_create_values` | lists built-ins OR own-org rows; creates always stamped org + forced out of the built-in subset |
+| `BuiltInWriteProtectedMixin` | Any hybrid registry whose built-ins must be immutable via the API (the four provider `*Model` tables) | — | 403 `built_in_model_immutable` on update/destroy of an `org IS NULL` row, **including for superadmin**; place after the org mixin |
 | `OrgScopedQuerysetMixin` | Non-standard scope (multiple parents, hybrid-parent visibility) | `get_org_scope_q(org_id)`, optional `scope_distinct` | applies your Q |
 | `OrgScopedServiceViewSetMixin` | Views delegating to services with raw ids (knowledge endpoints) | — | `get_in_active_org_or_404(model, pk, org_path=...)` helper |
 
@@ -293,11 +437,11 @@ org-scoped.
 ### 6.1 Serializer-level reference scoping (write isolation)
 
 Queryset scoping protects reads; **FK references in writes** are protected by dedicated
-fields (`tables/serializers/org_scoped_fields.py`):
+fields (`rbac/scoping/fields.py`):
 
 - `OrgScopedPrimaryKeyRelatedField(queryset=..., org_lookup="org_id")` — strict targets
-  (Agent, Crew, Graph, LLMConfig, RealtimeConfig, McpTool, PythonCodeToolConfig…).
-  `org_lookup` accepts paths like `"crew__org_id"`.
+  (AgentDefinition, Graph, LLMConfig, RealtimeConfig, McpTool, PythonCodeToolConfig…).
+  `org_lookup` accepts paths like `"graph__org_id"`.
 - `OrgVisiblePrimaryKeyRelatedField(queryset=...)` — hybrid targets (LLMModel,
   EmbeddingModel, Realtime*Model, PythonCodeTool): built-ins (`built_in=True` /
   `is_custom=False`) OR own-org rows. Use this one for hybrid targets, otherwise built-ins
@@ -335,7 +479,7 @@ Serializer rules for org-scoped models:
 ### 7.2 Permissions for the FE
 
 - `GET /api/permissions/catalog/` — static taxonomy from
-  `tables/services/rbac/permission_catalog.py` (`RESOURCE_TYPE_METADATA`,
+  `rbac/access/catalog.py` (`RESOURCE_TYPE_METADATA`,
   `ACTION_METADATA`). This file is the **single source of truth** for which actions apply
   to which resource type; the FE matrix, role serializers, and bitmask↔codes conversion
   all read it.
@@ -344,15 +488,16 @@ Serializer rules for org-scoped models:
   `{resource_type: [action_code, ...]}` with **every** catalog resource present (zero
   permissions surface as `[]`).
 - Wire format is always action-code strings, never raw bitmask ints
-  (`utils/permission_bitmask.py` converts both ways, filtering non-applicable bits).
+  (`rbac/access/bitmask.py` converts both ways, filtering non-applicable bits).
 
 ### 7.3 Error envelope
 
 `utils/exception_handler.custom_exception_handler` renders domain exceptions from
-`tables/services/rbac/rbac_exceptions.py` as
+`rbac/exceptions.py` as
 `{"status_code": ..., "code": "...", "message": "..."}`. Reuse existing codes
 (`org_context_required`, `org_membership_required`, `permission_denied`,
-`built_in_role_immutable`, `last_org_admin`, `last_superadmin`, …) and add new exceptions
+`built_in_role_immutable`, `built_in_model_immutable`, `last_org_admin`,
+`last_superadmin`, …) and add new exceptions
 to that module — never raw `Response({"error": ...})`.
 
 ---
@@ -398,7 +543,7 @@ to that module — never raw `Response({"error": ...})`.
 ### 8.2 New child resource (no own org column)
 
 No model change. ViewSet: `OrgScopedChildViewSetMixin` + `org_filter_path`
-(`"graph__org_id"`, `"crew__org_id"`, `"agent__org_id"`, …) + `HasOrgPermission` with the
+(`"graph__org_id"`, `"agent_node__graph__org_id"`, `"session__graph__org_id"`, …) + `HasOrgPermission` with the
 parent's resource type. The mixin already blocks creating a child under another org's
 parent. In the serializer, the parent FK should still use `OrgScopedPrimaryKeyRelatedField`
 so updates cannot re-point the child cross-org.
@@ -406,10 +551,28 @@ so updates cannot re-point the child cross-org.
 ### 8.3 New hybrid resource (shared built-ins + org customs)
 
 Model: `OrgScopedModel` + a discriminator flag (`built_in` or `is_custom`), `org` stays
-nullable (built-ins keep `org=NULL` — do not flip NOT NULL).
+nullable (built-ins keep `org=NULL` — do not flip NOT NULL). Name uniqueness must be
+**per-org plus a partial constraint for the built-in subset** — Postgres treats NULLs as
+distinct, so a `UniqueConstraint(org, name, ...)` alone leaves built-ins uncovered, while a
+global one lets one org's private name block another's (pitfall #9).
 ViewSet: `OrgScopedHybridViewSetMixin` with `global_visibility_q` and
-`custom_create_values` (forcing new rows out of the built-in subset).
+`custom_create_values` (forcing new rows out of the built-in subset), then
+`BuiltInWriteProtectedMixin` — the hybrid queryset deliberately includes built-ins so they
+are *readable*, and the same queryset backs `get_object`, so without the second mixin every
+org can edit and delete them.
+Serializer: the discriminator flag and any `predefined`-style provenance flag must be
+`read_only` — `custom_create_values` only guards create, so a writable flag lets a `PATCH`
+promote an org's row into the shared bucket.
 References to it from other serializers: `OrgVisiblePrimaryKeyRelatedField`.
+
+**Resolution by name, not pk** (seeding commands, quickstart, importers) must filter on
+`org` explicitly, and must state a *precedence* when both a built-in and an own-org row can
+match: `org_visible_queryset(...)` returns both, and `.first()` on it has no `ORDER BY`, so
+the result is whatever Postgres feels like returning. See
+`QuickstartService._get_or_create_llm_model` for the pattern (own-org wins), and
+`upload_models.py` for the built-ins-only form (`org__isnull=True`) — Django strips
+`__`-lookups from `get_or_create`/`update_or_create` create params, so that filter narrows
+the lookup without leaking into the created row.
 
 ### 8.4 Plain APIView / service-delegating endpoint
 
@@ -475,35 +638,42 @@ path — the default org is only for bootstrap and data migrations.
 
 ## 10. Service & file index
 
-| Concern | File (`src/django_app/tables/...`) |
+| Concern | File (`src/django_app/...`) |
 |---|---|
-| Auth backend (JWT + API key) | `services/rbac/authentication.py` |
-| Login/logout/first-setup/reset-user/introspect views | `views/auth_views.py` |
-| First-time setup | `services/rbac/first_setup_service.py`, `utils/superadmin_bootstrap.py` |
-| First-setup mode gate | `services/rbac/first_setup_mode.py` |
-| Bootstrap advisory lock (first-setup + reset-user) | `services/rbac/utils/bootstrap_lock.py` |
-| CLI superadmin creation | `management/commands/create_superadmin.py` |
-| Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
-| Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
-| Org CRUD (superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
-| User & membership admin | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
-| Roles read + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
-| Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
-| Permission gate (APIView) | `services/rbac/permission_assert.py` |
-| Session/SSE authorization | `services/rbac/session_access.py`, `views/sse_views.py` |
-| Org resolution | `services/rbac/org_context_service.py` |
-| Effective permissions + resolver | `services/rbac/effective_permissions.py`, `permission_resolver.py` |
-| Action maps & catalog | `services/rbac/permission_action_map.py`, `permission_catalog.py` |
-| Bitmask helpers | `services/rbac/utils/permission_bitmask.py` |
-| SSE/WS tickets | `services/rbac/ticket_service.py` |
-| Queryset mixins | `views/mixins.py` |
-| Serializer org fields | `serializers/org_scoped_fields.py` |
-| Domain exceptions | `services/rbac/rbac_exceptions.py` |
-| Throttles | `throttles.py` |
-| Backfill helper for migrations | `migrations/_helpers.py` (`assign_default_org`) |
-| Storage org enforcement | `views/storage_views.py`, `services/storage_service/manager.py` |
+| Auth backend (JWT + API key) | `rbac/identity/authentication.py` |
+| Login/logout/first-setup/reset-user/introspect views | `rbac/views/auth.py` |
+| First-time setup | `rbac/identity/first_setup.py`, `rbac/identity/superadmin_bootstrap.py` |
+| First-setup mode gate | `rbac/identity/first_setup_mode.py` |
+| Bootstrap advisory lock (first-setup + reset-user) | `rbac/identity/bootstrap_lock.py` |
+| CLI superadmin creation | `rbac/management/commands/create_superadmin.py` |
+| Password recovery (request/confirm/admin/CLI) | `rbac/identity/passwords/recovery.py` + `rbac/identity/passwords/*` |
+| Profile + avatar + 2-step password change | `rbac/profile/service.py`, `rbac/views/profile.py` |
+| Profile-change broadcast (presence card refresh) | `rbac/signals.py` (`profile_updated`, sent by `rbac/views/profile.py`), received by `tables/signals/profile_signals.py`, which calls `tables/graph_collab/notifications.py` (`GraphEditNotifier.notify_profile_updated`) |
+| Cross-org management base | `rbac/governance/cross_org_base.py` (`CrossOrgResourceService`), `rbac/views/cross_org_base.py` (`CrossOrgAdminViewSet` + `superadmin_actions` mixed gate) — reused by roles / memberships / orgs / API keys |
+| Org management (list/read/rename permission-aware; create/deactivate superadmin) | `rbac/governance/organizations.py`, `rbac/views/organizations.py` |
+| Membership management (cross-org, MEMBERSHIPS-gated, assignment ceiling) + assignable-user lookup | `rbac/governance/memberships.py`, `rbac/views/memberships.py` |
+| User account admin (superadmin: create / grant-revoke SA / activate-deactivate) | `rbac/governance/users.py`, `rbac/governance/guards.py`, `rbac/views/users.py` |
+| Roles CRUD + authoring ceiling + immutability guard + `?assignable_org_ids=` filter + the org-scoped `assigned_count` | `rbac/governance/roles.py`, `rbac/views/roles.py` |
+| Escalation ceiling (shared by authoring and assignment) | `rbac/access/asserts.py` (`assert_within_ceiling`), `rbac/access/effective.py` (`covers`, `bits_of`) |
+| API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
+| Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
+| Permission gate (APIView) | `rbac/access/asserts.py` |
+| Session/SSE authorization | `tables/services/session_access.py`, `tables/views/sse_views.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
+| Org resolution | `rbac/access/org_context.py` |
+| Effective permissions + resolver | `rbac/access/effective.py`, `rbac/access/resolver.py` |
+| Action maps & catalog | `rbac/access/action_map.py`, `rbac/access/catalog.py` |
+| Bitmask helpers | `rbac/access/bitmask.py` |
+| SSE/WS tickets | `rbac/identity/tickets.py` |
+| Queryset mixins | `rbac/scoping/mixins.py` |
+| Serializer org fields | `rbac/scoping/fields.py` |
+| Domain exceptions | `rbac/exceptions.py` |
+| Throttles | `rbac/throttles.py` |
+| Backfill helper for migrations | `tables/migrations/_helpers.py` (`assign_default_org`, stays in `tables` — a migration-time helper, not an RBAC runtime concern) |
+| Storage org enforcement | `tables/views/storage_views.py`, `tables/services/storage_service/manager.py` |
 
 Reference test suites: `tests/api_tests/test_rbac_auth.py`,
 `test_rbac_user_management.py`, `test_rbac_permission_enforcement.py`,
 `test_rbac_organization_management.py`, `test_rbac_user_profile.py`,
-`test_org_scoping_core.py`, `tests/services_tests/test_permission_resolver.py`.
+`test_org_scoping_core.py`, `tests/services_tests/test_permission_resolver.py`,
+`tests/graph_collab/test_presence_state_updated.py` (profile-change broadcast;
+this suite requires `daphne`).

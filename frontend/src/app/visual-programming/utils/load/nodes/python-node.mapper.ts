@@ -1,6 +1,7 @@
-import { PythonNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
+
 import { PythonNodeModel } from '../../../core/models/node.model';
+import { PythonNode } from '../../../core/models/python-node.model';
 import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
@@ -20,7 +21,11 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
             code: pn.python_code.code,
             entrypoint: pn.python_code.entrypoint,
             use_storage: pn.use_storage ?? false,
-            ...(pn.python_code.secret_ids !== undefined ? { secret_ids: pn.python_code.secret_ids } : {}),
+            secret_ids:
+                pn.python_code.secret_ids ?? (pn.python_code.secrets ? toSecretIds(pn.python_code.secrets) : undefined),
+            secret_names:
+                pn.python_code.secret_names ??
+                (pn.python_code.secrets ? toSecretNames(pn.python_code.secrets) : undefined),
         },
         position: ui.position,
         ports: null,
@@ -28,7 +33,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         icon: ui.icon,
         input_map: pn.input_map ?? {},
         output_variable_path: pn.output_variable_path,
-        stream_config: pn.stream_config ?? {},
         size: ui.size,
     };
 }

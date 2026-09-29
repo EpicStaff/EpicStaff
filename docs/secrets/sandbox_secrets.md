@@ -188,8 +188,8 @@ sandbox:
     MASK_SECRET: ${MASK_SECRET:-true}
 ```
 
-Declared in `src/env.yaml` and regenerated into `.env.example` / `debug.env` / `.dev.env` —
-**edit `env.yaml` and run `python scripts/generate_env.py`**, never the generated files.
+Declared in `src/env.yaml` and generated into `src/.env` / `src/.env.example` —
+**edit `env.yaml` and run `python scripts/envtool.py`**, never the generated files.
 
 **The polarity is deliberately inverted** from every other boolean in the codebase. Others
 read `os.getenv(X, "False") in ["True", "true"]` — absent means off. This one is opt-**out**:

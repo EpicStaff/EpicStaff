@@ -15,13 +15,16 @@
                         fieldId="node_name"
                         [nodeId]="node().id"
                     >
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="A name for this node. Used to identify it within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
+                        <div class="field-isolated">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="The unique identifier used to reference this Schedule Trigger node. This name must be unique within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [readonly]="isReadOnly()"
+                            ></app-custom-input>
+                            <app-validation-errors [control]="form.get('node_name')!" />
+                        </div>
                     </app-lockable-field>
 
                     <!-- Start section -->
@@ -43,6 +46,7 @@
                                     <app-time-picker
                                         formControlName="start_time"
                                         placeholder="Select start time"
+                                        [readonly]="isReadOnly()"
                                     />
                                 </div>
                                 <div
@@ -57,6 +61,7 @@
                                         formControlName="start_date"
                                         placeholder="Select start date"
                                         [allowPastDates]="true"
+                                        [readonly]="isReadOnly()"
                                     />
                                 </div>
                             </div>
@@ -65,7 +70,10 @@
                             }
 
                             <!-- Next run (read-only, backend-calculated) -->
-                            <div class="next-run-row">
+                            <div
+                                class="next-run-row"
+                                [class.next-run-row--readonly]="isReadOnly()"
+                            >
                                 <span class="next-run-label">Next run:</span>
                                 <span class="next-run-value">{{ formattedNextRun() }}</span>
                             </div>
@@ -78,7 +86,10 @@
                                         text="Sets which local time this schedule follows. For example, 09:00 with Europe/Kyiv means the flow runs at 09:00 Kyiv time."
                                     />
                                 </div>
-                                <app-timezone-selector formControlName="timezone" />
+                                <app-timezone-selector
+                                    [readonly]="isReadOnly()"
+                                    formControlName="timezone"
+                                />
                                 @if (timezoneError()) {
                                     <div class="row-error">{{ timezoneError() }}</div>
                                 }
@@ -98,11 +109,17 @@
                                     text="Once: run the flow a single time. Repeat: run on a recurring schedule."
                                 />
                             </div>
-                            <app-radio-button
-                                [mod]="'segmented'"
-                                formControlName="run_mode"
-                                [options]="runModeOptions"
-                            />
+                            @if (isReadOnly()) {
+                                <div class="next-run-row next-run-row--readonly">
+                                    <span class="next-run-value">{{ runModeLabel() }}</span>
+                                </div>
+                            } @else {
+                                <app-radio-button
+                                    [mod]="'segmented'"
+                                    formControlName="run_mode"
+                                    [options]="runModeOptions"
+                                />
+                            }
                         </div>
                     </app-lockable-field>
 
@@ -113,7 +130,8 @@
                             [nodeId]="node().id"
                         >
                             <div
-                                [@panelFadeSlide]
+                                animate.enter="panel-enter"
+                                animate.leave="panel-leave"
                                 class="repeat-fields"
                             >
                                 <div class="section">
@@ -127,11 +145,13 @@
                                             [min]="minRepeatEvery()"
                                             [max]="999999"
                                             [integer]="true"
+                                            [readonly]="isReadOnly()"
                                         />
                                         <app-select
                                             formControlName="repeat_unit"
                                             [items]="repeatUnitItems"
                                             placeholder="Unit"
+                                            [readonly]="isReadOnly()"
                                         />
                                     </div>
                                 </div>
@@ -139,7 +159,8 @@
                                 <!-- Repeat on -->
                                 @if (showWeekdays()) {
                                     <div
-                                        [@panelFadeSlide]
+                                        animate.enter="panel-enter"
+                                        animate.leave="panel-leave"
                                         class="section"
                                     >
                                         <div class="section-header">
@@ -167,17 +188,24 @@
                                             text="When to stop repeating: never, on a specific date, or after a set number of runs."
                                         />
                                     </div>
-                                    <app-radio-button
-                                        [mod]="'segmented'"
-                                        formControlName="end_mode"
-                                        [options]="endModeOptions"
-                                    />
+                                    @if (isReadOnly()) {
+                                        <div class="next-run-row next-run-row--readonly">
+                                            <span class="next-run-value">{{ endModeLabel() }}</span>
+                                        </div>
+                                    } @else {
+                                        <app-radio-button
+                                            [mod]="'segmented'"
+                                            formControlName="end_mode"
+                                            [options]="endModeOptions"
+                                        />
+                                    }
                                 </div>
 
                                 <!-- End date/time (visible when end_mode = on_date) -->
                                 @if (showEndDateTime()) {
                                     <div
-                                        [@panelFadeSlide]
+                                        animate.enter="panel-enter"
+                                        animate.leave="panel-leave"
                                         class="section"
                                     >
                                         <div class="date-time-row">
@@ -194,6 +222,7 @@
                                                 <app-time-picker
                                                     formControlName="end_time"
                                                     placeholder="hh:mm"
+                                                    [readonly]="isReadOnly()"
                                                 />
                                             </div>
                                             <div
@@ -209,6 +238,7 @@
                                                 <app-date-picker
                                                     formControlName="end_date"
                                                     placeholder="dd.mm.yyyy"
+                                                    [readonly]="isReadOnly()"
                                                 />
                                             </div>
                                         </div>
@@ -221,7 +251,8 @@
                                 <!-- Max runs (visible when end_mode = after_n_runs) -->
                                 @if (showMaxRuns()) {
                                     <div
-                                        [@panelFadeSlide]
+                                        animate.enter="panel-enter"
+                                        animate.leave="panel-leave"
                                         class="half-row"
                                     >
                                         <div class="field-label">
@@ -235,8 +266,12 @@
                                             [min]="1"
                                             [max]="999999"
                                             [integer]="true"
+                                            [readonly]="isReadOnly()"
                                         />
-                                        <div class="next-run-row">
+                                        <div
+                                            class="next-run-row"
+                                            [class.next-run-row--readonly]="isReadOnly()"
+                                        >
                                             <span class="next-run-label">Runs left:</span>
                                             <span class="next-run-value">{{ runsLeft() }}</span>
                                         </div>

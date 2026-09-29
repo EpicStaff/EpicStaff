@@ -88,6 +88,7 @@ async def test_execute_returns_result_dict(agent_node_data):
 
     assert result == {
         "message": "The summary.",
+        "structured_output": None,
         "token_usage": {"total_tokens": 42},
         "stop_reason": "completed",
         "iterations": 3,
@@ -97,6 +98,7 @@ async def test_execute_returns_result_dict(agent_node_data):
                 "name": "task_a",
                 "order": 0,
                 "message": "A done",
+                "structured_output": None,
                 "token_usage": {"total_tokens": 10},
                 "iterations": 2,
                 "tool_invocations": 1,
@@ -479,6 +481,47 @@ async def test_run_stores_message_text_at_output_variable_path(llm_data):
     await node.run(state=state, writer=MagicMock())
 
     assert state["variables"].result == "The summary."
+
+
+@pytest.mark.asyncio
+async def test_run_stores_structured_output_object_at_output_variable_path(llm_data):
+    agent_node_data = AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        tasks=[
+            AgentNodeTaskData(
+                name="task_a",
+                order=0,
+                instructions="Write.",
+                output_schema={
+                    "type": "object",
+                    "properties": {"a": {"type": "object"}},
+                },
+            )
+        ],
+        output_variable_path="variables.output",
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_agent_node.return_value = {
+        "final_text": '{"a": {"b": 1}}',
+        "structured_output": {"a": {"b": 1}},
+    }
+
+    node = AgentNode(
+        session_id=1,
+        node_name="agent_node_1",
+        stop_event=MagicMock(),
+        agent_node_data=agent_node_data,
+        agent_task_service=agent_task_service,
+    )
+
+    state = make_state({})
+    await node.run(state=state, writer=MagicMock())
+
+    assert state["variables"].output.a.b == 1
+    assert isinstance(state["variables"].output, DotDict)
 
 
 @pytest.mark.asyncio

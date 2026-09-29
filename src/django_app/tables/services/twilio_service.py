@@ -11,11 +11,11 @@ strings) is unchanged.
 
 import base64
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-import re
 
 from tables.models.webhook_models import RealtimeChannel
 from tables.services.secrets import secret_resolver
@@ -61,7 +61,7 @@ class TwilioValidationError(TwilioServiceError):
 
 
 def _twilio_request(
-    account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict = None
+    account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict | None = None
 ):
     """Make an authenticated request to the Twilio REST API."""
     credentials = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
@@ -121,9 +121,7 @@ class TwilioService(metaclass=SingletonMeta):
         except urllib.error.HTTPError as e:
             body = e.read().decode()
             logger.error(f"twilio phone-numbers: Twilio HTTP error {e.code}: {body}")
-            raise TwilioValidationError(
-                "Failed to retrieve phone numbers from Twilio"
-            ) from e
+            raise TwilioValidationError("Failed to retrieve phone numbers from Twilio") from e
         except Exception as e:
             raise TwilioServiceError(str(e), status_code=502) from e
 
@@ -138,9 +136,7 @@ class TwilioService(metaclass=SingletonMeta):
         channel belonging to another org (or none at all) is rejected
         exactly like a missing token, so existence never leaks.
         """
-        logger.info(
-            f"configure-webhook: phone_sid={phone_sid} channel_token={channel_token}"
-        )
+        logger.info(f"configure-webhook: phone_sid={phone_sid} channel_token={channel_token}")
 
         if not phone_sid or not channel_token:
             logger.warning("configure-webhook: missing phone_sid or channel_token")
@@ -150,21 +146,19 @@ class TwilioService(metaclass=SingletonMeta):
 
         try:
             token = uuid.UUID(str(channel_token))
-        except (ValueError, AttributeError, TypeError):
-            logger.warning(
-                f"configure-webhook: malformed channel_token={channel_token}"
-            )
-            raise TwilioNotFoundError()
+        except (ValueError, AttributeError, TypeError) as e:
+            logger.warning(f"configure-webhook: malformed channel_token={channel_token}")
+            raise TwilioNotFoundError() from e
 
         try:
-            channel = RealtimeChannel.objects.select_related(
+            channel = RealtimeChannel.enabled_objects.select_related(
                 "twilio__webhook_trigger__ngrok", "twilio__webhook_trigger__localhost"
             ).get(token=token)
-        except RealtimeChannel.DoesNotExist:
+        except RealtimeChannel.DoesNotExist as e:
             logger.warning(
-                f"configure-webhook: channel not found for token={channel_token}"
+                f"configure-webhook: channel not found or disabled for token={channel_token}"
             )
-            raise TwilioNotFoundError()
+            raise TwilioNotFoundError() from e
 
         twilio = getattr(channel, "twilio", None)
         if channel.org_id != org_id:
@@ -174,20 +168,14 @@ class TwilioService(metaclass=SingletonMeta):
             )
             raise TwilioNotFoundError()
         if not twilio or not twilio.account_sid or twilio.auth_token_secret_id is None:
-            logger.warning(
-                f"configure-webhook: no Twilio credentials for channel {channel.id}"
-            )
-            raise TwilioValidationError(
-                "No Twilio credentials configured for this channel"
-            )
+            logger.warning(f"configure-webhook: no Twilio credentials for channel {channel.id}")
+            raise TwilioValidationError("No Twilio credentials configured for this channel")
 
         account_sid = twilio.account_sid
         try:
             self.validate_account_sid(account_sid)
         except TwilioValidationError:
-            logger.warning(
-                f"configure-webhook: invalid account_sid for channel {channel.id}"
-            )
+            logger.warning(f"configure-webhook: invalid account_sid for channel {channel.id}")
             raise
 
         auth_token = secret_resolver.resolve(
@@ -195,9 +183,7 @@ class TwilioService(metaclass=SingletonMeta):
             org_id=channel.org_id,
             context="TwilioChannel.auth_token",
         )
-        logger.info(
-            f"configure-webhook: using stored credentials for account_sid={account_sid}"
-        )
+        logger.info(f"configure-webhook: using stored credentials for account_sid={account_sid}")
 
         webhook_trigger = twilio.webhook_trigger
         logger.info(f"configure-webhook: webhook_trigger={webhook_trigger}")
@@ -205,9 +191,7 @@ class TwilioService(metaclass=SingletonMeta):
             logger.warning(
                 f"configure-webhook: no webhook trigger configured for channel {channel.id}"
             )
-            raise TwilioValidationError(
-                "No webhook trigger configured for this channel"
-            )
+            raise TwilioValidationError("No webhook trigger configured for this channel")
 
         provider_error = twilio.validate_provider()
         if provider_error:
@@ -231,9 +215,7 @@ class TwilioService(metaclass=SingletonMeta):
             )
 
         webhook_url = f"{tunnel_url.rstrip('/')}/voice/{channel_token}"
-        logger.info(
-            f"configure-webhook: setting VoiceUrl={webhook_url} on phone_sid={phone_sid}"
-        )
+        logger.info(f"configure-webhook: setting VoiceUrl={webhook_url} on phone_sid={phone_sid}")
 
         try:
             url = (

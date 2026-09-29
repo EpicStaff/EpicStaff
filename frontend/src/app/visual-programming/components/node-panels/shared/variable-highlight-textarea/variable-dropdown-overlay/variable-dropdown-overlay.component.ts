@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, output, signal } from '@angular/core';
 
 /**
@@ -16,8 +15,7 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, output, 
  */
 @Component({
     selector: 'app-variable-dropdown-overlay',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './variable-dropdown-overlay.component.html',
     styleUrls: ['./variable-dropdown-overlay.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

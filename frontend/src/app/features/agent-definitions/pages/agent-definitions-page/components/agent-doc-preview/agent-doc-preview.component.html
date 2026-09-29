@@ -6,6 +6,7 @@
         (navAgent)="openAgent.emit($event)"
     >
         <div
+            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
             class="doc-toggle"
             role="tablist"
         >

@@ -6,11 +6,11 @@ import redis as redis_lib
 
 pytestmark = pytest.mark.integration
 
-from communication.brokers.redis_ import RedisPubSubBroker
+from communication.brokers.redis_broker import RedisPubSubBroker
 from communication.message import Message
 from communication.producer import Producer
-from communication.storages.minio_ import MinioStorage
-from communication.storages.redis_ import RedisStorage
+from communication.storages.s3_storage import S3Storage
+from communication.storages.redis_storage import RedisStorage
 
 CHANNEL = "integ-producer-channel"
 # Threshold small enough to force offloading with a modest payload.
@@ -32,13 +32,13 @@ def redis_storage(redis_url):
 
 
 @pytest.fixture
-def minio_storage(minio_params):
+def s3_storage(s3_params):
     bucket = f"prod-test-{uuid.uuid4().hex[:8]}"
-    return MinioStorage(
-        host=minio_params["host"],
-        port=minio_params["port"],
-        access_key=minio_params["access_key"],
-        secret_key=minio_params["secret_key"],
+    return S3Storage(
+        host=s3_params["host"],
+        port=s3_params["port"],
+        access_key=s3_params["access_key"],
+        secret_key=s3_params["secret_key"],
         bucket=bucket,
         secure=False,
     )
@@ -92,34 +92,28 @@ class TestInlinePath:
         producer = Producer(broker, redis_storage, payload_size_threshold=1024**2)
         message = Message(payload={"async": "inline"})
 
-        received_data = []
-
-        async def subscriber():
-            async for data in broker.areceive(channel):
-                received_data.append(data)
-                return
-
-        task = asyncio.create_task(subscriber())
+        task = asyncio.create_task(broker.areceive(channel, timeout=10))
         await asyncio.sleep(0.2)
         await producer.asend(channel, message)
-        await asyncio.wait_for(task, timeout=10)
+        data = await asyncio.wait_for(task, timeout=12)
 
-        assert received_data[0]["id"] == message.id
-        assert received_data[0]["payload"] == {"async": "inline"}
-        assert "is_used_storage" not in received_data[0]
+        assert data is not None
+        assert data["id"] == message.id
+        assert data["payload"] == {"async": "inline"}
+        assert "is_used_storage" not in data
 
 
 # ---------------------------------------------------------------------------
-# Offload path (broker carries only id; payload in MinIO)
+# Offload path (broker carries only id; payload in S3)
 # ---------------------------------------------------------------------------
 
 
 class TestOffloadPath:
-    def test_large_payload_stored_in_minio(self, broker, minio_storage, redis_url):
-        """Large payload must be stored in MinIO; broker carries only the id."""
+    def test_large_payload_stored_in_s3(self, broker, s3_storage, redis_url):
+        """Large payload must be stored in S3; broker carries only the id."""
         channel = _unique_channel()
         producer = Producer(
-            broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
+            broker, s3_storage, payload_size_threshold=SMALL_THRESHOLD
         )
         big_payload = {"data": "X" * (SMALL_THRESHOLD + 100)}
         message = Message(payload=big_payload)
@@ -141,39 +135,31 @@ class TestOffloadPath:
         assert broker_data == {"id": message.id, "is_used_storage": True}
         assert "payload" not in broker_data
 
-        # Payload stored verbatim in MinIO.
-        stored = minio_storage.get(message.id)
+        # Payload stored verbatim in S3.
+        stored = s3_storage.get(message.id)
         assert stored is not None
         assert json.loads(stored) == big_payload
 
     @pytest.mark.asyncio
-    async def test_async_large_payload_stored_in_minio(
-        self, broker, minio_storage, redis_url
+    async def test_async_large_payload_stored_in_s3(
+        self, broker, s3_storage, redis_url
     ):
         import asyncio
 
         channel = _unique_channel()
         producer = Producer(
-            broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
+            broker, s3_storage, payload_size_threshold=SMALL_THRESHOLD
         )
         big_payload = {"data": "Y" * (SMALL_THRESHOLD + 100)}
         message = Message(payload=big_payload)
 
-        received_data = []
-
-        async def subscriber():
-            async for data in broker.areceive(channel):
-                received_data.append(data)
-                return
-
-        task = asyncio.create_task(subscriber())
+        task = asyncio.create_task(broker.areceive(channel, timeout=10))
         await asyncio.sleep(0.2)
         await producer.asend(channel, message)
-        await asyncio.wait_for(task, timeout=10)
+        broker_data = await asyncio.wait_for(task, timeout=12)
 
-        broker_data = received_data[0]
         assert broker_data == {"id": message.id, "is_used_storage": True}
 
-        stored = await minio_storage.aget(message.id)
+        stored = await s3_storage.aget(message.id)
         assert stored is not None
         assert json.loads(stored) == big_payload

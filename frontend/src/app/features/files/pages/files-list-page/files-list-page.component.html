@@ -11,29 +11,37 @@
                 </h1>
             </div>
             <div class="header-actions">
-                <app-button
-                    *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
-                    type="primary"
-                    class="btn-primary create-btn"
-                    [leftIcon]="'plus'"
-                    [style.visibility]="isStorageTabActive ? 'visible' : 'hidden'"
-                    (click)="onCreateFolderClick()"
-                >
-                    Add files
-                </app-button>
+                @if (activeTabBtn(); as btn) {
+                    @if (btn.permitted) {
+                        <app-button
+                            type="primary"
+                            class="btn-primary create-btn"
+                            [leftIcon]="'plus'"
+                            (click)="btn.action()"
+                        >
+                            {{ btn.label }}
+                        </app-button>
+                    }
+                }
             </div>
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link) {
-                    <app-tab-button
-                        routerLink="{{ tab.link }}"
-                        routerLinkActive="active"
-                        #rla="routerLinkActive"
-                        [active]="rla.isActive"
-                    >
-                        {{ tab.label }}
-                    </app-tab-button>
+                @for (tab of tabs; track tab.link; let last = $last) {
+                    @if (tab.isPermitted()) {
+                        <app-tab-button
+                            mod="sm"
+                            routerLink="{{ tab.link }}"
+                            routerLinkActive="active"
+                            #rla="routerLinkActive"
+                            [active]="rla.isActive"
+                        >
+                            {{ tab.label }}
+                        </app-tab-button>
+                        @if (!last) {
+                            <span class="tab-sep">/</span>
+                        }
+                    }
                 }
             </div>
             <div class="tabs-right">
@@ -55,8 +63,6 @@
                             type="button"
                             class="clear-btn"
                             aria-label="Clear"
-                            matTooltip="Clear search"
-                            matTooltipPosition="above"
                             (click)="filesSearchService.clear()"
                         >
                             <app-svg-icon

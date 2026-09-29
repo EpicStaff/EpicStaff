@@ -1,0 +1,12 @@
+import { GetPythonCodeRequest } from '@shared/models';
+export interface PythonNode {
+    id: number;
+    node_name: string;
+    graph: number;
+    python_code: GetPythonCodeRequest;
+    input_map: Record<string, unknown>;
+    test_input: Record<string, string | number | boolean>;
+    output_variable_path: string | null;
+    metadata: Record<string, unknown>;
+    use_storage?: boolean;
+}

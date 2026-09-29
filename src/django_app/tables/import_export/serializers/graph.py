@@ -1,40 +1,37 @@
 from rest_framework import serializers
 
+from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import (
-    Graph,
-    EndNode,
-    StartNode,
-    PythonNode,
+    AudioTranscriptionNode,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    Condition,
+    ConditionalEdge,
+    ConditionGroup,
     DecisionTableNode,
-    CrewNode,
+    Edge,
+    EndNode,
     FileExtractorNode,
-    WebhookTriggerNode,
+    Graph,
+    PythonCode,
+    PythonNode,
+    StartNode,
+    SubGraphNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
-    AudioTranscriptionNode,
-    Edge,
-    ConditionalEdge,
-    PythonCode,
     WebhookTrigger,
-    ConditionGroup,
-    Condition,
-    SubGraphNode,
-    ClassificationDecisionTableNode,
-    ClassificationConditionGroup,
+    WebhookTriggerNode,
 )
 from tables.models.graph_models import (
+    ClassificationDecisionTablePrompt,
     GraphNote,
     ScheduleTriggerNode,
-    ClassificationDecisionTablePrompt,
 )
-from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 
 
 class BaseNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 
     class Meta:
         model = None
@@ -90,9 +87,7 @@ class ConditionGroupImportSerializer(serializers.ModelSerializer):
 
 
 class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
-    condition_groups = ConditionGroupImportSerializer(
-        many=True, required=False, read_only=True
-    )
+    condition_groups = ConditionGroupImportSerializer(many=True, required=False, read_only=True)
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = DecisionTableNode
@@ -100,9 +95,7 @@ class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
 
 
 class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
-    classification_decision_table_node = serializers.PrimaryKeyRelatedField(
-        read_only=True
-    )
+    classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     classification_decision_table_node_id = serializers.PrimaryKeyRelatedField(
         queryset=ClassificationDecisionTableNode.objects.all(),
         source="classification_decision_table_node",
@@ -135,9 +128,7 @@ class ClassificationDecisionTableNodeImportSerializer(BaseNodeImportSerializer):
     prompt_configs = ClassificationDecisionTablePromptImportSerializer(
         many=True, required=False, read_only=True
     )
-    pre_python_code = PythonCodeImportSerializer(
-        read_only=True, required=False, allow_null=True
-    )
+    pre_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
     pre_python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="pre_python_code",
@@ -145,9 +136,7 @@ class ClassificationDecisionTableNodeImportSerializer(BaseNodeImportSerializer):
         required=False,
         allow_null=True,
     )
-    post_python_code = PythonCodeImportSerializer(
-        read_only=True, required=False, allow_null=True
-    )
+    post_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
     post_python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="post_python_code",
@@ -203,12 +192,6 @@ class FileExtractorNodeImportSerializer(BaseNodeImportSerializer):
 class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = AudioTranscriptionNode
-        exclude = ["created_at", "updated_at"]
-
-
-class CrewNodeImportSerializer(BaseNodeImportSerializer):
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = CrewNode
         exclude = ["created_at", "updated_at"]
 
 

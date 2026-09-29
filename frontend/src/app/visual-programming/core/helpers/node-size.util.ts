@@ -1,4 +1,5 @@
-import { NodeType } from '../enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { DecisionTableNodeModel, NodeModel } from '../models/node.model';
 
 const HEADER_HEIGHT = 62;
@@ -17,7 +18,7 @@ const CDT_ROW_HEIGHT = 46;
 const CDT_BASE_ROWS = 2;
 
 export function getClassificationDecisionTableVisualHeight(
-    conditionGroups: { valid?: boolean; dock_visible?: boolean; route_code?: string }[]
+    conditionGroups: { valid?: boolean; dock_visible?: boolean; route_code?: string | null }[]
 ): number {
     const renderedGroupRows = conditionGroups.filter(
         (g) => g.valid !== false && g.dock_visible && !!g.route_code

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -14,18 +13,20 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NodeModel } from '../../core/models/node.model';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
 
 @Component({
     selector: 'app-nodes-search',
-    standalone: true,
-    imports: [CommonModule, FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="nodes-search-container">
+        <div
+            class="nodes-search-container"
+            [class.nodes-search-container--expanded]="isSearchVisible()"
+        >
             <div class="search-header">
                 <!-- Search button with icon -->
                 <button
@@ -42,60 +43,53 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 </button>
 
                 <!-- Search input field (appears to the right of the icon) -->
-                <div
-                    class="search-input-container"
-                    *ngIf="isSearchVisible()"
-                >
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search nodes..."
-                        [(ngModel)]="searchQuery"
-                        (ngModelChange)="updateSearch($event)"
-                        #searchInputRef
-                    />
-                    <button
-                        *ngIf="searchQuery"
-                        class="clear-button"
-                        (click)="clearSearch()"
-                        matTooltip="Clear search"
-                        matTooltipPosition="right"
-                    >
-                        <app-svg-icon icon="x"></app-svg-icon>
-                    </button>
-                </div>
+                @if (isSearchVisible()) {
+                    <div class="search-input-container">
+                        <input
+                            type="text"
+                            class="search-input"
+                            placeholder="Search nodes..."
+                            [(ngModel)]="searchQuery"
+                            (ngModelChange)="updateSearch($event)"
+                            #searchInputRef
+                        />
+                        @if (searchQuery) {
+                            <button
+                                class="clear-button"
+                                (click)="clearSearch()"
+                                matTooltip="Clear search"
+                                matTooltipPosition="right"
+                            >
+                                <app-svg-icon icon="x"></app-svg-icon>
+                            </button>
+                        }
+                    </div>
+                }
             </div>
 
             <!-- Search results (visible when expanded) -->
-            <div
-                class="search-results"
-                *ngIf="isSearchVisible() && (filteredNodes.length > 0 || searchQuery)"
-            >
-                <!-- Add panel title -->
-                <div class="panel-title">
-                    <h3>Search nodes ({{ filteredNodes.length }} found)</h3>
+            @if (isSearchVisible() && (filteredNodes.length > 0 || searchQuery)) {
+                <div class="search-results">
+                    <!-- Add panel title -->
+                    <div class="panel-title">
+                        <h3>Search nodes ({{ filteredNodes.length }} found)</h3>
+                    </div>
+                    <ul class="node-list">
+                        @if (filteredNodes.length === 0 && searchQuery) {
+                            <li class="no-results">No nodes match your search</li>
+                        }
+                        @for (node of filteredNodes; track node; let last = $last) {
+                            <li [class.last-node]="last">
+                                <app-search-node-item
+                                    [node]="node"
+                                    (nodeSelected)="onNodeSelected($event)"
+                                    (nodeDoubleClicked)="onNodeDoubleClicked($event)"
+                                ></app-search-node-item>
+                            </li>
+                        }
+                    </ul>
                 </div>
-
-                <ul class="node-list">
-                    <li
-                        class="no-results"
-                        *ngIf="filteredNodes.length === 0 && searchQuery"
-                    >
-                        No nodes match your search
-                    </li>
-
-                    <li
-                        *ngFor="let node of filteredNodes; let last = last"
-                        [class.last-node]="last"
-                    >
-                        <app-search-node-item
-                            [node]="node"
-                            (nodeSelected)="onNodeSelected($event)"
-                            (nodeDoubleClicked)="onNodeDoubleClicked($event)"
-                        ></app-search-node-item>
-                    </li>
-                </ul>
-            </div>
+            }
         </div>
     `,
     styles: [
@@ -104,8 +98,12 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 display: flex;
                 flex-direction: column;
                 align-items: flex-start;
-                width: 100%;
-                width: 350px;
+                width: fit-content;
+                min-width: 0;
+
+                &--expanded {
+                    width: min(350px, 100%);
+                }
             }
 
             .search-header {
@@ -142,7 +140,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 }
 
                 i {
-                    font-size: 18px;
+                    font-size: 1.125rem;
                     color: var(--gray-300);
                 }
 
@@ -160,7 +158,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 position: relative;
                 flex-grow: 1;
                 width: 100%;
-                width: 17rem;
+                min-width: 0;
             }
 
             .search-input {
@@ -168,10 +166,10 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 height: 38px;
                 background-color: var(--gray-850, #1a1a1a);
                 border: 1px solid var(--gray-750, #2f2f2f);
-                border-radius: 6px;
+                border-radius: 4px;
                 padding: 0 32px 0 12px;
                 color: var(--gray-200, #e3e3e3);
-                font-size: 13px;
+                font-size: 0.8125rem;
                 outline: none;
 
                 &:focus {
@@ -205,7 +203,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 }
 
                 i {
-                    font-size: 10px;
+                    font-size: 0.625rem;
                 }
             }
 
@@ -229,8 +227,8 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 h3 {
                     margin: 0;
                     color: var(--gray-200, #e3e3e3);
-                    font-size: 14px;
-                    font-weight: 500;
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
                 }
             }
 
@@ -246,7 +244,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     text-align: center;
                     padding: 0;
                     margin: 0;
-                    font-size: 13px;
+                    font-size: 0.8125rem;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -371,6 +369,12 @@ export class NodesSearchComponent implements OnInit, OnChanges {
     public clearSearch(): void {
         this.searchQuery = '';
         this.filteredNodes = [];
+    }
+
+    public closeSearch(): void {
+        if (this.isSearchVisible()) {
+            this.toggleSearchInput();
+        }
     }
 
     public onNodeSelected(node: NodeModel): void {

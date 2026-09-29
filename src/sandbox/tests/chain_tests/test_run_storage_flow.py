@@ -1,4 +1,11 @@
 import pytest
+
+pytest.importorskip(
+    "pwd",
+    reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
+)
+
+import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain, AbstractHandler
 from src.shared.models import CodeResultData
 
@@ -23,8 +30,8 @@ class FakeManager:
         self.created = 0
         self.revoked = []
 
-    def build_policy(self, allowed_bucket, allowed_folders):
-        self.build_policy_calls.append((allowed_bucket, allowed_folders))
+    def build_policy(self, allowed_bucket, org_prefix, allowed_paths):
+        self.build_policy_calls.append((allowed_bucket, org_prefix, allowed_paths))
         return {"Version": "2012-10-17", "Statement": []}
 
     async def create(self, policy):
@@ -60,7 +67,7 @@ COMMON_RUN_KWARGS = dict(
 
 @pytest.mark.asyncio
 async def test_use_storage_true_happy_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager()
     chain, fake = make_chain(tmp_path, manager)
 
@@ -78,9 +85,7 @@ async def test_use_storage_true_happy_path(tmp_path, monkeypatch):
     assert manager.revoked == ["scoped-ak"]
 
     assert len(manager.build_policy_calls) == 1
-    called_bucket, called_folders = manager.build_policy_calls[0]
-    assert called_bucket == "epicstaff"
-    assert called_folders == {"org_1/flowA"}
+    assert manager.build_policy_calls[0] == ("epicstaff", "org_1", ["flowA"])
 
 
 @pytest.mark.asyncio
@@ -97,7 +102,7 @@ async def test_use_storage_false_skips_credentials(tmp_path):
 
 @pytest.mark.asyncio
 async def test_create_failure_returns_error_result(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager(create_exc=RuntimeError("boom"))
     chain, fake = make_chain(tmp_path, manager)
 
@@ -115,7 +120,7 @@ async def test_create_failure_returns_error_result(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_revoke_runs_on_chain_failure(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager()
     chain, fake = make_chain(tmp_path, manager)
     fake.raise_exc = RuntimeError("chain-fail")
@@ -132,7 +137,7 @@ async def test_revoke_runs_on_chain_failure(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_missing_org_prefix_returns_error_result(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     manager = FakeManager()
     chain, fake = make_chain(tmp_path, manager)
 

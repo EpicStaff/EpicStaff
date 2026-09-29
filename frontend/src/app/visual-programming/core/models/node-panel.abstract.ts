@@ -1,5 +1,6 @@
 import {
     ApplicationRef,
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -14,13 +15,14 @@ import { AbstractControl, FormArray, FormBuilder, FormGroup, ValidatorFn, Valida
 import { debounceTime } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
 import { NodeModel } from './node.model';
 
 @Component({
     template: '',
-    standalone: true,
+    changeDetection: ChangeDetectionStrategy.Eager,
     imports: [],
 })
 export abstract class BaseSidePanel<T extends NodeModel> {
@@ -29,6 +31,8 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected destroyRef = inject(DestroyRef);
     protected readonly wsService = inject(GraphCollaborationWsService);
     private readonly baseSidePanelService = inject(SidePanelService);
+    protected readonly flowReadOnly = inject(FlowReadOnlyService);
+    public readonly isReadOnly = this.flowReadOnly.isReadOnly;
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -117,6 +121,10 @@ export abstract class BaseSidePanel<T extends NodeModel> {
             });
         }
         this.dirtyCheckTick.update((v) => v + 1);
+        // syncFormArray pushes enabled controls from the fresh source form; keep a viewer's form locked.
+        if (this.isReadOnly()) {
+            this.form.disable({ emitEvent: false });
+        }
     }
 
     private applyRemoteDiff(target: FormGroup, source: FormGroup, baseline: Record<string, unknown>): void {
@@ -215,6 +223,9 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     private reinitializeForm(node: T): void {
         this.form = this.initializeForm();
         this.lastInitializedNodeId = node.id;
+        if (this.isReadOnly()) {
+            this.form.disable({ emitEvent: false });
+        }
         this.onFormReinitialized();
 
         this.baseline = this.form.getRawValue() as Record<string, unknown>;
@@ -225,6 +236,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         });
 
         this.form.valueChanges.pipe(debounceTime(400), takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            if (this.isReadOnly()) return;
             this.baseSidePanelService.triggerAutosave();
         });
     }
@@ -238,6 +250,10 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     public onSave(): T | null {
+        if (this.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return null;
+        }
         if (this.form && this.form.invalid) {
             return null;
         }
@@ -250,6 +266,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
     // Returns the updated node without emitting outputs or closing the panel
     public onSaveSilently(): T | null {
+        if (this.isReadOnly()) return null;
         if (!this.form) return null;
         if (this.form.invalid) return null;
         try {
@@ -277,6 +294,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     public captureForBroadcast(): T | null {
+        if (this.isReadOnly()) return null;
         if (!this.form) return null;
         try {
             return this.createUpdatedNode();
@@ -295,6 +313,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
      * silently dropped.
      */
     public captureForValidation(): T | null {
+        if (this.isReadOnly()) return null;
         if (!this.form) return null;
         this.form.markAllAsTouched();
         this.notifyExternalChange();

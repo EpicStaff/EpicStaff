@@ -23,7 +23,7 @@
                     <span class="section__title">Basics</span>
                 </button>
 
-                @if (!isCreating() && agent()) {
+                @if (!isCreating() && agent() && canOpenSettings()) {
                     <button
                         type="button"
                         class="section__settings"
@@ -96,6 +96,7 @@
                                 />
                                 <span class="doc-chip__name">{{ bootDocName }}</span>
                                 <span
+                                    *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                     class="doc-chip__remove"
                                     role="button"
                                     aria-label="Remove document"
@@ -136,6 +137,7 @@
                             />
                             <div class="doc-actions">
                                 <button
+                                    *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                     type="button"
                                     class="doc-actions__btn"
                                     matTooltip="Convert text to .md file"
@@ -151,22 +153,27 @@
                                     />
                                     Create Markdown
                                 </button>
+                                <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Read]">
+                                    <button
+                                        *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+                                        type="button"
+                                        class="doc-actions__btn"
+                                        matTooltip="Read a text file from storage as instructions"
+                                        matTooltipPosition="above"
+                                        matTooltipClass="custom-tooltip"
+                                        [disabled]="isCreating()"
+                                        (click)="onExtractFromStorage()"
+                                    >
+                                        <app-svg-icon
+                                            icon="extract-from-storage"
+                                            size="12px"
+                                        />
+                                        Extract Text from Storage
+                                    </button>
+                                </ng-container>
+
                                 <button
-                                    type="button"
-                                    class="doc-actions__btn"
-                                    matTooltip="Read a text file from storage as instructions"
-                                    matTooltipPosition="above"
-                                    matTooltipClass="custom-tooltip"
-                                    [disabled]="isCreating()"
-                                    (click)="onExtractFromStorage()"
-                                >
-                                    <app-svg-icon
-                                        icon="extract-from-storage"
-                                        size="12px"
-                                    />
-                                    Extract Text from Storage
-                                </button>
-                                <button
+                                    *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                     type="button"
                                     class="doc-actions__btn"
                                     matTooltip="Read a text file from your computer as instructions"
@@ -190,6 +197,7 @@
     }
 
     <section
+        *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
         id="agent-section-surfaces"
         class="section"
         [class.section--bare]="surfacesOnly()"
@@ -216,37 +224,35 @@
                         Surfaces
                         <span class="section__title-hint">(Additional Instructions and Access in Defined Places)</span>
                     </span>
-                    @if (!isOpen('surfaces')) {
-                        <span
-                            class="section__title-summary"
-                            aria-hidden="true"
-                        >
-                            <span class="section__title-summary-sep">=</span>
-                            <span class="section__title-summary-item">
-                                <app-svg-icon
-                                    icon="tools"
-                                    size="12px"
-                                />
-                                Tools
-                            </span>
-                            <span class="section__title-summary-sep">+</span>
-                            <span class="section__title-summary-item">
-                                <app-svg-icon
-                                    icon="files-tab"
-                                    size="12px"
-                                />
-                                Files
-                            </span>
-                            <span class="section__title-summary-sep">+</span>
-                            <span class="section__title-summary-item">
-                                <app-svg-icon
-                                    icon="knowledge-tab"
-                                    size="12px"
-                                />
-                                Collections
-                            </span>
+                    <span
+                        class="section__title-summary"
+                        aria-hidden="true"
+                    >
+                        <span class="section__title-summary-sep">=</span>
+                        <span class="section__title-summary-item">
+                            <app-svg-icon
+                                icon="tools"
+                                size="12px"
+                            />
+                            Tools
                         </span>
-                    }
+                        <span class="section__title-summary-sep">+</span>
+                        <span class="section__title-summary-item">
+                            <app-svg-icon
+                                icon="files-tab"
+                                size="12px"
+                            />
+                            Files
+                        </span>
+                        <span class="section__title-summary-sep">+</span>
+                        <span class="section__title-summary-item">
+                            <app-svg-icon
+                                icon="knowledge-tab"
+                                size="12px"
+                            />
+                            Collections
+                        </span>
+                    </span>
                 </span>
             </button>
         }
@@ -256,13 +262,14 @@
                 <app-agent-surfaces-panel
                     [surfaces]="surfaces()"
                     [agentId]="agent()?.id ?? null"
+                    [llmConfigId]="liveLlmConfigId()"
                     [defaultSurfaces]="agent()?.default_surfaces ?? []"
                     [sharedSurfaceIds]="sharedSurfaceIds()"
                     [saving]="saving()"
                     [saveError]="surfaceSaveError()"
                     [surfaceCreateErrorTick]="surfaceCreateErrorTick()"
                     (createSurface)="createSurface.emit($event)"
-                    (addFromShared)="addFromShared.emit($event)"
+                    (setSharedInCategory)="setSharedInCategory.emit($event)"
                     (dropSharedSurface)="dropSharedSurface.emit($event)"
                     (setSurfacePlaces)="setSurfacePlaces.emit($event)"
                     (makeSharedSurface)="makeSharedSurface.emit($event)"

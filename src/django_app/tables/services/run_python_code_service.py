@@ -1,7 +1,8 @@
-from datetime import datetime
-import os
-from typing import Any
 import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from django.conf import settings
 from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
 from tables.models import PythonCode, PythonCodeResult
@@ -19,9 +20,7 @@ MAX_STORED_RESULTS = 200
 class RunPythonCodeService(metaclass=SingletonMeta):
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
-        self.code_exec_task_channel: str = os.environ.get(
-            "CODE_EXEC_TASK_CHANNEL", "code_exec_tasks"
-        )
+        self.code_exec_task_channel: str = settings.CODE_EXEC_CHANNEL
 
     def run_code(
         self,
@@ -90,9 +89,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
 
         channel = self.code_exec_task_channel
-        self.redis_service.redis_client.publish(
-            channel, code_task_data.model_dump_json()
-        )
+        self.redis_service.redis_client.publish(channel, code_task_data.model_dump_json())
         return execution_id
 
     def save_execution_result(self, result: CodeResultData) -> bool:
@@ -123,9 +120,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
 
     def gen_execution_id(self):
-        now = datetime.now()
+        now = datetime.now(UTC)
         short_uuid = str(uuid.uuid4())[:4]
-        formatted_time = now.strftime(
-            f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}"
-        )
+        formatted_time = now.strftime(f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}")
         return f"{formatted_time}@{short_uuid}"

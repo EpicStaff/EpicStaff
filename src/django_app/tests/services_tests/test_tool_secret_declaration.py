@@ -8,7 +8,7 @@ because a configured tool goes through a different converter method.
 import pytest
 
 from tables.models import PythonCode, PythonCodeTool, PythonCodeToolConfig
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 from tables.services.secrets import UndeclaredSecretError, secret_service
 

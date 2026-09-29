@@ -11,7 +11,8 @@ import {
     signal,
     untracked,
 } from '@angular/core';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
+import { NodeType } from '@shared/models';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -25,12 +26,10 @@ import {
     themeQuartz,
 } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { NodeType } from '../../../../core/enums/node-type';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
+import { NextNodeEditorComponent } from './cell-editors/next-node-editor/next-node-editor.component';
 import { DeleteCellRendererComponent } from './cell-renderers/delete-cell-renderer/delete-cell-renderer.component';
 import { ExpressionRendererComponent } from './cell-renderers/expression-renderer/expression-renderer.component';
 
@@ -38,16 +37,16 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 @Component({
     selector: 'app-decision-table-grid',
-    standalone: true,
-    imports: [AgGridModule, ButtonComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [AgGridModule, ButtonComponent, HelpTooltipComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DecisionTableGridComponent implements OnInit {
     public conditionGroups = input.required<ConditionGroup[]>();
-    public activeColor = input<string>('#685fff');
+    public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
+    public readonly = input<boolean>(false);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
 
@@ -80,33 +79,6 @@ export class DecisionTableGridComponent implements OnInit {
     });
 
     constructor() {
-        effect(() => {
-            const nodes = this.availableNodes();
-            const refData: Record<string, string> = {};
-            nodes.forEach((n) => {
-                refData[n.value] = n.label;
-            });
-
-            if (this.gridApi) {
-                const colDefs = this.gridApi.getColumnDefs();
-                if (colDefs) {
-                    const newColDefs = colDefs.map((col: ColDef) => {
-                        if (col.field === 'next_node' || col.colId === 'next_node') {
-                            return {
-                                ...col,
-                                refData,
-                                cellEditorParams: {
-                                    values: ['', ...nodes.map((n) => n.value)],
-                                },
-                            };
-                        }
-                        return col;
-                    });
-                    this.gridApi.setGridOption('columnDefs', newColDefs);
-                }
-            }
-        });
-
         effect(() => {
             const incoming = this.conditionGroups();
             const current = untracked(() => this.rowData());
@@ -207,6 +179,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         accentColor: '#685fff',
         backgroundColor: '#1e1e20',
         browserColorScheme: 'dark',
@@ -223,7 +196,7 @@ export class DecisionTableGridComponent implements OnInit {
         oddRowBackgroundColor: '#222226',
     });
 
-    public columnDefs: ColDef[] = [
+    private readonly editableColumnDefs: ColDef[] = [
         {
             colId: 'index',
             headerName: '#',
@@ -236,7 +209,7 @@ export class DecisionTableGridComponent implements OnInit {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontWeight: '600',
+                fontWeight: '500',
                 color: '#999',
             },
         },
@@ -286,13 +259,10 @@ export class DecisionTableGridComponent implements OnInit {
             field: 'next_node',
             editable: true,
             width: 200,
-            cellEditor: 'agSelectCellEditor',
-            cellEditorParams: () => {
-                const nodes = this.availableNodes();
-                return {
-                    values: ['', ...nodes.map((n) => n.value)],
-                };
-            },
+            singleClickEdit: true,
+            cellEditor: NextNodeEditorComponent,
+            cellEditorPopup: true,
+            cellEditorParams: () => ({ nodes: this.availableNodes() }),
             valueFormatter: (params) => {
                 if (!params.value) return '';
                 const nodes = this.availableNodes();
@@ -303,29 +273,42 @@ export class DecisionTableGridComponent implements OnInit {
                 fontSize: '14px',
             },
         },
-        {
-            headerName: '',
-            field: 'actions',
-            cellRenderer: DeleteCellRendererComponent,
-            width: 60,
-            minWidth: 60,
-            maxWidth: 60,
-            cellStyle: {
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-            },
-            editable: false,
-        },
     ];
 
-    public defaultColDef: ColDef = {
+    private readonly actionsColumnDef: ColDef = {
+        headerName: '',
+        field: 'actions',
+        cellRenderer: DeleteCellRendererComponent,
+        width: 60,
+        minWidth: 60,
+        maxWidth: 60,
+        cellStyle: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+        },
+        editable: false,
+    };
+
+    public readonly columnDefs = computed<ColDef[]>(() => {
+        const readOnly = this.readonly();
+        const cols = this.editableColumnDefs.map((col) =>
+            readOnly ? { ...col, editable: false, singleClickEdit: false } : col
+        );
+        if (!readOnly) {
+            cols.push(this.actionsColumnDef);
+        }
+        return cols;
+    });
+
+    public readonly defaultColDef = computed<ColDef>(() => ({
         sortable: false,
         resizable: false,
         wrapText: true,
         suppressMovable: true,
-    };
+        editable: !this.readonly(),
+    }));
 
     public gridOptions: GridOptions = {
         rowHeight: 60,
@@ -344,6 +327,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public onCellValueChanged(event: CellValueChangedEvent): void {
+        if (this.readonly()) return;
         const colId = event.column.getColId();
         const rowIndex = event.rowIndex!;
 
@@ -408,6 +392,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public onCellClicked(event: CellClickedEvent): void {
+        if (this.readonly()) return;
         if (event.colDef.field === 'actions') {
             const rowIndex = event.rowIndex;
             if (rowIndex !== null && rowIndex !== undefined) {
@@ -417,6 +402,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public addConditionGroup(): void {
+        if (this.readonly()) return;
         const insertIndex = this.rowData().length;
         const newGroup = this.createEmptyGroup(insertIndex);
         this.updateGroupValidFlag(newGroup, insertIndex);
@@ -431,6 +417,7 @@ export class DecisionTableGridComponent implements OnInit {
     }
 
     public removeConditionGroup(index: number): void {
+        if (this.readonly()) return;
         const updated = this.rowData()
             .filter((_, i) => i !== index)
             .map((group, newIndex) => ({

@@ -1,18 +1,25 @@
+import pytest
+
 from dotdict import DotDict, DotList
 
 
-def test_autocreate_nested_dotdict():
+def test_missing_attribute_raises_instead_of_autocreating():
+    """DotDict does not auto-vivify nested attributes on access (removed
+    deliberately, see commit bafb0ab79 "undo dotdict changes"). Deep
+    structures must be assigned explicitly."""
     variables = DotDict({})
-    variables.a.b.c.d = 1
+    with pytest.raises(AttributeError):
+        variables.a.b.c.d = 1
+
+    variables.a = {"b": {"c": {"d": 1}}}
     assert isinstance(variables.a, DotDict)
     assert isinstance(variables.a.b, DotDict)
     assert isinstance(variables.a.b.c, DotDict)
     assert variables.a.b.c.d == 1
 
 
-def test_model_dump_dotdict():
-    variables = DotDict({})
-    variables.a.b.c.d = 1
+def test_model_dump_nested_dotdict():
+    variables = DotDict({"a": {"b": {"c": {"d": 1}}}})
     dumped = variables.model_dump()
     assert dumped == {"a": {"b": {"c": {"d": 1}}}}
 
@@ -33,26 +40,29 @@ def test_dotlist_conversion():
 
 
 def test_nested_dotlist_and_dotdict():
+    # Deliberately not named "items": DotDict subclasses dict, and dot-access
+    # only falls through to __getattr__ when normal attribute lookup fails —
+    # a key named "items" (or "keys", "values", "update", ...) would resolve
+    # to the inherited dict method instead of the stored value.
     variables = DotDict({})
-    variables.items = []
-    from pdb import set_trace
+    variables.records = []
 
-    set_trace()
-    print(type(variables.items))
-    assert isinstance(variables.items, DotList)
-    variables.items.append({"id": 1})
-    variables.items.append({"id": 2, "nested": {"value": 5}})
+    assert isinstance(variables.records, DotList)
+    variables.records.append({"id": 1})
+    variables.records.append({"id": 2, "nested": {"value": 5}})
 
-    assert isinstance(variables.items, DotList)
-    assert isinstance(variables.items[0], DotDict)
-    assert variables.items[0].id == 1
-    assert variables.items[1].nested.value == 5
+    assert isinstance(variables.records, DotList)
+    assert isinstance(variables.records[0], DotDict)
+    assert variables.records[0].id == 1
+    assert variables.records[1].nested.value == 5
 
 
-def test_accessing_nonexistent_attribute_creates_dotdict():
+def test_accessing_nonexistent_attribute_raises_attribute_error():
     variables = DotDict({})
-    _ = variables.new_attr
-    assert isinstance(variables.new_attr, DotDict)
+    with pytest.raises(AttributeError):
+        _ = variables.new_attr
+
+    variables.new_attr = DotDict()
     variables.new_attr.sub = 123
     assert variables.new_attr.sub == 123
 

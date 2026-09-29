@@ -53,6 +53,7 @@ def _assert_nothing_received(channel_layer, channel_name, timeout: float = 0.3) 
 
 def _file_info(path: str) -> FileInfo:
     return FileInfo(
+        id=None,
         name=path,
         path=path,
         size=5,
@@ -142,7 +143,7 @@ class TestRemoveFromGraphBroadcast:
         add_to_graph created."""
         graph = Graph.objects.create(name="graph", org=default_org)
         mock_manager.info.return_value = FolderInfo(
-            name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
+            id=None, name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
         )
 
         add_resp = superadmin_auth_client.post(

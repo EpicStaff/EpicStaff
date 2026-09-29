@@ -33,4 +33,5 @@ export interface ApiKeyOwner {
 
 export interface GetApiKeyWithOwnerResponse extends GetMyApiKeyResponse {
     owner: ApiKeyOwner;
+    org_ids: number[];
 }

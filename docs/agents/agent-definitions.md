@@ -1,7 +1,7 @@
 # Agent Definitions
 
-`AgentDefinition` is the new, lean, org-scoped agent config that replaces the
-legacy CrewAI `tables.Agent` model for graph execution. It carries identity and
+`AgentDefinition` is the lean, org-scoped agent config that replaced the
+legacy `tables.Agent` model for graph execution. It carries identity and
 execution-tuning fields only — capabilities (tools, knowledge, storage access)
 are **not** columns on the model, they attach through **Surfaces**. Realtime
 (voice) configuration is a separate model attached by a one-to-one relation.
@@ -45,7 +45,7 @@ Extends `AbstractDefaultFillableModel` (from [`tables/models/base_models.py`](..
 
 | Field | Type | Notes |
 |---|---|---|
-| `organization` | FK → `tables.Organization`, `CASCADE` | `related_name="agent_definitions"`. |
+| `organization` | FK → `rbac.Organization`, `CASCADE` | `related_name="agent_definitions"`. |
 | `name` | `CharField(max_length=255)` | Unique per organization via `UniqueConstraint(fields=["organization", "name"], name="unique_agent_definition_name_per_organization")`. Slug-like stable identifier used by flows/UI/code. |
 | `description` | `TextField`, blank, default `""` | Human-readable purpose/persona description. |
 | `instructions` | `TextField`, blank, default `""` | The agent's prompt — behavior, goals, tone, constraints. |
@@ -101,7 +101,7 @@ All other execution fields (`max_iter`, `max_rpm`, `max_execution_time`, `cache`
 
 ## 4. No manager LLM
 
-`AgentDefinition` has **no manager-LLM concept**. Manager LLM only exists on the legacy CrewAI path (`tables.Agent` / `tables.Crew`), which remains a separate, parallel model family used by the old `AGENT` / `CREW` node types. Do not conflate the two — `AgentDefinition` is not a superset of `tables.Agent`.
+`AgentDefinition` has **no manager-LLM concept**. Manager LLM only ever existed on the removed legacy path (`tables.Agent` / `tables.Crew`). Those models still sit in the database but are no longer read or written by anything — `AgentDefinition` is not a superset of `tables.Agent`, and manager-LLM behaviour is simply gone.
 
 ## 5. Realtime config
 
@@ -169,7 +169,7 @@ Directory: [`src/django_app/tables/import_export/`](../../src/django_app/tables/
 
 1. **Pydantic contract** — `AgentDefinitionData` ([`src/shared/models/graph_nodes.py`](../../src/shared/models/graph_nodes.py), line 133, `model_config = ConfigDict(from_attributes=True)`) mirrors the Django execution-config fields (`max_iter`, `max_rpm`, `max_execution_time`, `cache`, `max_retry_limit`, `default_temperature`, `max_tool_calls`, `tool_timeout`, `max_consecutive_failures`, `schema_max_retries`) plus `llm_config_id`/`fcm_llm_config_id` and resolved `llm`/`fcm_llm` (`LLMData`). `GraphData` carries `task_node_list: list[TaskNodeData]` and `agent_node_list: list[AgentNodeData]` (lines 276–277) — the crew-side halves of the cross-layer contract from §7.
 2. **`AgentTaskService._build_agent_spec`** ([`src/crew/services/agent_task_service.py`](../../src/crew/services/agent_task_service.py), line 207) builds an `AgentSpec` from the `AgentDefinitionData`: appends surface instructions to the base `instructions`, maps `llm`/`fcm_llm`/`max_iter`/`schema_max_retries`/`max_rpm`/`max_execution_time`/`cache`/`max_retry_limit`/`default_temperature`/`max_tool_calls`/`tool_timeout`/`max_consecutive_failures`, and attaches `tool_refs` / `collection_refs` / `s3_refs` (unique names / ids resolved from surfaces).
-3. **Dispatch** — the built `AgentSpec` is sent to the `src/agent` microservice over Redis Streams: request published to `agent.requests`, result awaited on `agent.results` (`agent.result` payload; non-success `stop_reason` values raise `AgentTaskError`). `max_execution_time` (multiplied by task count, plus a fixed buffer) drives the dispatch timeout (line 137).
+3. **Dispatch** — the built `AgentSpec` is sent to the `src/agent` microservice over Redis Streams: request published to `agent.requests`, result awaited on the run's own stream `agent.results:<correlation_id>` (`agent.result` payload; non-success `stop_reason` values raise `AgentTaskError`). `max_execution_time` (multiplied by task count, plus a fixed buffer) drives the dispatch timeout (line 137).
 
 ## 10. Migrations
 

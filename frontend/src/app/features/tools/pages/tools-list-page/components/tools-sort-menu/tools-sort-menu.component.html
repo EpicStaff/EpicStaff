@@ -1,0 +1,17 @@
+<div
+    class="sort-menu"
+    role="menu"
+    (click)="$event.stopPropagation()"
+>
+    @for (item of items; track item.value) {
+        <button
+            type="button"
+            class="menu-item"
+            [class.is-active]="activeSort() === item.value"
+            role="menuitem"
+            (click)="onSelect(item.value)"
+        >
+            <span class="label">{{ item.label }}</span>
+        </button>
+    }
+</div>

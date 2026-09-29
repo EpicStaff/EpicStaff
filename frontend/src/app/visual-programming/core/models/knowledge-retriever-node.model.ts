@@ -1,0 +1,19 @@
+import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
+
+export interface GetKnowledgeRetrieverNodeRequest {
+    id: number;
+    graph: number | null;
+    source_collection: number | null;
+    search_configs: AgentSearchConfigs | null;
+    created_at: string;
+    updated_at: string;
+    metadata: Record<string, unknown>;
+    node_name: string;
+    input_map: Record<string, unknown>;
+    output_variable_path: string | null;
+    query: string;
+    search_method: GraphSearchMethod | null;
+    rag_type: 'naive' | 'graph' | null;
+    rag_id: number | null;
+    content_hash: string | null;
+}

@@ -9,7 +9,7 @@ import pytest
 from tables.models import Secret
 from tables.models.graph_models import Graph, TelegramTriggerNode
 from tables.models.mcp_models import McpTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyService
 from tables.services.copy_services.node_copy_handlers import copy_telegram_trigger_node
 from tables.services.secrets import secret_encryption

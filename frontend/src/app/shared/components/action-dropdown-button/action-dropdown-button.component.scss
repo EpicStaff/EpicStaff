@@ -17,7 +17,7 @@
         flex: 1 1 auto;
         min-width: 0;
         background: var(--accent-color, #5e9eff);
-        color: #fff;
+        color: var(--white);
         border: none;
         padding: 6px 14px;
         font-size: 0.95em;
@@ -41,9 +41,9 @@
     &__chevron {
         flex: 0 0 40px;
         background: var(--accent-color, #5e9eff);
-        color: #fff;
+        color: var(--white);
         border: none;
-        border-left: 1px solid rgba(255, 255, 255, 0.2);
+        border-left: 1px solid var(--white-alpha-20);
         padding: 6px 8px;
         cursor: pointer;
         display: flex;

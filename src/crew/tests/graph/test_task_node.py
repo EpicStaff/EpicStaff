@@ -70,6 +70,7 @@ async def test_execute_returns_result_dict(task_node_data):
 
     assert result == {
         "message": "The summary.",
+        "structured_output": None,
         "token_usage": {"total_tokens": 42},
         "stop_reason": "completed",
         "iterations": 3,
@@ -632,6 +633,73 @@ async def test_run_stores_message_text_at_output_variable_path(llm_data):
     await node.run(state=state, writer=MagicMock())
 
     assert state["variables"].result == "The summary."
+
+
+@pytest.mark.asyncio
+async def test_run_stores_structured_output_object_at_output_variable_path(llm_data):
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        instructions="Summarize.",
+        output_schema={"type": "object", "properties": {"a": {"type": "object"}}},
+        output_variable_path="variables.output",
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {
+        "final_text": '{"a": {"b": 1}}',
+        "structured_output": {"a": {"b": 1}},
+    }
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    state = make_state({})
+    await node.run(state=state, writer=MagicMock())
+
+    assert state["variables"].output.a.b == 1
+    assert isinstance(state["variables"].output, DotDict)
+
+
+@pytest.mark.asyncio
+async def test_run_stores_structured_output_list_at_output_variable_path(llm_data):
+    """Non-object root schemas (e.g. type:array) yield a list, not a string."""
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        instructions="Summarize.",
+        output_schema={"type": "array", "items": {"type": "string"}},
+        output_variable_path="variables.output",
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {
+        "final_text": '["one", "two"]',
+        "structured_output": ["one", "two"],
+    }
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    state = make_state({})
+    await node.run(state=state, writer=MagicMock())
+
+    assert state["variables"].output == ["one", "two"]
+    assert not isinstance(state["variables"].output, str)
 
 
 @pytest.mark.asyncio

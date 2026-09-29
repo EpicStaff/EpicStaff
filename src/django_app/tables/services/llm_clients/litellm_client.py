@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import litellm
-
 from utils.logger import logger
 
 from .base import (
@@ -73,9 +72,7 @@ class LiteLLMClient(BaseLLMClient):
             raise UnsupportedLLMProviderError("(empty model name)")
 
         provider_name = (
-            (model.llm_provider.name or "").lower().strip()
-            if model.llm_provider
-            else ""
+            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
         )
 
         if not provider_name or provider_name == "openai":
@@ -149,6 +146,8 @@ class LiteLLMClient(BaseLLMClient):
         tool_list = self._build_tools(tools)
         if tool_list:
             kwargs["tools"] = tool_list
+            # Flow Assistant runs its own tool loop; without this flag litellm imports its proxy stack, which needs fastapi.
+            kwargs["_skip_mcp_handler"] = True
 
         return kwargs
 

@@ -8,21 +8,24 @@
     >
         <div class="dialog-title-row">
             <span class="dialog-icon">
-                <app-svg-icon
-                    *ngIf="data.type === 'danger'"
-                    icon="warning"
-                    size="1.25rem"
-                />
-                <app-svg-icon
-                    *ngIf="data.type === 'warning'"
-                    icon="alert-circle"
-                    size="1.25rem"
-                />
-                <app-svg-icon
-                    *ngIf="!data.type || data.type === 'info'"
-                    icon="info-circle"
-                    size="1.25rem"
-                />
+                @if (data.type === 'danger') {
+                    <app-svg-icon
+                        icon="warning"
+                        size="1.25rem"
+                    />
+                }
+                @if (data.type === 'warning') {
+                    <app-svg-icon
+                        icon="alert-circle"
+                        size="1.25rem"
+                    />
+                }
+                @if (!data.type || data.type === 'info') {
+                    <app-svg-icon
+                        icon="info-circle"
+                        size="1.25rem"
+                    />
+                }
             </span>
             <h2 class="dialog-title">{{ data.title }}</h2>
         </div>
@@ -40,6 +43,45 @@
         [innerHTML]="data.message"
     ></p>
 
+    @if (breakdown) {
+        <div class="breakdown">
+            <button
+                type="button"
+                class="breakdown-header"
+                [attr.aria-expanded]="isBreakdownExpanded()"
+                [attr.aria-controls]="breakdownListId"
+                (click)="toggleBreakdown()"
+            >
+                <app-icon
+                    icon="ui/chevron-down"
+                    size="0.85rem"
+                    class="breakdown-chevron"
+                    [class.collapsed]="!isBreakdownExpanded()"
+                />
+                <span class="breakdown-title">{{ breakdown.title }}</span>
+                <span class="breakdown-total">{{ breakdownTotal }}</span>
+            </button>
+            <div
+                class="grid-collapsible"
+                [class.expanded]="isBreakdownExpanded()"
+            >
+                <div>
+                    <ul
+                        class="breakdown-list"
+                        [id]="breakdownListId"
+                    >
+                        @for (item of breakdown.items; track item.label) {
+                            <li class="breakdown-item">
+                                <span class="breakdown-item-label">{{ item.label }}</span>
+                                <span class="breakdown-item-count">{{ item.count }}</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    }
+
     @if (data.caution) {
         <div class="caution-block">
             @if (data.cautionTitle) {
@@ -52,6 +94,26 @@
         </div>
     }
 
+    @if (data.verification; as verification) {
+        <div class="verification">
+            <label
+                class="verification-label"
+                [for]="verificationInputId"
+                >Type <strong>{{ verification.phrase }}</strong> to confirm deletion.</label
+            >
+            <input
+                type="text"
+                class="verification-input"
+                autocomplete="off"
+                spellcheck="false"
+                cdkFocusInitial
+                [id]="verificationInputId"
+                [value]="typedPhrase()"
+                (input)="onPhraseInput($event)"
+            />
+        </div>
+    }
+
     <div class="dialog-actions">
         <button
             type="button"
@@ -60,13 +122,16 @@
         >
             {{ data.cancelText || 'Cancel' }}
         </button>
-        <button
-            type="button"
-            class="button confirm-button"
-            [ngClass]="data.type || 'info'"
-            (click)="onConfirm()"
-        >
-            {{ data.confirmText || 'Confirm' }}
-        </button>
+        @if (!data.hideConfirm) {
+            <button
+                type="button"
+                class="button confirm-button"
+                [ngClass]="data.type || 'info'"
+                [disabled]="isConfirmBlocked()"
+                (click)="onConfirm()"
+            >
+                {{ data.confirmText || 'Confirm' }}
+            </button>
+        }
     </div>
 </div>

@@ -18,8 +18,17 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    HelpTooltipComponent,
+    MultiSelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { AgGridModule } from 'ag-grid-angular';
 import {
+    AllCommunityModule,
     BodyScrollEvent,
     CellClickedEvent,
     CellValueChangedEvent,
@@ -32,20 +41,14 @@ import {
     GridOptions,
     GridReadyEvent,
     IRowNode,
+    ModuleRegistry,
     RowSpanParams,
+    themeQuartz,
     ValueGetterParams,
     ValueSetterParams,
 } from 'ag-grid-community';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-import { themeQuartz } from 'ag-grid-community';
 
-import { ToastService } from '../../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { ConfirmationDialogService } from '../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
-import { MultiSelectComponent } from '../../../../../shared/components/multi-select/multi-select.component';
-import { SelectItem } from '../../../../../shared/components/select/select.component';
+import { ToastService } from '../../../../../services/notifications';
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import {
@@ -86,7 +89,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public conditionGroups = input.required<ConditionGroup[]>();
-    public activeColor = input<string>('#685fff');
+    public activeColor = input<string>('var(--accent-color)');
     public currentNodeId = input.required<string>();
     public storageNodeId = input<string>('');
     public prompts = input<Record<string, PromptConfig>>({});
@@ -94,6 +97,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public llmConfigs = input<{ id: number; label: string }[]>([]);
     public preInputMapKeys = input<string[]>([]);
     public domainKeys = input<string[]>([]);
+    public readonly = input<boolean>(false);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
     public promptChange = output<{
@@ -201,7 +205,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return;
         }
         const wrapperEl = this.elRef.nativeElement.querySelector('.grid-wrapper') as HTMLElement | null;
-        const bodyEl = this.elRef.nativeElement.querySelector('.ag-body-viewport') as HTMLElement | null;
+        const bodyEl = this.elRef.nativeElement.querySelector('.ag-grid-viewport') as HTMLElement | null;
         if (!wrapperEl || !bodyEl) {
             this.groupOverlayItems.set([]);
             return;
@@ -442,6 +446,12 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 this.autoCollapseGroupsOnFirstLoad();
             }
         });
+        effect(() => {
+            this.readonly();
+            untracked(() => {
+                this.rebuildColumnDefs();
+            });
+        });
     }
 
     private initFieldColumnsFromData(groups: ConditionGroup[]): void {
@@ -470,6 +480,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public myTheme = themeQuartz.withParams({
+        fontFamily: 'var(--font-family)',
         backgroundColor: '#1e1e1e',
         foregroundColor: '#d4d4d4',
         headerBackgroundColor: '#27272b',
@@ -478,6 +489,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         borderColor: 'rgba(255, 255, 255, 0.1)',
         rowHoverColor: 'rgba(104, 95, 255, 0.1)',
         columnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
+        pinnedColumnBorder: { style: 'solid', width: 4, color: '#3f4144' },
         fontSize: 14,
     });
 
@@ -593,6 +605,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         },
         preventDefaultOnContextMenu: true,
         onCellContextMenu: (event) => {
+            if (this.readonly()) return;
             const mouseEvent = event.event as MouseEvent;
             this.contextMenu.set({
                 x: mouseEvent.clientX,
@@ -1136,7 +1149,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         };
 
         const staticBefore: ColDef[] = [
-            selectionCol,
+            ...(this.readonly() ? [] : [selectionCol]),
             enabledCol,
             {
                 colId: 'group_name',
@@ -1351,7 +1364,26 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
         };
 
-        return [...staticBefore, ...exprSection, promptIdCol, ...manipSection, routeCodeCol, skipCol, deleteCol];
+        const readOnly = this.readonly();
+        const tail = readOnly ? [routeCodeCol, skipCol] : [routeCodeCol, skipCol, deleteCol];
+        const defs = [...staticBefore, ...exprSection, promptIdCol, ...manipSection, ...tail];
+        return readOnly ? this.stripEditability(defs) : defs;
+    }
+
+    /**
+     * Recursively clones column defs (including nested group children) with editing disabled.
+     * Used to render the grid in read-only mode without mutating the original defs.
+     */
+    private stripEditability(defs: (ColDef | ColGroupDef)[]): (ColDef | ColGroupDef)[] {
+        return defs.map((def) => {
+            if ('children' in def) {
+                return {
+                    ...def,
+                    children: this.stripEditability((def as ColGroupDef).children as (ColDef | ColGroupDef)[]),
+                };
+            }
+            return { ...(def as ColDef), editable: false, singleClickEdit: false };
+        });
     }
 
     private applyWidths(defs: (ColDef | ColGroupDef)[], widthMap: Map<string, number>): (ColDef | ColGroupDef)[] {
@@ -1535,6 +1567,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     addFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_FIELD_PREFIX}${fieldName}`;
         const order = this.movableColumnOrder();
         if (!order.includes(colId)) {
@@ -1544,6 +1577,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     removeFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_FIELD_PREFIX}${fieldName}`;
         this.movableColumnOrder.set(this.movableColumnOrder().filter((id) => id !== colId));
         this.saveGridState();
@@ -1574,6 +1608,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     addManipFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_MANIP_PREFIX}${fieldName}`;
         const order = this.manipColumnOrder();
         if (!order.includes(colId)) {
@@ -1583,6 +1618,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     removeManipFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_MANIP_PREFIX}${fieldName}`;
         this.manipColumnOrder.set(this.manipColumnOrder().filter((id) => id !== colId));
         this.saveGridState();
@@ -1603,6 +1639,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     onGridReady(params: GridReadyEvent): void {
         this.gridApi = params.api;
+        this.rebuildColumnDefs();
         this.setupBodyClickListener();
         this.setupOutsideClickListener();
         this.setupRowDragListener();
@@ -1778,6 +1815,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     onCellValueChanged(event: CellValueChangedEvent): void {
         // Guard against recursive loops triggered by programmatic cell writes
         if (this.isSyncing) return;
+        if (this.readonly()) return;
 
         const colId: string = event.colDef.colId ?? '';
         const rowData = event.data as ConditionGroup;
@@ -1944,6 +1982,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     addRow(): void {
+        if (this.readonly()) return;
         const currentRows = this.rowData();
         const maxOrder = currentRows.reduce((max, r) => Math.max(max, r.order ?? 0), 0);
         const maxConditionNumber = currentRows.reduce((max, r) => {
@@ -1971,6 +2010,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     private insertRowAtContext(offset: 0 | 1): void {
+        if (this.readonly()) return;
         const ctx = this.contextMenu();
         if (!ctx) return;
         const currentRows = this.rowData();
@@ -1986,6 +2026,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     deleteRow(rowIndex: number): void {
+        if (this.readonly()) return;
         const currentRows = this.rowData();
         const updatedRows = currentRows
             .filter((_, index) => index !== rowIndex)
@@ -1995,6 +2036,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public groupSelectedRows(): void {
+        if (this.readonly()) return;
         const nodes = this.gridApi?.getSelectedNodes() ?? [];
         if (nodes.length === 0) return;
         if (!nodes.every((n: IRowNode) => !(n.data as ConditionGroup | undefined)?.section)) return;
@@ -2013,6 +2055,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public deleteSelectedRows(): void {
+        if (this.readonly()) return;
         const nodes = this.gridApi?.getSelectedNodes() ?? [];
         if (nodes.length === 0) return;
         const namesToDelete = new Set(nodes.map((n: IRowNode) => (n.data as ConditionGroup).group_name));
@@ -2071,6 +2114,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.groupMenuOverlayRef = null;
         this.groupMenuSectionId.set(null);
         if (!sectionId) return;
+        if (this.readonly()) return;
         this.confirmDialog
             .confirm({
                 title: 'Ungroup these rows?',
@@ -2153,6 +2197,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public handleManualRowReorder(source: IRowNode, over: IRowNode, insertBefore: boolean = true): void {
+        if (this.readonly()) return;
         if (!source || !over || source === over) return;
         const rows = this.rowData();
         const sourceIdx = rows.indexOf(source.data);

@@ -17,9 +17,8 @@
     }
 
     &__title {
-        font-family: Inter, sans-serif;
-        font-size: 18px;
-        font-weight: 500;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
         line-height: 1;
         color: var(--color-text-primary);
         margin: 0;
@@ -107,6 +106,13 @@
         border-radius: 10px;
     }
 
+    &__list-content {
+        display: flex;
+        flex-direction: column;
+        width: max-content;
+        min-width: 100%;
+    }
+
     &__state {
         display: flex;
         align-items: center;
@@ -119,19 +125,20 @@
     &__item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 2px;
         height: 28px;
         padding-right: 1rem;
         cursor: pointer;
         flex-shrink: 0;
-        min-width: max-content;
+        min-width: 100%;
+        width: max-content;
 
         &:nth-child(even) {
             background-color: var(--color-ks-transparent-black-28);
         }
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
         }
     }
 
@@ -144,7 +151,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-primary);
         padding: 0;
         flex-shrink: 0;
         transition: transform 0.15s;
@@ -161,13 +168,14 @@
     }
 
     &__file-icon {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-primary);
         flex-shrink: 0;
     }
 
     &__item-name {
         flex: 1 1 auto;
         min-width: 0;
+        margin-left: 6px;
         font-size: 0.875rem;
         color: var(--color-text-primary);
         white-space: nowrap;
@@ -175,7 +183,7 @@
 
     &__node-spinner {
         font-size: 0.75rem;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
     }
 }

@@ -5,7 +5,6 @@ import { IconService } from '../services/icon.service';
 
 @Directive({
     selector: '[appInlineSvg]',
-    standalone: true,
 })
 export class InlineSvgDirective implements OnChanges, OnDestroy {
     @Input() path: string = '';

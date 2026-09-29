@@ -89,7 +89,7 @@ class NodeCreatedMessage(BaseModel):
     type: str = "node_created"
     node: dict
     # list_key identifies which <type>_node_list in the superset snapshot to target,
-    # e.g. "crew_node_list". Required so apply_op can locate the right list without
+    # e.g. "python_node_list". Required so apply_op can locate the right list without
     # guessing from node content.
     list_key: str
     editor: EditorInfo
@@ -125,9 +125,7 @@ class NodeUpdatedMessage(BaseModel):
                 "A partial NodeUpdatedMessage (changed_fields set) requires "
                 "'node' to carry an 'id' or 'temp_id'"
             )
-        if self.expected is not None and not set(self.expected.keys()) <= set(
-            self.changed_fields
-        ):
+        if self.expected is not None and not set(self.expected.keys()) <= set(self.changed_fields):
             raise ValueError("'expected' keys must be a subset of 'changed_fields'")
         return self
 

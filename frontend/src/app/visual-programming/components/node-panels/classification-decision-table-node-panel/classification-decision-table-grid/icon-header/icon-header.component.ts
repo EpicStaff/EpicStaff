@@ -1,9 +1,7 @@
-import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 import { IHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
-
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export interface IconHeaderParams extends IHeaderParams {
     iconClass?: string;
@@ -15,7 +13,7 @@ export interface IconHeaderParams extends IHeaderParams {
 
 @Component({
     selector: 'app-icon-header',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div
             class="icon-header"
@@ -40,6 +38,7 @@ export interface IconHeaderParams extends IHeaderParams {
             }
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .icon-header {

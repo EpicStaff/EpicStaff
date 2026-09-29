@@ -1,11 +1,12 @@
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     Component,
     ElementRef,
     EventEmitter,
     forwardRef,
     Input,
+    input,
     Output,
     signal,
     ViewChild,
@@ -17,8 +18,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
-    standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
+    imports: [FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -38,46 +38,51 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                 </div>
             }
-            <div class="input-wrapper">
-                <input
-                    #inputEl
-                    [type]="effectiveType"
-                    [id]="id"
-                    [name]="name"
-                    [attr.autocomplete]="effectiveAutocomplete"
-                    [placeholder]="placeholder"
-                    [(ngModel)]="value"
-                    (focus)="focused.set(true)"
-                    (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
-                    class="text-input"
-                    [class.has-toggle]="hasToggle"
-                    [class.masked]="isMasked"
-                    [class.error]="errorMessage"
-                    [disabled]="isDisabled"
-                    [style.--active-color]="activeColor"
-                />
-                @if (hasToggle) {
-                    <button
-                        type="button"
-                        class="toggle-visibility"
-                        [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
-                        matTooltipPosition="above"
-                        (click)="togglePasswordVisibility()"
-                        tabindex="-1"
-                    >
-                        <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
-                    </button>
+            @if (readonly()) {
+                <span class="readonly-value">{{ readonlyDisplayValue }}</span>
+            } @else {
+                <div class="input-wrapper">
+                    <input
+                        #inputEl
+                        [type]="effectiveType"
+                        [id]="id"
+                        [name]="name"
+                        [attr.autocomplete]="effectiveAutocomplete"
+                        [attr.spellcheck]="spellcheck"
+                        [placeholder]="placeholder"
+                        [(ngModel)]="value"
+                        (focus)="focused.set(true)"
+                        (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
+                        class="text-input"
+                        [class.has-toggle]="hasToggle"
+                        [class.masked]="isMasked"
+                        [class.error]="errorMessage"
+                        [disabled]="isDisabled"
+                        [style.--active-color]="activeColor"
+                    />
+                    @if (hasToggle) {
+                        <button
+                            type="button"
+                            class="toggle-visibility"
+                            [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
+                            matTooltipPosition="above"
+                            (click)="togglePasswordVisibility()"
+                            tabindex="-1"
+                        >
+                            <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
+                        </button>
+                    }
+                </div>
+                @if (errorMessage) {
+                    <div class="error-message">
+                        {{ errorMessage }}
+                    </div>
                 }
-            </div>
-            @if (errorMessage) {
-                <div class="error-message">
-                    {{ errorMessage }}
-                </div>
-            }
-            @if (isSecret && focused() && cautionMessage) {
-                <div class="caution-message">
-                    {{ cautionMessage }}
-                </div>
+                @if (isSecret && focused() && cautionMessage) {
+                    <div class="caution-message">
+                        {{ cautionMessage }}
+                    </div>
+                }
             }
         </div>
     `,
@@ -122,9 +127,9 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     color: var(--color-text-primary);
-                    font-size: 14px;
+                    font-size: 0.875rem;
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
@@ -166,13 +171,13 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
 
                     i {
-                        font-size: 16px;
+                        font-size: 1rem;
                     }
                 }
 
                 .error-message {
                     color: #ef4444;
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     margin-top: 4px;
                     line-height: 1.4;
                 }
@@ -181,14 +186,22 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     margin-top: 6px;
                     padding: 0.625rem;
                     background-color: rgba(104, 95, 255, 0.1);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     border-left: 3px solid #685fff;
-                    font-size: 12px;
+                    font-size: 0.75rem;
                     color: #ffffffb3;
+                }
+
+                .readonly-value {
+                    color: var(--color-text-primary);
+                    font-size: 0.875rem;
+                    word-break: break-word;
+                    white-space: pre-wrap;
                 }
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -206,6 +219,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() id: string = '';
     @Input() name: string = '';
     @Input() autocomplete: string | null = null;
+    @Input() spellcheck: boolean = false;
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
     @Input() icon: string = 'help';
@@ -213,6 +227,8 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
     @Input() cautionMessage: string = '';
+    readonly = input<boolean>(false);
+    readonlyEmptyPlaceholder = input<string>('—');
 
     @Output() blur = new EventEmitter<void>();
 
@@ -280,6 +296,17 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     get isClassIcon(): boolean {
         return !!this.icon && this.icon.trim().includes(' ');
+    }
+
+    /**
+     * Value to render in readonly mode. Secret/password fields never leak their raw value —
+     * they show a masked placeholder if any value is present.
+     */
+    get readonlyDisplayValue(): string {
+        if (this.isSecret || this.isPassword) {
+            return this._value ? '••••••••' : this.readonlyEmptyPlaceholder();
+        }
+        return this._value?.length ? this._value : this.readonlyEmptyPlaceholder();
     }
 
     togglePasswordVisibility(): void {

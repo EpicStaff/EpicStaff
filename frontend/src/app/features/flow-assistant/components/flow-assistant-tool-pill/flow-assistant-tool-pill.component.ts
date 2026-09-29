@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '@shared/components';
 
 export interface ToolPillEntry {
     callId: string;
@@ -12,7 +11,6 @@ export interface ToolPillEntry {
 
 @Component({
     selector: 'app-flow-assistant-tool-pill',
-    standalone: true,
     imports: [AppSvgIconComponent],
     templateUrl: './flow-assistant-tool-pill.component.html',
     styleUrls: ['./flow-assistant-tool-pill.component.scss'],

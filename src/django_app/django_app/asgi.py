@@ -18,9 +18,9 @@ django_asgi_app = get_asgi_application()
 
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
+from tables.graph_collab.ws_auth import TicketAuthMiddleware
 
 from django_app.routing import websocket_urlpatterns
-from tables.graph_collab.ws_auth import TicketAuthMiddleware
 
 application = ProtocolTypeRouter(
     {

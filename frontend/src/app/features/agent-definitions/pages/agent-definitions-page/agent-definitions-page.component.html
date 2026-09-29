@@ -13,6 +13,7 @@
         </div>
 
         <app-button
+            *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
             class="header__add-agent"
             type="primary"
             leftIcon="plus-fit"
@@ -38,9 +39,11 @@
         <div class="body__detail">
             @if (store.isStorageSelected()) {
                 <app-storage-preview
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Read]"
                     [item]="storageFacade.selectedFile()"
                     [selectedItems]="storageFacade.selectedItems()"
                     [showSidebar]="store.showSidebar()"
+                    [readOnly]="filesReadOnly()"
                     (toggleSidebar)="store.toggleSidebar()"
                     (contextAction)="onPreviewContextAction($event)"
                     (breadcrumbClick)="onPreviewBreadcrumb($event)"
@@ -49,6 +52,7 @@
                 <app-agent-doc-preview
                     [agent]="store.selectedAgentDoc()!.agent"
                     [showSidebar]="store.showSidebar()"
+                    [initialEditMode]="openDocInEdit"
                     (toggleSidebar)="store.toggleSidebar()"
                     (save)="store.updateAgent(store.selectedAgentDoc()!.agent.id, { instructions: $event })"
                     (openAgent)="store.selectAgent($event)"
@@ -120,20 +124,51 @@
                     (toggleSidebar)="store.toggleSidebar()"
                     (navAgent)="store.selectAgent($event)"
                 >
-                    @if (store.selectedAgent() || store.selectedSurface()) {
+                    @if ((store.selectedAgent() || store.selectedSurface()) && canOpenHeaderMenu()) {
                         <button
+                            #headerMenuTrigger="cdkOverlayOrigin"
+                            cdkOverlayOrigin
                             type="button"
                             class="detail-header__kebab"
-                            aria-label="Delete"
-                            title="Delete"
+                            aria-label="More actions"
                             [disabled]="store.saving()"
-                            (click)="onDeleteSelected()"
+                            (click)="toggleHeaderMenu($event)"
                         >
                             <app-svg-icon
-                                icon="trash"
+                                icon="dots-vertical"
                                 size="1rem"
                             />
                         </button>
+                        <ng-template
+                            cdkConnectedOverlay
+                            [cdkConnectedOverlayOrigin]="headerMenuTrigger"
+                            [cdkConnectedOverlayOpen]="headerMenuOpen()"
+                            [cdkConnectedOverlayPositions]="headerMenuPositions"
+                            [cdkConnectedOverlayFlexibleDimensions]="true"
+                            (overlayOutsideClick)="closeHeaderMenu()"
+                            (detach)="closeHeaderMenu()"
+                        >
+                            <div class="detail-header__menu">
+                                @if (canDuplicateSelected()) {
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item"
+                                        (click)="onHeaderDuplicate()"
+                                    >
+                                        Duplicate
+                                    </button>
+                                }
+                                @if (canDeleteSelected()) {
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item detail-header__menu-item--danger"
+                                        (click)="onHeaderDelete()"
+                                    >
+                                        Delete
+                                    </button>
+                                }
+                            </div>
+                        </ng-template>
                     }
                 </app-detail-header>
 
@@ -169,18 +204,19 @@
                             [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
                             [bootIsDoc]="store.isBootDoc(store.selectedAgent()!.id)"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [readOnly]="agentsReadOnly()"
                             (save)="onSaveAgent($event)"
                             (delete)="onDeleteAgent($event)"
                             (dirtyChange)="onDirtyChange($event)"
-                            (bootDocChange)="store.setBootDoc(store.selectedAgent()!.id, $event)"
-                            (openBootDoc)="store.selectAgentDoc(store.selectedAgent()!.id, 'boot')"
+                            (bootDocChange)="onBootDocChange($event)"
+                            (openBootDoc)="onOpenBootDoc()"
                             (extractText)="store.applyBootDocFromText(store.selectedAgent()!.id, $event)"
                             (createSurface)="
                                 store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
                             "
-                            (addFromShared)="
-                                store.attachSharedSurfaceToAgent(
-                                    $event.surfaceId,
+                            (setSharedInCategory)="
+                                store.setSharedSurfacesInCategory(
+                                    $event.surfaceIds,
                                     store.selectedAgent()!.id,
                                     $event.category
                                 )
@@ -212,12 +248,13 @@
                             [saving]="store.saving()"
                             [surfaces]="store.surfaces()"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
+                            [readOnly]="agentsReadOnly()"
                             (createSurface)="
                                 store.createSurfaceForAgent(store.surfacesOnlyAgent()!.id, $event.body, $event.place)
                             "
-                            (addFromShared)="
-                                store.attachSharedSurfaceToAgent(
-                                    $event.surfaceId,
+                            (setSharedInCategory)="
+                                store.setSharedSurfacesInCategory(
+                                    $event.surfaceIds,
                                     store.surfacesOnlyAgent()!.id,
                                     $event.category
                                 )

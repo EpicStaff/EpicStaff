@@ -1,23 +1,18 @@
+import asyncio
+import contextlib
 import json
-import os
 import threading
 import time
+
 import redis
 import redis.asyncio as aioredis
-from redis import Redis
+import settings
 from loguru import logger
-from typing import List, Union
+from redis import Redis
+from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
-from redis.backoff import ExponentialBackoff
-
 from utils.singleton_meta import SingletonMeta
-
-SESSION_STATUS_CHANNEL = os.environ.get(
-    "SESSION_STATUS_CHANNEL", "sessions:session_status"
-)
-
-import asyncio
 
 
 class AsyncPubsubSubscriber:
@@ -48,9 +43,7 @@ class AsyncPubSubGroup:
                     self._pubsub = self._redis.pubsub()
                     await self._pubsub.subscribe(self._channel)
 
-                msg = await self._pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=0.01
-                )
+                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=0.01)
                 if msg is None:
                     await asyncio.sleep(0.01)
                     continue
@@ -58,13 +51,9 @@ class AsyncPubSubGroup:
                 for sub in self._subscribers:
                     await sub.update(msg)
             except Exception as e:
-                logger.error(
-                    f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}"
-                )
-                try:
+                logger.error(f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}")
+                with contextlib.suppress(Exception):
                     await self._pubsub.close()
-                except Exception:
-                    pass
                 self._pubsub = None
                 await asyncio.sleep(1)
 
@@ -80,10 +69,8 @@ class AsyncPubSubGroup:
             await self._pubsub.close()
         if self._reader_task:
             self._reader_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reader_task
-            except asyncio.CancelledError:
-                pass
         if self._redis:
             await self._redis.close()
 
@@ -151,9 +138,10 @@ class SyncPubSubGroup:
 
 
 class RedisService(metaclass=SingletonMeta):
-    def __init__(self, host: str, port: int, password: str):
+    def __init__(self, host: str, port: int, user: str, password: str):
         self.host = host
         self.port = port
+        self.user = user
         self.password = password
 
         self.aioredis_client: aioredis.Redis | None = None
@@ -178,12 +166,14 @@ class RedisService(metaclass=SingletonMeta):
         try:
             self.aioredis_client = await aioredis.from_url(
                 f"redis://{self.host}:{self.port}",
+                username=self.user,
                 password=self.password,
                 decode_responses=True,
                 retry=self._retry,
             )
             self.sync_redis_client = Redis.from_url(
                 f"redis://{self.host}:{self.port}",
+                username=self.user,
                 password=self.password,
                 decode_responses=True,
                 retry=self._retry,
@@ -194,7 +184,7 @@ class RedisService(metaclass=SingletonMeta):
             logger.info("Connected to Redis.")
         except Exception as e:
             logger.error(f"Failed to connect to Redis: {e}")
-            raise e
+            raise
 
     async def close(self):
         if self.aioredis_client:
@@ -203,7 +193,7 @@ class RedisService(metaclass=SingletonMeta):
             self.sync_redis_client.close()
 
     async def asubscribe(
-        self, channels: Union[str, List[str]], subscriber: AsyncPubsubSubscriber
+        self, channels: str | list[str], subscriber: AsyncPubsubSubscriber
     ) -> PubSub:
         """
         Subscribe to one or multiple channels asynchronously.
@@ -222,9 +212,7 @@ class RedisService(metaclass=SingletonMeta):
                 self._async_pubsub_groups.get(channel).subscribe(subscriber=subscriber)
             logger.info(f"Subscribed to channels: {', '.join(channels)}")
 
-    def subscribe(
-        self, channels: Union[str, List[str]], subscriber: AsyncPubsubSubscriber
-    ) -> PubSub:
+    def subscribe(self, channels: str | list[str], subscriber: AsyncPubsubSubscriber) -> PubSub:
         if isinstance(channels, str):
             # Single channel
             if channels not in self._sync_pubsub_groups:
@@ -253,7 +241,7 @@ class RedisService(metaclass=SingletonMeta):
             "status": status,
             "status_data": kwargs,
         }
-        await self.apublish(SESSION_STATUS_CHANNEL, message)
+        await self.apublish(settings.SESSION_STATUS_CHANNEL, message)
 
     def update_session_status(self, session_id: int, status: str, **kwargs):
         message = {
@@ -262,24 +250,18 @@ class RedisService(metaclass=SingletonMeta):
             "status_data": kwargs,
         }
 
-        self.publish(channel=SESSION_STATUS_CHANNEL, message=message)
+        self.publish(channel=settings.SESSION_STATUS_CHANNEL, message=message)
 
-    def unsubscribe(
-        self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber
-    ):
+    def unsubscribe(self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber):
         if isinstance(subscriber, AsyncPubsubSubscriber):
             if channel in self._async_pubsub_groups:
                 self._async_pubsub_groups[channel].unsubscribe(subscriber)
                 logger.info(f"Unsubscribed from channel {channel}")
             else:
-                logger.warning(
-                    f"Channel {channel} not found for unsubscribe operation."
-                )
+                logger.warning(f"Channel {channel} not found for unsubscribe operation.")
         elif isinstance(subscriber, SyncPubsubSubscriber):
             if channel in self._sync_pubsub_groups:
                 self._sync_pubsub_groups[channel].unsubscribe(subscriber)
                 logger.info(f"Unsubscribed from channel {channel}")
             else:
-                logger.warning(
-                    f"Channel {channel} not found for unsubscribe operation."
-                )
+                logger.warning(f"Channel {channel} not found for unsubscribe operation.")

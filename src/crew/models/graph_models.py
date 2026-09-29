@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
 def iso_utc_timestamp():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
@@ -129,6 +129,18 @@ class ConditonGroupManipulationMessageData:
     state: dict
     changed_variables: dict = field(default_factory=dict)
     message_type: str = "condition_group_manipulation"
+
+
+@dataclass
+class NodeExtractedChunksMessageData:
+    knowledge_query: str
+    collection_id: int
+    retrieved_chunks: int
+    rag_search_config: dict
+    chunks: list[dict]
+    token_usage: dict
+    input: object
+    message_type: str = "extracted_chunks"
 
 
 @dataclass

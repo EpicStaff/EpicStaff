@@ -1,13 +1,13 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
+import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 import { debounceTime, filter, throttleTime } from 'rxjs';
-import { NodeType } from 'src/app/visual-programming/core/enums/node-type';
 import { buildPartialNodePayload } from 'src/app/visual-programming/utils/save/partial-node-broadcast';
 
 import { ProfileService } from '../../../services/auth/profile.service';
 import { WsTicketService } from '../../../services/auth/ws-ticket.service';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import { ConnectionModel } from '../../../visual-programming/core/models/connection.model';
 import { NodeModel } from '../../../visual-programming/core/models/node.model';
 import {
@@ -155,7 +155,7 @@ export type GraphSavedMessage = {
     temp_id_map: Record<string, number>;
     /**
      * Backend delete-accumulator keys (`edge_ids`, `conditional_edge_ids`, and one
-     * per node type such as `python_node_ids`, `crew_node_ids`, `start_node_ids`, …)
+     * per node type such as `python_node_ids`, `agent_node_ids`, `start_node_ids`, …)
      * mapped to the real DB pks whose deletion was just persisted by this flush.
      * Optional — older backends won't send it.
      */
@@ -170,8 +170,6 @@ export function nodeTypeToListKey(type: NodeType): string | null {
             return 'agent_node_list';
         case NodeType.TASK:
             return 'task_node_list';
-        case NodeType.PROJECT:
-            return 'crew_node_list';
         case NodeType.PYTHON:
             return 'python_node_list';
         case NodeType.FILE_EXTRACTOR:
@@ -239,10 +237,11 @@ export function buildNodeBackendPayload(
                 ...idField,
                 node_name: pn.node_name,
                 graph: graphId,
-                python_code: pythonCode,
+                // secret_names is display-only; the write shape carries secret_ids. An undefined
+                // key is dropped when the payload is serialized to JSON.
+                python_code: { ...pythonCode, secret_names: undefined },
                 input_map: pn.input_map || {},
                 output_variable_path: pn.output_variable_path || null,
-                stream_config: pn.stream_config ?? {},
                 use_storage: use_storage ?? false,
                 test_input: pn.test_input ?? {},
                 metadata: meta,
@@ -279,27 +278,6 @@ export function buildNodeBackendPayload(
                 surface_list: an.data.surface_list ?? [],
                 inline_surface: an.data.inline_surface ?? null,
                 tasks: buildAgentTasksPayload(an.data.tasks ?? []),
-                metadata: meta,
-            };
-        }
-
-        case NodeType.PROJECT: {
-            const cn = node as {
-                node_name: string;
-                data: { id: number };
-                input_map: Record<string, unknown>;
-                output_variable_path: string | null;
-                stream_config?: Record<string, unknown>;
-            } & NodeModel;
-            return {
-                ...idField,
-                node_name: cn.node_name,
-                graph: graphId,
-                crew_id: cn.data.id,
-                crew: cn.data,
-                input_map: cn.input_map || {},
-                output_variable_path: cn.output_variable_path || null,
-                stream_config: cn.stream_config ?? {},
                 metadata: meta,
             };
         }
@@ -638,8 +616,7 @@ export class GraphCollaborationWsService {
             }
         };
 
-        this.socket.onclose = (event) => {
-            console.log('[WS] Closed, code:', event.code);
+        this.socket.onclose = () => {
             this.socket = null;
             if (!this.isManualDisconnect) {
                 this.handleConnectionLoss();

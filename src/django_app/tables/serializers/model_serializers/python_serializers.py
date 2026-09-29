@@ -1,6 +1,12 @@
 from django.db import transaction
+from rbac.scoping.fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueTogetherValidator,
+    OrgScopedUniqueValidator,
+    OrgVisiblePrimaryKeyRelatedField,
+    resolve_active_org_id,
+)
 from rest_framework import serializers
-
 from tables.exceptions import (
     BuiltInToolModificationError,
     PythonCodeToolConfigSerializerError,
@@ -14,17 +20,13 @@ from tables.models.python_models import (
 )
 from tables.models.secret_models import Secret
 from tables.serializers.base_serializer import ContentHashWritableMixin
-from tables.serializers.org_scoped_fields import (
-    OrgScopedPrimaryKeyRelatedField,
-    OrgVisiblePrimaryKeyRelatedField,
-    OrgScopedUniqueValidator,
-    OrgScopedUniqueTogetherValidator,
-    resolve_active_org_id,
-)
+from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
+from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
@@ -33,13 +35,23 @@ from tables.services.secrets.parse_code import parse_secret_names
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
+from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
-class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class PythonCodeSerializer(
+    SecretReferenceGuardMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
+    secret_reference_fields = ("secret_ids",)
+
     libraries = serializers.ListField(
-        child=serializers.CharField(),
+        child=serializers.CharField(validators=[validate_python_library_spec]),
         write_only=False,
-        help_text="A list of library names.",
+        help_text="A list of pip requirement specifiers, for example 'requests>=2,<3'.",
+    )
+    secrets = SecretNameSerializer(
+        many=True,
+        read_only=True,
+        help_text="Secrets this code is allowed to read, by name.",
     )
     secret_ids = OrgScopedPrimaryKeyRelatedField(
         many=True,
@@ -58,6 +70,7 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
             "entrypoint",
             "libraries",
             "global_kwargs",
+            "secrets",
             "secret_ids",
         ]
         read_only_fields = ["id"]
@@ -70,19 +83,31 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
         """Convert 'libraries' string to a list of strings for output."""
         representation = super().to_representation(instance)
         representation["libraries"] = (
-            list(filter(None, instance.libraries.split(" ")))
-            if instance.libraries
-            else []
+            list(filter(None, instance.libraries.split(" "))) if instance.libraries else []
         )
         return representation
 
     def to_internal_value(self, data):
         """Convert 'libraries' list of strings to a space-separated string for storage."""
         internal_value = super().to_internal_value(data)
-        libraries = data.get("libraries") or []
+        libraries = internal_value.get("libraries")
         if isinstance(libraries, list):
             internal_value["libraries"] = " ".join(libraries)
         return internal_value
+
+    def _current_python_code(self):
+        """The persisted PythonCode for this field, resolved through the parent when nested."""
+        if self.instance is not None:
+            return self.instance
+        parent_instance = getattr(self.parent, "instance", None)
+        if parent_instance is None:
+            return None
+        return getattr(parent_instance, self.field_name, None)
+
+    def get_current_secret_reference(self, source):
+        """The persisted secrets for this field, resolved through the parent when nested."""
+        python_code = self._current_python_code()
+        return getattr(python_code, source, None) if python_code is not None else None
 
     def validate(self, attrs):
         """Reject code that reads a secret this PythonCode did not declare."""
@@ -94,20 +119,19 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 
         if "secrets" in attrs:
             declared = {secret.name for secret in attrs["secrets"]}
-        elif self.instance is not None:
-            declared = set(self.instance.secrets.values_list("name", flat=True))
         else:
-            declared = set()
+            current = self._current_python_code()
+            declared = (
+                set(current.secrets.values_list("name", flat=True))
+                if current is not None
+                else set()
+            )
 
         parsed = parse_secret_names(code=code)
         undeclared = parsed - declared
         if undeclared:
             raise serializers.ValidationError(
-                {
-                    "secret_ids": self._undeclared_message(
-                        undeclared=undeclared, declared=declared
-                    )
-                }
+                {"secret_ids": self._undeclared_message(undeclared=undeclared, declared=declared)}
             )
 
         return attrs
@@ -136,9 +160,7 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
             org_id = resolve_active_org_id(request=request)
         except Exception:
             return []
-        return sorted(
-            Secret.objects.filter(org_id=org_id).values_list("name", flat=True)
-        )
+        return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
 class PythonCodeToolSerializer(serializers.ModelSerializer):
@@ -151,6 +173,8 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             OrgScopedUniqueValidator(
                 queryset=PythonCodeTool.objects.all(),
                 message="A tool with this name already exists.",
+                global_queryset=PythonCodeTool.objects.filter(built_in=True),
+                global_message="A built-in tool with this name already exists.",
             )
         ]
     )
@@ -172,8 +196,14 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "built_in",
             "use_storage",
             "labels",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "built_in"]
+        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
+
+    def validate_description(self, value: str) -> str:
+        """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
+        return sanitize_description(value)
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.
@@ -184,9 +214,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         shared row (EST-3773).
         """
         representation = super().to_representation(instance)
-        representation["labels"] = org_scoped_label_ids(
-            instance, self.context.get("request")
-        )
+        representation["labels"] = org_scoped_label_ids(instance, self.context.get("request"))
         return representation
 
     def create(self, validated_data):
@@ -197,9 +225,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             python_code_tool = PythonCodeTool.objects.create(
                 python_code=python_code, **validated_data
             )
-            set_org_scoped_labels(
-                python_code_tool, labels, self.context.get("request")
-            )
+            set_org_scoped_labels(python_code_tool, labels, self.context.get("request"))
         return python_code_tool
 
     def update(self, instance, validated_data):
@@ -236,12 +262,9 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
     def __init__(self, *args, tool_config_validator=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.tool_config_validator = (
-            tool_config_validator
-            or PythonCodeToolConfigValidator(
-                validate_null_fields=True,
-                validate_missing_required_fields=True,
-            )
+        self.tool_config_validator = tool_config_validator or PythonCodeToolConfigValidator(
+            validate_null_fields=True,
+            validate_missing_required_fields=True,
         )
 
     class Meta:
@@ -260,12 +283,10 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
     def validate(self, data: dict):
         name = data.get("name")
         tool = data.get("tool")
-        configuration = data.get("configuration", dict())
+        configuration = data.get("configuration", {})
 
         if name is None:
-            raise PythonCodeToolConfigSerializerError(
-                "Name for configuration is not provided."
-            )
+            raise PythonCodeToolConfigSerializerError("Name for configuration is not provided.")
         if tool is None:
             raise PythonCodeToolConfigSerializerError("Tool is not provided.")
         if configuration is None:
@@ -279,7 +300,7 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
             )
             data["configuration"] = validated_configuration
         except serializers.ValidationError as e:
-            raise PythonCodeToolConfigSerializerError(e.message)
+            raise PythonCodeToolConfigSerializerError(e.message) from e
 
         return data
 

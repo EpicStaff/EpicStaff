@@ -1,6 +1,7 @@
-import { TaskNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { TaskNodeModel } from '../../../core/models/node.model';
+import { TaskNode } from '../../../core/models/task-node.model';
 import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 

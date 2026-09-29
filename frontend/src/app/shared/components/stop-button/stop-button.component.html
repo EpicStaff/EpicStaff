@@ -1,0 +1,12 @@
+<button
+    type="button"
+    class="stop-btn"
+    [disabled]="disabled()"
+    [matTooltip]="tooltip()"
+    (click)="triggered.emit()"
+>
+    <app-svg-icon
+        icon="pause"
+        size="18px"
+    />
+</button>

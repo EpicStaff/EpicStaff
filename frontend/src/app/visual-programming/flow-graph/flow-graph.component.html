@@ -1,10 +1,15 @@
-<div class="editor-wrapper">
+<div
+    class="editor-wrapper"
+    [class.panel-open]="!!sidePanelService.selectedNode()"
+    [class.readonly]="flowReadOnly.isReadOnly()"
+>
     <f-flow
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
         (click)="onFlowClick($event)"
         (pointerdown)="onFlowPointerDown($event)"
+        (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
         fDraggable
         [fMultiSelectTrigger]="multiSelectTrigger"
@@ -118,10 +123,10 @@
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
                     fDragHandle
-                    [fNodeDraggingDisabled]="!canEdit"
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
+                    [fNodeDraggingDisabled]="!canEdit || flowReadOnly.isReadOnly()"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
@@ -131,7 +136,6 @@
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
                     (deleteClicked)="onDeleteNode($event)"
-                    (projectExpandToggled)="onProjectExpandToggled($event)"
                     [class.remote-selected]="!!remoteSelectionColors().get(node.id)"
                     [style.--remote-selection-color]="remoteSelectionColors().get(node.id)"
                     [lockedByEditor]="nodeLockedMap().get(node.id) ?? null"
@@ -154,8 +158,14 @@
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
+                    [fReassignableStart]="true"
+                    [fReassignDisabled]="
+                        flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
+                    "
+                    [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
+                    [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
@@ -215,7 +225,7 @@
                             stroke="none"
                         ></path>
                     </svg>
-                    @if (canEdit) {
+                    @if (canEdit && !flowReadOnly.isReadOnly()) {
                         <div
                             fConnectionContent
                             class="connection-center"
@@ -250,91 +260,103 @@
         <app-graph-live-cursors [cursors]="screenCursors()" />
     </f-flow>
 
-    <div class="top-left-actions">
-        <div class="top-left-actions__column">
-            <button
-                class="domain-button"
-                matTooltip="Configure domain"
-                matTooltipPosition="right"
-                (click)="onDomainClick()"
-            >
-                Domain
-            </button>
+    <div class="canvas-toolbar-row">
+        <div class="top-left-actions">
+            <div class="top-left-actions__column">
+                <button
+                    class="domain-button"
+                    matTooltip="Configure domain"
+                    matTooltipPosition="right"
+                    (click)="onDomainClick()"
+                >
+                    Domain
+                </button>
 
-            <app-flow-shortcuts-button
-                icon="multi-select"
-                label="S"
-                iconSize="14px"
-                [textEnd]="true"
-                [active]="multiSelectActive()"
-                matTooltip="Multi-select"
-                matTooltipPosition="right"
-                (clicked)="onToggleMultiSelect()"
-            ></app-flow-shortcuts-button>
+                <app-flow-shortcuts-button
+                    icon="multi-select"
+                    label="S"
+                    iconSize="14px"
+                    [textEnd]="true"
+                    [active]="multiSelectActive()"
+                    matTooltip="Multi-select"
+                    matTooltipPosition="right"
+                    (clicked)="onToggleMultiSelect()"
+                ></app-flow-shortcuts-button>
 
-            <div
-                #shortcutsAnchor
-                #shortcutsButton
-                appShortcutListener
-                (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
-            >
-                <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)"> </app-flow-shortcuts-button>
+                <div
+                    #shortcutsAnchor
+                    #shortcutsButton
+                    appShortcutListener
+                    (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
+                >
+                    <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
+                    </app-flow-shortcuts-button>
+                </div>
+            </div>
+
+            <app-nodes-search
+                [nodes]="flowService.nodes()"
+                (nodeSelected)="onZoomInNode($event)"
+                (nodeDoubleClicked)="onNodeDoubleClickAndZoom($event)"
+            ></app-nodes-search>
+        </div>
+
+        <div class="top-right-controls">
+            <div class="top-right-actions">
+                <app-flow-export-import-button
+                    [selectedCount]="selectedNodeCount()"
+                    [allSelectedAreCdt]="allSelectedAreCdt()"
+                    (exportSelectedJson)="onExportSelectedAsJson()"
+                    (exportSelectedCsv)="onExportSelectedAsCsv()"
+                    (exportJson)="onExportAllAsJson()"
+                    (import)="onImportNodes()"
+                ></app-flow-export-import-button>
+                @if (currentFlowId) {
+                    <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Read]">
+                        <app-flow-files-button
+                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                            [flowId]="currentFlowId"
+                            [flowName]="flowName"
+                            [canEdit]="canEdit"
+                        ></app-flow-files-button>
+                    </ng-container>
+                }
+                @if (!flowReadOnly.isReadOnly()) {
+                    <button
+                        #arrangeBtnRef
+                        class="arrange-btn"
+                        title="Auto arrange"
+                        matTooltip="Auto arrange"
+                        matTooltipPosition="below"
+                        [disabled]="
+                            !canEdit || isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())
+                        "
+                        (click)="onAutoArrange()"
+                    >
+                        <app-svg-icon
+                            icon="auto-arrange"
+                            size="38px"
+                        ></app-svg-icon>
+                    </button>
+                }
+                <button
+                    class="arrange-btn settings-icon-btn"
+                    (click)="openSettings()"
+                    title="Flow Settings"
+                    matTooltip="Flow settings"
+                    matTooltipPosition="below"
+                >
+                    <i class="ti ti-settings"></i>
+                </button>
             </div>
         </div>
-
-        <app-nodes-search
-            [nodes]="flowService.nodes()"
-            (nodeSelected)="onZoomInNode($event)"
-            (nodeDoubleClicked)="onNodeDoubleClickAndZoom($event)"
-        ></app-nodes-search>
     </div>
-
-    <div class="top-right-controls">
-        <div class="top-right-actions">
-            <app-flow-export-import-button
-                [selectedCount]="selectedNodeCount()"
-                [allSelectedAreCdt]="allSelectedAreCdt()"
-                (exportSelectedJson)="onExportSelectedAsJson()"
-                (exportSelectedCsv)="onExportSelectedAsCsv()"
-                (exportJson)="onExportAllAsJson()"
-                (import)="onImportNodes()"
-            ></app-flow-export-import-button>
-            @if (currentFlowId) {
-                <app-flow-files-button
-                    [flowId]="currentFlowId"
-                    [flowName]="flowName"
-                    [canEdit]="canEdit"
-                ></app-flow-files-button>
-            }
-            <button
-                #arrangeBtnRef
-                class="arrange-btn"
-                title="Auto arrange"
-                matTooltip="Auto arrange"
-                matTooltipPosition="below"
-                [disabled]="!canEdit || isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
-                (click)="onAutoArrange()"
-            >
-                <app-svg-icon
-                    icon="auto-arrange"
-                    size="38px"
-                ></app-svg-icon>
-            </button>
-            <button
-                class="arrange-btn settings-icon-btn"
-                (click)="openSettings()"
-                title="Flow Settings"
-                matTooltip="Flow settings"
-                matTooltipPosition="below"
-            >
-                <i class="ti ti-settings"></i>
-            </button>
-        </div>
-    </div>
-    <app-flow-action-panel
-        (undo)="onUndo()"
-        (redo)="onRedo()"
-    ></app-flow-action-panel>
+    @if (!flowReadOnly.isReadOnly()) {
+        <app-flow-action-panel
+            (undo)="onUndo()"
+            (redo)="onRedo()"
+        ></app-flow-action-panel>
+    }
 
     @if (showContextMenu()) {
         <app-flow-graph-context-menu
@@ -342,6 +364,7 @@
             [currentFlowId]="currentFlowId"
             [canEdit]="canEdit"
             (nodeSelected)="onAddNodeFromContextMenu($event)"
+            (closed)="onCloseContextMenu()"
         >
         </app-flow-graph-context-menu>
     }

@@ -1,44 +1,68 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, inject, provideAppInitializer, provideZoneChangeDetection } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
-import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { MarkdownModule } from 'ngx-markdown';
-import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
+import { provideMarkdown } from 'ngx-markdown';
+import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
+import { firstValueFrom } from 'rxjs';
 
 import { routes } from './app.routes';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
+import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
+import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
-import { ConfigService } from './services/config/config.service';
-
-export function initializeApp(configService: ConfigService) {
-    return () => configService.loadConfig();
-}
+import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
+import { provideFlowsStorages } from './features/flows/flows.providers';
+import { provideKnowledgeSourcesStorages } from './features/knowledge-sources/knowledge-sources.providers';
+import { provideRoleBaseAccessStorages } from './features/role-base-access/role-base-access.providers';
+import { provideToolsStorages } from './features/tools/tools.providers';
+import { ActiveOrgService } from './services/auth/active-org.service';
+import { AuthService } from './services/auth/auth.service';
+import { PermissionsService } from './services/auth/permissions.service';
+import { ConfigService } from './services/config';
+import { APP_STORAGE } from './shared/services/app-storage.token';
+import { provideSharedStorages } from './shared/services/shared-storages.providers';
 
 export const appConfig: ApplicationConfig = {
     providers: [
         provideZoneChangeDetection({ eventCoalescing: true }),
         provideRouter(routes, withComponentInputBinding()),
-        provideAnimationsAsync(),
 
         provideHttpClient(
-            withInterceptors([authInterceptor, activeOrgInterceptor, validationErrorsInterceptor, forbiddenInterceptor])
+            withInterceptors([
+                preflightPermissionInterceptor,
+                authInterceptor,
+                activeOrgInterceptor,
+                validationErrorsInterceptor,
+                forbiddenInterceptor,
+                networkConnectionInterceptor,
+            ])
         ),
-        importProvidersFrom(MarkdownModule.forRoot({}), MonacoEditorModule.forRoot()),
+        provideMarkdown(),
+        provideMonacoEditor(),
 
-        {
-            provide: APP_INITIALIZER,
-            useFactory: initializeApp,
-            deps: [ConfigService],
-            multi: true,
-        },
+        provideAppInitializer(async () => {
+            const configService = inject(ConfigService);
+            const authService = inject(AuthService);
+            await configService.loadConfig();
+            await firstValueFrom(authService.restoreSession());
+        }),
         {
             provide: MAT_FORM_FIELD_DEFAULT_OPTIONS,
             useValue: {
                 appearance: 'outline',
             },
         },
+
+        { provide: APP_STORAGE, useExisting: ActiveOrgService, multi: true },
+        { provide: APP_STORAGE, useExisting: PermissionsService, multi: true },
+        ...provideRoleBaseAccessStorages(),
+        ...provideConfigureModelsStorages(),
+        ...provideFlowsStorages(),
+        ...provideToolsStorages(),
+        ...provideKnowledgeSourcesStorages(),
+        ...provideSharedStorages(),
     ],
 };

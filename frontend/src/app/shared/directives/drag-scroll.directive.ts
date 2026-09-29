@@ -2,7 +2,6 @@ import { Directive, ElementRef, HostListener, inject } from '@angular/core';
 
 @Directive({
     selector: '[appDragScroll]',
-    standalone: true,
     host: {
         style: 'user-select: none; touch-action: pan-y;',
     },

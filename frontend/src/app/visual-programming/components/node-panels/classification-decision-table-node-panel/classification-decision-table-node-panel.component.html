@@ -1,5 +1,6 @@
 <ng-template #exportButtonTpl>
     <app-action-dropdown-button
+        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
         label="Export"
         [items]="exportFormatItems"
         [panelWidth]="100"
@@ -24,44 +25,31 @@
                 >
                     <!-- Header fields row -->
                     <div class="panel-node-header">
-                        <div class="header-field">
-                            <label class="header-label"
-                                >Name
-                                <app-help-tooltip text="The unique identifier for this node" />
-                            </label>
-                            <input
-                                type="text"
-                                formControlName="node_name"
-                                class="header-input"
-                                placeholder="Node name"
-                            />
-                        </div>
+                        <app-custom-input
+                            label="Name"
+                            tooltipText="The unique identifier for this node"
+                            formControlName="node_name"
+                            placeholder="Node name"
+                            [readonly]="isReadOnly()"
+                        ></app-custom-input>
 
-                        <div class="header-field">
-                            <label class="header-label"
-                                >Default Next Node
-                                <app-help-tooltip text="Fallback route when no condition matches" />
-                            </label>
-                            <app-select
-                                label=""
-                                placeholder="Select Node"
-                                formControlName="default_next_node"
-                                [items]="availableNodeItems()"
-                            />
-                        </div>
+                        <app-select
+                            label="Default Next Node"
+                            tooltipText="Fallback route when no condition matches"
+                            placeholder="Select Node"
+                            formControlName="default_next_node"
+                            [items]="availableNodeItems()"
+                            [readonly]="isReadOnly()"
+                        />
 
-                        <div class="header-field">
-                            <label class="header-label"
-                                >Error Next Node
-                                <app-help-tooltip text="Route taken if evaluation fails" />
-                            </label>
-                            <app-select
-                                label=""
-                                placeholder="Select Node"
-                                formControlName="next_error_node"
-                                [items]="availableNodeItems()"
-                            />
-                        </div>
+                        <app-select
+                            label="Error Next Node"
+                            tooltipText="Route taken if evaluation fails"
+                            placeholder="Select Node"
+                            formControlName="next_error_node"
+                            [items]="availableNodeItems()"
+                            [readonly]="isReadOnly()"
+                        />
                     </div>
                 </app-lockable-field>
 
@@ -156,6 +144,7 @@
                                         [llmConfigs]="llmConfigOptions()"
                                         [preInputMapKeys]="inputMapVariableNames()"
                                         [domainKeys]="domainKeys()"
+                                        [readonly]="isReadOnly()"
                                         (conditionGroupsChange)="onConditionGroupsChange($event)"
                                         (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
                                         (promptAdd)="onPromptAdd($event.id, $event.config)"
@@ -167,7 +156,10 @@
 
                         <!-- Pre-computation Tab -->
                         @if (activeTab() === 'precomputation') {
-                            <div class="computation-section">
+                            <div
+                                class="computation-section"
+                                [class.sidebar-collapsed]="isSidebarCollapsed()"
+                            >
                                 <div
                                     #preSidebarColumn
                                     class="computation-sidebar"
@@ -175,7 +167,10 @@
                                 >
                                     <ng-container [formGroup]="preInputForm">
                                         <div class="cdt-input-map-wrapper">
-                                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                                            <app-input-map
+                                                [activeColor]="activeColor"
+                                                [readonly]="isReadOnly()"
+                                            ></app-input-map>
                                         </div>
                                     </ng-container>
                                     <app-lockable-field
@@ -185,7 +180,9 @@
                                         <app-node-secrets-field
                                             [activeColor]="activeColor"
                                             [value]="preSelectedSecretIds()"
-                                            tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                            [readonly]="!canEditSecrets()"
+                                            [names]="preSecretNames()"
+                                            [tooltipText]="preSecretsTooltip()"
                                             panelWidth="346px"
                                             (valueChange)="onPreSecretsChange($event)"
                                         />
@@ -196,6 +193,7 @@
                                         formControlName="pre_output_variable_path"
                                         placeholder="Enter output variable path (leave empty for null)"
                                         [activeColor]="activeColor"
+                                        [readonly]="isReadOnly()"
                                     ></app-custom-input>
                                     <app-custom-input
                                         label="Libraries"
@@ -203,6 +201,7 @@
                                         formControlName="pre_libraries"
                                         placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                         [activeColor]="activeColor"
+                                        [readonly]="isReadOnly()"
                                     ></app-custom-input>
                                 </div>
                                 <app-column-resize-divider
@@ -211,6 +210,9 @@
                                     [opposite]="preCodeColumn"
                                     [(width)]="sidebarWidth.width"
                                     [defaultWidth]="sidebarWidth.defaultWidth"
+                                    [collapsible]="true"
+                                    [minWidth]="350"
+                                    [(collapsed)]="isSidebarCollapsed"
                                 />
                                 <div
                                     #preCodeColumn
@@ -220,6 +222,7 @@
                                         [pythonCode]="preCode"
                                         [secretNames]="preSecretNames()"
                                         [inputMapKeys]="preInputMapKeys()"
+                                        [readOnly]="isReadOnly()"
                                         (pythonCodeChange)="onPreCodeChange($event)"
                                     ></app-code-editor>
                                 </div>
@@ -228,7 +231,10 @@
 
                         <!-- Post-computation Tab -->
                         @if (activeTab() === 'postcomputation') {
-                            <div class="computation-section">
+                            <div
+                                class="computation-section"
+                                [class.sidebar-collapsed]="isSidebarCollapsed()"
+                            >
                                 <div
                                     #postSidebarColumn
                                     class="computation-sidebar"
@@ -236,7 +242,10 @@
                                 >
                                     <ng-container [formGroup]="postInputForm">
                                         <div class="cdt-input-map-wrapper">
-                                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                                            <app-input-map
+                                                [activeColor]="activeColor"
+                                                [readonly]="isReadOnly()"
+                                            ></app-input-map>
                                         </div>
                                     </ng-container>
                                     <app-lockable-field
@@ -246,7 +255,9 @@
                                         <app-node-secrets-field
                                             [activeColor]="activeColor"
                                             [value]="postSelectedSecretIds()"
-                                            tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                            [readonly]="!canEditSecrets()"
+                                            [names]="postSecretNames()"
+                                            [tooltipText]="postSecretsTooltip()"
                                             panelWidth="346px"
                                             (valueChange)="onPostSecretsChange($event)"
                                         />
@@ -257,6 +268,7 @@
                                         formControlName="post_output_variable_path"
                                         placeholder="Enter output variable path (leave empty for null)"
                                         [activeColor]="activeColor"
+                                        [readonly]="isReadOnly()"
                                     ></app-custom-input>
                                     <app-custom-input
                                         label="Libraries"
@@ -264,6 +276,7 @@
                                         formControlName="post_libraries"
                                         placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                         [activeColor]="activeColor"
+                                        [readonly]="isReadOnly()"
                                     ></app-custom-input>
                                 </div>
                                 <app-column-resize-divider
@@ -272,6 +285,9 @@
                                     [opposite]="postCodeColumn"
                                     [(width)]="sidebarWidth.width"
                                     [defaultWidth]="sidebarWidth.defaultWidth"
+                                    [collapsible]="true"
+                                    [minWidth]="350"
+                                    [(collapsed)]="isSidebarCollapsed"
                                 />
                                 <div
                                     #postCodeColumn
@@ -281,6 +297,7 @@
                                         [pythonCode]="postCode"
                                         [secretNames]="postSecretNames()"
                                         [inputMapKeys]="postInputMapKeys()"
+                                        [readOnly]="isReadOnly()"
                                         (pythonCodeChange)="onPostCodeChange($event)"
                                     ></app-code-editor>
                                 </div>
@@ -298,6 +315,7 @@
                                         />
                                     </span>
                                     <button
+                                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                                         type="button"
                                         class="add-prompt-header-btn"
                                         (click)="addPrompt()"
@@ -338,7 +356,10 @@
                                                             }}</span>
                                                         }
                                                     </div>
-                                                    <div class="prompt-card-actions">
+                                                    <div
+                                                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                                        class="prompt-card-actions"
+                                                    >
                                                         <button
                                                             type="button"
                                                             class="icon-btn"
@@ -365,6 +386,7 @@
                                                                 class="field-input"
                                                                 [ngModel]="pendingPromptName()"
                                                                 [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
                                                                 (ngModelChange)="pendingPromptName.set($event)"
                                                                 (blur)="commitPromptRename(prompt.id)"
                                                                 (keydown.enter)="commitPromptRename(prompt.id)"
@@ -380,6 +402,7 @@
                                                             <app-llm-model-selector
                                                                 [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
                                                                 [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
                                                                 (modelSelected)="onPromptLlmChange(prompt.id, $event)"
                                                                 placeholder="Inherit default LLM"
                                                             ></app-llm-model-selector>
@@ -392,6 +415,7 @@
                                                                 class="field-input"
                                                                 [ngModel]="prompt.result_variable"
                                                                 [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
                                                                 (ngModelChange)="
                                                                     updatePrompt(prompt.id, 'result_variable', $event)
                                                                 "
@@ -413,6 +437,7 @@
                                                                     class="prompt-textarea prompt-textarea--transparent"
                                                                     rows="8"
                                                                     [ngModel]="prompt.prompt_text"
+                                                                    [readonly]="isReadOnly()"
                                                                     [ngModelOptions]="{ standalone: true }"
                                                                     (ngModelChange)="
                                                                         onPromptTextChange(prompt.id, $event)
@@ -429,6 +454,7 @@
                                                                 rows="4"
                                                                 [ngModel]="prompt.output_schema"
                                                                 [ngModelOptions]="{ standalone: true }"
+                                                                [readonly]="isReadOnly()"
                                                                 (ngModelChange)="
                                                                     updatePrompt(prompt.id, 'output_schema', $event)
                                                                 "

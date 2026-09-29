@@ -12,7 +12,7 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import Organization, OrganizationUser
+from rbac.models import Organization, OrganizationUser
 
 INTROSPECT_URL = "/api/auth/introspect/"
 

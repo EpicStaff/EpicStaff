@@ -2,23 +2,23 @@ import io
 
 import boto3
 from botocore.exceptions import ClientError
-
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
     FileInfo,
-    FolderInfo,
     FileListItem,
+    FolderInfo,
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
 
 
 class S3StorageBackend(AbstractStorageBackend):
     """
-    Storage backend for S3-compatible services (MinIO, AWS S3, etc.).
+    Storage backend for S3-compatible services (RustFS, AWS S3, etc.).
 
-    Pass endpoint_url for MinIO or any non-AWS S3-compatible service.
+    Pass endpoint_url for RustFS or any non-AWS S3-compatible service.
     Leave endpoint_url as None to connect to AWS S3 directly.
     """
 
@@ -41,7 +41,8 @@ class S3StorageBackend(AbstractStorageBackend):
 
     def _full_path(self, path: str) -> str:
         """Prepend the organization prefix to a caller-provided path."""
-        return self.organization_prefix + path.lstrip("/")
+        safe_path = sanitize_storage_path(path, allow_empty=True)
+        return self.organization_prefix + safe_path
 
     def _strip_prefix(self, full_key: str) -> str:
         """Remove the organization prefix from an S3 key."""
@@ -101,12 +102,8 @@ class S3StorageBackend(AbstractStorageBackend):
                     MaxKeys=2,
                 )
                 # folder_key itself is the zero-byte marker created by mkdir — exclude it
-                real_files = [
-                    obj for obj in probe.get("Contents", []) if obj["Key"] != folder_key
-                ]
-                is_empty = (
-                    len(real_files) == 0 and len(probe.get("CommonPrefixes", [])) == 0
-                )
+                real_files = [obj for obj in probe.get("Contents", []) if obj["Key"] != folder_key]
+                is_empty = len(real_files) == 0 and len(probe.get("CommonPrefixes", [])) == 0
                 results.append(
                     FileListItem(
                         id=None,
@@ -148,7 +145,7 @@ class S3StorageBackend(AbstractStorageBackend):
             response = self.client.get_object(Bucket=self.bucket_name, Key=full_path)
         except ClientError as error:
             if error.response["Error"]["Code"] == "NoSuchKey":
-                raise FileNotFoundError(f"File does not exist: {path}")
+                raise FileNotFoundError(f"File does not exist: {path}") from error
             raise
         return response["Body"].read()
 
@@ -175,8 +172,29 @@ class S3StorageBackend(AbstractStorageBackend):
                     Bucket=self.bucket_name,
                     Delete={"Objects": objects},
                 )
+                logger.info("Deleted {} S3 objects under prefix {}", len(objects), prefix)
+
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
+        full_prefix = self._full_path(prefix)
+        if not full_prefix or full_prefix == "/":
+            raise ValueError(
+                "delete_prefix() refused an empty resolved prefix — this "
+                "would delete every object in the bucket."
+            )
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if objects:
+                self.client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={"Objects": objects},
+                )
                 logger.info(
-                    "Deleted {} S3 objects under prefix {}", len(objects), prefix
+                    "Deleted {} S3 objects under prefix {}", len(objects), full_prefix
                 )
 
     def mkdir(self, path: str) -> None:
@@ -189,7 +207,7 @@ class S3StorageBackend(AbstractStorageBackend):
         except ClientError as error:
             code = error.response["Error"]["Code"]
             if code in ("400", "XMinioInvalidObjectName"):
-                raise ValueError(f"Invalid storage path: {path!r}")
+                raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
 
     def move(self, source_path: str, destination_path: str) -> str:
@@ -223,11 +241,7 @@ class S3StorageBackend(AbstractStorageBackend):
 
         # Folder: map source_prefix/* -> destination_prefix/* (no extra nesting)
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
-        dest_prefix = (
-            full_destination
-            if full_destination.endswith("/")
-            else full_destination + "/"
-        )
+        dest_prefix = full_destination if full_destination.endswith("/") else full_destination + "/"
 
         paginator = self.client.get_paginator("list_objects_v2")
         keys_to_delete = []
@@ -247,9 +261,7 @@ class S3StorageBackend(AbstractStorageBackend):
         if not found:
             raise FileNotFoundError(f"Source path does not exist: {source_path}")
 
-        self.client.delete_objects(
-            Bucket=self.bucket_name, Delete={"Objects": keys_to_delete}
-        )
+        self.client.delete_objects(Bucket=self.bucket_name, Delete={"Objects": keys_to_delete})
         logger.info("Renamed S3 prefix {} to {}", source_prefix, dest_prefix)
 
     def _key_exists(self, key: str, is_folder: bool) -> bool:
@@ -281,9 +293,7 @@ class S3StorageBackend(AbstractStorageBackend):
             if not self._key_exists(candidate, is_folder):
                 return candidate
 
-    def _copy_into(
-        self, source_path: str, destination_path: str
-    ) -> tuple[str, list[str]]:
+    def _copy_into(self, source_path: str, destination_path: str) -> tuple[str, list[str]]:
         """
         Copy source into the destination folder, deduping the destination name
         against existing keys.
@@ -357,7 +367,7 @@ class S3StorageBackend(AbstractStorageBackend):
             if code == "404":
                 pass
             elif code in ("400", "XMinioInvalidObjectName"):
-                raise ValueError(f"Invalid storage path: {path!r}")
+                raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
 
@@ -375,15 +385,13 @@ class S3StorageBackend(AbstractStorageBackend):
             if code == "404":
                 pass
             elif code in ("400", "XMinioInvalidObjectName"):
-                raise ValueError(f"Invalid storage path: {path!r}")
+                raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
 
         # Fallback: virtual folder (no marker, but objects exist under prefix)
         prefix = full_path if full_path.endswith("/") else full_path + "/"
-        response = self.client.list_objects_v2(
-            Bucket=self.bucket_name, Prefix=prefix, MaxKeys=1
-        )
+        response = self.client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix, MaxKeys=1)
         if response.get("Contents"):
             obj = response["Contents"][0]
             return FolderInfo(
@@ -396,6 +404,8 @@ class S3StorageBackend(AbstractStorageBackend):
 
     def exists(self, path: str) -> bool:
         full_path = self._full_path(path)
+        if path.endswith("/") and not full_path.endswith("/"):
+            full_path += "/"
         try:
             self.client.head_object(Bucket=self.bucket_name, Key=full_path)
             return True
@@ -542,7 +552,8 @@ class S3StorageBackend(AbstractStorageBackend):
                 stem = stem[: -len(ext)]
                 break
 
-        folder_key = prefix.rstrip("/") + "/" + stem
+        safe_stem = sanitize_storage_path(stem, allow_empty=False)
+        folder_key = f"{prefix.rstrip('/')}/{safe_stem}" if prefix else safe_stem
         full_folder_key = self._full_path(folder_key)
         unique_full_key = self._unique_key(full_folder_key, is_folder=True)
         unique_folder_path = self._strip_prefix(unique_full_key)

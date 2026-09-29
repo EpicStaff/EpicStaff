@@ -1,8 +1,8 @@
-import { stableNodeId } from '../../stable-node-id';
+import { NodeType } from '@shared/models';
 
-import { GetFileExtractorNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { GetFileExtractorNodeRequest } from '../../../core/models/file-extractor.model';
 import { FileExtractorNodeModel } from '../../../core/models/node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapFileExtractorNodeToModel(n: GetFileExtractorNodeRequest): FileExtractorNodeModel {

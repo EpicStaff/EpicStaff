@@ -1,13 +1,13 @@
 from rest_framework import serializers
 
 from tables.models import (
-    LLMModel,
-    LLMModelTag,
     EmbeddingModel,
     EmbeddingModelTag,
+    LLMModel,
+    LLMModelTag,
+    Provider,
     RealtimeModel,
     RealtimeTranscriptionModel,
-    Provider,
 )
 
 
@@ -36,9 +36,7 @@ class LLMModelImportSerializer(BaseModelImportSerializer):
         source="llm_provider",
         write_only=True,
     )
-    tags = serializers.PrimaryKeyRelatedField(
-        queryset=LLMModelTag.objects.all(), many=True
-    )
+    tags = serializers.PrimaryKeyRelatedField(queryset=LLMModelTag.objects.all(), many=True)
 
     class Meta:
         model = LLMModel
@@ -52,9 +50,7 @@ class EmbeddingModelImportSerializer(BaseModelImportSerializer):
         source="embedding_provider",
         write_only=True,
     )
-    tags = serializers.PrimaryKeyRelatedField(
-        queryset=EmbeddingModelTag.objects.all(), many=True
-    )
+    tags = serializers.PrimaryKeyRelatedField(queryset=EmbeddingModelTag.objects.all(), many=True)
 
     class Meta:
         model = EmbeddingModel

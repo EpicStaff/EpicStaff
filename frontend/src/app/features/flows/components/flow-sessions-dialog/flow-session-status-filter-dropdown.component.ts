@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -8,10 +7,9 @@ import {
     Output,
     signal,
 } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
-import { GraphSessionStatus } from '../../services/flows-sessions.service';
+import { AppSvgIconComponent } from '@shared/components';
+import { ClickOutsideDirective } from '@shared/directives';
+import { GraphSessionStatus } from '@shared/models';
 
 interface StatusOption {
     value: string;
@@ -22,8 +20,7 @@ interface StatusOption {
 
 @Component({
     selector: 'app-flow-session-status-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [ClickOutsideDirective, AppSvgIconComponent],
     template: `
         <div
             class="status-filter-dropdown-custom"

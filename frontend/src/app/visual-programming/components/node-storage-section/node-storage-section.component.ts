@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-
-import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
+import { ToggleSwitchComponent } from '@shared/components';
 
 const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 # ── Storage API ─────────────────────────────────
@@ -20,7 +19,6 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 # ────────────────────────────────────────────────`;
 
 @Component({
-    standalone: true,
     selector: 'app-node-storage-section',
     imports: [FormsModule, ToggleSwitchComponent],
     template: `
@@ -28,6 +26,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
             <div class="storage-header">
                 <span class="section-label">Enable Storage</span>
                 <app-toggle-switch
+                    [disabled]="readonly()"
                     [checked]="enabled()"
                     (checkedChange)="onToggle($event)"
                 ></app-toggle-switch>
@@ -39,6 +38,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
 })
 export class NodeStorageSectionComponent {
     readonly useStorage = input.required<boolean>();
+    readonly readonly = input<boolean>(false);
 
     readonly onInsertCode = output<string>();
     readonly onRemoveCode = output<string>();

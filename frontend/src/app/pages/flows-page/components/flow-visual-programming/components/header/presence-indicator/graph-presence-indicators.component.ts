@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { getAvatarColor } from 'src/app/visual-programming/core/helpers/avatar-colors';
+
 import { EditorInfo } from '../../../../../../../features/flows/services/graph-collaboration.ws.service';
 import { ProfileService } from '../../../../../../../services/auth/profile.service';
-import { ConfigService } from '../../../../../../../services/config/config.service';
+import { ConfigService } from '../../../../../../../services/config';
 
 @Component({
     selector: 'app-graph-presence-indicators',
-    standalone: true,
     imports: [MatTooltipModule],
     templateUrl: './graph-presence-indicators.component.html',
     styleUrl: './graph-presence-indicators.component.scss',

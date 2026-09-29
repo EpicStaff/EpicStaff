@@ -63,7 +63,6 @@ function formatDate(date: Date): string {
 
 @Component({
     selector: 'app-date-picker',
-    standalone: true,
     imports: [FormsModule, OverlayModule, TooltipComponent],
     templateUrl: './date-picker.component.html',
     styleUrls: ['./date-picker.component.scss'],
@@ -84,6 +83,8 @@ export class DatePickerComponent implements ControlValueAccessor {
     errorMessage = input<string>('');
     required = input<boolean>(false);
     allowPastDates = input<boolean>(false);
+    /** Readonly mode: renders the current date as plain text (no calendar, no editing). */
+    readonly = input<boolean>(false);
 
     selectedDate = signal<Date | null>(null);
     viewDate = signal<Date>(new Date());
@@ -149,6 +150,7 @@ export class DatePickerComponent implements ControlValueAccessor {
     private onTouched: () => void = () => {};
 
     onDateInput(raw: string): void {
+        if (this.readonly()) return;
         const el = this.dateInputEl?.nativeElement;
         const rawCaret = el?.selectionStart ?? null;
 
@@ -235,6 +237,7 @@ export class DatePickerComponent implements ControlValueAccessor {
     }
 
     selectDay(cell: DayCell): void {
+        if (this.readonly()) return;
         if (!cell.date || (!this.allowPastDates() && cell.isPast)) return;
         this.selectedDate.set(cell.date);
         this.inputError.set('');
@@ -256,7 +259,7 @@ export class DatePickerComponent implements ControlValueAccessor {
     }
 
     openDropdown(): void {
-        if (this.isOpen() || this.isDisabled()) return;
+        if (this.isOpen() || this.isDisabled() || this.readonly()) return;
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(this.triggerEl)
@@ -295,6 +298,7 @@ export class DatePickerComponent implements ControlValueAccessor {
     }
 
     toggleDropdown(): void {
+        if (this.readonly()) return;
         if (this.isOpen()) {
             this.close();
         } else {

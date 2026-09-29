@@ -2,16 +2,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission
-from tables.services.rbac.effective_permissions import EffectivePermissions
-from tables.services.rbac.org_context_service import OrgContextService
-from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.rbac.rbac_exceptions import (
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission
+from rbac.access.effective import EffectivePermissions
+from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
+from rbac.exceptions import (
     OrgContextRequiredError,
     OrgMembershipRequiredError,
 )
-from tables.services.rbac.utils.permission_bitmask import (
+from rbac.access.bitmask import (
     actions_to_bitmask,
     bitmask_to_actions,
 )
@@ -154,8 +154,8 @@ def test_resolver_org_admin_membership(resolver, org_admin_user, org_acme):
     effective = resolver.resolve(user=org_admin_user, org_id=org_acme.id)
     assert effective.is_superadmin is False
     assert effective.role.name == "Org Admin"
-    # Org Admin has CRUD on users per the seed (users bitmask = 15).
-    assert effective.can("users", Permission.UPDATE) is True
+    # Org Admin has CRUD on memberships per the seed (memberships bitmask = 15).
+    assert effective.can("memberships", Permission.UPDATE) is True
     # Org Admin has no permissions on organizations resource per seed.
     assert effective.can("organizations", Permission.DELETE) is False
 

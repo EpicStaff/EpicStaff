@@ -1,0 +1,13 @@
+<button
+    type="button"
+    class="view-btn"
+    [disabled]="disabled()"
+    [matTooltip]="tooltip()"
+    (click)="triggered.emit()"
+>
+    <app-svg-icon
+        icon="view"
+        width="16px"
+        height="11px"
+    />
+</button>

@@ -3,7 +3,6 @@ import { FormsModule } from '@angular/forms';
 
 @Component({
     selector: 'app-editable-textarea',
-    standalone: true,
     imports: [FormsModule],
     template: `
         <textarea

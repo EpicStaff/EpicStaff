@@ -1,30 +1,27 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     EventEmitter,
     HostListener,
+    inject,
     Input,
     OnDestroy,
     OnInit,
     Output,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { GetMcpToolRequest, GetPythonCodeToolRequest } from '@shared/models';
 import { forkJoin, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
-import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
-import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
+import { TOOLS_SOURCE } from './tools-source.token';
 
 @Component({
     selector: 'app-tools-selector',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ReactiveFormsModule, IconButtonComponent, AppSvgIconComponent],
+    imports: [FormsModule, ReactiveFormsModule, IconButtonComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <!-- Tools Selection Button -->
@@ -33,18 +30,12 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 class="tools-display"
                 (click)="openToolsDialog()"
             >
-                <div
-                    *ngIf="totalSelectedTools === 0"
-                    class="no-tools-selected"
-                >
-                    Select tools
-                </div>
-                <div
-                    *ngIf="totalSelectedTools > 0"
-                    class="tools-summary"
-                >
-                    {{ totalSelectedTools }} tool(s) selected
-                </div>
+                @if (totalSelectedTools === 0) {
+                    <div class="no-tools-selected">Select tools</div>
+                }
+                @if (totalSelectedTools > 0) {
+                    <div class="tools-summary">{{ totalSelectedTools }} tool(s) selected</div>
+                }
                 <div class="tools-selector-icon">
                     <svg
                         width="16"
@@ -66,156 +57,143 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
         </div>
 
         <!-- Tools Dialog -->
-        <div
-            class="tools-dialog-overlay"
-            *ngIf="showToolsDialog"
-        >
-            <div class="tools-dialog">
-                <!-- Header -->
-                <div class="tools-dialog-header">
-                    <div class="header-title">
-                        <app-svg-icon
-                            icon="tools"
-                            size="0.1rem"
-                        />
-                        <span>Select Tools</span>
-                    </div>
-                    <app-icon-button
-                        icon="x"
-                        ariaLabel="Close dialog"
-                        size="1.5rem"
-                        (onClick)="closeToolsDialog()"
-                    ></app-icon-button>
-                </div>
-
-                <!-- Search and Tabs -->
-                <div class="tools-header">
-                    <div class="search-bar">
-                        <input
-                            type="text"
-                            [(ngModel)]="toolsSearchTerm"
-                            placeholder="Search tools..."
-                        />
-                    </div>
-                    <div class="tools-tabs">
-                        <button
-                            [class.active]="currentToolType === 'python'"
-                            (click)="toggleToolType('python')"
-                        >
-                            Custom Tools
-                        </button>
-                        <button
-                            [class.active]="currentToolType === 'mcp'"
-                            (click)="toggleToolType('mcp')"
-                        >
-                            MCP Tools
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Body -->
-                <div class="tools-dialog-body">
-                    <!-- Loading State -->
-                    <div
-                        *ngIf="isLoadingTools"
-                        class="tools-loading"
-                    >
-                        <div class="spinner">
-                            <div class="bounce1"></div>
-                            <div class="bounce2"></div>
-                            <div class="bounce3"></div>
+        @if (showToolsDialog) {
+            <div class="tools-dialog-overlay">
+                <div class="tools-dialog">
+                    <!-- Header -->
+                    <div class="tools-dialog-header">
+                        <div class="header-title">
+                            <app-svg-icon
+                                icon="tools"
+                                size="0.1rem"
+                            />
+                            <span>Select Tools</span>
                         </div>
-                        <div class="loading-text">Loading tools...</div>
+                        <app-icon-button
+                            icon="x"
+                            ariaLabel="Close dialog"
+                            size="1.5rem"
+                            (onClick)="closeToolsDialog()"
+                        ></app-icon-button>
                     </div>
-
-                    <!-- Python Tools List -->
-                    <div
-                        *ngIf="!isLoadingTools && currentToolType === 'python'"
-                        class="tools-list"
-                    >
-                        <!-- Empty State -->
-                        <div
-                            *ngIf="filteredPythonTools.length === 0"
-                            class="empty-state"
-                        >
-                            No custom tools found
+                    <!-- Search and Tabs -->
+                    <div class="tools-header">
+                        <div class="search-bar">
+                            <input
+                                type="text"
+                                [(ngModel)]="toolsSearchTerm"
+                                placeholder="Search tools..."
+                            />
                         </div>
-
-                        <!-- Tools List -->
-                        <div
-                            *ngFor="let tool of filteredPythonTools"
-                            class="tool-item"
-                            [class.selected]="selectedPythonToolIds.has(tool.id)"
-                            (click)="togglePythonTool(tool)"
-                        >
-                            <div class="tool-info">
-                                <div class="tool-name">{{ tool.name }}</div>
-                                <div class="tool-description">
-                                    {{ tool.description || 'No description available' }}
+                        <div class="tools-tabs">
+                            <button
+                                [class.active]="currentToolType === 'python'"
+                                (click)="toggleToolType('python')"
+                            >
+                                Custom Tools
+                            </button>
+                            <button
+                                [class.active]="currentToolType === 'mcp'"
+                                (click)="toggleToolType('mcp')"
+                            >
+                                MCP Tools
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Body -->
+                    <div class="tools-dialog-body">
+                        <!-- Loading State -->
+                        @if (isLoadingTools) {
+                            <div class="tools-loading">
+                                <div class="spinner">
+                                    <div class="bounce1"></div>
+                                    <div class="bounce2"></div>
+                                    <div class="bounce3"></div>
                                 </div>
+                                <div class="loading-text">Loading tools...</div>
                             </div>
-                            <div class="tool-checkbox">
-                                <input
-                                    type="checkbox"
-                                    [checked]="selectedPythonToolIds.has(tool.id)"
-                                    (click)="$event.stopPropagation(); togglePythonTool(tool)"
-                                />
+                        }
+                        <!-- Python Tools List -->
+                        @if (!isLoadingTools && currentToolType === 'python') {
+                            <div class="tools-list">
+                                <!-- Empty State -->
+                                @if (filteredPythonTools.length === 0) {
+                                    <div class="empty-state">No custom tools found</div>
+                                }
+                                <!-- Tools List -->
+                                @for (tool of filteredPythonTools; track tool) {
+                                    <div
+                                        class="tool-item"
+                                        [class.selected]="selectedPythonToolIds.has(tool.id)"
+                                        (click)="togglePythonTool(tool)"
+                                    >
+                                        <div class="tool-info">
+                                            <div class="tool-name">{{ tool.name }}</div>
+                                            <div class="tool-description">
+                                                {{ tool.description || 'No description available' }}
+                                            </div>
+                                        </div>
+                                        <div class="tool-checkbox">
+                                            <input
+                                                type="checkbox"
+                                                [checked]="selectedPythonToolIds.has(tool.id)"
+                                                (click)="$event.stopPropagation(); togglePythonTool(tool)"
+                                            />
+                                        </div>
+                                    </div>
+                                }
                             </div>
-                        </div>
+                        }
+                        <!-- MCP Tools List -->
+                        @if (!isLoadingTools && currentToolType === 'mcp') {
+                            <div class="tools-list">
+                                <!-- Empty State -->
+                                @if (filteredMcpTools.length === 0) {
+                                    <div class="empty-state">No MCP tools found</div>
+                                }
+                                <!-- Tools List -->
+                                @for (tool of filteredMcpTools; track tool) {
+                                    <div
+                                        class="tool-item"
+                                        [class.selected]="selectedMcpToolIds.has(tool.id)"
+                                        (click)="toggleMcpTool(tool)"
+                                    >
+                                        <div class="tool-info">
+                                            <div class="tool-name">{{ tool.name }}</div>
+                                            <div class="tool-description">
+                                                {{ tool.tool_name }} - {{ tool.transport }}
+                                            </div>
+                                        </div>
+                                        <div class="tool-checkbox">
+                                            <input
+                                                type="checkbox"
+                                                [checked]="selectedMcpToolIds.has(tool.id)"
+                                                (click)="$event.stopPropagation(); toggleMcpTool(tool)"
+                                            />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
-
-                    <!-- MCP Tools List -->
-                    <div
-                        *ngIf="!isLoadingTools && currentToolType === 'mcp'"
-                        class="tools-list"
-                    >
-                        <!-- Empty State -->
-                        <div
-                            *ngIf="filteredMcpTools.length === 0"
-                            class="empty-state"
+                    <!-- Footer -->
+                    <div class="tools-dialog-footer">
+                        <button
+                            class="cancel-btn"
+                            (click)="closeToolsDialog()"
                         >
-                            No MCP tools found
-                        </div>
-
-                        <!-- Tools List -->
-                        <div
-                            *ngFor="let tool of filteredMcpTools"
-                            class="tool-item"
-                            [class.selected]="selectedMcpToolIds.has(tool.id)"
-                            (click)="toggleMcpTool(tool)"
+                            Cancel
+                        </button>
+                        <button
+                            class="save-btn"
+                            (click)="saveToolSelection()"
                         >
-                            <div class="tool-info">
-                                <div class="tool-name">{{ tool.name }}</div>
-                                <div class="tool-description">{{ tool.tool_name }} - {{ tool.transport }}</div>
-                            </div>
-                            <div class="tool-checkbox">
-                                <input
-                                    type="checkbox"
-                                    [checked]="selectedMcpToolIds.has(tool.id)"
-                                    (click)="$event.stopPropagation(); toggleMcpTool(tool)"
-                                />
-                            </div>
-                        </div>
+                            Save Selection
+                        </button>
                     </div>
-                </div>
-
-                <!-- Footer -->
-                <div class="tools-dialog-footer">
-                    <button
-                        class="cancel-btn"
-                        (click)="closeToolsDialog()"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        class="save-btn"
-                        (click)="saveToolSelection()"
-                    >
-                        Save Selection
-                    </button>
                 </div>
             </div>
-        </div>
+        }
     `,
     styles: [
         `
@@ -229,7 +207,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 .tools-display {
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
-                    border-radius: 6px;
+                    border-radius: 4px;
                     padding: 0.625rem 0.75rem;
                     display: flex;
                     justify-content: space-between;
@@ -311,7 +289,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             width: 100%;
                             background-color: var(--color-input-background);
                             border: 1px solid var(--color-input-border);
-                            border-radius: 6px;
+                            border-radius: 4px;
                             padding: 0.625rem 0.75rem;
                             color: #fff;
                             font-size: 0.875rem;
@@ -427,7 +405,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             justify-content: space-between;
                             align-items: center;
                             padding: 0.75rem 1rem;
-                            border-radius: 6px;
+                            border-radius: 4px;
                             background: var(--color-input-background);
                             transition: all 0.2s ease;
                             cursor: pointer;
@@ -448,8 +426,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                                 overflow: hidden;
 
                                 .tool-name {
-                                    font-size: 0.875rem;
-                                    font-weight: 500;
+                                    font-size: var(--text-body-medium-size);
+                                    font-weight: var(--text-body-medium-weight);
                                     color: var(--color-text-primary);
                                     margin-bottom: 0.25rem;
                                 }
@@ -482,8 +460,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     button {
                         padding: 0.5rem 1rem;
                         border-radius: 6px;
-                        font-size: 0.875rem;
-                        font-weight: 500;
+                        font-size: var(--text-body-medium-size);
+                        font-weight: var(--text-body-medium-weight);
                         cursor: pointer;
                         transition: all 0.2s ease;
 
@@ -553,11 +531,8 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
 
     private readonly destroy$ = new Subject<void>();
 
-    constructor(
-        private pythonCodeToolService: PythonCodeToolService,
-        private mcpToolsService: McpToolsService,
-        private cdr: ChangeDetectorRef
-    ) {}
+    private readonly toolsSource = inject(TOOLS_SOURCE);
+    private readonly cdr = inject(ChangeDetectorRef);
 
     ngOnInit(): void {
         this.loadTools();
@@ -576,8 +551,8 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         this.isLoadingTools = true;
 
         forkJoin({
-            pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
-            mcpTools: this.mcpToolsService.getMcpTools(),
+            pythonTools: this.toolsSource.getPythonCodeTools(),
+            mcpTools: this.toolsSource.getMcpTools(),
         })
             .pipe(takeUntil(this.destroy$))
             .subscribe({

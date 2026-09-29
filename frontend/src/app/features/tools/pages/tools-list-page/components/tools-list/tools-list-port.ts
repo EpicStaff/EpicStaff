@@ -2,6 +2,7 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
 
+import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { ToolFilterAdapter } from '../../../../utils/tools-cards.util';
 import { ToolKind } from '../tool-card/tool-card.model';
@@ -11,7 +12,9 @@ import { ToolKind } from '../tool-card/tool-card.model';
  * or MCP tools). One instance is provided per route; the unified
  * `ToolsListComponent` calls only into these methods so it stays kind-agnostic.
  */
-export interface ToolsListPort<T extends { id: number; name: string; labels: number[]; is_favorite: boolean }> {
+export interface ToolsListPort<
+    T extends { id: number; name: string; labels: number[]; is_favorite: boolean; updated_at?: string },
+> {
     // discriminators / labels
     readonly kind: ToolKind;
     readonly entityLabel: string;
@@ -28,7 +31,7 @@ export interface ToolsListPort<T extends { id: number; name: string; labels: num
 
     // service delegates
     getAll(): Observable<T[]>;
-    copy(id: number, body: { name: string }): Observable<T>;
+    copy(id: number): Observable<T>;
     exportOne(id: number): Observable<Blob>;
     bulkExport(ids: number[]): Observable<Blob>;
     patchLabels(id: number, labelIds: number[]): Observable<T>;
@@ -37,11 +40,12 @@ export interface ToolsListPort<T extends { id: number; name: string; labels: num
     addFav(id: number): Observable<void>;
     delFav(id: number): Observable<void>;
     importFile(file: File): Observable<unknown>;
+    inspectFile(file: File): Observable<InspectResult>;
     getBulkUsage(ids: number[]): Observable<GetBulkToolUsageItem[]>;
     getUsageDetail(id: number): Observable<GetToolUsage>;
 
     // configure/edit dialog
-    openConfigureDialog(dialog: Dialog, tool: T, allTools: T[]): DialogRef<T>;
+    openConfigureDialog(dialog: Dialog, tool: T): DialogRef<T>;
 
     /**
      * Opens the kind-specific "create tool" dialog. On confirm, the port

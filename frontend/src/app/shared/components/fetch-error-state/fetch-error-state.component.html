@@ -1,0 +1,23 @@
+<div
+    class="fetch-error-state"
+    [class.fetch-error-state--small]="mod() === 'small'"
+    role="alert"
+>
+    <app-svg-icon
+        [size]="mod() === 'small' ? '2rem' : '3rem'"
+        icon="warning"
+    />
+
+    <div class="message-wrapper">
+        <h3 class="title">{{ title() }}</h3>
+        <p class="message">{{ message() }}</p>
+    </div>
+
+    <app-button
+        type="outline-primary"
+        leftIcon="refresh"
+        (click)="retry.emit()"
+    >
+        {{ retryLabel() }}
+    </app-button>
+</div>

@@ -1,4 +1,4 @@
-import { NgIf, NgStyle, NgTemplateOutlet } from '@angular/common';
+import { NgStyle, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -13,16 +13,15 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
+import { AppSvgIconComponent, GoToButtonComponent } from '@shared/components';
+import { NodeType } from '@shared/models';
+import { LlmConfigStorageService } from '@shared/services';
+import { flowUrl } from '@shared/utils';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { EditorInfo } from '../../../features/flows/services/graph-collaboration.ws.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
-import { LlmConfigStorageService } from '../../../shared/services/llms/llm-config-storage.service';
-import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
-import { NodeType } from '../../core/enums/node-type';
 import { getAvatarColor } from '../../core/helpers/avatar-colors';
 import {
     AgentNodeModel,
@@ -33,7 +32,6 @@ import {
     GraphNoteModel,
     LLMNodeModel,
     NodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -43,6 +41,7 @@ import {
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
@@ -53,10 +52,8 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
     selector: 'app-flow-base-node',
     templateUrl: './flow-base-node.component.html',
     styleUrls: ['./flow-base-node.component.scss'],
-    standalone: true,
     imports: [
         FFlowModule,
-        NgIf,
         NgStyle,
         NgTemplateOutlet,
         ClickOrDragDirective,
@@ -79,6 +76,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
 export class FlowBaseNodeComponent {
     private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
+    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
@@ -94,7 +92,6 @@ export class FlowBaseNodeComponent {
     @Input() canEdit: boolean = true;
     multiSelectActive = input<boolean>(false);
 
-    @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
     @Output() portMouseenter = new EventEmitter<void>();
     @Output() portMouseleave = new EventEmitter<void>();
 
@@ -158,8 +155,6 @@ export class FlowBaseNodeComponent {
                 return 'type-agent';
             case NodeType.TASK:
                 return 'type-task';
-            case NodeType.PROJECT:
-                return 'type-project';
             case NodeType.TOOL:
                 return 'type-tool';
             case NodeType.LLM:
@@ -268,10 +263,6 @@ export class FlowBaseNodeComponent {
         return this.hasMissingAgent
             ? 'This node has no agent assigned (the agent may have been deleted). Assign an agent to this node.'
             : '';
-    }
-
-    public onExpandProjectClick(): void {
-        this.projectExpandToggled.emit(this.node as ProjectNodeModel);
     }
 
     public getNodeTitle(): string {

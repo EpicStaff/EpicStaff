@@ -1,11 +1,11 @@
 """Storage implementations and the AbstractStorage contract."""
 
 from .abstract import AbstractStorage
-from .redis_ import RedisStorage
-from .minio_ import MinioStorage
+from .redis_storage import RedisStorage
+from .s3_storage import S3Storage
 
 __all__ = [
     "AbstractStorage",
     "RedisStorage",
-    "MinioStorage",
+    "S3Storage",
 ]

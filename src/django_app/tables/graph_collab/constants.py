@@ -7,11 +7,10 @@ from tables.graph_collab.protocol import (
     ConnectionsDeletedMessage,
     ConnectionWaypointsUpdatedMessage,
     NodeCreatedMessage,
-    NodeUpdatedMessage,
     NodesDeletedMessage,
+    NodeUpdatedMessage,
     SelectionChangedMessage,
 )
-
 from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 
 # -------------------------------------------------------------------
@@ -23,9 +22,7 @@ from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 CURSOR_FLUSH_INTERVAL_SECONDS: float = 0.15
 
 # Seconds between each autosave flush to the database
-AUTOSAVE_FLUSH_INTERVAL_SECONDS: float = getattr(
-    settings, "AUTOSAVE_FLUSH_INTERVAL_SECONDS", 20.0
-)
+AUTOSAVE_FLUSH_INTERVAL_SECONDS: float = getattr(settings, "AUTOSAVE_FLUSH_INTERVAL_SECONDS", 20.0)
 
 # Redis pub/sub channel prefix for per-graph cursor traffic.
 CURSOR_REDIS_CHANNEL_PREFIX: str = "cursors"
@@ -81,7 +78,6 @@ _EDGE_ENDPOINT_TEMP_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
 # list type: node lists use the <type>_node_ids pattern; edge lists use
 # edge_ids / conditional_edge_ids.
 _LIST_KEY_TO_DELETE_KEY: dict[str, str] = {
-    "crew_node_list": "crew_node_ids",
     "task_node_list": "task_node_ids",
     "agent_node_list": "agent_node_ids",
     "python_node_list": "python_node_ids",
@@ -126,10 +122,6 @@ _SINGLETON_LIST_KEYS: frozenset[str] = frozenset(
 # apply_op pins these to their currently-stored value for non-superadmins
 # before any snapshot mutation — see _pin_privileged_fields.
 PRIVILEGED_NESTED_FIELDS: dict[str, dict[str, frozenset[str]]] = {
-    "webhook_trigger_node_list": {
-        "webhook_trigger": frozenset({"ngrok_webhook_config"})
-    },
-    "telegram_trigger_node_list": {
-        "webhook_trigger": frozenset({"ngrok_webhook_config"})
-    },
+    "webhook_trigger_node_list": {"webhook_trigger": frozenset({"ngrok_webhook_config"})},
+    "telegram_trigger_node_list": {"webhook_trigger": frozenset({"ngrok_webhook_config"})},
 }

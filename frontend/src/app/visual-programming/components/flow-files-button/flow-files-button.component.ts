@@ -2,6 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import {
@@ -11,7 +12,6 @@ import {
 } from '../../../features/files/components/select-storage-files-dialog/select-storage-files-dialog.component';
 import { GraphFileRecord } from '../../../features/files/models/storage.models';
 import { StorageApiService } from '../../../features/files/services/storage-api.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-flow-files-button',

@@ -1,9 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { WebhookTriggerModel } from '@shared/models';
 import { map, Observable, Subject, tap } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
-import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
 
 interface ApiListResponse<T> {
     results: T[];

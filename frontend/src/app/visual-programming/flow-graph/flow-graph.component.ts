@@ -41,6 +41,9 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
+import { AppSvgIconComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 import {
     EditorInfo,
@@ -51,8 +54,7 @@ import {
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { ProfileService } from '../../services/auth/profile.service';
-import { ToastService } from '../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
@@ -65,11 +67,9 @@ import { CdtExportImportService } from '../components/node-panels/classification
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
-import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
-import { NodeType } from '../core/enums/node-type';
 import { computeAutoArrangePositions } from '../core/helpers/auto-arrange.util';
 import { getAvatarColor } from '../core/helpers/avatar-colors';
 import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
@@ -91,11 +91,12 @@ import {
 } from '../core/helpers/segment-avoidance.helper';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
-import { GraphNoteModel, NodeModel, ProjectNodeModel, StartNodeModel } from '../core/models/node.model';
+import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -104,6 +105,13 @@ import { createFlowConnection } from '../utils/connection.factory';
 import { diffFlowModels, FlowDiffResult } from '../utils/diff-flow-models.util';
 import { normalizeFlowPorts } from '../utils/load';
 import { CursorState, GraphLiveCursorsComponent } from './graph-live-cursors/graph-live-cursors.component';
+
+interface ConnectionEndGrab {
+    connection: ConnectionModel;
+    group: ConnectionModel[];
+    endpoint: 'source' | 'target';
+    fromPort: boolean;
+}
 
 function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     if (a.length !== b.length) return false;
@@ -114,8 +122,11 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     selector: 'app-flow-graph',
     templateUrl: './flow-graph.component.html',
     styleUrls: ['../styles/_variables.scss', './flow-graph.component.scss'],
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '(document:pointerup)': 'resetReassignHighlight()',
+        '(document:pointercancel)': 'resetReassignHighlight()',
+    },
     providers: [
         {
             provide: F_CONNECTION_BUILDERS,
@@ -143,6 +154,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         FlowFilesButtonComponent,
         GraphLiveCursorsComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -175,6 +187,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private nodePanelShell?: NodePanelShellComponent;
 
     @ViewChild('arrangeBtnRef') private arrangeBtnRef?: ElementRef<HTMLButtonElement>;
+
+    @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
+
+    public closeNodesSearch(): void {
+        this.nodesSearchComponent?.closeSearch();
+    }
 
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
@@ -217,7 +235,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     });
 
     readonly multiSelectTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
-        this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
+        this.multiSelectActive() || (event instanceof MouseEvent && (event.shiftKey || event.ctrlKey || event.metaKey));
 
     readonly selectionAreaTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
         this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
@@ -296,9 +314,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private dragUndoBeforeSnapshot: FlowModel | null = null;
     protected readonly connectionRenderVersions = signal<Record<string, number>>({});
     private readonly hiddenConnectionIds = signal<Set<string>>(new Set<string>());
+    protected readonly reassignSuppressedConnectionIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly reassignFollowerIds = signal<ReadonlySet<string>>(new Set<string>());
+    private reassignGroupIds: string[] = [];
 
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
+    protected readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly undoRedoService = inject(UndoRedoService);
     private readonly clipboardService = inject(ClipboardService);
     private readonly nodeFactory = inject(NodeFactoryService);
@@ -355,6 +377,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
         return result;
     });
+    private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     private lastSeenFullSaveRequest = 0;
 
@@ -506,16 +529,140 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    public onReassignConnection(event: FReassignConnectionEvent): void {
-        if (!this.canEdit) return;
-        this.hasUnarrangedChanges.set(true);
-        if (!event.newTargetId && !event.newSourceId) {
-            console.warn('No new target or source provided for reassignment');
+    public onFlowMouseDown(event: MouseEvent): void {
+        const isPlainPress =
+            event.button === 0 && !event.shiftKey && !this.multiSelectActive() && !this.isEditingLocked();
+        const grab = isPlainPress && !event.ctrlKey && !event.metaKey ? this.resolveConnectionEndGrab(event) : null;
+
+        this.reassignGroupIds = grab?.group.map((conn) => conn.id) ?? [];
+        this.suppressReassignOfNeighbours(grab);
+
+        if (!grab?.fromPort) {
             return;
         }
 
-        this.recordAfterChange();
+        const connectionElement = this.findConnectionElement(grab.connection.id);
+        const handle = connectionElement && this.getDragHandle(connectionElement, grab.endpoint);
+        if (!handle) {
+            return;
+        }
 
+        const { left, top, width, height } = handle.getBoundingClientRect();
+        // Foblex starts a reassign only when mousedown lands on a connection drag handle, so the grab point is moved onto it.
+        Object.defineProperties(event, {
+            clientX: { value: left + width / 2 },
+            clientY: { value: top + height / 2 },
+        });
+    }
+
+    private resolveConnectionEndGrab(event: MouseEvent): ConnectionEndGrab | null {
+        const target = event.target as Element | null;
+
+        const connectionElement = target?.closest('f-connection');
+        if (connectionElement) {
+            return this.resolveHandleGrab(connectionElement, event);
+        }
+
+        const portElement = target?.closest<HTMLElement>('[data-f-output-id], [data-f-input-id]');
+        const portId = portElement?.dataset['fOutputId'] ?? portElement?.dataset['fInputId'];
+        return portId ? this.resolvePortGrab(portId) : null;
+    }
+
+    private resolveHandleGrab(connectionElement: Element, event: MouseEvent): ConnectionEndGrab | null {
+        const connection = this.flowService.connections().find((conn) => conn.id === connectionElement.id);
+        if (!connection) {
+            return null;
+        }
+
+        const endpoint = (['target', 'source'] as const).find((end) => {
+            const handle = this.getDragHandle(connectionElement, end);
+            if (!handle) {
+                return false;
+            }
+            const { left, top, width, height } = handle.getBoundingClientRect();
+            const radius = width / 2;
+            return (event.clientX - (left + radius)) ** 2 + (event.clientY - (top + height / 2)) ** 2 <= radius ** 2;
+        });
+        if (!endpoint) {
+            return null;
+        }
+
+        const selectedIds = this.getSelectedConnectionIds();
+        const portId = endpoint === 'source' ? connection.sourcePortId : connection.targetPortId;
+        const selectedAtPort = selectedIds.has(connection.id)
+            ? this.connectionsAtPort(portId).filter((conn) => conn.id !== connection.id && selectedIds.has(conn.id))
+            : [];
+
+        return { connection, group: [connection, ...selectedAtPort], endpoint, fromPort: false };
+    }
+
+    private resolvePortGrab(portId: string): ConnectionEndGrab | null {
+        const port = this.flowService
+            .nodes()
+            .flatMap((node) => node.ports ?? [])
+            .find((p) => p.id === portId);
+        if (!port) {
+            return null;
+        }
+
+        const attached = this.connectionsAtPort(portId);
+        const selectedIds = this.getSelectedConnectionIds();
+        const selected = attached.filter((conn) => selectedIds.has(conn.id));
+        const canMoveAll = port.port_type === 'input' || !port.multiple;
+        const group = selected.length > 0 ? selected : canMoveAll ? attached : [];
+        if (group.length === 0) {
+            return null;
+        }
+
+        const [connection] = group;
+        return {
+            connection,
+            group,
+            endpoint: connection.sourcePortId === portId ? 'source' : 'target',
+            fromPort: true,
+        };
+    }
+
+    private getSelectedConnectionIds(): Set<string> {
+        return new Set(this.fFlowComponent.getSelection().fConnectionIds);
+    }
+
+    private suppressReassignOfNeighbours(grab: ConnectionEndGrab | null): void {
+        const suppressed = new Set<string>();
+        if (grab) {
+            const portId = grab.endpoint === 'source' ? grab.connection.sourcePortId : grab.connection.targetPortId;
+            this.connectionsAtPort(portId)
+                .filter((conn) => conn.id !== grab.connection.id)
+                .forEach((conn) => suppressed.add(conn.id));
+        }
+
+        if (suppressed.size === 0 && this.reassignSuppressedConnectionIds().size === 0) {
+            return;
+        }
+
+        this.reassignSuppressedConnectionIds.set(suppressed);
+        // Foblex picks the connection to reassign later in this same mousedown, so the disabled flags must reach it synchronously.
+        this.cd.detectChanges();
+    }
+
+    private connectionsAtPort(portId: string): ConnectionModel[] {
+        return this.flowService
+            .connections()
+            .filter((conn) => conn.sourcePortId === portId || conn.targetPortId === portId);
+    }
+
+    private findConnectionElement(connectionId: string): Element | null {
+        return this.hostElement.nativeElement.querySelector(`f-connection[id="${CSS.escape(connectionId)}"]`);
+    }
+
+    private getDragHandle(connectionElement: Element, endpoint: 'source' | 'target'): Element | null {
+        return connectionElement.querySelector(
+            endpoint === 'source' ? 'circle[f-connection-drag-handle-start]' : 'circle[f-connection-drag-handle-end]'
+        );
+    }
+
+    public onReassignConnection(event: FReassignConnectionEvent): void {
+        if (!this.canEdit || this.flowReadOnly.isReadOnly()) return;
         const existingConnection = this.flowService.connections().find((conn) => conn.id === event.connectionId);
 
         if (!existingConnection) {
@@ -523,55 +670,108 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        const newSourcePortId = event.newSourceId || existingConnection.sourcePortId;
-        const newTargetPortId = event.newTargetId || existingConnection.targetPortId;
+        const groupIds = new Set(
+            this.reassignGroupIds.includes(existingConnection.id) ? this.reassignGroupIds : [existingConnection.id]
+        );
+        this.reassignGroupIds = [];
 
-        if (!isConnectionValid(newSourcePortId as CustomPortId, newTargetPortId as CustomPortId)) {
-            console.warn('New connection is invalid. Reassignment aborted.');
-            this.toastService.warning('Cannot reassign connection: Invalid port combination', 5000, 'bottom-right');
+        const isSourceMoved = event.endpoint === 'source';
+        const nextPortId = (isSourceMoved ? event.nextSourceId : event.nextTargetId) as CustomPortId | undefined;
+        const currentPortId = isSourceMoved ? existingConnection.sourcePortId : existingConnection.targetPortId;
+        if (!nextPortId || nextPortId === currentPortId) {
             return;
         }
 
-        const newSourceNodeId = newSourcePortId.split('_')[0];
-        const newTargetNodeId = newTargetPortId.split('_')[0];
+        const connections = this.flowService.connections();
+        const moved = connections.filter((conn) => groupIds.has(conn.id));
+        const updated: ConnectionModel[] = [];
+        const occupied = connections.filter((conn) => !groupIds.has(conn.id));
 
-        const updatedConnection = createFlowConnection(
-            newSourceNodeId,
-            newTargetNodeId,
-            newSourcePortId as CustomPortId,
-            newTargetPortId as CustomPortId
-        );
+        for (const conn of moved) {
+            const sourcePortId = isSourceMoved ? nextPortId : conn.sourcePortId;
+            const targetPortId = isSourceMoved ? conn.targetPortId : nextPortId;
+            const error = this.getReassignError(sourcePortId, targetPortId, [...occupied, ...updated]);
+            if (error) {
+                this.toastService.warning(error, 5000, 'bottom-right');
+                return;
+            }
+            updated.push(
+                createFlowConnection(sourcePortId.split('_')[0], targetPortId.split('_')[0], sourcePortId, targetPortId)
+            );
+        }
 
-        const oldSourceIsDecisionRouting = this.isDecisionRoutingSource(
-            this.flowService.nodes().find((n) => n.id === existingConnection.sourceNodeId)?.type
-        );
-        const deleteRef = this.buildConnectionDeleteRef(existingConnection);
-        this.flowService.removeConnection(event.connectionId);
-        if (!oldSourceIsDecisionRouting) {
-            this.wsService.sendConnectionDeleted(deleteRef);
+        this.hasUnarrangedChanges.set(true);
+        this.recordAfterChange();
+
+        // Live collaboration: a plain edge is broadcast as delete + create. Decision-table routing
+        // lives inside the table node, so its table is broadcast once as a node update instead.
+        const nodes = this.flowService.nodes();
+        const routingTableIds = new Set<string>();
+        const deleteRefs: EntryDeleteRef[] = [];
+        for (const conn of moved) {
+            const sourceType = nodes.find((n) => n.id === conn.sourceNodeId)?.type;
+            if (this.isDecisionRoutingSource(sourceType)) {
+                routingTableIds.add(conn.sourceNodeId);
+            } else {
+                deleteRefs.push(this.buildConnectionDeleteRef(conn));
+            }
         }
-        this.flowService.addConnection(updatedConnection);
-        if (oldSourceIsDecisionRouting) {
-            // Old table source lost this route — broadcast its updated routing.
-            this.broadcastDecisionRoutingUpdate(existingConnection.sourceNodeId);
-        }
-        const reassignSourceNode = this.flowService.nodes().find((n) => n.id === newSourceNodeId);
-        const reassignTargetNode = this.flowService.nodes().find((n) => n.id === newTargetNodeId);
-        if (reassignSourceNode && reassignTargetNode) {
-            if (this.isDecisionRoutingSource(reassignSourceNode.type)) {
-                this.broadcastDecisionRoutingUpdate(reassignSourceNode.id);
+
+        moved.forEach((conn) => this.flowService.removeConnection(conn.id));
+        deleteRefs.forEach((ref) => this.wsService.sendConnectionDeleted(ref));
+        updated.forEach((conn) => this.flowService.addConnection(conn));
+
+        for (const conn of updated) {
+            const sourceNode = this.flowService.nodes().find((n) => n.id === conn.sourceNodeId);
+            const targetNode = this.flowService.nodes().find((n) => n.id === conn.targetNodeId);
+            if (!sourceNode || !targetNode) continue;
+            if (this.isDecisionRoutingSource(sourceNode.type)) {
+                routingTableIds.add(sourceNode.id);
             } else {
                 this.wsService.sendConnectionCreated(
-                    updatedConnection,
-                    this.getConnectionListKey(updatedConnection),
-                    reassignSourceNode,
-                    reassignTargetNode,
+                    conn,
+                    this.getConnectionListKey(conn),
+                    sourceNode,
+                    targetNode,
                     this.currentFlowId!
                 );
             }
         }
+        routingTableIds.forEach((tableId) => this.broadcastDecisionRoutingUpdate(tableId));
 
-        this.toastService.success('Connection reassigned successfully', 3000, 'bottom-right');
+        this.toastService.success(
+            updated.length > 1 ? `${updated.length} connections reassigned` : 'Connection reassigned successfully',
+            3000,
+            'bottom-right'
+        );
+    }
+
+    private getReassignError(
+        sourcePortId: CustomPortId,
+        targetPortId: CustomPortId,
+        connections: ConnectionModel[]
+    ): string | null {
+        if (!isConnectionValid(sourcePortId, targetPortId)) {
+            return 'Cannot reassign connection: Invalid port combination';
+        }
+        if (connections.some((conn) => conn.sourcePortId === sourcePortId && conn.targetPortId === targetPortId)) {
+            return 'These ports are already connected';
+        }
+        if (this.hasOccupiedPort(sourcePortId, targetPortId, connections)) {
+            return 'This port already has a connection';
+        }
+        return null;
+    }
+
+    private hasOccupiedPort(sourcePortId: string, targetPortId: string, connections: ConnectionModel[]): boolean {
+        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
+        const sourcePort = allPorts.find((p) => p.id === sourcePortId);
+        const targetPort = allPorts.find((p) => p.id === targetPortId);
+        const sourceOccupied =
+            !!sourcePort && !sourcePort.multiple && connections.some((conn) => conn.sourcePortId === sourcePortId);
+        const targetOccupied =
+            !!targetPort && !targetPort.multiple && connections.some((conn) => conn.targetPortId === targetPortId);
+        return sourceOccupied || targetOccupied;
     }
 
     public onConnectionAdded(event: FCreateConnectionEvent): void {
@@ -607,18 +807,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
-        const sourcePort = allPorts.find((p) => p.id === pair.sourcePortId);
-        const targetPort = allPorts.find((p) => p.id === pair.targetPortId);
-        const sourceOccupied =
-            !!sourcePort &&
-            !sourcePort.multiple &&
-            currentConnections.some((conn) => conn.sourcePortId === pair.sourcePortId);
-        const targetOccupied =
-            !!targetPort &&
-            !targetPort.multiple &&
-            currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
-        if (sourceOccupied || targetOccupied) {
+        if (this.hasOccupiedPort(pair.sourcePortId, pair.targetPortId, currentConnections)) {
             this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
             return;
         }
@@ -682,6 +871,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onPaste(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -725,6 +915,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onUndo(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (this.isEditingLocked()) {
             return;
         }
@@ -738,6 +929,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onRedo(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (this.isEditingLocked()) {
             return;
         }
@@ -751,6 +943,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDelete(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -849,6 +1042,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onContextMenu(event: MouseEvent): void {
         event.preventDefault();
+        if (this.flowReadOnly.isReadOnly()) return;
         this.contextMenuPosition.set({ x: event.clientX, y: event.clientY });
         this.showContextMenu.set(true);
     }
@@ -858,7 +1052,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAddNodeFromContextMenu(event: CreateNodeRequest): void {
-        if (!this.canEdit) return;
+        if (!this.canEdit || this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         this.recordAfterChange();
         this.showContextMenu.set(false);
@@ -1032,36 +1226,40 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
-    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
-    public commitSidePanelToFlow(): void {
-        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
-        if (updatedNode) {
-            this.flowService.updateNode(updatedNode);
+    public commitSidePanelToFlow(): boolean {
+        if (!this.nodePanelShell?.hasPanelInstance()) {
+            return true;
         }
+        // A viewer has no edits to commit (and must not broadcast any).
+        if (!this.canEdit || this.flowReadOnly.isReadOnly()) {
+            return true;
+        }
+        // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+        // get a node back here — even when their form is invalid — so their own invalid
+        // state can be reported by a flow-wide validation + blocking toast further down
+        // the save pipeline instead of a hard client-side abort. A panel with its own hard
+        // client-side validation that must never reach the backend (e.g. the
+        // schedule-trigger panel's date/timezone checks) can override
+        // `captureForValidation()` to return `null` on failure — which aborts the entire
+        // save right here (no request sent), matching this panel's pre-existing behavior.
+        const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
+        if (updatedNode === null) {
+            return false;
+        }
+        // Skip the writeback if the captured node was removed from the flow
+        // (e.g. during DT→CDT conversion the old panel instance lingers briefly
+        //  before the outlet swaps to the newly-selected node's panel).
+        if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
+            // Through the autosave path, so the capture is also broadcast to the live session.
+            // Invalid fields are stripped, as in autosave, so peers and the pre-flush never get them.
+            this.onNodePanelAutosaved(updatedNode, this.nodePanelShell.invalidPayloadFields());
+        }
+        return true;
     }
 
     /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public emitSave(): void {
-        if (this.nodePanelShell?.hasPanelInstance()) {
-            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
-            // get a node back here — even when their form is invalid — so their own invalid
-            // state can be reported by a flow-wide validation + blocking toast further down
-            // the save pipeline instead of a hard client-side abort. A panel with its own hard
-            // client-side validation that must never reach the backend (e.g. the
-            // schedule-trigger panel's date/timezone checks) can override
-            // `captureForValidation()` to return `null` on failure — which aborts the entire
-            // save right here (no request sent), matching this panel's pre-existing behavior.
-            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
-            if (updatedNode === null) {
-                return;
-            }
-            // Skip the writeback if the captured node was removed from the flow
-            // (e.g. during DT→CDT conversion the old panel instance lingers briefly
-            //  before the outlet swaps to the newly-selected node's panel).
-            if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
-                this.flowService.updateNode(updatedNode);
-            }
-        }
+        if (!this.commitSidePanelToFlow()) return;
         this.save.emit(this.flowService.getFlowState());
     }
 
@@ -1090,7 +1288,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.draggingElements.clear();
         this.dragStartPositions.clear();
 
-        const dragData = event.fData as { fNodeIds?: string[] } | undefined;
+        const dragData = event.fData as { fNodeIds?: string[]; fConnectionId?: string } | undefined;
+        if (dragData?.fConnectionId && dragData.fConnectionId === this.reassignGroupIds[0]) {
+            this.reassignFollowerIds.set(new Set(this.reassignGroupIds.slice(1)));
+        }
         if (dragData?.fNodeIds) {
             dragData.fNodeIds.forEach((id: string) => this.draggingElements.add(id));
         }
@@ -1592,19 +1793,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    public onProjectExpandToggled(project: ProjectNodeModel): void {
-        const dialogRef = this.dialog.open(ProjectDialogComponent, {
-            width: '90vw',
-            height: '90vh',
-            data: {
-                projectId: project.data.id,
-                projectName: project.data.name,
-            },
-        });
-
-        dialogRef.closed.subscribe(() => {});
-    }
-
     public onFlowPointerDown(event: PointerEvent): void {
         this._dragStartClientX = event.clientX;
         this._dragStartClientY = event.clientY;
@@ -1615,6 +1803,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onFlowPointerUp(event: PointerEvent): void {
         this._dragEndClientX = event.clientX;
         this._dragEndClientY = event.clientY;
+    }
+
+    protected resetReassignHighlight(): void {
+        if (this.reassignSuppressedConnectionIds().size > 0) {
+            this.reassignSuppressedConnectionIds.set(new Set<string>());
+        }
+        if (this.reassignFollowerIds().size > 0) {
+            this.reassignFollowerIds.set(new Set<string>());
+        }
     }
 
     public onFlowClick(event: MouseEvent): void {
@@ -1754,6 +1951,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onImportNodes(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (!this.currentFlowId) return;
         if (this.hasUnsavedChanges) {
             this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');
@@ -1838,7 +2036,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         const body: PartialExportRequest = {
-            crew_node_list: [],
             agent_node_list: [],
             task_node_list: [],
             python_node_list: [],
@@ -1852,6 +2049,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             graph_note_list: [],
             schedule_trigger_node_list: [],
             edge_list: [],
+            knowledge_node_list: [],
         };
 
         for (const node of nodes) {
@@ -1864,11 +2062,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.TASK:
                     body.task_node_list.push(id);
-                    break;
-                case NodeType.TOOL:
-                case NodeType.PROJECT:
-                case NodeType.LLM:
-                    body.crew_node_list.push(id);
                     break;
                 case NodeType.PYTHON:
                     body.python_node_list.push(id);
@@ -1899,6 +2092,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.SCHEDULE_TRIGGER:
                     body.schedule_trigger_node_list.push(id);
+                    break;
+                case NodeType.KNOWLEDGE_RETRIEVER:
+                    body.knowledge_node_list.push(id);
                     break;
             }
         }
@@ -2424,11 +2620,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    public commitOpenPanelToFlow(): boolean {
-        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
-        if (!updatedNode) return false;
-        if (!this.flowService.nodes().some((n) => n.id === updatedNode.id)) return false;
-        this.onNodePanelAutosaved(updatedNode);
-        return true;
-    }
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

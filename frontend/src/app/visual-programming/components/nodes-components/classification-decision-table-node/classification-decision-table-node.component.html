@@ -5,12 +5,16 @@
     (actualClick)="onEditClick()"
 >
     @if (inputPort; as port) {
-        <div class="input-port-wrapper">
+        <div
+            class="input-port-wrapper"
+            [class.no-hover]="isReadonly()"
+        >
             <div
                 class="port-circle"
                 fNodeInput
                 [fInputMultiple]="port.multiple"
                 [fInputId]="port.id"
+                [fInputDisabled]="isReadonly()"
                 [fInputConnectableSide]="port.position"
                 [ngStyle]="{
                     'border-color': 'hsl(0, 0%, 15%)',
@@ -32,7 +36,12 @@
                 [style.color]="node.color"
             ></i>
         </div>
-        <div class="title">{{ node.node_name || 'Classification Table' }}</div>
+        <div class="title">
+            <span class="title__label">{{ titleParts.label }}</span>
+            @if (titleParts.badge) {
+                <span class="title__badge">{{ titleParts.badge }}</span>
+            }
+        </div>
         @if (errorMessages.length > 0) {
             <div
                 class="blocked-badge"
@@ -51,12 +60,16 @@
                         <span class="group-name">{{ group.route_code }}</span>
 
                         @if (getPortForGroup(group); as port) {
-                            <div class="port-wrapper">
+                            <div
+                                class="port-wrapper"
+                                [class.no-hover]="isReadonly()"
+                            >
                                 <div
                                     class="port-circle"
                                     fNodeOutput
                                     [fOutputMultiple]="port.multiple"
                                     [fOutputId]="port.id"
+                                    [fOutputDisabled]="isReadonly()"
                                     [fOutputConnectableSide]="port.position"
                                     [ngStyle]="{
                                         'border-color': port.color,
@@ -90,12 +103,16 @@
             </span>
 
             @if (defaultPort; as port) {
-                <div class="port-wrapper">
+                <div
+                    class="port-wrapper"
+                    [class.no-hover]="isReadonly()"
+                >
                     <div
                         class="port-circle"
                         fNodeOutput
                         [fOutputMultiple]="port.multiple"
                         [fOutputId]="port.id"
+                        [fOutputDisabled]="isReadonly()"
                         [fOutputConnectableSide]="port.position"
                         [ngStyle]="{
                             'border-color': port.color,
@@ -122,12 +139,16 @@
             </span>
 
             @if (errorPort; as port) {
-                <div class="port-wrapper">
+                <div
+                    class="port-wrapper"
+                    [class.no-hover]="isReadonly()"
+                >
                     <div
                         class="port-circle"
                         fNodeOutput
                         [fOutputMultiple]="port.multiple"
                         [fOutputId]="port.id"
+                        [fOutputDisabled]="isReadonly()"
                         [fOutputConnectableSide]="port.position"
                         [ngStyle]="{
                             'border-color': port.color,

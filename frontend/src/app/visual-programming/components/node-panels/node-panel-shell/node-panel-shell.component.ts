@@ -4,6 +4,7 @@ import {
     Component,
     computed,
     effect,
+    inject,
     input,
     output,
     Signal,
@@ -12,18 +13,18 @@ import {
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
+import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
-import { NodeType } from '../../../core/enums/node-type';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
-    standalone: true,
     selector: 'app-node-panel-shell',
     imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
     hostDirectives: [
@@ -174,17 +175,18 @@ export class NodePanelShellComponent {
     } | null>(null);
     /** @deprecated the panel-header Save button was removed in EST-3020; no template usage remains. */
     protected readonly showSaveButton = computed(() => {
+        if (this.flowReadOnly.isReadOnly()) return false;
         const panel = this.panelInstanceSig();
         return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
     });
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private lastAutosaveSeq = 0;
+    private readonly sidePanelService = inject(SidePanelService);
+    private readonly toastService = inject(ToastService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
-    constructor(
-        private sidePanelService: SidePanelService,
-        private toastService: ToastService
-    ) {
+    constructor() {
         effect(() => {
             // autosaveTrigger is a monotonic counter: react to each increment
             // (a field blur, toggle, etc.) exactly once and commit + broadcast
@@ -276,6 +278,10 @@ export class NodePanelShellComponent {
     }
 
     protected onShortcutSave(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
             return;
         }
@@ -292,6 +298,10 @@ export class NodePanelShellComponent {
     }
 
     private saveSidePanel(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.sidePanelService.clearSelection();
+            return;
+        }
         if (
             this.panelInstance &&
             typeof this.panelInstance.onSave === 'function' &&
@@ -308,6 +318,7 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         const panel = this.panelInstance;
         if (!panel || typeof panel.onSave !== 'function') return;
         if (!(this.panelInstanceSig()?.isDirty?.() ?? true)) return;
@@ -349,9 +360,13 @@ export class NodePanelShellComponent {
         }
     }
 
-    /** @deprecated used only by the deprecated flow-graph emitSave(); no call sites. */
     public hasPanelInstance(): boolean {
         return this.panelInstance !== null;
+    }
+
+    /** Payload fields of the open panel whose controls are invalid (empty when no panel is open). */
+    public invalidPayloadFields(): string[] {
+        return this.panelInstance?.invalidPayloadFields?.() ?? [];
     }
 
     /**

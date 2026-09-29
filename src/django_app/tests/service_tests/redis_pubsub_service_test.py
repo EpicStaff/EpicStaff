@@ -5,6 +5,13 @@ import pytest
 from tables.models import GraphSessionMessage
 from tables.services.redis_pubsub import RedisPubSub
 
+# None of these tests touch the database themselves, but tests/conftest.py has an
+# autouse `heal_builtin_roles` fixture that queries the Role table before every
+# db test. Without a test that pulls in the `db` fixture, pytest-django never
+# swaps the connection to the test database, so that query (and any future one
+# added here) would hit the real dev database instead.
+pytestmark = pytest.mark.django_db
+
 
 class _StubRedisClient:
     def __init__(self, keyed_payloads: dict[str, dict]):

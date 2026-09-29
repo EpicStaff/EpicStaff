@@ -1,9 +1,8 @@
+from db.config import AsyncSessionLocal
+from helpers.logger import logger
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from db.config import AsyncSessionLocal
-from helpers.logger import logger
 from src.shared.models import ScheduleTriggerNodePayload
 
 
@@ -49,14 +48,11 @@ class ScheduleTriggerNodeRepository:
                     start_date_time, every, unit, weekdays,
                     end_type, end_date_time, max_runs, current_runs
                 FROM tables_scheduletriggernode
-                WHERE is_active = true
+                WHERE is_active = true AND is_soft_deleted = false
                 """
             )
             result = await session.execute(query)
-            return [
-                ScheduleTriggerNodePayload.model_validate(row)
-                for row in result.fetchall()
-            ]
+            return [ScheduleTriggerNodePayload.model_validate(row) for row in result.fetchall()]
 
         try:
             return await self._execute_with_session(operation)

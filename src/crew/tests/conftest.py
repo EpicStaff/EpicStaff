@@ -16,5 +16,7 @@ fakeredis_client = fakeredis.FakeStrictRedis
 @pytest.fixture
 def fake_redis_service() -> Generator[RedisService, None, None]:
     with patch("services.redis_service.Redis", fakeredis_client):
-        service = RedisService(host="127.0.0.1", port="6379", password="redis_password")
+        service = RedisService(
+            host="127.0.0.1", port=6379, user="default", password="redis_password"
+        )
         yield service

@@ -1,10 +1,9 @@
 from typing import Any
 
 from langgraph.types import StreamWriter
-
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 
 
 class ScheduleTriggerNode(BaseNode):
@@ -24,20 +23,14 @@ class ScheduleTriggerNode(BaseNode):
             output_variable_path=None,
         )
 
-    async def execute(
-        self, state: State, writer: StreamWriter, execution_order: int, input_: Any
-    ):
+    async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         return None
 
     async def run(self, state: State, writer: StreamWriter) -> State:
         try:
-            execution_order = self._calc_execution_order(
-                state=state, name=self.node_name
-            )
+            execution_order = self._calc_execution_order(state=state, name=self.node_name)
             input_ = self.get_input(state=state)
-            self.add_start_message(
-                writer=writer, input_=input_, execution_order=execution_order
-            )
+            self.add_start_message(writer=writer, input_=input_, execution_order=execution_order)
             output = await self.execute(
                 state=state,
                 writer=writer,
@@ -62,7 +55,5 @@ class ScheduleTriggerNode(BaseNode):
             return state
 
         except Exception as e:
-            self.add_error_message(
-                writer=writer, error=e, execution_order=execution_order
-            )
-            raise e
+            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
+            raise

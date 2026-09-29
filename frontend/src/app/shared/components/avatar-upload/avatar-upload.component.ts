@@ -4,6 +4,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { take } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
+import { FileSizePipe } from '../../pipes/file-size.pipe';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { FileUploaderComponent } from '../file-uploader/file-uploader.component';
 import { ImageCropperDialogComponent } from './image-cropper-dialog/image-cropper-dialog.component';
@@ -12,7 +13,7 @@ import { ImageCropperDialogComponent } from './image-cropper-dialog/image-croppe
     selector: 'app-avatar-upload',
     templateUrl: './avatar-upload.component.html',
     styleUrls: ['./avatar-upload.component.scss'],
-    imports: [FileUploaderComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [FileUploaderComponent, AppSvgIconComponent, MatTooltipModule, FileSizePipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AvatarUploadComponent {
@@ -25,14 +26,6 @@ export class AvatarUploadComponent {
     selectedFile = signal<File | null>(null);
     previewUrl = signal<string | null>(null);
     existingCleared = signal(false);
-
-    fileSizeLabel = computed(() => {
-        const size = this.selectedFile()?.size ?? 0;
-        if (size >= 1024 * 1024) {
-            return `${(size / 1024 / 1024).toFixed(1)} MB`;
-        }
-        return `${Math.round(size / 1024)} KB`;
-    });
 
     showExisting = computed(() => !!this.initialUrl() && !this.existingCleared() && !this.selectedFile());
 

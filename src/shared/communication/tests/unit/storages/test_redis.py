@@ -6,7 +6,7 @@ import pytest
 import redis
 
 from communication.errors import StorageOperationError
-from communication.storages.redis_ import RedisStorage
+from communication.storages.redis_storage import RedisStorage
 
 
 def _make_storage(ttl: int | timedelta = timedelta(hours=1)) -> RedisStorage:

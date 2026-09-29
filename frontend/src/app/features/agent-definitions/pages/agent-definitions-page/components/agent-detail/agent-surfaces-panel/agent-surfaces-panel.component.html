@@ -1,4 +1,4 @@
-﻿<div class="surfaces-panel">
+<div class="surfaces-panel">
     <label class="surfaces-panel__search">
         <app-svg-icon
             icon="search"
@@ -54,6 +54,7 @@
                                 [appCollapseOnOverflow]="true"
                                 collapseOnOverflowTarget=".surface-category__btn-label"
                                 collapseOnOverflowClass="surface-category__btn--icon-only"
+                                [disabled]="!canViewSummary(category.id)"
                                 (click)="onViewSummary(category.id)"
                             >
                                 <app-svg-icon
@@ -64,13 +65,15 @@
                             </button>
                         }
                         <app-select-dropdown
+                            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                             mode="list"
-                            selectionMode="single"
+                            selectionMode="multiple"
                             searchPlaceholder="Search shared surface..."
                             emptyText="No shared surfaces available"
-                            [minPanelWidth]="280"
-                            [items]="addableSharedFor(category.id)"
-                            [selected]="[]"
+                            [minPanelWidth]="420"
+                            [items]="sharedItemsFor()"
+                            [selected]="attachedSharedFor(category.id)"
+                            [checkedTip]="sharedTipFor(category.id)"
                             (selectionChange)="onAddFromShared($event, category.id)"
                         >
                             <button
@@ -90,6 +93,7 @@
                         </app-select-dropdown>
 
                         <button
+                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
                             type="button"
                             class="surface-category__btn"
                             [appCollapseOnOverflow]="true"
@@ -156,6 +160,8 @@
                             [isCreating]="true"
                             [hideHeader]="true"
                             [expanded]="true"
+                            [llmConfigId]="llmConfigId()"
+                            [readOnly]="!canCreateSurfaces()"
                             (draftContentChanged)="onDraftContentChanged()"
                         />
                     </div>
@@ -167,7 +173,7 @@
                     (cdkDropListDropped)="onSurfaceDropped($event, category.id)"
                     cdkDropList
                 >
-                    @if (categorySurfaces.length === 0 && !isDrafting(category.id)) {
+                    @if (categorySurfaces.length === 0 && !isDrafting(category.id) && !anyDragActive()) {
                         <p class="surface-category__empty">No surfaces detected. Create one up to get started.</p>
                     }
                     @for (surface of categorySurfaces; track surfaceTrackBy($index, surface)) {
@@ -182,13 +188,16 @@
                                 [surface]="surface"
                                 [draggable]="true"
                                 [isShared]="isShared(surface)"
-                                [readOnly]="isShared(surface)"
+                                [readOnly]="isShared(surface) || !canEditSurfaces()"
+                                [llmConfigId]="llmConfigId()"
                                 [currentPlace]="category.id"
                                 [surfacePlaces]="placesForSurface(surface.id)"
                                 [placesBusy]="saving()"
                                 [saveError]="saveError()"
                                 [expanded]="isExpanded(surface)"
                                 (expandedChange)="onCardExpanded(surface, $event)"
+                                [activeTab]="activeTabFor(surface)"
+                                (activeTabChange)="onCardActiveTabChange(surface, $event)"
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
                                 (surfaceChange)="surfaceChange.emit({ id: surface.id, patch: $event })"
                                 (openSource)="openSource.emit(surface.id)"

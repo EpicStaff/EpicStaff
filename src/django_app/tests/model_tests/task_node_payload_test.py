@@ -8,7 +8,7 @@ import pytest
 
 from agents.models import AgentDefinition
 from tables.models.graph_models import Graph, TaskNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 from tables.services.task_node_payload_service import TaskNodePayloadService
 
@@ -27,7 +27,7 @@ def org(db):
 
 @pytest.fixture
 def graph(db, org):
-    return Graph.objects.create(name="task-node-payload-graph")
+    return Graph.objects.create(name="task-node-payload-graph", org=org)
 
 
 @pytest.fixture

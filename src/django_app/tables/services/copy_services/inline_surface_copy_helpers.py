@@ -1,15 +1,16 @@
-from django.core.exceptions import ObjectDoesNotExist
-
 from agents.services.surface_content_service import SurfaceContentModels
+from django.core.exceptions import ObjectDoesNotExist
 from tables.models import AgentNode, AgentNodeTask
 
-# SurfaceKnowledge's three optional one-to-one search configs use the same
+# SurfaceKnowledge's optional one-to-one search configs use the same
 # related_name on every inline-surface family; `content_attr` picks the
 # matching model class off the SurfaceContentModels bundle.
 _SEARCH_CONFIG_RELATED_NAMES = (
     ("naive_search_config", "naive_config"),
     ("graph_basic_search_config", "graph_basic_config"),
     ("graph_local_search_config", "graph_local_config"),
+    ("graph_global_search_config", "graph_global_config"),
+    ("graph_drift_search_config", "graph_drift_config"),
 )
 
 
@@ -54,11 +55,12 @@ def copy_node_inline_surface(
         )
 
     for tool in content.mcp_tool.objects.filter(**source_owner):
-        content.mcp_tool.objects.create(
-            mcp_tool=tool.mcp_tool, mode=tool.mode, **new_owner
-        )
+        content.mcp_tool.objects.create(mcp_tool=tool.mcp_tool, mode=tool.mode, **new_owner)
 
+    new_org_id = new_node.graph.org_id
     for item in content.storage_item.objects.filter(**source_owner):
+        if item.storage_file.org_id != new_org_id:
+            continue
         content.storage_item.objects.create(
             storage_file=item.storage_file,
             can_list=item.can_list,

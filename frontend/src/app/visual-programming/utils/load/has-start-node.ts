@@ -1,4 +1,5 @@
-import { NodeType } from '../../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { FlowModel } from '../../core/models/flow.model';
 
 export function hasStartNode(flowModel: FlowModel): boolean {

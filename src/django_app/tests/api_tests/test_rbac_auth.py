@@ -13,6 +13,7 @@ Integration tests for the Story 2 auth surface:
 - SSE ticket issue/consume single-use + expired + atomic
 """
 
+import hashlib
 import re
 from datetime import timedelta
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.core import mail
 from django.core.cache import cache
+from django_redis import get_redis_connection
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -33,21 +35,19 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    PasswordResetToken,
-    Role,
+from rbac.models import Organization, OrganizationUser, PasswordResetToken, Role
+from rbac.models.enums import BuiltInRole
+from rbac.identity.reset_user import ResetUserService
+from rbac.identity.tickets import sse_ticket_service, ws_ticket_service
+from rbac.identity.refresh_cookie import (
+    NON_REMEMBER_REFRESH_LIFETIME,
+    REFRESH_COOKIE_NAME,
 )
-from tables.models.rbac_models.rbac_enums import BuiltInRole
-from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.ticket_service import sse_ticket_service
-from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
-from tables.services.rbac.utils.password_reset_token_repository import (
+from rbac.identity.passwords.token_repository import (
     PasswordResetTokenRepository,
     hash_token,
 )
-from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
+from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
 OPAQUE_RESET_CODE = "invalid_or_expired_reset_token"
@@ -108,6 +108,167 @@ def test_login_returns_access_and_sets_refresh_cookie(api_client, regular_user):
     cookie = r.cookies[REFRESH_COOKIE_NAME]
     assert cookie.value
     assert cookie["httponly"]
+
+
+@pytest.mark.django_db
+def test_login_remember_me_true_sets_persistent_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": True,
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
+    # Persistent cookie -> Max-Age is set to the configured lifetime.
+    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+    assert int(cookie["max-age"]) == expected
+    # remember_me claim baked into the token so rotation preserves persistence.
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is True
+
+
+@pytest.mark.django_db
+def test_login_remember_me_false_sets_30min_cookie(api_client, regular_user):
+    """Non-remembered login -> 30-min Max-Age cookie + matching JWT exp."""
+    r = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+    now = int(timezone.now().timestamp())
+    assert 0 < token.payload["exp"] - now <= expected
+
+
+@pytest.mark.django_db
+def test_login_omitting_remember_me_defaults_to_30min_cookie(api_client, regular_user):
+    r = api_client.post(
+        reverse("login"),
+        data={"email": regular_user.email, "password": "UserStrongPass123!"},
+        format="json",
+    )
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+
+
+@pytest.mark.django_db
+def test_refresh_preserves_remember_me_persistent(api_client, regular_user):
+    """A persistent session must stay persistent across refresh rotation."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": True,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is True
+
+
+@pytest.mark.django_db
+def test_refresh_preserves_remember_me_short(api_client, regular_user):
+    """Non-remembered session keeps its 30-min window across rotation."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 200
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
+    assert int(cookie["max-age"]) == expected
+    token = RefreshToken(cookie.value)
+    assert token.payload.get("remember_me") is False
+    now = int(timezone.now().timestamp())
+    assert 0 < token.payload["exp"] - now <= expected
+
+
+@pytest.mark.django_db
+def test_refresh_without_cookie_returns_401(api_client):
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 401
+
+
+@pytest.mark.django_db
+def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
+    api_client, regular_user
+):
+    """Expired non-remember refresh -> 401 + cookie cleared."""
+    login = api_client.post(
+        reverse("login"),
+        data={
+            "email": regular_user.email,
+            "password": "UserStrongPass123!",
+            "remember_me": False,
+        },
+        format="json",
+    )
+    assert login.status_code == 200
+
+    # Simulate the 30-min window elapsing by re-signing exp into the past.
+    current = api_client.cookies[REFRESH_COOKIE_NAME].value
+    token = RefreshToken(current)
+    token.set_exp(
+        from_time=timezone.now()
+        - NON_REMEMBER_REFRESH_LIFETIME
+        - timedelta(seconds=1),
+        lifetime=timedelta(seconds=0),
+    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = str(token)
+
+    r = api_client.post(reverse("refresh"))
+    assert r.status_code == 401
+    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    assert cleared.value == ""
+    assert int(cleared["max-age"]) == 0
+
+
+@pytest.mark.django_db
+def test_logout_clears_refresh_cookie(api_client, regular_user, jwt_tokens):
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+
+    r = api_client.post(reverse("logout"))
+    assert r.status_code == status.HTTP_205_RESET_CONTENT
+    # Cookie is cleared: value emptied and Max-Age=0.
+    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    assert cleared.value == ""
+    assert int(cleared["max-age"]) == 0
 
 
 @pytest.mark.django_db
@@ -242,7 +403,7 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
     r = auth_client.post(reverse("sse_ticket"))
     assert r.status_code == 200
     ticket = r.json()["ticket"]
-    assert r.json()["expires_in"] == settings.SSE_TICKET_TTL_SECONDS
+    assert r.json()["expires_in"] == settings.SSE_TICKET_TTL
 
     user = sse_ticket_service.consume(ticket)
     assert user is not None
@@ -264,6 +425,47 @@ def test_sse_ticket_expired_or_unknown_returns_none():
 def test_sse_ticket_endpoint_requires_jwt(api_client):
     r = api_client.post(reverse("sse_ticket"))
     assert r.status_code == 401
+
+
+# ---------------- Ticket at rest ----------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "service, prefix",
+    [
+        (sse_ticket_service, "rbac:sse_ticket:"),
+        (ws_ticket_service, "rbac:ws_ticket:"),
+    ],
+    ids=["sse", "ws"],
+)
+def test_redis_never_holds_the_raw_ticket(regular_user, service, prefix: str):
+    """Read access to Redis must not yield a replayable ticket.
+
+    The key is the SHA-256 digest of the ticket, so `SCAN MATCH "<prefix>*"`
+    returns digests that cannot be inverted into a usable ticket.
+    """
+    cache.clear()
+    ticket, _ = service.issue(regular_user)
+
+    keys = [key.decode() for key in get_redis_connection("default").keys(f"{prefix}*")]
+    expected = f"{prefix}{hashlib.sha256(ticket.encode('utf-8')).hexdigest()}"
+    assert keys == [expected]
+    assert ticket not in keys[0]
+
+    # The raw ticket still resolves; only its storage form changed.
+    assert service.consume(ticket).pk == regular_user.pk
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "service", [sse_ticket_service, ws_ticket_service], ids=["sse", "ws"]
+)
+def test_consume_rejects_non_string_ticket(service):
+    cache.clear()
+    assert service.consume(None) is None
+    assert service.consume(12345) is None
+    assert service.consume("") is None
 
 
 # ---------------- Logout ownership ----------------
@@ -438,7 +640,7 @@ def test_reset_user_creates_default_org_membership(superadmin_client):
     org with role 'Superadmin'.
     """
     from django.conf import settings
-    from tables.models.rbac_models import Organization, OrganizationUser
+    from rbac.models import Organization, OrganizationUser
 
     r = superadmin_client.post(
         reverse("reset_user"),
@@ -461,7 +663,7 @@ def test_reset_user_creates_default_org_when_missing(superadmin_client):
     new superadmin's membership lands in the freshly-created org.
     """
     from django.conf import settings
-    from tables.models.rbac_models import Organization, OrganizationUser
+    from rbac.models import Organization, OrganizationUser
 
     Organization.objects.filter(
         name__iexact=settings.DEFAULT_ORGANIZATION_NAME
@@ -613,7 +815,7 @@ def test_password_reset_request_email_failure_does_not_break_response(
     under test)."""
     cache.clear()
     with patch(
-        "tables.services.rbac.utils.password_reset_email_sender.send_mail",
+        "rbac.identity.passwords.email_sender.send_mail",
         side_effect=RuntimeError("smtp blew up"),
     ):
         r = api_client.post(
@@ -921,7 +1123,7 @@ def test_admin_password_reset_validates_user_id_shape(api_client, superadmin_use
 # ------------------------------------------------------------------
 from django.core.exceptions import ValidationError as _DjangoValidationError
 
-from tables.services.rbac.utils.printable_ascii_password_validator import (
+from rbac.identity.passwords.validators import (
     PrintableAsciiPasswordValidator,
 )
 
@@ -1137,9 +1339,9 @@ class TestPasswordResetRequestThrottleNonString:
         body = r.json()
         email_errors = [e for e in body["errors"] if e["field"] == "email"]
         assert email_errors
-        assert any("must be a string" in e["reason"].lower() for e in email_errors), (
-            body
-        )
+        assert any(
+            "must be a string" in e["reason"].lower() for e in email_errors
+        ), body
 
 
 # ---------------- Default-org: single-default constraint ----------------

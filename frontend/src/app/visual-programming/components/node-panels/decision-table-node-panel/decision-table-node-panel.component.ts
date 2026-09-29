@@ -1,13 +1,16 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    ConfirmationDialogService,
+    CustomInputComponent,
+    HelpTooltipComponent,
+    SelectComponent,
+    SelectItem,
+    ToggleSwitchComponent,
+} from '@shared/components';
+import { NodeType } from '@shared/models';
 
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
@@ -20,17 +23,16 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 
 @Component({
-    standalone: true,
     selector: 'app-decision-table-node-panel',
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
-        CommonModule,
         DecisionTableGridComponent,
         LockableFieldComponent,
         MatTooltipModule,
         SelectComponent,
         HelpTooltipComponent,
+        ToggleSwitchComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],
@@ -67,11 +69,11 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 name: node.node_name || node.id,
             }));
 
-        return [{ name: '-- Select Node --', value: '' }, ...nodeItems];
+        return [{ name: 'Unselected', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
-        return this.node().color || '#685fff';
+        return 'var(--accent-color)';
     }
 
     initializeForm(): FormGroup {
@@ -166,6 +168,8 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     }
 
     public convertToCdt(): void {
+        if (this.isReadOnly()) return;
+
         this.confirmationDialogService
             .confirm({
                 title: 'Convert to Classification Decision Table?',
@@ -228,4 +232,6 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             })),
         }));
     }
+
+    protected readonly event = event;
 }

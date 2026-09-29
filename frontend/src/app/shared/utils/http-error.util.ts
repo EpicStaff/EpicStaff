@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
  * Extracts a human-readable message from an HttpErrorResponse
  */
 
-export function extractHttpErrorMessage(err: HttpErrorResponse): string {
+export function extractHttpErrorMessage(err: HttpErrorResponse, fallback = 'Unknown error'): string {
     // Structured validation errors attached by validationErrorsInterceptor.
     if (Array.isArray(err.validationErrors) && err.validationErrors.length > 0) {
         const reasons = err.validationErrors.map((e) => e.reason).filter(Boolean);
@@ -32,7 +32,7 @@ export function extractHttpErrorMessage(err: HttpErrorResponse): string {
         if (collected.length) return joinErrorMessages(collected.map(simplifyKnownMessage));
     }
 
-    return err?.message || 'Unknown error';
+    return err?.message || fallback;
 }
 
 const UNDECLARED_SECRET_CALLS =

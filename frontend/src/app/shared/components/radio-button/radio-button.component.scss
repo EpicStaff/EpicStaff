@@ -35,6 +35,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.35rem;
     flex: 1;
     color: var(--color-text-primary);
     background: transparent;
@@ -46,12 +47,17 @@
     }
 
     &:hover:not(.active) {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--white-alpha-5);
     }
 
     &.active {
         background: var(--accent-color);
     }
+}
+
+.option-icon {
+    color: var(--color-text-primary);
+    opacity: 0.6;
 }
 
 .segmented {
@@ -82,21 +88,25 @@
     }
 
     &__option {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
         flex: 1;
         position: relative;
         z-index: 1;
         border: none;
         background: transparent;
         color: var(--color-input-text-placeholder);
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
         line-height: 1;
         cursor: pointer;
         transition: color 0.2s ease;
         padding: 0;
 
         &--active {
-            color: #fff;
+            color: var(--white);
         }
 
         &:not(&--active):hover {

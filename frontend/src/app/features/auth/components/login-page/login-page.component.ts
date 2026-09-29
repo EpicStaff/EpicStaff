@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -20,10 +19,11 @@ import { finalize } from 'rxjs/operators';
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
 
+const REMEMBER_ME_STORAGE_KEY = 'auth.rememberMe';
+
 @Component({
     selector: 'app-login-page',
     imports: [
-        CommonModule,
         ReactiveFormsModule,
         CustomInputComponent,
         ValidationErrorsComponent,
@@ -51,7 +51,7 @@ export class LoginPageComponent implements OnInit {
             nonNullable: true,
             validators: [Validators.required, Validators.minLength(8)],
         }),
-        rememberMe: new FormControl(false, { nonNullable: true }),
+        rememberMe: new FormControl(this.readStoredRememberMe(), { nonNullable: true }),
     });
 
     readonly loading = signal(false);
@@ -77,6 +77,7 @@ export class LoginPageComponent implements OnInit {
         this.serverErrorsRef.clear();
 
         const { email, password, rememberMe } = this.form.getRawValue();
+        this.persistRememberMe(rememberMe);
 
         this.authService
             .login(email, password, rememberMe)
@@ -124,5 +125,13 @@ export class LoginPageComponent implements OnInit {
 
     navToForgotPassword(): void {
         void this.router.navigateByUrl('forgot-password');
+    }
+
+    private readStoredRememberMe(): boolean {
+        return localStorage.getItem(REMEMBER_ME_STORAGE_KEY) === 'true';
+    }
+
+    private persistRememberMe(value: boolean): void {
+        localStorage.setItem(REMEMBER_ME_STORAGE_KEY, String(value));
     }
 }

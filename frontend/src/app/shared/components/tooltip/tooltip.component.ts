@@ -1,11 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { HelpTooltipComponent } from '../help-tooltip';
 
 @Component({
     selector: 'app-tooltip',
-    imports: [CommonModule, HelpTooltipComponent],
+    imports: [HelpTooltipComponent],
     templateUrl: './tooltip.component.html',
     styleUrls: ['./tooltip.component.scss'],
 
@@ -16,4 +15,5 @@ export class TooltipComponent {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    inline = input<boolean>(false);
 }

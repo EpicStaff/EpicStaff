@@ -7,6 +7,7 @@ import {
     DestroyRef,
     ElementRef,
     inject,
+    input,
     signal,
     TemplateRef,
     ViewChild,
@@ -92,7 +93,6 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = buildTimezoneOptions();
 
 @Component({
     selector: 'app-timezone-selector',
-    standalone: true,
     imports: [OverlayModule, FormsModule],
     templateUrl: './timezone-selector.component.html',
     styleUrls: ['./timezone-selector.component.scss'],
@@ -100,6 +100,9 @@ const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = buildTimezoneOptions();
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TimezoneSelectorComponent implements ControlValueAccessor {
+    /** Readonly mode: renders the current timezone as plain text (no dropdown). */
+    readonly = input<boolean>(false);
+
     open = signal(false);
     isDisabled = signal(false);
     selectedValue = signal<string | null>(null);
@@ -129,10 +132,12 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
     private onTouched: () => void = () => {};
 
     toggle(): void {
+        if (this.readonly()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
     openDropdown(): void {
+        if (this.readonly()) return;
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
                 .flexibleConnectedTo(this.triggerBtn)
@@ -176,6 +181,7 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
     }
 
     onSelect(tz: TimezoneOption): void {
+        if (this.readonly()) return;
         this.selectedValue.set(tz.iana);
         this.onChange(tz.iana);
         this.onTouched();

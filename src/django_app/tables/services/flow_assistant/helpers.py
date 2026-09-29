@@ -5,11 +5,9 @@ import re
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
-
-from utils.logger import logger
-
 from tables.models.flow_assistant_models import FlowAssistantConversation, FlowAssistantMessage
 from tables.services.redis_service import RedisService
+
 from .constants import (
     _CANCEL_KEY,
     _CANCEL_TTL_SECONDS,
@@ -124,9 +122,7 @@ def _messages_for_llm(messages: list[dict]) -> list[dict]:
             continue
 
         content = msg.get("content", "")
-        if isinstance(content, str) and content.startswith(
-            "[tool result from an earlier turn"
-        ):
+        if isinstance(content, str) and content.startswith("[tool result from an earlier turn"):
             # Already stubbed — idempotent pass-through (sanitize anyway).
             result.append(_sanitize_for_llm(msg))
             continue
@@ -183,9 +179,9 @@ def _load_message_dicts(conversation_id: int) -> list[dict]:
     Falls back to the legacy JSONField column when no rows exist (transition window).
     """
     rows = list(
-        FlowAssistantMessage.objects.filter(
-            conversation_id=conversation_id
-        ).order_by("message_index")
+        FlowAssistantMessage.objects.filter(conversation_id=conversation_id).order_by(
+            "message_index"
+        )
     )
     if not rows:
         # Transition fallback: no rows yet — read from legacy column.
@@ -221,10 +217,7 @@ def _persist_messages(conversation_id: int, messages: list[dict]) -> None:
     """Atomically rewrite the conversation's message history as rows."""
     with transaction.atomic():
         FlowAssistantMessage.objects.filter(conversation_id=conversation_id).delete()
-        rows = [
-            _dict_to_message_row(conversation_id, idx, msg)
-            for idx, msg in enumerate(messages)
-        ]
+        rows = [_dict_to_message_row(conversation_id, idx, msg) for idx, msg in enumerate(messages)]
         if rows:
             FlowAssistantMessage.objects.bulk_create(rows)
         FlowAssistantConversation.objects.filter(pk=conversation_id).update(
@@ -236,9 +229,7 @@ async def request_cancel(conv_id: int) -> None:
     """Set the cancel flag for a conversation (TTL: 300 s)."""
     redis_service = RedisService()
     key = _CANCEL_KEY.format(conv_id=conv_id)
-    await sync_to_async(redis_service.redis_client.set)(
-        key, "1", ex=_CANCEL_TTL_SECONDS
-    )
+    await sync_to_async(redis_service.redis_client.set)(key, "1", ex=_CANCEL_TTL_SECONDS)
 
 
 async def _is_cancel_requested(conv_id: int) -> bool:

@@ -1,12 +1,12 @@
+import { NodeType } from '@shared/models';
+
 import { GraphDto } from '../../../features/flows/models/graph.model';
-import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
-import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
-import { NodeType } from '../../core/enums/node-type';
+import { AgentNode } from '../../core/models/agent-node.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../core/models/classification-decision-table-node.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { ClassificationDecisionTableNodeModel } from '../../core/models/node.model';
-import { WebhookNodeAuthModel } from '../../core/models/webhook-trigger.model';
 import { NodeDiffByType } from './types';
 
 export function patchFlowStateWithBackendIds(
@@ -37,11 +37,6 @@ export function patchFlowStateWithBackendIds(
     const agentNodeByBackendId = new Map<number, AgentNode>();
     for (const an of responseGraph.agent_node_list ?? []) {
         agentNodeByBackendId.set(an.id, an);
-    }
-
-    const webhookAuthByBackendId = new Map<number, WebhookNodeAuthModel | null>();
-    for (const wn of responseGraph.webhook_trigger_node_list ?? []) {
-        webhookAuthByBackendId.set(wn.id, wn.webhook_node_auth ?? null);
     }
 
     const patchedNodes = currentFlow.nodes.map((node) => {
@@ -91,19 +86,6 @@ export function patchFlowStateWithBackendIds(
                 });
 
                 patched = { ...patched, data: { ...patched.data, tasks: patchedTasksWithRefs } };
-            }
-        }
-
-        if (patched.type === NodeType.WEBHOOK_TRIGGER) {
-            const resolvedBackendId = mappedBackendId ?? patched.backendId;
-            if (resolvedBackendId != null && webhookAuthByBackendId.has(resolvedBackendId)) {
-                patched = {
-                    ...patched,
-                    data: {
-                        ...patched.data,
-                        webhook_node_auth: webhookAuthByBackendId.get(resolvedBackendId) ?? null,
-                    },
-                };
             }
         }
 
@@ -186,7 +168,6 @@ function buildCreatedNodeIdMap(
         }
     }
 
-    mapByNewIds(nodeDiff.crewNodes.toCreate, responseGraph.crew_node_list ?? [], existingIdsByType(NodeType.PROJECT));
     mapByNewIds(
         nodeDiff.pythonNodes.toCreate,
         responseGraph.python_node_list ?? [],

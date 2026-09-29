@@ -5,12 +5,13 @@ import { AppSvgIconComponent } from '@shared/components';
 import { Surface } from '../../../../../features/agent-definitions/models/surface.model';
 import { SurfaceCardComponent } from '../../../../../features/agent-definitions/pages/agent-definitions-page/components/agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
 import { SurfaceCatalogsStore } from '../../../../../features/agent-definitions/services/surface-catalogs-store.service';
-import { InlineSurface } from '../../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
+import { InlineSurface } from '../../../../core/models/task-node.model';
 import { inlineSurfaceToSurface } from '../../../../utils/surface/inline-surface.mapper';
 
 export interface LocalSurfaceDialogData {
     mode: 'create' | 'edit';
     inlineSurface: InlineSurface | null;
+    llmConfigId: number | null;
 }
 
 const EMPTY_INLINE_SURFACE: InlineSurface = {
@@ -39,6 +40,7 @@ export class LocalSurfaceDialogComponent {
     readonly title = this.isCreateMode ? 'Create Local Surface' : 'Edit Local Surface';
 
     readonly workingSurface: Surface = inlineSurfaceToSurface(this.data.inlineSurface ?? EMPTY_INLINE_SURFACE);
+    readonly llmConfigId = this.data.llmConfigId;
 
     onConfirm(): void {
         const card = this.surfaceCard();

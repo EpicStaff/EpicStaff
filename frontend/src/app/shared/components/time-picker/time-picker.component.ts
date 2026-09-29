@@ -54,7 +54,6 @@ function parseValue(value: string): string | null {
 
 @Component({
     selector: 'app-time-picker',
-    standalone: true,
     imports: [FormsModule, OverlayModule, TooltipComponent],
     templateUrl: './time-picker.component.html',
     styleUrls: ['./time-picker.component.scss'],
@@ -74,6 +73,8 @@ export class TimePickerComponent implements ControlValueAccessor {
     activeColor = input<string>('');
     errorMessage = input<string>('');
     required = input<boolean>(false);
+    /** Readonly mode: renders the current time as plain text (no dropdown, no editing). */
+    readonly = input<boolean>(false);
 
     /** The hh:mm portion typed or selected (no meridiem). */
     timeInput = signal<string>('');
@@ -110,6 +111,7 @@ export class TimePickerComponent implements ControlValueAccessor {
     }
 
     onTimeInput(raw: string): void {
+        if (this.readonly()) return;
         const el = this.timeInputEl?.nativeElement;
         const rawCaret = el?.selectionStart ?? null;
 
@@ -137,6 +139,7 @@ export class TimePickerComponent implements ControlValueAccessor {
     }
 
     selectSlot(slot: string): void {
+        if (this.readonly()) return;
         this.timeInput.set(slot);
         this.onChange(this.displayValue());
         this.onTouched();
@@ -144,7 +147,7 @@ export class TimePickerComponent implements ControlValueAccessor {
     }
 
     openDropdown(): void {
-        if (this.isOpen() || this.isDisabled()) return;
+        if (this.isOpen() || this.isDisabled() || this.readonly()) return;
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(this.triggerEl)
@@ -183,6 +186,7 @@ export class TimePickerComponent implements ControlValueAccessor {
     }
 
     toggleDropdown(): void {
+        if (this.readonly()) return;
         if (this.isOpen()) {
             this.close();
         } else {

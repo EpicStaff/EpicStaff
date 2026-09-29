@@ -1,10 +1,14 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CustomInputComponent, InputNumberComponent, ValidationErrorsComponent } from '@shared/components';
+import {
+    CustomInputComponent,
+    HelpTooltipComponent,
+    InputNumberComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
-import { HelpTooltipComponent } from '../../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CharacterStrategyModel } from '../../../../../models/strategy.model';
 import { StrategyForm } from '../strategy-config-form.abstract';
 

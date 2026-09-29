@@ -1,7 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { ComponentType } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -20,6 +19,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import {
     DropdownManagerService,
     FullLLMConfig,
@@ -39,8 +40,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
-    standalone: true,
-    imports: [CommonModule, FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent, HasPermissionDirective],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -56,7 +56,9 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 class="selected-model"
                 [class.placeholder]="!selectedConfig()"
                 [class.loading]="isLoading"
-                (click)="!isLoading && toggleDropdown($event)"
+                [class.readonly]="readonly()"
+                [class.open]="isDropdownOpen()"
+                (click)="!isLoading && !readonly() && toggleDropdown($event)"
             >
                 @if (isLoading) {
                     <div class="loading-spinner"></div>
@@ -85,23 +87,28 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                         </div>
                     }
                 }
-                <div class="dropdown-icon">
-                    <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
+                @if (!readonly()) {
+                    <div
+                        class="dropdown-icon"
+                        [class.open]="isDropdownOpen()"
                     >
-                        <path
-                            d="M6 9L12 15L18 9"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        />
-                    </svg>
-                </div>
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                        >
+                            <path
+                                d="M6 9L12 15L18 9"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            />
+                        </svg>
+                    </div>
+                }
             </div>
 
             <!-- Dropdown Menu (rendered in an overlay so no parent overflow clips it) -->
@@ -126,6 +133,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                             (click)="$event.stopPropagation()"
                         />
                         <button
+                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                             class="create-btn"
                             (click)="onCreateLlm()"
                         >
@@ -172,25 +180,37 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .selected-model {
+                position: relative;
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
+                gap: 0.5rem;
+                height: 40px;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 6px;
-                padding: 0.625rem 0.75rem;
+                border-radius: 4px;
+                padding: 0.5rem 2rem 0.5rem 1rem;
+                font-size: 0.875rem;
+                line-height: var(--text-body-line-height);
                 cursor: pointer;
                 transition: border-color 0.2s ease;
-                min-height: 42px;
             }
 
-            .selected-model:hover:not(.loading) {
+            .selected-model:hover:not(.loading):not(.readonly),
+            .selected-model.open:not(.readonly) {
                 border-color: var(--accent-color);
             }
 
             .selected-model.loading {
                 cursor: default;
                 opacity: 0.6;
+            }
+
+            .selected-model.readonly {
+                cursor: default;
+                background-color: transparent;
+                border-color: transparent;
+                padding-left: 0;
+                padding-right: 0;
             }
 
             .loading-spinner {
@@ -213,7 +233,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .selected-model.placeholder {
-                color: rgba(255, 255, 255, 0.3);
+                color: var(--color-input-text-placeholder);
             }
 
             .model-info {
@@ -252,21 +272,33 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
             }
 
             .placeholder-text {
-                color: rgba(255, 255, 255, 0.3);
-                font-size: 0.875rem;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                color: var(--color-input-text-placeholder);
             }
 
             .dropdown-icon {
-                margin-left: 8px;
-                color: var(--color-text-secondary);
+                position: absolute;
+                top: 50%;
+                right: 10px;
+                display: flex;
+                color: var(--color-input-text-placeholder);
+                transform: translateY(-50%);
                 transition: transform 0.2s ease;
+            }
+
+            .dropdown-icon.open {
+                transform: translateY(-50%) rotate(180deg);
             }
 
             .dropdown-menu {
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 6px;
+                border-radius: 4px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 max-height: 300px;
                 display: flex;
@@ -335,7 +367,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: 1rem;
                 }
             }
 
@@ -357,6 +389,9 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     // Which pool of model configs to offer. Defaults to 'llm' so every existing
     // consumer keeps its current behaviour unchanged.
     readonly kind = input<ModelSelectorKind>('llm');
+
+    // Readonly mode: renders the current selection as plain text (no dropdown, no create button).
+    readonly readonly = input<boolean>(false);
 
     @Output() modelSelected = new EventEmitter<number>();
 
@@ -421,7 +456,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
 
     constructor() {
         // Generate unique ID for this dropdown instance
-        this.dropdownId = `llm-selector-${Math.random().toString(36).substr(2, 9)}`;
+        this.dropdownId = `llm-selector-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     ngOnInit(): void {
@@ -467,6 +502,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     }
 
     private openDropdown(): void {
+        if (this.readonly()) return;
         const container = this.elementRef.nativeElement.querySelector<HTMLElement>('.llm-selector-container');
         this.triggerWidth.set(container?.getBoundingClientRect().width ?? 0);
 
@@ -538,4 +574,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     setDisabledState(isDisabled: boolean): void {
         void isDisabled;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -11,5 +11,8 @@ class EntityRegistry:
     def get_strategy(self, entity_type: str) -> EntityImportExportStrategy:
         return self._strategies[entity_type]
 
+    def has_strategy(self, entity_type: str) -> bool:
+        return entity_type in self._strategies
+
 
 entity_registry = EntityRegistry()

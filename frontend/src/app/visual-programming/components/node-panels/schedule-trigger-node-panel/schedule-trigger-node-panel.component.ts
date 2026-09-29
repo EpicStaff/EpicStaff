@@ -1,4 +1,3 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -11,10 +10,26 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import {
+    CustomInputComponent,
+    DatePickerComponent,
+    HelpTooltipComponent,
+    NumberStepperComponent,
+    RadioButtonComponent,
+    RoundButtonComponent,
+    SelectComponent,
+    SelectItem,
+    TimePickerComponent,
+    TimezoneSelectorComponent,
+    ToggleSwitchComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
+import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
+import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import {
     GetScheduleTriggerNodeRequest,
     ScheduleEndType,
@@ -22,34 +37,13 @@ import {
     ScheduleRunMode,
     ScheduleTriggerNodeData,
     WeekdayCode,
-} from '../../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { DatePickerComponent } from '../../../../shared/components/date-picker/date-picker.component';
-import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { NumberStepperComponent } from '../../../../shared/components/number-stepper/number-stepper.component';
-import { RadioButtonComponent } from '../../../../shared/components/radio-button/radio-button.component';
-import { RoundButtonComponent } from '../../../../shared/components/round-button/round-button.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { TimePickerComponent } from '../../../../shared/components/time-picker/time-picker.component';
-import { TimezoneSelectorComponent } from '../../../../shared/components/timezone-selector/timezone-selector.component';
-import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
-import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+} from '../../../core/models/schedule-trigger.model';
 import { FlowService } from '../../../services/flow.service';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 const MIN_INTERVAL_SECONDS = 60;
 
-const panelFadeSlide = trigger('panelFadeSlide', [
-    transition(':enter', [
-        style({ opacity: 0, transform: 'translateY(-4px)' }),
-        animate('200ms ease-out', style({ opacity: 1, transform: 'translateY(0)' })),
-    ]),
-    transition(':leave', [animate('150ms ease-in', style({ opacity: 0, transform: 'translateY(-4px)' }))]),
-]);
-
 @Component({
-    standalone: true,
     selector: 'app-schedule-trigger-node-panel',
     imports: [
         ReactiveFormsModule,
@@ -63,12 +57,12 @@ const panelFadeSlide = trigger('panelFadeSlide', [
         TimePickerComponent,
         TimezoneSelectorComponent,
         ToggleSwitchComponent,
+        ValidationErrorsComponent,
         LockableFieldComponent,
     ],
     templateUrl: 'schedule-trigger-node-panel.component.html',
     styleUrls: ['schedule-trigger-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [panelFadeSlide],
 })
 export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTriggerNodeModel> {
     public override readonly isExpanded = input<boolean>(false);
@@ -160,6 +154,13 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         { label: 'On date', value: 'on_date' },
         { label: 'After N runs', value: 'after_n_runs' },
     ];
+
+    readonly runModeLabel = computed<string>(
+        () => this.runModeOptions.find((o) => o.value === this.runMode())?.label ?? '—'
+    );
+    readonly endModeLabel = computed<string>(
+        () => this.endModeOptions.find((o) => o.value === this.endMode())?.label ?? '—'
+    );
 
     readonly repeatUnitItems: SelectItem[] = [
         { name: 'Seconds', value: 'seconds' },

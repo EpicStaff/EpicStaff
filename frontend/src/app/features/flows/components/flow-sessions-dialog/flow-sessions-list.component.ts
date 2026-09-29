@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -25,21 +24,21 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
-import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
-import { NodeGroup } from 'src/app/shared/models/node-group.model';
-
-import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { downloadBlob } from '../../../../shared/utils/download-blob.util';
-import { GraphDto } from '../../models/graph.model';
 import {
-    GraphSessionLight,
-    GraphSessionService,
+    ActionCode,
+    DateRangeFilter,
     GraphSessionStatus,
     isTerminalSessionStatus,
-    TriggerType,
-} from '../../services/flows-sessions.service';
+    NodeGroup,
+    ResourceCode,
+} from '@shared/models';
+import { downloadBlob } from '@shared/utils';
+import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
+
+import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
+import { ToastService } from '../../../../services/notifications';
+import { GraphDto } from '../../models/graph.model';
+import { GraphSessionLight, GraphSessionService, TriggerType } from '../../services/flows-sessions.service';
 import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 
@@ -47,9 +46,7 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
     selector: 'app-flow-sessions-list',
     templateUrl: './flow-sessions-list.component.html',
     styleUrls: ['./flow-sessions-list.component.scss'],
-    standalone: true,
     imports: [
-        CommonModule,
         FlowSessionsTableComponent,
         PaginationControlsComponent,
         FlowSessionNodeFilterDropdownComponent,
@@ -128,12 +125,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
 
     private loadAvailableNodes(): void {
         const groups: NodeGroup[] = [
-            {
-                label: 'Crew Node',
-                icon: 'ti ti-users',
-                color: '#f0a500',
-                nodes: this.extractNodeNames(this.flow?.crew_node_list),
-            },
             {
                 label: 'Python Node',
                 icon: 'ti ti-brand-python',

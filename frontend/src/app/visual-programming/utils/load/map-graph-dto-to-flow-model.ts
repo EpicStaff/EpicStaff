@@ -8,11 +8,11 @@ import { mapEdgesToConnections } from './connections/plain-edge.mapper';
 import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
-import { mapCrewNodeToModel } from './nodes/crew-node.mapper';
 import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper';
 import { mapEndNodeToModel } from './nodes/end-node.mapper';
 import { mapFileExtractorNodeToModel } from './nodes/file-extractor-node.mapper';
 import { mapGraphNoteToModel } from './nodes/graph-note.mapper';
+import { mapKnowledgeRetrieverNodeToModel } from './nodes/knowledge-retriever-node.mapper';
 import { mapLLMNodeToModel } from './nodes/llm-node.mapper';
 import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
@@ -63,7 +63,6 @@ function deduplicateNodeNumbers(nodes: NodeModel[]): NodeModel[] {
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
     const startNodes = mapList(graph.start_node_list, mapStartNodeToModel);
-    const crewNodes = mapList(graph.crew_node_list, mapCrewNodeToModel);
     const pythonNodes = mapList(graph.python_node_list, mapPythonNodeToModel);
     const taskNodes = mapList(graph.task_node_list, mapTaskNodeToModel);
     const agentNodes = mapList(graph.agent_node_list, mapAgentNodeToModel);
@@ -81,11 +80,11 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         graph.classification_decision_table_node_list,
         mapClassificationDecisionTableNodeToModel
     );
+    const knowledgeRetrieverNodes = (graph.knowledge_node_list ?? []).map((n) => mapKnowledgeRetrieverNodeToModel(n));
 
     // ── 2. Combine into one flat node list ───────────────────────────────
     const allNodes: NodeModel[] = [
         ...startNodes,
-        ...crewNodes,
         ...pythonNodes,
         ...taskNodes,
         ...agentNodes,
@@ -100,6 +99,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...endNodes,
         ...decisionTableNodes,
         ...classificationDecisionTableNodes,
+        ...knowledgeRetrieverNodes,
     ];
 
     // ── 3. Build backendId ↔ UUID lookup maps ────────────────────────────

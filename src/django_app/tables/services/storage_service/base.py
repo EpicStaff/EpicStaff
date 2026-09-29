@@ -1,8 +1,7 @@
-import posixpath
 import tarfile
 import zipfile
 from abc import ABC, abstractmethod
-from typing import Iterator
+from collections.abc import Iterator
 
 from tables.services.storage_service.archive_limits import (
     ArchiveExtractionGuard,
@@ -10,11 +9,12 @@ from tables.services.storage_service.archive_limits import (
 )
 from tables.services.storage_service.dataclasses import (
     FileInfo,
-    FolderInfo,
     FileListItem,
+    FolderInfo,
     TreeNode,
     UploadResult,
 )
+from tables.services.storage_service.path_utils import sanitize_storage_path
 
 
 class AbstractStorageBackend(ABC):
@@ -61,30 +61,14 @@ class AbstractStorageBackend(ABC):
                 for entry in zf.infolist():
                     if not entry.is_dir() and entry.flag_bits & 0x1:
                         raise ValueError(msg)
-        except (RuntimeError, zipfile.BadZipFile):
-            raise ValueError(msg)
+        except (RuntimeError, zipfile.BadZipFile) as e:
+            raise ValueError(msg) from e
         finally:
             archive_file.seek(pos)
 
     def _sanitize_archive_member_name(self, name: str) -> str:
         """Raise ValueError if an archive member name can escape the extraction folder."""
-        if not name:
-            raise ValueError("Archive member has an empty name")
-
-        if "\x00" in name:
-            raise ValueError(f"Archive member name contains a null byte: {name!r}")
-
-        normalized = posixpath.normpath(name.replace("\\", "/"))
-
-        if (
-            posixpath.isabs(normalized)
-            or normalized.startswith("/")
-            or normalized == ".."
-            or normalized.startswith("../")
-        ):
-            raise ValueError(f"Archive member name escapes the target folder: {name!r}")
-
-        return normalized
+        return sanitize_storage_path(name, allow_empty=False)
 
     def _iter_archive_entries(
         self, archive_file, guard: ArchiveExtractionGuard | None = None
@@ -152,6 +136,10 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def delete(self, path: str) -> None:
         """Delete file or folder (folder = recursive)."""
+
+    @abstractmethod
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
 
     @abstractmethod
     def mkdir(self, path: str) -> None:

@@ -16,9 +16,8 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from rest_framework.test import APIClient
+from rest_framework.test import APIRequestFactory
 
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from agents.models import AgentDefinition, Surface
 from agents.models.surface_models import AgentInlineSurface, SurfaceStorageItem
 from tables.models.graph_models import (
@@ -30,7 +29,6 @@ from tables.models.graph_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
     AgentNodeSerializer,
 )
@@ -46,18 +44,37 @@ from agents.services.node_surface_service import NodeSurfaceService
 
 
 @pytest.fixture
-def client():
-    return APIClient()
+def client(auth_client):
+    """`auth_client` (conftest) is authenticated as a member of `default_org`
+    and sends its id as the active-org header, so `org` below is aliased to
+    `default_org` rather than a separate Organization."""
+    return auth_client
 
 
 @pytest.fixture
-def org(db):
-    return Organization.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+def org(default_org):
+    return default_org
+
+
+@pytest.fixture
+def org_request(org, superadmin_user):
+    """Authenticated request scoped to `org`, for serializers built directly
+    (not through a view). `AgentNodeSerializer`'s `graph`/`agent_definition`/
+    `surface_list` fields resolve org scope from `request` via
+    `OrgContextService` (see `tables/serializers/org_scoped_fields.py`) —
+    without a request they deny every pk. `superadmin_user` bypasses the
+    membership check so this fixture doesn't need an `OrganizationUser` row
+    wired up. Built directly rather than via `force_authenticate` since that
+    only takes effect once DRF's `Request` wrapper runs its own
+    authentication, which never happens for a serializer built by hand."""
+    request = APIRequestFactory().post("/", HTTP_X_ORGANIZATION_ID=str(org.pk))
+    request.user = superadmin_user
+    return request
 
 
 @pytest.fixture
 def graph(db, org):
-    return Graph.objects.create(name="agent-node-graph")
+    return Graph.objects.create(name="agent-node-graph", org=org)
 
 
 @pytest.fixture
@@ -75,9 +92,10 @@ def agent_node(db, graph):
 
 
 @pytest.fixture
-def py_tool(db):
+def py_tool(db, org):
     code = PythonCode.objects.create(code="def main(): pass")
     return PythonCodeTool.objects.create(
+        org=org,
         name="agent-node-py-tool",
         description="test",
         python_code=code,
@@ -85,8 +103,9 @@ def py_tool(db):
 
 
 @pytest.fixture
-def mcp_tool(db):
+def mcp_tool(db, org):
     return McpTool.objects.create(
+        org=org,
         name="agent-node-mcp-tool",
         transport="http://localhost/sse",
         tool_name="agent_node_tool",
@@ -129,7 +148,9 @@ def _make_serializer(data, instance=None, context=None):
 
 
 @pytest.mark.django_db
-def test_create_with_nested_tasks_resolves_context_from_temp_id(graph):
+def test_create_with_nested_tasks_resolves_context_from_temp_id(
+    graph, org, org_request
+):
     temp_id_a = uuid.uuid4()
     temp_id_b = uuid.uuid4()
 
@@ -147,7 +168,9 @@ def test_create_with_nested_tasks_resolves_context_from_temp_id(graph):
         ],
     }
 
-    serializer = _make_serializer(data)
+    serializer = _make_serializer(
+        data, context={"organization": org, "request": org_request}
+    )
     assert serializer.is_valid(), serializer.errors
     node = serializer.save()
 
@@ -163,7 +186,7 @@ def test_create_with_nested_tasks_resolves_context_from_temp_id(graph):
 
 
 @pytest.mark.django_db
-def test_create_rejects_duplicate_task_names(graph):
+def test_create_rejects_duplicate_task_names(graph, org, org_request):
     data = {
         "graph": graph.pk,
         "node_name": "agent-node-dup-names",
@@ -173,7 +196,9 @@ def test_create_rejects_duplicate_task_names(graph):
         ],
     }
 
-    serializer = _make_serializer(data)
+    serializer = _make_serializer(
+        data, context={"organization": org, "request": org_request}
+    )
     assert not serializer.is_valid()
     assert "tasks" in serializer.errors
 
@@ -184,7 +209,9 @@ def test_create_rejects_duplicate_task_names(graph):
 
 
 @pytest.mark.django_db
-def test_create_rejects_context_ref_to_later_or_equal_order_task(graph):
+def test_create_rejects_context_ref_to_later_or_equal_order_task(
+    graph, org, org_request
+):
     temp_id_a = uuid.uuid4()
     temp_id_b = uuid.uuid4()
 
@@ -202,7 +229,9 @@ def test_create_rejects_context_ref_to_later_or_equal_order_task(graph):
         ],
     }
 
-    serializer = _make_serializer(data)
+    serializer = _make_serializer(
+        data, context={"organization": org, "request": org_request}
+    )
     assert not serializer.is_valid()
     assert "tasks" in serializer.errors
 
@@ -442,10 +471,6 @@ def test_build_agent_node_data_without_agent_definition_is_none(agent_node):
 
 # ---------------------------------------------------------------------------
 # 7b. s3 pool is capped by GraphStorageFile when a graph_id is supplied
-#
-# `graph`/`agent_node` intentionally not reused here: `graph` never sets
-# `org`, which violates the not-null `Graph.org` FK. Build an org-scoped
-# graph inline instead of touching that shared, pre-existing fixture.
 # ---------------------------------------------------------------------------
 
 

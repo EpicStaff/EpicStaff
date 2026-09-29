@@ -1,12 +1,9 @@
-import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-no-messages',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div class="no-messages">
             <div class="no-messages-content">

@@ -18,7 +18,7 @@ from asgiref.sync import sync_to_async
 from tables.models import Graph
 from tables.models.crew_models import Crew
 from tables.models.graph_models import CrewNode
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 
 from tables.graph_collab import graph_state_service as _gss_module
 from tables.graph_collab import lock_service as _ls_module
@@ -211,7 +211,7 @@ def channel_layer_settings():
 
 
 @pytest.fixture
-def test_graph(default_org):
+def test_graph(db, default_org):
     return Graph.objects.create(name="test-graph-collab", org=default_org)
 
 
@@ -258,7 +258,7 @@ def org_graph(default_org):
 def fake_redis():
     fake = fakeredis.FakeStrictRedis()
     with unittest.mock.patch(
-        "tables.services.rbac.ticket_service.get_redis_connection",
+        "rbac.identity.tickets.get_redis_connection",
         return_value=fake,
     ):
         yield fake
@@ -386,13 +386,10 @@ def auth_client(api_client, regular_user, default_org):
     AnonymousUser. force_authenticate bypasses the auth middleware entirely
     and sets request.user directly, which is what these tests need.
 
-    Also sends the active-org header: GraphViewSet is org-scoped and
-    resolves the active org via OrgContextService, which requires either a
-    URL org_id kwarg or the X-Organization-Id header — omitting it fails
-    org-scoped requests (e.g. PUT/PATCH in test_graph_saved_notifications.py)
-    with 400 org_context_required. regular_user is an Org Admin member of
-    default_org, matching the shared `graph` fixture (tests/fixtures.py) and
-    this file's own `test_graph`/`second_graph`, both created in default_org.
+    Org-scoped endpoints still resolve the active organization from the
+    X-Organization-Id header (regardless of authentication_classes), so it
+    must be set here too — regular_user is an Org Admin member of
+    default_org, the same org the shared graph/agent fixtures use.
     """
     api_client.force_authenticate(user=regular_user)
     api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))

@@ -2,12 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ConfirmationDialogService } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
 import { EMPTY, forkJoin, Subject } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../services/notifications/toast.service';
-import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog';
+import { ToastService } from '../../../services/notifications';
 import {
     AddToFlowDialogComponent,
     AddToFlowDialogData,
@@ -45,11 +45,13 @@ export class StorageTreeFacade {
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
+    readonly error = signal<string | null>(null);
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
     readonly selectedItems = signal<StorageItem[]>([]);
 
     readonly selectInTree = new Subject<StorageItem>();
+    readonly renameInTree = new Subject<StorageItem>();
 
     afterTreeLoad: (() => void) | null = null;
 
@@ -112,6 +114,7 @@ export class StorageTreeFacade {
 
     loadTree(): void {
         this.isLoading.set(true);
+        this.error.set(null);
         this.storageApiService
             .list('')
             .pipe(
@@ -123,11 +126,11 @@ export class StorageTreeFacade {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
                     this.afterTreeLoad?.();
                 },
-                error: () => this.toastService.error('Failed to load storage files'),
+                error: () => this.error.set('Failed to load storage files'),
             });
     }
 
-    reloadTreePreservingExpansion(extraPathsToExpand: string[] = []): void {
+    reloadTreePreservingExpansion(extraPathsToExpand: string[] = [], onDone?: () => void): void {
         const expandedPaths = this.collectExpandedPaths(this.treeData());
         const all = new Set<string>([...expandedPaths, ...extraPathsToExpand.filter(Boolean)]);
 
@@ -141,8 +144,12 @@ export class StorageTreeFacade {
             .subscribe({
                 next: (items) => {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
-                    if (all.size) this.restoreExpandedPaths([...all]);
                     this.notifyStorageChanged();
+                    if (all.size) {
+                        this.restoreExpandedPaths([...all], () => onDone?.());
+                    } else {
+                        onDone?.();
+                    }
                 },
                 error: () => this.toastService.error('Failed to load storage files'),
             });
@@ -162,22 +169,37 @@ export class StorageTreeFacade {
         return paths;
     }
 
-    private restoreExpandedPaths(paths: string[]): void {
+    private restoreExpandedPaths(paths: string[], onAllDone?: () => void): void {
         const sorted = [...paths].sort((a, b) => a.split('/').length - b.split('/').length);
+        if (sorted.length === 0) {
+            onAllDone?.();
+            return;
+        }
+        let remaining = sorted.length;
+        const onOneDone = (): void => {
+            remaining -= 1;
+            if (remaining <= 0) onAllDone?.();
+        };
         for (const path of sorted) {
-            this.expandPath(path);
+            this.expandPath(path, onOneDone);
         }
     }
 
-    expandPath(targetPath: string): void {
+    expandPath(targetPath: string, onDone?: () => void): void {
         const segments = targetPath.split('/').filter(Boolean);
-        if (!segments.length) return;
+        if (!segments.length) {
+            onDone?.();
+            return;
+        }
 
         const walk = (index: number, nodes: StorageItem[], currentPath: string): void => {
             const segment = segments[index];
             const nextPath = currentPath ? `${currentPath}/${segment}` : segment;
             const match = nodes.find((n) => n.name === segment);
-            if (!match || match.type !== 'folder') return;
+            if (!match || match.type !== 'folder') {
+                onDone?.();
+                return;
+            }
 
             match.isExpanded = true;
             const isLast = index === segments.length - 1;
@@ -185,6 +207,7 @@ export class StorageTreeFacade {
             if (!match.children || match.children.length === 0) {
                 if (match.is_empty) {
                     this.treeData.update((data) => [...data]);
+                    onDone?.();
                     return;
                 }
                 this.storageApiService
@@ -194,12 +217,21 @@ export class StorageTreeFacade {
                         next: (children) => {
                             match.children = this.withPaths(Array.isArray(children) ? children : [], nextPath);
                             this.treeData.update((data) => [...data]);
-                            if (!isLast) walk(index + 1, match.children ?? [], nextPath);
+                            if (!isLast) {
+                                walk(index + 1, match.children ?? [], nextPath);
+                            } else {
+                                onDone?.();
+                            }
                         },
+                        error: () => onDone?.(),
                     });
             } else {
                 this.treeData.update((data) => [...data]);
-                if (!isLast) walk(index + 1, match.children, nextPath);
+                if (!isLast) {
+                    walk(index + 1, match.children, nextPath);
+                } else {
+                    onDone?.();
+                }
             }
         };
 
@@ -324,6 +356,9 @@ export class StorageTreeFacade {
                 break;
             case 'move':
                 this.handleMove(event);
+                break;
+            case 'group-selected':
+                this.handleGroupSelected(event);
                 break;
         }
     }
@@ -462,6 +497,79 @@ export class StorageTreeFacade {
                     this.toastService.error(label);
                 },
             });
+    }
+
+    private handleGroupSelected(event: { selectedItems?: StorageItem[] }): void {
+        const items = event.selectedItems ?? [];
+        if (items.length < 2) return;
+
+        const parentPath = this.getParentPath(items[0].path);
+        const name = this.buildUniqueFolderName(parentPath);
+        const targetPath = parentPath ? `${parentPath}/${name}` : name;
+
+        this.storageApiService
+            .mkdir(targetPath)
+            .pipe(
+                switchMap(() => forkJoin(items.map((item) => this.storageApiService.move(item.path, targetPath)))),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: () => {
+                    this.toastService.success(`${items.length} items grouped into "${name}"`);
+                    const selected = this.selectedFile();
+                    if (selected && items.some((item) => item.path === selected.path)) {
+                        this.selectedFile.set(null);
+                    }
+                    this.reloadTreePreservingExpansion([targetPath], () => {
+                        this.triggerRenameForNewFolder(targetPath);
+                    });
+                },
+                error: () => {
+                    this.toastService.error('Failed to group items');
+                    this.reloadTreePreservingExpansion([targetPath]);
+                },
+            });
+    }
+
+    private triggerRenameForNewFolder(targetPath: string, retriesLeft = 20): void {
+        const node = this.findNodeByPath(this.treeData(), targetPath);
+        if (node) {
+            this.renameInTree.next(node);
+            return;
+        }
+        if (retriesLeft <= 0) return;
+        setTimeout(() => this.triggerRenameForNewFolder(targetPath, retriesLeft - 1), 150);
+    }
+
+    private findNodeByPath(nodes: StorageItem[], path: string): StorageItem | undefined {
+        for (const node of nodes) {
+            if (node.path === path) return node;
+            if (node.children?.length) {
+                const found = this.findNodeByPath(node.children, path);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    private buildUniqueFolderName(parentPath: string): string {
+        const parent = parentPath ? this.findNodeByPath(this.treeData(), parentPath) : undefined;
+        const siblings = parentPath ? (parent?.children ?? []) : this.treeData();
+        const existingNames = new Set(siblings.map((item) => item.name));
+
+        if (!existingNames.has('New Folder')) {
+            return 'New Folder';
+        }
+        let counter = 2;
+        while (existingNames.has(`New Folder (${counter})`)) {
+            counter += 1;
+        }
+        return `New Folder (${counter})`;
+    }
+
+    private getParentPath(path: string): string {
+        const idx = path.lastIndexOf('/');
+        return idx >= 0 ? path.substring(0, idx) : '';
     }
 
     private handleDelete(item: StorageItem): void {

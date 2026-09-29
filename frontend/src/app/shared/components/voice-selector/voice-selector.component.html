@@ -41,22 +41,20 @@
         </div>
     </div>
 
-    <div
-        class="dropdown-menu"
-        *ngIf="isOpen"
-    >
-        <div
-            *ngFor="let voice of voices()"
-            class="dropdown-item"
-            [class.selected]="voice.id === selectedVoice()"
-            (click)="selectVoice(voice.id)"
-        >
-            <span class="dropdown-item__name">{{ voice.name }}</span>
-            <span
-                *ngIf="voice.description"
-                class="dropdown-item__desc"
-                >{{ voice.description }}</span
-            >
+    @if (isOpen) {
+        <div class="dropdown-menu">
+            @for (voice of voices(); track voice.id) {
+                <div
+                    class="dropdown-item"
+                    [class.selected]="voice.id === selectedVoice()"
+                    (click)="selectVoice(voice.id)"
+                >
+                    <span class="dropdown-item__name">{{ voice.name }}</span>
+                    @if (voice.description) {
+                        <span class="dropdown-item__desc">{{ voice.description }}</span>
+                    }
+                </div>
+            }
         </div>
-    </div>
+    }
 </div>

@@ -1,23 +1,38 @@
 from __future__ import annotations
 
-import os
+import json
 
+import settings
 from loguru import logger
-
+from shared.knowledge.client import KnowledgeClient
+from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import ToolResult
+from shared.models.knowledge_new import FoundChunk
 
-from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
-from app.knowledge.target import KnowledgeSearchTarget
 
 
-def _float_env(name: str, default: float) -> float:
-    val = os.getenv(name)
-    return float(val) if val else default
+async def _notify_sink(
+    sink: KnowledgeEventSink | None,
+    target: KnowledgeSearchTarget,
+    query: str,
+    result: list[FoundChunk] | str,
+    error: str | None = None,
+) -> None:
+    """Best-effort notification: a sink failure is logged and swallowed so it
+    never affects the tool's own result."""
+    if sink is None:
+        return
 
+    try:
+        await sink.on_knowledge_search(target, query, result, error=error)
 
-NAIVE_RAG_SEARCH_TIMEOUT = _float_env("NAIVE_RAG_SEARCH_TIMEOUT", 20.0)
-GRAPH_RAG_SEARCH_TIMEOUT = _float_env("GRAPH_RAG_SEARCH_TIMEOUT", 120.0)
+    except Exception as exc:
+        logger.warning(
+            "knowledge search sink failed rag_id={} error={}",
+            target.rag_id,
+            exc,
+        )
 
 
 async def _execute_search(
@@ -27,46 +42,48 @@ async def _execute_search(
     sink: KnowledgeEventSink | None = None,
 ) -> ToolResult:
     timeout = (
-        GRAPH_RAG_SEARCH_TIMEOUT
+        settings.GRAPH_RAG_SEARCH_TIMEOUT
         if target.rag_type == "graph"
-        else NAIVE_RAG_SEARCH_TIMEOUT
+        else settings.NAIVE_RAG_SEARCH_TIMEOUT
     )
 
     try:
-        resp = await client.search(target, query, timeout=timeout)
+        result = await client.search(target, query, timeout=timeout)
 
     except Exception as error:
+        await _notify_sink(sink, target, query, [], error=str(error))
         return ToolResult(
             tool_call_id="",
             content=f"Knowledge search failed: {error}",
             is_error=True,
         )
 
-    if sink is not None:
-        try:
-            await sink.on_knowledge_search(resp)
+    await _notify_sink(sink, target, query, result)
 
-        except Exception as sink_error:
-            logger.warning(
-                "knowledge search sink failed rag_id={} error={}",
-                target.rag_id,
-                sink_error,
-            )
+    if isinstance(result, str):
+        return ToolResult(
+            tool_call_id="",
+            content=result.strip() or "No relevant results found.",
+            is_error=False,
+        )
 
-    if not resp.chunks:
+    if not result:
         return ToolResult(
             tool_call_id="",
             content="No relevant results found.",
             is_error=False,
         )
 
-    lines = [
-        f"{chunk.chunk_text} (source={chunk.chunk_source}, score={chunk.chunk_similarity})"
-        for chunk in resp.chunks
-    ]
+    content = json.dumps(
+        [
+            {"text": chunk.text, "source": chunk.source, "score": chunk.similarity}
+            for chunk in result
+        ],
+        ensure_ascii=False,
+    )
     return ToolResult(
         tool_call_id="",
-        content="\n\n".join(lines),
+        content=content,
         is_error=False,
     )
 

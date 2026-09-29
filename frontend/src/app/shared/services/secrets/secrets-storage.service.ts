@@ -17,10 +17,10 @@ export class SecretsStorageService implements StorageService {
     public secretsLoaded = signal<boolean>(false);
     private readonly readForbiddenSignal = signal<boolean>(false);
     public readonly readForbidden = this.readForbiddenSignal.asReadonly();
-    // Every node-secrets-field, config dialog, and SecretDeclarationIndexService independently
-    // calls getSecrets() on their own mount/build — without sharing the in-flight request, opening
-    // e.g. a CDT panel (pre + post secrets fields mounting at once) fires one duplicate GET
-    // /secrets/ per concurrent caller before the first response lands.
+    // Every node-secrets-field and config dialog independently calls getSecrets() on their own
+    // mount/build — without sharing the in-flight request, opening e.g. a CDT panel (pre + post
+    // secrets fields mounting at once) fires one duplicate GET /secrets/ per concurrent caller
+    // before the first response lands.
     private pendingRequest$: Observable<Secret[]> | null = null;
 
     getSecrets(forceRefresh = false): Observable<Secret[]> {
@@ -67,6 +67,13 @@ export class SecretsStorageService implements StorageService {
             return '••••••••';
         }
         return `••••${tail}`;
+    }
+
+    namesForIds(ids: number[]): string[] {
+        const selected = new Set(ids);
+        return this.secretsSignal()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
     }
 
     private createOrUpdateSecretInCache(updated: Secret): void {

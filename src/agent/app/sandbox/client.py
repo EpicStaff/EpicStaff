@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
-from typing import TYPE_CHECKING
 
 import redis.asyncio as aioredis
 from loguru import logger
-
 from shared.models.tools import CodeResultData, CodeTaskData
-
-if TYPE_CHECKING:
-    pass
 
 
 class SandboxClient:
@@ -56,10 +52,8 @@ class SandboxClient:
 
         if self._reader_task is not None:
             self._reader_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reader_task
-            except asyncio.CancelledError:
-                pass
 
         error = ConnectionError("SandboxClient stopped")
 
@@ -78,12 +72,8 @@ class SandboxClient:
         self._started = False
         logger.info("SandboxClient stopped")
 
-    async def submit(
-        self, task: CodeTaskData, *, timeout: float | None = None
-    ) -> CodeResultData:
-        assert (
-            self._redis is not None
-        ), "SandboxClient.start() must be called before submit()"
+    async def submit(self, task: CodeTaskData, *, timeout: float | None = None) -> CodeResultData:
+        assert self._redis is not None, "SandboxClient.start() must be called before submit()"
         execution_id = str(uuid.uuid4())
         task = task.model_copy(update={"execution_id": execution_id})
 
@@ -103,9 +93,7 @@ class SandboxClient:
             self._pending.pop(execution_id, None)
 
     async def _reader_loop(self) -> None:
-        assert (
-            self._pubsub is not None
-        ), "SandboxClient.start() must be called before _reader_loop"
+        assert self._pubsub is not None, "SandboxClient.start() must be called before _reader_loop"
         try:
             async for message in self._pubsub.listen():
                 if message["type"] != "message":
@@ -118,10 +106,8 @@ class SandboxClient:
 
                 try:
                     result = CodeResultData.model_validate_json(data)
-                except Exception as parse_error:
-                    logger.warning(
-                        "SandboxClient: failed to parse pubsub message: {}", parse_error
-                    )
+                except Exception as error:
+                    logger.warning("SandboxClient: failed to parse pubsub message: {}", error)
                     continue
 
                 future = self._pending.get(result.execution_id)
@@ -134,9 +120,7 @@ class SandboxClient:
 
         except Exception as error:
             logger.error("SandboxClient reader loop failed: {}", error)
-            connection_error = ConnectionError(
-                f"SandboxClient reader loop failed: {error}"
-            )
+            connection_error = ConnectionError(f"SandboxClient reader loop failed: {error}")
 
             for future in self._pending.values():
                 if not future.done():

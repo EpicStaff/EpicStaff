@@ -1,20 +1,20 @@
 from copy import deepcopy
 
+from agents.models import AgentDefaultSurface, AgentDefinition, Surface
 from django.db.models import Q
 
-from tables.models import LLMConfig
-from agents.models import AgentDefinition, AgentDefaultSurface, Surface
-from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.agent_definition import (
     AgentDefinitionImportSerializer,
 )
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
+from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
     resolve_import_organization,
 )
+from tables.models import LLMConfig
 
 # Scalar fields compared for reuse. Explicit allowlist (not create_filters over
 # the whole dict) so the comparison stays self-documenting and immune to
@@ -58,9 +58,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         deps[EntityType.LLM_CONFIG] = list(llm_config_ids)
 
         owned_surface_ids = set(instance.owned_surfaces.values_list("id", flat=True))
-        default_surface_ids = set(
-            instance.default_surface_list.values_list("id", flat=True)
-        )
+        default_surface_ids = set(instance.default_surface_list.values_list("id", flat=True))
         deps[EntityType.SURFACE] = list(owned_surface_ids | default_surface_ids)
 
         return deps
@@ -68,9 +66,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: AgentDefinition) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(
-        self, data: dict, id_mapper: IDMapper, **kwargs
-    ) -> AgentDefinition:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> AgentDefinition:
         owned_surfaces = data.pop("owned_surfaces", [])
         default_surfaces = data.pop("default_surfaces", [])
         old_llm_config_id = data.pop("llm_config", None)
@@ -80,9 +76,9 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(kwargs.get("org_id"))
 
         if "name" in data:
-            existing_names = AgentDefinition.objects.filter(
-                organization=organization
-            ).values_list("name", flat=True)
+            existing_names = AgentDefinition.objects.filter(organization=organization).values_list(
+                "name", flat=True
+            )
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -101,7 +97,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         return agent_definition
 
     def find_existing(
-        self, data: dict, id_mapper: IDMapper, org_id: int = None
+        self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> AgentDefinition:
         data_copy = deepcopy(data)
         projected = {field: data_copy.get(field) for field in COMPARED_FIELDS}
@@ -143,19 +139,11 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         old_fcm_llm_config_id,
         id_mapper: IDMapper,
     ):
-        new_llm_config_id = id_mapper.get_or_none(
-            EntityType.LLM_CONFIG, old_llm_config_id
-        )
-        new_fcm_llm_config_id = id_mapper.get_or_none(
-            EntityType.LLM_CONFIG, old_fcm_llm_config_id
-        )
+        new_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, old_llm_config_id)
+        new_fcm_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, old_fcm_llm_config_id)
 
-        agent_definition.llm_config = LLMConfig.objects.filter(
-            id=new_llm_config_id
-        ).first()
-        agent_definition.fcm_llm_config = LLMConfig.objects.filter(
-            id=new_fcm_llm_config_id
-        ).first()
+        agent_definition.llm_config = LLMConfig.objects.filter(id=new_llm_config_id).first()
+        agent_definition.fcm_llm_config = LLMConfig.objects.filter(id=new_fcm_llm_config_id).first()
         agent_definition.save()
 
     def _assign_owned_surfaces(
@@ -180,9 +168,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         default_surface_rows = []
 
         for row in default_surfaces:
-            new_surface_id = id_mapper.get_or_none(
-                EntityType.SURFACE, row["surface_id"]
-            )
+            new_surface_id = id_mapper.get_or_none(EntityType.SURFACE, row["surface_id"])
             if new_surface_id is None:
                 continue
 
@@ -194,6 +180,4 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
                 )
             )
 
-        AgentDefaultSurface.objects.bulk_create(
-            default_surface_rows, ignore_conflicts=True
-        )
+        AgentDefaultSurface.objects.bulk_create(default_surface_rows, ignore_conflicts=True)

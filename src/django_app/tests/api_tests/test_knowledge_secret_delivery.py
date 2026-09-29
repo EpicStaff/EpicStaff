@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.shared.models.knowledge import ProcessRagIndexingMessage
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_service
 from tables.services.secrets.exceptions import SecretResolutionError

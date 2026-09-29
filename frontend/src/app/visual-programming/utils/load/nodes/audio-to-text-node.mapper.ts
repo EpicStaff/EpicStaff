@@ -1,8 +1,8 @@
-import { stableNodeId } from '../../stable-node-id';
+import { NodeType } from '@shared/models';
 
-import { GetAudioToTextNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { GetAudioToTextNodeRequest } from '../../../core/models/audio-to-text.model';
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapAudioToTextNodeToModel(n: GetAudioToTextNodeRequest): AudioToTextNodeModel {

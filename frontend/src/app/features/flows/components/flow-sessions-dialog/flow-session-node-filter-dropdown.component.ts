@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -10,13 +9,12 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NodeGroup } from 'src/app/shared/models/node-group.model';
+import { NodeGroup } from '@shared/models';
 
 @Component({
     selector: 'app-flow-session-node-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, FormsModule],
-    changeDetection: ChangeDetectionStrategy.Default,
+    imports: [FormsModule],
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: `
         <div
             class="node-filter-dropdown"

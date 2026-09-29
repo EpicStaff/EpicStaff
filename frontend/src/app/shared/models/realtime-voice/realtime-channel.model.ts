@@ -1,4 +1,4 @@
-import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
+import { WebhookTriggerModel } from '../webhook-trigger/webhook-trigger.model';
 
 export interface TwilioChannel {
     channel: number;
@@ -13,23 +13,25 @@ export interface RealtimeChannel {
     name: string;
     channel_type: 'twilio';
     token: string;
+    /** Legacy staff destination. Read-only here — the UI writes realtime_agent_definition. */
     realtime_agent: number | null;
-    is_active: boolean;
+    realtime_agent_definition: number | null;
+    is_enabled: boolean;
     twilio?: TwilioChannel;
 }
 
 export interface CreateRealtimeChannelRequest {
     name: string;
     channel_type: 'twilio';
-    realtime_agent?: number | null;
-    is_active?: boolean;
+    realtime_agent_definition?: number | null;
+    is_enabled?: boolean;
 }
 
 export interface UpdateRealtimeChannelRequest {
     id: number;
     name?: string;
-    realtime_agent?: number | null;
-    is_active?: boolean;
+    realtime_agent_definition?: number | null;
+    is_enabled?: boolean;
 }
 
 export interface CreateTwilioChannelRequest {

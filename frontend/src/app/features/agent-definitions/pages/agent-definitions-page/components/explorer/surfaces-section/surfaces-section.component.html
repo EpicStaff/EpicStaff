@@ -1,4 +1,11 @@
-@if (store.surfacesTree().length === 0) {
+@if (store.surfacesError()) {
+    <app-fetch-error-state
+        mod="small"
+        title="Failed to load surfaces"
+        message="Check your connection and try again."
+        (retry)="store.retrySurfaces()"
+    />
+} @else if (store.surfacesTree().length === 0) {
     <div class="section-state">No shared surfaces yet</div>
 } @else {
     @for (node of store.surfacesTree(); track trackByKey($index, node)) {

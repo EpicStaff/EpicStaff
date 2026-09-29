@@ -250,7 +250,6 @@
                         [value]="inputText()"
                         (input)="onInputChange($event)"
                         (keydown)="onKeydown($event)"
-                        [disabled]="isStreaming()"
                     ></textarea>
                     <div class="input-area__bottom-bar">
                         @if (isStreaming()) {

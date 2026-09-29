@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -46,8 +45,7 @@ interface MonthCell {
 
 @Component({
     selector: 'app-date-range-picker',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './date-range-picker.component.html',
     styleUrls: ['./date-range-picker.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

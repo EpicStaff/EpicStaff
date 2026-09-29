@@ -1,44 +1,20 @@
-import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
-import { CollectionStatus, GetCollectionRequest } from '../../../../../models/collection.model';
+import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/constants';
+import { GetCollectionRequest } from '../../../../../models/collection.model';
 
 @Component({
     selector: 'app-collection',
     templateUrl: './collection.component.html',
     styleUrls: ['./collection.component.scss'],
-    imports: [NgClass, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionComponent {
-    collection = input<GetCollectionRequest>();
+    collection = input.required<GetCollectionRequest>();
     selected = input<boolean>(false);
 
-    statusMap: Record<CollectionStatus, { text: string; icon: string }> = {
-        completed: {
-            text: 'Completed',
-            icon: 'check',
-        },
-        empty: {
-            text: 'New',
-            icon: 'circle',
-        },
-        warning: {
-            text: 'Warning',
-            icon: 'warning',
-        },
-        uploading: {
-            text: 'Processing',
-            icon: 'processing',
-        },
-        failed: {
-            text: 'Failed',
-            icon: 'x',
-        },
-    } as const;
-
-    get statusData() {
-        return this.statusMap[this.collection()?.status || 'empty'];
-    }
+    ragTypeConfig = RAG_TYPE_CONFIG;
+    ragStatusConfig = RAG_STATUS_CONFIG;
 }

@@ -787,7 +787,7 @@ async def test_flush_strips_cross_org_llm_config_and_logs_warning(
     since it is a more serious drift than a plain delete."""
     from tables.models.graph_models import CodeAgentNode
     from tables.models.llm_models import LLMConfig
-    from tables.models.rbac_models import Organization
+    from rbac.models import Organization
 
     other_org = await sync_to_async(Organization.objects.create)(
         name="cross-org-llm-config-owner"

@@ -18,8 +18,8 @@
     height: 28px;
     padding: 6px 12px;
     border-radius: var(--ep-button-radius);
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
     background-color: var(--ep-color-accent);
     color: var(--ep-color-accent-contrast);
     border: 1px solid transparent;
@@ -38,7 +38,7 @@
     height: 28px;
     padding: 4px 10px;
     border-radius: var(--ep-button-radius);
-    font-size: 12px;
+    font-size: 0.75rem;
     background-color: transparent;
     color: var(--ep-color-accent);
     border: 1px solid var(--ep-color-accent);

@@ -2,24 +2,27 @@ from copy import deepcopy
 
 from django.db.models import Q
 
-from tables.models import (
-    LLMModel,
-    EmbeddingModel,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-    Provider,
-)
-
-from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.llm_models import (
-    LLMModelImportSerializer,
     EmbeddingModelImportSerializer,
+    LLMModelImportSerializer,
     RealtimeModelImportSerializer,
     RealtimeTranscriptionModelImportSerializer,
 )
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
-from tables.import_export.utils import ensure_unique_identifier, create_filters
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import (
+    create_filters,
+    ensure_unique_identifier,
+    resolve_import_organization,
+)
+from tables.models import (
+    EmbeddingModel,
+    LLMModel,
+    Provider,
+    RealtimeModel,
+    RealtimeTranscriptionModel,
+)
 
 
 class BaseProviderModelStrategy(EntityImportExportStrategy):
@@ -49,10 +52,11 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         return Q(is_custom=False) | Q(org_id=org_id)
 
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
-        # Provider models have a GLOBAL (name, provider) uniqueness constraint,
-        # so the name check stays global (not scoped to org).
+        organization = resolve_import_organization(kwargs.get("org_id"))
         if "name" in data:
-            existing_names = self.model_class.objects.values_list("name", flat=True)
+            existing_names = self.model_class.objects.filter(org=organization).values_list(
+                "name", flat=True
+            )
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -66,8 +70,9 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
                 **data,
                 "provider_id": provider.id,
                 "tags": tags_ids,
-                "org": kwargs.get("org_id"),
+                "org": organization.id if organization is not None else None,
                 "is_custom": True,
+                "predefined": False,
             }
         )
         serializer.is_valid(raise_exception=True)
@@ -76,11 +81,11 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper, org_id: int = None):
+    def find_existing(self, data, id_mapper, org_id: int | None = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         provider_name = data_copy.pop("provider_name", None)
-        tags = data_copy.pop("tags", None)
+        data_copy.pop("tags", None)
 
         filters, null_filters = create_filters(data_copy)
         provider_filter_field = f"{self.provider_field}__name"

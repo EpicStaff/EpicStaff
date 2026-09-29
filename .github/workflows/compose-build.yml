@@ -35,12 +35,17 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
       - name: Generate compose config json
         shell: bash
         run: |
           set -euo pipefail
           REPO_ROOT="$(pwd)"
-          docker compose --env-file "$REPO_ROOT/src/.env.example" -f "$REPO_ROOT/$COMPOSE_FILE" config --format json > "$REPO_ROOT/compose.json"
+          docker compose --env-file "$REPO_ROOT/src/.env" -f "$REPO_ROOT/$COMPOSE_FILE" config --format json > "$REPO_ROOT/compose.json"
           ls -la "$REPO_ROOT/compose.json"
 
       - name: Generate matrix (python)

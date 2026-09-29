@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, output } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowAssistantService } from '../../flow-assistant.service';
 import { SessionSummary } from '../../models/flow-assistant.model';
 
@@ -24,7 +24,6 @@ function formatRelativeDate(isoString: string | null | undefined): string {
 
 @Component({
     selector: 'app-flow-assistant-sidebar',
-    standalone: true,
     imports: [AppSvgIconComponent],
     templateUrl: './flow-assistant-sidebar.component.html',
     styleUrls: ['./flow-assistant-sidebar.component.scss'],

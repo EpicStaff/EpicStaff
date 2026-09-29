@@ -49,7 +49,7 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
@@ -481,7 +481,10 @@ class TestAgentDefinitionLLMHydration:
         assert task_data.agent_definition.llm is not None
         assert task_data.agent_definition.llm.provider == "openai"
         assert task_data.agent_definition.llm.config.model == llm_config.model.name
-        assert task_data.agent_definition.llm.config.api_key == llm_config.api_key
+        assert (
+            task_data.agent_definition.llm.config.api_key_secret_id
+            == llm_config.api_key_secret_id
+        )
         assert task_data.agent_definition.fcm_llm is None
         assert task_data.agent_definition.llm_config_id == llm_config.pk
 

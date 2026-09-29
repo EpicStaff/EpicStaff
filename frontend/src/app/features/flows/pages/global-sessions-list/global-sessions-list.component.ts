@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -19,15 +18,16 @@ import {
     PaginationControlsComponent,
     SelectComponent,
     SelectItem,
+    StopButtonComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
+import { downloadBlob } from '@shared/utils';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { downloadBlob } from '../../../../shared/utils/download-blob.util';
+import { ToastService } from '../../../../services/notifications';
 import { FlowSessionsTableComponent } from '../../components/flow-sessions-dialog/flow-sessions-table.component';
 import { GetGraphLightRequest } from '../../models/graph.model';
 import { FlowsApiService } from '../../services/flows-api.service';
@@ -35,15 +35,12 @@ import {
     DurationFilter,
     GraphSessionLight,
     GraphSessionService,
-    GraphSessionStatus,
     TriggerType,
 } from '../../services/flows-sessions.service';
 
 @Component({
     selector: 'app-global-sessions-list',
-    standalone: true,
     imports: [
-        CommonModule,
         FlowSessionsTableComponent,
         PaginationControlsComponent,
         AppSvgIconComponent,
@@ -52,6 +49,7 @@ import {
         ActionDropdownButtonComponent,
         SelectComponent,
         HasPermissionDirective,
+        StopButtonComponent,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
@@ -227,6 +225,10 @@ export class GlobalSessionsListComponent {
         }
     }
 
+    public canStopSession(status: GraphSessionStatus): boolean {
+        return !isTerminalSessionStatus(status);
+    }
+
     public onStopSession(sessionId: number): void {
         this.graphSessionService
             .stopSessionById(sessionId)
@@ -368,6 +370,7 @@ export class GlobalSessionsListComponent {
             .subscribe({
                 next: (response) => {
                     this.sessions.set(response.results);
+                    this.syncPreviewSession(response.results);
                     this.totalCount.set(response.count);
                     this.isLoaded.set(true);
                     this.startBackgroundRefresh();
@@ -406,8 +409,18 @@ export class GlobalSessionsListComponent {
             )
             .subscribe((response) => {
                 this.sessions.set(response.results);
+                this.syncPreviewSession(response.results);
                 this.totalCount.set(response.count);
             });
+    }
+
+    private syncPreviewSession(sessions: GraphSessionLight[]): void {
+        const current = this.previewSession();
+        if (!current) return;
+        const updated = sessions.find((s) => s.id === current.id);
+        if (updated) {
+            this.previewSession.set(updated);
+        }
     }
 
     protected readonly ResourceCode = ResourceCode;

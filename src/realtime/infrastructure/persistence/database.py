@@ -1,17 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
+
+from core import config
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from infrastructure.persistence.db_models import RealtimeSessionItem
-from sqlalchemy.exc import SQLAlchemyError
-from core.config import settings
 
-
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(
-    autocommit=False, autoflush=False, bind=engine, class_=AsyncSession
-)
+engine = create_async_engine(config.DATABASE_URL, echo=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
 
 async def get_db():
@@ -35,7 +33,7 @@ async def save_realtime_session_item_to_db(
                 data=data,
                 org_id=org_id,
                 created_by_id=user_id,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
             db_session.add(realtime_session_item)
             await db_session.commit()

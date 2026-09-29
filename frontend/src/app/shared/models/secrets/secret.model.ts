@@ -1,3 +1,8 @@
+export interface SecretUsageCount {
+    readable: number;
+    hidden: number;
+}
+
 export interface Secret {
     id: number;
     name: string;
@@ -7,7 +12,7 @@ export interface Secret {
     created_by: number | null;
     created_at: string;
     updated_at: string;
-    usage_count: number;
+    usage_count: SecretUsageCount;
 }
 
 export interface CreateSecretRequest {
@@ -47,6 +52,7 @@ export interface SecretUsageCategoryDto {
 }
 
 export interface SecretUsageResponse {
-    total: number;
+    readable_total: number;
+    hidden_total: number;
     categories: SecretUsageCategoryDto[];
 }

@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -22,6 +21,7 @@ import {
     Validators,
 } from '@angular/forms';
 import {
+    AppSvgIconComponent,
     ButtonComponent,
     CustomInputComponent,
     HintMessageComponent,
@@ -32,15 +32,13 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, CreateMcpToolRequest, GetMcpToolRequest, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable, of, timer } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CreateMcpToolRequest, GetMcpToolRequest } from '../../models/mcp-tool.model';
+import { ToastService } from '../../../../services/notifications';
 import { McpToolsService } from '../../services/mcp-tools/mcp-tools.service';
 
 interface DialogData {
@@ -51,7 +49,6 @@ interface DialogData {
     selector: 'app-mcp-tool-dialog',
     imports: [
         ReactiveFormsModule,
-        CommonModule,
         DialogModule,
         AppSvgIconComponent,
         CustomInputComponent,

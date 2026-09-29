@@ -1,4 +1,6 @@
-﻿export type ExplorerSectionId = 'agents' | 'storage' | 'surfaces' | 'knowledge';
+﻿import { ResourceCode } from '@shared/models';
+
+export type ExplorerSectionId = 'agents' | 'storage' | 'surfaces' | 'knowledge';
 
 export type ExplorerSelection =
     | { kind: 'agent'; id: number }
@@ -16,11 +18,17 @@ export interface ExplorerSectionDef {
     id: ExplorerSectionId;
     headerLabel: string;
     filterLabel: string;
+    resourceCode: ResourceCode;
     locked?: boolean;
 }
 
 export const EXPLORER_SECTIONS: ExplorerSectionDef[] = [
-    { id: 'agents', headerLabel: 'Agents', filterLabel: 'Agent', locked: true },
-    { id: 'surfaces', headerLabel: 'Shared Surfaces', filterLabel: 'Shared Surfaces' },
-    { id: 'storage', headerLabel: 'Storage', filterLabel: 'Storage' },
+    { id: 'agents', headerLabel: 'Agents', filterLabel: 'Agent', resourceCode: ResourceCode.Agents, locked: true },
+    {
+        id: 'surfaces',
+        headerLabel: 'Shared Surfaces',
+        filterLabel: 'Shared Surfaces',
+        resourceCode: ResourceCode.Surfaces,
+    },
+    { id: 'storage', headerLabel: 'Storage', filterLabel: 'Storage', resourceCode: ResourceCode.Files },
 ];

@@ -4,7 +4,10 @@
     (actualClick)="onEditClick()"
 >
     @if (inputPort; as port) {
-        <div class="input-port-wrapper">
+        <div
+            class="input-port-wrapper"
+            [class.no-hover]="isReadonly()"
+        >
             <div
                 class="port-circle"
                 fNodeInput
@@ -13,6 +16,8 @@
                 [fOutputMultiple]="port.multiple"
                 [fInputId]="port.id"
                 [fOutputId]="port.id"
+                [fInputDisabled]="isReadonly()"
+                [fOutputDisabled]="isReadonly()"
                 [fCanBeConnectedInputs]="getPortConnections(port.id)"
                 [isSelfConnectable]="false"
                 [fInputConnectableSide]="port.position"
@@ -35,10 +40,14 @@
             <i
                 [class]="node.icon"
                 [style.color]="node.color"
-                style="font-size: 1.4rem"
             ></i>
         </div>
-        <div class="title">{{ node.node_name || 'Decision Table' }}</div>
+        <div class="title">
+            <span class="title__label">{{ titleParts.label }}</span>
+            @if (titleParts.badge) {
+                <span class="title__badge">{{ titleParts.badge }}</span>
+            }
+        </div>
     </div>
 
     <div class="decision-table__groups">
@@ -48,7 +57,10 @@
                     <span class="group-name">{{ group.group_name || 'Group ' + ($index + 1) }}</span>
 
                     @if (getPortForGroup(group); as port) {
-                        <div class="port-wrapper">
+                        <div
+                            class="port-wrapper"
+                            [class.no-hover]="isReadonly()"
+                        >
                             <div
                                 class="port-circle"
                                 fNodeInput
@@ -57,6 +69,8 @@
                                 [fOutputMultiple]="port.multiple"
                                 [fInputId]="port.id"
                                 [fOutputId]="port.id"
+                                [fInputDisabled]="isReadonly()"
+                                [fOutputDisabled]="isReadonly()"
                                 [fCanBeConnectedInputs]="getPortConnections(port.id)"
                                 [isSelfConnectable]="false"
                                 [fInputConnectableSide]="port.position"
@@ -92,7 +106,10 @@
             </span>
 
             @if (defaultPort; as port) {
-                <div class="port-wrapper">
+                <div
+                    class="port-wrapper"
+                    [class.no-hover]="isReadonly()"
+                >
                     <div
                         class="port-circle"
                         fNodeInput
@@ -101,6 +118,8 @@
                         [fOutputMultiple]="port.multiple"
                         [fInputId]="port.id"
                         [fOutputId]="port.id"
+                        [fInputDisabled]="isReadonly()"
+                        [fOutputDisabled]="isReadonly()"
                         [fCanBeConnectedInputs]="getPortConnections(port.id)"
                         [isSelfConnectable]="false"
                         [fInputConnectableSide]="port.position"
@@ -130,7 +149,10 @@
             </span>
 
             @if (errorPort; as port) {
-                <div class="port-wrapper">
+                <div
+                    class="port-wrapper"
+                    [class.no-hover]="isReadonly()"
+                >
                     <div
                         class="port-circle"
                         fNodeInput
@@ -139,6 +161,8 @@
                         [fOutputMultiple]="port.multiple"
                         [fInputId]="port.id"
                         [fOutputId]="port.id"
+                        [fInputDisabled]="isReadonly()"
+                        [fOutputDisabled]="isReadonly()"
                         [fCanBeConnectedInputs]="getPortConnections(port.id)"
                         [isSelfConnectable]="false"
                         [fInputConnectableSide]="port.position"

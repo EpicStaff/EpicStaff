@@ -1,14 +1,14 @@
-from src.shared.models import BaseTunnelConfigData, NgrokConfigData, LocalhostConfigData
-from .tunnels.base import AbstractTunnelProvider
-from .tunnels.ngrok_tunnel import NgrokTunnel
-from .tunnels.localhost_tunnel import LocalhostTunnel
+from src.shared.models import BaseTunnelConfigData, LocalhostConfigData, NgrokConfigData
+
 from app.core.settings import settings
 
+from .tunnels.base import AbstractTunnelProvider
+from .tunnels.localhost_tunnel import LocalhostTunnel
+from .tunnels.ngrok_tunnel import NgrokTunnel
 
-class ProviderNotFoundException(ValueError):
+
+class ProviderNotFoundError(ValueError):
     """Raised when the requested tunnel provider is not in the registry."""
-
-    pass
 
 
 def get_provider(config: BaseTunnelConfigData) -> AbstractTunnelProvider:
@@ -31,4 +31,4 @@ def get_provider(config: BaseTunnelConfigData) -> AbstractTunnelProvider:
             domain=config.domain,
         )
     else:
-        raise ProviderNotFoundException(f"No tunnel provider for type {type(config)}")
+        raise ProviderNotFoundError(f"No tunnel provider for type {type(config)}")

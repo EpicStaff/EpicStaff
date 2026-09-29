@@ -8,16 +8,14 @@ import {
     inject,
     input,
     model,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
+import { AppSvgIconComponent, HelpTooltipComponent, MultiSelectComponent, SelectItem } from '@shared/components';
+import { SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../services/notifications';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
-import { MultiSelectComponent } from '../../../shared/components/multi-select/multi-select.component';
-import { SelectItem } from '../../../shared/components/select/select.component';
 
 /** A "Secrets" field (label + input-styled trigger + multi-select dropdown) for node side
  *  panels — lets a node reference multiple secrets by id. Reused across Python/Webhook/CDT/
@@ -31,15 +29,16 @@ import { SelectItem } from '../../../shared/components/select/select.component';
 })
 export class NodeSecretsFieldComponent {
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly toastService = inject(ToastService);
 
-    public readonly activeColor = input<string>('#685fff');
+    public readonly activeColor = input<string>('var(--accent-color)');
     public readonly value = model<number[]>([]);
     public readonly tooltipText = input<string>(
         "Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
     );
+    public readonly readonly = input<boolean>(false);
+    public readonly names = input<string[]>([]);
     /** Dropdown width — narrow panels (e.g. CDT's 350px sidebar) need a smaller value than
      *  the 390px default so the panel doesn't overflow past the field's own column. */
     public readonly panelWidth = input<string>('390px');
@@ -57,17 +56,16 @@ export class NodeSecretsFieldComponent {
 
     public readonly readForbidden = computed(() => this.secretsStorageService.readForbidden());
 
-    public readonly selectionUnknown = computed(
-        () => !this.readForbidden() && this.secretDeclarationIndexService.indexUnavailable()
-    );
+    public readonly readonlyItems = computed<SelectItem[]>(() => this.names().map((name) => ({ name, value: name })));
 
     public readonly triggerLabel = computed(() => {
         if (this.readForbidden()) {
             const declared = this.value().length;
             return declared > 0 ? `${declared} selected — no access` : 'No access to secrets';
         }
-        if (this.selectionUnknown() && this.value().length === 0) {
-            return 'Selection hidden — pick to overwrite';
+        if (this.readonly()) {
+            const count = this.names().length;
+            return count > 0 ? `${count} selected` : 'No secrets assigned';
         }
         // Count only ids that still resolve to an existing secret — a since-deleted secret's id
         // can still be sitting in value() (nothing prunes it), and counting it here would show a
@@ -80,10 +78,15 @@ export class NodeSecretsFieldComponent {
     private readonly refetchedForUnknownIds = new Set<number>();
 
     constructor() {
-        this.loadSecrets();
-
         effect(() => {
-            if (this.readForbidden()) return;
+            if (this.readonly()) return;
+            untracked(() => this.loadSecrets());
+        });
+
+        // EST-3922: prune ids of secrets deleted since the node was saved. Refetch once per unknown
+        // id first, so a secret created in another tab is not dropped by a stale cache.
+        effect(() => {
+            if (this.readonly() || this.readForbidden()) return;
             const knownIds = new Set(this.secretsStorageService.secrets().map((secret) => secret.id));
             const missing = this.value().filter((id) => !knownIds.has(id));
             if (missing.length === 0) return;
@@ -91,7 +94,7 @@ export class NodeSecretsFieldComponent {
             const unchecked = missing.filter((id) => !this.refetchedForUnknownIds.has(id));
             if (unchecked.length > 0) {
                 unchecked.forEach((id) => this.refetchedForUnknownIds.add(id));
-                this.loadSecrets();
+                untracked(() => this.loadSecrets());
                 return;
             }
 
@@ -105,11 +108,11 @@ export class NodeSecretsFieldComponent {
     }
 
     public openDropdown(): void {
-        if (this.readForbidden()) return;
+        if (this.readForbidden() && !this.readonly()) return;
         const el = this.trigger()?.nativeElement;
         if (!el) return;
-        this.loadSecrets();
-        this.multiSelectRef()?.openAt(el, this.value());
+        if (!this.readonly()) this.loadSecrets();
+        this.multiSelectRef()?.openAt(el, this.readonly() ? this.names() : this.value());
     }
 
     private loadSecrets(): void {

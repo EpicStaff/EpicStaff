@@ -1,9 +1,26 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { CreateOrganizationRequest, GetOrganizationResponse, UpdateOrganizationRequest } from '@shared/models';
+import {
+    ActionCode,
+    CreateOrganizationRequest,
+    GetOrganizationResponse,
+    OrganizationDeleteReport,
+    ResourceCode,
+    UpdateOrganizationRequest,
+} from '@shared/models';
 import { Observable } from 'rxjs';
 
+import { withCrossOrgPermission } from '../../../../core/http/permission-context';
+import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
+
+export interface ListOrganizationsParams {
+    is_active?: boolean;
+    search?: string;
+    ordering?: string;
+    page?: number;
+    page_size?: number;
+}
 
 @Injectable({
     providedIn: 'root',
@@ -20,8 +37,22 @@ export class AdminOrganizationsService {
         return this.http.post<GetOrganizationResponse>(this.apiUrl, data);
     }
 
-    getOrganizations(): Observable<GetOrganizationResponse[]> {
-        return this.http.get<GetOrganizationResponse[]>(this.apiUrl);
+    /** GET /api/admin/organizations/ — paginated + permission-aware. */
+    list(params: ListOrganizationsParams = {}): Observable<ApiGetRequest<GetOrganizationResponse>> {
+        let httpParams = new HttpParams();
+        if (params.is_active !== undefined) httpParams = httpParams.set('is_active', String(params.is_active));
+        if (params.search) httpParams = httpParams.set('search', params.search);
+        if (params.ordering) httpParams = httpParams.set('ordering', params.ordering);
+        if (params.page !== undefined) httpParams = httpParams.set('page', String(params.page));
+        if (params.page_size !== undefined) httpParams = httpParams.set('page_size', String(params.page_size));
+        return this.http.get<ApiGetRequest<GetOrganizationResponse>>(this.apiUrl, {
+            params: httpParams,
+            context: withCrossOrgPermission<ApiGetRequest<GetOrganizationResponse>>(
+                ResourceCode.Organizations,
+                ActionCode.Read,
+                { count: 0, next: null, previous: null, results: [] }
+            ),
+        });
     }
 
     updateOrganization(id: number, data: UpdateOrganizationRequest): Observable<GetOrganizationResponse> {
@@ -34,5 +65,13 @@ export class AdminOrganizationsService {
 
     reactivateOrganization(id: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${id}/reactivate/`, {});
+    }
+
+    /** The verification phrase is sent as the request body only when given (the real delete). */
+    deleteOrganization(id: number, dryRun: boolean, verificationPhrase?: string): Observable<OrganizationDeleteReport> {
+        return this.http.delete<OrganizationDeleteReport>(`${this.apiUrl}${id}/`, {
+            params: new HttpParams().set('dry_run', String(dryRun)),
+            body: verificationPhrase === undefined ? undefined : { verification_phrase: verificationPhrase },
+        });
     }
 }

@@ -6,4 +6,5 @@ export interface StepConfig {
     onProceed: () => Observable<boolean>;
     canProceed: () => boolean;
     proceedLabel: string;
+    hideProceed: () => boolean;
 }

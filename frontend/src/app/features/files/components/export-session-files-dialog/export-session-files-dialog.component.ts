@@ -3,12 +3,12 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AppSvgIconComponent, Spinner2Component } from '@shared/components';
+import { downloadBlob } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
-import { downloadBlob } from '../../../../shared/utils/download-blob.util';
+import { ToastService } from '../../../../services/notifications';
+import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { SessionOutputFile } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { getFileExtension } from '../../utils/storage-file.utils';
@@ -31,7 +31,7 @@ interface TreeNode {
 
 @Component({
     selector: 'app-export-session-files-dialog',
-    imports: [FormsModule, AppSvgIconComponent, Spinner2Component],
+    imports: [FormsModule, AppSvgIconComponent, Spinner2Component, FileSizePipe],
     templateUrl: './export-session-files-dialog.component.html',
     styleUrls: ['./export-session-files-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -138,12 +138,6 @@ export class ExportSessionFilesDialogComponent {
         event.stopPropagation();
         this.dialogRef.close();
         this.router.navigate(['/files/storage'], { queryParams: { path: node.path } });
-    }
-
-    formatSize(bytes: number): string {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
     getFileIcon(node: TreeNode): string {

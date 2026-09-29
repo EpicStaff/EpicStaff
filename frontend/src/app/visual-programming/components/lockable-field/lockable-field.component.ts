@@ -17,7 +17,6 @@ import { SidePanelService } from '../../services/side-panel.service';
 
 @Component({
     selector: 'app-lockable-field',
-    standalone: true,
     imports: [MatTooltipModule],
     template: `
         <ng-content></ng-content>

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -9,8 +8,7 @@ import { TinyAudioVisualizerComponent } from '../chat-controls/frequency-circle/
 
 @Component({
     selector: 'app-chat-header',
-    standalone: true,
-    imports: [CommonModule, FormsModule, TinyAudioVisualizerComponent],
+    imports: [FormsModule, TinyAudioVisualizerComponent],
     templateUrl: './chat-header.component.html',
     styleUrls: ['./chat-header.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

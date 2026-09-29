@@ -1,8 +1,8 @@
-import { stableNodeId } from '../../stable-node-id';
+import { NodeType } from '@shared/models';
 
-import { SubGraphNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
-import { NodeType } from '../../../core/enums/node-type';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
+import { SubGraphNode } from '../../../core/models/subgraph-node.model';
+import { stableNodeId } from '../../stable-node-id';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
