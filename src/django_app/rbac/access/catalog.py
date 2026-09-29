@@ -154,7 +154,7 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
-        "code": ResourceType.PERSISTENT_DATA.value,
+        "code": ResourceType.KEY_VALUE_TABLES.value,
         "label": "Key-Value Tables",
         "group": "workspace",
         "description": "Key-value tables that flows read and write across runs",
@@ -283,10 +283,10 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("webhooks", "read"),),
         "delete": (("webhooks", "read"),),
     },
-    ResourceType.PERSISTENT_DATA.value: {
-        "create": (("persistent_data", "read"),),
-        "update": (("persistent_data", "read"),),
-        "delete": (("persistent_data", "read"),),
+    ResourceType.KEY_VALUE_TABLES.value: {
+        "create": (("key_value_tables", "read"),),
+        "update": (("key_value_tables", "read"),),
+        "delete": (("key_value_tables", "read"),),
     },
 }
 

@@ -155,7 +155,7 @@ class ClassificationPromptMessageData:
 
 
 @dataclass
-class PersistenceMessageEntry:
+class KeyValueMessageEntry:
     key: str
     # read: target path; write: source path (raw, incl. |default); delete: None
     path: str | None = None
@@ -170,10 +170,10 @@ class PersistenceMessageEntry:
 
 
 @dataclass
-class PersistenceMessageData:
+class KeyValueMessageData:
     mode: str  # "read" | "write" | "delete"
     table_id: int
     table_name: str
-    entries: list[PersistenceMessageEntry]
+    entries: list[KeyValueMessageEntry]
     deleted_count: int | None = None  # delete only
-    message_type: str = "persistence"
+    message_type: str = "key_value"

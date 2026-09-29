@@ -101,7 +101,7 @@ class GraphVersioningService:
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
         user:
-            The acting user. Permission-gated node references (persistence
+            The acting user. Permission-gated node references (key-value
             tables) are re-bound only if this user may use them.
 
         Returns

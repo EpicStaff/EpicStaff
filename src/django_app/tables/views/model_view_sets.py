@@ -70,10 +70,10 @@ from tables.exceptions import (
 )
 from tables.filters import (
     EmbeddingModelFilter,
+    KeyValueTableEntryOrderingFilter,
     LabelFilterBackend,
     LLMModelFilter,
     McpToolFilter,
-    PersistenceTableEntryOrderingFilter,
     ProviderFilter,
     PythonCodeToolFilter,
     WebhookTriggerFilter,
@@ -107,11 +107,11 @@ from tables.models import (
     Graph,
     GraphSessionMessage,
     GraphVersion,
+    KeyValueNode,
+    KeyValueTable,
+    KeyValueTableEntry,
     LLMConfig,
     LLMModel,
-    PersistenceNode,
-    PersistenceTable,
-    PersistenceTableEntry,
     Provider,
     PythonCodeResult,
     PythonCodeTool,
@@ -220,15 +220,15 @@ from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
     EmbeddingModelSerializer,
 )
+from tables.serializers.model_serializers.key_value_serializers import (
+    KeyValueKeysSerializer,
+    KeyValueTableEntryListSerializer,
+    KeyValueTableEntrySerializer,
+    KeyValueTableSerializer,
+)
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
-)
-from tables.serializers.model_serializers.persistence_serializers import (
-    PersistenceKeysSerializer,
-    PersistenceTableEntryListSerializer,
-    PersistenceTableEntrySerializer,
-    PersistenceTableSerializer,
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
@@ -247,7 +247,7 @@ from tables.services.copy_services import (
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
-from tables.services.persistence_table_service import PersistenceTableService
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.tools_usage_service import (
@@ -712,7 +712,7 @@ class GraphViewSet(
                     ),
                 ),
                 Prefetch("file_extractor_node_list", queryset=FileExtractorNode.objects.all()),
-                Prefetch("persistence_node_list", queryset=PersistenceNode.objects.all()),
+                Prefetch("key_value_node_list", queryset=KeyValueNode.objects.all()),
                 Prefetch(
                     "audio_transcription_node_list",
                     queryset=AudioTranscriptionNode.objects.all(),
@@ -2480,63 +2480,61 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 
-class PersistenceTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.PERSISTENT_DATA
+    rbac_resource_type = ResourceType.KEY_VALUE_TABLES
     rbac_action_map = {**DEFAULT_ACTION_MAP, "lookup_entries": Permission.READ}
-    queryset = PersistenceTable.objects.annotate(entry_count=Count("entries")).order_by(
-        Lower("name")
-    )
-    serializer_class = PersistenceTableSerializer
+    queryset = KeyValueTable.objects.annotate(entry_count=Count("entries")).order_by(Lower("name"))
+    serializer_class = KeyValueTableSerializer
 
-    def perform_destroy(self, instance: PersistenceTable) -> None:
+    def perform_destroy(self, instance: KeyValueTable) -> None:
         # Row lock: a node save referencing this table takes FOR KEY SHARE on it,
         # so it waits for this delete (then fails the FK) or we wait for it (then see it).
         with transaction.atomic():
-            PersistenceTable.objects.select_for_update().get(pk=instance.pk)
-            PersistenceTableService().assert_not_in_use(instance)
+            KeyValueTable.objects.select_for_update().get(pk=instance.pk)
+            KeyValueTableService().assert_not_in_use(instance)
             instance.delete()
 
     @action(detail=True, methods=["post"], url_path="entries/lookup")
     def lookup_entries(self, request, pk=None):
         table = self.get_object()
-        serializer = PersistenceKeysSerializer(data=request.data)
+        serializer = KeyValueKeysSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = PersistenceTableService().lookup(table, serializer.validated_data["keys"])
+        result = KeyValueTableService().lookup(table, serializer.validated_data["keys"])
         return Response({key: asdict(item) for key, item in result.items()})
 
 
-class PersistenceTableEntryPagination(LimitOffsetPagination):
+class KeyValueTableEntryPagination(LimitOffsetPagination):
     """Caps `?limit=` so one request can't force a worker to load every entry of a table."""
 
     max_limit = 100
 
 
-class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class KeyValueTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.PERSISTENT_DATA
+    rbac_resource_type = ResourceType.KEY_VALUE_TABLES
     org_filter_path = "table__org_id"
-    pagination_class = PersistenceTableEntryPagination
-    queryset = PersistenceTableEntry.objects.annotate(
+    pagination_class = KeyValueTableEntryPagination
+    queryset = KeyValueTableEntry.objects.annotate(
         updated_by_graph_id=F("updated_by_session__graph_id"),
         updated_by_graph_name=F("updated_by_session__graph__name"),
     )
-    serializer_class = PersistenceTableEntrySerializer
+    serializer_class = KeyValueTableEntrySerializer
     filter_backends = [
         DjangoFilterBackend,
         drf_filters.SearchFilter,
-        PersistenceTableEntryOrderingFilter,
+        KeyValueTableEntryOrderingFilter,
     ]
     search_fields = ["key"]
     ordering_fields = ["key", "updated_at", "session"]
     ordering = ["key"]
 
-    class PersistenceTableEntryFilter(FilterSet):
+    class KeyValueTableEntryFilter(FilterSet):
         # Plain number, not ModelChoiceFilter: that validates against every org's
         # tables, so a foreign id (200, empty) would be distinguishable from a missing one (400).
         table = NumberFilter(field_name="table_id")
 
-    filterset_class = PersistenceTableEntryFilter
+    filterset_class = KeyValueTableEntryFilter
 
     def list(self, request, *args, **kwargs):
         # Page ids first, previews second: Postgres evaluates cheap select-list
@@ -2545,7 +2543,7 @@ class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
         page_ids = self.paginate_queryset(
             self.filter_queryset(self.get_queryset()).values_list("pk", flat=True)
         )
-        entries = PersistenceTableService().with_value_preview(
+        entries = KeyValueTableService().with_value_preview(
             self.get_queryset().filter(pk__in=page_ids)
         )
         entry_by_id = {entry.pk: entry for entry in entries}
@@ -2555,8 +2553,8 @@ class PersistenceTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
 
     def get_serializer_class(self):
         if self.action == "list":
-            return PersistenceTableEntryListSerializer
-        return PersistenceTableEntrySerializer
+            return KeyValueTableEntryListSerializer
+        return KeyValueTableEntrySerializer
 
     def perform_update(self, serializer) -> None:
         # A hand edit is no longer "written by run N". The instance still carries the

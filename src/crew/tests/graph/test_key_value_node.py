@@ -6,9 +6,9 @@ import pytest
 from dotdict import DotDict
 
 from clients.errors import ClientValidationError
-from services.graph.exceptions import PersistenceNodeError
-from services.graph.nodes import persistence_node
-from services.graph.nodes.persistence_node import PersistenceNode
+from services.graph.exceptions import KeyValueNodeError
+from services.graph.nodes import key_value_node
+from services.graph.nodes.key_value_node import KeyValueNode
 
 TABLE_NAME = "Customers"
 
@@ -26,11 +26,11 @@ def make_client(created: list[str] | None = None, deleted: int = 0) -> AsyncMock
     return client
 
 
-def persistence_messages(writer: MagicMock) -> list[dict]:
+def key_value_messages(writer: MagicMock) -> list[dict]:
     return [
         call.args[0].message_data
         for call in writer.call_args_list
-        if call.args[0].message_data.get("message_type") == "persistence"
+        if call.args[0].message_data.get("message_type") == "key_value"
     ]
 
 
@@ -39,15 +39,15 @@ def make_node(
     entries: list[dict],
     client=None,
     table_id: int | None = 3,
-) -> PersistenceNode:
-    return PersistenceNode(
+) -> KeyValueNode:
+    return KeyValueNode(
         session_id=7,
         node_name="persist_1",
         stop_event=MagicMock(),
-        persistence_table_id=table_id,
+        key_value_table_id=table_id,
         mode=mode,
         entries=entries,
-        persistence_client=client or make_client(),
+        key_value_client=client or make_client(),
     )
 
 
@@ -55,7 +55,7 @@ def make_state(variables: dict) -> dict:
     return {"state_history": [], "variables": DotDict(variables), "system_variables": {}}
 
 
-async def run(node: PersistenceNode, variables: dict):
+async def run(node: KeyValueNode, variables: dict):
     return await node.execute(
         state=make_state(variables), writer=MagicMock(), execution_order=0, input_={}
     )
@@ -151,7 +151,7 @@ async def test_read_replaces_existing_object_instead_of_merging():
 async def test_read_rejects_bad_target_path_before_reading(target, message):
     client = make_client()
     node = make_node("read", [{"key": "k", "value": target}], client)
-    with pytest.raises(PersistenceNodeError, match=f"persist_1.*{re.escape(message)}"):
+    with pytest.raises(KeyValueNodeError, match=f"persist_1.*{re.escape(message)}"):
         await run(node, {"cart": {"total": 3}})
     client.read.assert_not_awaited()
 
@@ -170,12 +170,12 @@ async def test_read_rejects_two_entries_with_the_same_target_before_reading(entr
     writer = MagicMock()
 
     with pytest.raises(
-        PersistenceNodeError, match="persist_1.*more than one entry reads into 'variables.a'"
+        KeyValueNodeError, match="persist_1.*more than one entry reads into 'variables.a'"
     ):
         await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
     client.read.assert_not_awaited()
-    assert persistence_messages(writer) == []
+    assert key_value_messages(writer) == []
 
 
 @pytest.mark.asyncio
@@ -195,7 +195,7 @@ async def test_read_rejects_a_target_nested_in_another_before_reading(first, sec
     )
 
     with pytest.raises(
-        PersistenceNodeError,
+        KeyValueNodeError,
         match=re.escape(f"read target '{inner}' is inside read target '{outer}'"),
     ):
         await run(node, {})
@@ -259,10 +259,10 @@ async def test_read_rejects_target_that_does_not_fit_the_state(target, variables
     node = make_node("read", [{"key": "k", "value": target}], client)
     state = make_state(variables)
     writer = MagicMock()
-    with pytest.raises(PersistenceNodeError, match=f"persist_1.*{re.escape(message)}"):
+    with pytest.raises(KeyValueNodeError, match=f"persist_1.*{re.escape(message)}"):
         await node.execute(state=state, writer=writer, execution_order=0, input_={})
     assert state["variables"].deep_dump() == variables
-    assert persistence_messages(writer) == []
+    assert key_value_messages(writer) == []
 
 
 @pytest.mark.asyncio
@@ -270,7 +270,7 @@ async def test_read_rejects_target_that_does_not_fit_the_state(target, variables
 async def test_write_value_that_is_not_a_canonical_state_path_raises(value_path):
     client = make_client()
     node = make_node("write", [{"key": "k", "value": value_path}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*is not a flow state path"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*is not a flow state path"):
         await run(node, {"user": {"id": 1}})
     client.write.assert_not_awaited()
 
@@ -306,12 +306,12 @@ async def test_key_placeholder_value_with_braces_is_rejected():
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": "profile_{variables.name}"}], client)
 
-    with pytest.raises(PersistenceNodeError) as error:
+    with pytest.raises(KeyValueNodeError) as error:
         await run(node, {"name": "a{b}"})
 
     assert str(error.value) == (
         "Key-Value node 'persist_1': key 'profile_{variables.name}' resolved to "
-        f"'profile_a{{b}}', which is not a valid key: {persistence_node.KEY_RULE}."
+        f"'profile_a{{b}}', which is not a valid key: {key_value_node.KEY_RULE}."
     )
     client.read.assert_not_awaited()
 
@@ -343,7 +343,7 @@ async def test_write_value_default_applies_when_path_is_missing():
 async def test_write_value_null_default_raises():
     client = make_client()
     node = make_node("write", [{"key": "count", "value": "variables.count|null"}], client)
-    with pytest.raises(PersistenceNodeError, match="variables.count"):
+    with pytest.raises(KeyValueNodeError, match="variables.count"):
         await run(node, {})
     client.write.assert_not_awaited()
 
@@ -353,7 +353,7 @@ async def test_write_value_null_default_raises():
 async def test_write_value_naming_whole_state_raises(value_path):
     client = make_client()
     node = make_node("write", [{"key": "k", "value": value_path}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*whole flow state"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*whole flow state"):
         await run(node, {"user": {"id": 1}})
     client.write.assert_not_awaited()
 
@@ -362,7 +362,7 @@ async def test_write_value_naming_whole_state_raises(value_path):
 async def test_render_key_rejects_placeholder_naming_whole_state():
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": "profile_{variables.}"}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.'.*whole flow state"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*'variables.'.*whole flow state"):
         await run(node, {"user": {"id": 1}})
     client.read.assert_not_awaited()
 
@@ -371,7 +371,7 @@ async def test_render_key_rejects_placeholder_naming_whole_state():
 async def test_write_value_resolving_to_dict_method_raises():
     client = make_client()
     node = make_node("write", [{"key": "k", "value": "variables.cart.items"}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.cart.items'.*method"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*'variables.cart.items'.*method"):
         await run(node, {"cart": {"total": 3}})
     client.write.assert_not_awaited()
 
@@ -383,7 +383,7 @@ async def test_write_value_resolving_to_dict_method_raises():
 async def test_write_value_naming_internal_attribute_raises(value_path):
     client = make_client()
     node = make_node("write", [{"key": "k", "value": value_path}], client)
-    with pytest.raises(PersistenceNodeError, match=f"persist_1.*'{re.escape(value_path)}'.*'_'"):
+    with pytest.raises(KeyValueNodeError, match=f"persist_1.*'{re.escape(value_path)}'.*'_'"):
         await run(node, {"user": {"_secret": 1}})
     client.write.assert_not_awaited()
 
@@ -392,7 +392,7 @@ async def test_write_value_naming_internal_attribute_raises(value_path):
 async def test_render_key_rejects_placeholder_naming_internal_attribute():
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": "k_{variables._properties}"}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables._properties'.*'_'"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*'variables._properties'.*'_'"):
         await run(node, {"user": {"id": 1}})
     client.read.assert_not_awaited()
 
@@ -413,7 +413,7 @@ async def test_write_rejects_entries_rendering_to_the_same_key(keys):
         [{"key": keys[0], "value": "variables.first"}, {"key": keys[1], "value": "variables.second"}],
         client,
     )
-    with pytest.raises(PersistenceNodeError, match="persist_1': more than one entry writes key 'k_1'"):
+    with pytest.raises(KeyValueNodeError, match="persist_1': more than one entry writes key 'k_1'"):
         await run(node, {"id": 1, "other_id": "1", "first": 1, "second": 2})
     client.write.assert_not_awaited()
 
@@ -454,7 +454,7 @@ async def test_write_accepts_a_source_that_is_nested_in_another():
 async def test_write_with_missing_value_path_raises():
     client = make_client()
     node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
-    with pytest.raises(PersistenceNodeError, match="variables.profile"):
+    with pytest.raises(KeyValueNodeError, match="variables.profile"):
         await run(node, {})
     client.write.assert_not_awaited()
 
@@ -463,7 +463,7 @@ async def test_write_with_missing_value_path_raises():
 async def test_write_with_null_value_raises():
     client = make_client()
     node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
-    with pytest.raises(PersistenceNodeError, match="null"):
+    with pytest.raises(KeyValueNodeError, match="null"):
         await run(node, {"profile": None})
     client.write.assert_not_awaited()
 
@@ -472,7 +472,7 @@ async def test_write_with_null_value_raises():
 async def test_write_value_outside_variables_raises():
     client = make_client()
     node = make_node("write", [{"key": "k", "value": "profile"}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*'profile'.*variables.user.id"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*'profile'.*variables.user.id"):
         await run(node, {"profile": "Ann"})
     client.write.assert_not_awaited()
 
@@ -485,7 +485,7 @@ async def test_run_raises_when_value_path_does_not_resolve():
     client = make_client()
     node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
 
-    with pytest.raises(PersistenceNodeError, match="variables.profile"):
+    with pytest.raises(KeyValueNodeError, match="variables.profile"):
         await node.run(make_state({}), MagicMock())
 
     client.write.assert_not_awaited()
@@ -502,14 +502,14 @@ async def test_delete_sends_rendered_keys():
 @pytest.mark.asyncio
 async def test_render_key_rejects_unresolved_placeholder():
     node = make_node("read", [{"value": "variables.out", "key": "profile_{variables.user.id}"}])
-    with pytest.raises(PersistenceNodeError, match="variables.user.id"):
+    with pytest.raises(KeyValueNodeError, match="variables.user.id"):
         await run(node, {})
 
 
 @pytest.mark.asyncio
 async def test_render_key_rejects_null_placeholder():
     node = make_node("read", [{"value": "variables.out", "key": "profile_{variables.user_id}"}])
-    with pytest.raises(PersistenceNodeError, match="variables.user_id"):
+    with pytest.raises(KeyValueNodeError, match="variables.user_id"):
         await run(node, {"user_id": None})
 
 
@@ -518,7 +518,7 @@ async def test_render_key_rejects_null_placeholder():
 async def test_render_key_rejects_placeholder_outside_variables(key):
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": key}], client)
-    with pytest.raises(PersistenceNodeError, match=r"profile_\{variables\.user\.id\}"):
+    with pytest.raises(KeyValueNodeError, match=r"profile_\{variables\.user\.id\}"):
         await run(node, {"user_id": 42})
     client.read.assert_not_awaited()
 
@@ -526,7 +526,7 @@ async def test_render_key_rejects_placeholder_outside_variables(key):
 @pytest.mark.asyncio
 async def test_render_key_error_names_offending_path():
     node = make_node("read", [{"value": "variables.out", "key": "profile_{user_id}"}])
-    with pytest.raises(PersistenceNodeError) as error:
+    with pytest.raises(KeyValueNodeError) as error:
         await run(node, {"user_id": 42})
     assert "'user_id'" in str(error.value)
     assert "for value" not in str(error.value)
@@ -536,7 +536,7 @@ async def test_render_key_error_names_offending_path():
 async def test_render_key_rejects_placeholder_resolving_to_dict_method():
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": "cart_{variables.cart.items}"}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*'variables.cart.items'.*method"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*'variables.cart.items'.*method"):
         await run(node, {"cart": {"total": 3}})
     client.read.assert_not_awaited()
 
@@ -546,7 +546,7 @@ async def test_render_key_rejects_placeholder_resolving_to_dict_method():
 async def test_render_key_rejects_leftover_braces(key):
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": key}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*unbalanced placeholder"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*unbalanced placeholder"):
         await run(node, {"x": 1})
     client.read.assert_not_awaited()
 
@@ -563,7 +563,7 @@ async def test_render_key_rejects_leftover_braces(key):
 async def test_render_key_rejects_bad_list_index(key, variables):
     client = make_client()
     node = make_node("read", [{"value": "variables.out", "key": key}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*cannot resolve"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*cannot resolve"):
         await run(node, variables)
     client.read.assert_not_awaited()
 
@@ -572,14 +572,14 @@ async def test_render_key_rejects_bad_list_index(key, variables):
 @pytest.mark.parametrize("value", [{"x": 1}, [1, 2]])
 async def test_render_key_rejects_structured_placeholder(value):
     node = make_node("read", [{"value": "variables.out", "key": "profile_{variables.user_id}"}])
-    with pytest.raises(PersistenceNodeError, match="string or number"):
+    with pytest.raises(KeyValueNodeError, match="string or number"):
         await run(node, {"user_id": value})
 
 
 @pytest.mark.asyncio
 async def test_render_key_rejects_too_long_key():
     node = make_node("read", [{"value": "variables.out", "key": "{variables.long}"}])
-    with pytest.raises(PersistenceNodeError) as error:
+    with pytest.raises(KeyValueNodeError) as error:
         await run(node, {"long": "x" * 513})
     assert str(error.value) == (
         "Key-Value node 'persist_1': key '{variables.long}' resolved to "
@@ -589,7 +589,7 @@ async def test_render_key_rejects_too_long_key():
 
 
 # Keep identical to the resolved-key parity table in Django's
-# tests/services_tests/test_persistence_table_service.py.
+# tests/services_tests/test_key_value_table_service.py.
 VALID_RESOLVED_KEYS = ["k", "_", "user_42", "a" * 512]
 INVALID_RESOLVED_KEYS = [
     "",
@@ -629,13 +629,13 @@ async def test_invalid_resolved_key_is_rejected_before_calling_the_table(mode, r
     client = make_client()
     node = make_node(mode, one_entry(mode, "{variables.key}"), client)
 
-    with pytest.raises(PersistenceNodeError) as error:
+    with pytest.raises(KeyValueNodeError) as error:
         await run(node, {"key": resolved, "source": 1})
 
     shown = resolved if len(resolved) <= 100 else f"{resolved[:100]}…"
     assert str(error.value) == (
         f"Key-Value node 'persist_1': key '{{variables.key}}' resolved to {shown!r}, "
-        f"which is not a valid key: {persistence_node.KEY_RULE}."
+        f"which is not a valid key: {key_value_node.KEY_RULE}."
     )
     getattr(client, mode).assert_not_awaited()
 
@@ -646,7 +646,7 @@ async def test_saved_static_key_with_invalid_characters_is_rejected(mode):
     client = make_client()
     node = make_node(mode, one_entry(mode, "user-1"), client)
 
-    with pytest.raises(PersistenceNodeError, match="key 'user-1' resolved to 'user-1', which is not a valid key"):
+    with pytest.raises(KeyValueNodeError, match="key 'user-1' resolved to 'user-1', which is not a valid key"):
         await run(node, {"source": 1})
 
     getattr(client, mode).assert_not_awaited()
@@ -655,7 +655,7 @@ async def test_saved_static_key_with_invalid_characters_is_rejected(mode):
 @pytest.mark.asyncio
 async def test_node_without_table_raises():
     node = make_node("read", [{"value": "variables.out", "key": "k"}], table_id=None)
-    with pytest.raises(PersistenceNodeError, match="no table"):
+    with pytest.raises(KeyValueNodeError, match="no table"):
         await run(node, {})
 
 
@@ -664,7 +664,7 @@ async def test_client_errors_are_wrapped_with_node_context():
     client = make_client()
     client.read.side_effect = ClientValidationError("Key-value table 3 not found.")
     node = make_node("read", [{"value": "variables.out", "key": "k"}], client)
-    with pytest.raises(PersistenceNodeError, match="persist_1.*not found"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*not found"):
         await run(node, {})
 
 
@@ -681,7 +681,7 @@ async def test_read_emits_message_with_found_and_missing_entries():
 
     await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
-    assert persistence_messages(writer) == [{
+    assert key_value_messages(writer) == [{
         "mode": "read",
         "table_id": 3,
         "table_name": "Customers",
@@ -694,7 +694,7 @@ async def test_read_emits_message_with_found_and_missing_entries():
              "value": None, "truncated": False},
         ],
         "deleted_count": None,
-        "message_type": "persistence",
+        "message_type": "key_value",
     }]
     message = writer.call_args_list[-1].args[0]
     assert (message.session_id, message.name) == (7, "persist_1")
@@ -714,7 +714,7 @@ async def test_write_emits_message_with_created_flags_and_source_paths():
     )
 
     assert output == {"new": "Ann", "old_1": "fallback"}
-    [message] = persistence_messages(writer)
+    [message] = key_value_messages(writer)
     assert message["mode"] == "write"
     assert message["table_name"] == "Customers"
     assert message["entries"] == [
@@ -733,7 +733,7 @@ async def test_delete_emits_message_with_deleted_count_and_requested_keys():
 
     await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
-    [message] = persistence_messages(writer)
+    [message] = key_value_messages(writer)
     assert message["mode"] == "delete"
     assert message["deleted_count"] == 1
     assert [entry["key"] for entry in message["entries"]] == ["a", "b"]
@@ -758,7 +758,7 @@ async def test_read_message_carries_full_nested_value():
 
     await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
-    entries = persistence_messages(writer)[0]["entries"]
+    entries = key_value_messages(writer)[0]["entries"]
     assert [(entry["value"], entry["truncated"]) for entry in entries] == [
         (NESTED_VALUE, False),
         ("ж" * 300, False),
@@ -774,7 +774,7 @@ async def test_write_message_carries_full_nested_value():
         state=make_state({"profile": NESTED_VALUE}), writer=writer, execution_order=0, input_={}
     )
 
-    [entry] = persistence_messages(writer)[0]["entries"]
+    [entry] = key_value_messages(writer)[0]["entries"]
     # The value comes from flow state (a DotDict); it must survive the JSON publish as-is.
     assert json.loads(json.dumps(entry["value"])) == NESTED_VALUE
     assert entry["truncated"] is False
@@ -783,7 +783,7 @@ async def test_write_message_carries_full_nested_value():
 @pytest.mark.asyncio
 async def test_values_past_message_budget_are_sent_as_truncated_previews(monkeypatch):
     # '"aaaaaaaaaa"' is 12 bytes of JSON: two fit a 30-byte budget, the third does not.
-    monkeypatch.setattr(persistence_node, "MESSAGE_VALUE_BUDGET_BYTES", 30)
+    monkeypatch.setattr(key_value_node, "MESSAGE_VALUE_BUDGET_BYTES", 30)
     client = make_client()
     client.read.return_value = read_response(
         {"k1": "a" * 10, "k2": "a" * 10, "k3": "ж" * 300, "k4": "small", "k5": None}
@@ -797,7 +797,7 @@ async def test_values_past_message_budget_are_sent_as_truncated_previews(monkeyp
 
     await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
-    entries = persistence_messages(writer)[0]["entries"]
+    entries = key_value_messages(writer)[0]["entries"]
     assert [(entry["found"], entry["value"], entry["truncated"]) for entry in entries] == [
         (True, "a" * 10, False),
         (True, "a" * 10, False),
@@ -822,7 +822,7 @@ async def test_more_than_500_entries_are_rejected_before_calling_the_table(mode)
     client = make_client()
     node = make_node(mode, entries_for(mode, 501), client)
 
-    with pytest.raises(PersistenceNodeError, match="persist_1.*501 entries; at most 500"):
+    with pytest.raises(KeyValueNodeError, match="persist_1.*501 entries; at most 500"):
         await run(node, {f"v{index}": index for index in range(501)})
 
     client.read.assert_not_awaited()
@@ -856,13 +856,13 @@ async def test_write_accepts_canonical_list_indexes():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["read", "write", "delete"])
-async def test_client_error_emits_no_persistence_message(mode):
+async def test_client_error_emits_no_key_value_message(mode):
     client = make_client()
     getattr(client, mode).side_effect = ClientValidationError("Key-value table 3 not found.")
     node = make_node(mode, [{"key": "k", "value": "variables.a"}] if mode != "delete" else [{"key": "k"}], client)
     writer = MagicMock()
 
-    with pytest.raises(PersistenceNodeError):
+    with pytest.raises(KeyValueNodeError):
         await node.execute(state=make_state({"a": 1}), writer=writer, execution_order=0, input_={})
 
-    assert persistence_messages(writer) == []
+    assert key_value_messages(writer) == []

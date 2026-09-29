@@ -1,6 +1,6 @@
 import json
 
-from clients.persistence import PersistenceClient
+from clients.key_value import KeyValueClient
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -12,8 +12,8 @@ from services.graph.nodes import (
     BaseNode,
     EndNode,
     FileContentExtractorNode,
+    KeyValueNode,
     KnowledgeNode,
-    PersistenceNode,
     PythonNode,
 )
 from services.graph.nodes.agent_node import AgentNode
@@ -54,7 +54,7 @@ class SessionGraphBuilder:
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
         agent_task_service: AgentTaskService | None = None,
-        persistence_client: PersistenceClient | None = None,
+        key_value_client: KeyValueClient | None = None,
     ):
         """
         Initializes the SessionGraphBuilder with the required services and session details.
@@ -65,7 +65,7 @@ class SessionGraphBuilder:
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
-            persistence_client (PersistenceClient | None): The client used by PersistenceNode to read/write/delete
+            key_value_client (KeyValueClient | None): The client used by KeyValueNode to read/write/delete
                 key-value table entries. Required if the graph schema contains Key-Value nodes.
         """
 
@@ -74,7 +74,7 @@ class SessionGraphBuilder:
         self.python_code_executor_service = python_code_executor_service
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
-        self.persistence_client = persistence_client
+        self.key_value_client = key_value_client
         self.remembered_outputs_store = RememberedOutputsStore(redis_service=redis_service)
 
         self._graph_builder = StateGraph(State)
@@ -276,10 +276,10 @@ class SessionGraphBuilder:
             )
             self.add_node(task_node)
 
-        if schema.persistence_node_list and self.persistence_client is None:
+        if schema.key_value_node_list and self.key_value_client is None:
             raise RuntimeError(
-                f"Graph '{schema.name}' contains {len(schema.persistence_node_list)} Key-Value "
-                "node(s) but no persistence_client was provided to SessionGraphBuilder."
+                f"Graph '{schema.name}' contains {len(schema.key_value_node_list)} Key-Value "
+                "node(s) but no key_value_client was provided to SessionGraphBuilder."
             )
 
         if schema.agent_node_list and self.agent_task_service is None:
@@ -341,16 +341,16 @@ class SessionGraphBuilder:
             )
             self.add_node(file_extractor_node)
 
-        for persistence_node_data in schema.persistence_node_list:
+        for key_value_node_data in schema.key_value_node_list:
             self.add_node(
-                PersistenceNode(
+                KeyValueNode(
                     session_id=self.session_id,
-                    node_name=persistence_node_data.node_name,
+                    node_name=key_value_node_data.node_name,
                     stop_event=self.stop_event,
-                    persistence_table_id=persistence_node_data.persistence_table_id,
-                    mode=persistence_node_data.mode,
-                    entries=persistence_node_data.entries,
-                    persistence_client=self.persistence_client,
+                    key_value_table_id=key_value_node_data.key_value_table_id,
+                    mode=key_value_node_data.mode,
+                    entries=key_value_node_data.entries,
+                    key_value_client=self.key_value_client,
                 )
             )
 

@@ -9,28 +9,28 @@ from django.db.models.lookups import GreaterThan
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
-from tables.constants.persistence_constants import MAX_VALUE_BYTES, VALUE_PREVIEW_CHARS
+from tables.constants.key_value_constants import MAX_VALUE_BYTES, VALUE_PREVIEW_CHARS
 from tables.exceptions import (
-    PersistenceKeyInvalidError,
-    PersistenceModeDeniedError,
-    PersistenceTableInUseError,
-    PersistenceValueTooLargeError,
+    KeyValueEntryKeyInvalidError,
+    KeyValueEntryValueTooLargeError,
+    KeyValueModeDeniedError,
+    KeyValueTableInUseError,
 )
 from tables.models import (
-    PersistenceNode,
-    PersistenceTable,
-    PersistenceTableEntry,
+    KeyValueNode,
+    KeyValueTable,
+    KeyValueTableEntry,
     Session,
     SubGraphNode,
 )
-from tables.validators.persistence_entries_validator import resolved_key_error
+from tables.validators.key_value_entries_validator import resolved_key_error
 
 # Every permission a node of that mode needs on its table. Checked one by one:
 # EffectivePermissions.can() passes when any bit of a combined flag is held.
 MODE_PERMISSIONS = {
-    PersistenceNode.Mode.READ: (Permission.READ,),
-    PersistenceNode.Mode.WRITE: (Permission.CREATE, Permission.UPDATE),
-    PersistenceNode.Mode.DELETE: (Permission.DELETE,),
+    KeyValueNode.Mode.READ: (Permission.READ,),
+    KeyValueNode.Mode.WRITE: (Permission.CREATE, Permission.UPDATE),
+    KeyValueNode.Mode.DELETE: (Permission.DELETE,),
 }
 
 
@@ -49,21 +49,19 @@ class EntryLookup:
     updated_at: datetime | None
 
 
-class PersistenceTableService:
+class KeyValueTableService:
     """Owns every rule about key-value tables and their entries."""
 
-    def read(self, table: PersistenceTable, keys: list[str]) -> dict[str, Any]:
+    def read(self, table: KeyValueTable, keys: list[str]) -> dict[str, Any]:
         for key in keys:
             self.validate_key(key)
         return dict(
-            PersistenceTableEntry.objects.filter(table=table, key__in=keys).values_list(
-                "key", "value"
-            )
+            KeyValueTableEntry.objects.filter(table=table, key__in=keys).values_list("key", "value")
         )
 
     def write(
         self,
-        table: PersistenceTable,
+        table: KeyValueTable,
         entries: dict[str, Any],
         session: Session | None = None,
     ) -> list[str]:
@@ -74,15 +72,15 @@ class PersistenceTableService:
         # NOTE: created flags are approximate under concurrent writers; use RETURNING
         # (xmax = 0) via raw SQL if exact created flags ever matter.
         existing = set(
-            PersistenceTableEntry.objects.filter(table=table, key__in=entries).values_list(
+            KeyValueTableEntry.objects.filter(table=table, key__in=entries).values_list(
                 "key", flat=True
             )
         )
         rows = [
-            PersistenceTableEntry(table=table, key=key, value=value, updated_by_session=session)
+            KeyValueTableEntry(table=table, key=key, value=value, updated_by_session=session)
             for key, value in entries.items()
         ]
-        PersistenceTableEntry.objects.bulk_create(
+        KeyValueTableEntry.objects.bulk_create(
             rows,
             update_conflicts=True,
             unique_fields=["table", "key"],
@@ -90,18 +88,18 @@ class PersistenceTableService:
         )
         return sorted(set(entries) - existing)
 
-    def delete(self, table: PersistenceTable, keys: list[str]) -> int:
+    def delete(self, table: KeyValueTable, keys: list[str]) -> int:
         for key in keys:
             self.validate_key(key)
-        deleted, _ = PersistenceTableEntry.objects.filter(table=table, key__in=keys).delete()
+        deleted, _ = KeyValueTableEntry.objects.filter(table=table, key__in=keys).delete()
         return deleted
 
-    def lookup(self, table: PersistenceTable, keys: list[str]) -> dict[str, EntryLookup]:
+    def lookup(self, table: KeyValueTable, keys: list[str]) -> dict[str, EntryLookup]:
         # Preview is computed in the database (truncated jsonb-as-text) so a lookup of up
         # to MAX_KEYS_PER_REQUEST keys never pulls full values into Python.
         found = {
             row["key"]: row
-            for row in PersistenceTableEntry.objects.filter(table=table, key__in=keys)
+            for row in KeyValueTableEntry.objects.filter(table=table, key__in=keys)
             .annotate(preview=_value_preview())
             .values("key", "preview", "updated_at")
         }
@@ -115,8 +113,8 @@ class PersistenceTableService:
         }
 
     def with_value_preview(
-        self, entries: QuerySet[PersistenceTableEntry]
-    ) -> QuerySet[PersistenceTableEntry]:
+        self, entries: QuerySet[KeyValueTableEntry]
+    ) -> QuerySet[KeyValueTableEntry]:
         """Replace each entry's full `value` with `value_preview` and `value_truncated`.
 
         Both are computed in the database and `value` is deferred, so a page of entries
@@ -136,51 +134,51 @@ class PersistenceTableService:
             ),
         )
 
-    def assert_can_configure(self, user, table: PersistenceTable, mode: str) -> None:
-        """Assert `user` holds every persistent_data permission a `mode` node needs on `table`.
+    def assert_can_configure(self, user, table: KeyValueTable, mode: str) -> None:
+        """Assert `user` holds every key_value_tables permission a `mode` node needs on `table`.
 
         Raises:
-            PersistenceModeDeniedError (403): the user's role lacks one of MODE_PERMISSIONS[mode].
+            KeyValueModeDeniedError (403): the user's role lacks one of MODE_PERMISSIONS[mode].
             OrgMembershipRequiredError (403): the user is not a member of the table's org.
         """
         # Resolved once for all the mode's permissions; the resolver applies the superadmin
         # bypass and raises OrgMembershipRequiredError, as assert_org_permission would.
         effective = PermissionResolver().resolve(user=user, org_id=table.org_id)
         if not all(
-            effective.can(ResourceType.PERSISTENT_DATA, permission)
+            effective.can(ResourceType.KEY_VALUE_TABLES, permission)
             for permission in MODE_PERMISSIONS[mode]
         ):
-            raise PersistenceModeDeniedError(mode, table.name)
+            raise KeyValueModeDeniedError(mode, table.name)
 
-    def can_configure(self, user, table: PersistenceTable, mode: str) -> bool:
+    def can_configure(self, user, table: KeyValueTable, mode: str) -> bool:
         try:
             self.assert_can_configure(user, table, mode)
-        except (PersistenceModeDeniedError, OrgMembershipRequiredError):
+        except (KeyValueModeDeniedError, OrgMembershipRequiredError):
             return False
         return True
 
-    def assert_not_in_use(self, table: PersistenceTable) -> None:
+    def assert_not_in_use(self, table: KeyValueTable) -> None:
         flow_names = list(
-            PersistenceNode.objects.filter(persistence_table=table, graph__is_soft_deleted=False)
+            KeyValueNode.objects.filter(key_value_table=table, graph__is_soft_deleted=False)
             .values_list("graph__name", flat=True)
             .distinct()
             .order_by("graph__name")
         )
         if flow_names:
-            raise PersistenceTableInUseError(flow_names)
+            raise KeyValueTableInUseError(flow_names)
 
-    def session_can_access(self, session: Session, table: PersistenceTable) -> bool:
+    def session_can_access(self, session: Session, table: KeyValueTable) -> bool:
         """Access is granted by saved configuration, never by the runtime caller.
 
-        v1 source: a PersistenceNode referencing the table in the session's graph or in any
+        v1 source: a KeyValueNode referencing the table in the session's graph or in any
         subgraph it reaches (crew runs subgraph nodes under the parent session id).
         """
-        return PersistenceNode.objects.filter(
-            graph_id__in=self._session_graph_ids(session), persistence_table=table
+        return KeyValueNode.objects.filter(
+            graph_id__in=self._session_graph_ids(session), key_value_table=table
         ).exists()
 
-    def find_by_name(self, org_id: int, name: str) -> PersistenceTable | None:
-        return PersistenceTable.objects.filter(org_id=org_id, name__iexact=name).first()
+    def find_by_name(self, org_id: int, name: str) -> KeyValueTable | None:
+        return KeyValueTable.objects.filter(org_id=org_id, name__iexact=name).first()
 
     def resolve_reference(
         self,
@@ -189,7 +187,7 @@ class PersistenceTableService:
         table_name: str | None,
         mode: str,
         user=None,
-    ) -> PersistenceTable | None:
+    ) -> KeyValueTable | None:
         """Re-bind a copied, imported or restored node's table reference inside `org_id`.
 
         The table with `table_id` wins only if it is in `org_id` and still carries
@@ -211,11 +209,11 @@ class PersistenceTableService:
 
     def _find_reference(
         self, org_id: int, table_id: int | None, table_name: str | None
-    ) -> PersistenceTable | None:
+    ) -> KeyValueTable | None:
         if not table_name:
             return None
         if table_id is not None:
-            same_table = PersistenceTable.objects.filter(
+            same_table = KeyValueTable.objects.filter(
                 pk=table_id, org_id=org_id, name__iexact=table_name
             ).first()
             if same_table is not None:
@@ -226,16 +224,16 @@ class PersistenceTableService:
         """Reject a resolved key that could not have come from a valid node.
 
         Raises:
-            PersistenceKeyInvalidError (400): the key breaks KEY_PATTERN or MAX_KEY_LENGTH.
+            KeyValueEntryKeyInvalidError (400): the key breaks KEY_PATTERN or MAX_KEY_LENGTH.
         """
         error = resolved_key_error(key)
         if error:
-            raise PersistenceKeyInvalidError(key, error)
+            raise KeyValueEntryKeyInvalidError(key, error)
 
     def validate_value(self, value: Any) -> None:
         size_bytes = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
         if size_bytes > MAX_VALUE_BYTES:
-            raise PersistenceValueTooLargeError(size_bytes, MAX_VALUE_BYTES)
+            raise KeyValueEntryValueTooLargeError(size_bytes, MAX_VALUE_BYTES)
 
     def _session_graph_ids(self, session: Session) -> set[int]:
         graph_ids = {session.graph_id}

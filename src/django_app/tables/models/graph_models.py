@@ -217,20 +217,18 @@ class FileExtractorNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class PersistenceNode(BaseNode, SoftDeleteFields):
+class KeyValueNode(BaseNode, SoftDeleteFields):
     class Mode(models.TextChoices):
         READ = "read"
         WRITE = "write"
         DELETE = "delete"
 
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="persistence_node_list"
-    )
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="key_value_node_list")
     # SET_NULL, not PROTECT: soft-deleted nodes keep the row, and PROTECT would block
     # deleting a table referenced only by deleted flows. Active usage is checked by
-    # PersistenceTableService.assert_not_in_use before a table is deleted.
-    persistence_table = models.ForeignKey(
-        "PersistenceTable",
+    # KeyValueTableService.assert_not_in_use before a table is deleted.
+    key_value_table = models.ForeignKey(
+        "KeyValueTable",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

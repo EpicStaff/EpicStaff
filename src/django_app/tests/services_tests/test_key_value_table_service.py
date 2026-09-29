@@ -3,28 +3,28 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from tables.exceptions import (
-    PersistenceKeyInvalidError,
-    PersistenceModeDeniedError,
-    PersistenceValueTooLargeError,
+    KeyValueEntryKeyInvalidError,
+    KeyValueModeDeniedError,
+    KeyValueEntryValueTooLargeError,
 )
-from tables.constants.persistence_constants import MAX_KEY_LENGTH
-from tables.models import PersistenceTable, PersistenceTableEntry, Session
+from tables.constants.key_value_constants import MAX_KEY_LENGTH
+from tables.models import KeyValueTable, KeyValueTableEntry, Session
 
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
-from tables.services.persistence_table_service import PersistenceTableService
+from tables.services.key_value_table_service import KeyValueTableService
 from rbac.exceptions import OrgMembershipRequiredError
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
-def table(default_org) -> PersistenceTable:
-    return PersistenceTable.objects.create(org=default_org, name="Customers")
+def table(default_org) -> KeyValueTable:
+    return KeyValueTable.objects.create(org=default_org, name="Customers")
 
 
 @pytest.fixture
-def service() -> PersistenceTableService:
-    return PersistenceTableService()
+def service() -> KeyValueTableService:
+    return KeyValueTableService()
 
 
 @pytest.mark.django_db
@@ -41,11 +41,11 @@ def test_write_then_read_returns_only_stored_keys(service, table):
 def test_write_overwrites_existing_key_and_records_session(service, table, graph):
     session = Session.objects.create(graph=graph, status=Session.SessionStatus.RUN)
     service.write(table, {"a": "old"})
-    created_at = PersistenceTableEntry.objects.get(table=table, key="a").created_at
+    created_at = KeyValueTableEntry.objects.get(table=table, key="a").created_at
 
     service.write(table, {"a": "new"}, session=session)
 
-    entry = PersistenceTableEntry.objects.get(table=table, key="a")
+    entry = KeyValueTableEntry.objects.get(table=table, key="a")
     assert entry.value == "new"
     assert entry.updated_by_session_id == session.id
     assert entry.created_at == created_at
@@ -71,12 +71,12 @@ def test_write_upserts_in_one_insert(service, table):
 
 @pytest.mark.django_db
 def test_write_rejects_oversized_value(service, table):
-    with pytest.raises(PersistenceValueTooLargeError):
+    with pytest.raises(KeyValueEntryValueTooLargeError):
         service.write(table, {"big": "x" * (256 * 1024)})
-    assert not PersistenceTableEntry.objects.filter(table=table).exists()
+    assert not KeyValueTableEntry.objects.filter(table=table).exists()
 
 
-# Keep identical to the resolved-key parity table in crew tests/graph/test_persistence_node.py.
+# Keep identical to the resolved-key parity table in crew tests/graph/test_key_value_node.py.
 VALID_RESOLVED_KEYS = ["k", "_", "user_42", "a" * 512]
 INVALID_RESOLVED_KEYS = [
     "",
@@ -102,14 +102,14 @@ def test_valid_resolved_keys_are_written_read_and_deleted(service, table, key):
 @pytest.mark.django_db
 @pytest.mark.parametrize("bad_key", INVALID_RESOLVED_KEYS)
 def test_write_rejects_invalid_key(service, table, bad_key):
-    with pytest.raises(PersistenceKeyInvalidError) as error:
+    with pytest.raises(KeyValueEntryKeyInvalidError) as error:
         service.write(table, {"good": 1, bad_key: 1})
     shown = bad_key if len(bad_key) <= 100 else f"{bad_key[:100]}…"
     assert str(error.value.detail) == (
         f"Key {shown!r} is not a valid key: use only letters, digits and _, don't start with a "
         "digit, and keep it to at most 512 characters."
     )
-    assert not PersistenceTableEntry.objects.filter(table=table).exists()
+    assert not KeyValueTableEntry.objects.filter(table=table).exists()
 
 
 @pytest.mark.django_db
@@ -117,12 +117,12 @@ def test_write_rejects_invalid_key(service, table, bad_key):
 @pytest.mark.parametrize("bad_key", INVALID_RESOLVED_KEYS)
 def test_read_and_delete_reject_invalid_key(service, table, operation, bad_key):
     # An old row whose key predates the rule; the column cannot hold a longer key at all.
-    PersistenceTableEntry.objects.create(table=table, key=bad_key[:MAX_KEY_LENGTH], value=1)
+    KeyValueTableEntry.objects.create(table=table, key=bad_key[:MAX_KEY_LENGTH], value=1)
 
-    with pytest.raises(PersistenceKeyInvalidError):
+    with pytest.raises(KeyValueEntryKeyInvalidError):
         getattr(service, operation)(table, ["good", bad_key])
 
-    assert PersistenceTableEntry.objects.filter(table=table).count() == 1
+    assert KeyValueTableEntry.objects.filter(table=table).count() == 1
 
 
 @pytest.mark.django_db
@@ -150,7 +150,7 @@ def test_lookup_reports_existence_and_truncated_preview(service, table):
 def test_with_value_preview_defers_value(service, table):
     service.write(table, {"k": {"a": 1}})
 
-    entry = service.with_value_preview(PersistenceTableEntry.objects.filter(table=table)).get()
+    entry = service.with_value_preview(KeyValueTableEntry.objects.filter(table=table)).get()
 
     assert entry.get_deferred_fields() == {"value"}
     assert (entry.value_preview, entry.value_truncated) == ('{"a": 1}', False)
@@ -162,24 +162,24 @@ def test_with_value_preview_truncates_past_200_json_characters(service, table, c
     # A string's JSON text is the string plus its two quotes: 198 characters render as 200.
     service.write(table, {"k": "x" * characters})
 
-    entry = service.with_value_preview(PersistenceTableEntry.objects.filter(table=table)).get()
+    entry = service.with_value_preview(KeyValueTableEntry.objects.filter(table=table)).get()
 
     assert entry.value_preview == ('"' + "x" * characters + '"')[:200]
     assert entry.value_truncated is truncated
 
 
 @pytest.fixture
-def acme_table(acme) -> PersistenceTable:
-    return PersistenceTable.objects.create(org=acme, name="Acme customers")
+def acme_table(acme) -> KeyValueTable:
+    return KeyValueTable.objects.create(org=acme, name="Acme customers")
 
 
 def _acme_user(django_user_model, acme, bits: int):
-    role = Role.objects.create(name=f"Persistent data {bits}", org=acme, is_built_in=False)
+    role = Role.objects.create(name=f"Key-Value tables {bits}", org=acme, is_built_in=False)
     RolePermission.objects.create(
-        role=role, resource_type=ResourceType.PERSISTENT_DATA, permissions=bits
+        role=role, resource_type=ResourceType.KEY_VALUE_TABLES, permissions=bits
     )
     user = django_user_model.objects.create_user(
-        email=f"persistent-data-{bits}@example.com", password="StrongPass123!"
+        email=f"key-value-tables-{bits}@example.com", password="StrongPass123!"
     )
     OrganizationUser.objects.create(user=user, org=acme, role=role)
     return user
@@ -222,16 +222,16 @@ def test_assert_can_configure_needs_every_permission_of_the_mode(
     if permitted:
         service.assert_can_configure(user, acme_table, mode)
     else:
-        with pytest.raises(PersistenceModeDeniedError) as error:
+        with pytest.raises(KeyValueModeDeniedError) as error:
             service.assert_can_configure(user, acme_table, mode)
         assert str(error.value.detail) == DENIED_MESSAGES[mode]
-        assert error.value.get_codes() == "persistence_mode_denied"
+        assert error.value.get_codes() == "key_value_mode_denied"
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("mode", ["read", "write", "delete"])
 def test_assert_can_configure_denies_member_of_another_org(service, beta, admin_acme, mode):
-    beta_table = PersistenceTable.objects.create(org=beta, name="Beta customers")
+    beta_table = KeyValueTable.objects.create(org=beta, name="Beta customers")
 
     with pytest.raises(OrgMembershipRequiredError):
         service.assert_can_configure(admin_acme, beta_table, mode)

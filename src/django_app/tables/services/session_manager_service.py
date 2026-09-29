@@ -21,8 +21,8 @@ from tables.models import (
     Edge,
     FileExtractorNode,
     Graph,
+    KeyValueNode,
     KnowledgeNode,
-    PersistenceNode,
     PythonNode,
     Session,
 )
@@ -334,7 +334,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             "graph_drift_search_config",
         )
         file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk)
-        persistence_node_list = PersistenceNode.objects.filter(graph=graph.pk)
+        key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(graph=graph.pk)
         edge_list = Edge.objects.filter(graph=graph.pk)
         conditional_edge_list = ConditionalEdge.objects.filter(graph=graph.pk).select_related(
@@ -443,7 +443,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             python_node_list,
             knowledge_node_list,
             file_extractor_node_list,
-            persistence_node_list,
+            key_value_node_list,
             audio_transcription_node_list,
             decision_table_node_list,
             classification_decision_table_node_list,
@@ -520,9 +520,9 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             for item in file_extractor_node_list
         ]
-        persistence_node_data_list = [
-            cv.convert_persistence_node_to_pydantic(persistence_node=item, resolver=resolver)
-            for item in persistence_node_list
+        key_value_node_data_list = [
+            cv.convert_key_value_node_to_pydantic(key_value_node=item, resolver=resolver)
+            for item in key_value_node_list
         ]
         audio_transcription_node_data_list = [
             cv.convert_audio_transcription_node_to_pydantic(
@@ -634,7 +634,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             python_node_list=python_node_data_list,
             knowledge_node_list=knowledge_node_data_list,
             file_extractor_node_list=file_extractor_node_data_list,
-            persistence_node_list=persistence_node_data_list,
+            key_value_node_list=key_value_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
             task_node_list=task_node_data_list,
             agent_node_list=agent_node_data_list,

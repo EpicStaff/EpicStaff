@@ -16,9 +16,9 @@ from tables.import_export.services.partial_export_service import (
     NodeRef,
 )
 from tables.import_export.services.partial_import_service import PartialImportService
-from tables.models import Graph, PersistenceNode, PersistenceTable
+from tables.models import Graph, KeyValueNode, KeyValueTable
 from tables.services.copy_services.graph_copy_service import GraphCopyService
-from tables.services.persistence_table_service import PersistenceTableService
+from tables.services.key_value_table_service import KeyValueTableService
 
 FLOWS_ALL = 255
 
@@ -36,22 +36,22 @@ def target_org(db):
 @pytest.fixture
 def source_node(source_org):
     graph = Graph.objects.create(name="Flow", org=source_org)
-    table = PersistenceTable.objects.create(org=source_org, name="Customers")
-    return PersistenceNode.objects.create(
+    table = KeyValueTable.objects.create(org=source_org, name="Customers")
+    return KeyValueNode.objects.create(
         graph=graph,
         node_name="p",
-        persistence_table=table,
+        key_value_table=table,
         mode="read",
         entries=[{"key": "k", "value": "variables.a"}],
     )
 
 
-def _copied_node(new_graph: Graph) -> PersistenceNode:
-    return PersistenceNode.objects.get(graph=new_graph)
+def _copied_node(new_graph: Graph) -> KeyValueNode:
+    return KeyValueNode.objects.get(graph=new_graph)
 
 
-def _import_into(org: Organization, exported: dict, source_graph_id: int) -> PersistenceNode:
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+def _import_into(org: Organization, exported: dict, source_graph_id: int) -> KeyValueNode:
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     new_graph = Graph.objects.create(name="Imported", org=org)
     id_mapper = IDMapper()
     id_mapper.map(EntityType.GRAPH, source_graph_id, new_graph.id)
@@ -64,94 +64,94 @@ def _import_into(org: Organization, exported: dict, source_graph_id: int) -> Per
 def test_same_org_copy_keeps_table(source_node):
     new_graph = GraphCopyService().copy(source_node.graph, name="Flow copy")
     copied = _copied_node(new_graph)
-    assert copied.persistence_table_id == source_node.persistence_table_id
+    assert copied.key_value_table_id == source_node.key_value_table_id
     assert copied.entries == source_node.entries
     assert copied.mode == "read"
 
 
 @pytest.mark.django_db
 def test_cross_org_copy_binds_same_named_table_in_target(source_node, target_org):
-    target_table = PersistenceTable.objects.create(org=target_org, name="customers")
+    target_table = KeyValueTable.objects.create(org=target_org, name="customers")
     new_graph = GraphCopyService().copy(source_node.graph, name="Flow", org_id=target_org.id)
-    assert _copied_node(new_graph).persistence_table_id == target_table.id
+    assert _copied_node(new_graph).key_value_table_id == target_table.id
 
 
 @pytest.mark.django_db
 def test_cross_org_copy_without_matching_table_nulls_reference(source_node, target_org):
     new_graph = GraphCopyService().copy(source_node.graph, name="Flow", org_id=target_org.id)
-    assert _copied_node(new_graph).persistence_table_id is None
+    assert _copied_node(new_graph).key_value_table_id is None
 
 
 @pytest.mark.django_db
 def test_export_then_import_round_trip_same_org(source_node, source_org):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = strategy.export_entity(source_node)
-    assert exported["persistence_table_name"] == "Customers"
+    assert exported["key_value_table_name"] == "Customers"
 
     imported = _import_into(source_org, exported, source_node.graph_id)
 
     assert imported.graph.org_id == source_org.id
-    assert imported.persistence_table_id == source_node.persistence_table_id
+    assert imported.key_value_table_id == source_node.key_value_table_id
     assert imported.mode == "read"
     assert imported.entries == source_node.entries
 
 
 @pytest.mark.django_db
 def test_import_after_table_rename_does_not_bind_wrong_table(source_node, source_org):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = strategy.export_entity(source_node)
-    source_node.persistence_table.name = "Renamed"
-    source_node.persistence_table.save()
+    source_node.key_value_table.name = "Renamed"
+    source_node.key_value_table.save()
 
     imported = _import_into(source_org, exported, source_node.graph_id)
 
-    assert imported.persistence_table_id is None
+    assert imported.key_value_table_id is None
 
 
 @pytest.mark.django_db
 def test_import_into_other_org_never_keeps_foreign_table_id(source_node, target_org):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = strategy.export_entity(source_node)
 
     imported = _import_into(target_org, exported, source_node.graph_id)
 
-    assert imported.persistence_table_id is None
+    assert imported.key_value_table_id is None
 
 
 @pytest.mark.django_db
 def test_import_into_other_org_ignores_same_id_table_with_different_name(
     source_node, target_org
 ):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = dict(strategy.export_entity(source_node))
     # The file came from another installation: its table id collides with an unrelated
     # table of the target org, and no target table is named like the exported one.
-    unrelated_table = PersistenceTable.objects.create(org=target_org, name="Invoices")
-    exported["persistence_table"] = unrelated_table.id
+    unrelated_table = KeyValueTable.objects.create(org=target_org, name="Invoices")
+    exported["key_value_table"] = unrelated_table.id
 
     imported = _import_into(target_org, exported, source_node.graph_id)
 
-    assert imported.persistence_table_id is None
+    assert imported.key_value_table_id is None
 
 
 @pytest.mark.django_db
 def test_import_into_other_org_binds_same_named_target_table(source_node, target_org):
-    target_table = PersistenceTable.objects.create(org=target_org, name="CUSTOMERS")
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    target_table = KeyValueTable.objects.create(org=target_org, name="CUSTOMERS")
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = strategy.export_entity(source_node)
 
     imported = _import_into(target_org, exported, source_node.graph_id)
 
-    assert imported.persistence_table_id == target_table.id
+    assert imported.key_value_table_id == target_table.id
 
 
-def test_partial_export_knows_persistence_nodes():
-    assert LIST_KEY_TO_ENTITY_TYPE["persistence_node_list"] == EntityType.PERSISTENCE_NODE
+def test_partial_export_knows_key_value_nodes():
+    assert LIST_KEY_TO_ENTITY_TYPE["key_value_node_list"] == EntityType.KEY_VALUE_NODE
 
 
 @pytest.mark.django_db
 def test_import_rejects_malformed_entries(source_node, source_org):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = {**strategy.export_entity(source_node), "entries": "x"}
 
     with pytest.raises(serializers.ValidationError):
@@ -160,7 +160,7 @@ def test_import_rejects_malformed_entries(source_node, source_org):
 
 @pytest.mark.django_db
 def test_import_rejects_entries_that_do_not_fit_the_mode(source_node, source_org):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     # Read and write share the {key, value} shape; delete takes only a key.
     exported = {**strategy.export_entity(source_node), "mode": "delete"}
 
@@ -170,7 +170,7 @@ def test_import_rejects_entries_that_do_not_fit_the_mode(source_node, source_org
 
 @pytest.mark.django_db
 def test_import_rejects_write_value_that_is_not_a_state_path(source_node, source_org):
-    strategy = entity_registry.get_strategy(EntityType.PERSISTENCE_NODE)
+    strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = {
         **strategy.export_entity(source_node),
         "mode": "write",
@@ -183,7 +183,7 @@ def test_import_rejects_write_value_that_is_not_a_state_path(source_node, source
 
 @pytest.mark.django_db
 def test_full_import_rejects_invalid_key(source_node, source_org):
-    PersistenceNode.objects.filter(pk=source_node.pk).update(
+    KeyValueNode.objects.filter(pk=source_node.pk).update(
         entries=[{"key": "user-1", "value": "variables.a"}]
     )
     source_node.refresh_from_db()
@@ -194,14 +194,14 @@ def test_full_import_rejects_invalid_key(source_node, source_org):
         graph_strategy.create_entity(dict(exported_graph), IDMapper(), org_id=source_org.id)
 
 
-# A node's mode decides which persistent_data permissions binding its table needs, on every
+# A node's mode decides which key_value_tables permissions binding its table needs, on every
 # path that has an acting user. Without them the node is created with no table.
 
 R = int(Permission.READ)
 C = int(Permission.CREATE)
 U = int(Permission.UPDATE)
 
-# (persistent_data bits, source node mode, table stays bound)
+# (key_value_tables bits, source node mode, table stays bound)
 BINDING_CASES = [
     pytest.param(0, "read", False, id="none-read"),
     pytest.param(R, "read", True, id="R-read"),
@@ -211,16 +211,16 @@ BINDING_CASES = [
 ]
 
 
-def _member_of(django_user_model, orgs: list[Organization], email: str, persistent_data: int):
+def _member_of(django_user_model, orgs: list[Organization], email: str, key_value_tables: int):
     user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
     for org in orgs:
         role = Role.objects.create(name=f"flows-{email}", org=org, is_built_in=False)
         RolePermission.objects.create(
             role=role, resource_type=ResourceType.FLOWS, permissions=FLOWS_ALL
         )
-        if persistent_data:
+        if key_value_tables:
             RolePermission.objects.create(
-                role=role, resource_type=ResourceType.PERSISTENT_DATA, permissions=persistent_data
+                role=role, resource_type=ResourceType.KEY_VALUE_TABLES, permissions=key_value_tables
             )
         OrganizationUser.objects.create(user=user, org=org, role=role)
     return user
@@ -236,26 +236,26 @@ def acting_user(django_user_model, source_org, target_org):
     return _make
 
 
-def _set_mode(node: PersistenceNode, mode: str) -> PersistenceNode:
+def _set_mode(node: KeyValueNode, mode: str) -> KeyValueNode:
     node.mode = mode
     node.save(update_fields=["mode"])
     return node
 
 
-def _paste(source_node: PersistenceNode, target_graph: Graph, user) -> PersistenceNode:
+def _paste(source_node: KeyValueNode, target_graph: Graph, user) -> KeyValueNode:
     result = GraphPartialExportService(entity_registry).export(
-        [NodeRef(entity_type=EntityType.PERSISTENCE_NODE, node_id=source_node.id)]
+        [NodeRef(entity_type=EntityType.KEY_VALUE_NODE, node_id=source_node.id)]
     )
     assert not result.has_errors, result.errors
     PartialImportService(entity_registry).import_data(
         export_data=result.data, graph=target_graph, org_id=target_graph.org_id, user=user
     )
-    return PersistenceNode.objects.get(graph=target_graph)
+    return KeyValueNode.objects.get(graph=target_graph)
 
 
 @pytest.mark.django_db
 def test_paste_rejects_invalid_key(source_node, source_org, acting_user):
-    PersistenceNode.objects.filter(pk=source_node.pk).update(
+    KeyValueNode.objects.filter(pk=source_node.pk).update(
         entries=[{"key": "user-1", "value": "variables.a"}]
     )
     target_graph = Graph.objects.create(name="Paste target", org=source_org)
@@ -263,7 +263,7 @@ def test_paste_rejects_invalid_key(source_node, source_org, acting_user):
     with pytest.raises(serializers.ValidationError, match="'key' must use only letters"):
         _paste(source_node, target_graph, acting_user(R))
 
-    assert not PersistenceNode.objects.filter(graph=target_graph).exists()
+    assert not KeyValueNode.objects.filter(graph=target_graph).exists()
 
 
 @pytest.mark.django_db
@@ -277,8 +277,8 @@ def test_paste_binds_table_only_with_mode_permissions(
     pasted = _paste(source_node, target_graph, acting_user(bits))
 
     assert pasted.mode == mode
-    expected = source_node.persistence_table_id if bound else None
-    assert pasted.persistence_table_id == expected
+    expected = source_node.key_value_table_id if bound else None
+    assert pasted.key_value_table_id == expected
 
 
 @pytest.mark.django_db
@@ -287,12 +287,12 @@ def test_cross_org_paste_binds_target_org_table_only_with_mode_permissions(
     source_node, target_org, acting_user, bits, mode, bound
 ):
     _set_mode(source_node, mode)
-    target_table = PersistenceTable.objects.create(org=target_org, name="customers")
+    target_table = KeyValueTable.objects.create(org=target_org, name="customers")
     target_graph = Graph.objects.create(name="Paste target", org=target_org)
 
     pasted = _paste(source_node, target_graph, acting_user(bits))
 
-    assert pasted.persistence_table_id == (target_table.id if bound else None)
+    assert pasted.key_value_table_id == (target_table.id if bound else None)
 
 
 @pytest.mark.django_db
@@ -308,8 +308,8 @@ def test_full_import_binds_table_only_with_mode_permissions(
         dict(exported_graph), IDMapper(), org_id=source_org.id, user=acting_user(bits)
     )
 
-    expected = source_node.persistence_table_id if bound else None
-    assert new_graph.persistence_node_list.get().persistence_table_id == expected
+    expected = source_node.key_value_table_id if bound else None
+    assert new_graph.key_value_node_list.get().key_value_table_id == expected
 
 
 @pytest.mark.django_db
@@ -323,7 +323,7 @@ def test_graph_copy_binds_table_only_with_mode_permissions(
 
     copied = _copied_node(new_graph)
     assert copied.mode == mode
-    assert copied.persistence_table_id == (source_node.persistence_table_id if bound else None)
+    assert copied.key_value_table_id == (source_node.key_value_table_id if bound else None)
 
 
 @pytest.mark.django_db
@@ -339,8 +339,8 @@ def test_copy_endpoint_passes_the_acting_user(
     response = client.post(reverse("graphs-copy", args=[source_node.graph_id]), {}, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
-    copied = PersistenceNode.objects.get(graph_id=response.data["id"])
-    assert copied.persistence_table_id == (source_node.persistence_table_id if bound else None)
+    copied = KeyValueNode.objects.get(graph_id=response.data["id"])
+    assert copied.key_value_table_id == (source_node.key_value_table_id if bound else None)
 
 
 @pytest.mark.django_db
@@ -358,8 +358,8 @@ def test_version_restore_binds_table_only_with_mode_permissions(
         version, expected_save_version=graph.save_version, user=acting_user(bits)
     )
 
-    expected = source_node.persistence_table_id if bound else None
-    assert graph.persistence_node_list.get().persistence_table_id == expected
+    expected = source_node.key_value_table_id if bound else None
+    assert graph.key_value_node_list.get().key_value_table_id == expected
 
 
 @pytest.mark.django_db
@@ -374,16 +374,16 @@ def test_create_graph_from_version_binds_table_only_with_mode_permissions(
     result = versioning.create_graph_from_version(version, user=acting_user(bits))
 
     new_graph = Graph.objects.get(pk=result["graph_id"])
-    expected = source_node.persistence_table_id if bound else None
-    assert new_graph.persistence_node_list.get().persistence_table_id == expected
+    expected = source_node.key_value_table_id if bound else None
+    assert new_graph.key_value_node_list.get().key_value_table_id == expected
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("mode", ["read", "write", "delete"])
 def test_system_principal_binds_table(source_node, source_org, mode):
-    table = source_node.persistence_table
+    table = source_node.key_value_table
 
-    resolved = PersistenceTableService().resolve_reference(
+    resolved = KeyValueTableService().resolve_reference(
         source_org.id, table.id, table.name, mode=mode, user=SystemServicePrincipal()
     )
 

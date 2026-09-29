@@ -26,7 +26,7 @@ from tables.models.graph_models import (
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
-    PersistenceNode,
+    KeyValueNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -98,7 +98,7 @@ class NodeTypeSpec:
 FLOW_ASSISTANT_NODE_TYPES: tuple[NodeTypeSpec, ...] = (
     NodeTypeSpec("python", PythonNode, "python_node_list"),
     NodeTypeSpec("file_extractor", FileExtractorNode, "file_extractor_node_list"),
-    NodeTypeSpec("persistence", PersistenceNode, "persistence_node_list"),
+    NodeTypeSpec("key_value", KeyValueNode, "key_value_node_list"),
     NodeTypeSpec("audio_transcription", AudioTranscriptionNode, "audio_transcription_node_list"),
     NodeTypeSpec("subgraph", SubGraphNode, "subgraph_node_list"),
     NodeTypeSpec("start", StartNode, "start_node_list", node_name_source="property"),

@@ -15,6 +15,7 @@ from src.shared.models import (
     EndNodeData,
     FileExtractorNodeData,
     GraphRagSearchConfig,
+    KeyValueNodeData,
     KnowledgeNodeData,
     LLMConfigData,
     LLMData,
@@ -22,7 +23,6 @@ from src.shared.models import (
     McpToolData,
     NaiveRagSearchConfig,
     NgrokConfigData,
-    PersistenceNodeData,
     PromptConfigData,
     PythonCodeData,
     PythonCodeToolData,
@@ -51,8 +51,8 @@ from tables.models.graph_models import (
     FileExtractorNode,
     Graph,
     GraphStorageFile,
+    KeyValueNode,
     KnowledgeNode,
-    PersistenceNode,
     PythonNode,
     ScheduleTriggerNode,
     SubGraphNode,
@@ -802,18 +802,18 @@ class ConverterService(metaclass=SingletonMeta):
             org_id=org_id,
         )
 
-    def convert_persistence_node_to_pydantic(
+    def convert_key_value_node_to_pydantic(
         self,
-        persistence_node: PersistenceNode,
+        key_value_node: KeyValueNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
-    ) -> PersistenceNodeData:
-        return PersistenceNodeData(
-            node_name=resolver(persistence_node.id),
-            persistence_table_id=persistence_node.persistence_table_id,
-            mode=persistence_node.mode,
-            entries=persistence_node.entries,
-            input_map=persistence_node.input_map,
-            output_variable_path=persistence_node.output_variable_path,
+    ) -> KeyValueNodeData:
+        return KeyValueNodeData(
+            node_name=resolver(key_value_node.id),
+            key_value_table_id=key_value_node.key_value_table_id,
+            mode=key_value_node.mode,
+            entries=key_value_node.entries,
+            input_map=key_value_node.input_map,
+            output_variable_path=key_value_node.output_variable_path,
         )
 
     def convert_audio_transcription_node_to_pydantic(

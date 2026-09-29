@@ -4,19 +4,19 @@ from dataclasses import asdict
 from typing import Any, Literal
 
 from clients.errors import ClientError
-from clients.persistence import PersistenceClient
+from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from langgraph.types import StreamWriter
-from models.graph_models import PersistenceMessageData, PersistenceMessageEntry
+from models.graph_models import KeyValueMessageData, KeyValueMessageEntry
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import PersistenceNodeError
+from services.graph.exceptions import KeyValueNodeError
 from services.graph.nodes.base_node import BaseNode
 from utils import map_variables_to_input
 
 MAX_KEY_LENGTH = 512
-# Mirrors KEY_PATTERN and KEY_RULE in Django's tables/constants/persistence_constants.py and
-# PERSISTENCE_KEY_PATTERN in the frontend. Always `fullmatch`: `$` also matches before a
+# Mirrors KEY_PATTERN and KEY_RULE in Django's tables/constants/key_value_constants.py and
+# KEY_VALUE_KEY_PATTERN in the frontend. Always `fullmatch`: `$` also matches before a
 # trailing newline.
 KEY_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 KEY_RULE = (
@@ -37,7 +37,7 @@ _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 # Same tokenisation as `map_variables_to_input`, which resolves a bare `variables` path to the
 # whole flow state.
 _PATH_SEGMENT = re.compile(r"\w+|\[(?:0|[1-9]\d*)\]")
-# Django's PersistenceEntriesValidator applies the same rule on save. Indexes are canonical
+# Django's KeyValueEntriesValidator applies the same rule on save. Indexes are canonical
 # (`[0]`, `[10]`, not `[01]`) so equal paths compare equal as strings.
 _STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCII)
 # Attribute access on a DotDict finds these before any stored key, so a value stored under
@@ -45,7 +45,7 @@ _STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCI
 _DOTDICT_ATTRIBUTES = frozenset(name for name in dir(DotDict) if not name.startswith("_"))
 
 
-class PersistenceNode(BaseNode):
+class KeyValueNode(BaseNode):
     """Read, write or delete entries in a key-value table.
 
     Entries reference flow state directly: key placeholders (`profile_{variables.user.id}`),
@@ -57,22 +57,22 @@ class PersistenceNode(BaseNode):
     rendered key; one source path may feed several keys. A write source's `|default` suffix
     applies only when the path is missing, not when it holds null.
 
-    After the table call succeeds, the node emits one `persistence` session message listing
+    After the table call succeeds, the node emits one `key_value` session message listing
     the entries that took effect, with their full values while they fit
     MESSAGE_VALUE_BUDGET_BYTES and a truncated preview after that.
     """
 
-    TYPE = "PERSISTENCE"
+    TYPE = "KEY_VALUE"
 
     def __init__(
         self,
         session_id: int,
         node_name: str,
         stop_event: StopEvent,
-        persistence_table_id: int | None,
+        key_value_table_id: int | None,
         mode: Literal["read", "write", "delete"],
         entries: list[dict],
-        persistence_client: PersistenceClient,
+        key_value_client: KeyValueClient,
     ):
         super().__init__(
             session_id=session_id,
@@ -81,16 +81,16 @@ class PersistenceNode(BaseNode):
             input_map={},
             output_variable_path=None,
         )
-        self.persistence_table_id = persistence_table_id
+        self.key_value_table_id = key_value_table_id
         self.mode = mode
         self.entries = entries
-        self.persistence_client = persistence_client
+        self.key_value_client = key_value_client
 
     async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
-        if self.persistence_table_id is None:
-            raise PersistenceNodeError(f"Key-Value node '{self.node_name}' has no table selected.")
+        if self.key_value_table_id is None:
+            raise KeyValueNodeError(f"Key-Value node '{self.node_name}' has no table selected.")
         if len(self.entries) > MAX_ENTRIES:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}' has {len(self.entries)} entries; "
                 f"at most {MAX_ENTRIES} are allowed."
             )
@@ -103,7 +103,7 @@ class PersistenceNode(BaseNode):
             else:
                 output, message = await self._delete(variables)
         except ClientError as e:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}' {self.mode} failed: {e.detail}"
             ) from e
         self.custom_session_message_writer.add_custom_message(
@@ -115,81 +115,79 @@ class PersistenceNode(BaseNode):
         )
         return output
 
-    async def _read(self, variables: DotDict) -> tuple[dict[str, Any], PersistenceMessageData]:
+    async def _read(self, variables: DotDict) -> tuple[dict[str, Any], KeyValueMessageData]:
         """Store each read value at its entry's target path; return them keyed by path."""
         targets_and_keys = [
             (self._check_target(entry["value"]), self._render_key(entry["key"], variables))
             for entry in self.entries
         ]
         self._check_separate_targets([target for target, _ in targets_and_keys])
-        response = await self.persistence_client.read(
+        response = await self.key_value_client.read(
             self.session_id,
-            self.persistence_table_id,
+            self.key_value_table_id,
             sorted({key for _, key in targets_and_keys}),
         )
         stored = response["values"]
         read: dict[str, Any] = {}
-        message_entries: list[PersistenceMessageEntry] = []
+        message_entries: list[KeyValueMessageEntry] = []
         for target, key in targets_and_keys:
             read[target] = stored.get(key)
             self._assign(variables, target, read[target])
             message_entries.append(
-                PersistenceMessageEntry(
-                    key=key, path=target, found=key in stored, value=read[target]
-                )
+                KeyValueMessageEntry(key=key, path=target, found=key in stored, value=read[target])
             )
         return read, self._message(response, message_entries)
 
-    async def _write(self, variables: DotDict) -> tuple[dict[str, Any], PersistenceMessageData]:
+    async def _write(self, variables: DotDict) -> tuple[dict[str, Any], KeyValueMessageData]:
         written: dict[str, Any] = {}
         source_by_key: dict[str, str] = {}
         for entry in self.entries:
             key = self._render_key(entry["key"], variables)
             # Checked on the rendered key: different templates can render to the same one.
             if key in written:
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': more than one entry writes key "
                     f"'{key}'. Use a different key for each entry."
                 )
             value_path = entry["value"]
             value = self._resolve(value_path, variables)
             if value is None:
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': value '{value_path}' is missing "
                     "from the flow state or resolved to null."
                 )
             written[key] = value
             source_by_key[key] = value_path
-        response = await self.persistence_client.write(
-            self.session_id, self.persistence_table_id, written
+        response = await self.key_value_client.write(
+            self.session_id, self.key_value_table_id, written
         )
         created = set(response["created"])
         message_entries = [
-            PersistenceMessageEntry(
+            KeyValueMessageEntry(
                 key=key, path=source_by_key[key], created=key in created, value=value
             )
             for key, value in written.items()
         ]
         return written, self._message(response, message_entries)
 
-    async def _delete(self, variables: DotDict) -> tuple[None, PersistenceMessageData]:
+    async def _delete(self, variables: DotDict) -> tuple[None, KeyValueMessageData]:
         keys = sorted({self._render_key(entry["key"], variables) for entry in self.entries})
-        response = await self.persistence_client.delete(
-            self.session_id, self.persistence_table_id, keys
+        response = await self.key_value_client.delete(
+            self.session_id, self.key_value_table_id, keys
         )
-        message_entries = [PersistenceMessageEntry(key=key) for key in keys]
+        message_entries = [KeyValueMessageEntry(key=key) for key in keys]
         return None, self._message(response, message_entries, deleted_count=response["deleted"])
 
     def _message(
         self,
         response: dict[str, Any],
-        entries: list[PersistenceMessageEntry],
+        entries: list[KeyValueMessageEntry],
         deleted_count: int | None = None,
-    ) -> PersistenceMessageData:
+    ) -> KeyValueMessageData:
         _fit_values_to_budget(entries)
-        return PersistenceMessageData(
+        return KeyValueMessageData(
             mode=self.mode,
-            table_id=self.persistence_table_id,
+            table_id=self.key_value_table_id,
             table_name=response["table_name"],
             entries=entries,
             deleted_count=deleted_count,
@@ -201,12 +199,12 @@ class PersistenceNode(BaseNode):
             path = match.group(1).strip()
             value = self._resolve(path, variables)
             if value is None:
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': key '{template}' needs '{path}', "
                     "which is missing from the flow state or is null."
                 )
             if isinstance(value, (dict, list)):
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': '{path}' must be a string or number, "
                     f"got {type(value).__name__}."
                 )
@@ -216,7 +214,7 @@ class PersistenceNode(BaseNode):
         # malformed placeholder.
         leftover = _PLACEHOLDER.sub("", template)
         if "{" in leftover or "}" in leftover:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': key '{template}' has an empty or "
                 "unbalanced placeholder. Use '{variables.<path>}', e.g. 'profile_{variables.user.id}'."
             )
@@ -224,7 +222,7 @@ class PersistenceNode(BaseNode):
         # Checked on the resolved key: placeholder values are free text until rendered.
         if len(key) > MAX_KEY_LENGTH or not KEY_PATTERN.fullmatch(key):
             shown = key if len(key) <= 100 else f"{key[:100]}…"
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': key '{template}' resolved to {shown!r}, "
                 f"which is not a valid key: {KEY_RULE}."
             )
@@ -243,12 +241,12 @@ class PersistenceNode(BaseNode):
                 if segments[:shared] != earlier_segments[:shared]:
                     continue
                 if len(segments) == len(earlier_segments):
-                    raise PersistenceNodeError(
+                    raise KeyValueNodeError(
                         f"Key-Value node '{self.node_name}': more than one entry reads into "
                         f"'{target}'. Use a different variable for each entry."
                     )
                 inner, outer = (target, earlier) if len(segments) > shared else (earlier, target)
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': read target '{inner}' is inside "
                     f"read target '{outer}'. Use a different variable for each entry."
                 )
@@ -256,14 +254,14 @@ class PersistenceNode(BaseNode):
 
     def _check_target(self, path: str) -> str:
         if "|" in path:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': read target '{path}' is where the stored "
                 "value goes, so it takes no '|default'. Use a path like 'variables.user.name'."
             )
         segments = self._segments(path)
         method = next((segment for segment in segments if segment in _DOTDICT_ATTRIBUTES), None)
         if method:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': read target '{path}' uses '{method}', "
                 "the name of a built-in method. Use a different variable name."
             )
@@ -274,18 +272,18 @@ class PersistenceNode(BaseNode):
         state_path = path.split("|", 1)[0]
         segments = _PATH_SEGMENT.findall(state_path)
         if segments == ["variables"]:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' names the whole flow state. "
                 "Point at a single variable, e.g. 'variables.user.id'."
             )
         if not _STATE_PATH.fullmatch(state_path):
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' is not a flow state path. "
                 "Use one like 'variables.user.id' (in a key: 'profile_{variables.user.id}')."
             )
         # getattr on a DotDict would return its internals, e.g. `variables._properties`.
         if any(segment.startswith("_") for segment in segments):
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' has a segment starting with '_'. "
                 "Flow state paths cannot name internal attributes."
             )
@@ -308,7 +306,7 @@ class PersistenceNode(BaseNode):
                 return
             if isinstance(slot, str) and slot not in container:
                 if segments[position + 1].startswith("["):
-                    raise PersistenceNodeError(
+                    raise KeyValueNodeError(
                         f"Key-Value node '{self.node_name}': '{path}' does not exist, so "
                         f"'{target}' has no list to index into."
                     )
@@ -321,28 +319,28 @@ class PersistenceNode(BaseNode):
         if segment.startswith("["):
             index = int(segment[1:-1])
             if isinstance(container, dict):
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': '{path}' is an object; use a name "
                     f"like '{path}.name' instead of '{segment}'."
                 )
             if not isinstance(container, list):
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': '{path}' is {_describe(container)}, "
                     f"so it has no index {segment}."
                 )
             if index >= len(container):
-                raise PersistenceNodeError(
+                raise KeyValueNodeError(
                     f"Key-Value node '{self.node_name}': index {index} is out of range for "
                     f"'{path}', which has {len(container)} items."
                 )
             return index
         if isinstance(container, list):
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' is a list; use an index like "
                 f"'{path}[0]' instead of '.{segment}'."
             )
         if not isinstance(container, dict):
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' is {_describe(container)}, "
                 f"so it cannot hold '{segment}'."
             )
@@ -356,21 +354,21 @@ class PersistenceNode(BaseNode):
         # The resolver raises IndexError for a list index out of range, KeyError/TypeError
         # for indexing a non-list.
         except (IndexError, KeyError, TypeError) as e:
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': cannot resolve '{path}' ({e}). "
                 "Use a flow state path such as 'variables.user.id' "
                 "(in a key: 'profile_{variables.user.id}')."
             ) from e
         # getattr on a DotDict falls through to dict methods, e.g. `variables.cart.items`.
         if callable(value):
-            raise PersistenceNodeError(
+            raise KeyValueNodeError(
                 f"Key-Value node '{self.node_name}': '{path}' resolves to a built-in method, "
                 "not a value in the flow state."
             )
         return value
 
 
-def _fit_values_to_budget(entries: list[PersistenceMessageEntry]) -> None:
+def _fit_values_to_budget(entries: list[KeyValueMessageEntry]) -> None:
     """Keep full values, in entry order, while their JSON fits MESSAGE_VALUE_BUDGET_BYTES.
 
     Once the running total passes the budget, every later value whose JSON text is longer

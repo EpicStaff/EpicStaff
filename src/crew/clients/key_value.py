@@ -25,8 +25,8 @@ RETRY_BACKOFF_SECONDS = (0.2, 0.4, 0.8)
 _RETRYABLE_ERRORS = (httpx.NetworkError, httpx.RemoteProtocolError)
 
 
-class PersistenceClient:
-    """Async client for Django's session-scoped internal persistence route."""
+class KeyValueClient:
+    """Async client for Django's session-scoped internal key-value route."""
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class PersistenceClient:
             # Same Host override realtime uses, so Django's ALLOWED_HOSTS accepts the call.
             headers = {"Host": "localhost"}
             # DJANGO_API_KEY is optional in local dev: crew must still start without it, and
-            # only persistence calls fail (see _post).
+            # only key-value calls fail (see _post).
             if self._api_key:
                 headers["X-API-Key"] = self._api_key
             self._client = httpx.AsyncClient(
@@ -60,13 +60,13 @@ class PersistenceClient:
                     keepalive_expiry=KEEPALIVE_EXPIRY_SECONDS,
                 ),
             )
-            logger.info("PersistenceClient started, base_url={}", self._base_url)
+            logger.info("KeyValueClient started, base_url={}", self._base_url)
 
     async def stop(self) -> None:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
-            logger.info("PersistenceClient stopped")
+            logger.info("KeyValueClient stopped")
 
     async def read(self, session_id: int, table_id: int, keys: list[str]) -> dict[str, Any]:
         """Return `{"values": {key: value}, "table_name": str}`; missing keys are absent."""
@@ -85,12 +85,12 @@ class PersistenceClient:
     async def _post(
         self, session_id: int, table_id: int, operation: Operation, payload: dict
     ) -> dict:
-        assert self._client is not None, "PersistenceClient.start() must be called first"
+        assert self._client is not None, "KeyValueClient.start() must be called first"
         if not self._api_key:
             raise ClientNotAvailableError(
                 "DJANGO_API_KEY is not configured; Key-Value nodes can't reach Django."
             )
-        url = f"internal/sessions/{session_id}/persistence-tables/{table_id}/{operation}/"
+        url = f"internal/sessions/{session_id}/key-value-tables/{table_id}/{operation}/"
         try:
             response = await self._send(url, payload)
         except httpx.TimeoutException as e:
@@ -118,7 +118,7 @@ class PersistenceClient:
             except _RETRYABLE_ERRORS as e:
                 # The path names the session, table and operation; it carries no secrets.
                 logger.warning(
-                    "Persistence call {} attempt {} failed with {}; retrying in {}s",
+                    "Key-Value call {} attempt {} failed with {}; retrying in {}s",
                     url,
                     attempt,
                     type(e).__name__,

@@ -104,8 +104,7 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64  # catalog action of `secrets` and `persistent_data` only; enforced by
-    # SecretReferenceGuard and PersistenceTableService.assert_can_use
+    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
     LIST = 128  # reserved — not in the catalog, checked nowhere
 ```
 
@@ -116,7 +115,7 @@ Superadmin role row has **zero** `RolePermission` rows — authority comes exclu
 0246 → rbac `0004`, each overriding the last; `0242_reseed_builtin_role_permissions` is the
 authoritative end state for the resources it covers, `0246_seed_webhooks_resource_permissions`
 seeds the `webhooks` resource introduced afterward, and
-`rbac/migrations/0004_seed_persistent_data_permissions` seeds `persistent_data`. Current bitmasks:
+`rbac/migrations/0004_seed_key_value_tables_permissions` seeds `key_value_tables`. Current bitmasks:
 
 | resource_type | Org Admin | Member | Viewer |
 |---|---|---|---|
@@ -131,7 +130,7 @@ seeds the `webhooks` resource introduced afterward, and
 | voice | 15 (CRUD) | 2 (R) | 2 (R) |
 | webhooks | 15 (CRUD) | 15 (CRUD) | 2 (R) |
 | secrets | 75 (CRD+use) | 0 | 0 |
-| persistent_data | 79 (CRUD+use) | 66 (R+use) | 2 (R) |
+| key_value_tables | 15 (CRUD) | 2 (R) | 2 (R) |
 | memberships | 15 (CRUD) | 0 | 0 |
 | roles | 15 (CRUD) | 0 | 0 |
 | organizations | 6 (R+U) | 0 | 0 |
@@ -145,9 +144,11 @@ checked nowhere), and `secrets:UPDATE` (`SecretViewSet` has no update route) —
 all behaviour-neutral, since none of them gated anything. This matters beyond
 tidiness: the escalation ceiling compares these masks when deciding whether the
 holder of one role may assign another, so a bit that grants nothing could still
-refuse a legitimate assignment. `use` is an action of `secrets` and
-`persistent_data` only. Among the built-ins only Org Admin holds `secrets:use`;
-Org Admin and Member hold `persistent_data:use`.
+refuse a legitimate assignment. `use` is an action of `secrets` only, and among
+the built-ins only Org Admin holds it. `key_value_tables` has no `use` action: a
+Key-Value node's mode decides which `key_value_tables` bits configuring it needs
+(`MODE_PERMISSIONS` in `tables/services/key_value_table_service.py`), and rbac
+`0005` clears any stored USE bit.
 
 If you change a seed, do it with a new idempotent data migration — never edit an
 applied one. `tests/conftest.py::seed_builtin_roles_and_permissions` replays the

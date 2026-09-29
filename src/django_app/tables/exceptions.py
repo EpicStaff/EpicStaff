@@ -478,18 +478,18 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     default_code = "cdt_explain_upstream_failed"
 
 
-class PersistenceKeyInvalidError(CustomAPIExeption):
+class KeyValueEntryKeyInvalidError(CustomAPIExeption):
     status_code = 400
-    default_code = "persistence_key_invalid"
+    default_code = "key_value_entry_key_invalid"
 
     def __init__(self, key: str, reason: str):
         shown = key if len(key) <= 100 else f"{key[:100]}…"
         super().__init__(f"Key {shown!r} is not a valid key: {reason}.", code=self.default_code)
 
 
-class PersistenceValueTooLargeError(CustomAPIExeption):
+class KeyValueEntryValueTooLargeError(CustomAPIExeption):
     status_code = 400
-    default_code = "persistence_value_too_large"
+    default_code = "key_value_entry_value_too_large"
 
     def __init__(self, size_bytes: int, max_bytes: int):
         super().__init__(
@@ -497,9 +497,9 @@ class PersistenceValueTooLargeError(CustomAPIExeption):
         )
 
 
-class PersistenceTableInUseError(CustomAPIExeption):
+class KeyValueTableInUseError(CustomAPIExeption):
     status_code = 409
-    default_code = "persistence_table_in_use"
+    default_code = "key_value_table_in_use"
 
     def __init__(self, flow_names: list[str]):
         self.flow_names = flow_names
@@ -508,15 +508,15 @@ class PersistenceTableInUseError(CustomAPIExeption):
         )
 
 
-class PersistenceModeDeniedError(CustomAPIExeption):
-    """Raised when the caller lacks the persistent_data permissions a node's mode needs.
+class KeyValueModeDeniedError(CustomAPIExeption):
+    """Raised when the caller lacks the key_value_tables permissions a node's mode needs.
 
     Its own code keeps the frontend from treating this business-rule 403 as a
     changed-permissions 403, which reloads the app.
     """
 
     status_code = 403
-    default_code = "persistence_mode_denied"
+    default_code = "key_value_mode_denied"
     _PERMISSION_LABELS = {"read": "View", "write": "Create and Edit", "delete": "Delete"}
 
     def __init__(self, mode: str, table_name: str):
@@ -527,17 +527,17 @@ class PersistenceModeDeniedError(CustomAPIExeption):
         )
 
 
-class PersistenceSessionNotActiveError(CustomAPIExeption):
+class KeyValueSessionNotActiveError(CustomAPIExeption):
     status_code = 409
-    default_code = "persistence_session_not_active"
+    default_code = "key_value_session_not_active"
 
     def __init__(self, session_id: int):
         super().__init__(f"Session {session_id} is not running.", code=self.default_code)
 
 
-class PersistenceTableNotFoundError(CustomAPIExeption):
+class KeyValueTableNotFoundError(CustomAPIExeption):
     status_code = 404
-    default_code = "persistence_table_not_found"
+    default_code = "key_value_table_not_found"
 
     def __init__(self, table_id: int):
         super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)

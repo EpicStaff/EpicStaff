@@ -784,27 +784,27 @@ def test_restore_does_not_duplicate_task_node(manager, graph):
 
 
 @pytest.mark.django_db
-def test_restore_recreates_persistence_node_with_its_table(manager, graph):
-    from tables.models import PersistenceNode, PersistenceTable
+def test_restore_recreates_key_value_node_with_its_table(manager, graph):
+    from tables.models import KeyValueNode, KeyValueTable
 
-    table = PersistenceTable.objects.create(org=graph.org, name="Customers")
-    node = PersistenceNode.objects.create(
+    table = KeyValueTable.objects.create(org=graph.org, name="Customers")
+    node = KeyValueNode.objects.create(
         graph=graph,
-        node_name="persistence_node",
-        persistence_table=table,
+        node_name="key_value_node",
+        key_value_table=table,
         mode="write",
         entries=[{"key": "k", "value": "variables.v"}],
     )
     snapshot = manager.create_snapshot(graph)
     # Edit after the snapshot, so only a real wipe-and-rebuild restores the old state.
     node.mode = "delete"
-    node.persistence_table = None
+    node.key_value_table = None
     node.save()
 
     manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
 
-    restored = graph.persistence_node_list.get()
-    assert restored.persistence_table_id == table.id
+    restored = graph.key_value_node_list.get()
+    assert restored.key_value_table_id == table.id
     assert restored.mode == "write"
     assert restored.entries == [{"key": "k", "value": "variables.v"}]
 

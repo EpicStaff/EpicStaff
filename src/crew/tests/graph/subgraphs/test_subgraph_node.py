@@ -34,7 +34,7 @@ def test_create_subgraph_builder_does_not_raise_and_inherits_services():
         python_code_executor_service=SimpleNamespace(name="python_code_executor"),
         knowledge_search_service=SimpleNamespace(name="knowledge_search"),
         agent_task_service=SimpleNamespace(name="agent_task"),
-        persistence_client=SimpleNamespace(name="persistence_client"),
+        key_value_client=SimpleNamespace(name="key_value_client"),
     )
     node = _make_subgraph_node(output_variable_path="variables.result")
     node.session_graph_builder = parent_builder
@@ -51,4 +51,4 @@ def test_create_subgraph_builder_does_not_raise_and_inherits_services():
         is parent_builder.knowledge_search_service
     )
     assert subgraph_builder.agent_task_service is parent_builder.agent_task_service
-    assert subgraph_builder.persistence_client is parent_builder.persistence_client
+    assert subgraph_builder.key_value_client is parent_builder.key_value_client

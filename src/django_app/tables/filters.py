@@ -68,7 +68,7 @@ class LabelFilterBackend(BaseFilterBackend):
         ]
 
 
-class PersistenceTableEntryOrderingFilter(OrderingFilter):
+class KeyValueTableEntryOrderingFilter(OrderingFilter):
     """Order entries by `?ordering=` with a `session` alias and a stable tiebreak.
 
     `session` sorts by `updated_by_session_id`; entries no run wrote sort last in both

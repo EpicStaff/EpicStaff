@@ -4,20 +4,20 @@ import json
 import httpx
 import pytest
 
-from clients import persistence as persistence_module
+from clients import key_value as key_value_module
 from clients.errors import (
     ClientBadGatewayError,
     ClientNotAvailableError,
     ClientTimeoutError,
     ClientValidationError,
 )
-from clients.persistence import KEEPALIVE_EXPIRY_SECONDS, RETRY_BACKOFF_SECONDS, PersistenceClient
+from clients.key_value import KEEPALIVE_EXPIRY_SECONDS, RETRY_BACKOFF_SECONDS, KeyValueClient
 
 BASE_URL = "http://django:8000/api/"
 
 
-async def _started(handler) -> PersistenceClient:
-    client = PersistenceClient(BASE_URL, api_key="secret", timeout=5.0, transport=httpx.MockTransport(handler))
+async def _started(handler) -> KeyValueClient:
+    client = KeyValueClient(BASE_URL, api_key="secret", timeout=5.0, transport=httpx.MockTransport(handler))
     await client.start()
     return client
 
@@ -36,7 +36,7 @@ async def test_read_posts_keys_with_system_key_and_returns_response():
     assert await client.read(7, 3, ["a", "b"]) == {"values": {"a": 1}, "table_name": "Customers"}
     await client.stop()
 
-    assert seen["url"] == f"{BASE_URL}internal/sessions/7/persistence-tables/3/read/"
+    assert seen["url"] == f"{BASE_URL}internal/sessions/7/key-value-tables/3/read/"
     assert seen["api_key"] == "secret"
     assert seen["body"] == {"keys": ["a", "b"]}
 
@@ -56,7 +56,7 @@ async def test_write_sends_entries_and_returns_response():
         "created": ["k"],
         "table_name": "Customers",
     }
-    assert seen["url"].endswith("/persistence-tables/3/write/")
+    assert seen["url"].endswith("/key-value-tables/3/write/")
     assert seen["body"] == {"entries": {"k": {"v": 1}}}
 
 
@@ -81,7 +81,7 @@ def waits(monkeypatch):
     async def fake_sleep(seconds):
         recorded.append(seconds)
 
-    monkeypatch.setattr(persistence_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(key_value_module.asyncio, "sleep", fake_sleep)
     yield recorded
 
 
@@ -173,7 +173,7 @@ def test_keepalive_expires_before_djangos_two_second_server_keepalive():
 @pytest.mark.asyncio
 async def test_idle_connection_is_replaced_after_keepalive_expiry(monkeypatch):
     # A real socket: MockTransport bypasses the connection pool this test is about.
-    monkeypatch.setattr(persistence_module, "KEEPALIVE_EXPIRY_SECONDS", 0.3)
+    monkeypatch.setattr(key_value_module, "KEEPALIVE_EXPIRY_SECONDS", 0.3)
     accepted = []
     body = b'{"written": 1, "created": [], "table_name": "Customers"}'
 
@@ -199,7 +199,7 @@ async def test_idle_connection_is_replaced_after_keepalive_expiry(monkeypatch):
 
     server = await asyncio.start_server(serve, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
-    client = PersistenceClient(f"http://127.0.0.1:{port}/api/", api_key="secret", timeout=5.0)
+    client = KeyValueClient(f"http://127.0.0.1:{port}/api/", api_key="secret", timeout=5.0)
     await client.start()
     try:
         await client.write(7, 3, {"k": 1})
@@ -232,7 +232,7 @@ async def test_missing_api_key_starts_and_fails_calls_without_sending(call):
         sent.append(request)
         return httpx.Response(200, json={"values": {}})
 
-    client = PersistenceClient(BASE_URL, api_key=None, timeout=5.0, transport=httpx.MockTransport(handler))
+    client = KeyValueClient(BASE_URL, api_key=None, timeout=5.0, transport=httpx.MockTransport(handler))
     await client.start()
 
     with pytest.raises(ClientNotAvailableError, match="DJANGO_API_KEY is not configured"):

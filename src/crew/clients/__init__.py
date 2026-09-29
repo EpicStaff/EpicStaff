@@ -1,4 +1,4 @@
+from .key_value import KeyValueClient
 from .knowledge import KnowledgeClient
-from .persistence import PersistenceClient
 
-__all__ = ["KnowledgeClient", "PersistenceClient"]
+__all__ = ["KeyValueClient", "KnowledgeClient"]

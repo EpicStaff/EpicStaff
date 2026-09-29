@@ -1,9 +1,9 @@
 from django.db import migrations
 
 _INTENDED = {
-    ("Org Admin", "persistent_data"): 15,  # C R U D
-    ("Member", "persistent_data"): 2,  # R
-    ("Viewer", "persistent_data"): 2,  # R
+    ("Org Admin", "key_value_tables"): 15,  # C R U D
+    ("Member", "key_value_tables"): 2,  # R
+    ("Viewer", "key_value_tables"): 2,  # R
 }
 
 
@@ -25,15 +25,15 @@ def _write(apps, masks_by_role_resource):
         )
 
 
-def seed_persistent_data_permissions(apps, schema_editor):
+def seed_key_value_tables_permissions(apps, schema_editor):
     _write(apps, _INTENDED)
 
 
-def remove_persistent_data_permissions(apps, schema_editor):
+def remove_key_value_tables_permissions(apps, schema_editor):
     RolePermission = apps.get_model("rbac", "RolePermission")
     role_names = {role_name for role_name, _ in _INTENDED}
     RolePermission.objects.filter(
-        resource_type="persistent_data",
+        resource_type="key_value_tables",
         role__name__in=role_names,
         role__is_built_in=True,
         role__org__isnull=True,
@@ -42,9 +42,9 @@ def remove_persistent_data_permissions(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("rbac", "0003_persistent_data_resource_type"),
+        ("rbac", "0003_key_value_tables_resource_type"),
     ]
 
     operations = [
-        migrations.RunPython(seed_persistent_data_permissions, remove_persistent_data_permissions),
+        migrations.RunPython(seed_key_value_tables_permissions, remove_key_value_tables_permissions),
     ]

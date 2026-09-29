@@ -3,7 +3,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from tables.constants.persistence_constants import (
+from tables.constants.key_value_constants import (
     KEY_PATTERN,
     KEY_RULE,
     MAX_KEY_LENGTH,
@@ -17,7 +17,7 @@ _FIELDS = {
 }
 # Crew's `variables` is a DotDict, so a path starts with a name (`variables[0]` never
 # resolves). ASCII matches the frontend. Indexes are canonical (`[0]`, `[10]`, not `[01]`) so
-# equal paths compare equal as strings. Crew's PersistenceNode checks the same rules at run
+# equal paths compare equal as strings. Crew's KeyValueNode checks the same rules at run
 # time.
 _STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCII)
 _PATH_NAME = re.compile(r"\w+", re.ASCII)
@@ -54,8 +54,8 @@ def resolved_key_error(key: str) -> str | None:
     return None
 
 
-class PersistenceEntriesValidator:
-    """Rules for PersistenceNode.entries.
+class KeyValueEntriesValidator:
+    """Rules for KeyValueNode.entries.
 
     A key template is checked statically, each placeholder standing in for `_`; crew checks
     the key it resolves to at run time.

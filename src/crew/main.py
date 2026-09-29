@@ -1,7 +1,7 @@
 import asyncio
 
 import settings
-from clients.persistence import PersistenceClient
+from clients.key_value import KeyValueClient
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.knowledge_search_service import KnowledgeSearchService
@@ -26,10 +26,10 @@ async def main():
         result_stream_prefix=settings.AGENT_RESULT_STREAM,
         default_timeout=settings.AGENT_RESULT_TIMEOUT,
     )
-    persistence_client = PersistenceClient(
+    key_value_client = KeyValueClient(
         base_url=f"http://{settings.DJANGO_HOST}:{settings.DJANGO_PORT}/api/",
         api_key=settings.DJANGO_API_KEY,
-        timeout=settings.PERSISTENCE_TIMEOUT,
+        timeout=settings.KEY_VALUE_TIMEOUT,
     )
     session_manager_service = GraphSessionManagerService(
         redis_service=redis_service,
@@ -40,7 +40,7 @@ async def main():
         # Note:  Used for process human_input
         knowledge_search_service=knowledge_search_service,
         agent_task_service=agent_task_service,
-        persistence_client=persistence_client,
+        key_value_client=key_value_client,
         max_concurrent_sessions=settings.MAX_CONCURRENT_SESSIONS,
     )
 
@@ -50,7 +50,7 @@ async def main():
         await redis_service.connect()
         logger.info("Redis connection established.")
 
-        await persistence_client.start()
+        await key_value_client.start()
 
         logger.info("Starting Session Manager Service...")
         session_manager_service.start()
@@ -64,7 +64,7 @@ async def main():
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
     finally:
-        await persistence_client.stop()
+        await key_value_client.stop()
         logger.info("Shutting down...")
 
 

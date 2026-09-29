@@ -74,8 +74,8 @@ from .graph_models import (
     GraphSessionMessage,
     GraphStorageFile,
     GraphVersion,
+    KeyValueNode,
     KnowledgeNode,
-    PersistenceNode,
     PythonNode,
     ScheduleTriggerNode,
     SessionStorageFile,
@@ -87,6 +87,7 @@ from .graph_models import (
     TelegramTriggerNodeField,
     WebhookTriggerNode,
 )
+from .key_value_models import KeyValueTable, KeyValueTableEntry
 from .knowledge_models.collection_models import (
     BaseRagType,
     DocumentContent,
@@ -104,7 +105,6 @@ from .llm_models import (
     RealtimeTranscriptionModel,
 )
 from .mcp_models import McpTool
-from .persistence_models import PersistenceTable, PersistenceTableEntry
 from .provider import Provider
 from .python_models import (
     PythonCode,
@@ -225,6 +225,9 @@ __all__ = [
     "GraphStorageFile",
     "GraphTag",
     "GraphVersion",
+    "KeyValueNode",
+    "KeyValueTable",
+    "KeyValueTableEntry",
     "KnowledgeNode",
     "LLMConfig",
     "LLMConfigTag",
@@ -239,9 +242,6 @@ __all__ = [
     "NextVal",
     "NgrokWebhookConfig",
     "OpenAIRealtimeConfig",
-    "PersistenceNode",
-    "PersistenceTable",
-    "PersistenceTableEntry",
     "Process",
     "Provider",
     "ProviderType",

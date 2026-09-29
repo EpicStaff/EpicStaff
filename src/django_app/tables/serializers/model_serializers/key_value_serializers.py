@@ -3,22 +3,22 @@ from rbac.scoping.fields import (
     OrgScopedUniqueValidator,
 )
 from rest_framework import serializers
-from tables.constants.persistence_constants import (
+from tables.constants.key_value_constants import (
     MAX_KEY_LENGTH,
     MAX_KEYS_PER_REQUEST,
     MAX_TABLE_NAME_LENGTH,
 )
-from tables.models import PersistenceTable, PersistenceTableEntry
-from tables.services.persistence_table_service import PersistenceTableService
-from tables.validators.persistence_entries_validator import resolved_key_error
+from tables.models import KeyValueTable, KeyValueTableEntry
+from tables.services.key_value_table_service import KeyValueTableService
+from tables.validators.key_value_entries_validator import resolved_key_error
 
 
-class PersistenceTableSerializer(serializers.ModelSerializer):
+class KeyValueTableSerializer(serializers.ModelSerializer):
     name = serializers.CharField(
         max_length=MAX_TABLE_NAME_LENGTH,
         validators=[
             OrgScopedUniqueValidator(
-                queryset=PersistenceTable.objects.all(),
+                queryset=KeyValueTable.objects.all(),
                 lookup="iexact",
                 message="A table with this name already exists.",
             )
@@ -27,19 +27,19 @@ class PersistenceTableSerializer(serializers.ModelSerializer):
     entry_count = serializers.SerializerMethodField()
 
     class Meta:
-        model = PersistenceTable
+        model = KeyValueTable
         fields = ["id", "name", "description", "entry_count", "created_at", "updated_at"]
         read_only_fields = ["created_at", "updated_at"]
 
-    def get_entry_count(self, table: PersistenceTable) -> int:
+    def get_entry_count(self, table: KeyValueTable) -> int:
         return getattr(table, "entry_count", 0)
 
 
-class PersistenceTableEntrySerializer(serializers.ModelSerializer):
-    table = OrgScopedPrimaryKeyRelatedField(queryset=PersistenceTable.objects.all())
+class KeyValueTableEntrySerializer(serializers.ModelSerializer):
+    table = OrgScopedPrimaryKeyRelatedField(queryset=KeyValueTable.objects.all())
     key = serializers.CharField(max_length=MAX_KEY_LENGTH, trim_whitespace=False)
     value = serializers.JSONField(allow_null=True)
-    # Both read annotations from PersistenceTableEntryViewSet's queryset, so listing
+    # Both read annotations from KeyValueTableEntryViewSet's queryset, so listing
     # entries never loads the session or graph rows. Only the internal run route sets
     # `updated_by_session`, and it accepts only tables in the session flow's org, so the
     # name never comes from another org.
@@ -49,7 +49,7 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
     updated_by_graph_name = serializers.CharField(read_only=True, allow_null=True)
 
     class Meta:
-        model = PersistenceTableEntry
+        model = KeyValueTableEntry
         fields = [
             "id",
             "table",
@@ -66,7 +66,7 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         # duplicate as a non-field error.
         validators = []
 
-    def validate_table(self, table: PersistenceTable) -> PersistenceTable:
+    def validate_table(self, table: KeyValueTable) -> KeyValueTable:
         if self.instance is not None and table.pk != self.instance.table_id:
             raise serializers.ValidationError("An entry can't be moved to another table.")
         return table
@@ -82,7 +82,7 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         return key
 
     def validate_value(self, value):
-        PersistenceTableService().validate_value(value)
+        KeyValueTableService().validate_value(value)
         return value
 
     # NOTE: two concurrent renames onto the same key can both pass this check; the second
@@ -93,7 +93,7 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         if "key" not in attrs:
             return attrs
         table_id = attrs["table"].pk if "table" in attrs else self.instance.table_id
-        duplicates = PersistenceTableEntry.objects.filter(table_id=table_id, key=attrs["key"])
+        duplicates = KeyValueTableEntry.objects.filter(table_id=table_id, key=attrs["key"])
         if self.instance is not None:
             duplicates = duplicates.exclude(pk=self.instance.pk)
         if duplicates.exists():
@@ -103,18 +103,18 @@ class PersistenceTableEntrySerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PersistenceTableEntryListSerializer(PersistenceTableEntrySerializer):
+class KeyValueTableEntryListSerializer(KeyValueTableEntrySerializer):
     """A list row: `value` (up to 256 KiB) swapped for a preview of its JSON text.
 
     Reads the `value_preview` / `value_truncated` annotations that
-    PersistenceTableService.with_value_preview adds; the full value is on the detail route.
+    KeyValueTableService.with_value_preview adds; the full value is on the detail route.
     """
 
     value = None
     value_preview = serializers.CharField(read_only=True)
     value_truncated = serializers.BooleanField(read_only=True)
 
-    class Meta(PersistenceTableEntrySerializer.Meta):
+    class Meta(KeyValueTableEntrySerializer.Meta):
         fields = [
             "id",
             "table",
@@ -129,14 +129,14 @@ class PersistenceTableEntryListSerializer(PersistenceTableEntrySerializer):
         ]
 
 
-class PersistenceKeysSerializer(serializers.Serializer):
+class KeyValueKeysSerializer(serializers.Serializer):
     keys = serializers.ListField(
         child=serializers.CharField(max_length=MAX_KEY_LENGTH, trim_whitespace=False),
         max_length=MAX_KEYS_PER_REQUEST,
     )
 
 
-class PersistenceWriteSerializer(serializers.Serializer):
+class KeyValueWriteSerializer(serializers.Serializer):
     entries = serializers.DictField(child=serializers.JSONField(allow_null=True))
 
     def validate_entries(self, entries: dict) -> dict:

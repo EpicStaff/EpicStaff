@@ -25,14 +25,14 @@ from tables.models.graph_models import (
     Edge,
     FileExtractorNode,
     Graph,
+    KeyValueNode,
     KnowledgeNode,
-    PersistenceNode,
     PythonNode,
     SubGraphNode,
     TaskNode,
 )
+from tables.models.key_value_models import KeyValueTable
 from tables.models.knowledge_models import SourceCollection
-from tables.models.persistence_models import PersistenceTable
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -43,9 +43,9 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
-from tables.services.persistence_table_service import PersistenceTableService
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
-from tables.validators.persistence_entries_validator import PersistenceEntriesValidator
+from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
 
 # Top-level keywords a real JSON Schema might use even without "type" (e.g.
 # "$ref", "allOf"). Used only to tell a bare field map ("reasoning":
@@ -133,34 +133,32 @@ class FileExtractorNodeSerializer(ContentHashWritableMixin, serializers.ModelSer
         fields = "__all__"
 
 
-class PersistenceNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-    persistence_table = OrgScopedPrimaryKeyRelatedField(
-        queryset=PersistenceTable.objects.all(), required=False, allow_null=True
+    key_value_table = OrgScopedPrimaryKeyRelatedField(
+        queryset=KeyValueTable.objects.all(), required=False, allow_null=True
     )
 
     class Meta:
-        model = PersistenceNode
+        model = KeyValueNode
         fields = "__all__"
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        mode = attrs.get("mode", getattr(self.instance, "mode", PersistenceNode.Mode.READ))
+        mode = attrs.get("mode", getattr(self.instance, "mode", KeyValueNode.Mode.READ))
         entries = attrs.get("entries", getattr(self.instance, "entries", []))
-        attrs["entries"] = PersistenceEntriesValidator().validate(mode, entries)
-        table = attrs.get("persistence_table", getattr(self.instance, "persistence_table", None))
+        attrs["entries"] = KeyValueEntriesValidator().validate(mode, entries)
+        table = attrs.get("key_value_table", getattr(self.instance, "key_value_table", None))
         # Only a change to what the node does with its table needs the mode's permissions, so
         # a user who may only view the table can still move or rename someone else's node.
         if table is not None and self._changes_table_use(table, mode, attrs["entries"]):
-            PersistenceTableService().assert_can_configure(
-                self.context["request"].user, table, mode
-            )
+            KeyValueTableService().assert_can_configure(self.context["request"].user, table, mode)
         return attrs
 
-    def _changes_table_use(self, table: PersistenceTable, mode: str, entries: list[dict]) -> bool:
+    def _changes_table_use(self, table: KeyValueTable, mode: str, entries: list[dict]) -> bool:
         return (
             self.instance is None
-            or table.pk != self.instance.persistence_table_id
+            or table.pk != self.instance.key_value_table_id
             or mode != self.instance.mode
             or entries != self.instance.entries
         )

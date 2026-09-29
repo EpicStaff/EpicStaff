@@ -62,7 +62,7 @@ def seed_builtin_roles_and_permissions() -> None:
       0242  re-seed all three roles to the masks the code enforces
       0245  grant Org Admin knowledge_sources:EXPORT (for document download)
       0246  seed the `webhooks` resource permissions
-      rbac 0004  seed the `persistent_data` resource permissions
+      rbac 0004  seed the `key_value_tables` resource permissions
 
     Order is load-bearing twice over. The rename must precede 0242, which
     writes `memberships` rows directly -- running it first would leave both a
@@ -117,8 +117,8 @@ def seed_builtin_roles_and_permissions() -> None:
             "seed_webhooks_permissions",
         ),
         (
-            "rbac.migrations.0004_seed_persistent_data_permissions",
-            "seed_persistent_data_permissions",
+            "rbac.migrations.0004_seed_key_value_tables_permissions",
+            "seed_key_value_tables_permissions",
         ),
     ]
     moved_model_apps = _MovedModelApps()
