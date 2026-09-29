@@ -13,10 +13,12 @@ import {
     PreviewGraphVersionResponse,
 } from '../../features/flows/models/graph-version-preview.model';
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { NodeNameValidatorService } from '../services/node-name-validator.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -27,6 +29,7 @@ import { FlowVersionPreviewComponent } from './flow-version-preview.component';
 const EDITOR_SERVICES: Type<unknown>[] = [
     FlowService,
     UndoRedoService,
+    FlowReadOnlyService,
     SidePanelService,
     ClipboardService,
     NodeFactoryService,
@@ -87,6 +90,8 @@ describe('FlowVersionPreviewComponent', () => {
                 },
                 { provide: SecretsStorageService, useValue: { getSecrets: () => of([]) } },
                 { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
+                // A user who may edit flows: any read-only below comes from the preview itself.
+                { provide: PermissionsService, useValue: { can: () => true } },
             ],
         });
         // jsdom cannot lay out the Foblex canvas; the handlers under test do not need it.
@@ -132,6 +137,13 @@ describe('FlowVersionPreviewComponent', () => {
         for (const service of EDITOR_SERVICES) {
             expect(fixture.debugElement.injector.get(service)).not.toBe(TestBed.inject(service));
         }
+    });
+
+    it('is read-only inside (panels, grids, dialogs) while the live editor stays editable', () => {
+        fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+
+        expect(fixture.debugElement.injector.get(FlowReadOnlyService).isReadOnly()).toBe(true);
+        expect(TestBed.inject(FlowReadOnlyService).isReadOnly()).toBe(false);
     });
 
     it('never touches the live (root) editor services', async () => {

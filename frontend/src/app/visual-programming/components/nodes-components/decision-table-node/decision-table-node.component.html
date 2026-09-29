@@ -6,7 +6,7 @@
     @if (inputPort; as port) {
         <div
             class="input-port-wrapper"
-            [class.no-hover]="isReadonly()"
+            [class.no-hover]="isReadOnly()"
         >
             <div
                 class="port-circle"
@@ -16,8 +16,8 @@
                 [fOutputMultiple]="port.multiple"
                 [fInputId]="port.id"
                 [fOutputId]="port.id"
-                [fInputDisabled]="isReadonly()"
-                [fOutputDisabled]="isReadonly()"
+                [fInputDisabled]="isReadOnly()"
+                [fOutputDisabled]="isReadOnly()"
                 [fCanBeConnectedInputs]="getPortConnections(port.id)"
                 [isSelfConnectable]="false"
                 [fInputConnectableSide]="port.position"
@@ -59,7 +59,7 @@
                     @if (getPortForGroup(group); as port) {
                         <div
                             class="port-wrapper"
-                            [class.no-hover]="isReadonly()"
+                            [class.no-hover]="isReadOnly()"
                         >
                             <div
                                 class="port-circle"
@@ -69,8 +69,8 @@
                                 [fOutputMultiple]="port.multiple"
                                 [fInputId]="port.id"
                                 [fOutputId]="port.id"
-                                [fInputDisabled]="isReadonly()"
-                                [fOutputDisabled]="isReadonly()"
+                                [fInputDisabled]="isReadOnly()"
+                                [fOutputDisabled]="isReadOnly()"
                                 [fCanBeConnectedInputs]="getPortConnections(port.id)"
                                 [isSelfConnectable]="false"
                                 [fInputConnectableSide]="port.position"
@@ -108,7 +108,7 @@
             @if (defaultPort; as port) {
                 <div
                     class="port-wrapper"
-                    [class.no-hover]="isReadonly()"
+                    [class.no-hover]="isReadOnly()"
                 >
                     <div
                         class="port-circle"
@@ -118,8 +118,8 @@
                         [fOutputMultiple]="port.multiple"
                         [fInputId]="port.id"
                         [fOutputId]="port.id"
-                        [fInputDisabled]="isReadonly()"
-                        [fOutputDisabled]="isReadonly()"
+                        [fInputDisabled]="isReadOnly()"
+                        [fOutputDisabled]="isReadOnly()"
                         [fCanBeConnectedInputs]="getPortConnections(port.id)"
                         [isSelfConnectable]="false"
                         [fInputConnectableSide]="port.position"
@@ -151,7 +151,7 @@
             @if (errorPort; as port) {
                 <div
                     class="port-wrapper"
-                    [class.no-hover]="isReadonly()"
+                    [class.no-hover]="isReadOnly()"
                 >
                     <div
                         class="port-circle"
@@ -161,8 +161,8 @@
                         [fOutputMultiple]="port.multiple"
                         [fInputId]="port.id"
                         [fOutputId]="port.id"
-                        [fInputDisabled]="isReadonly()"
-                        [fOutputDisabled]="isReadonly()"
+                        [fInputDisabled]="isReadOnly()"
+                        [fOutputDisabled]="isReadOnly()"
                         [fCanBeConnectedInputs]="getPortConnections(port.id)"
                         [isSelfConnectable]="false"
                         [fInputConnectableSide]="port.position"

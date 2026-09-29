@@ -12,7 +12,8 @@ import {
 import { GetGraphLightRequest, GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { ToastService } from '../../services/notifications';
-import { FLOW_EDITOR_READ_ONLY, FLOW_EDITOR_STATE_PROVIDERS } from '../core/providers/flow-editor-state.providers';
+import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
+import { FLOW_EDITOR_STATE_PROVIDERS } from '../core/providers/flow-editor-state.providers';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { ClipboardService } from '../services/clipboard.service';
 import { buildPreviewFlowModel } from '../utils/load';
@@ -27,7 +28,7 @@ type PreviewFlowModel = ReturnType<typeof buildPreviewFlowModel>;
 @Component({
     selector: 'app-flow-version-preview',
     imports: [FlowGraphComponent, AppSvgIconComponent, SpinnerComponent],
-    providers: [...FLOW_EDITOR_STATE_PROVIDERS, { provide: FLOW_EDITOR_READ_ONLY, useValue: true }],
+    providers: [...FLOW_EDITOR_STATE_PROVIDERS, { provide: FLOW_EDITOR_PREVIEW, useValue: true }],
     templateUrl: './flow-version-preview.component.html',
     styleUrl: './flow-version-preview.component.scss',
 })

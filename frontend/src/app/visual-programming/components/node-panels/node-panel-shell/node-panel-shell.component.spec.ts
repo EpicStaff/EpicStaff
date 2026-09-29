@@ -1,11 +1,11 @@
-import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
 import { EndNodeModel, NodeModel } from '../../../core/models/node.model';
-import { FLOW_EDITOR_READ_ONLY } from '../../../core/providers/flow-editor-state.providers';
+import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
-import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { NodePanelShellComponent } from './node-panel-shell.component';
@@ -27,12 +27,12 @@ const endNode: EndNodeModel = {
     output_variable_path: null,
 };
 
-async function mount(readOnly: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
+async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
     TestBed.configureTestingModule({
         providers: [
-            { provide: FLOW_EDITOR_READ_ONLY, useValue: readOnly },
-            // A user who may edit flows; Viewer read-only is FlowReadOnlyService's own concern.
-            { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false), notifyBlocked: vi.fn() } },
+            { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+            // A user who may edit flows: read-only below comes from the preview alone.
+            { provide: PermissionsService, useValue: { can: () => true } },
         ],
         // The shell passes `graphId` to every panel; the End panel does not declare it
         // (a dev-mode console error in the app, a thrown error under TestBed's default).
@@ -59,8 +59,8 @@ function panelOf(fixture: ComponentFixture<NodePanelShellComponent>): EndNodePan
 describe('NodePanelShellComponent', () => {
     afterEach(() => vi.restoreAllMocks());
 
-    describe('read-only', () => {
-        it('disables the panel form, never saves or autosaves, and Ctrl+S / Esc only close', async () => {
+    describe('version preview', () => {
+        it('disables the panel form, never saves or autosaves; Ctrl+S explains, Esc closes', async () => {
             const fixture = await mount(true);
             const shell = fixture.componentInstance;
             const panel = panelOf(fixture);
@@ -70,6 +70,7 @@ describe('NodePanelShellComponent', () => {
             shell.save.subscribe((node) => emitted.push(node));
             shell.autosave.subscribe((node) => emitted.push(node));
             const sidePanel = TestBed.inject(SidePanelService);
+            const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
 
             expect(panel.form.disabled).toBe(true);
             // Even with a pending edit (from a widget outside the form) nothing is saved.
@@ -80,9 +81,13 @@ describe('NodePanelShellComponent', () => {
             sidePanel.triggerAutosave();
             fixture.detectChanges();
             shell['onShortcutSave']();
-            expect(sidePanel.selectedNodeId()).toBeNull();
+            expect(info).toHaveBeenCalledWith(
+                expect.stringContaining('Preview mode is read-only'),
+                3000,
+                'bottom-right'
+            );
+            expect(sidePanel.selectedNodeId()).toBe(endNode.id);
 
-            sidePanel.setSelectedNodeId(endNode.id);
             shell['onEscape']();
             expect(sidePanel.selectedNodeId()).toBeNull();
 

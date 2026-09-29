@@ -224,7 +224,7 @@
                             stroke="none"
                         ></path>
                     </svg>
-                    @if (!isReadOnly && !flowReadOnly.isReadOnly()) {
+                    @if (!flowReadOnly.isReadOnly()) {
                         <div
                             fConnectionContent
                             class="connection-center"
@@ -301,7 +301,7 @@
 
         <div class="top-right-controls">
             <div class="top-right-actions">
-                @if (!isReadOnly) {
+                @if (!isPreview) {
                     <app-flow-export-import-button
                         [selectedCount]="selectedNodeCount()"
                         [allSelectedAreCdt]="allSelectedAreCdt()"
@@ -311,7 +311,7 @@
                         (import)="onImportNodes()"
                     ></app-flow-export-import-button>
                 }
-                @if (currentFlowId && !isReadOnly) {
+                @if (currentFlowId && !isPreview) {
                     <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Read]">
                         <app-flow-files-button
                             *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
@@ -320,7 +320,7 @@
                         ></app-flow-files-button>
                     </ng-container>
                 }
-                @if (!isReadOnly && !flowReadOnly.isReadOnly()) {
+                @if (!flowReadOnly.isReadOnly()) {
                     <button
                         #arrangeBtnRef
                         class="arrange-btn"
@@ -349,7 +349,7 @@
         </div>
     </div>
 
-    @if (!isReadOnly && !flowReadOnly.isReadOnly()) {
+    @if (!flowReadOnly.isReadOnly()) {
         <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
     }
 

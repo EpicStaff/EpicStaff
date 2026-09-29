@@ -147,6 +147,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public isSaving = signal(false);
     public isRunning = signal(false);
     public restoreWarnings = signal<RestoreWarning[]>([]);
+    /** Restore warnings still worth showing: one tied to a node goes away once that node is deleted. */
+    public readonly activeRestoreWarnings = computed(() => {
+        const backendNodeIds = new Set(this.flowService.nodes().map((node) => node.backendId));
+        return this.restoreWarnings().filter(
+            (warning) => warning.node_id == null || backendNodeIds.has(warning.node_id)
+        );
+    });
 
     public isPanelOpen = signal(false);
     public isPanelCollapsed = signal(true);
@@ -267,7 +274,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.undoRedoService.setUndoStack([]);
             this.undoRedoService.setRedoStack([]);
             const warnings = this.createGraphWarningService.readPending();
-            if (warnings.length) this.restoreWarnings.set(warnings);
+            // Always replace: warnings from a previous flow must not follow the user to this one.
+            this.restoreWarnings.set(warnings);
             this.fetchGraph(graphId);
         });
 
@@ -1255,7 +1263,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onShowRestoreWarnings(): void {
         const dialogRef = this.dialog.open<number | undefined>(RestoreWarningsDialogComponent, {
             width: '560px',
-            data: { warnings: this.restoreWarnings() },
+            data: { warnings: this.activeRestoreWarnings() },
         });
 
         dialogRef.closed

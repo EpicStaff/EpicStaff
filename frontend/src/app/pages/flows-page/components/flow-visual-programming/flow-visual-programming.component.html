@@ -20,7 +20,7 @@
     ></app-flow-header>
 
     <div class="body">
-        @if (restoreWarnings().length > 0 && !isPreviewing()) {
+        @if (activeRestoreWarnings().length > 0 && !isPreviewing()) {
             <button
                 class="restore-warning-btn"
                 (click)="onShowRestoreWarnings()"
@@ -29,8 +29,8 @@
                     icon="alert-triangle"
                     size="1rem"
                 />
-                {{ restoreWarnings().length }} missing
-                {{ restoreWarnings().length === 1 ? 'dependency' : 'dependencies' }}
+                {{ activeRestoreWarnings().length }} missing
+                {{ activeRestoreWarnings().length === 1 ? 'dependency' : 'dependencies' }}
             </button>
         }
         <!-- The live canvas is removed while previewing, so the preview never touches its (root) state. -->

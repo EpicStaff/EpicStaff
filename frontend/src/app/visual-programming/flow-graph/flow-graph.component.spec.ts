@@ -6,12 +6,14 @@ import { FDragStartedEvent } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { of } from 'rxjs';
 
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { FlowModel } from '../core/models/flow.model';
 import { GraphNoteModel, NodeModel } from '../core/models/node.model';
-import { FLOW_EDITOR_READ_ONLY } from '../core/providers/flow-editor-state.providers';
+import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createStartNode } from '../utils/load';
@@ -38,15 +40,18 @@ function noteNode(): GraphNoteModel {
 }
 
 function mount(
-    readOnly: boolean,
+    isPreview: boolean,
     flowState: FlowModel,
-    beforeCreate: () => void = () => undefined
+    beforeCreate: () => void = () => undefined,
+    canUpdateFlows = true
 ): ComponentFixture<FlowGraphComponent> {
     TestBed.configureTestingModule({
         providers: [
             provideHttpClient(),
             provideHttpClientTesting(),
-            { provide: FLOW_EDITOR_READ_ONLY, useValue: readOnly },
+            { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+            // Read-only from permissions (a Viewer) only where a test asks for it.
+            { provide: PermissionsService, useValue: { can: () => canUpdateFlows } },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
         ],
     });
@@ -61,7 +66,7 @@ function mount(
 describe('FlowGraphComponent', () => {
     afterEach(() => vi.restoreAllMocks());
 
-    describe('read-only (FLOW_EDITOR_READ_ONLY = true)', () => {
+    describe('version preview (FLOW_EDITOR_PREVIEW = true)', () => {
         let component: FlowGraphComponent;
         let flowService: FlowService;
         let stateChanged: ReturnType<typeof vi.spyOn>;
@@ -142,8 +147,9 @@ describe('FlowGraphComponent', () => {
             component.onOpenNodePanel(start);
 
             expect(dialogOpen).toHaveBeenCalledTimes(2);
+            // Opened with this editor's injector, so the dialog sees this editor's read-only state.
             for (const [, config] of dialogOpen.mock.calls) {
-                expect(config.data.readOnly).toBe(true);
+                expect(config.injector.get(FlowReadOnlyService).isReadOnly()).toBe(true);
             }
         });
 
@@ -167,7 +173,7 @@ describe('FlowGraphComponent', () => {
         });
     });
 
-    describe('editable (FLOW_EDITOR_READ_ONLY = false)', () => {
+    describe('editable (FLOW_EDITOR_PREVIEW = false)', () => {
         it('does not replay an earlier full-save request when the canvas is re-created', () => {
             const emitSave = vi.spyOn(FlowGraphComponent.prototype, 'emitSave').mockImplementation(() => undefined);
 
@@ -232,6 +238,27 @@ describe('FlowGraphComponent', () => {
             expect(canvas.fitToScreen).toHaveBeenCalled();
             // position + scaledPosition, as Foblex reports it
             expect(component.captureViewport()).toEqual({ position: { x: 6, y: 7 }, scale: 1 });
+        });
+    });
+
+    describe('Viewer (no Flows:Update) in the live editor', () => {
+        it('blocks edits with the read-only-access message, shown once, and still copies', () => {
+            const fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] }, undefined, false);
+            const component = fixture.componentInstance;
+            const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const copy = vi.spyOn(TestBed.inject(ClipboardService), 'copy');
+            component['fFlowComponent'] = {
+                getSelection: () => ({ fNodeIds: ['note-1'], fGroupIds: [], fConnectionIds: [] }),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+
+            component.onPaste();
+            component.onDelete();
+            component.onCopy();
+
+            expect(component.editGestureTrigger()).toBe(false);
+            expect(info).toHaveBeenCalledTimes(1);
+            expect(info).toHaveBeenCalledWith('You have read-only access to this flow.');
+            expect(copy).toHaveBeenCalled();
         });
     });
 });

@@ -6,7 +6,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
 import { LlmConfigStorageService } from '@shared/services';
-import { Observable, of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
@@ -153,6 +153,7 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
     let flowsApi: Record<string, ReturnType<typeof vi.fn>>;
     let unsavedChangesDialog: { confirm: ReturnType<typeof vi.fn>; confirmUnsavedChanges: ReturnType<typeof vi.fn> };
     let toast: Record<string, ReturnType<typeof vi.fn>>;
+    let paramMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
 
     beforeEach(() => {
         FlowGraphStubComponent.instances = [];
@@ -166,6 +167,7 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
         unsavedChangesDialog = { confirm: vi.fn(), confirmUnsavedChanges: vi.fn() };
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         const paramMap = convertToParamMap({ id: '1' });
+        paramMap$ = new BehaviorSubject(paramMap);
         const queryParamMap = convertToParamMap({});
 
         TestBed.configureTestingModule({
@@ -174,7 +176,7 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
                 {
                     provide: ActivatedRoute,
                     useValue: {
-                        paramMap: of(paramMap),
+                        paramMap: paramMap$,
                         queryParamMap: of(queryParamMap),
                         snapshot: { paramMap, queryParamMap },
                     },
@@ -365,6 +367,44 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
         const payload = JSON.stringify(flowsApi['bulkSaveGraph'].mock.calls[0][1]);
         expect(payload).not.toContain('snapshot-node');
         expect(component.hasUnsavedChangesSignal()).toBe(true);
+    });
+
+    it('drops a restore warning once its node is deleted, and keeps warnings not tied to a node', () => {
+        flowService.setFlow({ nodes: [], connections: [] });
+        component.onGraphSave(flowService.getFlowState());
+        const restoredNote = RESTORED_GRAPH.graph_note_list![0];
+        flowsApi['getGraphById'].mockReturnValue(of(RESTORED_GRAPH));
+        unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+        flowsApi['restoreGraphVersion'].mockReturnValue(
+            of({
+                restored: true,
+                graph_id: 1,
+                warnings: [
+                    { type: 'fk_nulled', node_id: restoredNote.id, reason: 'Subflow was deleted' },
+                    { type: 'edge_dropped', reason: 'Edge to a removed node' },
+                ],
+            })
+        );
+        component.onVersionRestoreRequested(VERSION_A);
+        fixture.detectChanges();
+        expect(component.activeRestoreWarnings()).toHaveLength(2);
+
+        const restoredFlow = flowService.getFlowState();
+        flowService.setFlow({
+            ...restoredFlow,
+            nodes: restoredFlow.nodes.filter((node) => node.backendId !== restoredNote.id),
+        });
+
+        expect(component.activeRestoreWarnings().map((warning) => warning.type)).toEqual(['edge_dropped']);
+    });
+
+    it('does not carry restore warnings over to the next flow that is opened', () => {
+        component.restoreWarnings.set([{ type: 'edge_dropped', reason: 'Edge to a removed node' }]);
+
+        paramMap$.next(convertToParamMap({ id: '2' }));
+        fixture.detectChanges();
+
+        expect(component.restoreWarnings()).toEqual([]);
     });
 
     it('saves only the live flow when leaving the page while previewing', () => {

@@ -28,7 +28,7 @@ export class ClassificationDecisionTableNodeComponent {
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
     private readonly destroyRef = inject(DestroyRef);
-    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     constructor() {
         this.llmConfigStorageService.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();

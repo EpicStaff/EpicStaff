@@ -37,7 +37,7 @@
                         </div>
 
                         <app-inputs-you-can-use
-                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                            *appIfFlowEditable
                             [names]="availableInputs()"
                             (insert)="insertInputToQuery($event)"
                         />
@@ -190,7 +190,7 @@
                     </div>
 
                     <app-inputs-you-can-use
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                        *appIfFlowEditable
                         [names]="availableInputs()"
                         (insert)="insertInputToQuery($event)"
                     />

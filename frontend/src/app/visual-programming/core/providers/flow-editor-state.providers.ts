@@ -1,7 +1,8 @@
-import { InjectionToken, Provider } from '@angular/core';
+import { Provider } from '@angular/core';
 
 import { ClipboardService } from '../../services/clipboard.service';
 import { FlowService } from '../../services/flow.service';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { NodeFactoryService } from '../../services/node-factory.service';
 import { NodeNameValidatorService } from '../../services/node-name-validator.service';
 import { SidePanelService } from '../../services/side-panel.service';
@@ -17,19 +18,17 @@ import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.
  * Keep the list complete: a state-holding service left out would resolve to the root
  * instance and leak between the two editors. Stateless HTTP services and user preferences
  * (FlowSettingsService) are deliberately shared.
+ *
+ * FlowReadOnlyService is listed because it reads FLOW_EDITOR_PREVIEW: the root instance would
+ * only ever see the root value (false), and the preview would be editable.
  */
 export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     FlowService,
     UndoRedoService,
+    FlowReadOnlyService,
     SidePanelService,
     ClipboardService,
     NodeFactoryService,
     NodeNameValidatorService,
     UniqueNodeNameValidatorService,
 ];
-
-/** True when the flow editor must not change the flow (canvas and node panels). */
-export const FLOW_EDITOR_READ_ONLY = new InjectionToken<boolean>('FLOW_EDITOR_READ_ONLY', {
-    providedIn: 'root',
-    factory: () => false,
-});

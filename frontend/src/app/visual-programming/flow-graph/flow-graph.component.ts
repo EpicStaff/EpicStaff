@@ -47,16 +47,13 @@ import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { ToastService } from '../../services/notifications';
-import { DomainDialogComponent, DomainDialogData } from '../components/domain-dialog/domain-dialog.component';
+import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
 import { FlowExportImportButtonComponent } from '../components/flow-export-import-button/flow-export-import-button.component';
 import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-files-button.component';
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
-import {
-    FlowSettingsPanelComponent,
-    FlowSettingsPanelData,
-} from '../components/flow-settings-panel/flow-settings-panel.component';
+import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
@@ -89,7 +86,7 @@ import { FlowViewport } from '../core/models/flow-viewport.model';
 import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
-import { FLOW_EDITOR_READ_ONLY } from '../core/providers/flow-editor-state.providers';
+import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
@@ -238,7 +235,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         !this.multiSelectActive() && !(event instanceof MouseEvent && event.shiftKey);
 
     /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
-    readonly editGestureTrigger = (): boolean => !this.isReadOnly;
+    readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
 
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
@@ -312,7 +309,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly reassignFollowerIds = signal<ReadonlySet<string>>(new Set<string>());
     private reassignGroupIds: string[] = [];
 
-    protected readonly isReadOnly = inject(FLOW_EDITOR_READ_ONLY);
+    /** Version preview: read-only (via flowReadOnly), and import/export and files are hidden. */
+    protected readonly isPreview = inject(FLOW_EDITOR_PREVIEW);
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
@@ -695,11 +693,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onPaste(): void {
-        if (this.isReadOnly) {
-            this.notifyReadOnly();
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
             return;
         }
-        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -737,11 +734,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onUndo(): void {
-        if (this.isReadOnly) {
-            this.notifyReadOnly();
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
             return;
         }
-        if (this.flowReadOnly.isReadOnly()) return;
         if (this.isEditingLocked()) {
             return;
         }
@@ -752,11 +748,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onRedo(): void {
-        if (this.isReadOnly) {
-            this.notifyReadOnly();
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
             return;
         }
-        if (this.flowReadOnly.isReadOnly()) return;
         if (this.isEditingLocked()) {
             return;
         }
@@ -766,22 +761,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.rerouteSegmentConnections();
     }
 
-    /** Keyboard edits in the version preview would otherwise do nothing without a word. */
-    private notifyReadOnly(): void {
-        this.toastService.info('Preview mode is read-only. Exit preview to edit the flow', 3000, 'bottom-right');
-    }
-
     protected onUndoRedoPerformed(): void {
         this.hasUnarrangedChanges.set(true);
         this.rerouteSegmentConnections();
     }
 
     public onDelete(): void {
-        if (this.isReadOnly) {
-            this.notifyReadOnly();
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
             return;
         }
-        if (this.flowReadOnly.isReadOnly()) return;
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -842,7 +831,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodeDroppedFromPanel(event: FCreateNodeEvent): void {
-        if (this.isReadOnly) {
+        if (this.flowReadOnly.isReadOnly()) {
             return;
         }
         this.hasUnarrangedChanges.set(true);
@@ -874,9 +863,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onContextMenu(event: MouseEvent): void {
         event.preventDefault();
-        if (this.isReadOnly) {
-            return;
-        }
         if (this.flowReadOnly.isReadOnly()) return;
         this.contextMenuPosition.set({ x: event.clientX, y: event.clientY });
         this.showContextMenu.set(true);
@@ -889,7 +875,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onAddNodeFromContextMenu(event: CreateNodeRequest): void {
         this.showContextMenu.set(false);
 
-        if (this.isReadOnly || this.flowReadOnly.isReadOnly() || this.isDialogOpen()) {
+        if (this.flowReadOnly.isReadOnly() || this.isDialogOpen()) {
             return;
         }
 
@@ -936,7 +922,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         if (node.type === NodeType.NOTE) {
-            if (this.isReadOnly) {
+            if (this.flowReadOnly.isReadOnly()) {
                 return;
             }
             const noteNode = node as GraphNoteModel;
@@ -982,12 +968,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 backdropClass: 'domain-dialog-backdrop',
                 data: {
                     initialData: startNodeInitialState,
-                    readOnly: this.isReadOnly,
-                } satisfies DomainDialogData,
+                },
+                // This editor's injector: the dialog then sees this editor's read-only state.
+                injector: this.injector,
             });
 
             dialogRef.closed.subscribe((result: unknown) => {
-                if (this.isReadOnly) return;
+                if (this.flowReadOnly.isReadOnly()) return;
                 if (result !== null && typeof result === 'object' && result !== undefined) {
                     this.updateStartNodeInitialState(result as Record<string, unknown>);
                 }
@@ -998,7 +985,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePanelSaved(updatedNode: NodeModel): void {
-        if (this.isReadOnly) {
+        if (this.flowReadOnly.isReadOnly()) {
             return;
         }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
@@ -1022,7 +1009,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
-        if (this.isReadOnly) {
+        if (this.flowReadOnly.isReadOnly()) {
             return;
         }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
@@ -1070,7 +1057,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public emitSave(): void {
-        if (this.isReadOnly) return;
+        if (this.flowReadOnly.isReadOnly()) return;
         if (!this.commitSidePanelToFlow()) return;
         this.save.emit(this.flowService.getFlowState());
     }
@@ -1102,7 +1089,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         // Panning also starts a drag; in read-only nothing can change, so there is no state to record.
-        if (!this.isReadOnly) {
+        if (!this.flowReadOnly.isReadOnly()) {
             this.undoRedoService.stateChanged();
         }
     }
@@ -1327,7 +1314,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.dialog.open(FlowSettingsPanelComponent, {
             width: '480px',
             maxWidth: '90vw',
-            data: { readOnly: this.isReadOnly } satisfies FlowSettingsPanelData,
+            injector: this.injector,
         });
     }
 
@@ -1336,7 +1323,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAutoArrange(): void {
-        if (this._arrangingLock || this.isReadOnly) return;
+        if (this._arrangingLock || this.flowReadOnly.isReadOnly()) return;
         this._arrangingLock = true;
         this.isArranging.set(true);
         if (this.arrangeBtnRef) {
@@ -1486,12 +1473,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             backdropClass: 'domain-dialog-backdrop',
             data: {
                 initialData: startNodeInitialState,
-                readOnly: this.isReadOnly,
-            } satisfies DomainDialogData,
+            },
+            injector: this.injector,
         });
 
         dialogRef.closed.subscribe((result: unknown) => {
-            if (this.isReadOnly) return;
+            if (this.flowReadOnly.isReadOnly()) return;
             if (result !== null && typeof result === 'object' && result !== undefined) {
                 this.updateStartNodeInitialState(result as Record<string, unknown>);
             }
@@ -1656,7 +1643,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onImportNodes(): void {
-        if (this.isReadOnly || this.flowReadOnly.isReadOnly()) return;
+        if (this.flowReadOnly.isReadOnly()) return;
         if (!this.currentFlowId) return;
         if (this.hasUnsavedChanges) {
             this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');
@@ -1871,7 +1858,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     // Editing is locked while a dialog is open, a full graph save is in flight, or the editor is read-only.
     // (Saving lock fixes edits made mid-save being discarded when the response is applied.)
     private isEditingLocked(): boolean {
-        return this.isDialogOpen() || this.isSaving || this.isReadOnly;
+        return this.isDialogOpen() || this.isSaving || this.flowReadOnly.isReadOnly();
     }
 
     private updateStartNodeInitialState(newState: Record<string, unknown>): void {

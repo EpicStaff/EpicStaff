@@ -13,15 +13,15 @@
         type="button"
         class="wts__trigger"
         [class.wts__trigger--open]="open()"
-        [class.wts__trigger--placeholder]="!selectedTrigger()"
-        [class.wts__trigger--readonly]="readonly()"
+        [class.wts__trigger--placeholder]="triggerText() === placeholder()"
+        [class.wts__trigger--readonly]="isReadonlyView()"
         [disabled]="controlDisabled()"
         (click)="toggle()"
     >
         <span class="wts__trigger-value">
-            {{ selectedTrigger() ? displayLabel(selectedTrigger()!) : placeholder() }}
+            {{ triggerText() }}
         </span>
-        @if (!readonly()) {
+        @if (!isReadonlyView()) {
             <svg
                 class="wts__chevron"
                 [class.wts__chevron--open]="open()"

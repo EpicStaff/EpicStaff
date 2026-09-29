@@ -35,8 +35,6 @@ declare const monaco: typeof import('monaco-editor');
 
 export interface DomainDialogData {
     initialData: Record<string, unknown>;
-    /** View-only (version preview): the editor is locked and closing returns no result. */
-    readOnly?: boolean;
 }
 
 export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
@@ -268,9 +266,8 @@ export class DomainDialogComponent implements OnDestroy {
     public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
     public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
 
-    /** Version preview (dialog data) or a Viewer (no Flows:Update). */
-    public readonly isReadOnly = computed(() => (this.data?.readOnly ?? false) || this.flowReadOnly.isReadOnly());
-    private readonly flowReadOnly = inject(FlowReadOnlyService);
+    /** Opened with the editor's injector, so this is the preview's or the live editor's state. */
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
