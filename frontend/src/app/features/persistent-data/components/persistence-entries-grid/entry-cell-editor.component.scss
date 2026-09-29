@@ -13,54 +13,72 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    width: 520px;
-    max-width: 80vw;
     padding: 8px;
     border: 1px solid var(--accent-color);
     border-radius: 4px;
     background: var(--color-input-background);
     box-shadow: var(--shadow-panel-elevated);
+    outline: none;
 }
 
-.entry-editor__field {
+// The key editor's error popup keeps the cell's width; the value popup is sized for editing JSON.
+.entry-editor--json {
+    width: 520px;
+    max-width: 80vw;
+}
+
+// The app's standard text input (app-custom-input): same surface, border, radius and accent focus border. The
+// horizontal padding keeps the text where it sat in the cell (its padding, less the cell's and the input's border).
+.entry-editor__input {
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    padding: 0 8px;
-    border: none;
+    padding: 0 calc(var(--ag-cell-horizontal-padding, 16px) - 2px);
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
     outline: none;
-    background: transparent;
+    background-color: var(--color-input-background);
     color: var(--color-text-primary);
     font: inherit;
+    font-size: 0.875rem;
+    transition: border-color 0.2s ease;
 
     &::placeholder {
         color: var(--color-input-text-placeholder);
     }
 
-    &[aria-invalid='true'] {
-        box-shadow: inset 0 0 0 1px var(--color-status-error);
+    &:focus {
+        border-color: var(--accent-color);
     }
 
-    &--multiline {
-        height: 240px;
-        padding: 4px;
-        resize: vertical;
-        font-family: monospace;
-        font-size: 13px;
-        line-height: 1.4;
-        white-space: pre;
+    &[aria-invalid='true'] {
+        border-color: var(--color-status-error);
     }
 }
 
 // The key input inside its error popup.
-.entry-editor--popup > input.entry-editor__field {
+.entry-editor--popup > .entry-editor__input {
     height: 32px;
+    padding: 0 12px;
+}
+
+.entry-editor__loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    color: var(--color-text-secondary);
+}
+
+.entry-editor__hint,
+.entry-editor__error,
+.entry-editor__loading {
+    font-size: 12px;
 }
 
 .entry-editor__hint,
 .entry-editor__error {
     margin: 0;
-    font-size: 12px;
 }
 
 .entry-editor__hint {

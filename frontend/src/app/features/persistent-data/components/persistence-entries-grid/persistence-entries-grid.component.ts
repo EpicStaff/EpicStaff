@@ -61,6 +61,7 @@ import {
 
 import { ToastService } from '../../../../services/notifications';
 import { escapeHtml } from '../../helpers/escape-html';
+import { overlayScrollbarRoom } from '../../helpers/overlay-scrollbar-room';
 import { copyableValue, editableValue, previewText } from '../../helpers/persistence-value-preview';
 import {
     PersistenceEntryOrdering,
@@ -143,13 +144,14 @@ function rejectedEditId(rowId: string, column: EditableColumn): string {
     return `${rowId}:${column}`;
 }
 
-// Router link to the session that last wrote the entry; null for hand-edited entries.
+// Router link to the session that last wrote the entry; null when none is on record (edited by hand, or the
+// session was deleted since).
 function sessionLink(entry: PersistenceTableEntryListItem): (string | number)[] | null {
     if (entry.updated_by_session === null || entry.updated_by_graph === null) return null;
     return ['/graph', entry.updated_by_graph, 'session', entry.updated_by_session];
 }
 
-// "<Flow name>, Session #<id>"; null for hand-edited entries, which no run touched.
+// "<Flow name>, Session #<id>"; null when no session is on record (edited by hand, or the session was deleted since).
 function sessionLabel(entry: PersistenceTableEntryListItem): string | null {
     if (entry.updated_by_session === null || entry.updated_by_graph === null) return null;
     const session = `Session #${entry.updated_by_session}`;
@@ -219,7 +221,7 @@ export class PersistenceEntriesGridComponent {
     readonly search = toSignal(settledSearch(toObservable(this.searchTerm)), { initialValue: '' });
     // The id, not the table object: a refreshed tables list (new entry_count) must not re-fetch or reset paging.
     readonly tableId = computed(() => this.table().id);
-    // Server-side sort, clicked from the Key / Session / Updated headers; kept across a table switch.
+    // Server-side sort, clicked from the Key / Modified By / Updated headers; kept across a table switch.
     readonly ordering = signal<PersistenceEntryOrdering>('key');
     // Back to page 1 whenever the table, search or sort changes; the pagination controls set it otherwise.
     readonly page = linkedSignal(() => {
@@ -286,7 +288,7 @@ export class PersistenceEntriesGridComponent {
             {
                 ...SERVER_SORTED,
                 colId: 'session',
-                headerName: 'Session',
+                headerName: 'Modified By',
                 flex: 1,
                 minWidth: 160,
                 cellRendererSelector: () => this.templateRenderer(this.sessionCell),
@@ -372,6 +374,8 @@ export class PersistenceEntriesGridComponent {
         animateRows: false,
         suppressMultiSort: true,
         suppressColumnVirtualisation: true,
+        // Keeps an overlay scrollbar (Firefox on GTK, macOS) from covering the last column.
+        scrollbarWidth: overlayScrollbarRoom(inject(DOCUMENT)),
         defaultColDef: { sortable: false, resizable: true, suppressMovable: true },
     };
 

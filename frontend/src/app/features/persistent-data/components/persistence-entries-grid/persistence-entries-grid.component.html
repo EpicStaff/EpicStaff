@@ -4,7 +4,6 @@
         <div class="entries-grid__actions-bar">
             <app-search
                 class="entries-grid__search"
-                mod="small"
                 placeholder="Search keys..."
                 [(searchTerm)]="searchTerm"
             />
@@ -110,9 +109,9 @@
             >
         } @else {
             <span
-                class="entries-grid__no-session"
-                title="Edited by hand, not by a session"
-                >—</span
+                class="entries-grid__manual-edit"
+                title="Edited by hand, or written by a session that was later deleted"
+                >Manual edit</span
             >
         }
     }

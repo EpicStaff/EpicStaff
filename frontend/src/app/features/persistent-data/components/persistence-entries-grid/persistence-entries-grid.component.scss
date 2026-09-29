@@ -125,10 +125,13 @@
         }
     }
 
-    // Muted like the app's other empty cells (e.g. the permissions table).
-    &__no-session {
-        color: var(--color-text-secondary);
-        opacity: 0.5;
+    // No session wrote the entry: muted, as secondary text is elsewhere, but still readable.
+    &__manual-edit {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ks-transparent-text-60);
     }
 
     // The CDT grid's delete cross.
@@ -181,15 +184,17 @@
         padding: 0;
     }
 
-    // The CDT grid's focus ring: one accent border on the focused or edited cell, no second ring.
-    .ag-cell-focus:not(.ag-cell-inline-editing),
-    .ag-cell-inline-editing {
+    // The CDT grid's focus ring: one accent border on the focused cell, no second ring.
+    .ag-cell-focus:not(.ag-cell-inline-editing) {
         border: 1px solid var(--accent-color) !important;
         box-shadow: none !important;
     }
 
+    // While editing, the editor draws the ring (the key input's focus border, or the value popup over the cell).
     .ag-cell-inline-editing {
         padding: 0;
+        border: 1px solid transparent !important;
+        box-shadow: none !important;
     }
 
     .entries-grid__empty {

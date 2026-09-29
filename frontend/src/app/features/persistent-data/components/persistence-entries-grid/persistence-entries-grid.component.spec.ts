@@ -13,6 +13,7 @@ import {
     PersistenceTableEntryListItem,
 } from '../../models/persistence-table.model';
 import { PersistenceTablesApiService } from '../../services/persistence-tables-api.service';
+import { FAKE_MONACO, useFakeJsonEditor } from '../../testing/fake-json-editor.component';
 import { PersistenceEntriesGridComponent } from './persistence-entries-grid.component';
 
 // AG Grid in jsdom is slow to start on a loaded machine.
@@ -124,6 +125,9 @@ function renderGrid(options: RenderOptions = {}) {
         deleteEntry: vi.fn(() => of(undefined)),
     };
     const confirmDelete = vi.fn(() => of(true));
+    // jsdom cannot load Monaco: the value editor gets a stand-in that binds keys the way Monaco does.
+    vi.stubGlobal('monaco', FAKE_MONACO);
+    useFakeJsonEditor();
     TestBed.configureTestingModule({
         providers: [
             provideRouter([]),
@@ -167,12 +171,16 @@ describe('PersistenceEntriesGridComponent rows', () => {
         expect(link?.getAttribute('href')).toBe('/graph/5/session/123');
     });
 
-    it('shows a muted dash for a hand-edited entry', async () => {
+    it('shows a muted "Manual edit" for a hand-edited entry', async () => {
         const { fixture, element } = renderGrid({ entries: [HAND_EDITED_ENTRY] });
         await settle(fixture);
-        const session = cell(element, '12', 'session');
-        expect(session?.querySelector('a')).toBeNull();
-        expect(session?.querySelector('.entries-grid__no-session')?.textContent?.trim()).toBe('—');
+        const modifiedBy = cell(element, '12', 'session');
+        expect(modifiedBy?.querySelector('a')).toBeNull();
+        const manualEdit = modifiedBy?.querySelector('.entries-grid__manual-edit');
+        expect(manualEdit?.textContent?.trim()).toBe('Manual edit');
+        expect(manualEdit?.getAttribute('title')).toBe(
+            'Edited by hand, or written by a session that was later deleted'
+        );
     });
 
     it('shows the value preview, with an ellipsis when the server cut it', async () => {
@@ -220,9 +228,14 @@ function editorError(field: HTMLElement | null): string | undefined {
     return describedBy ? document.getElementById(describedBy)?.textContent?.trim() : undefined;
 }
 
+// The value editor is a popup, which AG Grid may attach outside the cell: the JSON editor's text, and the group
+// around it that carries the loading state and the hint or error.
 function valueEditor(): HTMLTextAreaElement | null {
-    // The value editor is a popup, which AG Grid may attach outside the cell.
-    return document.querySelector<HTMLTextAreaElement>('app-entry-cell-editor textarea');
+    return document.querySelector<HTMLTextAreaElement>('app-entry-cell-editor app-json-editor textarea');
+}
+
+function valueEditorGroup(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('app-entry-cell-editor [role="group"]');
 }
 
 function badRequest(message: string): HttpErrorResponse {
@@ -292,6 +305,20 @@ describe('PersistenceEntriesGridComponent in-place editing', () => {
         expect(valueEditor()).toBeNull();
     });
 
+    it('saves the value on Tab, as on Ctrl+Enter', async () => {
+        onTestFinished(stubLayout());
+        const saved = { ...RUN_ENTRY_FULL, value: { plan: 'team' } };
+        const { fixture, element, api } = renderGrid({ canUpdate: true, updateEntry: () => of(saved) });
+        await settle(fixture);
+        await openEditor(fixture, cell(element, '11', 'value'));
+
+        type(valueEditor(), '{"plan": "team"}');
+        keydown(valueEditor(), 'Tab');
+        await settle(fixture);
+        expect(api.updateEntry).toHaveBeenCalledWith(11, { value: { plan: 'team' } });
+        expect(valueEditor()).toBeNull();
+    });
+
     it('shows a loading state until the full value arrives', async () => {
         onTestFinished(stubLayout());
         const full = new Subject<PersistenceTableEntry>();
@@ -299,11 +326,12 @@ describe('PersistenceEntriesGridComponent in-place editing', () => {
         await settle(fixture);
         await openEditor(fixture, cell(element, '11', 'value'));
 
-        expect(valueEditor()?.readOnly).toBe(true);
-        expect(valueEditor()?.getAttribute('aria-busy')).toBe('true');
+        expect(valueEditor()).toBeNull();
+        expect(valueEditorGroup()?.getAttribute('aria-busy')).toBe('true');
+        expect(valueEditorGroup()?.textContent).toContain('Loading…');
         full.next(RUN_ENTRY_FULL);
         await settle(fixture);
-        expect(valueEditor()?.readOnly).toBe(false);
+        expect(valueEditorGroup()?.getAttribute('aria-busy')).toBe('false');
         expect(valueEditor()?.value).toBe('{\n  "plan": "pro"\n}');
     });
 
@@ -470,7 +498,7 @@ describe('PersistenceEntriesGridComponent in-place editing', () => {
 
         await openEditor(fixture, cell(element, '11', 'value'));
         expect(valueEditor()?.value).toBe('{"plan": "team"}');
-        expect(editorError(valueEditor())).toBe('Too large.');
+        expect(editorError(valueEditorGroup())).toBe('Too large.');
     });
 
     it('clears an old key error before trying the create again', async () => {
@@ -497,7 +525,7 @@ describe('PersistenceEntriesGridComponent in-place editing', () => {
         keydown(keyEditor(), 'Enter');
         await settle(fixture);
         expect(cell(element, 'new-entry', 'key')?.querySelector('.entries-grid__cell-error')).toBeNull();
-        expect(editorError(valueEditor())).toBe('Too large.');
+        expect(editorError(valueEditorGroup())).toBe('Too large.');
     });
 
     // The grid picks the next cell before the rename locks the row. That is safe: each commit sends only its own
@@ -546,7 +574,7 @@ describe('PersistenceEntriesGridComponent in-place editing', () => {
 
         await openEditor(fixture, cell(element, '11', 'value'));
         expect(valueEditor()?.value).toBe('{oops');
-        expect(editorError(valueEditor())).toBe('Value must be valid JSON');
+        expect(editorError(valueEditorGroup())).toBe('Value must be valid JSON');
 
         keydown(valueEditor(), 'Escape');
         await settle(fixture);
@@ -849,6 +877,10 @@ describe('PersistenceEntriesGridComponent sorting', () => {
         await clickHeader(fixture, element, 'updated_at');
         expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: '-updated_at' }));
         expect(header(element, 'updated_at')?.getAttribute('aria-sort')).toBe('descending');
+        // "Modified By" still sorts by the server's `session` ordering.
+        expect(header(element, 'session')?.querySelector('.ag-header-cell-text')?.textContent?.trim()).toBe(
+            'Modified By'
+        );
         await clickHeader(fixture, element, 'session');
         expect(api.getEntries).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'session' }));
     });
