@@ -14,6 +14,12 @@ export interface CreateKeyValueTableRequest {
 
 export type UpdateKeyValueTableRequest = Partial<CreateKeyValueTableRequest>;
 
+// `GET key-value-tables/{id}/usage/`: the Key-Value nodes bound to the table, and the flows they are in.
+export interface KeyValueTableUsage {
+    node_count: number;
+    flow_count: number;
+}
+
 // The full entry: `GET key-value-table-entries/{id}/` and the create / update responses.
 export interface KeyValueTableEntry {
     id: number;

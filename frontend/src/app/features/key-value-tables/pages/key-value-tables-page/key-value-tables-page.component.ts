@@ -2,10 +2,10 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ConfirmationDialogService } from '@shared/components';
+import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { filter, switchMap } from 'rxjs';
+import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -16,7 +16,7 @@ import {
 } from '../../components/key-value-table-dialog/key-value-table-dialog.component';
 import { KeyValueTableListComponent } from '../../components/key-value-table-list/key-value-table-list.component';
 import { escapeHtml } from '../../helpers/escape-html';
-import { KeyValueTable } from '../../models/key-value-table.model';
+import { KeyValueTable, KeyValueTableUsage } from '../../models/key-value-table.model';
 import { KeyValueTablesApiService } from '../../services/key-value-tables-api.service';
 import { KeyValueTablesStorageService } from '../../services/key-value-tables-storage.service';
 
@@ -28,6 +28,10 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
 })
 export class KeyValueTablesPageComponent {
     readonly selectedTableId = signal<number | null>(null);
+    // A delete is on its way (usage, confirmation, delete): a second request for any table is ignored until it ends,
+    // so a double click or a held Enter cannot open two dialogs or send two deletes. The trash buttons stay enabled:
+    // disabling the focused one would drop keyboard focus to <body>, where the dialog would then return it.
+    readonly deletePending = signal(false);
     readonly selectedTable = computed(
         () => this.keyValueTablesStorage.tables().find((table) => table.id === this.selectedTableId()) ?? null
     );
@@ -94,11 +98,17 @@ export class KeyValueTablesPageComponent {
     }
 
     onDelete(table: KeyValueTable): void {
-        this.confirmationDialogService
-            .confirmDelete(escapeHtml(table.name))
+        if (this.deletePending()) return;
+        this.deletePending.set(true);
+        this.keyValueTablesApi
+            .getUsage(table.id)
             .pipe(
+                // Deleting stays possible without the count: the dialog then says what it does without one.
+                catchError(() => of(null)),
+                switchMap((usage) => this.confirmTableDelete(table, usage)),
                 filter((confirmed) => confirmed === true),
                 switchMap(() => this.keyValueTablesApi.deleteTable(table.id)),
+                finalize(() => this.deletePending.set(false)),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
@@ -107,8 +117,38 @@ export class KeyValueTablesPageComponent {
                     this.selectedTableId.set(null);
                     this.keyValueTablesStorage.triggerRefresh();
                 },
-                // A 409 carries "Table is used by flows: …" in the envelope message.
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
             });
     }
+
+    // The backend unbinds the table from its nodes on delete, so the dialog says how many that is.
+    private confirmTableDelete(table: KeyValueTable, usage: KeyValueTableUsage | null): Observable<ConfirmationResult> {
+        const name = escapeHtml(table.name);
+        if (usage?.node_count === 0) return this.confirmationDialogService.confirmDelete(name);
+        const usageNote = usage
+            ? describeUsage(usage)
+            : 'If Key-Value nodes use this table, deleting it removes the table from them, and they will need a new ' +
+              'table before their flows can run.';
+        return this.confirmationDialogService.confirm({
+            title: 'Confirm Deletion',
+            message: `Are you sure you want to delete <strong>${name}</strong>? <br> ${usageNote} <br> This action cannot be undone.`,
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
+            type: 'danger',
+        });
+    }
+}
+
+// Crew fails a Key-Value node with no table, so the note says what the nodes need next.
+function describeUsage({ node_count, flow_count }: KeyValueTableUsage): string {
+    const used = `This table is used by ${countOf(node_count, 'Key-Value node')} in ${countOf(flow_count, 'flow')}.`;
+    const flows = flow_count === 1 ? 'flow' : 'flows';
+    if (node_count === 1) {
+        return `${used} Deleting it removes the table from that node. That node will need a new table before its flow can run.`;
+    }
+    return `${used} Deleting it removes the table from those nodes. Those nodes will need a new table before their ${flows} can run.`;
+}
+
+function countOf(count: number, noun: string): string {
+    return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }

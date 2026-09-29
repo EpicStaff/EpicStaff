@@ -60,6 +60,15 @@ describe('KeyValueTablesApiService', () => {
         request.flush({});
     });
 
+    it('gets how many nodes and flows use a table', () => {
+        let result: unknown;
+        service.getUsage(3).subscribe((usage) => (result = usage));
+        const request = httpMock.expectOne('/api/key-value-tables/3/usage/');
+        expect(request.request.method).toBe('GET');
+        request.flush({ node_count: 2, flow_count: 1 });
+        expect(result).toEqual({ node_count: 2, flow_count: 1 });
+    });
+
     it('posts keys to the lookup endpoint', () => {
         service.lookupEntries(3, ['a', 'b']).subscribe();
         const request = httpMock.expectOne('/api/key-value-tables/3/entries/lookup/');

@@ -14,6 +14,7 @@ import {
     KeyValueTable,
     KeyValueTableEntry,
     KeyValueTableEntryListItem,
+    KeyValueTableUsage,
     UpdateKeyValueTableEntryRequest,
     UpdateKeyValueTableRequest,
 } from '../models/key-value-table.model';
@@ -56,6 +57,10 @@ export class KeyValueTablesApiService {
 
     deleteTable(id: number): Observable<void> {
         return this.http.delete<void>(`${this.tablesUrl}${id}/`);
+    }
+
+    getUsage(id: number): Observable<KeyValueTableUsage> {
+        return this.http.get<KeyValueTableUsage>(`${this.tablesUrl}${id}/usage/`);
     }
 
     getEntries(query: KeyValueEntriesQuery): Observable<ApiGetRequest<KeyValueTableEntryListItem>> {
