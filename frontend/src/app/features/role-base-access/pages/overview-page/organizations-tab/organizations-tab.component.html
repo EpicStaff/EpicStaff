@@ -94,6 +94,7 @@
             }
             @if (showDeactivateOrg(row)) {
                 <app-stop-button
+                    variant="pause"
                     tooltip="Deactivate organization"
                     (triggered)="onDeactivateOrganization(row)"
                 />

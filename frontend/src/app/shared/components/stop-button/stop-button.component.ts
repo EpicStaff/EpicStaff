@@ -12,6 +12,7 @@ import { AppSvgIconComponent } from '@shared/components';
 export class StopButtonComponent {
     tooltip = input('Stop');
     disabled = input(false);
+    variant = input<'stop' | 'pause'>('stop');
 
     triggered = output<void>();
 }
