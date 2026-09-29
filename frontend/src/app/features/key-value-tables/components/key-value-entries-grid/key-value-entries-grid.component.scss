@@ -184,8 +184,9 @@
         padding: 0;
     }
 
-    // The CDT grid's focus ring: one accent border on the focused cell, no second ring.
-    .ag-cell-focus:not(.ag-cell-inline-editing) {
+    // The CDT grid's focus ring: one accent border on the focused cell, no second ring. Only while the cell holds DOM
+    // focus, as in AG Grid's own theme: the grid keeps `.ag-cell-focus` on its last focused cell after focus leaves.
+    .ag-cell-focus:not(.ag-cell-inline-editing):focus-within {
         border: 1px solid var(--accent-color) !important;
         box-shadow: none !important;
     }

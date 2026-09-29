@@ -207,6 +207,40 @@ function type(field: HTMLInputElement | HTMLTextAreaElement | null, text: string
     field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+// A real click: the press focuses the cell, which AG Grid then marks as its focused cell.
+function click(target: HTMLElement | null): void {
+    target?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    target?.focus();
+    target?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+}
+
+// Every style rule in the document, including ones nested in grouping rules such as @media or @layer.
+function styleRules(rules: CSSRuleList): CSSStyleRule[] {
+    return Array.from(rules).flatMap((rule) => {
+        if (rule instanceof CSSStyleRule) return [rule];
+        return 'cssRules' in rule ? styleRules((rule as CSSGroupingRule).cssRules) : [];
+    });
+}
+
+// The rule that draws the accent ring on the focused cell. Asserted to exist, so a check that the ring is off can
+// never pass just because the rule was not found.
+function ringRule(): CSSStyleRule {
+    const rules = Array.from(document.styleSheets)
+        .flatMap((sheet) => styleRules(sheet.cssRules))
+        .filter((rule) => rule.selectorText.includes('.ag-cell-focus') && rule.cssText.includes('var(--accent-color)'));
+    expect(rules).toHaveLength(1);
+    return rules[0];
+}
+
+// jsdom computes no `border` shorthand built on var(), so this asks whether the ring rule matches the cell.
+function showsFocusRing(target: Element | null): boolean {
+    const selector = ringRule().selectorText;
+    expect(target).not.toBeNull();
+    return !!target?.matches(selector);
+}
+
 // A real double-click focuses the cell on its first press; jsdom does not, so focus it first.
 async function openEditor(fixture: { detectChanges: () => void }, target: HTMLElement | null): Promise<void> {
     target?.focus();
@@ -775,6 +809,69 @@ describe('KeyValueEntriesGridComponent keyboard', () => {
         await settle(fixture);
         expect(api.getEntry).toHaveBeenCalledWith(11);
         expect(writeText).toHaveBeenLastCalledWith('{\n  "plan": "pro"\n}');
+    });
+
+    it('shows the focus ring only while the cell has focus, and copies again once focused back', async () => {
+        const { fixture, element } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
+        const valueCell = cell(element, '11', 'value');
+        const outside = document.body.appendChild(document.createElement('button'));
+        onTestFinished(() => outside.remove());
+
+        click(valueCell);
+        await settle(fixture);
+        expect(valueCell?.classList.contains('ag-cell-focus')).toBe(true);
+        expect(showsFocusRing(valueCell)).toBe(true);
+
+        outside.focus();
+        await settle(fixture);
+        // The grid still counts the cell as focused; only the ring is gone.
+        expect(valueCell?.classList.contains('ag-cell-focus')).toBe(true);
+        expect(showsFocusRing(valueCell)).toBe(false);
+
+        click(valueCell);
+        await settle(fixture);
+        expect(showsFocusRing(valueCell)).toBe(true);
+        keydown(valueCell, 'c', { ctrlKey: true });
+        await settle(fixture);
+        expect(writeText).toHaveBeenLastCalledWith('{\n  "plan": "pro"\n}');
+    });
+
+    it('moves the focus ring with the arrow keys', async () => {
+        const { fixture, element } = renderGrid({ entries: [RUN_ENTRY] });
+        await settle(fixture);
+        const keyCell = cell(element, '11', 'key');
+        const valueCell = cell(element, '11', 'value');
+
+        click(keyCell);
+        await settle(fixture);
+        expect(showsFocusRing(keyCell)).toBe(true);
+        expect(showsFocusRing(valueCell)).toBe(false);
+
+        keydown(keyCell, 'ArrowRight');
+        await settle(fixture);
+        expect(document.activeElement).toBe(valueCell);
+        expect(showsFocusRing(valueCell)).toBe(true);
+        expect(showsFocusRing(keyCell)).toBe(false);
+    });
+
+    it('leaves no focus ring behind on a cell whose editor a click outside closed', async () => {
+        const outside = document.body.appendChild(document.createElement('button'));
+        onTestFinished(() => outside.remove());
+        const { fixture, element } = renderGrid({ canUpdate: true, entries: [RUN_ENTRY] });
+        await settle(fixture);
+        click(cell(element, '11', 'key'));
+        await openEditor(fixture, cell(element, '11', 'key'));
+        expect(keyEditor()).not.toBeNull();
+
+        outside.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        outside.focus();
+        await settle(fixture);
+
+        const keyCell = cell(element, '11', 'key');
+        expect(keyEditor()).toBeNull();
+        expect(keyCell?.classList.contains('ag-cell-focus')).toBe(true);
+        expect(showsFocusRing(keyCell)).toBe(false);
     });
 
     it("shows the server's reason when the value to copy cannot be fetched", async () => {
