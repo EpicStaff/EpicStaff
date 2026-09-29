@@ -390,6 +390,68 @@ describe('KeyValueMessageComponent', () => {
         expect(element.querySelector('[class*="error"], [class*="danger"], [class*="failed"]')).toBeNull();
     });
 
+    it('shows the value a delete removed in the JSON viewer, like a read', () => {
+        const fixture = createFixture({
+            mode: 'delete',
+            deleted_count: 1,
+            entries: [entry({ key: 'profile_42', found: true, value: { plan: 'pro' } })],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+
+        expect(text(element, '.title')).toBe('Removed 1 key from table profiles');
+        expect(mappings(element)).toEqual(['profile_42']);
+        const viewer = element.querySelector('.entry .value-content app-json-viewer') as HTMLElement;
+        expect(text(viewer, '.segment-key')).toBe('plan');
+        expect(element.querySelector('.not-found, .preview, .truncated-note, .tag, .arrow')).toBeNull();
+        const copyTexts = fixture.debugElement
+            .queryAll(By.directive(CopyButtonComponent))
+            .map((button) => (button.componentInstance as CopyButtonComponent).text);
+        expect(copyTexts).toEqual([JSON.stringify({ plan: 'pro' }, null, 2)]);
+    });
+
+    it('marks a key a delete did not find "not found", as a read does, without a missing-keys note', () => {
+        const element = render({
+            mode: 'delete',
+            deleted_count: 1,
+            entries: [entry({ key: 'a', found: true, value: null }), entry({ key: 'b', found: false, value: null })],
+        });
+
+        expect(chips(element)).toEqual([{ label: '1 of 2', neutral: true }]);
+        const rows = element.querySelectorAll('.entry');
+        // A deleted key that held null shows null, not "not found".
+        expect(text(rows[0] as HTMLElement, '.value-content .segment-type-null .segment-value')).toBe('null');
+        expect(rows[0].querySelector('.not-found')).toBeNull();
+        expect(text(rows[1] as HTMLElement, '.not-found')).toBe('not found');
+        expect(rows[1].querySelector('.value-content, .preview, app-json-viewer, .truncated-note')).toBeNull();
+        expect(element.querySelector('.muted-note')).toBeNull();
+    });
+
+    it('shows a truncated deleted value as a preview with the size-limit note', () => {
+        const element = render({
+            mode: 'delete',
+            deleted_count: 1,
+            entries: [entry({ key: 'long', found: true, value: '{"a": "abc', truncated: true })],
+        });
+
+        expect(text(element, '.entry .value-content .preview')).toBe('{"a": "abc…');
+        expect(element.querySelector('.entry app-json-viewer, .entry app-copy-button')).toBeNull();
+        expect(text(element, '.entry .truncated-note')).toBe('Message size limit reached — first 200 characters shown');
+    });
+
+    it('still renders an old delete message, with found and value null, as just its keys', () => {
+        // Dev data from before deletes reported them: crew sent `found: null` and `value: null`.
+        const element = render({
+            mode: 'delete',
+            deleted_count: 1,
+            entries: [entry({ key: 'a', found: null, value: null }), entry({ key: 'b', found: null, value: null })],
+        });
+
+        expect(text(element, '.title')).toBe('Removed 1 key from table profiles');
+        expect(mappings(element)).toEqual(['a', 'b']);
+        expect(element.querySelector('.value-content, .not-found, .truncated-note')).toBeNull();
+        expect(text(element, '.muted-note')).toBe('1 key was not in the table');
+    });
+
     it('reports a delete that removed nothing without looking like an error', () => {
         const element = render({
             mode: 'delete',

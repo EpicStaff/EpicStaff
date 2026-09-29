@@ -107,9 +107,11 @@ export class KeyValueMessageComponent {
         }
     });
 
+    // Only for a delete message from before deletes reported `found` (null there): a newer one marks each missing key
+    // "not found" instead.
     protected readonly missingNote = computed(() => {
         const data = this.data();
-        if (data?.mode !== 'delete') return null;
+        if (data?.mode !== 'delete' || data.entries.some(reportsFound)) return null;
         const missing = data.entries.length - (data.deleted_count ?? 0);
         if (missing <= 0) return null;
         return `${countKeys(missing)} ${missing === 1 ? 'was' : 'were'} not in the table`;
@@ -119,10 +121,13 @@ export class KeyValueMessageComponent {
         const data = this.data();
         if (!data) return [];
         return data.entries.map((entry) => {
-            const notFound = data.mode === 'read' && entry.found === false;
+            // Read and delete report `found`; write never does, nor does an old delete message (null for both).
+            const notFound = entry.found === false;
+            // A delete shows the value it removed, but an old delete message has none (null): just its key, as before.
+            const hasValue = data.mode === 'delete' ? entry.found === true : !notFound;
             return {
                 ...toAssignment(data.mode, entry),
-                value: data.mode === 'delete' || notFound ? null : toRowValue(entry),
+                value: hasValue ? toRowValue(entry) : null,
                 notFound,
                 tag: data.mode === 'write' ? (entry.created ? 'created' : 'updated') : null,
             };
@@ -145,6 +150,10 @@ function toAssignment(mode: KeyValueMessageMode, entry: KeyValueMessageEntry): P
         case 'delete':
             return { target: key, source: null };
     }
+}
+
+function reportsFound(entry: KeyValueMessageEntry): boolean {
+    return entry.found !== null;
 }
 
 function toRowValue({ value, truncated }: KeyValueMessageEntry): RowValue {

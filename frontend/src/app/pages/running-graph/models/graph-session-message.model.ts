@@ -208,12 +208,16 @@ export type KeyValueMessageMode = KeyValueMode;
 
 // read: `path` is the target variable and `found` is set.
 // write: `path` is the source path (may carry a `|default` suffix) and `created` is set.
-// delete: `path` is null; `deleted_count` on the message is the number of keys actually removed.
-// `value` is the full JSON value (null for delete and not-found reads). When the message hit its
-// size budget, `truncated` is true and `value` is a string holding the first 200 chars of the JSON text.
+// delete: `path` is null and `found` tells whether the key was stored (and so deleted); `deleted_count` on the
+// message is the number of keys actually removed. Delete messages from before deletes reported it carry
+// `found: null` and `value: null` (crew has always sent both fields, null by default).
+// `value` is the full JSON value: the stored one for a found read, the one written for a write, the deleted one for
+// a found delete, and null when not found. When the message hit its size budget, `truncated` is true and `value`
+// is a string holding the first 200 chars of the JSON text.
 export interface KeyValueMessageEntry {
     key: string;
     path: string | null;
+    // read and delete; null for a write, and for a delete message from before deletes reported it.
     found: boolean | null;
     created: boolean | null;
     value: unknown;
