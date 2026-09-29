@@ -2615,6 +2615,7 @@ describe('KeyValueNodePanelComponent', () => {
             ['View, Create and Edit', [Read, Create, Update], ['Read', 'Write']],
             // Write needs both Create and Edit.
             ['View and Create', [Read, Create], ['Read']],
+            // Delete needs View as well as Delete.
             ['View and Delete', [Read, Delete], ['Read', 'Delete']],
             // As for a superadmin too: PermissionsService.can() allows a superadmin every action.
             ['every action', [Create, Read, Update, Delete], ['Read', 'Write', 'Delete']],
@@ -2653,13 +2654,40 @@ describe('KeyValueNodePanelComponent', () => {
             });
         });
 
+        it('offers only the saved mode with just Delete, which needs View too, and says View is missing', () => {
+            const { panel, fixture } = createPanel(readNode, { renderTemplate: true, actions: [Delete] });
+
+            expect(modeNames(panel)).toEqual(['Read']);
+            expect(notice(fixture)).toBe('You need View permission on Key-Value Tables to configure this node.');
+            expect(lockable(panel)).toEqual([true, true, true]);
+        });
+
+        it('leaves Delete out of the modes a write node offers without View', () => {
+            const { panel } = createPanel(writeNode, { actions: [Create, Update, Delete] });
+
+            expect(modeNames(panel)).toEqual(['Write']);
+        });
+
+        it('locks a delete node with only Delete, since Delete needs View too', () => {
+            const { panel, fixture } = createPanel(nodeWith('delete', [{ key: 'profile' }]), {
+                renderTemplate: true,
+                actions: [Delete],
+            });
+
+            expect(modeNames(panel)).toEqual(['Delete']);
+            expect(notice(fixture)).toBe('You need View permission on Key-Value Tables to configure this node.');
+            expect(lockable(panel)).toEqual([true, true, true]);
+        });
+
         it('locks a delete node without the Delete permission', () => {
             const { panel, fixture } = createPanel(nodeWith('delete', [{ key: 'profile' }]), {
                 renderTemplate: true,
                 actions: [Read, Create, Update],
             });
 
-            expect(notice(fixture)).toBe('Changing a Delete node needs Delete permission on Key-Value Tables.');
+            expect(notice(fixture)).toBe(
+                'Changing a Delete node needs View and Delete permission on Key-Value Tables.'
+            );
             expect(panel.form.get('entries')!.disabled).toBe(true);
             expect(panel.onSave()!.data).toEqual({
                 mode: 'delete',

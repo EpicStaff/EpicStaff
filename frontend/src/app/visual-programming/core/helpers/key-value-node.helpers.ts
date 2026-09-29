@@ -58,10 +58,11 @@ const ROOTLESS_PATH = /^[A-Za-z]\w*(?:\.[A-Za-z0-9]\w*|\[(?:0|[1-9]\d*)\])*$/;
 
 // Mirrors MODE_PERMISSIONS in tables/services/key_value_table_service.py: what configuring a node
 // in each mode needs on Key-Value Tables. The server is the authority; the panel only offers what it allows.
+// Delete needs View too: its session messages carry the values it deleted.
 export const KEY_VALUE_MODE_ACTIONS: Record<KeyValueMode, ActionCode[]> = {
     read: [ActionCode.Read],
     write: [ActionCode.Create, ActionCode.Update],
-    delete: [ActionCode.Delete],
+    delete: [ActionCode.Read, ActionCode.Delete],
 };
 
 /** Whether the user may configure a node in a mode: every action it needs, not any one of them. */

@@ -532,7 +532,9 @@ describe('key-value node helpers', () => {
         expect(canConfigureMode('write', withActions(ActionCode.Create, ActionCode.Update))).toBe(true);
         expect(canConfigureMode('write', withActions(ActionCode.Read, ActionCode.Create))).toBe(false);
         expect(canConfigureMode('write', withActions(ActionCode.Update))).toBe(false);
-        expect(canConfigureMode('delete', withActions(ActionCode.Delete))).toBe(true);
+        // Delete needs View and Delete: its session messages carry the deleted values.
+        expect(canConfigureMode('delete', withActions(ActionCode.Read, ActionCode.Delete))).toBe(true);
+        expect(canConfigureMode('delete', withActions(ActionCode.Delete))).toBe(false);
         expect(canConfigureMode('delete', withActions(ActionCode.Read))).toBe(false);
     });
 

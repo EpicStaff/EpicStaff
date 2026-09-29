@@ -122,7 +122,7 @@ const MODE_LOCKED_NOTICE: Record<KeyValueMode, string> = {
     // Never shown: a user who can't configure read has no View, and NO_READ_NOTICE comes first.
     read: 'Changing a Read node needs View permission on Key-Value Tables.',
     write: 'Changing a Write node needs Create and Edit permission on Key-Value Tables.',
-    delete: 'Changing a Delete node needs Delete permission on Key-Value Tables.',
+    delete: 'Changing a Delete node needs View and Delete permission on Key-Value Tables.',
 };
 // What a locked panel keeps as saved; the node name stays editable.
 const LOCKABLE_CONTROLS = ['key_value_table', 'mode', 'entries'];
