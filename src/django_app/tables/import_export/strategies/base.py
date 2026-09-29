@@ -73,7 +73,13 @@ class EntityImportExportStrategy(ABC):
             instance = self.create_entity(data, id_mapper, **create_kwargs)
 
         user = kwargs.get("user")
-        if user is not None and hasattr(instance, "created_by_id"):
+        # Fresh instances arrive without an author (created_by is dropped above); a
+        # row that create_entity updated in place (graph replace) keeps its own.
+        if (
+            user is not None
+            and hasattr(instance, "created_by_id")
+            and instance.created_by_id is None
+        ):
             instance.created_by = user
             instance.save(update_fields=["created_by"])
 
