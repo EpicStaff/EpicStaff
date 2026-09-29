@@ -16,12 +16,13 @@ since the node row itself still exists.
 from collections import defaultdict
 from dataclasses import dataclass
 
+from utils.logger import logger
+
 from tables.services.graph_bulk_save_service.registry import (
     NODE_TYPE_REGISTRY,
     ExternalRefField,
     ExternalRefKind,
 )
-from utils.logger import logger
 
 
 @dataclass(frozen=True)
@@ -85,9 +86,7 @@ def null_ref_in_entry(entry: dict, ref_field: ExternalRefField, pk: int) -> None
         if isinstance(nested, dict):
             values = nested.get(ref_field.leaf_field)
             if isinstance(values, list) and pk in values:
-                nested[ref_field.leaf_field] = [
-                    value for value in values if value != pk
-                ]
+                nested[ref_field.leaf_field] = [value for value in values if value != pk]
 
 
 def _extract_pks(entry: dict, ref_field: ExternalRefField):
@@ -191,20 +190,12 @@ def find_dead_external_refs(payload: dict, graph) -> list[DeadRef]:
         if target_model not in unscoped_existing_by_model:
             failed_pks = pks_by_model[target_model] - visible_by_model[target_model]
             unscoped_existing_by_model[target_model] = set(
-                target_model.objects.filter(pk__in=failed_pks).values_list(
-                    "pk", flat=True
-                )
+                target_model.objects.filter(pk__in=failed_pks).values_list("pk", flat=True)
             )
-        reason = (
-            "cross_org" if pk in unscoped_existing_by_model[target_model] else "deleted"
-        )
+        reason = "cross_org" if pk in unscoped_existing_by_model[target_model] else "deleted"
 
         id_key = "id" if isinstance(node_key, int) else "temp_id"
-        entry = next(
-            e
-            for e in payload[list_key]
-            if e is not None and e.get(id_key) == node_key
-        )
+        entry = next(e for e in payload[list_key] if e is not None and e.get(id_key) == node_key)
         null_ref_in_entry(entry, ref_field, pk)
 
         dead_ref = DeadRef(

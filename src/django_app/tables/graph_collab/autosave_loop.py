@@ -12,11 +12,12 @@ an empty pass when there are no active editors is a no-op.
 
 import asyncio
 
+from utils.logger import logger
+
 from tables.graph_collab.constants import AUTOSAVE_FLUSH_INTERVAL_SECONDS
 from tables.graph_collab.flush_service import FlushStatus, flush_service
 from tables.graph_collab.notifications import anotify_graph_saved, anotify_save_failed
 from tables.graph_collab.presence_service import presence_service
-from utils.logger import logger
 
 _autosave_task: asyncio.Task | None = None
 
@@ -39,9 +40,7 @@ async def _global_autosave_loop() -> None:
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        logger.error(
-            "Global autosave loop crashed: {} — loop will restart on next connect", exc
-        )
+        logger.error("Global autosave loop crashed: {} — loop will restart on next connect", exc)
 
 
 async def _autosave_pass() -> None:
@@ -70,6 +69,4 @@ async def _autosave_pass() -> None:
                     reason=outcome.failure_reason or "db_error",
                 )
         except Exception as exc:
-            logger.error(
-                "Autosave pass: unhandled error for graph {}: {}", graph_id, exc
-            )
+            logger.error("Autosave pass: unhandled error for graph {}: {}", graph_id, exc)

@@ -1,40 +1,39 @@
 import asyncio
-import json
 import copy
+import json
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from utils.logger import logger
 
+from tables.graph_collab.constants import (
+    _ALL_LIST_KEYS,
+    _DECISION_TABLE_LIST_KEYS,
+    _EDGE_ENDPOINT_TEMP_FIELDS,
+    _EDGE_NODE_REF_FIELDS,
+    _LIST_KEY_TO_DELETE_KEY,
+    _SINGLETON_LIST_KEYS,
+    PRIVILEGED_NESTED_FIELDS,
+)
 from tables.graph_collab.entry_merge import find_mismatched_keys, merge_entry
 from tables.graph_collab.external_refs import DeadRef, null_ref_in_entry
 from tables.graph_collab.protocol import (
     ConnectionCreatedMessage,
     ConnectionDeletedMessage,
-    ConnectionWaypointsUpdatedMessage,
     ConnectionsDeletedMessage,
+    ConnectionWaypointsUpdatedMessage,
     NodeCreatedMessage,
-    NodeUpdatedMessage,
     NodesDeletedMessage,
+    NodeUpdatedMessage,
 )
-
 from tables.graph_collab.snapshot_normalize import inject_bulk_save_fields
-from tables.graph_collab.constants import (
-    _SINGLETON_LIST_KEYS,
-    _EDGE_ENDPOINT_TEMP_FIELDS,
-    _ALL_LIST_KEYS,
-    _LIST_KEY_TO_DELETE_KEY,
-    _EDGE_NODE_REF_FIELDS,
-    _DECISION_TABLE_LIST_KEYS,
-    PRIVILEGED_NESTED_FIELDS,
-)
 from tables.services.redis_service import RedisService
-from utils.logger import logger
 
 
-class OpStatus(str, Enum):
+class OpStatus(StrEnum):
     APPLIED = "applied"
     REJECTED = "rejected"
 
@@ -90,9 +89,7 @@ def _upsert_entry(entries: list[dict], new_entry: dict) -> None:
     entries.append(new_entry)
 
 
-def _collapse_singleton_entry(
-    entries: list[dict], new_entry: dict, list_key: str
-) -> None:
+def _collapse_singleton_entry(entries: list[dict], new_entry: dict, list_key: str) -> None:
     """
     Collapse *entries* to exactly one entry for an at-most-one-per-graph
     list (start_node_list / end_node_list — see _SINGLETON_LIST_KEYS).
@@ -115,9 +112,7 @@ def _collapse_singleton_entry(
     entries[:] = [new_entry]
 
 
-def _resolve_edge_endpoints(
-    entry: dict, list_key: str, resolved_temp_ids: dict[str, int]
-) -> dict:
+def _resolve_edge_endpoints(entry: dict, list_key: str, resolved_temp_ids: dict[str, int]) -> dict:
     """Rewrite already-resolved endpoint temp_id refs on an edge *entry*."""
     field_pairs = _EDGE_ENDPOINT_TEMP_FIELDS.get(list_key)
     if not field_pairs:
@@ -172,9 +167,7 @@ def _pin_privileged_fields(
         nested_existing = (existing or {}).get(nested_key) or {}
 
         for field_name in field_names:
-            authorized_value = (
-                nested_existing.get(field_name) if existing is not None else None
-            )
+            authorized_value = nested_existing.get(field_name) if existing is not None else None
             if field_name in nested_incoming:
                 if nested_incoming[field_name] != authorized_value:
                     nested_incoming[field_name] = authorized_value
@@ -213,9 +206,7 @@ class GraphLiveStateService:
 
     def is_dirty(self, graph_id: int) -> bool:
         """Return True when the snapshot has unsaved changes since the last flush."""
-        return self._revision.get(graph_id, 0) != self._flushed_revision.get(
-            graph_id, 0
-        )
+        return self._revision.get(graph_id, 0) != self._flushed_revision.get(graph_id, 0)
 
     def mark_flushed(self, graph_id: int, revision: int) -> None:
         """Record that *revision* was successfully persisted to the DB.
@@ -288,9 +279,7 @@ class GraphLiveStateService:
             return None
         return await self.get_snapshot(graph_id)
 
-    async def record_resolved_temp_ids(
-        self, graph_id: int, mapping: dict[str, int]
-    ) -> None:
+    async def record_resolved_temp_ids(self, graph_id: int, mapping: dict[str, int]) -> None:
         """Merge *mapping* into the retained temp_id -> real_id map for *graph_id*.
 
         The retained map lets a late-arriving op that references an already
@@ -333,9 +322,7 @@ class GraphLiveStateService:
             return
         resolved = await self.get_resolved_temp_ids(graph_id)
         filtered = {
-            temp_id: real_id
-            for temp_id, real_id in resolved.items()
-            if real_id not in dead_ids
+            temp_id: real_id for temp_id, real_id in resolved.items() if real_id not in dead_ids
         }
         if len(filtered) == len(resolved):
             # Nothing was actually pruned — skip the pointless Redis write
@@ -362,9 +349,7 @@ class GraphLiveStateService:
         async with self._get_lock(graph_id):
             snapshot = await self.get_snapshot(graph_id)
             if snapshot is None:
-                logger.debug(
-                    "apply_id_remap: no snapshot for graph {} — skipping", graph_id
-                )
+                logger.debug("apply_id_remap: no snapshot for graph {} — skipping", graph_id)
                 return
 
             live_deleted: dict = snapshot.setdefault("deleted", _make_empty_deleted())
@@ -427,12 +412,8 @@ class GraphLiveStateService:
                 for table_entry in snapshot.get(list_key, []):
                     if table_entry is None:
                         continue
-                    _remap_ref(
-                        table_entry, "default_next_node_temp_id", "default_next_node_id"
-                    )
-                    _remap_ref(
-                        table_entry, "next_error_node_temp_id", "next_error_node_id"
-                    )
+                    _remap_ref(table_entry, "default_next_node_temp_id", "default_next_node_id")
+                    _remap_ref(table_entry, "next_error_node_temp_id", "next_error_node_id")
                     for group in table_entry.get("condition_groups") or []:
                         if isinstance(group, dict):
                             _remap_ref(group, "next_node_temp_id", "next_node_id")
@@ -448,9 +429,7 @@ class GraphLiveStateService:
                     continue
                 live_ids: list = live_deleted.get(delete_key, [])
                 persisted_set = set(persisted_ids)
-                live_deleted[delete_key] = [
-                    id_ for id_ in live_ids if id_ not in persisted_set
-                ]
+                live_deleted[delete_key] = [id_ for id_ in live_ids if id_ not in persisted_set]
 
             # Invalidate the retained temp_id -> real_id map for every pk that
             # was just permanently hard-deleted by this flush. Without this,
@@ -458,9 +437,7 @@ class GraphLiveStateService:
             # a later op re-creating temp_id U (FE undo/redo replaying a stale
             # copy) resolves to the now-dead pk 42 instead of being treated as
             # a genuine create — the exact bug this fix targets.
-            dead_ids: set[int] = {
-                dead_id for ids in flushed_deleted.values() for dead_id in ids
-            }
+            dead_ids: set[int] = {dead_id for ids in flushed_deleted.values() for dead_id in ids}
             await self.prune_resolved_temp_ids(graph_id, dead_ids)
 
             # Orphan node detection.
@@ -474,9 +451,7 @@ class GraphLiveStateService:
             # the flushed snapshot to its list_key, allowing us to determine
             # the correct accumulator key without scanning the live snapshot.
             if temp_id_map and flushed_temp_id_to_list_key:
-                orphaned_temp_ids: set[str] = (
-                    frozenset(temp_id_map.keys()) - live_temp_ids
-                )
+                orphaned_temp_ids: set[str] = frozenset(temp_id_map.keys()) - live_temp_ids
                 for tid in orphaned_temp_ids:
                     real_id = temp_id_map[tid]
                     list_key = flushed_temp_id_to_list_key.get(tid)
@@ -551,8 +526,7 @@ class GraphLiveStateService:
             snapshot = await self.get_snapshot(graph_id)
             if snapshot is None:
                 logger.debug(
-                    "apply_scheduler_deactivation: no live snapshot for graph "
-                    "{} — skipping",
+                    "apply_scheduler_deactivation: no live snapshot for graph {} — skipping",
                     graph_id,
                 )
                 return False
@@ -561,8 +535,7 @@ class GraphLiveStateService:
             entry = next((e for e in entries if e.get("id") == node_id), None)
             if entry is None:
                 logger.debug(
-                    "apply_scheduler_deactivation: node {} not found in {} "
-                    "for graph {} — skipping",
+                    "apply_scheduler_deactivation: node {} not found in {} for graph {} — skipping",
                     node_id,
                     list_key,
                     graph_id,
@@ -587,16 +560,13 @@ class GraphLiveStateService:
 
             await self.seed(graph_id, snapshot)
             logger.debug(
-                "apply_scheduler_deactivation: node {} deactivated in live "
-                "snapshot for graph {}",
+                "apply_scheduler_deactivation: node {} deactivated in live snapshot for graph {}",
                 node_id,
                 graph_id,
             )
             return True
 
-    async def null_external_refs(
-        self, graph_id: int, dead_refs: list[DeadRef]
-    ) -> list[dict]:
+    async def null_external_refs(self, graph_id: int, dead_refs: list[DeadRef]) -> list[dict]:
         """Mirror find_dead_external_refs' payload-side nulling into the live
         Redis snapshot, scoped to exactly the touched nodes/fields.
 
@@ -657,9 +627,7 @@ class GraphLiveStateService:
                     top_level_fields.add(ref.top_level_field)
 
                 if "content_hash" in entry and isinstance(node_key, int):
-                    refreshed_hash = await _refresh_node_content_hash(
-                        list_key, node_key
-                    )
+                    refreshed_hash = await _refresh_node_content_hash(list_key, node_key)
                     if refreshed_hash is not None:
                         entry["content_hash"] = refreshed_hash
 
@@ -742,9 +710,7 @@ class GraphLiveStateService:
         node_id = message.node.get("id")
         delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
         if isinstance(message, NodeCreatedMessage) and isinstance(node_id, int):
-            pending_delete = delete_key is not None and node_id in deleted.get(
-                delete_key, []
-            )
+            pending_delete = delete_key is not None and node_id in deleted.get(delete_key, [])
             if not pending_delete:
                 logger.warning(
                     "Rejecting node_created carrying a real id {} on graph {}",
@@ -772,9 +738,7 @@ class GraphLiveStateService:
         # relays message.model_dump() to peers, so peers get the pinned value too.
         # Switching to copy.deepcopy would silently break that (peers would get
         # the unauthorized value while the snapshot holds the pinned one).
-        pinned_fields = _pin_privileged_fields(
-            existing_entry, new_entry, list_key, is_superadmin
-        )
+        pinned_fields = _pin_privileged_fields(existing_entry, new_entry, list_key, is_superadmin)
         if pinned_fields:
             # Otherwise-invisible server-side correction — log it. This is
             # the same class of bug (a silent authorization override) that
@@ -800,11 +764,10 @@ class GraphLiveStateService:
         # pre-flush undo case). Either way, dropping it from the accumulator
         # is what keeps the row alive with its original pk.
         entry_id = new_entry.get("id")
-        if entry_id is not None:
-            if delete_key:
-                accumulator: list = deleted.get(delete_key, [])
-                if entry_id in accumulator:
-                    accumulator.remove(entry_id)
+        if entry_id is not None and delete_key:
+            accumulator: list = deleted.get(delete_key, [])
+            if entry_id in accumulator:
+                accumulator.remove(entry_id)
 
         return APPLIED_OK
 
@@ -953,18 +916,14 @@ class GraphLiveStateService:
                     getattr(message, "type", "?"),
                 )
                 is_merge_only = (
-                    isinstance(message, NodeUpdatedMessage)
-                    and message.changed_fields is not None
+                    isinstance(message, NodeUpdatedMessage) and message.changed_fields is not None
                 )
-                return OpResult(
-                    OpStatus.REJECTED, "no_snapshot", relay=not is_merge_only
-                )
+                return OpResult(OpStatus.REJECTED, "no_snapshot", relay=not is_merge_only)
 
             deleted: dict = snapshot.setdefault("deleted", _make_empty_deleted())
 
             if isinstance(message, NodeCreatedMessage) or (
-                isinstance(message, NodeUpdatedMessage)
-                and message.changed_fields is None
+                isinstance(message, NodeUpdatedMessage) and message.changed_fields is None
             ):
                 result = await self._apply_node_upsert(
                     snapshot, deleted, message, graph_id, is_superadmin=is_superadmin
@@ -1032,14 +991,11 @@ class GraphLiveStateService:
                     )
                     if not pending_delete:
                         logger.warning(
-                            "Rejecting connection_created carrying a real id {} "
-                            "on graph {}",
+                            "Rejecting connection_created carrying a real id {} on graph {}",
                             connection_id_candidate,
                             graph_id,
                         )
-                        return OpResult(
-                            OpStatus.REJECTED, "stale_id_recreate", relay=False
-                        )
+                        return OpResult(OpStatus.REJECTED, "stale_id_recreate", relay=False)
 
                 entries = snapshot.setdefault(list_key, [])
                 new_connection = copy.copy(message.connection)
@@ -1076,9 +1032,7 @@ class GraphLiveStateService:
                         if message.connection_id is not None:
                             delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
                             if delete_key:
-                                deleted.setdefault(delete_key, []).append(
-                                    message.connection_id
-                                )
+                                deleted.setdefault(delete_key, []).append(message.connection_id)
                     else:
                         surviving.append(entry)
                 snapshot[list_key] = surviving
@@ -1122,9 +1076,7 @@ class GraphLiveStateService:
                 for entry in entries:
                     if _match_entry(
                         entry,
-                        message.connection_id
-                        if isinstance(message.connection_id, int)
-                        else None,
+                        message.connection_id if isinstance(message.connection_id, int) else None,
                         str(message.connection_id)
                         if not isinstance(message.connection_id, int)
                         else None,
@@ -1277,17 +1229,13 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
 
         for instance in queryset:
             entry = id_to_entry[instance.id]
-            if top_level_exposes_content_hash and isinstance(
-                instance, ContentHashMixin
-            ):
+            if top_level_exposes_content_hash and isinstance(instance, ContentHashMixin):
                 entry["content_hash"] = instance.content_hash
 
             for field_name in nested_fields:
                 nested_entry = entry.get(field_name)
                 nested_instance = getattr(instance, field_name, None)
-                if isinstance(nested_entry, dict) and isinstance(
-                    nested_instance, ContentHashMixin
-                ):
+                if isinstance(nested_entry, dict) and isinstance(nested_instance, ContentHashMixin):
                     nested_entry["content_hash"] = nested_instance.content_hash
 
 

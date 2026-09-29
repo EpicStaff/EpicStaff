@@ -55,10 +55,7 @@ class NodeLockService:
 
     def get_all_locks(self, graph_id: int) -> dict[str, dict[str, LockEntry]]:
         """Return a shallow copy of all locks for *graph_id* as {node_id: {field: LockEntry}}."""
-        return {
-            node_id: dict(fields)
-            for node_id, fields in self._store.get(graph_id, {}).items()
-        }
+        return {node_id: dict(fields) for node_id, fields in self._store.get(graph_id, {}).items()}
 
     def release(self, graph_id: int, node_id: str, field: str, channel: str) -> bool:
         """Release the lock on *(node_id, field)* if *channel* is the current holder.
@@ -82,9 +79,7 @@ class NodeLockService:
             del self._store[graph_id]
         return True
 
-    def release_all_for_channel(
-        self, graph_id: int, channel: str
-    ) -> list[tuple[str, str]]:
+    def release_all_for_channel(self, graph_id: int, channel: str) -> list[tuple[str, str]]:
         """Release every *(node_id, field)* lock held by *channel* for *graph_id*.
 
         Returns the list of *(node_id, field)* tuples that were released so the
@@ -110,9 +105,7 @@ class NodeLockService:
         """Drop every lock for *graph_id*, regardless of holder"""
         entries = self._store.pop(graph_id, None) or {}
         return [
-            (node_id, field)
-            for node_id, field_locks in entries.items()
-            for field in field_locks
+            (node_id, field) for node_id, field_locks in entries.items() for field in field_locks
         ]
 
 

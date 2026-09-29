@@ -27,11 +27,7 @@ def merge_entry(base: dict, overlay: dict) -> dict:
     merged = copy.deepcopy(base)
     for key, overlay_value in overlay.items():
         base_value = merged.get(key)
-        if (
-            key == "metadata"
-            and isinstance(base_value, dict)
-            and isinstance(overlay_value, dict)
-        ):
+        if key == "metadata" and isinstance(base_value, dict) and isinstance(overlay_value, dict):
             merged[key] = deep_merge(base_value, overlay_value)
         else:
             merged[key] = copy.deepcopy(overlay_value)

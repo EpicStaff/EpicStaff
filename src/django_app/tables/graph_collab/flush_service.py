@@ -21,18 +21,17 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from asgiref.sync import sync_to_async
+from utils.logger import logger
 
 from tables.exceptions import (
     BulkSaveValidationError,
     ContentHashConflictError,
     GraphSaveVersionConflictError,
 )
-
 from tables.graph_collab.constants import _ALL_LIST_KEYS
-
 from tables.graph_collab.external_refs import DeadRef
 from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.notifications import anotify_node_updated_system
@@ -42,7 +41,6 @@ from tables.graph_collab.snapshot_normalize import (
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
-from utils.logger import logger
 
 
 @dataclass(frozen=True)
@@ -76,10 +74,7 @@ class FlushOutcome:
     @property
     def persistent(self) -> bool:
         """True when FAILED and the error is not a transient version conflict."""
-        return (
-            self.status is FlushStatus.FAILED
-            and self.failure_reason != "version_conflict"
-        )
+        return self.status is FlushStatus.FAILED and self.failure_reason != "version_conflict"
 
 
 class FlushStatus(enum.Enum):
@@ -140,9 +135,7 @@ def _do_db_flush(graph_id: int, snapshot: dict) -> _DbFlushOutcome:
     try:
         graph = Graph.objects.get(pk=graph_id)
     except Graph.DoesNotExist:
-        logger.warning(
-            "GraphFlushService: graph {} not found during flush — skipping", graph_id
-        )
+        logger.warning("GraphFlushService: graph {} not found during flush — skipping", graph_id)
         return _DbFlushOutcome(kind=_DbFlushResult.GRAPH_NOT_FOUND)
 
     payload = inject_bulk_save_fields(snapshot, graph_id=graph_id)
@@ -352,9 +345,7 @@ class GraphFlushService:
                 "GraphFlushService: version conflict for graph {} — retrying next tick",
                 graph_id,
             )
-            return FlushOutcome(
-                status=FlushStatus.FAILED, failure_reason="version_conflict"
-            )
+            return FlushOutcome(status=FlushStatus.FAILED, failure_reason="version_conflict")
 
         if db_outcome.kind is _DbFlushResult.SKIP:
             # Persistent error (validation or BulkSave) — retain snapshot.
@@ -363,9 +354,7 @@ class GraphFlushService:
                 db_outcome.reason,
                 graph_id,
             )
-            return FlushOutcome(
-                status=FlushStatus.FAILED, failure_reason=db_outcome.reason
-            )
+            return FlushOutcome(status=FlushStatus.FAILED, failure_reason=db_outcome.reason)
 
         new_save_version, temp_id_map = (
             db_outcome.new_save_version,
@@ -379,7 +368,7 @@ class GraphFlushService:
             flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
         )
 
-        saved_at = datetime.now(tz=timezone.utc).isoformat()
+        saved_at = datetime.now(tz=UTC).isoformat()
         logger.info(
             "GraphFlushService: flushed graph {} → save_version={}, {} new nodes",
             graph_id,
@@ -409,9 +398,7 @@ class GraphFlushService:
         """
         async with graph_state_service._get_lock(graph_id):
             dirty = graph_state_service.is_dirty(graph_id)
-            captured_revision = (
-                graph_state_service.current_revision(graph_id) if dirty else 0
-            )
+            captured_revision = graph_state_service.current_revision(graph_id) if dirty else 0
         # Lock released before the DB call.
         if not dirty:
             await self._heal_dead_external_refs(graph_id)
@@ -429,9 +416,7 @@ class GraphFlushService:
         dead_external_refs = await _async_scan_dead_external_refs(graph_id, snapshot)
         if not dead_external_refs:
             return
-        broadcasts = await graph_state_service.null_external_refs(
-            graph_id, dead_external_refs
-        )
+        broadcasts = await graph_state_service.null_external_refs(graph_id, dead_external_refs)
         for broadcast in broadcasts:
             await anotify_node_updated_system(
                 graph_id,
