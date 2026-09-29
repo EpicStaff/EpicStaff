@@ -358,7 +358,7 @@ below). **Header:** none.
     {
       "id": 1,
       "name": "Superadmin",
-      "description": "Global administrator. Bypasses every permission check.",
+      "description": "Global administrator. Authority comes from the account's superadmin flag, so this role holds no permissions.",
       "is_built_in": true,
       "scope": "global",
       "org_id": null,
@@ -632,10 +632,11 @@ the built-in Org Admin and assigning a custom role that exceeds you are refused
 identically. Built-in roles cannot be authored at all (see immutability below),
 so for them only the assignment side applies.
 
-Only the actions in the catalog's `actions[]` are compared. `use` and `list`
-exist in the `Permission` enum and appear in some built-in seeds, but they are
-not grantable through the catalog and nothing enforces them, so they are ignored
-here — otherwise dead seed data would refuse legitimate grants.
+Only bits the catalog can grant **on that resource** (its `applicable_actions`)
+are compared. A bit that is not an action of its resource grants nothing, so it
+is ignored here rather than allowed to refuse a legitimate grant. Built-in roles
+cannot hold such bits: `rbac/access/builtin_roles.json` accepts only grantable
+actions.
 
 **Consequence worth planning for.** A role holding only `memberships` and
 `roles` can assign **nothing**: every built-in grants workspace permissions such
@@ -689,6 +690,13 @@ authorization or validation runs:
 
 The FE should disable Edit / Delete buttons on rows where
 `is_built_in: true` rather than relying on the error envelope.
+
+Built-in roles are defined by the deployment, not through the API: their
+descriptions and permissions are declared in
+`src/django_app/rbac/access/builtin_roles.json` and applied on every backend
+start (`manage.py seed_builtin_roles`). A change to a built-in role ships as a
+change to that file — see [DEV_rbac_backend_guide.md](DEV_rbac_backend_guide.md)
+§2.2.
 
 ---
 
