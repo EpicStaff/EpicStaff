@@ -19,7 +19,7 @@ export const DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS: BasePort[] = [
             'task-in',
             'agent-in',
             'knowledge-retriever-in',
-            'persistence-in',
+            'key-value-in',
         ],
         position: 'right',
         color: '#FF5C00',

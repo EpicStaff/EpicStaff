@@ -247,11 +247,11 @@ export const routes: Routes = [
                             {
                                 path: 'key-value-tables',
                                 loadComponent: () =>
-                                    import('./features/persistent-data/pages/persistent-data-page/persistent-data-page.component').then(
-                                        (m) => m.PersistentDataPageComponent
+                                    import('./features/key-value-tables/pages/key-value-tables-page/key-value-tables-page.component').then(
+                                        (m) => m.KeyValueTablesPageComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.PersistentData, ActionCode.Read] },
+                                data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
                             },
                         ],
                     },

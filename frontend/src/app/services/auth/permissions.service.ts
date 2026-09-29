@@ -183,7 +183,7 @@ export class PermissionsService implements StorageService {
     resolveFilesTab(): string | null {
         if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';
         if (this.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
-        if (this.can(ResourceCode.PersistentData, ActionCode.Read)) return '/files/key-value-tables';
+        if (this.can(ResourceCode.KeyValueTables, ActionCode.Read)) return '/files/key-value-tables';
         return null;
     }
 

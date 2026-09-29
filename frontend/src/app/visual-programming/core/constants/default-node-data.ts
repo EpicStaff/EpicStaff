@@ -1,7 +1,7 @@
 import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { AgentNodeData } from '../models/agent-node.model';
-import { PersistenceNodeData } from '../models/persistence-node.model';
+import { KeyValueNodeData } from '../models/key-value-node.model';
 import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
 import { TaskNodeData } from '../models/task-node.model';
 
@@ -137,5 +137,5 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         search_method: null,
         search_configs: null,
     }),
-    [NodeType.PERSISTENCE]: (): PersistenceNodeData => ({ persistence_table: null, mode: 'read', entries: [] }),
+    [NodeType.KEY_VALUE]: (): KeyValueNodeData => ({ key_value_table: null, mode: 'read', entries: [] }),
 };

@@ -1,4 +1,4 @@
-import { PersistenceMode } from '@shared/models';
+import { KeyValueMode } from '@shared/models';
 
 // Base GraphMessage interface
 export interface GraphMessage {
@@ -29,7 +29,7 @@ export enum MessageType {
     FINDINGS = 'findings',
     TASK_NODE_STREAM = 'task_node_stream',
     AGENT_NODE_STREAM = 'agent_node_stream',
-    PERSISTENCE = 'persistence',
+    KEY_VALUE = 'key_value',
 }
 
 export type FinishStopReason = 'completed' | 'schema_satisfied' | 'max_iter_reached';
@@ -204,14 +204,14 @@ export interface FindingsMessageData {
     message_type: MessageType.FINDINGS;
 }
 
-export type PersistenceMessageMode = PersistenceMode;
+export type KeyValueMessageMode = KeyValueMode;
 
 // read: `path` is the target variable and `found` is set.
 // write: `path` is the source path (may carry a `|default` suffix) and `created` is set.
 // delete: `path` is null; `deleted_count` on the message is the number of keys actually removed.
 // `value` is the full JSON value (null for delete and not-found reads). When the message hit its
 // size budget, `truncated` is true and `value` is a string holding the first 200 chars of the JSON text.
-export interface PersistenceMessageEntry {
+export interface KeyValueMessageEntry {
     key: string;
     path: string | null;
     found: boolean | null;
@@ -220,13 +220,13 @@ export interface PersistenceMessageEntry {
     truncated: boolean;
 }
 
-export interface PersistenceMessageData {
-    mode: PersistenceMessageMode;
+export interface KeyValueMessageData {
+    mode: KeyValueMessageMode;
     table_id: number;
     table_name: string;
-    entries: PersistenceMessageEntry[];
+    entries: KeyValueMessageEntry[];
     deleted_count: number | null;
-    message_type: MessageType.PERSISTENCE;
+    message_type: MessageType.KEY_VALUE;
 }
 
 // TaskNode / AgentNode stream events (task_start / tool_call / tool_result / task_finish) —
@@ -304,4 +304,4 @@ export type MessageData =
     | FindingsMessageData
     | TaskNodeStreamMessageData
     | AgentNodeStreamMessageData
-    | PersistenceMessageData;
+    | KeyValueMessageData;

@@ -25,8 +25,8 @@ describe('NodePanelShellComponent', () => {
         return fixture.componentInstance;
     };
 
-    it('has no expand button for a persistence node, as for a schedule trigger', () => {
-        for (const type of [NodeType.PERSISTENCE, NodeType.SCHEDULE_TRIGGER]) {
+    it('has no expand button for a key-value node, as for a schedule trigger', () => {
+        for (const type of [NodeType.KEY_VALUE, NodeType.SCHEDULE_TRIGGER]) {
             expect(shellFor(type).shouldShowExpandButton()).toBe(false);
             TestBed.resetTestingModule();
         }

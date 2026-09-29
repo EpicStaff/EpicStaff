@@ -5,18 +5,18 @@ import { LlmConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
-import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
+import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
+import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel } from '../../core/models/node.model';
-import { PersistenceMode } from '../../core/models/persistence-node.model';
-import { mapPersistenceNodeToModel } from '../../utils/load/nodes/persistence-node.mapper';
+import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
 
-const PERSISTENCE_NODE = mapPersistenceNodeToModel({
+const KEY_VALUE_NODE = mapKeyValueNodeToModel({
     id: 12,
     graph: 1,
-    node_name: 'Persistence #1',
-    persistence_table: 3,
+    node_name: 'Key-Value #1',
+    key_value_table: 3,
     mode: 'write',
     entries: [
         { key: 'profile', value: 'variables.user' },
@@ -27,10 +27,10 @@ const PERSISTENCE_NODE = mapPersistenceNodeToModel({
     metadata: {},
 });
 
-describe('FlowBaseNodeComponent persistence caption', () => {
+describe('FlowBaseNodeComponent key-value caption', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
-    const caption = (): HTMLElement | null => fixture.nativeElement.querySelector('.persistence-caption');
+    const caption = (): HTMLElement | null => fixture.nativeElement.querySelector('.key-value-caption');
 
     function render(node: NodeModel): void {
         TestBed.configureTestingModule({
@@ -38,7 +38,7 @@ describe('FlowBaseNodeComponent persistence caption', () => {
                 { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
                 { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
                 {
-                    provide: PersistenceTablesStorageService,
+                    provide: KeyValueTablesStorageService,
                     useValue: {
                         tables: signal([{ id: 3, name: 'Very very long table name' }]),
                         loadTables: () => of([]),
@@ -52,7 +52,7 @@ describe('FlowBaseNodeComponent persistence caption', () => {
     }
 
     it('sums up mode, table and keys under the node, the table name cut short, in full on hover of the caption', () => {
-        render(PERSISTENCE_NODE);
+        render(KEY_VALUE_NODE);
 
         expect(caption()!.textContent!.trim()).toBe('Write · Very very long tabl… · 2 keys');
         expect(caption()!.title).toBe('Write · Very very long table name · 2 keys');
@@ -63,35 +63,35 @@ describe('FlowBaseNodeComponent persistence caption', () => {
         );
     });
 
-    const MODE_STRIPES: Record<PersistenceMode, string> = {
+    const MODE_STRIPES: Record<KeyValueMode, string> = {
         read: 'var(--success-color)',
         write: 'var(--color-status-processing)',
         delete: 'var(--color-status-error)',
     };
-    for (const mode of Object.keys(MODE_STRIPES) as PersistenceMode[]) {
+    for (const mode of Object.keys(MODE_STRIPES) as KeyValueMode[]) {
         it(`draws the type's database icon in its colour in ${mode}, with the mode only on the left stripe`, () => {
             // Neither a saved icon nor a saved colour is what the header shows.
             render({
-                ...PERSISTENCE_NODE,
+                ...KEY_VALUE_NODE,
                 icon: 'ti ti-database-x',
                 color: '#000000',
-                data: { ...PERSISTENCE_NODE.data, mode },
+                data: { ...KEY_VALUE_NODE.data, mode },
             });
             const icon: HTMLElement = fixture.nativeElement.querySelector('.icon-wrapper i');
             const typeColor = document.createElement('i');
-            typeColor.style.color = NODE_COLORS[NodeType.PERSISTENCE];
+            typeColor.style.color = NODE_COLORS[NodeType.KEY_VALUE];
 
             expect(icon.className).toBe('ti ti-database');
             expect(icon.style.color).toBe(typeColor.style.color);
             expect(
                 fixture.nativeElement
                     .querySelector('.interactive-node-body')
-                    .style.getPropertyValue('--persistence-accent')
+                    .style.getPropertyValue('--key-value-accent')
             ).toBe(MODE_STRIPES[mode]);
         });
     }
 
-    it('is only for persistence nodes', () => {
+    it('is only for key-value nodes', () => {
         render({
             ...mapStartNodeToModel({ id: 1, graph: 1, node_name: '__start__', variables: {}, metadata: {} }),
             ports: null,

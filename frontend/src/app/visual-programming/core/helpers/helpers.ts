@@ -10,9 +10,9 @@ import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-po
 import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
+import { DEFAULT_KEY_VALUE_NODE_PORTS } from '../rules/key-value-ports/key-value-default-ports';
 import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from '../rules/knowledge-retriever-ports/knowledge-retriever-default-ports';
 import { DEFAULT_LLM_NODE_PORTS } from '../rules/llm-ports/llm-node-default-ports';
-import { DEFAULT_PERSISTENCE_NODE_PORTS } from '../rules/persistence-ports/persistence-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from '../rules/python-ports/python-node-default-ports';
 import { DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS } from '../rules/schedule-trigger-ports/schedule-trigger-default-ports';
 import { DEFAULT_START_NODE_PORTS } from '../rules/start-ports/start-node-default-ports';
@@ -80,8 +80,8 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_SUBGRAPH_NODE_PORTS;
         case NodeType.KNOWLEDGE_RETRIEVER:
             return DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS;
-        case NodeType.PERSISTENCE:
-            return DEFAULT_PERSISTENCE_NODE_PORTS;
+        case NodeType.KEY_VALUE:
+            return DEFAULT_KEY_VALUE_NODE_PORTS;
         case NodeType.NOTE:
             return [];
         default:

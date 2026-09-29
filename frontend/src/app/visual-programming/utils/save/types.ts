@@ -7,9 +7,9 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
-    PersistenceNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -42,7 +42,7 @@ export interface NodeDiffByType {
     noteNodes: NodeDiff<GraphNoteModel>;
     classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
     knowledgeRetrieverNodes: NodeDiff<KnowledgeRetrieverNodeModel>;
-    persistenceNodes: NodeDiff<PersistenceNodeModel>;
+    keyValueNodes: NodeDiff<KeyValueNodeModel>;
 }
 
 export interface ConnectionDiff {

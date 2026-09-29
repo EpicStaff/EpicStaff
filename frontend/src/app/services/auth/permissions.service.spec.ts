@@ -22,7 +22,7 @@ function serviceWith(readable: ResourceCode[]): PermissionsService {
 
 describe('PermissionsService files tab', () => {
     it('opens Key-Value Tables for a role that can read only key-value tables', () => {
-        const service = serviceWith([ResourceCode.PersistentData]);
+        const service = serviceWith([ResourceCode.KeyValueTables]);
         expect(service.resolveFilesTab()).toBe('/files/key-value-tables');
         expect(service.resolveDefaultRoute()).toBe('/files/key-value-tables');
     });
@@ -30,13 +30,13 @@ describe('PermissionsService files tab', () => {
     it('prefers Knowledge Sources, then Storage, over Key-Value Tables', () => {
         expect(
             serviceWith([
-                ResourceCode.PersistentData,
+                ResourceCode.KeyValueTables,
                 ResourceCode.Files,
                 ResourceCode.KnowledgeSources,
             ]).resolveFilesTab()
         ).toBe('/files/knowledge-sources');
         TestBed.resetTestingModule();
-        expect(serviceWith([ResourceCode.PersistentData, ResourceCode.Files]).resolveFilesTab()).toBe('/files/storage');
+        expect(serviceWith([ResourceCode.KeyValueTables, ResourceCode.Files]).resolveFilesTab()).toBe('/files/storage');
     });
 
     it('has no Files tab without read on any of them, and falls back to the profile', () => {

@@ -11,10 +11,10 @@
     </div>
 }
 
-<!-- Persistence summary under the node, shown on hover; the #N label above stays clear. -->
-@if (persistenceSummary; as summary) {
+<!-- Key-Value summary under the node, shown on hover; the #N label above stays clear. -->
+@if (keyValueSummary; as summary) {
     <div
-        class="persistence-caption"
+        class="key-value-caption"
         aria-hidden="true"
         [title]="summary.full"
     >
@@ -91,12 +91,12 @@
     }
 }
 <ng-template #interactiveNode>
-    @let persistenceStripeColor = persistenceModeStripeColor;
+    @let keyValueStripeColor = keyValueModeStripeColor;
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
-        [class.has-persistence-accent]="persistenceStripeColor"
-        [style.--persistence-accent]="persistenceStripeColor"
+        [class.has-key-value-accent]="keyValueStripeColor"
+        [style.--key-value-accent]="keyValueStripeColor"
         appClickOrDrag
         (actualClick)="onEditClick()"
     >
@@ -104,13 +104,13 @@
         @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
             <div class="header">
                 <div class="icon-wrapper">
-                    @if (persistenceHeader; as header) {
+                    @if (keyValueHeader; as header) {
                         <!-- The caption under the node shows the summary on hover; this names it for screen readers. -->
                         <i
                             [class]="header.icon"
                             [style.color]="header.color"
                             role="img"
-                            [attr.aria-label]="persistenceSummary?.full"
+                            [attr.aria-label]="keyValueSummary?.full"
                         ></i>
                     } @else {
                         <i
@@ -175,7 +175,7 @@
                         <span>No LLM</span>
                     </div>
                 }
-                @if (hasMissingPersistenceTable) {
+                @if (hasMissingKeyValueTable) {
                     <div
                         class="llm-warning-badge"
                         title="Select a table in the node panel"

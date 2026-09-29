@@ -74,7 +74,7 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
-    it('does not force a session refresh or toast for a persistence_mode_denied 403', () =>
+    it('does not force a session refresh or toast for a key_value_mode_denied 403', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.post('/api/graphs/1/save-flow/', {}).subscribe({
                 next: () => reject(new Error('expected the request to error')),
@@ -95,7 +95,7 @@ describe('forbiddenInterceptor', () => {
             req.flush(
                 {
                     status_code: 403,
-                    code: 'persistence_mode_denied',
+                    code: 'key_value_mode_denied',
                     message:
                         "You need Key-Value Tables Create and Edit permission to configure a write node on the table 'profiles'.",
                 },

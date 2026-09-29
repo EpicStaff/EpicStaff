@@ -61,7 +61,7 @@ export class FilesListPageComponent {
         {
             label: 'Key-Value Tables',
             link: 'key-value-tables',
-            isPermitted: () => this.permissionService.can(ResourceCode.PersistentData, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.KeyValueTables, ActionCode.Read),
         },
     ];
 

@@ -19,7 +19,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.AUDIO_TO_TEXT]: 'ti ti-music',
     [NodeType.SCHEDULE_TRIGGER]: 'ti ti-calendar',
     [NodeType.KNOWLEDGE_RETRIEVER]: 'ti ti-books',
-    [NodeType.PERSISTENCE]: 'ti ti-database',
+    [NodeType.KEY_VALUE]: 'ti ti-database',
 };
 
 export const NODE_COLORS: Record<NodeType, string> = {
@@ -41,5 +41,5 @@ export const NODE_COLORS: Record<NodeType, string> = {
     [NodeType.AUDIO_TO_TEXT]: '#ff7be9ff',
     [NodeType.SCHEDULE_TRIGGER]: '#FF5C00',
     [NodeType.KNOWLEDGE_RETRIEVER]: '#D9D9DE',
-    [NodeType.PERSISTENCE]: '#14B8A6',
+    [NodeType.KEY_VALUE]: '#14B8A6',
 };

@@ -76,7 +76,7 @@ const BACKEND_NODE_TYPE_MAP: Record<string, NodeType> = {
     ScheduleTriggerNode: NodeType.SCHEDULE_TRIGGER,
     DecisionTableNode: NodeType.TABLE,
     GraphNote: NodeType.NOTE,
-    PersistenceNode: NodeType.PERSISTENCE,
+    KeyValueNode: NodeType.KEY_VALUE,
 };
 
 export function mapBackendNodeType(backendType: string): NodeType | null {

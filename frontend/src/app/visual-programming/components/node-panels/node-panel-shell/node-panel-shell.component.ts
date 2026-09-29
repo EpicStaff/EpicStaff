@@ -142,7 +142,7 @@ export class NodePanelShellComponent {
             node &&
             node.type !== 'table' &&
             node.type !== NodeType.SCHEDULE_TRIGGER &&
-            node.type !== NodeType.PERSISTENCE &&
+            node.type !== NodeType.KEY_VALUE &&
             node.type !== 'classification-decision-table'
         );
     });

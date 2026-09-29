@@ -68,7 +68,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
-import { invalidPersistenceNodeMessages } from '../../../../visual-programming/core/helpers/persistence-node.helpers';
+import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import {
     AgentNodeModel,
@@ -426,8 +426,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             issues = [
                 ...this.getInvalidTaskNodeMessages(flowState),
                 ...this.getInvalidAgentNodeMessages(flowState),
-                // The persistence panel puts invalid entries into the flow so the canvas follows it; they stop here.
-                ...invalidPersistenceNodeMessages(flowState.nodes),
+                // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
+                ...invalidKeyValueNodeMessages(flowState.nodes),
             ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);

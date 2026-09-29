@@ -31,7 +31,7 @@ describe('getClassificationDecisionTableVisualHeight', () => {
 });
 
 describe('getDefaultNodeSize', () => {
-    it('gives the persistence node the same default size as the Python node', () => {
-        expect(getDefaultNodeSize(NodeType.PERSISTENCE)).toEqual(getDefaultNodeSize(NodeType.PYTHON));
+    it('gives the key-value node the same default size as the Python node', () => {
+        expect(getDefaultNodeSize(NodeType.KEY_VALUE)).toEqual(getDefaultNodeSize(NodeType.PYTHON));
     });
 });

@@ -47,10 +47,10 @@ import { ErrorMessageComponent } from './components/error-message/error-message.
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
 import { FindingsMessageComponent } from './components/findings-message/findings-message.component';
 import { FinishMessageComponent } from './components/finish-message/finish-message.component';
+import { KeyValueMessageComponent } from './components/key-value-message/key-value-message.component';
 import { LlmMessageComponent } from './components/llm-message/llm-message.component';
 import { LoadingDotsComponent } from './components/loading-animation/loading-animation.component';
 import { NodeStreamMessageComponent } from './components/node-stream-message/node-stream-message.component';
-import { PersistenceMessageComponent } from './components/persistence-message/persistence-message.component';
 import { PythonMessageComponent } from './components/python-message/python-message.component';
 import { StartMessageComponent } from './components/start-message/start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
@@ -86,7 +86,7 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.CONDITION_GROUP_MANIPULATION,
     MessageType.CLASSIFICATION_PROMPT,
     MessageType.FINDINGS,
-    MessageType.PERSISTENCE,
+    MessageType.KEY_VALUE,
 ]);
 
 // Stream-style message types that emit many chunks per node run and get collapsed into
@@ -145,7 +145,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         RunTransitionComponent,
         ExtractedChunksMessageComponent,
         FindingsMessageComponent,
-        PersistenceMessageComponent,
+        KeyValueMessageComponent,
         ClassificationDtMessageComponent,
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
@@ -819,7 +819,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             case MessageType.SUBGRAPH_START:
             case MessageType.SUBGRAPH_FINISH:
             case MessageType.FINDINGS:
-            case MessageType.PERSISTENCE:
+            case MessageType.KEY_VALUE:
                 return true;
             default:
                 return false;

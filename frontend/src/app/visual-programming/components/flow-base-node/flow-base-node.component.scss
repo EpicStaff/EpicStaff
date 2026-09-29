@@ -16,7 +16,7 @@
     }
 
     .node-name-label,
-    .persistence-caption {
+    .key-value-caption {
         background-color: var(--color-nodes-actionbar-bg);
         color: var(--gray-204);
         font-size: 0.75rem;
@@ -34,7 +34,7 @@
     // Below the node, clear of the #N label above it and of the left/right ports.
     // visibility (not only opacity) so the hidden caption takes no clicks meant for the canvas;
     // transitioned so it stays reachable for a moment, and bridged so the gap keeps the node hovered.
-    .persistence-caption {
+    .key-value-caption {
         --caption-gap: 6px;
 
         position: absolute;
@@ -232,10 +232,10 @@
             box-shadow: 0 0 0 1px var(--color-error);
         }
 
-        // Left accent strip showing the Persistence node's mode. An inset box-shadow (not
+        // Left accent strip showing the Key-Value node's mode. An inset box-shadow (not
         // border-color) so it never fights the selected/error border-color rules below.
-        &.has-persistence-accent {
-            box-shadow: inset 3px 0 0 0 var(--persistence-accent);
+        &.has-key-value-accent {
+            box-shadow: inset 3px 0 0 0 var(--key-value-accent);
         }
     }
 
@@ -252,7 +252,7 @@
             opacity: 1;
         }
 
-        .persistence-caption {
+        .key-value-caption {
             visibility: visible;
             opacity: 1;
         }

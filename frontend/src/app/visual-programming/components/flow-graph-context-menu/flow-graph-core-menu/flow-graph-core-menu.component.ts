@@ -179,9 +179,9 @@ export class FlowGraphCoreMenuComponent {
         },
         {
             label: 'Key-Value',
-            type: NodeType.PERSISTENCE,
-            icon: NODE_ICONS[NodeType.PERSISTENCE],
-            color: NODE_COLORS[NodeType.PERSISTENCE],
+            type: NodeType.KEY_VALUE,
+            icon: NODE_ICONS[NodeType.KEY_VALUE],
+            color: NODE_COLORS[NodeType.KEY_VALUE],
         },
     ];
 

@@ -665,8 +665,8 @@
 
     --color-error: #f54242;
     --color-findings: #f5a623;
-    --color-persistence: #14b8a6; // persistence node + session message accent (matches NODE_COLORS)
-    // JSON value colours: app-json-viewer (styles/json-viewer.scss) + persistence message previews
+    --color-key-value: #14b8a6; // Key-Value node + session message accent (matches NODE_COLORS)
+    // JSON value colours: app-json-viewer (styles/json-viewer.scss) + Key-Value message previews
     --color-json-key: #e83e8c;
     --color-json-value: #17a2b8;
     --color-json-string: #28a745;
@@ -751,7 +751,7 @@
     --color-scrollbar-track: transparent;
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
     --color-card-background: #ffffff;
-    --color-persistence: #115e59; // darker teal: 5.99:1 on its 15% chip over white (#14b8a6 is 2.2:1)
+    --color-key-value: #115e59; // darker teal: 5.99:1 on its 15% chip over white (#14b8a6 is 2.2:1)
 
     // LEGACY overrides — see :root block above
     --color-nodes-actionbar-bg: #f8fafc;

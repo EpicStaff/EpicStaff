@@ -12,7 +12,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 /**
  * The rows a picker serves, each with an input that holds a `variables.` path: a value input, or a
- * persistence key whose `{…}` placeholder at the caret is the path (see pathOf).
+ * Key-Value node key whose `{…}` placeholder at the caret is the path (see pathOf).
  */
 export interface VariablePathPickerRows {
     /** What the picker offers a row, e.g. the flow's variables minus those other rows use. */
@@ -70,7 +70,7 @@ export function isPlainEnter(event: KeyboardEvent): boolean {
 
 /**
  * The flow variable picker under the value inputs of the Input List (`InputMapComponent`) and the
- * persistence node's value inputs and key placeholders, for any list of rows: it opens on focus or
+ * key-value node's value inputs and key placeholders, for any list of rows: it opens on focus or
  * typing once the path (the value, or what pathOf takes from it) starts with `variables.`, filters by what
  * follows the prefix, closes on an exact match, a pick, Escape (which goes no further), a click
  * outside or the input's blur, and never covers more than one row. Once the user has edited the

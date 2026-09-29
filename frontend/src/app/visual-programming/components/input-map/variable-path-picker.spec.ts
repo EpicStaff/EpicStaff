@@ -399,7 +399,7 @@ describe('VariablePathPicker', () => {
         });
 
         it('refilters on a caret move without an edit, preselecting only once the user has edited', () => {
-            // As the persistence key does: the path is what comes before the caret.
+            // As a Key-Value node's key does: the path is what comes before the caret.
             host.rows.pathOf = (value, element) => value.slice(0, element.selectionStart ?? value.length);
             const moveCaret = (row: number, caret: number): void => {
                 input(row).setSelectionRange(caret, caret);

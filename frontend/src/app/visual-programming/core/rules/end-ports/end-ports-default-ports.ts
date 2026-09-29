@@ -23,7 +23,7 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'decision-error',
             'agent-out',
             'knowledge-retriever-out',
-            'persistence-out',
+            'key-value-out',
         ],
         position: 'left',
         color: '#d3d3d3',

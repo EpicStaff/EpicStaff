@@ -87,8 +87,8 @@ import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
+import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
 import { NodeFactoryService } from '../services/node-factory.service';
-import { PersistenceValueDraftsService } from '../services/persistence-value-drafts.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
@@ -123,7 +123,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
             }),
             deps: [FlowService],
         },
-        PersistenceValueDraftsService,
+        KeyValueEntryDraftsService,
     ],
     imports: [
         FFlowModule,
@@ -1667,7 +1667,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             schedule_trigger_node_list: [],
             edge_list: [],
             knowledge_node_list: [],
-            persistence_node_list: [],
+            key_value_node_list: [],
         };
 
         for (const node of nodes) {
@@ -1714,8 +1714,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 case NodeType.KNOWLEDGE_RETRIEVER:
                     body.knowledge_node_list.push(id);
                     break;
-                case NodeType.PERSISTENCE:
-                    body.persistence_node_list.push(id);
+                case NodeType.KEY_VALUE:
+                    body.key_value_node_list.push(id);
                     break;
             }
         }

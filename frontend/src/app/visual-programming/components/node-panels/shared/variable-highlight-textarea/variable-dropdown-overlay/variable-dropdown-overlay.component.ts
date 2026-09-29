@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, output, 
  * Small flat suggestion list rendered inside a CDK overlay portalled to the body. Two hosts use it:
  * `VariableHighlightTextareaComponent` when the user types `{` inside the textarea (a flat list over
  * the panel's own `variables()` input, e.g. the node's Input List keys), and
- * `PersistenceNodePanelComponent` for the stored keys of the selected table under a key input.
+ * `KeyValueNodePanelComponent` for the stored keys of the selected table under a key input.
  *
  * Deliberately NOT `AutocompleteOverlayComponent` (built for nested `state.*` paths with
  * breadcrumbs/drill-down) and NOT `var-picker-flat` (sources the flow start-node

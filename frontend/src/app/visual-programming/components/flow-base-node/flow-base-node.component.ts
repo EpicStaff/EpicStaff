@@ -17,16 +17,16 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { AppSvgIconComponent, GoToButtonComponent } from '@shared/components';
-import { NODE_COLORS, NODE_ICONS, NodeType, PERSISTENCE_MODE_COLORS } from '@shared/models';
+import { KEY_VALUE_MODE_COLORS, NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { flowUrl } from '@shared/utils';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
-import { PersistenceTablesStorageService } from '../../../features/persistent-data/services/persistence-tables-storage.service';
+import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import {
-    persistenceCaption,
-    persistenceSubtitle as formatPersistenceSubtitle,
-} from '../../core/constants/persistence-mode-visuals';
+    keyValueCaption,
+    keyValueSubtitle as formatKeyValueSubtitle,
+} from '../../core/constants/key-value-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import {
@@ -36,9 +36,9 @@ import {
     EdgeNodeModel,
     EndNodeModel,
     GraphNoteModel,
+    KeyValueNodeModel,
     LLMNodeModel,
     NodeModel,
-    PersistenceNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -80,7 +80,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
 export class FlowBaseNodeComponent implements OnInit {
     private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
-    private readonly persistenceTablesStorage = inject(PersistenceTablesStorageService);
+    private readonly keyValueTablesStorage = inject(KeyValueTablesStorageService);
     private readonly destroyRef = inject(DestroyRef);
 
     @Input({ required: true }) node!: NodeModel;
@@ -126,8 +126,8 @@ export class FlowBaseNodeComponent implements OnInit {
     ) {}
 
     public ngOnInit(): void {
-        if (this.node.type === NodeType.PERSISTENCE && this.persistenceTablesStorage.tables().length === 0) {
-            this.persistenceTablesStorage.loadTables().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        if (this.node.type === NodeType.KEY_VALUE && this.keyValueTablesStorage.tables().length === 0) {
+            this.keyValueTablesStorage.loadTables().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         }
     }
 
@@ -227,37 +227,37 @@ export class FlowBaseNodeComponent implements OnInit {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
     }
 
-    public get persistenceNode(): PersistenceNodeModel | null {
-        return this.node.type === NodeType.PERSISTENCE ? (this.node as PersistenceNodeModel) : null;
+    public get keyValueNode(): KeyValueNodeModel | null {
+        return this.node.type === NodeType.KEY_VALUE ? (this.node as KeyValueNodeModel) : null;
     }
 
-    /** A Persistence node's header icon and its colour: the type's own, whatever its mode or saved metadata. */
-    public get persistenceHeader(): { icon: string; color: string } | null {
-        if (!this.persistenceNode) return null;
-        return { icon: NODE_ICONS[NodeType.PERSISTENCE], color: NODE_COLORS[NodeType.PERSISTENCE] };
+    /** A Key-Value node's header icon and its colour: the type's own, whatever its mode or saved metadata. */
+    public get keyValueHeader(): { icon: string; color: string } | null {
+        if (!this.keyValueNode) return null;
+        return { icon: NODE_ICONS[NodeType.KEY_VALUE], color: NODE_COLORS[NodeType.KEY_VALUE] };
     }
 
-    /** The colour of a Persistence node's mode stripe, as a ready-to-use `var(--...)` string. */
-    public get persistenceModeStripeColor(): string | null {
-        const node = this.persistenceNode;
-        return node ? PERSISTENCE_MODE_COLORS[node.data.mode] : null;
+    /** The colour of a Key-Value node's mode stripe, as a ready-to-use `var(--...)` string. */
+    public get keyValueModeStripeColor(): string | null {
+        const node = this.keyValueNode;
+        return node ? KEY_VALUE_MODE_COLORS[node.data.mode] : null;
     }
 
     /** "Mode · Table · N keys" in full, and as the caption under the node shows it, its table name cut short. */
-    public get persistenceSummary(): { full: string; caption: string } | null {
-        const node = this.persistenceNode;
+    public get keyValueSummary(): { full: string; caption: string } | null {
+        const node = this.keyValueNode;
         if (!node) return null;
-        const table = this.persistenceTablesStorage.tables().find((t) => t.id === node.data.persistence_table);
+        const table = this.keyValueTablesStorage.tables().find((t) => t.id === node.data.key_value_table);
         const tableName = table?.name ?? null;
         const keyCount = node.data.entries.length;
         return {
-            full: formatPersistenceSubtitle(node.data.mode, tableName, keyCount),
-            caption: persistenceCaption(node.data.mode, tableName, keyCount),
+            full: formatKeyValueSubtitle(node.data.mode, tableName, keyCount),
+            caption: keyValueCaption(node.data.mode, tableName, keyCount),
         };
     }
 
-    public get hasMissingPersistenceTable(): boolean {
-        return !!this.persistenceNode && this.persistenceNode.data.persistence_table === null;
+    public get hasMissingKeyValueTable(): boolean {
+        return !!this.keyValueNode && this.keyValueNode.data.key_value_table === null;
     }
 
     private get assignedAgentDefinitionId(): number | null {

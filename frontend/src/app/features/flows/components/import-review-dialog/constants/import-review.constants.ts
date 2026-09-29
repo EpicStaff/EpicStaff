@@ -29,7 +29,7 @@ export const FLOW_NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
     [NodeType.SCHEDULE_TRIGGER]: 'Schedule Trigger Node',
     [NodeType.TABLE]: 'Decision Table Node',
     [NodeType.NOTE]: 'Note',
-    [NodeType.PERSISTENCE]: 'Key-Value Node',
+    [NodeType.KEY_VALUE]: 'Key-Value Node',
 };
 
 export const ENTITY_TYPE_LABELS: Record<string, string> = {

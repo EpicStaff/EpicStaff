@@ -23,7 +23,7 @@ export enum ResourceCode {
     Secrets = 'secrets',
     Voice = 'voice',
     Webhooks = 'webhooks',
-    PersistentData = 'persistent_data',
+    KeyValueTables = 'key_value_tables',
 }
 
 export interface ActivePermissions {
