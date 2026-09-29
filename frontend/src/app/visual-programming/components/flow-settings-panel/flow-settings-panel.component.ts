@@ -30,6 +30,7 @@ import { FlowSettingsService } from '../../services/flow-settings.service';
 export class FlowSettingsPanelComponent {
     protected readonly flowSettings = inject(FlowSettingsService);
     protected readonly dialogRef = inject(DialogRef);
+    /** Opened with the editor's injector, so this is the preview's or the live editor's state. */
     protected readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     protected readonly timezoneControl = new FormControl<string>(this.flowSettings.timezone(), { nonNullable: true });

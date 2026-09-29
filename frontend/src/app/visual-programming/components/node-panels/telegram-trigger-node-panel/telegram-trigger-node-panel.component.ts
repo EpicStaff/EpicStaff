@@ -16,13 +16,13 @@ import {
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
+import { WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { DisplayedTelegramField, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
@@ -45,7 +45,7 @@ import { WebhookStatus } from './webhook-status.model';
         HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
-        HasPermissionDirective,
+        IfFlowEditableDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -189,6 +189,4 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     protected readonly WebhookStatus = WebhookStatus;
-    protected readonly ActionCode = ActionCode;
-    protected readonly ResourceCode = ResourceCode;
 }

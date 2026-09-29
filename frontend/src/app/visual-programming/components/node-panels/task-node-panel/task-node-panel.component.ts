@@ -28,8 +28,6 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
 
@@ -46,6 +44,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { ToastService } from '../../../../services/notifications';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InlineSurface } from '../../../core/models/task-node.model';
@@ -94,7 +93,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         MarkdownComponent,
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
-        HasPermissionDirective,
+        IfFlowEditableDirective,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -565,7 +564,4 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     private initializeInputMap(form: FormGroup): void {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
-
-    protected readonly ResourceCode = ResourceCode;
-    protected readonly ActionCode = ActionCode;
 }

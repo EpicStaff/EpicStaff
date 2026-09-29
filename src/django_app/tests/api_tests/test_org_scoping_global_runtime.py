@@ -1,5 +1,5 @@
-"""Plan 5 — global singletons (superadmin write-lockdown) and reachable
-runtime models (RealtimeAgentChat)."""
+"""Plan 5 — global singletons (superadmin write-lockdown), the per-org
+default models, and reachable runtime models (RealtimeAgentChat)."""
 
 from unittest.mock import patch
 
@@ -7,6 +7,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
+from tables.models.default_models import DefaultModels
+from tables.models.llm_models import LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.realtime_models import (
     ConversationRecording,
@@ -97,18 +99,67 @@ def test_default_llm_config_write_permitted_for_superadmin(client_super):
     )
 
 
+# ---- default-models: one row per org, member read, LLM_CONFIGS UPDATE write ----
+
+
 @pytest.mark.django_db
-def test_default_models_write_denied_for_member(client_member):
+def test_default_models_read_allowed_for_member(client_member):
+    assert client_member.get("/api/default-models/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_default_models_write_denied_for_member(client_member, org_a):
     assert (
         client_member.put("/api/default-models/", {}, format="json").status_code == 403
     )
+    assert not DefaultModels.objects.filter(org=org_a).exists()
 
 
 @pytest.mark.django_db
 def test_default_models_write_permitted_for_superadmin(client_super):
     assert (
-        client_super.put("/api/default-models/", {}, format="json").status_code != 403
+        client_super.put("/api/default-models/", {}, format="json").status_code == 200
     )
+
+
+@pytest.mark.django_db
+def test_default_models_write_allowed_for_org_admin(client_org_admin, org_a):
+    config = LLMConfig.objects.create(custom_name="own-llm", org=org_a)
+
+    resp = client_org_admin.put(
+        "/api/default-models/", {"agent_llm_config": config.id}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert resp.data["agent_llm_config"] == config.id
+    assert DefaultModels.objects.get(org=org_a).agent_llm_config_id == config.id
+
+
+@pytest.mark.django_db
+def test_default_models_write_rejects_other_orgs_config(client_org_admin, org_a, org_b):
+    foreign_config = LLMConfig.objects.create(custom_name="foreign-llm", org=org_b)
+
+    resp = client_org_admin.put(
+        "/api/default-models/", {"agent_llm_config": foreign_config.id}, format="json"
+    )
+
+    assert resp.status_code == 400, resp.data
+    assert "agent_llm_config" in resp.data
+    assert DefaultModels.load_for_org(org_a.id).agent_llm_config_id is None
+
+
+@pytest.mark.django_db
+def test_default_models_kept_separately_per_org(django_user_model, org_a, org_b):
+    config_a = LLMConfig.objects.create(custom_name="llm-a", org=org_a)
+    config_b = LLMConfig.objects.create(custom_name="llm-b", org=org_b)
+    client_a = _client(_org_admin(django_user_model, org_a, "dm-a@example.com"), org_a)
+    client_b = _client(_org_admin(django_user_model, org_b, "dm-b@example.com"), org_b)
+
+    client_a.put("/api/default-models/", {"agent_llm_config": config_a.id}, format="json")
+    client_b.put("/api/default-models/", {"agent_llm_config": config_b.id}, format="json")
+
+    assert client_a.get("/api/default-models/").data["agent_llm_config"] == config_a.id
+    assert client_b.get("/api/default-models/").data["agent_llm_config"] == config_b.id
 
 
 # ---- RealtimeAgentChat: scoped via rt_agent -> agent -> org ----

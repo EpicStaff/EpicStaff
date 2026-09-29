@@ -37,24 +37,3 @@ _DEPENDENCY_MODELS = {
     EntityType.PYTHON_CODE_TOOL.value: PythonCodeTool,
     EntityType.MCP_TOOL.value: McpTool,
 }
-
-_GRAPH_RELATION_NAMES = (
-    "subgraph_node_list",
-    "python_node_list",
-    "webhook_trigger_node_list",
-    "file_extractor_node_list",
-    "key_value_node_list",
-    "audio_transcription_node_list",
-    "start_node_list",
-    "decision_table_node_list",
-    "classification_decision_table_node_list",
-    "schedule_trigger_node_list",
-    "telegram_trigger_node_list",
-    "end_node",
-    "graph_note_list",
-    "agent_node_list",
-    "task_node_list",
-    "knowledge_node_list",
-    "edge_list",
-    "conditional_edge_list",
-)

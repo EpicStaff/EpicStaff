@@ -39,7 +39,8 @@
                                 searchPlaceholder="Search a secret..."
                                 (changed)="notifyExternalChange()"
                             />
-                            @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
+                            <!-- How to pick a secret: only useful while the key can be changed. -->
+                            @if (!isReadOnly() && !form.get('telegram_bot_api_key_secret_id')?.value) {
                                 <app-hint-message>
                                     Choose an existing secret. To add a new one, go to the
                                     <strong>Secrets tab</strong>.
@@ -108,7 +109,7 @@
                                 }
                             </div>
                             <app-button
-                                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                *appIfFlowEditable
                                 type="primary"
                                 (click)="onEditing()"
                             >

@@ -83,7 +83,7 @@ export class FlowBaseNodeComponent implements OnInit {
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
     private readonly keyValueTablesStorage = inject(KeyValueTablesStorageService);
     private readonly destroyRef = inject(DestroyRef);
-    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{

@@ -5,7 +5,6 @@ from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
     _EXCLUDED_GRAPH_SCALARS,
-    _GRAPH_RELATION_NAMES,
 )
 from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -18,11 +17,13 @@ from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
     ConditionalEdge,
     Graph,
+    KeyValueNode,
     PythonCode,
     Secret,
     WebhookTrigger,
 )
 from tables.models.graph_models import StartNode, TelegramTriggerNode
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
@@ -497,6 +498,34 @@ class GraphVersioningManager:
 
         return warnings
 
+    def bind_key_value_tables(
+        self, snapshot_nodes: list[dict], org_id: int, user=None
+    ) -> list[dict]:
+        """Return ``snapshot_nodes`` with each Key-Value node's table re-bound inside ``org_id``.
+
+        Uses the lookup a restore uses (``KeyValueTableService.resolve_reference``) without
+        persisting, so ``key_value_table`` holds the live id of the table a restore by ``user``
+        would bind, or ``None`` when that table was deleted or renamed and no table of
+        ``org_id`` has the stored name, or ``user`` lacks the node mode's permissions on it.
+        A table of another organization is never returned. ``key_value_table_name`` keeps
+        the name stored in the snapshot.
+        """
+        key_value_table_service = KeyValueTableService()
+        bound_nodes = []
+        for node in snapshot_nodes:
+            # One or two queries per Key-Value node, like restore.
+            if node.get("node_type") == NodeType.KEY_VALUE_NODE:
+                table = key_value_table_service.resolve_reference(
+                    org_id,
+                    node.get("key_value_table"),
+                    node.get("key_value_table_name"),
+                    mode=node.get("mode", KeyValueNode.Mode.READ),
+                    user=user,
+                )
+                node = {**node, "key_value_table": table.id if table else None}
+            bound_nodes.append(node)
+        return bound_nodes
+
     def _clean_node_surface_list(self, node: dict, missing_surfaces: set) -> list[dict]:
         node_name = node.get("node_name") or node.get("node_type")
         surface_ids = node.get("surface_list") or []
@@ -675,7 +704,7 @@ class GraphVersioningManager:
     def apply_snapshot_to_graph(
         self, graph: Graph, filtered_snapshot: dict, available_deps: dict, user=None
     ) -> IDMapper:
-        self._wipe_graph_children(graph)
+        self._graph_strategy.wipe_graph_children(graph)
         self._update_graph_scalars(graph, filtered_snapshot)
 
         id_mapper = self._build_identity_id_mapper(available_deps)
@@ -688,17 +717,6 @@ class GraphVersioningManager:
         )
 
         return node_mapper
-
-    def _wipe_graph_children(self, graph: Graph) -> None:
-        """Wipe all graph related nodes. Orphaned PythonCode rows are reclaimed
-        by the post_delete signal cleanup in tables.signals.python_code_signals.
-        Intentionally hard-deletes and is NOT routed through the soft-delete
-        cascade (DeleteService): this replaces a graph's content during a
-        version restore, it does not delete the graph itself, so soft-delete
-        semantics don't apply here. Do not "fix" this to go through .delete().
-        """
-        for relation_name in _GRAPH_RELATION_NAMES:
-            getattr(graph, relation_name).all().delete()
 
     def _update_graph_scalars(self, graph: Graph, snapshot: dict) -> None:
         """

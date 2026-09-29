@@ -10,6 +10,7 @@ from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
+from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.partial_export_service import (
     LIST_KEY_TO_ENTITY_TYPE,
     GraphPartialExportService,
@@ -19,6 +20,7 @@ from tables.import_export.services.partial_import_service import PartialImportSe
 from tables.models import Graph, KeyValueNode, KeyValueTable
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.key_value_table_service import KeyValueTableService
+from tests.helpers import data_to_json_file
 
 FLOWS_ALL = 255
 
@@ -382,6 +384,131 @@ def test_create_graph_from_version_binds_table_only_with_mode_permissions(
     new_graph = Graph.objects.get(pk=result["graph_id"])
     expected = source_node.key_value_table_id if bound else None
     assert new_graph.key_value_node_list.get().key_value_table_id == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bits, mode, bound", BINDING_CASES)
+def test_import_replace_recreates_node_and_binds_table_only_with_mode_permissions(
+    source_node, source_org, acting_user, bits, mode, bound
+):
+    _set_mode(source_node, mode)
+    graph = source_node.graph
+    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    # Unbound after the export, so only the replace can bring the table back.
+    KeyValueNode.objects.filter(pk=source_node.pk).update(key_value_table=None)
+    client = APIClient()
+    client.force_authenticate(user=acting_user(bits))
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(source_org.id))
+
+    response = client.post(
+        reverse("graphs-import-entity"),
+        {
+            "file": data_to_json_file(data=export_data, filename="flow.json"),
+            "preserve_uuids": True,
+            "replace_existing": True,
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert Graph.objects.filter(org=source_org).count() == 1
+    recreated = graph.key_value_node_list.get()
+    assert recreated.pk != source_node.pk
+    assert not KeyValueNode.all_objects.filter(pk=source_node.pk).exists()
+    assert recreated.mode == mode
+    table = KeyValueTable.objects.get(org=source_org, name="Customers")
+    assert recreated.key_value_table_id == (table.id if bound else None)
+    assert list(table.nodes.values_list("pk", flat=True)) == ([recreated.pk] if bound else [])
+
+
+def _preview_node(version) -> dict:
+    (node,) = GraphVersioningService().preview_version(version)["snapshot"]["nodes"]
+    return node
+
+
+def _point_snapshot_at(version, table: KeyValueTable) -> None:
+    (node,) = version.snapshot["nodes"]
+    node["key_value_table"], node["key_value_table_name"] = table.id, table.name
+    version.save(update_fields=["snapshot"])
+
+
+@pytest.mark.django_db
+def test_version_preview_shows_the_existing_table(source_node):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+
+    node = _preview_node(version)
+
+    assert node["node_type"] == "KeyValueNode"
+    assert node["key_value_table"] == source_node.key_value_table_id
+    assert node["key_value_table_name"] == "Customers"
+    assert node["mode"] == "read"
+    assert node["entries"] == [{"key": "k", "value": "variables.a"}]
+
+
+@pytest.mark.django_db
+def test_version_preview_nulls_a_renamed_table_and_keeps_the_stored_name(source_node):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+    KeyValueTable.objects.filter(pk=source_node.key_value_table_id).update(name="Clients")
+
+    node = _preview_node(version)
+
+    assert node["key_value_table"] is None
+    assert node["key_value_table_name"] == "Customers"
+
+
+@pytest.mark.django_db
+def test_version_preview_nulls_a_deleted_table_and_keeps_the_stored_name(source_node):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+    KeyValueTableService().delete_table(source_node.key_value_table)
+
+    node = _preview_node(version)
+
+    assert node["key_value_table"] is None
+    assert node["key_value_table_name"] == "Customers"
+
+
+@pytest.mark.django_db
+def test_version_preview_binds_a_recreated_same_named_table(source_node, source_org):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+    KeyValueTableService().delete_table(source_node.key_value_table)
+    recreated = KeyValueTable.objects.create(org=source_org, name="customers")
+
+    assert _preview_node(version)["key_value_table"] == recreated.id
+
+
+@pytest.mark.django_db
+def test_version_preview_never_returns_another_orgs_table(source_node, target_org):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+    _point_snapshot_at(version, KeyValueTable.objects.create(org=target_org, name="Foreign"))
+
+    assert _preview_node(version)["key_value_table"] is None
+
+
+@pytest.mark.django_db
+def test_version_preview_binds_own_orgs_table_for_a_foreign_id_with_a_known_name(
+    source_node, target_org
+):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+    _point_snapshot_at(version, KeyValueTable.objects.create(org=target_org, name="Customers"))
+
+    assert _preview_node(version)["key_value_table"] == source_node.key_value_table_id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bits, bound", [(0, False), (R, True)], ids=["none", "R"])
+def test_version_preview_binds_the_table_only_with_the_viewers_mode_permissions(
+    source_node, source_org, acting_user, bits, bound
+):
+    version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
+    client = APIClient()
+    client.force_authenticate(user=acting_user(bits))
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(source_org.id))
+
+    response = client.get(reverse("graph-versions-preview", args=[version.id]))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    (node,) = response.data["snapshot"]["nodes"]
+    assert node["key_value_table"] == (source_node.key_value_table_id if bound else None)
 
 
 @pytest.mark.django_db

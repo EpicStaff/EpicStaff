@@ -11,8 +11,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
+        ('tables', '0254_defaultmodels_org_not_null'),
         ('rbac', '0003_key_value_tables_resource_type'),
-        ('tables', '0251_backfill_session_finished_at'),
     ]
 
     operations = [

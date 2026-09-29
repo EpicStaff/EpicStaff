@@ -112,6 +112,10 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.UserSessionMessage",
         # FlowAssistant is a 1:1 extension of Graph, implied by "flow":
         "tables.FlowAssistant",
+        # The organization's default-model settings row, not a resource of its
+        # own -- the configs it points at are counted as llm_configs,
+        # embedding_configs and realtime_configs:
+        "tables.DefaultModels",
         # RAG family -- NaiveRag/GraphRag/BaseRagType and their own descendants,
         # implied by the already-mapped "knowledge_collections" (they all chain
         # back to a SourceCollection via BaseRagType.source_collection, CASCADE):
