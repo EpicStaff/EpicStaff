@@ -339,6 +339,38 @@ def test_org_delete_leaves_other_orgs_untouched(actor, populated_org, _surviving
 
 
 @pytest.mark.django_db
+def test_org_delete_removes_key_value_tables_entries_and_nodes(
+    actor, populated_org, _surviving_org
+):
+    from tables.models import KeyValueNode, KeyValueTable, KeyValueTableEntry
+    from tables.models.graph_models import Graph
+    from tables.models.session_models import Session
+
+    graph = Graph.objects.create(name="key-value-graph", org=populated_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    table = KeyValueTable.objects.create(org=populated_org, name="doomed-table")
+    KeyValueTableEntry.objects.create(
+        table=table, key="customer", value={"tier": "gold"}, updated_by_session=session
+    )
+    node = KeyValueNode.objects.create(graph=graph, node_name="kv", key_value_table=table)
+    keeper_table = KeyValueTable.objects.create(org=_surviving_org, name="keeper-table")
+    keeper_entry = KeyValueTableEntry.objects.create(table=keeper_table, key="kept", value=1)
+
+    service = OrganizationManagementService()
+    preview = service.preview_delete(actor=actor, org_id=populated_org.pk)
+    report = service.delete_organization(
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+    )
+
+    assert preview.affected_resources["key_value_tables"] == 1
+    assert report.affected_resources == preview.affected_resources
+    assert not KeyValueTable.objects.filter(pk=table.pk).exists()
+    assert not KeyValueTableEntry.objects.filter(table_id=table.pk).exists()
+    assert not KeyValueNode.all_objects.filter(pk=node.pk).exists()
+    assert KeyValueTableEntry.objects.filter(pk=keeper_entry.pk).exists()
+
+
+@pytest.mark.django_db
 def test_built_in_roles_survive_an_org_delete(actor, populated_org, _surviving_org):
     before = Role.objects.filter(is_built_in=True, org__isnull=True).count()
     OrganizationManagementService().delete_organization(

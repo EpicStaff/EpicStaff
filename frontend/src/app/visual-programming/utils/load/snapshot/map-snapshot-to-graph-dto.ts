@@ -41,6 +41,7 @@ export const SNAPSHOT_NODE_LIST_KEY = {
     DecisionTableNode: 'decision_table_node_list',
     ClassificationDecisionTableNode: 'classification_decision_table_node_list',
     KnowledgeNode: 'knowledge_node_list',
+    KeyValueNode: 'key_value_node_list',
 } as const satisfies Record<SnapshotNodeType, GraphDtoNodeListKey>;
 
 type AssertNever<T extends never> = T;
@@ -150,6 +151,19 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         content_hash: null,
         ...NOT_PERSISTED,
     }),
+    // The backend already re-bound `key_value_table` as a restore would (null when the table is gone);
+    // `key_value_table_name`, the stored name it re-bound from, is not part of the live shape.
+    KeyValueNode: (node) => ({
+        id: node.id,
+        graph: 0,
+        node_name: node.node_name,
+        metadata: node.metadata,
+        input_map: node.input_map,
+        output_variable_path: node.output_variable_path,
+        key_value_table: node.key_value_table,
+        mode: node.mode,
+        entries: node.entries,
+    }),
 };
 
 /**
@@ -241,6 +255,7 @@ function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphD
         decision_table_node_list: [],
         classification_decision_table_node_list: [],
         knowledge_node_list: [],
+        key_value_node_list: [],
     };
 }
 

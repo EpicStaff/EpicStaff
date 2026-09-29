@@ -11,6 +11,17 @@
     </div>
 }
 
+<!-- Key-Value summary under the node, shown on hover; the #N label above stays clear. -->
+@if (keyValueSummary; as summary) {
+    <div
+        class="key-value-caption"
+        aria-hidden="true"
+        [title]="summary.full"
+    >
+        {{ summary.caption }}
+    </div>
+}
+
 <!-- Control buttons positioned above the node -->
 @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE && !isReadOnly()) {
     <div
@@ -83,9 +94,12 @@
     }
 }
 <ng-template #interactiveNode>
+    @let keyValueStripeColor = keyValueModeStripeColor;
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
+        [class.has-key-value-accent]="keyValueStripeColor"
+        [style.--key-value-accent]="keyValueStripeColor"
         appClickOrDrag
         (actualClick)="onEditClick()"
     >
@@ -93,10 +107,20 @@
         @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
             <div class="header">
                 <div class="icon-wrapper">
-                    <i
-                        [class]="node.icon"
-                        [style.color]="node.color"
-                    ></i>
+                    @if (keyValueHeader; as header) {
+                        <!-- The caption under the node shows the summary on hover; this names it for screen readers. -->
+                        <i
+                            [class]="header.icon"
+                            [style.color]="header.color"
+                            role="img"
+                            [attr.aria-label]="keyValueSummary?.full"
+                        ></i>
+                    } @else {
+                        <i
+                            [class]="node.icon"
+                            [style.color]="node.color"
+                        ></i>
+                    }
                 </div>
                 <div
                     class="title"
@@ -152,6 +176,18 @@
                             size="0.875rem"
                         ></app-svg-icon>
                         <span>No LLM</span>
+                    </div>
+                }
+                @if (hasMissingKeyValueTable) {
+                    <div
+                        class="llm-warning-badge"
+                        [title]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="0.875rem"
+                        ></app-svg-icon>
+                        <span>No table</span>
                     </div>
                 }
             </div>

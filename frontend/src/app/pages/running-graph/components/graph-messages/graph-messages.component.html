@@ -62,6 +62,9 @@
                         @case (MessageType.FINDINGS) {
                             <app-findings-message [message]="entry.message"></app-findings-message>
                         }
+                        @case (MessageType.KEY_VALUE) {
+                            <app-key-value-message [message]="entry.message" />
+                        }
                         @case (MessageType.ERROR) {
                             <app-error-message [message]="entry.message"></app-error-message>
                         }
@@ -239,6 +242,9 @@
                                                         <app-findings-message
                                                             [message]="nestedEntry.message"
                                                         ></app-findings-message>
+                                                    }
+                                                    @case (MessageType.KEY_VALUE) {
+                                                        <app-key-value-message [message]="nestedEntry.message" />
                                                     }
                                                     @case (MessageType.ERROR) {
                                                         <app-error-message

@@ -93,6 +93,7 @@ import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
+import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
@@ -128,6 +129,7 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
             }),
             deps: [FlowService],
         },
+        KeyValueEntryDraftsService,
     ],
     imports: [
         FFlowModule,
@@ -1745,6 +1747,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             schedule_trigger_node_list: [],
             edge_list: [],
             knowledge_node_list: [],
+            key_value_node_list: [],
         };
 
         for (const node of nodes) {
@@ -1790,6 +1793,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.KNOWLEDGE_RETRIEVER:
                     body.knowledge_node_list.push(id);
+                    break;
+                case NodeType.KEY_VALUE:
+                    body.key_value_node_list.push(id);
                     break;
             }
         }

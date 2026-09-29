@@ -148,6 +148,9 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
     file_extractor_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
+    key_value_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
     subgraph_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )

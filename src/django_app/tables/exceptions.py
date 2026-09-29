@@ -476,3 +476,57 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class KeyValueEntryKeyInvalidError(CustomAPIExeption):
+    status_code = 400
+    default_code = "key_value_entry_key_invalid"
+
+    def __init__(self, key: str, reason: str):
+        shown = key if len(key) <= 100 else f"{key[:100]}…"
+        super().__init__(f"Key {shown!r} is not a valid key: {reason}.", code=self.default_code)
+
+
+class KeyValueEntryValueTooLargeError(CustomAPIExeption):
+    status_code = 400
+    default_code = "key_value_entry_value_too_large"
+
+    def __init__(self, size_bytes: int, max_bytes: int):
+        super().__init__(
+            f"Value is {size_bytes} bytes; the limit is {max_bytes} bytes.", code=self.default_code
+        )
+
+
+class KeyValueModeDeniedError(CustomAPIExeption):
+    """Raised when the caller lacks the key_value_tables permissions a node's mode needs.
+
+    Its own code keeps the frontend from treating this business-rule 403 as a
+    changed-permissions 403, which reloads the app.
+    """
+
+    status_code = 403
+    default_code = "key_value_mode_denied"
+    _PERMISSION_LABELS = {"read": "View", "write": "Create and Edit", "delete": "View and Delete"}
+
+    def __init__(self, mode: str, table_name: str):
+        super().__init__(
+            f"You need Key-Value Tables {self._PERMISSION_LABELS[mode]} permission to configure "
+            f"a {mode} node on the table '{table_name}'.",
+            code=self.default_code,
+        )
+
+
+class KeyValueSessionNotActiveError(CustomAPIExeption):
+    status_code = 409
+    default_code = "key_value_session_not_active"
+
+    def __init__(self, session_id: int):
+        super().__init__(f"Session {session_id} is not running.", code=self.default_code)
+
+
+class KeyValueTableNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_code = "key_value_table_not_found"
+
+    def __init__(self, table_id: int):
+        super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)

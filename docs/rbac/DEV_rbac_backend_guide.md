@@ -96,6 +96,7 @@ class ResourceType(models.TextChoices):
         SURFACES,
     )
     WEBHOOKS
+    KEY_VALUE_TABLES
 
 
 class Permission(IntFlag):
@@ -142,6 +143,11 @@ after `migrate`) makes the database match it exactly.
   updated; a built-in role in the database that the file does not name is only warned about —
   memberships cascade from it.
 - **Superadmin** has `"permissions": {}` — its authority is `User.is_superadmin`.
+
+`key_value_tables` has no `use` action; its built-in grants are in `builtin_roles.json` like
+every other resource. A Key-Value node's mode decides which `key_value_tables` bits configuring
+it needs (`MODE_PERMISSIONS` in `tables/services/key_value_table_service.py`: read → R, write →
+C and U, delete → R and D, since a delete node's session message shows the deleted values).
 
 **To change a built-in role:** edit the JSON, run
 `make django-tests ARGS="tests/command_tests/test_seed_builtin_roles.py tests/services_tests/test_builtin_role_permissions.py"`,

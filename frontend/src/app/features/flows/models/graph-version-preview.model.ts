@@ -17,6 +17,7 @@ import { Edge } from '../../../visual-programming/core/models/edge.model';
 import { EndNode } from '../../../visual-programming/core/models/end-node.model';
 import { GetFileExtractorNodeRequest } from '../../../visual-programming/core/models/file-extractor.model';
 import { GraphNote } from '../../../visual-programming/core/models/graph-note.model';
+import { GetKeyValueNodeRequest } from '../../../visual-programming/core/models/key-value-node.model';
 import { StartNode } from '../../../visual-programming/core/models/start-node.model';
 import { SubGraphNode } from '../../../visual-programming/core/models/subgraph-node.model';
 import { TaskNode } from '../../../visual-programming/core/models/task-node.model';
@@ -48,7 +49,8 @@ export type SnapshotNodeType =
     | 'ScheduleTriggerNode'
     | 'DecisionTableNode'
     | 'ClassificationDecisionTableNode'
-    | 'KnowledgeNode';
+    | 'KnowledgeNode'
+    | 'KeyValueNode';
 
 type ExcludedExportFields = 'graph' | 'created_at' | 'updated_at';
 
@@ -175,6 +177,14 @@ export interface SnapshotKnowledgeNode extends SnapshotNodeBase<'KnowledgeNode'>
     graph_drift_search_config?: GraphDriftSearchConfig | null;
 }
 
+/**
+ * The export keeps the table id and adds its name at export time, so a copy, import or restore
+ * can re-bind the node to a table of the same name (backend `KeyValueTableService.resolve_reference`).
+ */
+export type SnapshotKeyValueNode = SnapshotNodeOf<'KeyValueNode', GetKeyValueNodeRequest> & {
+    key_value_table_name: string | null;
+};
+
 /** One exported node row, discriminated on `node_type`. */
 export type SnapshotNode =
     | SnapshotStartNode
@@ -191,7 +201,8 @@ export type SnapshotNode =
     | SnapshotScheduleTriggerNode
     | SnapshotDecisionTableNode
     | SnapshotClassificationDecisionTableNode
-    | SnapshotKnowledgeNode;
+    | SnapshotKnowledgeNode
+    | SnapshotKeyValueNode;
 
 export type SnapshotEdge = Omit<Edge, ExcludedExportFields>;
 

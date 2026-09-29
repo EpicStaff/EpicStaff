@@ -177,6 +177,12 @@ export class FlowGraphCoreMenuComponent {
             icon: NODE_ICONS[NodeType.KNOWLEDGE_RETRIEVER],
             color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
         },
+        {
+            label: 'Key-Value',
+            type: NodeType.KEY_VALUE,
+            icon: NODE_ICONS[NodeType.KEY_VALUE],
+            color: NODE_COLORS[NodeType.KEY_VALUE],
+        },
     ];
 
     public onBlockClicked(type: NodeType): void {

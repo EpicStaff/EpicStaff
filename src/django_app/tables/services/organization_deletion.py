@@ -51,6 +51,7 @@ TABLES_RESOURCE_NAMES: dict[str, str] = {
     "agents.AgentDefinition": "agent_definitions",
     "agents.Surface": "surfaces",
     "tables.RealtimeChannel": "realtime_channels",
+    "tables.KeyValueTable": "key_value_tables",
     # org cascade -- swept (deprecated, SET_NULL-only reachable, removed by
     # TablesOrganizationDeletion.sweep, not the Collector)
     "tables.Task": "tasks",
@@ -78,6 +79,7 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.TelegramTriggerNode",
         "tables.ScheduleTriggerNode",
         "tables.ClassificationDecisionTableNode",
+        "tables.KeyValueNode",
         "tables.TaskNode",
         "tables.AgentNode",
         "tables.Edge",
@@ -155,6 +157,8 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.LocalhostWebhookConfig",
         # RealtimeChannel sub-detail, implied by "realtime_channels":
         "tables.TwilioChannel",
+        # Key-Value table rows, implied by "key_value_tables":
+        "tables.KeyValueTableEntry",
         # RealtimeAgent/RealtimeAgentDefinition are 1:1 extensions of
         # Agent/AgentDefinition, implied by "agents"/"agent_definitions":
         "tables.RealtimeAgent",
