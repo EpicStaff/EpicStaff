@@ -208,12 +208,16 @@ class TestMaskingEnabledTracksSettings:
 
 
 class TestBuildMaskingValuesMasksTemporaryStorageCredentialsUnconditionally:
-    """`ExecuteCodeHandler.handle` builds its masking set through
-    `build_masking_values(secrets if mask_secrets else {}, {temp storage
-    creds})` -- the temp-credential half is passed unconditionally,
-    regardless of `MASK_SECRET`. These tests reproduce that exact call
+    """`ExecuteCodeHandler.handle` builds one masking set, before the job
+    starts, through `build_masking_values((secrets if masking_enabled() else
+    {}), {temp storage creds})` -- the temp-credential half is passed
+    unconditionally, regardless of `MASK_SECRET`. That single set is what both
+    completion paths scrub with: the normal one and `_handle_timeout`, which
+    drains a killed job's partial output. These tests reproduce that exact call
     pattern rather than asserting on `build_masking_values` in isolation, so
-    a future refactor of the call site is what these actually pin."""
+    a future refactor of the call site is what these actually pin. The
+    end-to-end counterparts live in `test_execute_code_handler_env.py`
+    (normal path) and `test_execute_code_handler_timeout.py` (timeout path)."""
 
     TEMP_ACCESS_KEY = "temp-ak-must-not-leak"
     TEMP_SECRET_KEY = "temp-sk-must-not-leak"

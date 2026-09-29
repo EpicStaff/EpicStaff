@@ -17,7 +17,6 @@ import socket
 
 import redis.asyncio as aioredis
 from loguru import logger
-
 from src.shared.redis_streams import RedisStreamClient, StreamEnvelope, StreamMessage
 
 from storage_credentials.constants import (
@@ -123,9 +122,7 @@ class StorageCredentialRequestConsumer:
             # still inside credential_service.issue() (or just finished). The
             # in-progress marker distinguishes the two: only push the error
             # response when nobody has ever claimed this scope.
-            still_in_progress = await self._redis_client.get(
-                keys.in_progress_key(execution_id)
-            )
+            still_in_progress = await self._redis_client.get(keys.in_progress_key(execution_id))
             if still_in_progress is not None:
                 return
             await self._respond_error(execution_id, "scope_not_published")
@@ -172,9 +169,7 @@ class StorageCredentialRequestConsumer:
             # picked up only later, by TtlReconciliationService.sweep().
             await self._redis_client.set(
                 keys.lease_key(execution_id),
-                json.dumps(
-                    {"org_id": scope["org_id"], "access_key": issued.access_key}
-                ),
+                json.dumps({"org_id": scope["org_id"], "access_key": issued.access_key}),
                 ex=TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX,
             )
             await self._respond_success(execution_id, issued)
@@ -186,7 +181,12 @@ class StorageCredentialRequestConsumer:
             # These three can only come from credential_service.issue()
             # itself, before it returns -- `issued` is guaranteed still None
             # here, so nothing was minted and there is nothing to revoke.
-            await self._respond_error(execution_id, str(error))
+            logger.error(
+                "Failed to issue temporary credential for execution_id={}: {}",
+                execution_id,
+                error,
+            )
+            await self._respond_error(execution_id, "credential_issue_failed")
         except Exception as error:
             # Anything else, including a failure in the lease SET or the
             # response publish that follow a successful issue() above, must
@@ -194,8 +194,7 @@ class StorageCredentialRequestConsumer:
             # message with no response ever sent, leaving the sandbox to
             # time out with no diagnostic.
             logger.error(
-                "Unexpected error issuing temporary credential for "
-                "execution_id={}: {}",
+                "Unexpected error issuing temporary credential for execution_id={}: {}",
                 execution_id,
                 error,
             )
@@ -218,16 +217,12 @@ class StorageCredentialRequestConsumer:
                     )
             await self._respond_error(execution_id, "internal_error")
 
-    async def _respond_success(
-        self, execution_id: str, issued: IssuedCredential
-    ) -> None:
+    async def _respond_success(self, execution_id: str, issued: IssuedCredential) -> None:
         key = keys.response_key(execution_id)
         pipe = self._redis_client.pipeline()
         pipe.rpush(
             key,
-            json.dumps(
-                {"access_key": issued.access_key, "secret_key": issued.secret_key}
-            ),
+            json.dumps({"access_key": issued.access_key, "secret_key": issued.secret_key}),
         )
         pipe.expire(key, CREDENTIAL_RESPONSE_TTL_SECONDS)
         await pipe.execute()

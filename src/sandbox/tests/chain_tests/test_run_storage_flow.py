@@ -9,6 +9,21 @@ import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain, AbstractHandler
 from services.storage_credential_client import StorageCredentialRequestError
 from src.shared.models import CodeResultData
+from utils.logger import logger
+
+CREDENTIAL_FAILURE_STDERR = "Failed to obtain scoped storage credentials."
+
+
+@pytest.fixture
+def error_log_messages():
+    """`DynamicVenvExecutorChain` logs through loguru, which never reaches
+    pytest's `caplog` (that only sees stdlib `logging`). Attach a sink instead."""
+    messages: list[str] = []
+    sink_id = logger.add(lambda message: messages.append(str(message)), level="ERROR")
+    try:
+        yield messages
+    finally:
+        logger.remove(sink_id)
 
 
 class FakeChain(AbstractHandler):
@@ -94,7 +109,7 @@ async def test_use_storage_false_skips_credentials(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_issue_failure_returns_error_result_fail_closed(tmp_path):
+async def test_issue_failure_returns_error_result_fail_closed(tmp_path, error_log_messages):
     client = FakeStorageCredentialClient(error=StorageCredentialRequestError("boom"))
     chain, fake = make_chain(tmp_path, client)
 
@@ -105,12 +120,16 @@ async def test_issue_failure_returns_error_result_fail_closed(tmp_path):
     )
 
     assert result.returncode == 1
-    assert "boom" in result.stderr
+    assert result.stderr == CREDENTIAL_FAILURE_STDERR
+    assert "boom" not in result.stderr
+    assert any("boom" in message for message in error_log_messages)
     assert fake.seen_context is None
 
 
 @pytest.mark.asyncio
-async def test_issuer_timeout_fails_closed_without_starting_execution(tmp_path):
+async def test_issuer_timeout_fails_closed_without_starting_execution(
+    tmp_path, error_log_messages
+):
     """Mirrors the exact message `StorageCredentialClient.request()` raises
     on `asyncio.TimeoutError` (services/storage_credential_client.py) -- the
     issuer never responding within STORAGE_CREDENTIAL_WAIT_TIMEOUT_S must
@@ -129,12 +148,19 @@ async def test_issuer_timeout_fails_closed_without_starting_execution(tmp_path):
     )
 
     assert result.returncode == 1
-    assert "Timed out waiting for storage credentials" in result.stderr
+    assert result.stderr == CREDENTIAL_FAILURE_STDERR
+    assert "Timed out waiting for storage credentials" not in result.stderr
+    assert any(
+        "Timed out waiting for storage credentials" in message
+        for message in error_log_messages
+    )
     assert fake.seen_context is None
 
 
 @pytest.mark.asyncio
-async def test_issuer_reported_error_fails_closed_without_starting_execution(tmp_path):
+async def test_issuer_reported_error_fails_closed_without_starting_execution(
+    tmp_path, error_log_messages
+):
     """Mirrors the response `{"error": ...}` path in
     `StorageCredentialClient.request()`: the issuer answering with an error
     (e.g. scope_not_published, CredentialScopeValidationError) must fail
@@ -151,5 +177,50 @@ async def test_issuer_reported_error_fails_closed_without_starting_execution(tmp
     )
 
     assert result.returncode == 1
-    assert "scope_not_published" in result.stderr
+    assert result.stderr == CREDENTIAL_FAILURE_STDERR
+    assert "scope_not_published" not in result.stderr
+    assert any("scope_not_published" in message for message in error_log_messages)
     assert fake.seen_context is None
+
+
+@pytest.mark.asyncio
+async def test_unexpected_issue_failure_keeps_the_exception_text_out_of_stderr(tmp_path):
+    """`stderr` travels to PythonCodeResult, the SSE stream and the tool
+    observation handed to the LLM. An unwrapped exception escaping the
+    credential-request path carries internal detail (module paths, connection
+    strings), so this branch must fail closed with fixed text and leave the
+    detail to `logger.exception`."""
+    client = FakeStorageCredentialClient(
+        error=RuntimeError("redis://storage-issuer-internal:6379 refused the connection")
+    )
+    chain, fake = make_chain(tmp_path, client)
+
+    result = await chain.run(
+        **COMMON_RUN_KWARGS,
+        use_storage=True,
+        storage_org_prefix="org_1",
+    )
+
+    assert result.returncode == 1
+    assert result.stderr == "Unexpected failure obtaining scoped storage credentials."
+    assert "storage-issuer-internal" not in result.stderr
+    assert fake.seen_context is None
+
+
+@pytest.mark.asyncio
+async def test_chain_failure_keeps_the_exception_text_out_of_stderr(
+    tmp_path, error_log_messages
+):
+    """The same rule as the credential branches applies once execution has
+    started: a handler blowing up (venv creation, library install) must fail
+    closed with fixed text so host paths and connection strings never reach
+    the SSE stream or the LLM tool observation."""
+    chain, fake = make_chain(tmp_path, FakeStorageCredentialClient())
+    fake.raise_exc = RuntimeError("/srv/internal/venvs/v/bin/python is missing")
+
+    result = await chain.run(**COMMON_RUN_KWARGS, use_storage=False)
+
+    assert result.returncode == 1
+    assert result.stderr == "Execution chain failed."
+    assert "/srv/internal/venvs" not in result.stderr
+    assert any("/srv/internal/venvs" in message for message in error_log_messages)

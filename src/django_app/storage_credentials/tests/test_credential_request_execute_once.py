@@ -18,6 +18,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from loguru import logger
 
 from storage_credentials.constants import TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX
 from storage_credentials.exceptions import CredentialScopeValidationError
@@ -82,6 +83,19 @@ def consumer(redis_client, credential_service):
 
 
 @pytest.fixture
+def error_log_messages():
+    """`request_consumer` logs through loguru, which never reaches pytest's
+    `caplog` (that only sees stdlib `logging`). Attach a sink instead, the
+    same way `test_issuer_heartbeat.py` does."""
+    messages = []
+    sink_id = logger.add(lambda message: messages.append(str(message)), level="ERROR")
+    try:
+        yield messages
+    finally:
+        logger.remove(sink_id)
+
+
+@pytest.fixture
 def listener(redis_client, credential_service):
     return StorageCredentialResultListener(
         redis_client=redis_client, credential_service=credential_service
@@ -120,7 +134,7 @@ async def test_issue_for_with_invalid_scope_never_calls_mint(
     await consumer._issue_for(EXECUTION_ID)
 
     error_payload = json.loads(redis_client.rpush.await_args.args[1])
-    assert error_payload == {"error": "bad scope"}
+    assert error_payload == {"error": "credential_issue_failed"}
     # `set` is awaited exactly once here -- for the in-progress marker,
     # written right after winning the GETDEL and before scope validation
     # runs. No lease is ever set for a request that never minted anything.
@@ -128,6 +142,43 @@ async def test_issue_for_with_invalid_scope_never_calls_mint(
     set_keys = [call.args[0] for call in redis_client.set.await_args_list]
     assert set_keys == [keys.in_progress_key(EXECUTION_ID)]
     assert keys.lease_key(EXECUTION_ID) not in set_keys
+
+
+@pytest.mark.asyncio
+async def test_issue_for_scope_validation_error_does_not_echo_internal_detail(
+    consumer, redis_client, credential_service, error_log_messages
+):
+    """The response travels back to the sandbox and ends up in `stderr`, which
+    the LLM and the user both read. Internal detail (module and file names of
+    the issuer) must stay in the log, not in the payload.
+
+    Both halves matter: hiding the detail from the client is only correct if
+    it is still written somewhere an operator can find it. A fixed payload
+    with no log would be a silent failure, not a redaction."""
+    internal_detail = (
+        "storage_allowed_paths escapes the org prefix; check converter_service.py"
+    )
+    redis_client.getdel.return_value = json.dumps(
+        {
+            "org_id": 1,
+            "storage_org_prefix": "org_1",
+            "storage_allowed_paths": ["../etc"],
+        }
+    )
+    credential_service.issue.side_effect = CredentialScopeValidationError(
+        internal_detail
+    )
+
+    await consumer._issue_for(EXECUTION_ID)
+
+    error_payload = json.loads(redis_client.rpush.await_args.args[1])
+    assert error_payload == {"error": "credential_issue_failed"}
+    assert "converter_service" not in json.dumps(error_payload)
+    credential_service.revoke.assert_not_awaited()
+
+    logged = "\n".join(error_log_messages)
+    assert EXECUTION_ID in logged
+    assert internal_detail in logged
 
 
 @pytest.mark.asyncio

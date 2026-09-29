@@ -545,6 +545,19 @@ except Exception:
             plan = {"jail": jail, "network": network}
             argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
+        # Temporary storage credentials are masked unconditionally -- they
+        # are never a "user secret" the developer might legitimately want to
+        # see, unlike what MASK_SECRET/masking_enabled() gates. User secrets
+        # are included in the masking set only when masking_enabled() is True,
+        # preserving today's opt-out behavior for them exactly.
+        masking_values = build_masking_values(
+            (context.get("secrets") or {}) if masking_enabled() else {},
+            {
+                "STORAGE_ACCESS_KEY": context.get("temp_storage_access_key"),
+                "STORAGE_SECRET_KEY": context.get("temp_storage_secret_key"),
+            },
+        )
+
         process = await asyncio.create_subprocess_exec(
             *argv,
             stdout=asyncio.subprocess.PIPE,
@@ -555,9 +568,6 @@ except Exception:
             **drop_kwargs,
         )
 
-        secrets = context.get("secrets") or {}
-        mask_secrets = settings.MASK_SECRET
-
         comm_task = asyncio.ensure_future(process.communicate())
         done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
 
@@ -566,8 +576,7 @@ except Exception:
                 process=process,
                 comm_task=comm_task,
                 context=context,
-                secrets=secrets,
-                mask_secrets=mask_secrets,
+                masking_values=masking_values,
             )
 
         stdout, stderr = comm_task.result()
@@ -576,20 +585,6 @@ except Exception:
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
 
-        secrets = context.get("secrets") or {}
-        mask_secrets = masking_enabled()
-        # Temporary storage credentials are masked unconditionally -- they
-        # are never a "user secret" the developer might legitimately want to
-        # see, unlike what MASK_SECRET/masking_enabled() gates. User secrets
-        # are included in the masking set only when mask_secrets is True,
-        # preserving today's opt-out behavior for them exactly.
-        masking_values = build_masking_values(
-            secrets if mask_secrets else {},
-            {
-                "STORAGE_ACCESS_KEY": context.get("temp_storage_access_key"),
-                "STORAGE_SECRET_KEY": context.get("temp_storage_secret_key"),
-            },
-        )
         stderr = scrub(text=stderr, secrets=masking_values)
         stdout = scrub(text=stdout, secrets=masking_values)
 
@@ -626,8 +621,7 @@ except Exception:
         process: asyncio.subprocess.Process,
         comm_task: asyncio.Task,
         context: dict[str, Any],
-        secrets: dict[str, str],
-        mask_secrets: bool,
+        masking_values: dict[str, str],
     ) -> CodeResultData:
         """Terminate a hung execution and report it as a timed-out result.
 
@@ -668,9 +662,8 @@ except Exception:
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        if mask_secrets:
-            stdout = scrub(text=stdout, secrets=secrets)
-            stderr = scrub(text=stderr, secrets=secrets)
+        stdout = scrub(text=stdout, secrets=masking_values)
+        stderr = scrub(text=stderr, secrets=masking_values)
 
         timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
@@ -785,15 +778,19 @@ class DynamicVenvExecutorChain:
             # asked for.
             try:
                 credentials = await self.storage_credential_client.request(execution_id)
-            except StorageCredentialRequestError as e:
-                logger.error("Failed to obtain scoped storage credentials: {}", e)
+            except StorageCredentialRequestError as error:
+                logger.error(
+                    "Failed to obtain scoped storage credentials for execution_id={}: {}",
+                    execution_id,
+                    error,
+                )
                 return CodeResultData(
                     execution_id=execution_id,
-                    stderr=f"Failed to obtain scoped storage credentials: {e}",
+                    stderr="Failed to obtain scoped storage credentials.",
                     stdout="",
                     returncode=1,
                 )
-            except Exception as e:
+            except Exception:
                 # Anything unwrapped that still escapes the credential-request
                 # path (StorageCredentialClient is expected to wrap everything
                 # as StorageCredentialRequestError, but this is defense in
@@ -801,7 +798,7 @@ class DynamicVenvExecutorChain:
                 logger.exception("Unexpected failure obtaining scoped storage credentials")
                 return CodeResultData(
                     execution_id=execution_id,
-                    stderr=f"Unexpected failure obtaining scoped storage credentials: {e}",
+                    stderr="Unexpected failure obtaining scoped storage credentials.",
                     stdout="",
                     returncode=1,
                 )
@@ -810,7 +807,7 @@ class DynamicVenvExecutorChain:
 
         try:
             result = await self.chain.handle(context)
-        except Exception as e:
+        except Exception:
             # Mirrors the storage-credential-request failure branch above:
             # once a temporary credential has been acquired for this
             # execution_id, main.py must always reach the code_results
@@ -819,10 +816,12 @@ class DynamicVenvExecutorChain:
             # failure, OOM, disk error, ...) the exception must not
             # propagate past this point, or the credential leaks until the
             # TTL sweep.
+            # stderr travels to the SSE stream and the LLM tool observation, so
+            # it carries fixed text only; the detail stays in the log.
             logger.exception("Execution chain failed")
             return CodeResultData(
                 execution_id=execution_id,
-                stderr=f"Execution chain failed: {e}",
+                stderr="Execution chain failed.",
                 stdout="",
                 returncode=1,
             )
