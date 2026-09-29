@@ -1,9 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, output, viewChild } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, SpinnerComponent } from '@shared/components';
 import { SecretsStorageService } from '@shared/services';
-import { catchError, filter, forkJoin, of } from 'rxjs';
+import { catchError, filter, forkJoin, fromEvent, of } from 'rxjs';
 
 import {
     RestoreWarningsDialogComponent,
@@ -12,10 +13,12 @@ import {
 import { GetGraphLightRequest, GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { ToastService } from '../../services/notifications';
+import { isEditableTarget } from '../core/directives/shortcut-listener.directive';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { FLOW_EDITOR_STATE_PROVIDERS } from '../core/providers/flow-editor-state.providers';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { ClipboardService } from '../services/clipboard.service';
+import { SidePanelService } from '../services/side-panel.service';
 import { buildPreviewFlowModel } from '../utils/load';
 
 type PreviewFlowModel = ReturnType<typeof buildPreviewFlowModel>;
@@ -84,6 +87,16 @@ export class FlowVersionPreviewComponent {
     // skipSelf: past this component's own editor providers, to the host page's (live) clipboard.
     private readonly liveClipboard = inject(ClipboardService, { skipSelf: true });
     private readonly destroyRef = inject(DestroyRef);
+    private readonly sidePanelService = inject(SidePanelService);
+
+    constructor() {
+        fromEvent<KeyboardEvent>(inject(DOCUMENT), 'keydown', { capture: true })
+            .pipe(
+                filter((event) => event.key === 'Escape' && this.isEscapeFree(event)),
+                takeUntilDestroyed()
+            )
+            .subscribe(() => this.onExit());
+    }
 
     /** Nodes copied from the preview are pasted into the live flow, so they go to its clipboard. */
     protected onCopied(): void {
@@ -115,5 +128,14 @@ export class FlowVersionPreviewComponent {
                     this.flowGraph()?.openNodePanel(nodeId);
                 }
             });
+    }
+
+    private isEscapeFree(event: KeyboardEvent): boolean {
+        return (
+            this.dialog.openDialogs.length === 0 &&
+            this.sidePanelService.selectedNodeId() === null &&
+            !this.flowGraph()?.multiSelectActive() &&
+            !(event.target instanceof HTMLElement && isEditableTarget(event.target))
+        );
     }
 }

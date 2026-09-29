@@ -364,4 +364,61 @@ describe('FlowVersionPreviewComponent', () => {
         expect(element.querySelector('.preview-bar__exit')).not.toBeNull();
         expect(consoleError).toHaveBeenCalled();
     });
+
+    describe('Esc', () => {
+        let closed: ReturnType<typeof vi.fn<() => void>>;
+
+        beforeEach(async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            closed = vi.fn<() => void>();
+            fixture.componentInstance.closed.subscribe(closed);
+            await render(1);
+            await respond(1, 'Python');
+        });
+
+        function pressEscape(target: EventTarget = document): void {
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        }
+
+        it('exits the preview', () => {
+            pressEscape();
+            expect(closed).toHaveBeenCalledTimes(1);
+        });
+
+        it('ignores other keys', () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('leaves an open dialog to close first', () => {
+            (TestBed.inject(Dialog).openDialogs as unknown[]).push({});
+            pressEscape();
+            expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('leaves an open node panel to close first', () => {
+            fixture.debugElement.injector.get(SidePanelService).setSelectedNodeId(previewFlowService().nodes()[1].id);
+            pressEscape();
+            expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('leaves an active multi-select to clear first', () => {
+            flowGraph().multiSelectActive.set(true);
+            pressEscape();
+            expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('does nothing while the user is typing in a field', () => {
+            const input = document.body.appendChild(document.createElement('input'));
+            pressEscape(input);
+            input.remove();
+            expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('stops listening once the preview is gone', () => {
+            fixture.destroy();
+            pressEscape();
+            expect(closed).not.toHaveBeenCalled();
+        });
+    });
 });
