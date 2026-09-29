@@ -1,16 +1,10 @@
-"""Proves the catalog flip reaches the wire: `use` shows up under secrets for /me/, and under exactly the use-enforced resources for /catalog/."""
+"""Proves the catalog flip reaches the wire: `use` shows up under secrets for /me/ and /catalog/, and nowhere else."""
 
 import pytest
 from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole, ResourceType
-
-# Resources where `use` is actually enforced (see
-# tests/services_tests/test_builtin_role_permissions.py::USE_ENFORCED_RESOURCES
-# for the authoritative definition and rationale). Duplicated here rather than
-# imported to avoid a test-to-test import.
-USE_ENFORCED_RESOURCES = {ResourceType.SECRETS.value}
+from rbac.models.enums import BuiltInRole
 
 
 @pytest.fixture
@@ -52,13 +46,12 @@ class TestUseIsReportedToTheFrontend:
             "delete",
         ]
 
-    def test_catalog_lists_use_only_for_use_enforced_resources(self, admin_client):
+    def test_catalog_lists_use_as_applicable_to_secrets_only(self, admin_client):
         catalog = admin_client.get("/api/permissions/catalog/").json()
 
         assert any(action["code"] == "use" for action in catalog["actions"])
-        resources_with_use = {
-            entry["code"]
-            for entry in catalog["resource_types"]
-            if "use" in entry["applicable_actions"]
-        }
-        assert resources_with_use == USE_ENFORCED_RESOURCES
+        for entry in catalog["resource_types"]:
+            if entry["code"] == "secrets":
+                assert "use" in entry["applicable_actions"]
+            else:
+                assert "use" not in entry["applicable_actions"]

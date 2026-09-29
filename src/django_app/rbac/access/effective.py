@@ -65,11 +65,12 @@ class EffectivePermissions:
 
         Only the bits grantable **on that resource** are compared
         (`grantable_bits_for`). Grantability is per-resource -- `use` is an
-        action of `secrets` only -- and the database holds bits
-        that are not actions of their own resource, seeded before the catalog
-        settled. Comparing those lets dead data refuse a legitimate grant:
-        Org Admin (`flows: 31`) could not assign Viewer (`flows: 66`), whose
-        USE bit is enforced nowhere for flows.
+        action of `secrets` and of nothing else -- and a row written before
+        the catalog settled (an older custom role, say) can still hold a bit
+        that is not an action of its own resource. Comparing those lets dead
+        data refuse a legitimate grant: historically, Org Admin (`flows: 31`)
+        could not assign Viewer (`flows: 66`), whose USE bit was enforced
+        nowhere for flows.
         """
         if self.is_superadmin:
             return True

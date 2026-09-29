@@ -19,11 +19,6 @@ from rbac.access.catalog import grantable_bits_for
 
 DELEGATED = [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER]
 
-# Resources where `USE` is actually checked, not just stored. Growing this set is
-# expected as more resources gain a USE-gated action -- unlike LIST, which is
-# checked nowhere and therefore has no such set.
-USE_ENFORCED_RESOURCES = {ResourceType.SECRETS.value}
-
 
 def _builtin(name):
     return Role.objects.get(name=name, is_built_in=True, org__isnull=True)
@@ -84,15 +79,15 @@ def test_secrets_use_is_held_by_org_admin_only():
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("role_name", DELEGATED)
-def test_no_built_in_holds_use_where_it_is_unenforced(role_name):
-    """`use` means something only where it is actually checked: `secrets`
-    (`SecretReferenceGuard`). Everywhere else it is dead data."""
+def test_no_built_in_holds_use_outside_secrets(role_name):
+    """`use` is enforced only by SecretReferenceGuard, so it means nothing on
+    any other resource."""
     role = _builtin(role_name)
 
     elsewhere = [
         row.resource_type
         for row in RolePermission.objects.filter(role=role).exclude(
-            resource_type__in=USE_ENFORCED_RESOURCES
+            resource_type=ResourceType.SECRETS.value
         )
         if row.permissions & int(Permission.USE)
     ]

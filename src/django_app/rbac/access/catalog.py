@@ -1,8 +1,9 @@
 """Static taxonomy for the permission matrix UI.
 
-Single source of truth for which actions apply to which resource type.
-Read by `PermissionCatalogView` (FE matrix UI) and indirectly by the
-built-in role seed migration (for sanity-checking applicable bits).
+Single source of truth for which actions apply to which resource type. The
+seeder validates `builtin_roles.json` against `applicable_actions`, so
+removing an action here while that file still grants it makes the container
+fail to start.
 """
 
 from functools import reduce
@@ -294,9 +295,9 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
 _ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
 
 # The bits a role can actually be granted, **per resource**. Grantability is a
-# per-resource property -- `use` is an action of `secrets` only -- so a global
-# union over ACTION_METADATA is the wrong granularity: enabling an action for one
-# resource would admit its bit on every other resource, where it
+# per-resource property -- `use` is an action of `secrets` and of nothing else --
+# so a global union over ACTION_METADATA is the wrong granularity: enabling an
+# action for one resource would admit its bit on every other resource, where it
 # is neither applicable nor enforced. A code that is not a rendered action
 # (`list`, today) contributes nothing.
 _GRANTABLE_BITS_BY_RESOURCE = {

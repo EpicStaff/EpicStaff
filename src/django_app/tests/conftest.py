@@ -1,13 +1,12 @@
-from importlib import import_module
 from pathlib import Path
 
 import pytest
-from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from rbac.access.builtin_roles import BuiltInRoleSeeder
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.identity.api_keys.generator import ApiKeyGenerator
 
@@ -15,130 +14,18 @@ from rbac.identity.api_keys.generator import ApiKeyGenerator
 from .fixtures import *  # noqa: F401,F403
 
 
-class _MovedModelApps:
-    """Lets migration seed functions, written when these models lived in `tables`,
-    resolve them now that they live in `rbac`.
-
-    The migrations themselves are correct: during a real replay `apps` is the
-    historical ProjectState, where these models really were in `tables`. Only this
-    out-of-band replay against the live registry needs the redirect.
-    """
-
-    _MOVED = frozenset(
-        {
-            "role",
-            "rolepermission",
-            "organization",
-            "organizationuser",
-            "apikey",
-            "passwordresettoken",
-        }
-    )
-
-    def get_model(self, app_label, model_name):
-        if app_label == "tables" and model_name.lower() in self._MOVED:
-            app_label = "rbac"
-        return django_apps.get_model(app_label, model_name)
-
-
-def seed_builtin_roles_and_permissions() -> None:
-    """Re-run every data migration that seeds built-in Roles/RolePermissions.
-
-    `flush` wipes them; in production they are written once by the migrations
-    and never touched. This is the single authoritative chain -- both the
-    session flush below and `heal_builtin_roles` call it, so there is one
-    definition of the seeded end state and no way for the two to disagree.
-
-    Replayed in migration order, because later ones override earlier ones:
-
-      0171  roles + initial bitmasks
-      0183  authoritative bitmasks (e.g. Org Admin export on agents/projects)
-      0205  surfaces grants
-      0209  Org Admin organizations = READ|UPDATE
-      0210  rename resource_type `users` -> `memberships`
-      0210  voice bitmasks, and the EXPORT bit on tools
-      0212  Org Admin api_keys = READ|DELETE
-      0236  revoke secrets:USE from Member/Viewer (192 -> 128)
-      0242  re-seed all three roles to the masks the code enforces
-      0245  grant Org Admin knowledge_sources:EXPORT (for document download)
-      0246  seed the `webhooks` resource permissions
-      rbac 0004  seed the `key_value_tables` resource permissions
-
-    Order is load-bearing twice over. The rename must precede 0242, which
-    writes `memberships` rows directly -- running it first would leave both a
-    `users` and a `memberships` row per role and the rename would then trip
-    the (role, resource_type) unique constraint. And 0242 must precede any
-    subsequent additive seed: 0242 is the authoritative baseline and drops
-    bits the earlier seeds write (flows:USE on Viewer, secrets:LIST,
-    secrets:UPDATE); a later seed layers additional grants on top.
-
-    Skipping any step leaves tests on stale permissions -- e.g. without the
-    voice seed every non-superadmin request to a VOICE-gated endpoint 403s in
-    tests although the migration seeds it correctly in production.
-
-    Migration module names start with digits and cannot be imported with
-    `from ... import`; use importlib.
-    """
-    steps = [
-        ("tables.migrations.0171_seed_builtin_roles", "seed_builtin_roles"),
-        (
-            "tables.migrations.0183_seed_builtin_role_permissions",
-            "seed_role_permissions",
-        ),
-        ("tables.migrations.0205_seed_surface_permissions", "seed"),
-        (
-            "tables.migrations.0209_seed_org_admin_organizations_perm",
-            "seed_org_admin_organizations_perm",
-        ),
-        (
-            "tables.migrations.0210_alter_rolepermission_resource_type",
-            "rename_users_to_memberships",
-        ),
-        (
-            "tables.migrations.0210_seed_voice_role_permissions",
-            "seed_voice_permissions",
-        ),
-        ("tables.migrations.0210_seed_tools_export_permission", "grant_tools_export"),
-        (
-            "tables.migrations.0212_alter_rolepermission_resource_type",
-            "seed_org_admin_api_keys_perm",
-        ),
-        ("tables.migrations.0236_secrets_use_permission", "revoke_builtin_use"),
-        (
-            "tables.migrations.0242_reseed_builtin_role_permissions",
-            "reseed_builtin_role_permissions",
-        ),
-        (
-            "tables.migrations.0245_knowledge_sources_export_permission",
-            "grant_knowledge_sources_export",
-        ),
-        (
-            "tables.migrations.0246_seed_webhooks_resource_permissions",
-            "seed_webhooks_permissions",
-        ),
-        (
-            "rbac.migrations.0004_seed_key_value_tables_permissions",
-            "seed_key_value_tables_permissions",
-        ),
-    ]
-    moved_model_apps = _MovedModelApps()
-    for module_path, func_name in steps:
-        getattr(import_module(module_path), func_name)(moved_model_apps, None)
-
-
 @pytest.fixture(scope="session", autouse=True)
 def flush_test_db_once(django_db_setup, django_db_blocker):
     """Flush the test DB once per session to remove stale data from previous
-    runs, then replay the seeds that `flush` wipes.
+    runs, then re-create the built-in roles that `flush` wipes.
 
-    The replay is `seed_builtin_roles_and_permissions()` and nothing else --
-    it is the single authoritative chain. This fixture used to re-run a subset
-    of the migrations after it, which both duplicated the definition and, once
-    0242 landed, would have re-written the bits 0242 exists to remove.
+    `BuiltInRoleSeeder` is the same code `manage.py seed_builtin_roles` runs at
+    container start, so tests see exactly the state in
+    `rbac/access/builtin_roles.json`.
     """
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
-        seed_builtin_roles_and_permissions()
+        BuiltInRoleSeeder().seed()
 
 
 @pytest.fixture(autouse=True)
@@ -163,7 +50,7 @@ def heal_builtin_roles(request):
     if not touches_db:
         return
     if not Role.objects.filter(is_built_in=True).exists():
-        seed_builtin_roles_and_permissions()
+        BuiltInRoleSeeder().seed()
 
 
 @pytest.fixture(autouse=True)
