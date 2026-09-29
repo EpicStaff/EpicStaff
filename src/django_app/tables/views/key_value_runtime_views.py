@@ -40,7 +40,8 @@ class KeyValueRuntimeAPIView(APIView):
         keys = serializer.validated_data["keys"]
         if operation == "read":
             return Response({"values": self.service.read(table, keys), "table_name": table.name})
-        return Response({"deleted": self.service.delete(table, keys), "table_name": table.name})
+        deleted = self.service.delete(table, keys)
+        return Response({"deleted": len(deleted), "values": deleted, "table_name": table.name})
 
     def _get_active_session(self, session_id: int) -> Session:
         session = Session.objects.select_related("graph").filter(pk=session_id).first()

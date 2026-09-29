@@ -29,7 +29,7 @@ MAX_ENTRIES = 500
 # the table view previews it.
 VALUE_PREVIEW_CHARS = 200
 # Total UTF-8 JSON size of the values one session message carries in full; later long values
-# are sent as previews so a large read or write cannot bloat the message stream. This bounds
+# are sent as previews so a large read, write or delete cannot bloat the message stream. This bounds
 # the size as the message is stored (a JSONField), not the Redis payload: that is published
 # with ensure_ascii escaping, which can grow non-ASCII text several times over.
 MESSAGE_VALUE_BUDGET_BYTES = 512 * 1024
@@ -58,8 +58,9 @@ class KeyValueNode(BaseNode):
     applies only when the path is missing, not when it holds null.
 
     After the table call succeeds, the node emits one `key_value` session message listing
-    the entries that took effect, with their full values while they fit
-    MESSAGE_VALUE_BUDGET_BYTES and a truncated preview after that.
+    the entries that took effect (for a delete, each requested key with the value it held,
+    if any), with their full values while they fit MESSAGE_VALUE_BUDGET_BYTES and a
+    truncated preview after that.
     """
 
     TYPE = "KEY_VALUE"
@@ -175,7 +176,11 @@ class KeyValueNode(BaseNode):
         response = await self.key_value_client.delete(
             self.session_id, self.key_value_table_id, keys
         )
-        message_entries = [KeyValueMessageEntry(key=key) for key in keys]
+        deleted = response["values"]
+        message_entries = [
+            KeyValueMessageEntry(key=key, found=key in deleted, value=deleted.get(key))
+            for key in keys
+        ]
         return None, self._message(response, message_entries, deleted_count=response["deleted"])
 
     def _message(

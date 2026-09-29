@@ -259,6 +259,7 @@ from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
     GRAPH_DELETE_BY_UUID_DELETE,
 )
+from tables.swagger_schemas.key_value_schemas import KEY_VALUE_TABLE_USAGE_GET
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
@@ -2483,17 +2484,30 @@ class SecretViewSet(
 class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KEY_VALUE_TABLES
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "lookup_entries": Permission.READ}
-    queryset = KeyValueTable.objects.annotate(entry_count=Count("entries")).order_by(Lower("name"))
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "lookup_entries": Permission.READ,
+        "usage": Permission.READ,
+    }
+    queryset = KeyValueTable.objects.order_by(Lower("name"))
     serializer_class = KeyValueTableSerializer
+    # These actions never serialize a table, so they skip counting its entries.
+    _actions_without_entry_count = frozenset({"usage", "lookup_entries", "destroy"})
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action in self._actions_without_entry_count:
+            return queryset
+        return queryset.annotate(entry_count=Count("entries"))
 
     def perform_destroy(self, instance: KeyValueTable) -> None:
-        # Row lock: a node save referencing this table takes FOR KEY SHARE on it,
-        # so it waits for this delete (then fails the FK) or we wait for it (then see it).
-        with transaction.atomic():
-            KeyValueTable.objects.select_for_update().get(pk=instance.pk)
-            KeyValueTableService().assert_not_in_use(instance)
-            instance.delete()
+        KeyValueTableService().delete_table(instance)
+
+    @extend_schema(**KEY_VALUE_TABLE_USAGE_GET)
+    @action(detail=True, methods=["get"], url_path="usage")
+    def usage(self, request, pk=None):
+        """How many nodes and flows use this table, for the deletion confirmation dialog."""
+        return Response(KeyValueTableService().usage(self.get_object()))
 
     @action(detail=True, methods=["post"], url_path="entries/lookup")
     def lookup_entries(self, request, pk=None):

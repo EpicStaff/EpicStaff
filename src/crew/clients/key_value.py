@@ -79,7 +79,10 @@ class KeyValueClient:
         return await self._post(session_id, table_id, "write", {"entries": entries})
 
     async def delete(self, session_id: int, table_id: int, keys: list[str]) -> dict[str, Any]:
-        """Return `{"deleted": int, "table_name": str}`."""
+        """Return `{"deleted": int, "values": {key: deleted value}, "table_name": str}`.
+
+        `values` holds only the keys that existed and were deleted.
+        """
         return await self._post(session_id, table_id, "delete", {"keys": keys})
 
     async def _post(
@@ -108,8 +111,8 @@ class KeyValueClient:
 
         Every operation is safe to replay: write upserts by key and delete removes by key, so
         a retry after an attempt that committed leaves the same rows. Only the reported
-        `created` keys and `deleted` count can come back low on such a retry. The last
-        attempt's error, and any timeout, propagate unchanged.
+        `created` keys, `deleted` count and deleted `values` can come back short on such a
+        retry. The last attempt's error, and any timeout, propagate unchanged.
         """
         assert self._client is not None
         for attempt, wait in enumerate(RETRY_BACKOFF_SECONDS, start=1):

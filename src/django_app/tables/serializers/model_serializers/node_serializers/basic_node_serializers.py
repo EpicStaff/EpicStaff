@@ -46,6 +46,7 @@ from tables.serializers.utils.mixins import (
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
+from utils.logger import logger
 
 # Top-level keywords a real JSON Schema might use even without "type" (e.g.
 # "$ref", "allOf"). Used only to tell a bare field map ("reasoning":
@@ -133,9 +134,37 @@ class FileExtractorNodeSerializer(ContentHashWritableMixin, serializers.ModelSer
         fields = "__all__"
 
 
+class KeyValueTableReferenceField(OrgScopedPrimaryKeyRelatedField):
+    """A node's single-FK table reference that saves as no table when the id does not resolve.
+
+    A flow editor left open while its table was deleted still sends that table's id; the
+    database has already cleared it (SET_NULL), so the save stores no table instead of
+    failing the whole flow. A table of another org is not in the queryset either, so it
+    takes the same path: never bound, and indistinguishable from a deleted one. A value
+    that is not a table id at all (`"abc"`) is still a validation error. Single FK only:
+    not for `many=True`.
+
+    Without a request in the context the scoped queryset is empty and nothing resolves;
+    that programming error keeps the original `does_not_exist` error instead of silently
+    saving no table.
+    """
+
+    def to_internal_value(self, data):
+        try:
+            return super().to_internal_value(data)
+        except serializers.ValidationError as error:
+            if error.get_codes() != ["does_not_exist"] or self.context.get("request") is None:
+                raise
+        logger.info(
+            "Key-Value table {} is not in the active organization; saving the node with no table",
+            data,
+        )
+        return None
+
+
 class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-    key_value_table = OrgScopedPrimaryKeyRelatedField(
+    key_value_table = KeyValueTableReferenceField(
         queryset=KeyValueTable.objects.all(), required=False, allow_null=True
     )
 

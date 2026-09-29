@@ -159,11 +159,12 @@ class KeyValueMessageEntry:
     key: str
     # read: target path; write: source path (raw, incl. |default); delete: None
     path: str | None = None
-    # read only: key in values (a stored null counts as found)
+    # read: key in values (a stored null counts as found); delete: key existed and was
+    # deleted; write: None
     found: bool | None = None
     # write only
     created: bool | None = None
-    # read: stored value (None when not found); write: value written; delete: None
+    # read: stored value; write: value written; delete: deleted value. None when not found.
     value: Any = None
     # True when the value did not fit the message budget; `value` is then a JSON-text preview
     truncated: bool = False

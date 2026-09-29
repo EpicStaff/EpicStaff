@@ -1,11 +1,14 @@
 import pytest
 from django.urls import reverse
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.test import APIClient
 
-from tables.models import KeyValueNode, KeyValueTable
+from tables.models import Edge, KeyValueNode, KeyValueTable, PythonNode
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission
+from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
+    KeyValueTableReferenceField,
+)
 from tests.fixtures import *  # noqa: F401,F403
 
 R = int(Permission.READ)
@@ -83,13 +86,143 @@ def test_graph_detail_includes_key_value_nodes(auth_client, graph, table):
     assert response.data["key_value_node_list"][0]["mode"] == "write"
 
 
+@pytest.fixture
+def deleted_table_id(default_org) -> int:
+    table = KeyValueTable.objects.create(org=default_org, name="Gone")
+    table_id = table.id
+    table.delete()
+    return table_id
+
+
+def _save_with_other_changes(graph, start_node, table_id) -> dict:
+    """A save that also creates a python node and an edge, so a coerced table reference
+    can be seen not to cost the rest of the save."""
+    key_value_temp_id = "aaaa0000-0000-0000-0000-000000000001"
+    return {
+        "save_version": graph.save_version,
+        "key_value_node_list": [
+            {**_node_payload(graph, None), "key_value_table": table_id, "temp_id": key_value_temp_id}
+        ],
+        "python_node_list": [
+            {
+                "graph": graph.id,
+                "node_name": "python-1",
+                "python_code": {"code": "def main(): return 42", "entrypoint": "main", "libraries": []},
+            }
+        ],
+        "edge_list": [
+            {"graph": graph.id, "start_node_id": start_node.id, "end_temp_id": key_value_temp_id}
+        ],
+    }
+
+
+def _assert_saved_with_no_table(response, graph, start_node) -> None:
+    assert response.status_code == status.HTTP_200_OK, response.content
+    node = KeyValueNode.objects.get(graph=graph, node_name="persist-1")
+    assert node.key_value_table_id is None
+    assert PythonNode.objects.filter(graph=graph, node_name="python-1").exists()
+    assert Edge.objects.filter(graph=graph, start_node_id=start_node.id, end_node_id=node.id).exists()
+
+
 @pytest.mark.django_db
-def test_cross_org_table_is_rejected(auth_client, graph, foreign_table):
-    payload = {"save_version": graph.save_version,
-               "key_value_node_list": [_node_payload(graph, foreign_table)]}
+def test_deleted_table_id_is_saved_as_no_table(auth_client, graph, start_node, deleted_table_id):
+    payload = _save_with_other_changes(graph, start_node, deleted_table_id)
+
     response = auth_client.post(_save_url(graph.id), payload, format="json")
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    _assert_saved_with_no_table(response, graph, start_node)
+
+
+@pytest.mark.django_db
+def test_foreign_org_table_id_is_saved_as_no_table_like_a_deleted_one(
+    auth_client, graph, start_node, foreign_table
+):
+    payload = _save_with_other_changes(graph, start_node, foreign_table.id)
+
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    _assert_saved_with_no_table(response, graph, start_node)
+    assert "Theirs" not in response.content.decode()
+    foreign_table.refresh_from_db()
+    assert foreign_table.name == "Theirs"
+    assert not foreign_table.nodes.exists()
+
+
+@pytest.mark.django_db
+def test_existing_node_still_pointing_at_a_deleted_table_saves(auth_client, graph, table):
+    # What an editor left open during the table's deletion sends back for its node.
+    node = KeyValueNode.objects.create(graph=graph, node_name="persist-1", key_value_table=table)
+    stale_table_id = table.id
+    table.delete()
+    payload = {
+        "save_version": graph.save_version,
+        "key_value_node_list": [
+            {**_node_payload(graph, None), "id": node.id, "key_value_table": stale_table_id}
+        ],
+    }
+
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    node.refresh_from_db()
+    assert node.key_value_table_id is None
+
+
+@pytest.mark.django_db
+def test_deleted_table_id_needs_no_key_value_tables_permission(
+    client_with_key_value_tables, graph, deleted_table_id
+):
+    payload = {
+        "save_version": graph.save_version,
+        "key_value_node_list": [
+            {**_node_payload(graph, None), "mode": "write", "key_value_table": deleted_table_id,
+             "entries": [{"key": "k", "value": "variables.a"}]}
+        ],
+    }
+
+    response = client_with_key_value_tables(0).post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert KeyValueNode.objects.get(graph=graph).key_value_table_id is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bad_value", ["abc", True, [1], {"id": 1}])
+def test_table_value_that_is_not_an_id_is_rejected(auth_client, graph, bad_value):
+    payload = {
+        "save_version": graph.save_version,
+        "key_value_node_list": [{**_node_payload(graph, None), "key_value_table": bad_value}],
+    }
+
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
     assert not KeyValueNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_table_reference_without_request_fails_instead_of_saving_no_table(table):
+    # No request means no active org, so even a valid id resolves to nothing; that must stay
+    # a loud validation error, never a silent "no table".
+    field = KeyValueTableReferenceField(queryset=KeyValueTable.objects.all())
+
+    with pytest.raises(serializers.ValidationError) as error:
+        field.to_internal_value(table.id)
+
+    assert error.value.get_codes() == ["does_not_exist"]
+
+
+@pytest.mark.django_db
+def test_valid_table_id_is_still_bound(auth_client, graph, table):
+    payload = {
+        "save_version": graph.save_version,
+        "key_value_node_list": [{**_node_payload(graph, None), "key_value_table": table.id}],
+    }
+
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert KeyValueNode.objects.get(graph=graph).key_value_table_id == table.id
 
 
 def _entries_of(mode: str) -> list[dict]:
@@ -104,7 +237,10 @@ DENIED_MESSAGES = {
         "You need Key-Value Tables Create and Edit permission to configure a write node on the "
         "table 'Customers'."
     ),
-    "delete": "You need Key-Value Tables Delete permission to configure a delete node on the table 'Customers'.",
+    "delete": (
+        "You need Key-Value Tables View and Delete permission to configure a delete node on "
+        "the table 'Customers'."
+    ),
 }
 
 
@@ -119,6 +255,7 @@ DENIED_MESSAGES = {
         (R | C, "write", False),
         (R | U, "write", False),
         (R | C | U, "write", True),
+        (D, "delete", False),
         (R | D, "delete", True),
     ],
 )

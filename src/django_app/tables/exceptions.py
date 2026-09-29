@@ -497,17 +497,6 @@ class KeyValueEntryValueTooLargeError(CustomAPIExeption):
         )
 
 
-class KeyValueTableInUseError(CustomAPIExeption):
-    status_code = 409
-    default_code = "key_value_table_in_use"
-
-    def __init__(self, flow_names: list[str]):
-        self.flow_names = flow_names
-        super().__init__(
-            f"Table is used by flows: {', '.join(flow_names)}.", code=self.default_code
-        )
-
-
 class KeyValueModeDeniedError(CustomAPIExeption):
     """Raised when the caller lacks the key_value_tables permissions a node's mode needs.
 
@@ -517,7 +506,7 @@ class KeyValueModeDeniedError(CustomAPIExeption):
 
     status_code = 403
     default_code = "key_value_mode_denied"
-    _PERMISSION_LABELS = {"read": "View", "write": "Create and Edit", "delete": "Delete"}
+    _PERMISSION_LABELS = {"read": "View", "write": "Create and Edit", "delete": "View and Delete"}
 
     def __init__(self, mode: str, table_name: str):
         super().__init__(

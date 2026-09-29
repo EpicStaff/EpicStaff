@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from django.db.models import QuerySet, TextField, Value
-from django.db.models.functions import Cast, Coalesce, Left, Length
+from django.db import connection, transaction
+from django.db.models import Count, QuerySet, TextField, Value
+from django.db.models.functions import Cast, Coalesce, Collate, Left, Length
 from django.db.models.lookups import GreaterThan
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import OrgMembershipRequiredError
@@ -14,7 +15,7 @@ from tables.exceptions import (
     KeyValueEntryKeyInvalidError,
     KeyValueEntryValueTooLargeError,
     KeyValueModeDeniedError,
-    KeyValueTableInUseError,
+    KeyValueTableNotFoundError,
 )
 from tables.models import (
     KeyValueNode,
@@ -25,12 +26,20 @@ from tables.models import (
 )
 from tables.validators.key_value_entries_validator import resolved_key_error
 
+# The one order in which entry rows are locked, by every statement that locks several at
+# once: two such statements locking overlapping keys in different orders can deadlock.
+# Keys are ASCII identifiers (KEY_PATTERN), so Python's code-point order is the same as
+# "C" collation byte order.
+_ENTRY_LOCK_ORDER = Collate("key", "C")
+
+
 # Every permission a node of that mode needs on its table. Checked one by one:
-# EffectivePermissions.can() passes when any bit of a combined flag is held.
+# EffectivePermissions.can() passes when any bit of a combined flag is held. Delete needs
+# READ too: its session message reports the values it deleted.
 MODE_PERMISSIONS = {
     KeyValueNode.Mode.READ: (Permission.READ,),
     KeyValueNode.Mode.WRITE: (Permission.CREATE, Permission.UPDATE),
-    KeyValueNode.Mode.DELETE: (Permission.DELETE,),
+    KeyValueNode.Mode.DELETE: (Permission.READ, Permission.DELETE),
 }
 
 
@@ -65,34 +74,77 @@ class KeyValueTableService:
         entries: dict[str, Any],
         session: Session | None = None,
     ) -> list[str]:
-        """Upsert `entries` into `table` and return the keys that did not exist before, sorted."""
+        """Upsert `entries` into `table` and return the keys that did not exist before, sorted.
+
+        Raises:
+            KeyValueTableNotFoundError (404): the table was deleted meanwhile.
+        """
         for key, value in entries.items():
             self.validate_key(key)
             self.validate_value(value)
-        # NOTE: created flags are approximate under concurrent writers; use RETURNING
-        # (xmax = 0) via raw SQL if exact created flags ever matter.
-        existing = set(
-            KeyValueTableEntry.objects.filter(table=table, key__in=entries).values_list(
-                "key", flat=True
+        with transaction.atomic():
+            self._lock_table_for_entry_writes(table)
+            # NOTE: created flags are approximate under concurrent writers; use RETURNING
+            # (xmax = 0) via raw SQL if exact created flags ever matter.
+            existing = set(
+                KeyValueTableEntry.objects.filter(table=table, key__in=entries).values_list(
+                    "key", flat=True
+                )
             )
-        )
-        rows = [
-            KeyValueTableEntry(table=table, key=key, value=value, updated_by_session=session)
-            for key, value in entries.items()
-        ]
-        KeyValueTableEntry.objects.bulk_create(
-            rows,
-            update_conflicts=True,
-            unique_fields=["table", "key"],
-            update_fields=["value", "updated_at", "updated_by_session"],
-        )
+            # Postgres locks an upsert's conflicting rows in VALUES order, so the rows go in
+            # _ENTRY_LOCK_ORDER.
+            rows = [
+                KeyValueTableEntry(
+                    table=table, key=key, value=entries[key], updated_by_session=session
+                )
+                for key in sorted(entries)
+            ]
+            KeyValueTableEntry.objects.bulk_create(
+                rows,
+                update_conflicts=True,
+                unique_fields=["table", "key"],
+                update_fields=["value", "updated_at", "updated_by_session"],
+            )
         return sorted(set(entries) - existing)
 
-    def delete(self, table: KeyValueTable, keys: list[str]) -> int:
+    def _lock_table_for_entry_writes(self, table: KeyValueTable) -> None:
+        # Without this the lock order is entries -> table: the upsert locks existing entry
+        # rows, then the deferred FK check of its new rows takes FOR KEY SHARE on the table
+        # row at commit. delete_table goes table -> entries (FOR UPDATE, then the cascade
+        # deletes the entries), so the two would deadlock. Taking FOR KEY SHARE up front
+        # makes both sides go table -> entries.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT 1 FROM {connection.ops.quote_name(KeyValueTable._meta.db_table)} "
+                "WHERE id = %s FOR KEY SHARE",
+                [table.pk],
+            )
+            if cursor.fetchone() is None:
+                raise KeyValueTableNotFoundError(table.pk)
+
+    def delete(self, table: KeyValueTable, keys: list[str]) -> dict[str, Any]:
+        """Delete the entries stored under `keys` in `table` and return their values by key.
+
+        Keys with no entry are absent from the result. The rows are locked, read and deleted
+        by primary key in one transaction, so a concurrent write cannot change a value between
+        reading it and deleting it: every returned value is exactly the one deleted.
+
+        Raises:
+            KeyValueEntryKeyInvalidError (400): a key breaks KEY_PATTERN or MAX_KEY_LENGTH;
+                nothing is deleted.
+        """
         for key in keys:
             self.validate_key(key)
-        deleted, _ = KeyValueTableEntry.objects.filter(table=table, key__in=keys).delete()
-        return deleted
+        with transaction.atomic():
+            rows = list(
+                KeyValueTableEntry.objects.select_for_update()
+                .filter(table=table, key__in=keys)
+                .order_by(_ENTRY_LOCK_ORDER)
+                .values_list("pk", "key", "value")
+            )
+            if rows:
+                KeyValueTableEntry.objects.filter(pk__in=[pk for pk, _, _ in rows]).delete()
+        return {key: value for _, key, value in rows}
 
     def lookup(self, table: KeyValueTable, keys: list[str]) -> dict[str, EntryLookup]:
         # Preview is computed in the database (truncated jsonb-as-text) so a lookup of up
@@ -157,15 +209,35 @@ class KeyValueTableService:
             return False
         return True
 
-    def assert_not_in_use(self, table: KeyValueTable) -> None:
-        flow_names = list(
-            KeyValueNode.objects.filter(key_value_table=table, graph__is_soft_deleted=False)
-            .values_list("graph__name", flat=True)
-            .distinct()
-            .order_by("graph__name")
-        )
-        if flow_names:
-            raise KeyValueTableInUseError(flow_names)
+    def delete_table(self, table: KeyValueTable) -> None:
+        """Delete `table` with its entries and unlink every Key-Value node that used it.
+
+        Nodes keep existing with `key_value_table = NULL` (the FK's SET_NULL, which Django
+        applies through the base manager, so nodes of soft-deleted flows are unlinked too).
+
+        Raises:
+            KeyValueTableNotFoundError (404): the table was deleted meanwhile, e.g. by a
+                concurrent request this one waited on for the row lock.
+        """
+        # Row lock first. Two kinds of writers take FOR KEY SHARE on this row and so wait for
+        # this delete: a node save referencing the table, at its FK check (it then fails
+        # the FK instead of linking a node after SET_NULL ran and failing this delete at
+        # commit), and a runtime entry write, before it locks any entry (see
+        # _lock_table_for_entry_writes), so the lock order is table -> entries on both sides.
+        with transaction.atomic():
+            if KeyValueTable.objects.select_for_update().filter(pk=table.pk).first() is None:
+                raise KeyValueTableNotFoundError(table.pk)
+            table.delete()
+
+    def usage(self, table: KeyValueTable) -> dict[str, int]:
+        """Count the Key-Value nodes using `table` and their distinct flows.
+
+        Only live nodes of flows that are not soft-deleted count: deleting the table unlinks
+        soft-deleted ones too, but nobody sees them.
+        """
+        return KeyValueNode.objects.filter(
+            key_value_table=table, graph__is_soft_deleted=False
+        ).aggregate(node_count=Count("pk"), flow_count=Count("graph_id", distinct=True))
 
     def session_can_access(self, session: Session, table: KeyValueTable) -> bool:
         """Access is granted by saved configuration, never by the runtime caller.

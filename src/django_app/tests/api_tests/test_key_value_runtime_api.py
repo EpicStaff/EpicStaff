@@ -49,8 +49,22 @@ def test_write_read_delete_round_trip(system_client, running_session, table):
                                    {"entries": {"a": 2, "c": 3}}, format="json")
     assert rewritten.data == {"written": 2, "created": ["c"], "table_name": "Customers"}
 
-    deleted = system_client.post(_url(running_session.id, table.id, "delete"), {"keys": ["a"]}, format="json")
-    assert deleted.data == {"deleted": 1, "table_name": "Customers"}
+    deleted = system_client.post(_url(running_session.id, table.id, "delete"),
+                                 {"keys": ["a", "b", "zz"]}, format="json")
+    assert deleted.status_code == 200, deleted.content
+    assert deleted.json() == {
+        "deleted": 2,
+        "values": {"a": 2, "b": {"x": [1]}},
+        "table_name": "Customers",
+    }
+    assert list(KeyValueTableEntry.objects.filter(table=table).values_list("key", flat=True)) == ["c"]
+
+
+@pytest.mark.django_db
+def test_delete_of_only_missing_keys_reports_nothing(system_client, running_session, table):
+    response = system_client.post(_url(running_session.id, table.id, "delete"), {"keys": ["zz"]}, format="json")
+    assert response.status_code == 200, response.content
+    assert response.json() == {"deleted": 0, "values": {}, "table_name": "Customers"}
 
 
 @pytest.mark.django_db
@@ -104,6 +118,20 @@ def test_table_in_other_org_is_404(system_client, running_session):
     assert response.data["code"] == "key_value_table_not_found"
     assert "table_name" not in response.data
     assert "Customers" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_delete_from_table_in_other_org_is_404_and_deletes_nothing(system_client, running_session):
+    foreign = KeyValueTable.objects.create(org=Organization.objects.create(name="Foreign"), name="Customers")
+    KeyValueTableEntry.objects.create(table=foreign, key="a", value="secret")
+    KeyValueNode.objects.create(graph=running_session.graph, node_name="p2", key_value_table=foreign)
+
+    response = system_client.post(_url(running_session.id, foreign.id, "delete"), {"keys": ["a"]}, format="json")
+
+    assert response.status_code == 404
+    assert response.data["code"] == "key_value_table_not_found"
+    assert "secret" not in response.content.decode()
+    assert KeyValueTableEntry.objects.filter(table=foreign, key="a").exists()
 
 
 @pytest.mark.django_db
@@ -194,3 +222,16 @@ def test_invalid_resolved_key_is_400(system_client, running_session, table, oper
     assert list(KeyValueTableEntry.objects.filter(table=table).values_list("key", "value")) == [
         ("user_4 2", "dev data")
     ]
+
+
+@pytest.mark.django_db
+def test_delete_with_one_invalid_key_deletes_no_valid_key(system_client, running_session, table):
+    KeyValueTableEntry.objects.create(table=table, key="valid", value=1)
+
+    response = system_client.post(_url(running_session.id, table.id, "delete"),
+                                  {"keys": ["valid", "user_4 2"]}, format="json")
+
+    assert response.status_code == 400
+    assert response.data["code"] == "key_value_entry_key_invalid"
+    assert "values" not in response.data
+    assert KeyValueTableEntry.objects.filter(table=table, key="valid").exists()

@@ -200,6 +200,7 @@ def test_full_import_rejects_invalid_key(source_node, source_org):
 R = int(Permission.READ)
 C = int(Permission.CREATE)
 U = int(Permission.UPDATE)
+D = int(Permission.DELETE)
 
 # (key_value_tables bits, source node mode, table stays bound)
 BINDING_CASES = [
@@ -208,6 +209,8 @@ BINDING_CASES = [
     pytest.param(R, "write", False, id="R-write"),
     pytest.param(R | C, "write", False, id="RC-write"),
     pytest.param(R | C | U, "write", True, id="RCU-write"),
+    pytest.param(D, "delete", False, id="D-delete"),
+    pytest.param(R | D, "delete", True, id="RD-delete"),
 ]
 
 
@@ -238,7 +241,10 @@ def acting_user(django_user_model, source_org, target_org):
 
 def _set_mode(node: KeyValueNode, mode: str) -> KeyValueNode:
     node.mode = mode
-    node.save(update_fields=["mode"])
+    # Delete entries name only a key; a read/write entry's value is invalid there.
+    if mode == "delete":
+        node.entries = [{"key": entry["key"]} for entry in node.entries]
+    node.save(update_fields=["mode", "entries"])
     return node
 
 

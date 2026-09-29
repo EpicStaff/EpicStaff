@@ -66,11 +66,17 @@ async def test_delete_sends_keys_and_returns_response():
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"deleted": 1, "table_name": "Customers"})
+        return httpx.Response(
+            200, json={"deleted": 1, "values": {"k": {"a": 1}}, "table_name": "Customers"}
+        )
 
     client = await _started(handler)
-    assert await client.delete(7, 3, ["k"]) == {"deleted": 1, "table_name": "Customers"}
-    assert seen["body"] == {"keys": ["k"]}
+    assert await client.delete(7, 3, ["k", "missing"]) == {
+        "deleted": 1,
+        "values": {"k": {"a": 1}},
+        "table_name": "Customers",
+    }
+    assert seen["body"] == {"keys": ["k", "missing"]}
 
 
 @pytest.fixture

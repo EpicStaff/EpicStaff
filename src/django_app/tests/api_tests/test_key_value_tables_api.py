@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from tables.models import Graph, KeyValueNode, KeyValueTable, KeyValueTableEntry, Session
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole
 
 TABLES_URL = "/api/key-value-tables/"
@@ -116,28 +116,122 @@ def test_member_can_read_but_not_create_or_delete(member_client, table_a):
     assert member_client.delete(f"{TABLES_URL}{table_a.id}/").status_code == 403
 
 
-@pytest.mark.django_db
-def test_delete_table_in_use_is_409_with_flow_names(admin_client, org_a, table_a):
-    graph = Graph.objects.create(name="Billing flow", org=org_a)
-    KeyValueNode.objects.create(graph=graph, node_name="p", key_value_table=table_a)
-    response = admin_client.delete(f"{TABLES_URL}{table_a.id}/")
-    assert response.status_code == 409
-    assert "Billing flow" in response.data["message"]
-    assert KeyValueTable.objects.filter(id=table_a.id).exists()
-
-
-@pytest.mark.django_db
-def test_delete_table_referenced_only_by_soft_deleted_node(admin_client, org_a, table_a):
-    graph = Graph.objects.create(name="Old flow", org=org_a)
-    node = KeyValueNode.objects.create(graph=graph, node_name="p", key_value_table=table_a)
+def _soft_deleted_node(graph, table, node_name: str) -> KeyValueNode:
+    node = KeyValueNode.objects.create(graph=graph, node_name=node_name, key_value_table=table)
     node.is_soft_deleted = True
     node.soft_deleted_at = timezone.now()
     node.save()
+    return node
+
+
+@pytest.fixture
+def table_in_use(org_a, table_a):
+    """`table_a` used twice in "Billing", once in "Support", by a soft-deleted node of
+    "Billing" and by a node of the soft-deleted flow "Old"; "Billing" also uses another table."""
+    billing = Graph.objects.create(name="Billing", org=org_a)
+    support = Graph.objects.create(name="Support", org=org_a)
+    old = Graph.objects.create(name="Old", org=org_a)
+    other_table = KeyValueTable.objects.create(org=org_a, name="Other")
+    nodes = {
+        "billing_1": KeyValueNode.objects.create(graph=billing, node_name="b1", key_value_table=table_a),
+        "billing_2": KeyValueNode.objects.create(graph=billing, node_name="b2", key_value_table=table_a),
+        "support": KeyValueNode.objects.create(graph=support, node_name="s", key_value_table=table_a),
+        "billing_deleted": _soft_deleted_node(billing, table_a, "b3"),
+        "old": KeyValueNode.objects.create(graph=old, node_name="o", key_value_table=table_a),
+        "other_table": KeyValueNode.objects.create(graph=billing, node_name="x", key_value_table=other_table),
+    }
+    old.soft_delete()
+    assert KeyValueNode.all_objects.get(id=nodes["old"].id).is_soft_deleted
+    return nodes
+
+
+@pytest.mark.django_db
+def test_delete_table_in_use_succeeds_and_unlinks_every_node(admin_client, table_a, table_in_use):
+    KeyValueTableEntry.objects.create(table=table_a, key="k", value=1)
 
     response = admin_client.delete(f"{TABLES_URL}{table_a.id}/")
 
-    assert response.status_code == 204
-    assert KeyValueNode.all_objects.get(id=node.id).key_value_table_id is None
+    assert response.status_code == 204, response.content
+    assert not KeyValueTable.objects.filter(id=table_a.id).exists()
+    assert not KeyValueTableEntry.objects.filter(table_id=table_a.id).exists()
+    unlinked = {name: node for name, node in table_in_use.items() if name != "other_table"}
+    assert set(
+        KeyValueNode.all_objects.filter(id__in=[node.id for node in unlinked.values()])
+        .values_list("key_value_table_id", flat=True)
+    ) == {None}
+    assert KeyValueNode.all_objects.filter(id__in=[node.id for node in unlinked.values()]).count() == 5
+    other = table_in_use["other_table"]
+    assert KeyValueNode.objects.get(id=other.id).key_value_table_id == other.key_value_table_id
+
+
+@pytest.mark.django_db
+def test_usage_counts_live_nodes_and_distinct_flows(admin_client, table_a, table_in_use):
+    response = admin_client.get(f"{TABLES_URL}{table_a.id}/usage/")
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {"node_count": 3, "flow_count": 2}
+
+
+@pytest.mark.django_db
+def test_usage_does_not_count_entries(admin_client, table_a):
+    KeyValueTableEntry.objects.create(table=table_a, key="k", value=1)
+
+    with CaptureQueriesContext(connection) as queries:
+        response = admin_client.get(f"{TABLES_URL}{table_a.id}/usage/")
+
+    assert response.status_code == 200, response.content
+    assert not any("tables_keyvaluetableentry" in q["sql"] for q in queries.captured_queries)
+
+
+@pytest.mark.django_db
+def test_list_and_retrieve_still_carry_entry_count(admin_client, table_a):
+    KeyValueTableEntry.objects.create(table=table_a, key="k", value=1)
+
+    assert admin_client.get(f"{TABLES_URL}{table_a.id}/").data["entry_count"] == 1
+    assert _results(admin_client.get(TABLES_URL))[0]["entry_count"] == 1
+
+
+@pytest.mark.django_db
+def test_usage_of_unused_table_is_zero(admin_client, table_a):
+    response = admin_client.get(f"{TABLES_URL}{table_a.id}/usage/")
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {"node_count": 0, "flow_count": 0}
+
+
+@pytest.mark.django_db
+def test_usage_is_readable_by_member(member_client, table_a, table_in_use):
+    response = member_client.get(f"{TABLES_URL}{table_a.id}/usage/")
+
+    assert response.status_code == 200, response.content
+    assert response.json() == {"node_count": 3, "flow_count": 2}
+
+
+@pytest.mark.django_db
+def test_usage_of_table_in_other_org_is_404(admin_client, org_b, table_b):
+    graph = Graph.objects.create(name="Theirs", org=org_b)
+    KeyValueNode.objects.create(graph=graph, node_name="t", key_value_table=table_b)
+
+    response = admin_client.get(f"{TABLES_URL}{table_b.id}/usage/")
+
+    assert response.status_code == 404
+    assert "node_count" not in response.data
+
+
+@pytest.mark.django_db
+def test_usage_without_key_value_tables_read_is_403(django_user_model, org_a, table_a):
+    role = Role.objects.create(name="Flows only", org=org_a, is_built_in=False)
+    RolePermission.objects.create(role=role, resource_type="flows", permissions=255)
+    user = django_user_model.objects.create_user(email="flows-only@a.test", password="pw")
+    OrganizationUser.objects.create(user=user, org=org_a, role=role)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_a.id))
+
+    response = client.get(f"{TABLES_URL}{table_a.id}/usage/")
+
+    assert response.status_code == 403
+    assert "node_count" not in response.data
 
 
 # --- entries --------------------------------------------------------------

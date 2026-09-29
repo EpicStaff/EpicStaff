@@ -224,9 +224,8 @@ class KeyValueNode(BaseNode, SoftDeleteFields):
         DELETE = "delete"
 
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="key_value_node_list")
-    # SET_NULL, not PROTECT: soft-deleted nodes keep the row, and PROTECT would block
-    # deleting a table referenced only by deleted flows. Active usage is checked by
-    # KeyValueTableService.assert_not_in_use before a table is deleted.
+    # SET_NULL: deleting a table is allowed while nodes use it; they stay with no table
+    # selected (see KeyValueTableService.delete_table).
     key_value_table = models.ForeignKey(
         "KeyValueTable",
         on_delete=models.SET_NULL,

@@ -17,12 +17,16 @@ def read_response(values: dict) -> dict:
     return {"values": values, "table_name": TABLE_NAME}
 
 
-def make_client(created: list[str] | None = None, deleted: int = 0) -> AsyncMock:
+def delete_response(values: dict) -> dict:
+    return {"deleted": len(values), "values": values, "table_name": TABLE_NAME}
+
+
+def make_client(created: list[str] | None = None) -> AsyncMock:
     """A client whose calls return Django's response shapes."""
     client = AsyncMock()
     client.read.return_value = read_response({})
     client.write.return_value = {"written": 0, "created": created or [], "table_name": TABLE_NAME}
-    client.delete.return_value = {"deleted": deleted, "table_name": TABLE_NAME}
+    client.delete.return_value = delete_response({})
     return client
 
 
@@ -726,20 +730,35 @@ async def test_write_emits_message_with_created_flags_and_source_paths():
 
 
 @pytest.mark.asyncio
-async def test_delete_emits_message_with_deleted_count_and_requested_keys():
-    client = make_client(deleted=1)
-    node = make_node("delete", [{"key": "b"}, {"key": "a"}, {"key": "b"}], client)
+async def test_delete_emits_message_with_deleted_values_and_missing_keys():
+    client = make_client()
+    client.delete.return_value = delete_response({"b": {"name": "Ann"}, "stored_null": None})
+    node = make_node(
+        "delete",
+        [{"key": "b"}, {"key": "a"}, {"key": "b"}, {"key": "stored_null"}],
+        client,
+    )
     writer = MagicMock()
 
-    await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
+    output = await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
 
-    [message] = key_value_messages(writer)
-    assert message["mode"] == "delete"
-    assert message["deleted_count"] == 1
-    assert [entry["key"] for entry in message["entries"]] == ["a", "b"]
-    assert all(entry["path"] is None for entry in message["entries"])
-    assert all(entry["value"] is None for entry in message["entries"])
-    assert not any(entry["truncated"] for entry in message["entries"])
+    assert output is None
+    assert key_value_messages(writer) == [{
+        "mode": "delete",
+        "table_id": 3,
+        "table_name": "Customers",
+        "entries": [
+            {"key": "a", "path": None, "found": False, "created": None,
+             "value": None, "truncated": False},
+            {"key": "b", "path": None, "found": True, "created": None,
+             "value": {"name": "Ann"}, "truncated": False},
+            # A deleted entry that held null was found; its value is the stored null.
+            {"key": "stored_null", "path": None, "found": True, "created": None,
+             "value": None, "truncated": False},
+        ],
+        "deleted_count": 2,
+        "message_type": "key_value",
+    }]
 
 
 NESTED_VALUE = {"name": "Ann", "tags": ["a", "b"], "address": {"city": "Kyiv", "zip": None}}
@@ -807,6 +826,33 @@ async def test_values_past_message_budget_are_sent_as_truncated_previews(monkeyp
         # A stored null and a missing key carry no value, so they are never truncated.
         (True, None, False),
         (False, None, False),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_deleted_values_past_message_budget_are_sent_as_truncated_previews(monkeypatch):
+    # '"aaaaaaaaaa"' is 12 bytes of JSON: two fit a 30-byte budget, the third does not.
+    monkeypatch.setattr(key_value_node, "MESSAGE_VALUE_BUDGET_BYTES", 30)
+    client = make_client()
+    client.delete.return_value = delete_response(
+        {"k1": "a" * 10, "k2": "a" * 10, "k3": {"text": "ж" * 300}, "k4": "small"}
+    )
+    node = make_node("delete", [{"key": f"k{index}"} for index in range(1, 6)], client)
+    writer = MagicMock()
+
+    await node.execute(state=make_state({}), writer=writer, execution_order=0, input_={})
+
+    [message] = key_value_messages(writer)
+    assert message["deleted_count"] == 4
+    assert [
+        (entry["key"], entry["found"], entry["value"], entry["truncated"])
+        for entry in message["entries"]
+    ] == [
+        ("k1", True, "a" * 10, False),
+        ("k2", True, "a" * 10, False),
+        ("k3", True, '{"text": "' + "ж" * 190, True),
+        ("k4", True, "small", False),
+        ("k5", False, None, False),
     ]
 
 
