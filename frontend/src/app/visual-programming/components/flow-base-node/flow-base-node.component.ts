@@ -72,7 +72,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
 export class FlowBaseNodeComponent {
     private readonly agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
-    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{

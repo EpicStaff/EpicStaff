@@ -313,7 +313,7 @@ export class NodePanelShellComponent {
     }
 
     private tryAutosave(trigger: number): void {
-        if (trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
+        if (this.flowReadOnly.isReadOnly() || trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
             return;
         }
         if (this.isAutosaving) {

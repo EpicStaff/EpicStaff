@@ -266,6 +266,7 @@ export class DomainDialogComponent implements OnDestroy {
     public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
     public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
 
+    /** Opened with the editor's injector, so this is the preview's or the live editor's state. */
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;

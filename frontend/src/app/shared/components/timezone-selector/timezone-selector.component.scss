@@ -27,7 +27,7 @@
         color: var(--color-input-text-placeholder);
     }
 
-    &:hover:not(.tz-selector__btn--readonly) {
+    &:hover:not(:disabled):not(.tz-selector__btn--readonly) {
         border-color: var(--accent-color, #685fff);
     }
 

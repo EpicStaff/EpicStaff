@@ -63,7 +63,7 @@
                                         {{ selectedAgentName() || 'Select agent' }}
                                     </span>
                                     <app-svg-icon
-                                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                        *appIfFlowEditable
                                         icon="chevron-down-filled"
                                         size="8px"
                                     />
@@ -126,7 +126,7 @@
                         </div>
 
                         <app-inputs-you-can-use
-                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                            *appIfFlowEditable
                             [names]="inputMapKeys()"
                             (insert)="insertInputToInstructions($event)"
                         />
@@ -162,7 +162,7 @@
                             ></app-agent-tasks-table>
 
                             <button
-                                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                *appIfFlowEditable
                                 type="button"
                                 class="add-task-btn"
                                 (click)="addTask()"
@@ -228,7 +228,7 @@
                                 </div>
                                 <div class="main-editor-pane__actions">
                                     <app-instructions-view-toggle
-                                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                        *appIfFlowEditable
                                         [view]="instructionsView()"
                                         (viewChange)="setInstructionsView($event)"
                                     />
@@ -324,7 +324,7 @@
                                     {{ selectedAgentName() || 'Select agent' }}
                                 </span>
                                 <app-svg-icon
-                                    *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                    *appIfFlowEditable
                                     icon="chevron-down-filled"
                                     size="8px"
                                 />
@@ -387,7 +387,7 @@
                     </div>
 
                     <app-inputs-you-can-use
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                        *appIfFlowEditable
                         [names]="inputMapKeys()"
                         (insert)="insertInputToInstructions($event)"
                     />
@@ -423,7 +423,7 @@
                         ></app-agent-tasks-table>
 
                         <button
-                            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                            *appIfFlowEditable
                             type="button"
                             class="add-task-btn"
                             (click)="addTask()"

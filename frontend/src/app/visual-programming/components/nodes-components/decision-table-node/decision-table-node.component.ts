@@ -22,7 +22,7 @@ export class DecisionTableNodeComponent {
     @Output() actualClick = new EventEmitter<MouseEvent>();
 
     private flowService = inject(FlowService);
-    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     public getPortConnections(portId: CustomPortId): CustomPortId[] {
         return this.flowService.portConnectionsMap()[portId] ?? ['__none__'];
