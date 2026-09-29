@@ -9,7 +9,8 @@ from io import BytesIO
 import pytest
 
 from tables.exceptions import StorageQuotaExceeded
-from tables.services.storage_service.archive_formats import inspect_archive, is_archive_name
+from tables.services.storage_service.archive.inspection import inspect_archive
+from tables.services.storage_service.archive.names import is_archive_name
 from tests.storage_tests.in_memory_backend import zip_bytes
 
 

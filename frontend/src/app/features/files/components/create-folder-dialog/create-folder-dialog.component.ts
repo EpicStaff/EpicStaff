@@ -23,7 +23,7 @@ import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageUploadBatchResult } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageUploadService, toUploadBatchResult } from '../../services/storage-upload.service';
-import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.utils';
+import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.constants';
 import { describeUploadError, describeUploadFailures, UploadErrorDescription } from '../../utils/upload-error.utils';
 import { describeUploadLimits, isArchiveForLimits, usableUploadLimits } from '../../utils/upload-limits.utils';
 
@@ -84,17 +84,6 @@ export class CreateFolderDialogComponent {
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
 
-    private static readonly ARCHIVE_EXTENSIONS = new Set([
-        'zip',
-        'tar',
-        'gz',
-        'tgz',
-        'bz2',
-        'xz',
-        'tar.gz',
-        'tar.bz2',
-        'tar.xz',
-    ]);
     private static readonly BLOCKED_EXTENSIONS = new Set([
         'exe',
         'msi',
@@ -269,13 +258,10 @@ export class CreateFolderDialogComponent {
     }
 
     isArchive(file: File): boolean {
-        // Once known, the backend's own rule decides what gets unpacked ("x.sql.gz" is stored
-        // as is); until then the local guess only drives the badge.
+        // Only the backend's own rule decides what gets unpacked ("x.sql.gz" is stored as is);
+        // without the limits there is no badge rather than a guess that may disagree.
         const limits = this.uploadLimits();
-        if (limits) return isArchiveForLimits(file.name, limits);
-        const name = file.name.toLowerCase();
-        if (name.match(/\.tar\.(gz|bz2|xz)$/)) return true;
-        return CreateFolderDialogComponent.ARCHIVE_EXTENSIONS.has(name.split('.').pop() ?? '');
+        return limits !== null && isArchiveForLimits(file.name, limits);
     }
 
     isBlocked(file: File): boolean {

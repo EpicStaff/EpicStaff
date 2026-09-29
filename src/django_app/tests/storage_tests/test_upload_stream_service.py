@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 
 from tables.exceptions import StoragePathIsFile, StorageQuotaExceeded, StorageUnavailable
 from tables.models import StorageFile
-from tables.services.storage_service import upload_stream_service as svc
+from tables.services.storage_service.upload import archive_upload, file_upload
 from tables.services.storage_service.base import StorageUnreachable
 from tests.storage_tests.in_memory_backend import (
     FailingInMemoryBackend,
@@ -61,7 +61,7 @@ def _deflate64_zip() -> bytes:
 @pytest.mark.asyncio
 @override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_upload_file_stores_the_object_and_its_row(org, fake_backend):
-    result = await svc.upload_file(
+    result = await file_upload.upload_file(
         org.id, "docs", "a.txt", async_chunks(b"01234", b"56789"), 10, backend=fake_backend
     )
 
@@ -74,7 +74,7 @@ async def test_upload_file_stores_the_object_and_its_row(org, fake_backend):
 @override_settings(ORG_STORAGE_QUOTA=5)
 async def test_a_file_past_the_quota_mid_stream_leaves_no_object_and_no_row(org, fake_backend):
     with pytest.raises(StorageQuotaExceeded):
-        await svc.upload_file(
+        await file_upload.upload_file(
             org.id, "", "a.txt", async_chunks(b"x" * 10), None, backend=fake_backend
         )
 
@@ -87,7 +87,7 @@ async def test_a_file_past_the_quota_mid_stream_leaves_no_object_and_no_row(org,
 async def test_upload_file_has_no_per_file_cap_when_none_is_configured(org, fake_backend):
     huge = 500 * 1024 * 1024
 
-    result = await svc.upload_file(
+    result = await file_upload.upload_file(
         org.id, "", "big.bin", async_chunks(b"x"), huge, backend=fake_backend
     )
 
@@ -109,7 +109,7 @@ async def test_upload_file_rejects_or_canonicalises_odd_paths(org, fake_backend,
     # the object key and the StorageFile row must never disagree: normalising only
     # the key used to leave rows like "/etc/passwd" and phantom "/" folders behind
     try:
-        result = await svc.upload_file(
+        result = await file_upload.upload_file(
             org.id, path, filename, async_chunks(b"x"), None, backend=fake_backend
         )
     except ValidationError:
@@ -127,15 +127,15 @@ async def test_upload_file_rejects_or_canonicalises_odd_paths(org, fake_backend,
 @pytest.mark.parametrize("filename", ["new\nline.txt", "tab\tname.txt", " "])
 async def test_upload_file_rejects_unprintable_or_blank_names(org, fake_backend, filename):
     with pytest.raises(ValidationError):
-        await svc.upload_file(org.id, "", filename, async_chunks(b"x"), 1, backend=fake_backend)
+        await file_upload.upload_file(org.id, "", filename, async_chunks(b"x"), 1, backend=fake_backend)
 
 
 @pytest.mark.asyncio
 @override_settings(ORG_STORAGE_QUOTA=100, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_an_overwrite_is_charged_only_the_size_difference(org, fake_backend):
-    await svc.upload_file(org.id, "", "a.txt", async_chunks(b"x" * 80), 80, backend=fake_backend)
+    await file_upload.upload_file(org.id, "", "a.txt", async_chunks(b"x" * 80), 80, backend=fake_backend)
 
-    result = await svc.upload_file(
+    result = await file_upload.upload_file(
         org.id, "", "a.txt", async_chunks(b"y" * 90), 90, backend=fake_backend
     )
 
@@ -146,14 +146,14 @@ async def test_an_overwrite_is_charged_only_the_size_difference(org, fake_backen
 @pytest.mark.asyncio
 @override_settings(ORG_STORAGE_QUOTA=10**6, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_a_rejected_overwrite_keeps_the_previous_file(org, fake_backend, monkeypatch):
-    await svc.upload_file(org.id, "", "a.txt", async_chunks(b"old"), 3, backend=fake_backend)
+    await file_upload.upload_file(org.id, "", "a.txt", async_chunks(b"old"), 3, backend=fake_backend)
 
     def _raced(*_args, **_kwargs):
         raise StorageQuotaExceeded()
 
-    monkeypatch.setattr(svc, "record_files_within_quota", _raced)
+    monkeypatch.setattr(file_upload, "record_files_within_quota", _raced)
     with pytest.raises(StorageQuotaExceeded):
-        await svc.upload_file(org.id, "", "a.txt", async_chunks(b"new!"), 4, backend=fake_backend)
+        await file_upload.upload_file(org.id, "", "a.txt", async_chunks(b"new!"), 4, backend=fake_backend)
 
     assert fake_backend._objects[f"org_{org.id}/a.txt"][0] == b"old"
     assert (await StorageFile.objects.aget(org=org, path="a.txt")).size == 3
@@ -163,7 +163,7 @@ async def test_a_rejected_overwrite_keeps_the_previous_file(org, fake_backend, m
 @override_settings(ORG_STORAGE_QUOTA=10**6, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_a_failed_commit_after_the_row_restores_the_row(org, monkeypatch):
     backend = InMemoryStorageBackend()
-    await svc.upload_file(org.id, "", "a.txt", async_chunks(b"old"), 3, backend=backend)
+    await file_upload.upload_file(org.id, "", "a.txt", async_chunks(b"old"), 3, backend=backend)
 
     def _commit_fails(*_args, **_kwargs):
         raise StorageUnreachable("storage went away")
@@ -171,7 +171,7 @@ async def test_a_failed_commit_after_the_row_restores_the_row(org, monkeypatch):
     monkeypatch.setattr(backend, "put_bytes", _commit_fails)
     for filename in ("a.txt", "b.txt"):
         with pytest.raises(StorageUnavailable):
-            await svc.upload_file(org.id, "", filename, async_chunks(b"new!"), 4, backend=backend)
+            await file_upload.upload_file(org.id, "", filename, async_chunks(b"new!"), 4, backend=backend)
 
     assert (await StorageFile.objects.aget(org=org, path="a.txt")).size == 3
     assert not await StorageFile.objects.filter(org=org, path="b.txt").aexists()
@@ -194,7 +194,7 @@ async def test_upload_archive_unpacks_every_member_and_empty_folder_with_rows(or
         for name, data in members.items():
             archive.writestr(name, data)
 
-    result = await svc.upload_archive(
+    result = await archive_upload.upload_archive(
         org.id, "", "bundle.zip", async_chunks(buffer.getvalue()), None, backend=backend
     )
 
@@ -214,10 +214,10 @@ async def test_upload_archive_unpacks_every_member_and_empty_folder_with_rows(or
 async def test_the_same_archive_twice_unpacks_into_the_next_free_folder(org, fake_backend):
     archive = zip_bytes({"a.txt": b"hello"})
 
-    first = await svc.upload_archive(
+    first = await archive_upload.upload_archive(
         org.id, "", "bundle.zip", async_chunks(archive), None, backend=fake_backend
     )
-    second = await svc.upload_archive(
+    second = await archive_upload.upload_archive(
         org.id, "", "bundle.zip", async_chunks(archive), None, backend=fake_backend
     )
 
@@ -231,7 +231,7 @@ async def test_an_archive_unpacking_past_the_free_space_writes_nothing(org, fake
     archive = zip_bytes({"big.txt": b"0123456789"})  # 10 > free 5
 
     with pytest.raises(StorageQuotaExceeded):
-        await svc.upload_archive(
+        await archive_upload.upload_archive(
             org.id, "", "bundle.zip", async_chunks(archive), None, backend=fake_backend
         )
 
@@ -245,7 +245,7 @@ async def test_a_non_archive_with_an_archive_name_is_stored_as_a_plain_file(org,
     # routing happens on the name, so a plain file named .zip reaches the archive branch
     body = b"not an archive at all, just text"
 
-    result = await svc.upload_archive(
+    result = await archive_upload.upload_archive(
         org.id, "docs", "notes.zip", async_chunks(body), None, backend=fake_backend
     )
 
@@ -258,7 +258,7 @@ async def test_a_non_archive_with_an_archive_name_is_stored_as_a_plain_file(org,
 @override_settings(ORG_STORAGE_QUOTA=5, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_a_non_archive_with_an_archive_name_still_honours_the_quota(org, fake_backend):
     with pytest.raises(StorageQuotaExceeded):
-        await svc.upload_archive(
+        await archive_upload.upload_archive(
             org.id, "", "notes.zip", async_chunks(b"x" * 50), None, backend=fake_backend
         )
 
@@ -276,7 +276,7 @@ async def test_upload_archive_rejects_a_bad_path_before_reading_the_body(org, fa
         yield b"x"
 
     with pytest.raises(ValidationError):
-        await svc.upload_archive(
+        await archive_upload.upload_archive(
             org.id, "../escape", "b.zip", _watched(), None, backend=fake_backend
         )
     assert not consumed
@@ -321,7 +321,7 @@ async def test_a_hostile_or_damaged_archive_answers_400_and_writes_nothing(
     org, fake_backend, filename, body, match
 ):
     with pytest.raises(ValidationError, match=match):
-        await svc.upload_archive(
+        await archive_upload.upload_archive(
             org.id, "", filename, async_chunks(body), None, backend=fake_backend
         )
 
@@ -334,7 +334,7 @@ async def test_a_hostile_or_damaged_archive_answers_400_and_writes_nothing(
 
 async def _upload_report_file(org, backend) -> str:
     """The user's own plain file "report", named exactly like report.zip's folder."""
-    await svc.upload_file(org.id, "", "report", async_chunks(b"keep me"), 7, backend=backend)
+    await file_upload.upload_file(org.id, "", "report", async_chunks(b"keep me"), 7, backend=backend)
     return f"org_{org.id}/report"
 
 
@@ -348,7 +348,7 @@ async def test_an_archive_named_like_a_file_unpacks_into_the_next_free_folder(or
     # the store refuses keys under the object "report", so "report/" is not free
     report_key = await _upload_report_file(org, fake_backend)
 
-    result = await svc.upload_archive(
+    result = await archive_upload.upload_archive(
         org.id,
         "",
         "report.zip",
@@ -368,14 +368,14 @@ async def test_an_archive_named_like_a_file_unpacks_into_the_next_free_folder(or
 @override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
 async def test_an_archive_skips_a_file_named_like_the_next_free_folder(org, fake_backend):
     archive = zip_bytes({"a.txt": b"a"})
-    await svc.upload_archive(
+    await archive_upload.upload_archive(
         org.id, "", "report.zip", async_chunks(archive), None, backend=fake_backend
     )
-    await svc.upload_file(
+    await file_upload.upload_file(
         org.id, "", "report (1)", async_chunks(b"keep me"), 7, backend=fake_backend
     )
 
-    result = await svc.upload_archive(
+    result = await archive_upload.upload_archive(
         org.id, "", "report.zip", async_chunks(archive), None, backend=fake_backend
     )
 
@@ -404,7 +404,7 @@ async def test_a_failed_unpack_removes_what_it_created_but_keeps_a_file_named_li
     report_key = await _upload_report_file(org, backend)
     if failure == "quota-race":
         # Only the archive's row write races; the plain file above must land.
-        monkeypatch.setattr(svc, "record_files_within_quota", _quota_raced)
+        monkeypatch.setattr(archive_upload, "record_files_within_quota", _quota_raced)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr(zipfile.ZipInfo("empty/"), b"")
@@ -412,7 +412,7 @@ async def test_a_failed_unpack_removes_what_it_created_but_keeps_a_file_named_li
             archive.writestr(name, name.encode())
 
     with pytest.raises(expected_error):
-        await svc.upload_archive(
+        await archive_upload.upload_archive(
             org.id, "", "report.zip", async_chunks(buffer.getvalue()), None, backend=backend
         )
 
@@ -441,7 +441,7 @@ def test_reserve_folder_moves_on_when_a_same_name_file_lands_before_the_claim():
 
     backend = _FileRaced()
 
-    assert svc._reserve_folder(7, "report", backend) == "org_7/report (1)"
+    assert archive_upload._reserve_folder(7, "report", backend) == "org_7/report (1)"
     assert backend._objects["org_7/report"][0] == b"raced in"
     assert "org_7/report/" not in backend._objects
 
@@ -470,7 +470,7 @@ def test_reserve_folder_moves_on_when_a_concurrent_upload_claims_the_same_name(o
 
     backend = _Raced()
 
-    key = svc._reserve_folder(org.id, "bundle", backend)
+    key = archive_upload._reserve_folder(org.id, "bundle", backend)
 
     assert key == f"org_{org.id}/bundle (1)"
     assert {f"org_{org.id}/bundle/", f"org_{org.id}/bundle (1)/"} <= set(backend._objects)
@@ -490,6 +490,6 @@ def test_reserve_folder_takes_a_name_the_store_keeps_refusing_as_a_conflict():
     backend = _RefusesEveryClaim()
 
     with pytest.raises(StoragePathIsFile) as caught:
-        svc._reserve_folder(7, "bundle", backend)
+        archive_upload._reserve_folder(7, "bundle", backend)
     assert caught.value.status_code == 409
-    assert backend.claims == svc._MAX_REFUSALS_OF_ONE_NAME
+    assert backend.claims == archive_upload._MAX_REFUSALS_OF_ONE_NAME

@@ -131,7 +131,7 @@ Located at `tables/services/storage_service/db_sync.py`. Keeps the `StorageFile`
 | `on_delete(org_id, path)` | Delete exact match; if no match, delete all files with that prefix (folder delete) |
 | `on_move(org_id, src, dst)` | Update path; if no exact match, bulk-update all paths under prefix via `Concat+Substr` |
 
-Copy and cross-org move have no sync method of their own: the manager records the copied rows through `quota_service.record_files_within_quota` (see §7).
+Copy and cross-org move have no sync method of their own: the manager records the copied rows through `quota.record_files_within_quota` (see §7).
 
 **Agent and sandbox writes** arrive as `storage_mutations` events (`RedisPubSub.storage_mutations_handler`). Each write is recorded at the size S3 reports (`StorageManager.record_external_write` → backend `head_file`: one request, 2 s connect / 5 s read, no retries, because the handler runs on the shared pub/sub listener thread). If that lookup fails, the row is still written without a size; a write whose object is gone is skipped. A mutation that fails is logged and skipped, and the rest of the batch and the session's `session:{id}:storage_mutations` Redis set are still updated. Agent writes are not quota-checked (the bytes are already stored); an organization left over its quota is logged.
 
@@ -175,14 +175,14 @@ The rename serializer additionally validates that the destination filename does 
 
 ## 6. Archive Handling Flow
 
-When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is (`upload_stream_service.upload_archive`).
+When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is (`upload/archive_upload.upload_archive`).
 
-1. The name decides the route (`archive_formats.is_archive_name`) — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
+1. The name decides the route (`archive/names.is_archive_name`) — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
 2. The body is buffered (up to `DJANGO_MAX_ARCHIVE_FILE_SIZE`, spilling to disk past one part)
-3. `archive_formats.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
+3. `archive/inspection.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
 4. `_reserve_folder()` claims a subfolder named after the archive stem with a conditional marker write (e.g., `data.zip` → `data/`); a taken name auto-increments: `data` → `data (1)` → `data (2)`
-5. `archive_member_upload.upload_archive_members()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
-6. `quota_service.record_files_within_quota()` writes all rows under the org lock; any failure removes exactly the objects this upload created
+5. `archive/member_upload.upload_archive_members()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
+6. `quota.record_files_within_quota()` writes all rows under the org lock; any failure removes exactly the objects this upload created
 
 ### Document Extensions Treated as Regular Files (Not Extracted)
 
@@ -253,6 +253,10 @@ Authorization (superadmin) is enforced at the API layer; the `StorageManager` pe
 | `tables/services/storage_service/s3_backend.py` | S3 backend |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
+| `tables/services/storage_service/quota.py` | Org storage quota: free bytes, row writes under the org lock |
+| `tables/services/storage_service/upload/` | Streaming upload: plain file, archive, admission gate, upload limits |
+| `tables/services/storage_service/archive/` | Archive routing by name, inspection, bounded readers, member extraction |
+| `tables/views/storage_upload_stream_view.py` | Raw ASGI handler of `POST /api/storage/upload/stream` |
 | `tables/validators/file_upload_validator.py` | `FileValidator` (upload security) |
 | `shared/epicstaff_storage/storage.py` | Storage SDK for flow execution |
 | `tables/views/views.py` | `SessionViewSet.output_files` endpoint |

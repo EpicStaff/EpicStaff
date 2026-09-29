@@ -18,7 +18,7 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
-from tables.services.storage_service.quota_service import (
+from tables.services.storage_service.quota import (
     ensure_fits_quota,
     record_files_within_quota,
 )

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 from collections import Counter
 
+from django.conf import settings
 from tables.exceptions import OrgUploadLimitReached, UploadSlotsBusy
 
 
@@ -49,3 +50,18 @@ class UploadAdmission:
             self._uploads_by_org[org_id] -= 1
             if not self._uploads_by_org[org_id]:
                 del self._uploads_by_org[org_id]
+
+
+_admission: UploadAdmission | None = None
+
+
+def get_upload_admission() -> UploadAdmission:
+    """This worker's gate over running uploads, built from settings on first use."""
+    global _admission
+    if _admission is None:
+        _admission = UploadAdmission(
+            max_concurrency=settings.UPLOAD_MAX_CONCURRENCY,
+            per_org_limit=settings.UPLOAD_MAX_CONCURRENCY_PER_ORG,
+            slot_timeout=settings.UPLOAD_SLOT_TIMEOUT,
+        )
+    return _admission

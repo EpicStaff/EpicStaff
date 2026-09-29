@@ -226,10 +226,10 @@ describe('CreateFolderDialogComponent unpack badge', () => {
         expect(component.isArchive(file('report.docx'))).toBe(false);
     });
 
-    it('falls back to the local guess while the limits are unknown', () => {
+    it('shows no archive badge while the limits are unknown', () => {
         const component = create(null);
 
-        expect(component.isArchive(file('site.tar.gz'))).toBe(true);
+        expect(component.isArchive(file('site.tar.gz'))).toBe(false);
         expect(component.isArchive(file('notes.txt'))).toBe(false);
     });
 });

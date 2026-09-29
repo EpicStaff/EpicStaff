@@ -1,0 +1,166 @@
+from collections.abc import Callable
+
+from asgiref.sync import sync_to_async
+from django.conf import settings
+from django.db import close_old_connections, transaction
+from rbac.models import Organization
+from tables.exceptions import StorageQuotaExceeded, UploadTooLarge
+from tables.models import StorageFile
+from tables.services.storage_service import get_storage_backend
+from tables.services.storage_service.path_utils import storage_key
+from tables.services.storage_service.quota import org_free_bytes, record_files_within_quota
+from tables.services.storage_service.upload.admission import get_upload_admission
+from tables.services.storage_service.upload.guards import (
+    storage_errors_as_unavailable,
+    within_time_limits,
+)
+from tables.services.storage_service.upload.target import check_target, target_path
+from tables.validators.file_upload_validator import FileValidator
+from utils.logger import logger
+
+
+async def upload_file(
+    org_id: int,
+    path: str,
+    filename: str,
+    chunks,
+    declared_size: int | None,
+    *,
+    backend=None,
+    validator: FileValidator | None = None,
+    authorize_overwrite: Callable[[], None] | None = None,
+) -> dict:
+    """Stream a plain file from the request body (`chunks`) into object storage and
+    record it. Returns {"path", "size"}.
+
+    `authorize_overwrite()` runs when a file already exists at the target and raises
+    to refuse replacing it; without it an existing file is replaced silently."""
+    backend = backend or get_storage_backend(organization_prefix="")
+    target = target_path(org_id, path, filename, validator or FileValidator())
+    max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
+    # Early rejects before waiting for a slot; save_stream checks the size, the
+    # quota and the overwrite for real.
+    if declared_size is not None and max_size is not None and declared_size > max_size:
+        raise UploadTooLarge()
+    await sync_to_async(check_target)(org_id, target, authorize_overwrite)
+    # No connection may be held through the wait for a slot.
+    await sync_to_async(close_old_connections)()
+    async with get_upload_admission().admit(org_id):
+        with storage_errors_as_unavailable():
+            return await save_stream(
+                org_id,
+                target,
+                within_time_limits(chunks),
+                declared_size,
+                backend,
+                authorize_overwrite,
+            )
+
+
+async def save_stream(
+    org_id: int,
+    target: str,
+    chunks,
+    declared_size: int | None,
+    backend,
+    authorize_overwrite: Callable[[], None] | None,
+):
+    """Upload `chunks` to `target` and write its StorageFile row within the quota.
+    The row is written after the last byte but before the store commits the object,
+    so a rejected row (quota, refused overwrite) aborts the upload and an overwritten
+    file stays intact. The caller holds an upload slot."""
+    max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
+    free = await sync_to_async(org_free_bytes)(org_id, replacing=[target])
+
+    def reject_if_too_big(size: int) -> None:
+        if max_size is not None and size > max_size:
+            raise UploadTooLarge()
+        if size > free:
+            raise StorageQuotaExceeded()
+
+    if declared_size is not None:
+        reject_if_too_big(declared_size)
+
+    written_size: int | None = None
+    replaced_row: tuple[int | None] | None = None
+
+    async def write_row(size: int) -> None:
+        nonlocal written_size, replaced_row
+        replaced_row = await sync_to_async(_write_file_row)(
+            org_id, target, size, authorize_overwrite
+        )
+        written_size = size
+
+    # The stream can outlast any DB timeout: release the connection now and let
+    # the row write open a fresh one.
+    await sync_to_async(close_old_connections)()
+    try:
+        size = await backend.upload_chunks(
+            storage_key(org_id, target),
+            chunks,
+            size_guard=reject_if_too_big,
+            before_commit=write_row,
+        )
+    except BaseException:
+        if written_size is not None:
+            await sync_to_async(_undo_file_row)(org_id, target, written_size, replaced_row, backend)
+        raise
+
+    return {"path": target, "size": size}
+
+
+def _write_file_row(
+    org_id: int, target: str, size: int, authorize_overwrite: Callable[[], None] | None
+) -> tuple[int | None] | None:
+    """Write the upload's file row within the quota; returns (size,) of
+    the file row it replaced, or None. Read under the org lock that
+    record_files_within_quota holds for the write, so it is the row this write really
+    replaced even while other uploads of the same path run, and the overwrite is
+    authorized against the file that is really there."""
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=org_id)
+        replaced_row = (
+            StorageFile.objects.filter(org_id=org_id, path=target, item_type="file")
+            .values_list("size")
+            .first()
+        )
+        if replaced_row is not None and authorize_overwrite is not None:
+            authorize_overwrite()
+        record_files_within_quota(org_id, [(target, size)])
+    return replaced_row
+
+
+def _undo_file_row(
+    org_id: int,
+    target: str,
+    written_size: int,
+    replaced_row: tuple[int | None] | None,
+    backend,
+) -> None:
+    """Put the row at `target` back in line with the store after the upload failed
+    once its row was written. The failure can be ambiguous (a timeout after the
+    store committed), so the store decides: the new row stays when the object there
+    has the new size, the replaced row comes back as it was when the old object is
+    there, and the row goes when nothing is. A row no longer at the new size was
+    written by another upload since and is left alone."""
+    try:
+        stored = backend.head_file(storage_key(org_id, target))
+    except Exception:
+        # The store can't be asked. The error being re-raised most likely means it
+        # did not commit, so the old state is the best guess.
+        logger.exception("Could not check {} after a failed upload", target)
+        object_there = replaced_row is not None
+    else:
+        if stored is not None and stored.size == written_size:
+            return
+        object_there = stored is not None
+
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=org_id)
+        row = StorageFile.objects.filter(
+            org_id=org_id, path=target, item_type="file", size=written_size
+        )
+        if replaced_row is not None and object_there:
+            row.update(size=replaced_row[0])
+        else:
+            row.delete()

@@ -19,7 +19,7 @@ from tables.exceptions import (
     UploadTooLarge,
 )
 from tables.models import StorageFile
-from tables.services.storage_service import upload_stream_service as svc
+from tables.services.storage_service.upload import admission, archive_upload, file_upload, guards
 from tests.storage_tests.in_memory_backend import (
     FakeS3Client,
     InMemoryStorageBackend,
@@ -55,7 +55,7 @@ async def test_time_limits_reset_the_idle_timer_on_every_chunk():
             await asyncio.sleep(0.03)
             yield b"x"
 
-    assert len([chunk async for chunk in svc._within_time_limits(_steady())]) == 5
+    assert len([chunk async for chunk in guards.within_time_limits(_steady())]) == 5
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_a_silent_client_aborts_the_multipart_upload_and_writes_no_row(org
     client = FakeS3Client()
 
     with pytest.raises(UploadIdleTimeout, match="No data arrived") as caught:
-        await svc.upload_file(
+        await file_upload.upload_file(
             org.id,
             "",
             "a.bin",
@@ -88,7 +88,7 @@ async def test_an_upload_past_the_max_duration_is_aborted_even_while_data_flows(
     client = FakeS3Client()
 
     with pytest.raises(UploadDurationExceeded, match="did not finish within") as caught:
-        await svc.upload_file(
+        await file_upload.upload_file(
             org.id,
             "",
             "a.bin",
@@ -117,7 +117,7 @@ async def test_time_spent_sending_parts_to_storage_is_not_client_idle_time(org):
 
             return await super().upload_chunks(path, _slow(chunks), **kwargs)
 
-    result = await svc.upload_file(
+    result = await file_upload.upload_file(
         org.id, "", "a.txt", async_chunks(b"ab", b"cd"), 4, backend=_SlowStorage()
     )
 
@@ -147,7 +147,7 @@ class _AdmissionSpy:
 @pytest.fixture
 def admission_spy(monkeypatch):
     spy = _AdmissionSpy()
-    monkeypatch.setattr(svc, "_upload_admission", lambda: spy)
+    monkeypatch.setattr(admission, "_admission", spy)
     return spy
 
 
@@ -166,7 +166,7 @@ class _BodyWatch:
 
 _FILE_AND_ARCHIVE = pytest.mark.parametrize(
     ("upload", "filename"),
-    [(svc.upload_file, "big.bin"), (svc.upload_archive, "bundle.zip")],
+    [(file_upload.upload_file, "big.bin"), (archive_upload.upload_archive, "bundle.zip")],
     ids=["file", "archive"],
 )
 
@@ -216,15 +216,15 @@ async def test_a_body_whose_content_length_lies_is_still_stopped_while_read(
 @pytest.mark.parametrize(
     ("upload", "filename", "body"),
     [
-        (svc.upload_file, "a.txt", b"x" * 10),
-        (svc.upload_archive, "bundle.zip", zip_bytes({"a.txt": b"hello"})),
+        (file_upload.upload_file, "a.txt", b"x" * 10),
+        (archive_upload.upload_archive, "bundle.zip", zip_bytes({"a.txt": b"hello"})),
     ],
     ids=["file", "archive"],
 )
 async def test_an_upload_is_admitted_without_holding_a_db_connection(
     admission_spy, fake_backend, org, upload, filename, body
 ):
-    # What asgi_upload does after the auth query; from here to the slot the
+    # What the upload stream view does after the auth query; from here to the slot the
     # service must not open a connection that the (possibly long) wait would hold.
     await sync_to_async(lambda: connection.close())()
 
@@ -248,7 +248,7 @@ async def test_a_file_declared_over_the_free_space_waits_for_a_slot_then_is_reje
     body = _BodyWatch(b"x" * 7)
 
     with pytest.raises(StorageQuotaExceeded):
-        await svc.upload_file(org.id, "", "new.txt", body, 7, backend=fake_backend)  # 7 > 10 - 4
+        await file_upload.upload_file(org.id, "", "new.txt", body, 7, backend=fake_backend)  # 7 > 10 - 4
 
     assert admission_spy.admitted == [org.id]
     assert not body.read
@@ -264,7 +264,7 @@ async def test_an_archive_declared_over_the_free_space_is_still_admitted(
     archive = zip_bytes({"a.txt": b"hello"})
 
     with override_settings(ORG_STORAGE_QUOTA=len(archive) - 1, MAX_ARCHIVE_FILE_SIZE=10**6):
-        result = await svc.upload_archive(
+        result = await archive_upload.upload_archive(
             org.id, "", "bundle.zip", async_chunks(archive), len(archive), backend=fake_backend
         )
 
@@ -285,10 +285,10 @@ async def test_the_archive_is_buffered_off_the_event_loop(monkeypatch, fake_back
             write_threads.append(threading.get_ident())
             return super().write(data)
 
-    monkeypatch.setattr(svc.tempfile, "SpooledTemporaryFile", _Recording)
+    monkeypatch.setattr(archive_upload.tempfile, "SpooledTemporaryFile", _Recording)
     archive = zip_bytes({"a.txt": b"hello"})
 
-    await svc.upload_archive(
+    await archive_upload.upload_archive(
         org.id,
         "",
         "bundle.zip",

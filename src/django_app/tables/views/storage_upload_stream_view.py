@@ -19,15 +19,19 @@ from rest_framework.exceptions import (
 )
 from rest_framework.request import Request
 from rest_framework.response import Response
+from tables.exceptions import OverwriteNotPermitted
+from tables.services.storage_service import upload as upload_service
+from tables.services.storage_service.archive.names import is_archive_name
+from tables.views.storage_views import StorageAPIView
 from utils.exception_handler import custom_exception_handler
 from utils.logger import logger
 
-from tables.exceptions import OverwriteNotPermitted
-from tables.services.storage_service import upload_stream_service
-from tables.services.storage_service.archive_formats import is_archive_name
-from tables.views.storage_views import StorageAPIView
-
 UPLOAD_STREAM_ACTION = "upload_stream"
+
+# Served by upload_stream_app, which asgi.py routes this path to (not a URLconf
+# route). The same literal is the unbuffered location in
+# nginx/templates/default.conf.template and StorageApiService.uploadStream.
+UPLOAD_STREAM_PATH = "/api/storage/upload/stream"
 
 
 class ClientDisconnectedError(Exception):
@@ -66,9 +70,9 @@ async def _serve_upload(scope, receive, send) -> None:
         chunks = _request_body_chunks(receive)
         declared_size = _declared_size(request)
         upload = (
-            upload_stream_service.upload_archive
+            upload_service.upload_archive
             if is_archive_name(filename)
-            else upload_stream_service.upload_file
+            else upload_service.upload_file
         )
         result = await upload(
             org_id,

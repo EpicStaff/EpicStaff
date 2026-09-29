@@ -3,7 +3,7 @@ Every writer other than the streaming upload must record real sizes and respect
 the org storage quota: copy, cross-org copy/move (hard 413) and agent/sandbox
 writes (recorded at their stored size, over quota only logged).
 
-Real InMemoryStorageBackend, real StorageFileSync and quota_service, real DB.
+Real InMemoryStorageBackend, real StorageFileSync and the quota module, real DB.
 """
 
 import json
@@ -20,7 +20,7 @@ from tables.services import storage_service
 from tables.services.storage_service import manager as manager_module
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
-from tables.services.storage_service.quota_service import org_used_bytes
+from tables.services.storage_service.quota import org_used_bytes
 from tables.views import storage_views
 from tests.storage_tests.in_memory_backend import (
     FakeS3Client,

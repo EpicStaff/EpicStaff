@@ -17,46 +17,11 @@ import {
     StorageTreeResponse,
     StorageUploadLimits,
 } from '../models/storage.models';
-import { isArchiveFileName } from '../utils/storage-file.utils';
-import { getUploadErrorCode, UploadErrorCode } from '../utils/upload-error.utils';
-
-/** Attempts per file, the first one included, while the server answers 429/503. */
-export const UPLOAD_MAX_ATTEMPTS = 5;
-/** Waits used when a 429/503 carries no readable Retry-After. */
-export const UPLOAD_RETRY_FALLBACK_SECONDS = 30;
-export const STORAGE_UNAVAILABLE_RETRY_FALLBACK_SECONDS = 5;
-/** Upper bound on one wait, whatever Retry-After says. */
-const UPLOAD_RETRY_MAX_SECONDS = 120;
-
-/** 429 (org upload limit) and 503 (slots busy, storage unavailable) are the only
- *  answers where sending the same file again later can succeed. */
-const RETRYABLE_UPLOAD_STATUSES = new Set([429, 503]);
-
-/** How long to wait before re-sending after `error`, or null when it must not be retried. */
-function uploadRetryDelayMs(error: unknown): number | null {
-    if (!(error instanceof HttpErrorResponse) || !RETRYABLE_UPLOAD_STATUSES.has(error.status)) return null;
-    const fallback =
-        getUploadErrorCode(error) === UploadErrorCode.StorageUnavailable
-            ? STORAGE_UNAVAILABLE_RETRY_FALLBACK_SECONDS
-            : UPLOAD_RETRY_FALLBACK_SECONDS;
-    const seconds = parseRetryAfterSeconds(error.headers.get('Retry-After')) ?? fallback;
-    return Math.min(seconds, UPLOAD_RETRY_MAX_SECONDS) * 1000;
-}
-
-/** Retry-After is either delay-seconds or an HTTP date (RFC 9110 §10.2.3). */
-function parseRetryAfterSeconds(header: string | null): number | null {
-    if (!header) return null;
-    const value = header.trim();
-    if (/^\d+$/.test(value)) return Number(value);
-    const date = Date.parse(value);
-    if (Number.isNaN(date)) return null;
-    return Math.max(0, Math.ceil((date - Date.now()) / 1000));
-}
+import { UPLOAD_MAX_ATTEMPTS, uploadRetryDelayMs } from '../utils/upload-retry.utils';
 
 interface OverwritePreview {
     fileConflicts: string[];
     folderConflicts: string[];
-    archiveRisk: boolean;
 }
 
 @Injectable({
@@ -104,7 +69,7 @@ export class StorageApiService {
     }
 
     private hasOverwriteRisk(preview: OverwritePreview): boolean {
-        return preview.fileConflicts.length > 0 || preview.folderConflicts.length > 0 || preview.archiveRisk;
+        return preview.fileConflicts.length > 0 || preview.folderConflicts.length > 0;
     }
 
     private findOverwritePreview(targetPath: string, files: File[]): Observable<OverwritePreview> {
@@ -126,7 +91,6 @@ export class StorageApiService {
         return {
             fileConflicts: uploadedNames.filter((name) => existingFiles.has(name)),
             folderConflicts: uploadedNames.filter((name) => existingFolders.has(name)),
-            archiveRisk: files.some((file) => isArchiveFileName(file.name)) && items.length > 0,
         };
     }
 
@@ -136,7 +100,7 @@ export class StorageApiService {
         const fileCount = preview.fileConflicts.length;
         const folderCount = preview.folderConflicts.length;
         const listedNames = [...preview.fileConflicts, ...preview.folderConflicts];
-        const onlyFolders = folderCount > 0 && fileCount === 0 && !preview.archiveRisk;
+        const onlyFolders = folderCount > 0 && fileCount === 0;
 
         const parts: string[] = [];
         if (fileCount && folderCount) {
@@ -147,14 +111,12 @@ export class StorageApiService {
                     fileCount > 1 ? 'these names' : 'this name'
                 }.`
             );
-        } else if (folderCount) {
+        } else {
             parts.push(
                 `${folderLabel} already contains ${folderCount > 1 ? 'folders' : 'a folder'} with ${
                     folderCount > 1 ? 'these names' : 'this name'
                 }.`
             );
-        } else {
-            parts.push(`${folderLabel} already has items.`);
         }
 
         if (fileCount) {
@@ -163,15 +125,10 @@ export class StorageApiService {
         if (folderCount) {
             parts.push('A folder with the same name will not be replaced.');
         }
-        if (preview.archiveRisk) {
-            parts.push('Archives are extracted on the server and may replace existing files with matching names.');
-        }
         parts.push('Cancel will skip the entire upload.');
 
         let title = 'Items already exist';
-        if (preview.archiveRisk && !fileCount && !folderCount) {
-            title = 'Archive may replace files';
-        } else if (onlyFolders) {
+        if (onlyFolders) {
             title = folderCount > 1 ? 'Folders already exist' : 'Folder already exists';
         } else if (fileCount && !folderCount) {
             title = fileCount > 1 ? 'Files already exist' : 'File already exists';
@@ -183,8 +140,8 @@ export class StorageApiService {
             confirmText: onlyFolders ? 'Upload anyway' : 'Replace',
             cancelText: 'Cancel',
             type: 'warning',
-            cautionTitle: listedNames.length ? 'Existing names' : undefined,
-            caution: listedNames.length ? this.buildConflictListHtml(listedNames) : undefined,
+            cautionTitle: 'Existing names',
+            caution: this.buildConflictListHtml(listedNames),
         };
     }
 
@@ -245,8 +202,7 @@ export class StorageApiService {
     }
 
     /** One file, one request; a 429/503 is re-sent after its Retry-After, up to UPLOAD_MAX_ATTEMPTS. */
-    /** `uploadPath` is the endpoint path from getUploadLimits(); without it the default route is used. */
-    uploadStream(path: string, file: File, uploadPath?: string): Observable<StorageStreamUploadResponse> {
+    uploadStream(path: string, file: File): Observable<StorageStreamUploadResponse> {
         const normalized = this.normalizePath(path);
         // Built by hand because HttpParams leaves "+" unescaped and Django reads it
         // back as a space, silently renaming files like "a+b.txt".
@@ -257,7 +213,7 @@ export class StorageApiService {
         // The File itself is the body: the browser streams it from disk. Wrapping it
         // in FormData, or reading it into memory first, defeats the whole endpoint.
         return this.http
-            .post<StorageStreamUploadResponse>(`${this.uploadStreamUrl(uploadPath)}${query}`, file, {
+            .post<StorageStreamUploadResponse>(`${this.apiUrl}upload/stream${query}`, file, {
                 headers: new HttpHeaders({ 'Content-Type': 'application/octet-stream' }),
             })
             .pipe(
@@ -270,14 +226,6 @@ export class StorageApiService {
                     },
                 })
             );
-    }
-
-    /** The backend's upload path (DJANGO_UPLOAD_STREAM_PATH) on the API's origin, which
-     *  may differ from the page's when apiUrl is absolute. */
-    private uploadStreamUrl(uploadPath: string | undefined): string {
-        if (!uploadPath?.startsWith('/')) return `${this.apiUrl}upload/stream`;
-        const apiBase = new URL(this.configService.apiUrl, window.location.origin);
-        return new URL(uploadPath, apiBase).toString();
     }
 
     downloadZip(paths: string[]): Observable<Blob> {

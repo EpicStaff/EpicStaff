@@ -30,7 +30,8 @@ from tables.serializers.storage_serializers import (
     StorageTreeQuerySerializer,
     StorageUploadLimitsResponseSerializer,
 )
-from tables.services.storage_service import get_storage_manager, upload_stream_service
+from tables.services.storage_service import get_storage_manager
+from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
@@ -66,7 +67,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "search": Permission.READ,
         "upload_limits": Permission.READ,
         "download_zip": Permission.EXPORT,
-        # Served by tables.asgi_upload (raw ASGI), gated through this viewset;
+        # Served by tables.views.storage_upload_stream_view (raw ASGI), gated through this viewset;
         # replacing an existing file additionally needs UPDATE, checked there.
         "upload_stream": Permission.CREATE,
         "mkdir": Permission.CREATE,
@@ -416,5 +417,5 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @extend_schema(**STORAGE_UPLOAD_LIMITS_SWAGGER)
     @action(detail=False, methods=["get"], url_path="upload-limits")
     def upload_limits(self, request):
-        limits = upload_stream_service.upload_limits(self.get_active_org_id())
+        limits = upload_service.upload_limits(self.get_active_org_id())
         return Response(StorageUploadLimitsResponseSerializer(limits).data)

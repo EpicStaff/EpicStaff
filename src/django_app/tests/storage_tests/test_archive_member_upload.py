@@ -5,11 +5,11 @@ import io
 
 import pytest
 
-from tables.services.storage_service.archive_limits import (
+from tables.services.storage_service.archive.extraction_guard import (
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,
 )
-from tables.services.storage_service.archive_member_upload import (
+from tables.services.storage_service.archive.member_upload import (
     _ReplayingReader,
     upload_archive_members,
 )

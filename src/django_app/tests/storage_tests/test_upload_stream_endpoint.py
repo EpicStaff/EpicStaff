@@ -8,15 +8,17 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from django.core import signals
 from django.test import override_settings
 from rest_framework_simplejwt.tokens import AccessToken
 
+from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
 from tables.models import StorageFile
-from tables.services.storage_service import upload_stream_service as svc
+from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.base import StorageUnreachable
-from tables.services.storage_service.upload_admission import UploadAdmission
+from tables.services.storage_service.upload import admission as admission_module
+from tables.services.storage_service.upload import archive_upload, file_upload
+from tables.services.storage_service.upload.admission import UploadAdmission
 from tests.storage_tests.in_memory_backend import (
     FakeS3Client,
     InMemoryStorageBackend,
@@ -46,21 +48,22 @@ async def _post(client, query, *, token=None, org_id=None, body=b"x", headers=No
     if org_id is not None:
         all_headers["X-Organization-Id"] = str(org_id)
     return await client.post(
-        f"{settings.UPLOAD_STREAM_PATH}?{query}", content=body, headers=all_headers
+        f"{UPLOAD_STREAM_PATH}?{query}", content=body, headers=all_headers
     )
 
 
 @pytest.fixture
 def storage(monkeypatch, fake_backend):
     """The in-memory store every upload in the test goes to."""
-    monkeypatch.setattr(svc, "get_storage_backend", lambda **_: fake_backend)
+    monkeypatch.setattr(file_upload, "get_storage_backend", lambda **_: fake_backend)
+    monkeypatch.setattr(archive_upload, "get_storage_backend", lambda **_: fake_backend)
     return fake_backend
 
 
 @pytest.fixture
 def stubbed_upload(monkeypatch):
     upload = AsyncMock(return_value={"path": "a.txt", "size": 1})
-    monkeypatch.setattr(svc, "upload_file", upload)
+    monkeypatch.setattr(upload_service, "upload_file", upload)
     return upload
 
 
@@ -161,7 +164,7 @@ async def test_an_executable_name_is_a_400_before_anything_is_stored(org_user, s
 
 async def test_a_non_post_gets_a_json_405():
     async with _client() as client:
-        response = await client.get(f"{settings.UPLOAD_STREAM_PATH}?filename=a.txt")
+        response = await client.get(f"{UPLOAD_STREAM_PATH}?filename=a.txt")
 
     assert response.status_code == 405
     assert response.json()["status_code"] == 405
@@ -212,7 +215,7 @@ async def test_an_unexpected_error_is_a_500_in_the_error_envelope(org_user, monk
     # With DEBUG on, custom_exception_handler renders nothing and the error propagates,
     # as from any DRF view; the envelope is what production answers.
     monkeypatch.setattr(exception_handler, "DEBUG", False)
-    monkeypatch.setattr(svc, "upload_file", AsyncMock(side_effect=RuntimeError("bug")))
+    monkeypatch.setattr(upload_service, "upload_file", AsyncMock(side_effect=RuntimeError("bug")))
     token = await _token(org_user)
     async with _client() as client:
         response = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
@@ -281,7 +284,7 @@ async def test_archive_unpacking_past_the_free_space_is_a_413_before_any_write(o
 
 async def test_a_full_worker_answers_503_with_retry_after(org_user, monkeypatch):
     admission = UploadAdmission(max_concurrency=1, per_org_limit=5, slot_timeout=0.05)
-    monkeypatch.setattr(svc, "_admission", admission)
+    monkeypatch.setattr(admission_module, "_admission", admission)
     token = await _token(org_user)
 
     async with admission.admit(org_id=-1):  # some other org's upload holds the only slot
@@ -295,7 +298,7 @@ async def test_a_full_worker_answers_503_with_retry_after(org_user, monkeypatch)
 
 async def test_an_org_over_its_upload_share_gets_429_with_retry_after(org_user, monkeypatch):
     admission = UploadAdmission(max_concurrency=4, per_org_limit=1, slot_timeout=30)
-    monkeypatch.setattr(svc, "_admission", admission)
+    monkeypatch.setattr(admission_module, "_admission", admission)
     token = await _token(org_user)
 
     async with admission.admit(org_user.org_id):
@@ -313,7 +316,7 @@ async def test_unreachable_storage_is_a_503(org_user, monkeypatch):
         async def upload_chunks(self, path, chunks, **_kwargs):
             raise StorageUnreachable("storage went away")
 
-    monkeypatch.setattr(svc, "get_storage_backend", lambda **_: _StorageDown())
+    monkeypatch.setattr(file_upload, "get_storage_backend", lambda **_: _StorageDown())
     token = await _token(org_user)
     async with _client() as client:
         response = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
@@ -327,7 +330,7 @@ async def test_unreachable_storage_is_a_503(org_user, monkeypatch):
 async def _call_app(query: bytes, token: str, org_id: int, receive):
     """Drive the upload ASGI app directly with a hand-written `receive`, for bodies
     and query strings httpx cannot produce (a stall, a disconnect, raw bytes)."""
-    from tables.asgi_upload import upload_stream_app
+    from tables.views.storage_upload_stream_view import upload_stream_app
 
     scope = {
         "type": "http",
@@ -335,8 +338,8 @@ async def _call_app(query: bytes, token: str, org_id: int, receive):
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
-        "path": settings.UPLOAD_STREAM_PATH,
-        "raw_path": settings.UPLOAD_STREAM_PATH.encode(),
+        "path": UPLOAD_STREAM_PATH,
+        "raw_path": UPLOAD_STREAM_PATH.encode(),
         "root_path": "",
         "query_string": query,
         "headers": [
@@ -381,7 +384,7 @@ async def test_a_disconnect_mid_body_aborts_the_multipart_upload_and_writes_no_r
     org_user, monkeypatch
 ):
     client = FakeS3Client()
-    monkeypatch.setattr(svc, "get_storage_backend", lambda **_: make_s3_backend(client, part_size=4))
+    monkeypatch.setattr(file_upload, "get_storage_backend", lambda **_: make_s3_backend(client, part_size=4))
     token = await _token(org_user)
 
     sent = await _call_app(
@@ -397,13 +400,13 @@ async def test_a_disconnect_mid_body_aborts_the_multipart_upload_and_writes_no_r
     assert sent == []  # nobody is left to answer
     assert client.parts and client.aborted and client.completed is None
     assert not await StorageFile.objects.filter(org_id=org_user.org_id).aexists()
-    assert svc._upload_admission().uploads_of(org_user.org_id) == 0
+    assert admission_module.get_upload_admission().uploads_of(org_user.org_id) == 0
 
 
 @override_settings(ORG_STORAGE_QUOTA=10**9, UPLOAD_IDLE_TIMEOUT=0.05)
 async def test_a_silent_client_gets_408_and_leaves_nothing_behind(org_user, monkeypatch):
     client = FakeS3Client()
-    monkeypatch.setattr(svc, "get_storage_backend", lambda **_: make_s3_backend(client, part_size=4))
+    monkeypatch.setattr(file_upload, "get_storage_backend", lambda **_: make_s3_backend(client, part_size=4))
     token = await _token(org_user)
 
     sent = await _call_app(

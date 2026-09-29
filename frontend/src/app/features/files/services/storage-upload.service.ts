@@ -78,7 +78,7 @@ export class StorageUploadService {
                     }
                 }
                 if (limits) this.warnIfMayNotFit(toSend, limits.free_bytes);
-                return concat(from(tooLarge), this.sendEach(path, toSend, response?.upload_path));
+                return concat(from(tooLarge), this.sendEach(path, toSend));
             })
         );
     }
@@ -100,7 +100,7 @@ export class StorageUploadService {
         );
     }
 
-    private sendEach(path: string, files: File[], uploadPath?: string): Observable<StorageUploadOutcome> {
+    private sendEach(path: string, files: File[]): Observable<StorageUploadOutcome> {
         if (!files.length) return EMPTY;
 
         return defer(() => {
@@ -112,7 +112,7 @@ export class StorageUploadService {
                         // defer reads quotaError at that moment, not when it was queued.
                         defer((): Observable<StorageUploadOutcome> => {
                             if (quotaError) return of({ ok: false, file, error: new UploadSkippedError(quotaError) });
-                            return this.storageApiService.uploadStream(path, file, uploadPath).pipe(
+                            return this.storageApiService.uploadStream(path, file).pipe(
                                 map(
                                     (response): StorageUploadOutcome => ({
                                         ok: true,

@@ -7,10 +7,10 @@ import { ConfigService } from '../../../services/config';
 import { StorageStreamUploadResponse, StorageUploadLimits } from '../models/storage.models';
 import {
     STORAGE_UNAVAILABLE_RETRY_FALLBACK_SECONDS,
-    StorageApiService,
     UPLOAD_MAX_ATTEMPTS,
     UPLOAD_RETRY_FALLBACK_SECONDS,
-} from './storage-api.service';
+} from '../utils/upload-retry.utils';
+import { StorageApiService } from './storage-api.service';
 
 const STREAM_URL = '/api/storage/upload/stream';
 const LIMITS_URL = '/api/storage/upload-limits/';

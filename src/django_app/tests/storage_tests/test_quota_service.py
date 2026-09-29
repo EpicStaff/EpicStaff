@@ -3,7 +3,7 @@ from django.test import override_settings
 
 from tables.exceptions import StorageQuotaExceeded
 from tables.models import StorageFile
-from tables.services.storage_service.quota_service import (
+from tables.services.storage_service.quota import (
     ensure_fits_quota,
     is_over_quota,
     org_free_bytes,

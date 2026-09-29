@@ -1,7 +1,8 @@
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
-from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
+from tables.services.storage_service.archive.extraction import iter_archive_members
+from tables.services.storage_service.archive.extraction_guard import ArchiveExtractionGuard
 
 
 def upload_archive_members(
@@ -44,7 +45,7 @@ def _upload_members(
 
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="archive-put") as pool:
         try:
-            for name, reader in backend.iter_archive_members_streaming(archive_file, guard):
+            for name, reader in iter_archive_members(archive_file, guard):
                 if check_member is not None:
                     check_member(name)
                 key = f"{folder_key}/{name}"

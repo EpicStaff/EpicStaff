@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser
 from rbac.models import Role
-from tables.services.storage_service import upload_stream_service
+from tables.services.storage_service.upload import admission
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
@@ -19,7 +19,7 @@ from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 def fresh_upload_admission(monkeypatch):
     """The upload gate is a per-worker singleton: rebuild it from each test's
     settings, and keep one test's in-flight uploads out of the next."""
-    monkeypatch.setattr(upload_stream_service, "_admission", None)
+    monkeypatch.setattr(admission, "_admission", None)
 
 
 @pytest.fixture

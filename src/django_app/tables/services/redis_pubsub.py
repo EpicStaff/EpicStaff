@@ -149,7 +149,7 @@ class RedisPubSub:
             close_old_connections()
 
             from tables.services.storage_service.db_sync import StorageFileSync
-            from tables.services.storage_service.quota_service import is_over_quota
+            from tables.services.storage_service.quota import is_over_quota
 
             for mutation in event.mutations:
                 rel_path = mutation.path

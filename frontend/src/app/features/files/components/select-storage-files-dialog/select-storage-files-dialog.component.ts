@@ -18,7 +18,7 @@ import { GraphFileRecord, StorageTreeNode } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageUploadService } from '../../services/storage-upload.service';
 import { getFileExtension } from '../../utils/storage-file.utils';
-import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.utils';
+import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.constants';
 import { describeUploadFailures } from '../../utils/upload-error.utils';
 import { describeUploadLimits } from '../../utils/upload-limits.utils';
 import {

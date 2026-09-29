@@ -2,7 +2,7 @@
 
 Originally written against `_iter_archive_entries`, the buffer-everything
 iterator behind the old multipart upload. That endpoint is gone; the same
-guarantees now have to hold for `iter_archive_members_streaming`, which hands
+guarantees now have to hold for `iter_archive_members`, which hands
 back a reader per member instead of its bytes — so the suite was repointed
 rather than deleted. Byte budgets are therefore asserted by draining the
 readers, since accounting happens as the member is read.
@@ -14,32 +14,30 @@ from io import BytesIO
 
 import pytest
 
-from tables.services.storage_service.archive_limits import (
+from tables.services.storage_service.archive.extraction import (
+    _sanitize_archive_member_name,
+    iter_archive_members,
+)
+from tables.services.storage_service.archive.extraction_guard import (
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,
 )
-
-
-@pytest.fixture
-def backend(fake_backend):
-    """Use fake_backend to access inherited helper methods."""
-    return fake_backend
 
 
 def _generous_guard() -> ArchiveExtractionGuard:
     return ArchiveExtractionGuard(max_entries=1_000, max_total_bytes=10_000_000)
 
 
-def _names(backend, archive, guard=None) -> list[str]:
+def _names(archive, guard=None) -> list[str]:
     """Iterate without reading member bytes (name-level checks)."""
     guard = guard or _generous_guard()
-    return [name for name, _ in backend.iter_archive_members_streaming(archive, guard)]
+    return [name for name, _ in iter_archive_members(archive, guard)]
 
 
-def _drain(backend, archive, guard=None) -> list[str]:
+def _drain(archive, guard=None) -> list[str]:
     """Iterate and read every member, so the guard accounts their bytes."""
     names = []
-    for name, reader in backend.iter_archive_members_streaming(
+    for name, reader in iter_archive_members(
         archive, guard or _generous_guard()
     ):
         while reader.read(64 * 1024):
@@ -49,72 +47,72 @@ def _drain(backend, archive, guard=None) -> list[str]:
 
 
 class TestIterArchiveMembers:
-    def test_yields_zip_contents(self, backend, sample_zip):
-        names = _names(backend, sample_zip)
+    def test_yields_zip_contents(self, sample_zip):
+        names = _names(sample_zip)
         assert "hello.txt" in names
         assert "sub/world.txt" in names
 
-    def test_yields_tar_contents(self, backend, sample_tar):
-        names = _names(backend, sample_tar)
+    def test_yields_tar_contents(self, sample_tar):
+        names = _names(sample_tar)
         assert "hello.txt" in names
         assert "sub/world.txt" in names
 
-    def test_member_reader_returns_the_member_bytes(self, backend, sample_zip):
+    def test_member_reader_returns_the_member_bytes(self, sample_zip):
         members = dict(
             (name, reader.read())
-            for name, reader in backend.iter_archive_members_streaming(
+            for name, reader in iter_archive_members(
                 sample_zip, _generous_guard()
             )
         )
         assert members["hello.txt"] == b"hello content"
 
-    def test_skips_directories_in_zip(self, backend):
+    def test_skips_directories_in_zip(self):
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("dir/", "")  # directory entry
             zf.writestr("dir/file.txt", "content")
         buf.seek(0)
-        names = _names(backend, buf)
+        names = _names(buf)
         assert "dir/file.txt" in names
         assert "dir/" not in names
 
-    def test_raises_for_unsupported_format(self, backend):
+    def test_raises_for_unsupported_format(self):
         buf = BytesIO(b"this is not an archive at all")
         with pytest.raises(ValueError, match="Unsupported archive"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_raises_for_zip_entry_with_parent_traversal(self, backend):
+    def test_raises_for_zip_entry_with_parent_traversal(self):
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("../../../etc/cron.d/x", "evil content")
         buf.seek(0)
         with pytest.raises(ValueError, match="escapes the target folder"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_raises_for_zip_entry_with_absolute_path(self, backend):
+    def test_raises_for_zip_entry_with_absolute_path(self):
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("/etc/passwd", "evil content")
         buf.seek(0)
         with pytest.raises(ValueError, match="escapes the target folder"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_raises_for_zip_entry_with_unc_style_path(self, backend):
+    def test_raises_for_zip_entry_with_unc_style_path(self):
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("\\\\server\\share\\x", "evil content")
         buf.seek(0)
         with pytest.raises(ValueError, match="escapes the target folder"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_raises_for_entry_name_with_null_byte(self, backend):
+    def test_raises_for_entry_name_with_null_byte(self):
         # zipfile silently truncates member names at a null byte before they
         # ever reach the archive, so this checks the sanitizer directly
         # rather than round-tripping through a real ZIP/TAR file.
         with pytest.raises(ValueError, match="null byte"):
-            backend._sanitize_archive_member_name("evil\x00.txt")
+            _sanitize_archive_member_name("evil\x00.txt")
 
-    def test_raises_for_tar_entry_with_parent_traversal(self, backend):
+    def test_raises_for_tar_entry_with_parent_traversal(self):
         buf = BytesIO()
         with tarfile.open(fileobj=buf, mode="w") as tf:
             content = b"evil content"
@@ -123,9 +121,9 @@ class TestIterArchiveMembers:
             tf.addfile(info, BytesIO(content))
         buf.seek(0)
         with pytest.raises(ValueError, match="escapes the target folder"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_raises_for_tar_symlink_member_even_with_safe_name(self, backend):
+    def test_raises_for_tar_symlink_member_even_with_safe_name(self):
         buf = BytesIO()
         with tarfile.open(fileobj=buf, mode="w") as tf:
             info = tarfile.TarInfo(name="safe_name.txt")
@@ -134,9 +132,9 @@ class TestIterArchiveMembers:
             tf.addfile(info)
         buf.seek(0)
         with pytest.raises(ValueError, match="symlink or hardlink"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_raises_for_tar_hardlink_member_even_with_safe_name(self, backend):
+    def test_raises_for_tar_hardlink_member_even_with_safe_name(self):
         buf = BytesIO()
         with tarfile.open(fileobj=buf, mode="w") as tf:
             info = tarfile.TarInfo(name="safe_name.txt")
@@ -145,10 +143,10 @@ class TestIterArchiveMembers:
             tf.addfile(info)
         buf.seek(0)
         with pytest.raises(ValueError, match="symlink or hardlink"):
-            _names(backend, buf)
+            _names(buf)
 
-    def test_allows_legitimate_nested_entry(self, backend, sample_zip):
-        assert "sub/world.txt" in _names(backend, sample_zip)
+    def test_allows_legitimate_nested_entry(self, sample_zip):
+        assert "sub/world.txt" in _names(sample_zip)
 
 
 class TestIterArchiveMembersLimits:
@@ -159,7 +157,7 @@ class TestIterArchiveMembersLimits:
             max_entries=max_entries, max_total_bytes=max_total_bytes
         )
 
-    def test_rejects_zip_past_the_entry_cap(self, backend):
+    def test_rejects_zip_past_the_entry_cap(self):
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             for i in range(10):
@@ -167,18 +165,18 @@ class TestIterArchiveMembersLimits:
         buf.seek(0)
 
         with pytest.raises(ValueError, match="entries"):
-            _names(backend, buf, self._guard(max_entries=5))
+            _names(buf, self._guard(max_entries=5))
 
-    def test_rejects_zip_past_the_byte_budget(self, backend):
+    def test_rejects_zip_past_the_byte_budget(self):
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("zeros.bin", b"\0" * 500_000)
         buf.seek(0)
 
         with pytest.raises(ValueError, match="bytes"):
-            _drain(backend, buf, self._guard(max_total_bytes=1_000))
+            _drain(buf, self._guard(max_total_bytes=1_000))
 
-    def test_rejects_tar_past_the_byte_budget(self, backend):
+    def test_rejects_tar_past_the_byte_budget(self):
         buf = BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tf:
             payload = b"\0" * 500_000
@@ -188,9 +186,9 @@ class TestIterArchiveMembersLimits:
         buf.seek(0)
 
         with pytest.raises(ValueError, match="bytes"):
-            _drain(backend, buf, self._guard(max_total_bytes=1_000))
+            _drain(buf, self._guard(max_total_bytes=1_000))
 
-    def test_byte_budget_spans_all_entries_not_each_one(self, backend):
+    def test_byte_budget_spans_all_entries_not_each_one(self):
         """Three 400-byte members are each legal under a 1000-byte total."""
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
@@ -199,10 +197,10 @@ class TestIterArchiveMembersLimits:
         buf.seek(0)
 
         with pytest.raises(ValueError, match="bytes"):
-            _drain(backend, buf, self._guard(max_total_bytes=1_000))
+            _drain(buf, self._guard(max_total_bytes=1_000))
 
-    def test_allows_an_archive_inside_its_budget(self, backend, sample_zip):
-        assert len(_drain(backend, sample_zip, self._guard())) == 2
+    def test_allows_an_archive_inside_its_budget(self, sample_zip):
+        assert len(_drain(sample_zip, self._guard())) == 2
 
 
 def _tar_of(members) -> BytesIO:
@@ -226,13 +224,13 @@ class TestStreamingTarMemberTypes:
     (tar header bounds are covered by test_archive_readers, which it shares)."""
 
     @pytest.mark.parametrize("member_type", [tarfile.FIFOTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE])
-    def test_a_device_or_fifo_member_is_rejected(self, backend, member_type):
+    def test_a_device_or_fifo_member_is_rejected(self, member_type):
         archive = _tar_of([("ok.txt", tarfile.REGTYPE, b"x"), ("dev", member_type, None)])
         with pytest.raises(ValueError, match="not a plain file or folder"):
-            _names(backend, archive)
+            _names(archive)
 
-    def test_every_member_counts_toward_the_entry_cap_folders_too(self, backend):
+    def test_every_member_counts_toward_the_entry_cap_folders_too(self):
         archive = _tar_of([(f"d{i}", tarfile.DIRTYPE, None) for i in range(3)])
         guard = ArchiveExtractionGuard(max_entries=2, max_total_bytes=1_000)
         with pytest.raises(ArchiveLimitExceeded, match="more than 2 entries"):
-            _names(backend, archive, guard)
+            _names(archive, guard)

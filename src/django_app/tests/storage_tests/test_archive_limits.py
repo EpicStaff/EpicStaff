@@ -2,17 +2,17 @@
 
 FileValidator rejects a bomb up front from archive headers, which is the
 effective gate for uploads. This guard is the second layer, at the point where
-bytes actually move: `iter_archive_members_streaming` hands back a reader per
+bytes actually move: `iter_archive_members` hands back a reader per
 member and the guard is charged as it is read, so without a running total 2000
 individually-honest entries still add up to an unbounded write, and any caller
-reaching the backend directly gets no header check at all.
+reaching the extraction directly gets no header check at all.
 """
 
 from io import BytesIO
 
 import pytest
 
-from tables.services.storage_service.archive_limits import (
+from tables.services.storage_service.archive.extraction_guard import (
     GuardedMemberReader,
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,

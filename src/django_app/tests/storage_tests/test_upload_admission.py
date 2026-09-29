@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from tables.exceptions import OrgUploadLimitReached, UploadSlotsBusy
-from tables.services.storage_service.upload_admission import UploadAdmission
+from tables.services.storage_service.upload.admission import UploadAdmission
 
 ORG_A = 1
 ORG_B = 2

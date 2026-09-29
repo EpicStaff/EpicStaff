@@ -14,7 +14,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
 )
 from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
-from tables.services.storage_service.quota_service import record_files_within_quota
+from tables.services.storage_service.quota import record_files_within_quota
 from tables.services.storage_service.s3_backend import S3StorageBackend
 
 MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
