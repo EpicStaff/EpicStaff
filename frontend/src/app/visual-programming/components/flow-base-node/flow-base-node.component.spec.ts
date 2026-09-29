@@ -8,6 +8,7 @@ import { AgentDefinitionsApiService } from '../../../features/agent-definitions/
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel } from '../../core/models/node.model';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
@@ -31,10 +32,15 @@ describe('FlowBaseNodeComponent key-value caption', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
     const caption = (): HTMLElement | null => fixture.nativeElement.querySelector('.key-value-caption');
+    const noTableBadge = (): HTMLElement | undefined =>
+        Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.llm-warning-badge')).find(
+            (badge) => badge.textContent!.trim() === 'No table'
+        );
 
-    function render(node: NodeModel): void {
+    function render(node: NodeModel, readOnly = false): void {
         TestBed.configureTestingModule({
             providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(readOnly) } },
                 { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
                 { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
                 {
@@ -90,6 +96,20 @@ describe('FlowBaseNodeComponent key-value caption', () => {
             ).toBe(MODE_STRIPES[mode]);
         });
     }
+
+    const NO_TABLE_NODE = { ...KEY_VALUE_NODE, data: { ...KEY_VALUE_NODE.data, key_value_table: null } };
+
+    it('flags a node without a table and says where to pick one', () => {
+        render(NO_TABLE_NODE);
+
+        expect(noTableBadge()!.title).toBe('Select a table in the node panel');
+    });
+
+    it('flags a node without a table in a read-only flow without asking to pick one', () => {
+        render(NO_TABLE_NODE, true);
+
+        expect(noTableBadge()!.title).toBe('No table selected');
+    });
 
     it('is only for key-value nodes', () => {
         render({

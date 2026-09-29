@@ -72,7 +72,7 @@
                                 }
                             </button>
                         </app-select-dropdown>
-                        @if (selectedTableId() === null) {
+                        @if (!isReadOnly() && selectedTableId() === null) {
                             <div class="table-hint">Select a table for this node to run</div>
                         }
                     </div>

@@ -181,7 +181,7 @@
                 @if (hasMissingKeyValueTable) {
                     <div
                         class="llm-warning-badge"
-                        title="Select a table in the node panel"
+                        [title]="isReadOnly() ? 'No table selected' : 'Select a table in the node panel'"
                     >
                         <app-svg-icon
                             icon="alert-triangle"

@@ -2976,6 +2976,21 @@ describe('KeyValueNodePanelComponent', () => {
             expect(tableHint(fixture)?.textContent!.trim()).toBe('Select a table for this node to run');
         });
 
+        it('does not ask for a table in a read-only flow, where none can be picked', () => {
+            const { fixture, flowReadOnly } = createPanel(mapKeyValueNodeToModel({ ...DTO, key_value_table: null }), {
+                renderTemplate: true,
+                tables: TABLES,
+                readOnly: true,
+            });
+
+            expect(tableHint(fixture)).toBeNull();
+
+            flowReadOnly.set(false);
+            fixture.detectChanges();
+
+            expect(tableHint(fixture)?.textContent!.trim()).toBe('Select a table for this node to run');
+        });
+
         it('shows the placeholder, without the hint, for a table that is not in the list', () => {
             const { fixture } = createPanel(mapKeyValueNodeToModel({ ...DTO, key_value_table: 99 }), {
                 renderTemplate: true,
