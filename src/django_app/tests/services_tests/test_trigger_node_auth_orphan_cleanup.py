@@ -46,7 +46,7 @@ def _make_python_code():
 @pytest.mark.django_db
 class TestTriggerNodeAuthOrphanCleanup:
     def test_detaching_the_last_telegram_node_clears_telegram_auth_and_frees_the_kind(
-        self, org, mock_telegram_service
+        self, org, mock_telegram_service, django_capture_on_commit_callbacks
     ):
         trigger = _make_trigger(org, "telegram-orphan-detach")
         WebhookTriggerAuth.objects.create(
@@ -58,7 +58,8 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
 
         node.webhook_trigger = None
-        node.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.save()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
@@ -81,7 +82,7 @@ class TestTriggerNodeAuthOrphanCleanup:
         assert auth.kind == WebhookTriggerAuthKind.WEBHOOK
 
     def test_deleting_the_last_telegram_node_clears_telegram_auth(
-        self, org, mock_telegram_service
+        self, org, mock_telegram_service, django_capture_on_commit_callbacks
     ):
         trigger = _make_trigger(org, "telegram-orphan-delete")
         WebhookTriggerAuth.objects.create(
@@ -92,12 +93,13 @@ class TestTriggerNodeAuthOrphanCleanup:
             node_name="Telegram To Delete", graph=graph, webhook_trigger=trigger
         )
 
-        node.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.delete()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
     def test_deleting_the_last_webhook_node_clears_webhook_auth_and_frees_the_kind(
-        self, org
+        self, org, django_capture_on_commit_callbacks
     ):
         trigger = _make_trigger(org, "webhook-orphan-delete")
         WebhookTriggerAuth.objects.create(
@@ -111,7 +113,8 @@ class TestTriggerNodeAuthOrphanCleanup:
             python_code=_make_python_code(),
         )
 
-        node.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.delete()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
@@ -129,7 +132,9 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
         assert auth.kind == WebhookTriggerAuthKind.TELEGRAM
 
-    def test_detaching_the_last_webhook_node_clears_webhook_auth(self, org):
+    def test_detaching_the_last_webhook_node_clears_webhook_auth(
+        self, org, django_capture_on_commit_callbacks
+    ):
         trigger = _make_trigger(org, "webhook-orphan-detach")
         WebhookTriggerAuth.objects.create(
             trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK
@@ -143,12 +148,13 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
 
         node.webhook_trigger = None
-        node.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.save()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
     def test_detaching_one_of_two_webhook_nodes_sharing_a_trigger_keeps_the_auth(
-        self, org
+        self, org, django_capture_on_commit_callbacks
     ):
         """Regression: `webhook_trigger` has `related_name="webhook_trigger_nodes"`
         (plural) -- more than one `WebhookTriggerNode` can legally share one
@@ -174,13 +180,14 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
 
         node_a.webhook_trigger = None
-        node_a.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            node_a.save()
 
         auth = WebhookTriggerAuth.objects.get(trigger=trigger)
         assert auth.kind == WebhookTriggerAuthKind.WEBHOOK
 
     def test_detaching_one_of_two_telegram_nodes_sharing_a_trigger_keeps_the_auth(
-        self, org, mock_telegram_service
+        self, org, mock_telegram_service, django_capture_on_commit_callbacks
     ):
         trigger = _make_trigger(org, "telegram-orphan-shared")
         WebhookTriggerAuth.objects.create(
@@ -195,13 +202,14 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
 
         node_a.webhook_trigger = None
-        node_a.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            node_a.save()
 
         auth = WebhookTriggerAuth.objects.get(trigger=trigger)
         assert auth.kind == WebhookTriggerAuthKind.TELEGRAM
 
     def test_repointing_a_telegram_node_cleans_up_the_old_triggers_auth(
-        self, org, mock_telegram_service
+        self, org, mock_telegram_service, django_capture_on_commit_callbacks
     ):
         trigger_a = _make_trigger(org, "telegram-orphan-repoint-a")
         trigger_b = _make_trigger(org, "telegram-orphan-repoint-b")
@@ -214,11 +222,14 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
 
         node.webhook_trigger = trigger_b
-        node.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.save()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger_a).exists()
 
-    def test_repointing_a_webhook_node_cleans_up_the_old_triggers_auth(self, org):
+    def test_repointing_a_webhook_node_cleans_up_the_old_triggers_auth(
+        self, org, django_capture_on_commit_callbacks
+    ):
         trigger_a = _make_trigger(org, "webhook-orphan-repoint-a")
         trigger_b = _make_trigger(org, "webhook-orphan-repoint-b")
         WebhookTriggerAuth.objects.create(
@@ -233,6 +244,56 @@ class TestTriggerNodeAuthOrphanCleanup:
         )
 
         node.webhook_trigger = trigger_b
-        node.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.save()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger_a).exists()
+
+
+@pytest.mark.django_db
+class TestTriggerNodeAuthCleanupRunsAtCommit:
+    """The orphan check runs at commit, so a node deleted and recreated in one
+    transaction (version restore, import replace) keeps its trigger's auth."""
+
+    def test_webhook_node_deleted_and_recreated_in_one_transaction_keeps_the_auth(
+        self, org, django_capture_on_commit_callbacks
+    ):
+        trigger = _make_trigger(org, "webhook-recreate-same-tx")
+        WebhookTriggerAuth.objects.create(trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK)
+        graph = _make_graph(org, "g-webhook-recreate-same-tx")
+        node = WebhookTriggerNode.objects.create(
+            node_name="Webhook", graph=graph, webhook_trigger=trigger, python_code=_make_python_code()
+        )
+
+        with django_capture_on_commit_callbacks(execute=True):
+            node.delete()
+            WebhookTriggerNode.objects.create(
+                node_name="Webhook",
+                graph=graph,
+                webhook_trigger=trigger,
+                python_code=_make_python_code(),
+            )
+
+        assert WebhookTriggerAuth.objects.filter(
+            trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK
+        ).exists()
+
+    def test_telegram_node_deleted_and_recreated_in_one_transaction_keeps_the_auth(
+        self, org, mock_telegram_service, django_capture_on_commit_callbacks
+    ):
+        trigger = _make_trigger(org, "telegram-recreate-same-tx")
+        WebhookTriggerAuth.objects.create(trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM)
+        graph = _make_graph(org, "g-telegram-recreate-same-tx")
+        node = TelegramTriggerNode.objects.create(
+            node_name="Telegram", graph=graph, webhook_trigger=trigger
+        )
+
+        with django_capture_on_commit_callbacks(execute=True):
+            node.delete()
+            TelegramTriggerNode.objects.create(
+                node_name="Telegram", graph=graph, webhook_trigger=trigger
+            )
+
+        assert WebhookTriggerAuth.objects.filter(
+            trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM
+        ).exists()

@@ -35,6 +35,7 @@ from tables.services.secrets.parse_code import parse_secret_names
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
+from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
 class PythonCodeSerializer(
@@ -43,9 +44,9 @@ class PythonCodeSerializer(
     secret_reference_fields = ("secret_ids",)
 
     libraries = serializers.ListField(
-        child=serializers.CharField(),
+        child=serializers.CharField(validators=[validate_python_library_spec]),
         write_only=False,
-        help_text="A list of library names.",
+        help_text="A list of pip requirement specifiers, for example 'requests>=2,<3'.",
     )
     secrets = SecretNameSerializer(
         many=True,
@@ -89,7 +90,7 @@ class PythonCodeSerializer(
     def to_internal_value(self, data):
         """Convert 'libraries' list of strings to a space-separated string for storage."""
         internal_value = super().to_internal_value(data)
-        libraries = data.get("libraries") or []
+        libraries = internal_value.get("libraries")
         if isinstance(libraries, list):
             internal_value["libraries"] = " ".join(libraries)
         return internal_value

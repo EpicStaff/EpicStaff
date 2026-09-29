@@ -5,12 +5,16 @@
     (actualClick)="onEditClick()"
 >
     @if (inputPort; as port) {
-        <div class="input-port-wrapper">
+        <div
+            class="input-port-wrapper"
+            [class.no-hover]="isReadOnly()"
+        >
             <div
                 class="port-circle"
                 fNodeInput
                 [fInputMultiple]="port.multiple"
                 [fInputId]="port.id"
+                [fInputDisabled]="isReadOnly()"
                 [fInputConnectableSide]="port.position"
                 [ngStyle]="{
                     'border-color': 'hsl(0, 0%, 15%)',
@@ -56,12 +60,16 @@
                         <span class="group-name">{{ group.route_code }}</span>
 
                         @if (getPortForGroup(group); as port) {
-                            <div class="port-wrapper">
+                            <div
+                                class="port-wrapper"
+                                [class.no-hover]="isReadOnly()"
+                            >
                                 <div
                                     class="port-circle"
                                     fNodeOutput
                                     [fOutputMultiple]="port.multiple"
                                     [fOutputId]="port.id"
+                                    [fOutputDisabled]="isReadOnly()"
                                     [fOutputConnectableSide]="port.position"
                                     [ngStyle]="{
                                         'border-color': port.color,
@@ -95,12 +103,16 @@
             </span>
 
             @if (defaultPort; as port) {
-                <div class="port-wrapper">
+                <div
+                    class="port-wrapper"
+                    [class.no-hover]="isReadOnly()"
+                >
                     <div
                         class="port-circle"
                         fNodeOutput
                         [fOutputMultiple]="port.multiple"
                         [fOutputId]="port.id"
+                        [fOutputDisabled]="isReadOnly()"
                         [fOutputConnectableSide]="port.position"
                         [ngStyle]="{
                             'border-color': port.color,
@@ -127,12 +139,16 @@
             </span>
 
             @if (errorPort; as port) {
-                <div class="port-wrapper">
+                <div
+                    class="port-wrapper"
+                    [class.no-hover]="isReadOnly()"
+                >
                     <div
                         class="port-circle"
                         fNodeOutput
                         [fOutputMultiple]="port.multiple"
                         [fOutputId]="port.id"
+                        [fOutputDisabled]="isReadOnly()"
                         [fOutputConnectableSide]="port.position"
                         [ngStyle]="{
                             'border-color': port.color,

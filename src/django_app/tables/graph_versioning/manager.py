@@ -5,7 +5,6 @@ from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
     _EXCLUDED_GRAPH_SCALARS,
-    _GRAPH_RELATION_NAMES,
 )
 from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -675,7 +674,7 @@ class GraphVersioningManager:
     def apply_snapshot_to_graph(
         self, graph: Graph, filtered_snapshot: dict, available_deps: dict
     ) -> IDMapper:
-        self._wipe_graph_children(graph)
+        self._graph_strategy.wipe_graph_children(graph)
         self._update_graph_scalars(graph, filtered_snapshot)
 
         id_mapper = self._build_identity_id_mapper(available_deps)
@@ -687,17 +686,6 @@ class GraphVersioningManager:
         )
 
         return node_mapper
-
-    def _wipe_graph_children(self, graph: Graph) -> None:
-        """Wipe all graph related nodes. Orphaned PythonCode rows are reclaimed
-        by the post_delete signal cleanup in tables.signals.python_code_signals.
-        Intentionally hard-deletes and is NOT routed through the soft-delete
-        cascade (DeleteService): this replaces a graph's content during a
-        version restore, it does not delete the graph itself, so soft-delete
-        semantics don't apply here. Do not "fix" this to go through .delete().
-        """
-        for relation_name in _GRAPH_RELATION_NAMES:
-            getattr(graph, relation_name).all().delete()
 
     def _update_graph_scalars(self, graph: Graph, snapshot: dict) -> None:
         """

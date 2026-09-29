@@ -11,6 +11,10 @@ echo "Postgres is ready."
 echo "Applying database migrations..."
 python manage.py migrate
 
+# Reconcile built-in roles with rbac/access/builtin_roles.json; an invalid file stops startup.
+echo "Seeding built-in roles..."
+python manage.py seed_builtin_roles
+
 # Backfill MinIO storage credentials for any organization missing them
 echo "Backfilling org storage credentials..."
 python manage.py backfill_org_storage_credentials

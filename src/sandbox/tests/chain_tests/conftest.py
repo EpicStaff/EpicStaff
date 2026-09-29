@@ -5,6 +5,8 @@ import types
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 
 def _set_env_defaults() -> None:
     """Set sensible defaults for every var settings.py reads at import time.
@@ -32,6 +34,7 @@ def _set_env_defaults() -> None:
         "SANDBOX_MASK_SECRET": "true",
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
+        "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -95,6 +98,41 @@ def _ensure_src_shared_stub() -> None:
 # Env defaults must be set before anything imports settings.py.
 _set_env_defaults()
 _ensure_src_shared_stub()
+
+
+@pytest.fixture(autouse=True)
+def allow_running_without_signal_isolation(monkeypatch):
+    """Stop the signal isolation requirement from refusing unrelated handler tests.
+
+    Needed on every host, not only on Landlock ABI 1-5 kernels: several
+    handler tests (network, network denial message) pin `abi_version` to 1-5
+    to reach a network branch. With the production default
+    (REQUIRE_SIGNAL_ISOLATION=True) each of them would be refused for lacking
+    signal isolation before that branch is reached. Tests of the signal
+    isolation decision itself set this explicitly. At ABI 6+ signal isolation
+    is enforced regardless of this setting.
+    """
+    import settings
+
+    monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", False)
+
+
+def pytest_terminal_summary(terminalreporter):
+    """Print the host's Landlock ABI once per run, so a CI log shows why the
+    real-kernel signal isolation tests in test_landlock.py were skipped.
+
+    Not pytest_report_header: that hook is only read from conftests at the
+    `testpaths` root, and this one sits a level below it.
+    """
+    import landlock
+
+    abi = landlock.abi_version()
+    if abi >= landlock.MIN_ABI_FOR_SIGNAL_ISOLATION:
+        terminalreporter.write_line(f"INFO: Landlock ABI: {abi}")
+    else:
+        terminalreporter.write_line(
+            f"INFO: Landlock ABI: {abi} -- real-kernel signal isolation tests were skipped"
+        )
 
 
 def _exec_dir(base_dir: Path) -> Path:
