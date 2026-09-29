@@ -23,7 +23,7 @@ def test_seeding_survives_org_row_colliding_with_realtime_builtin(org):
     upload_models.Command().handle()
 
     provider = Provider.objects.get(name="openai")
-    collision_name = "gpt-4o-mini-realtime-preview-2024-12-17"
+    collision_name = "test-realtime-model"
     org_row = RealtimeModel.objects.create(
         name=collision_name, provider=provider, org=org, is_custom=True
     )
@@ -125,8 +125,8 @@ def test_realtime_prune_matches_provider_name_pairs(org):
 
     gemini = Provider.objects.get(name="gemini")
     stale = RealtimeModel.objects.create(
-        # a real openai catalog name, but under gemini — not a valid pair
-        name="gpt-4o-realtime-preview-2024-12-17",
+        # a test model name under a different provider — not a valid pair
+        name="test-realtime-model-stale",
         provider=gemini,
         is_custom=False,
     )
