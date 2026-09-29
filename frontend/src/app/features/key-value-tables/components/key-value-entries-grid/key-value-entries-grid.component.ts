@@ -61,7 +61,7 @@ import {
 
 import { ToastService } from '../../../../services/notifications';
 import { copyableValue, editableValue, previewText } from '../../helpers/entry-value-preview';
-import { overlayScrollbarRoom } from '../../helpers/overlay-scrollbar-room';
+import { overlayScrollbarOptions } from '../../helpers/overlay-scrollbar-options';
 import {
     KeyValueEntryOrdering,
     KeyValueEntrySortField,
@@ -374,7 +374,7 @@ export class KeyValueEntriesGridComponent {
         suppressMultiSort: true,
         suppressColumnVirtualisation: true,
         // Keeps an overlay scrollbar (Firefox on GTK, macOS) from covering the last column.
-        scrollbarWidth: overlayScrollbarRoom(inject(DOCUMENT)),
+        ...overlayScrollbarOptions(inject(DOCUMENT)),
         defaultColDef: { sortable: false, resizable: true, suppressMovable: true },
     };
 

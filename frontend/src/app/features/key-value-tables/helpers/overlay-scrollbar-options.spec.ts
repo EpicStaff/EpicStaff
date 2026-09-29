@@ -1,4 +1,4 @@
-import { overlayScrollbarRoom } from './overlay-scrollbar-room';
+import { overlayScrollbarOptions } from './overlay-scrollbar-options';
 
 // jsdom has no layout: give every element the box a 100px scrolling probe would have with a scrollbar this wide.
 function stubScrollbar(scrollbarWidth: number): void {
@@ -10,24 +10,24 @@ function stubScrollbar(scrollbarWidth: number): void {
     });
 }
 
-describe('overlayScrollbarRoom', () => {
-    it("reserves AG Grid's 16px scrollbar box where scrollbars overlay the content", () => {
+describe('overlayScrollbarOptions', () => {
+    it("reserves AG Grid's 16px scrollbar box, rows or not, where scrollbars overlay the content", () => {
         stubScrollbar(0);
-        expect(overlayScrollbarRoom(document)).toBe(16);
+        expect(overlayScrollbarOptions(document)).toEqual({ scrollbarWidth: 16, alwaysShowVerticalScroll: true });
     });
 
     it('leaves classic scrollbars, which take room, to the grid', () => {
         stubScrollbar(12);
-        expect(overlayScrollbarRoom(document)).toBeUndefined();
+        expect(overlayScrollbarOptions(document)).toEqual({});
     });
 
     it('knows nothing without layout', () => {
-        expect(overlayScrollbarRoom(document)).toBeUndefined();
+        expect(overlayScrollbarOptions(document)).toEqual({});
     });
 
     it('removes its probe', () => {
         const children = document.body.childElementCount;
-        overlayScrollbarRoom(document);
+        overlayScrollbarOptions(document);
         expect(document.body.childElementCount).toBe(children);
     });
 });
