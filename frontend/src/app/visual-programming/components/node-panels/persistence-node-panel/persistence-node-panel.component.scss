@@ -77,12 +77,25 @@
     flex-direction: column;
 }
 
+// Muted like the hints: a lock before the text, which wraps beside it.
 .permission-notice {
-    font-size: 0.875rem;
-    color: var(--color-warning);
+    @include controls.hint-text;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
 
     &--shown {
         margin-bottom: 12px;
+    }
+
+    // The text's line height, so the lock sits on its first line.
+    &__icon {
+        flex-shrink: 0;
+        line-height: inherit;
+    }
+
+    &__text {
+        min-width: 0;
     }
 }
 

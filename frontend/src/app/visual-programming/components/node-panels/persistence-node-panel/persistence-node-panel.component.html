@@ -23,7 +23,11 @@
                     [class.permission-notice--shown]="permissionNotice()"
                 >
                     @if (permissionNotice(); as notice) {
-                        {{ notice }}
+                        <i
+                            class="ti ti-lock permission-notice__icon"
+                            aria-hidden="true"
+                        ></i>
+                        <span class="permission-notice__text">{{ notice }}</span>
                     }
                 </div>
 

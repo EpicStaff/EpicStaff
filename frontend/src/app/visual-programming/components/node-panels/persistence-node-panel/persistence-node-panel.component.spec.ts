@@ -2607,6 +2607,8 @@ describe('PersistenceNodePanelComponent', () => {
             panel['modeItems']().map((item) => item.name);
         const notice = (fixture: ComponentFixture<PersistenceNodePanelComponent>): string | null =>
             fixture.nativeElement.querySelector('.permission-notice').textContent.trim() || null;
+        const lockIcon = (fixture: ComponentFixture<PersistenceNodePanelComponent>): HTMLElement | null =>
+            fixture.nativeElement.querySelector('.permission-notice .ti-lock');
         const lockable = (panel: PersistenceNodePanelComponent): boolean[] =>
             ['mode', 'persistence_table', 'entries'].map((name) => panel.form.get(name)!.disabled);
         const readNode = nodeWith('read', [{ key: 'profile', value: 'variables.user' }]);
@@ -2685,13 +2687,17 @@ describe('PersistenceNodePanelComponent', () => {
                 actions: [],
             });
             expect(notice(fixture)).toBe('You need View permission on Key-Value Tables to configure this node.');
+            expect(lockIcon(fixture)?.getAttribute('aria-hidden')).toBe('true');
             expect(lockable(panel)).toEqual([true, true, true]);
 
             permittedActions.set([Create, Read, Update, Delete]);
             fixture.detectChanges();
             vi.advanceTimersByTime(1000);
 
+            // The status container stays, empty, so the next notice is announced.
             expect(notice(fixture)).toBeNull();
+            expect(lockIcon(fixture)).toBeNull();
+            expect(fixture.nativeElement.querySelector('.permission-notice').getAttribute('role')).toBe('status');
             expect(lockable(panel)).toEqual([false, false, false]);
             expect(triggerAutosave).not.toHaveBeenCalled();
             expect(panel.isDirty()).toBe(false);
@@ -2700,6 +2706,7 @@ describe('PersistenceNodePanelComponent', () => {
             fixture.detectChanges();
 
             expect(notice(fixture)).toBe('Changing a Write node needs Create and Edit permission on Key-Value Tables.');
+            expect(lockIcon(fixture)).not.toBeNull();
             expect(lockable(panel)).toEqual([true, true, true]);
         });
 
