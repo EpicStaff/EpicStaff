@@ -1,7 +1,7 @@
 """Unit tests for OrgCredentialCache per-org locking.
 
 Tests verify that concurrent `get()` calls for the same `org_id`:
-1. Create exactly one MinioAdminGateway (not one per caller)
+1. Create exactly one StorageAdminGateway (not one per caller)
 2. Don't leak old gateway sessions when rotating credentials
 """
 
@@ -18,7 +18,7 @@ from storage_credentials.services.org_credential_cache import (
 
 @pytest.fixture
 def mock_org_credentials():
-    """Mock MinIO credentials."""
+    """Mock storage credentials."""
     credentials = MagicMock()
     credentials.access_key = "test-access-key"
     credentials.secret_key = "test-secret-key"
@@ -27,7 +27,7 @@ def mock_org_credentials():
 
 @pytest.fixture
 def mock_gateway():
-    """Mock MinioAdminGateway with async close method."""
+    """Mock StorageAdminGateway with async close method."""
     gateway = MagicMock()
     gateway.close = AsyncMock()
     return gateway
@@ -44,7 +44,7 @@ async def test_concurrent_get_same_org_creates_exactly_one_gateway(
     cache, mock_org_credentials, mock_gateway
 ):
     """Verify that two concurrent `get()` calls for the same org_id
-    create exactly one MinioAdminGateway, not one per caller."""
+    create exactly one StorageAdminGateway, not one per caller."""
 
     org_id = 42
     host = "https://minio.example.com"
@@ -61,9 +61,9 @@ async def test_concurrent_get_same_org_creates_exactly_one_gateway(
         "storage_credentials.services.org_credential_cache._get_org_credentials",
         return_value=mock_org_credentials,
     ):
-        # Mock MinioAdminGateway construction to track calls
+        # Mock StorageAdminGateway construction to track calls
         with patch(
-            "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+            "storage_credentials.services.org_credential_cache.StorageAdminGateway",
             side_effect=count_and_return_gateway,
         ):
             # Launch two concurrent get() calls for the same org
@@ -86,7 +86,7 @@ async def test_concurrent_get_different_orgs_creates_separate_gateways(
     cache, mock_org_credentials
 ):
     """Verify that concurrent `get()` calls for different org_ids
-    each create their own MinioAdminGateway (no over-locking)."""
+    each create their own StorageAdminGateway (no over-locking)."""
 
     org_id_1 = 42
     org_id_2 = 99
@@ -108,7 +108,7 @@ async def test_concurrent_get_different_orgs_creates_separate_gateways(
         return_value=mock_org_credentials,
     ):
         with patch(
-            "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+            "storage_credentials.services.org_credential_cache.StorageAdminGateway",
             side_effect=count_and_return_unique_gateway,
         ):
             results = await asyncio.gather(
@@ -157,7 +157,7 @@ async def test_expired_cache_entry_closes_old_gateway(
         return_value=mock_org_credentials,
     ):
         with patch(
-            "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+            "storage_credentials.services.org_credential_cache.StorageAdminGateway",
             side_effect=get_next_gateway,
         ):
             # First call: populates cache with old_gateway
@@ -205,7 +205,7 @@ async def test_second_check_prevents_duplicate_creation(
         return_value=mock_org_credentials,
     ):
         with patch(
-            "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+            "storage_credentials.services.org_credential_cache.StorageAdminGateway",
             side_effect=count_and_record_gateway,
         ):
             # Two concurrent callers, both will acquire the lock in sequence
@@ -240,7 +240,7 @@ async def test_no_session_leaks_on_concurrent_refresh(
         return_value=mock_org_credentials,
     ):
         with patch(
-            "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+            "storage_credentials.services.org_credential_cache.StorageAdminGateway",
             return_value=initial_gateway,
         ):
             await cache.get(org_id=org_id, host=host)
@@ -263,7 +263,7 @@ async def test_no_session_leaks_on_concurrent_refresh(
         return_value=mock_org_credentials,
     ):
         with patch(
-            "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+            "storage_credentials.services.org_credential_cache.StorageAdminGateway",
             side_effect=create_new_gateway,
         ):
             # Three concurrent calls to refresh, all find cache expired

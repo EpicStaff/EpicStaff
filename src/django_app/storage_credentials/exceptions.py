@@ -19,7 +19,7 @@ class StorageCredentialConfigError(StorageCredentialError):
 
 
 class OrgStorageProvisioningError(StorageCredentialError):
-    """Provisioning or deprovisioning an org-level MinIO user failed.
+    """Provisioning or deprovisioning an org-level storage user failed.
 
     Deliberately NOT caught inside `OrganizationManagementService.
     create_organization()`: an organization without storage provisioning is
@@ -71,3 +71,13 @@ class TemporaryCredentialRevokeError(TemporaryCredentialError):
 
     default_detail = "Failed to revoke temporary storage credential."
     default_code = "temporary_credential_revoke_error"
+
+
+class TemporaryCredentialListError(TemporaryCredentialError):
+    """Listing an org's temporary service accounts failed -- raised by
+    `TtlReconciliationService.sweep()`'s read path, distinct from a mint
+    or revoke failure so logs/alerts don't misattribute which operation
+    actually failed."""
+
+    default_detail = "Failed to list temporary storage credentials."
+    default_code = "temporary_credential_list_error"

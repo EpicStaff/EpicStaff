@@ -1,3 +1,3 @@
-from .minio_admin_client import MinioAdminGateway
+from .minio_admin_client import StorageAdminGateway
 
-__all__ = ["MinioAdminGateway"]
+__all__ = ["StorageAdminGateway"]

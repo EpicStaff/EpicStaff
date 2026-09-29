@@ -13,7 +13,7 @@ from rbac.models import Organization
 from tables.models import Secret
 from tables.services.secrets.secret_service import secret_service
 
-from storage_credentials.constants import SECRET_NAME_ORG_MINIO_USER
+from storage_credentials.constants import SECRET_NAME_ORG_STORAGE_USER
 from storage_credentials.exceptions import OrgStorageCredentialMissingError
 from storage_credentials.services.org_credential_store import org_credential_store
 
@@ -31,10 +31,10 @@ def test_get_returns_credentials_for_never_revoked_secret(org):
         text=CREDENTIAL_TEXT,
         system=True,
         org=org,
-        name=SECRET_NAME_ORG_MINIO_USER,
+        name=SECRET_NAME_ORG_STORAGE_USER,
     )
     assert (
-        Secret.all_objects.get(org=org, name=SECRET_NAME_ORG_MINIO_USER).metadata == {}
+        Secret.all_objects.get(org=org, name=SECRET_NAME_ORG_STORAGE_USER).metadata == {}
     )
 
     credentials = org_credential_store.get(org_id=org.id)
@@ -49,7 +49,7 @@ def test_exists_is_true_for_never_revoked_secret(org):
         text=CREDENTIAL_TEXT,
         system=True,
         org=org,
-        name=SECRET_NAME_ORG_MINIO_USER,
+        name=SECRET_NAME_ORG_STORAGE_USER,
     )
 
     assert org_credential_store.exists(org_id=org.id) is True
@@ -61,7 +61,7 @@ def test_get_raises_for_revoked_secret(org):
         text=CREDENTIAL_TEXT,
         system=True,
         org=org,
-        name=SECRET_NAME_ORG_MINIO_USER,
+        name=SECRET_NAME_ORG_STORAGE_USER,
     )
     secret.metadata = {"revoked": True}
     secret.save(update_fields=["metadata"])
@@ -76,7 +76,7 @@ def test_exists_is_false_for_revoked_secret(org):
         text=CREDENTIAL_TEXT,
         system=True,
         org=org,
-        name=SECRET_NAME_ORG_MINIO_USER,
+        name=SECRET_NAME_ORG_STORAGE_USER,
     )
     secret.metadata = {"revoked": True}
     secret.save(update_fields=["metadata"])

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from tables.services.storage_service.s3_backend import S3StorageBackend
 
@@ -102,3 +103,234 @@ class TestS3BackendTree:
         root, truncated = backend.list_tree("", max_entries=5)
         assert truncated is True
         assert len(root.children) <= 5
+
+
+class TestS3BackendPathValidation:
+    """Tests for path validation in mkdir() and info() methods (step 4)."""
+
+    def test_mkdir_path_traversal_with_double_dot_raises_value_error(self):
+        """Verify mkdir() with .. path traversal raises ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("../malicious")
+
+    def test_mkdir_path_traversal_in_middle_raises_value_error(self):
+        """Verify mkdir() with .. in the middle raises ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("folder/../../escape")
+
+    def test_mkdir_null_byte_in_path_raises_value_error(self):
+        """Verify mkdir() with null byte raises ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("folder\x00malicious")
+
+    @pytest.mark.parametrize("invalid_path", [
+        "../etc/passwd",
+        "../../root",
+        "files/../../../etc/passwd",
+        "/absolute/path",
+    ])
+    def test_mkdir_various_traversal_attempts_raise_value_error(self, invalid_path):
+        """Verify mkdir() rejects various path traversal attempts."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir(invalid_path)
+
+    def test_mkdir_minio_invalid_object_name_raises_value_error(self):
+        """Verify mkdir() converts MinIO InvalidArgument error to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "InvalidArgument"}}
+        backend.client.put_object.side_effect = ClientError(error_response, "PutObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("some_path")
+
+    def test_mkdir_minio_key_too_long_raises_value_error(self):
+        """Verify mkdir() converts KeyTooLongError to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "KeyTooLongError"}}
+        backend.client.put_object.side_effect = ClientError(error_response, "PutObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("some_path")
+
+    def test_mkdir_minio_bad_request_raises_value_error(self):
+        """Verify mkdir() converts MinIO 400 error to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "400"}}
+        backend.client.put_object.side_effect = ClientError(error_response, "PutObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("some_path")
+
+    def test_mkdir_minio_xminio_invalid_object_name_raises_value_error(self):
+        """Verify mkdir() converts XMinioInvalidObjectName error to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "XMinioInvalidObjectName"}}
+        backend.client.put_object.side_effect = ClientError(error_response, "PutObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.mkdir("some_path")
+
+    def test_mkdir_other_client_error_is_reraised(self):
+        """Verify mkdir() re-raises other ClientErrors."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "NoSuchBucket"}}
+        backend.client.put_object.side_effect = ClientError(error_response, "PutObject")
+
+        with pytest.raises(ClientError):
+            backend.mkdir("some_path")
+
+    def test_mkdir_valid_path_succeeds(self):
+        """Verify mkdir() succeeds with valid paths."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        backend.mkdir("valid/folder/path")
+
+        backend.client.put_object.assert_called_once()
+
+    def test_info_path_traversal_raises_value_error(self):
+        """Verify info() with .. path traversal raises ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info("../escape")
+
+    def test_info_null_byte_raises_value_error(self):
+        """Verify info() with null byte raises ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info("file\x00name")
+
+    @pytest.mark.parametrize("invalid_path", [
+        "../../etc/passwd",
+        "/absolute",
+        "files/../../../etc",
+    ])
+    def test_info_various_traversal_attempts_raise_value_error(self, invalid_path):
+        """Verify info() rejects various path traversal attempts."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info(invalid_path)
+
+    def test_info_minio_invalid_argument_error_on_file_check_raises_value_error(self):
+        """Verify info() converts InvalidArgument error to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "InvalidArgument"}}
+        backend.client.head_object.side_effect = ClientError(error_response, "HeadObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info("file")
+
+    def test_info_minio_key_too_long_error_raises_value_error(self):
+        """Verify info() converts KeyTooLongError to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "KeyTooLongError"}}
+        backend.client.head_object.side_effect = ClientError(error_response, "HeadObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info("file")
+
+    def test_info_minio_bad_request_raises_value_error(self):
+        """Verify info() converts 400 error to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "400"}}
+        backend.client.head_object.side_effect = ClientError(error_response, "HeadObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info("file")
+
+    def test_info_minio_xminio_invalid_object_name_raises_value_error(self):
+        """Verify info() converts XMinioInvalidObjectName error to ValueError."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "XMinioInvalidObjectName"}}
+        backend.client.head_object.side_effect = ClientError(error_response, "HeadObject")
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            backend.info("file")
+
+    def test_info_404_error_falls_through_to_next_check(self):
+        """Verify info() handles 404 gracefully and tries folder check."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response_404 = {"Error": {"Code": "404"}}
+        error_response_404_folder = {"Error": {"Code": "404"}}
+
+        backend.client.head_object.side_effect = [
+            ClientError(error_response_404, "HeadObject"),  # File check
+            ClientError(error_response_404_folder, "HeadObject"),  # Folder check
+        ]
+        backend.client.list_objects_v2.return_value = {"Contents": []}
+
+        with pytest.raises(FileNotFoundError):
+            backend.info("nonexistent")
+
+    def test_info_other_error_is_reraised(self):
+        """Verify info() re-raises non-validation errors."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+        error_response = {"Error": {"Code": "NoSuchBucket"}}
+        backend.client.head_object.side_effect = ClientError(error_response, "HeadObject")
+
+        with pytest.raises(ClientError):
+            backend.info("file")
+
+    def test_info_valid_file_path_succeeds(self):
+        """Verify info() succeeds with valid file paths."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        backend.client.head_object.return_value = {
+            "ContentLength": 100,
+            "ContentType": "text/plain",
+            "LastModified": now,
+        }
+
+        result = backend.info("valid_file.txt")
+
+        assert result.name == "valid_file.txt"
+        assert result.size == 100
+
+    def test_info_valid_folder_path_succeeds(self):
+        """Verify info() succeeds with valid folder paths."""
+        backend = _make_s3_backend()
+        backend.client = MagicMock()
+
+        now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        error_response = {"Error": {"Code": "404"}}
+
+        backend.client.head_object.side_effect = ClientError(error_response, "HeadObject")
+        backend.client.list_objects_v2.return_value = {
+            "Contents": [{"Key": "folder/file.txt"}],
+        }
+
+        result = backend.info("folder")
+
+        assert result.name == "folder"
+        assert result.type == "folder"

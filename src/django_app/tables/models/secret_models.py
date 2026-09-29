@@ -8,7 +8,7 @@ from .base_models import MetadataMixin, TimestampMixin
 class SecretManager(models.Manager):
     """Default manager for `Secret` — excludes internal `system=True` rows.
 
-    System secrets (e.g. org-level MinIO admin credentials) must never be
+    System secrets (e.g. org-level storage admin credentials) must never be
     reachable through user-facing code paths (resolver, serializers,
     viewsets). Use `Secret.all_objects` for the small set of infrastructure
     call sites that legitimately need `system=True` rows.
@@ -43,7 +43,7 @@ class Secret(OrgScopedModel, TimestampMixin, MetadataMixin):
         default=False,
         editable=False,
         help_text=(
-            "Infrastructure secret (e.g. org-level MinIO credentials) managed "
+            "Infrastructure secret (e.g. org-level storage credentials) managed "
             "internally by storage_credentials. Never exposed through the "
             "user-facing Secret API."
         ),

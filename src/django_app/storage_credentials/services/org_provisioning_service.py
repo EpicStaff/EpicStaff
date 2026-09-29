@@ -1,12 +1,12 @@
-"""Provisions and deprovisions the long-lived, org-level MinIO IAM user each
+"""Provisions and deprovisions the long-lived, org-level storage IAM user each
 organization owns.
 
 Sync/async boundary: `OrganizationManagementService.create_organization()`/
 `deactivate_organization()` are plain sync Django service methods running
-inside `@transaction.atomic`. `miniopy_async` (the only MinIO Admin SDK
+inside `@transaction.atomic`. `miniopy_async` (the only storage Admin SDK
 available) is async-only. Per the project's async-I/O convention, the two
 worlds are never interleaved inside one call: each public method here reads
-nothing from the ORM itself, runs the entire MinIO conversation through one
+nothing from the ORM itself, runs the entire storage backend conversation through one
 `asyncio.run()`, and only then performs its own sync ORM write
 (`OrgCredentialStore`/`Secret.objects...`) once the event loop has exited.
 """
@@ -18,7 +18,7 @@ from django.conf import settings
 from loguru import logger
 from rbac.models import Organization
 
-from storage_credentials.clients.minio_admin_client import MinioAdminGateway
+from storage_credentials.clients.minio_admin_client import StorageAdminGateway
 from storage_credentials.constants import ORG_USER_POLICY_NAME_PREFIX
 from storage_credentials.exceptions import OrgStorageProvisioningError
 from storage_credentials.policies import build_org_user_policy
@@ -45,57 +45,57 @@ class OrgStorageProvisioningService:
         self._bucket = settings.STORAGE_BUCKET_NAME
 
     def provision_for_organization(self, org: Organization) -> None:
-        """Create a new org-level MinIO IAM user scoped to `org_<id>/*`, and
+        """Create a new org-level storage IAM user scoped to `org_<id>/*`, and
         persist its credentials as `Secret(system=True)`. Called from inside
         `create_organization()`'s transaction; any failure here propagates
         so the whole organization-creation transaction rolls back -- an
         organization without provisioned storage is not a valid state.
 
         Also called from `reactivate_organization()`: `deactivate_organization()`
-        removes the old MinIO user entirely (it cannot be un-removed), so
+        removes the old storage user entirely (it cannot be un-removed), so
         reactivation always provisions a fresh one.
         """
         access_key = _org_access_key(org.id)
         secret_key = secrets_module.token_urlsafe(32)
         try:
             asyncio.run(
-                self._provision_in_minio(
+                self._provision_in_storage(
                     org_id=org.id, access_key=access_key, secret_key=secret_key
                 )
             )
         except Exception as error:
             raise OrgStorageProvisioningError(
-                f"Failed to provision MinIO storage user for org_id={org.id}: {error}"
+                f"Failed to provision storage user for org_id={org.id}: {error}"
             ) from error
 
         org_credential_store.save(org=org, access_key=access_key, secret_key=secret_key)
-        logger.info("Provisioned org-level MinIO storage user for org_id={}", org.id)
+        logger.info("Provisioned org-level storage user for org_id={}", org.id)
 
     def deprovision_for_organization(self, org: Organization) -> None:
-        """Remove the org-level MinIO user (cascades to revoke every active
+        """Remove the org-level storage user (cascades to revoke every active
         service account it minted) and mark the stored `Secret` as revoked.
         Objects already written under `org_<id>/*` are left untouched
         (retention policy is out of scope -- see plan section 1)."""
         access_key = _org_access_key(org.id)
         try:
-            asyncio.run(self._deprovision_in_minio(org_id=org.id, access_key=access_key))
+            asyncio.run(self._deprovision_in_storage(org_id=org.id, access_key=access_key))
         except Exception as error:
             raise OrgStorageProvisioningError(
-                f"Failed to deprovision MinIO storage user for org_id={org.id}: {error}"
+                f"Failed to deprovision storage user for org_id={org.id}: {error}"
             ) from error
 
         org_credential_store.mark_revoked(org_id=org.id)
-        logger.info("Deprovisioned org-level MinIO storage user for org_id={}", org.id)
+        logger.info("Deprovisioned org-level storage user for org_id={}", org.id)
 
-    async def _provision_in_minio(self, *, org_id: int, access_key: str, secret_key: str) -> None:
+    async def _provision_in_storage(self, *, org_id: int, access_key: str, secret_key: str) -> None:
         # Each public method here runs its own one-off `asyncio.run()`
         # (see the module docstring), so there is no long-lived event loop
         # to cache a gateway/aiohttp session against across calls the way
         # `TemporaryCredentialService`/`TtlReconciliationService` do -- a
         # session created in one `asyncio.run()` cannot be reused once that
-        # loop closes. Explicitly closing it here (MinioAdminGateway.close())
+        # loop closes. Explicitly closing it here (StorageAdminGateway.close())
         # is the correct fix for this call shape.
-        gateway = MinioAdminGateway(
+        gateway = StorageAdminGateway(
             host=self._host,
             access_key=self._root_access_key,
             secret_key=self._root_secret_key,
@@ -108,8 +108,8 @@ class OrgStorageProvisioningService:
         finally:
             await gateway.close()
 
-    async def _deprovision_in_minio(self, *, org_id: int, access_key: str) -> None:
-        gateway = MinioAdminGateway(
+    async def _deprovision_in_storage(self, *, org_id: int, access_key: str) -> None:
+        gateway = StorageAdminGateway(
             host=self._host,
             access_key=self._root_access_key,
             secret_key=self._root_secret_key,
@@ -123,7 +123,7 @@ class OrgStorageProvisioningService:
                 # attempt failed partway through -- this is best-effort
                 # cleanup, not a reason to fail the whole deprovision.
                 logger.error(
-                    "Failed to remove MinIO policy for org_id={}: {}",
+                    "Failed to remove storage policy for org_id={}: {}",
                     org_id,
                     error,
                 )

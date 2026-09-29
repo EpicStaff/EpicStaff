@@ -1,14 +1,14 @@
-"""Process-wide TTL-60s cache of decrypted org-level MinIO credentials and
-their `MinioAdminGateway`, shared by `TemporaryCredentialService` and
+"""Process-wide TTL-60s cache of decrypted org-level storage credentials and
+their `StorageAdminGateway`, shared by `TemporaryCredentialService` and
 `TtlReconciliationService` -- both run inside the same long-lived event loop
 (`run_storage_credential_issuer`).
 
 Caching the gateway alongside its credentials -- rather than constructing a
-fresh `MinioAdminGateway` on every `issue()`/`revoke()`/sweep() call -- avoids
+fresh `StorageAdminGateway` on every `issue()`/`revoke()`/sweep() call -- avoids
 leaking one aiohttp client session per call: `miniopy_async.MinioAdmin` opens
 a session lazily and has no `close()`. The cached gateway is only rebuilt
 (and the old one's session closed) when its credentials are refreshed on TTL
-expiry, so it never keeps serving a stale org-level MinIO account past that
+expiry, so it never keeps serving a stale org-level storage account past that
 point.
 """
 
@@ -18,14 +18,14 @@ from dataclasses import dataclass
 
 from django.db import close_old_connections
 
-from storage_credentials.clients.minio_admin_client import MinioAdminGateway
+from storage_credentials.clients.minio_admin_client import StorageAdminGateway
 from storage_credentials.services.org_credential_store import (
-    OrgMinioCredentials,
+    OrgStorageCredentials,
     org_credential_store,
 )
 
 
-def _get_org_credentials(org_id: int) -> OrgMinioCredentials:
+def _get_org_credentials(org_id: int) -> OrgStorageCredentials:
     # Runs in a worker thread via `asyncio.to_thread()`, on the issuer's
     # single, long-lived event loop -- that thread's DB connection can go
     # stale (e.g. across a Postgres restart/failover) and every subsequent
@@ -39,8 +39,8 @@ def _get_org_credentials(org_id: int) -> OrgMinioCredentials:
 @dataclass(frozen=True)
 class _CacheEntry:
     cached_at: float
-    credentials: OrgMinioCredentials
-    gateway: MinioAdminGateway
+    credentials: OrgStorageCredentials
+    gateway: StorageAdminGateway
 
 
 class OrgCredentialCache:
@@ -50,7 +50,9 @@ class OrgCredentialCache:
         self._entries: dict[int, _CacheEntry] = {}
         self._org_locks: dict[int, asyncio.Lock] = {}
 
-    async def get(self, *, org_id: int, host: str) -> tuple[OrgMinioCredentials, MinioAdminGateway]:
+    async def get(
+        self, *, org_id: int, host: str
+    ) -> tuple[OrgStorageCredentials, StorageAdminGateway]:
         # First check: fast path for cache hits
         now = time.monotonic()
         cached = self._entries.get(org_id)
@@ -71,7 +73,7 @@ class OrgCredentialCache:
 
             # Cache miss or expired: create new gateway
             credentials = await asyncio.to_thread(_get_org_credentials, org_id)
-            gateway = MinioAdminGateway(
+            gateway = StorageAdminGateway(
                 host=host,
                 access_key=credentials.access_key,
                 secret_key=credentials.secret_key,

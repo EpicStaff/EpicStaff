@@ -78,4 +78,8 @@ package = false
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 pythonpath = [".", "../.."]
+markers = [
+    "integration: requires real backing services (e.g. a live storage/RustFS container) -- excluded by default, run explicitly with `-m integration`",
+]
+addopts = "-m 'not integration'"
 

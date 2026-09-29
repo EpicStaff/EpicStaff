@@ -1,10 +1,10 @@
 """`TemporaryCredentialService.issue()`/`revoke()` with a mocked
-`MinioAdminGateway` and a mocked `OrgCredentialStore` -- no live MinIO, no DB.
+`StorageAdminGateway` and a mocked `OrgCredentialStore` -- no live storage backend, no DB.
 
 Real behaviour, confirmed by reading `temporary_credential_service.py`
 before writing these: `issue()` validates the trusted scope
 (`CredentialScopeValidator`) *before* touching `org_credential_store` or the
-MinIO gateway at all, so an invalid scope never reaches MinIO. `revoke()`
+storage gateway at all, so an invalid scope never reaches the storage backend. `revoke()`
 itself has no execute-once/dedup guard -- that GETDEL-based, "call the
 issuer's gateway at most once per execution_id" guarantee actually lives one
 layer up, in `storage_credentials/redis/request_consumer.py`
@@ -24,12 +24,12 @@ import pytest
 from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.services import temporary_credential_service as tcs_module
 from storage_credentials.services.org_credential_cache import org_credential_cache
-from storage_credentials.services.org_credential_store import OrgMinioCredentials
+from storage_credentials.services.org_credential_store import OrgStorageCredentials
 from storage_credentials.services.temporary_credential_service import (
     TemporaryCredentialService,
 )
 
-ORG_CREDENTIALS = OrgMinioCredentials(access_key="org-ak", secret_key="org-sk")
+ORG_CREDENTIALS = OrgStorageCredentials(access_key="org-ak", secret_key="org-sk")
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def service(monkeypatch, fake_gateway):
     # test's cached gateway/credentials can never leak into another's.
     org_credential_cache._entries.clear()
     monkeypatch.setattr(
-        "storage_credentials.services.org_credential_cache.MinioAdminGateway",
+        "storage_credentials.services.org_credential_cache.StorageAdminGateway",
         MagicMock(return_value=fake_gateway),
     )
     monkeypatch.setattr(

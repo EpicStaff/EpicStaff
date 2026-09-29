@@ -1,8 +1,8 @@
-"""Unit tests for MinioAdminGateway timeout configuration and retry logic.
+"""Unit tests for StorageAdminGateway timeout configuration and retry logic.
 
-Tests verify that MinioAdminGateway uses custom (short) timeout values
+Tests verify that StorageAdminGateway uses custom (short) timeout values
 instead of the default 300s, preventing long-lived transactions during
-MinIO failures, and that it properly retries on both HTTP 5xx errors
+storage service failures, and that it properly retries on both HTTP 5xx errors
 and network errors.
 """
 
@@ -13,25 +13,25 @@ import pytest
 from aiohttp import ClientConnectorError, ServerDisconnectedError
 from aiohttp_retry import RetryClient
 
-from storage_credentials.clients.minio_admin_client import MinioAdminGateway
+from storage_credentials.clients.minio_admin_client import StorageAdminGateway
 from storage_credentials.exceptions import StorageCredentialConfigError
 
 
-class TestMinioAdminGatewayTimeout:
-    """Tests for MinioAdminGateway timeout configuration."""
+class TestStorageAdminGatewayTimeout:
+    """Tests for StorageAdminGateway timeout configuration."""
 
     def test_init_creates_session_and_passes_to_minio_admin(self):
         """Verify that __init__() creates a session and passes it to MinioAdmin."""
         with patch(
             "storage_credentials.clients.minio_admin_client._MinioAdminClient"
         ) as mock_minio_admin_class, patch(
-            "storage_credentials.clients.minio_admin_client.MinioAdminGateway._create_session"
+            "storage_credentials.clients.minio_admin_client.StorageAdminGateway._create_session"
         ) as mock_create_session:
             mock_session = MagicMock()
             mock_create_session.return_value = mock_session
             mock_minio_admin_class.return_value = MagicMock()
 
-            gateway = MinioAdminGateway(
+            gateway = StorageAdminGateway(
                 host="https://minio.example.com",
                 access_key="test_key",
                 secret_key="test_secret",
@@ -57,7 +57,7 @@ class TestMinioAdminGatewayTimeout:
             mock_session = MagicMock()
             mock_client_session_class.return_value = mock_session
 
-            MinioAdminGateway._create_session()
+            StorageAdminGateway._create_session()
 
             mock_client_session_class.assert_called_once()
             call_kwargs = mock_client_session_class.call_args[1]
@@ -79,7 +79,7 @@ class TestMinioAdminGatewayTimeout:
         ):
             mock_tcp_connector_class.return_value = MagicMock()
 
-            MinioAdminGateway._create_session()
+            StorageAdminGateway._create_session()
 
             mock_tcp_connector_class.assert_called_once()
             call_kwargs = mock_tcp_connector_class.call_args[1]
@@ -87,23 +87,23 @@ class TestMinioAdminGatewayTimeout:
 
     def test_split_host_with_https_scheme(self):
         """Verify _split_host correctly parses https URLs."""
-        secure, endpoint = MinioAdminGateway._split_host("https://minio.example.com:9000")
+        secure, endpoint = StorageAdminGateway._split_host("https://minio.example.com:9000")
         assert secure is True
         assert endpoint == "minio.example.com:9000"
 
     def test_split_host_with_http_scheme(self):
         """Verify _split_host correctly parses http URLs."""
-        secure, endpoint = MinioAdminGateway._split_host("http://minio.example.com:9000")
+        secure, endpoint = StorageAdminGateway._split_host("http://minio.example.com:9000")
         assert secure is False
         assert endpoint == "minio.example.com:9000"
 
     def test_split_host_with_malformed_url_raises_error(self):
         """Verify _split_host raises StorageCredentialConfigError for malformed URLs."""
         with pytest.raises(StorageCredentialConfigError):
-            MinioAdminGateway._split_host("minio.example.com:9000")
+            StorageAdminGateway._split_host("minio.example.com:9000")
 
         with pytest.raises(StorageCredentialConfigError):
-            MinioAdminGateway._split_host("")
+            StorageAdminGateway._split_host("")
 
     def test_timeout_values_are_significantly_shorter_than_default(self):
         """Verify custom timeout values are much shorter than default (300s)."""
@@ -116,7 +116,7 @@ class TestMinioAdminGatewayTimeout:
         ):
             mock_client_session_class.return_value = MagicMock()
 
-            MinioAdminGateway._create_session()
+            StorageAdminGateway._create_session()
 
             call_kwargs = mock_client_session_class.call_args[1]
             timeout = call_kwargs["timeout"]
@@ -127,7 +127,7 @@ class TestMinioAdminGatewayTimeout:
             assert timeout.sock_read == 15
 
     def test_gateway_does_not_use_default_minio_timeout(self):
-        """Verify that MinioAdminGateway provides custom session instead of default.
+        """Verify that StorageAdminGateway provides custom session instead of default.
 
         When a custom session is passed to MinioAdmin, it will use that session's
         timeout instead of creating one with the default 300s timeout.
@@ -143,7 +143,7 @@ class TestMinioAdminGatewayTimeout:
             mock_client_session_class.return_value = mock_session
             mock_minio_admin_class.return_value = MagicMock()
 
-            gateway = MinioAdminGateway(
+            gateway = StorageAdminGateway(
                 host="https://minio.example.com",
                 access_key="test_key",
                 secret_key="test_secret",
@@ -165,7 +165,7 @@ class TestMinioAdminGatewayTimeout:
         ):
             mock_client_session_class.return_value = MagicMock()
 
-            session = MinioAdminGateway._create_session()
+            session = StorageAdminGateway._create_session()
 
             assert isinstance(session, RetryClient)
 
@@ -181,7 +181,7 @@ class TestMinioAdminGatewayTimeout:
             mock_client_session_class.return_value = MagicMock()
             mock_retry_client_class.return_value = MagicMock(spec=RetryClient)
 
-            MinioAdminGateway._create_session()
+            StorageAdminGateway._create_session()
 
             mock_retry_client_class.assert_called_once()
             call_kwargs = mock_retry_client_class.call_args[1]
@@ -205,7 +205,7 @@ class TestMinioAdminGatewayTimeout:
         ), patch(
             "storage_credentials.clients.minio_admin_client.TCPConnector"
         ):
-            session = MinioAdminGateway._create_session()
+            session = StorageAdminGateway._create_session()
 
             assert isinstance(session, RetryClient)
             retry_options = session.retry_options
@@ -221,7 +221,7 @@ class TestMinioAdminGatewayTimeout:
         ), patch(
             "storage_credentials.clients.minio_admin_client.TCPConnector"
         ):
-            session = MinioAdminGateway._create_session()
+            session = StorageAdminGateway._create_session()
 
             assert isinstance(session, RetryClient)
             retry_options = session.retry_options
@@ -232,8 +232,8 @@ class TestMinioAdminGatewayTimeout:
             assert 504 in retry_options.statuses
 
 
-class TestMinioAdminGatewayRetryBehavior:
-    """Tests for MinioAdminGateway retry behavior on network errors."""
+class TestStorageAdminGatewayRetryBehavior:
+    """Tests for StorageAdminGateway retry behavior on network errors."""
 
     @pytest.mark.asyncio
     async def test_retry_on_connection_error(self):
@@ -257,7 +257,7 @@ class TestMinioAdminGatewayRetryBehavior:
             mock_client.user_add = mock_user_add
             mock_minio_admin_class.return_value = mock_client
 
-            gateway = MinioAdminGateway(
+            gateway = StorageAdminGateway(
                 host="https://minio.example.com",
                 access_key="test_key",
                 secret_key="test_secret",
@@ -266,7 +266,7 @@ class TestMinioAdminGatewayRetryBehavior:
 
             # Replace the _session with the RetryClient wrapped around a mock
             mock_session = AsyncMock()
-            mock_client._session = MinioAdminGateway._create_session()
+            mock_client._session = StorageAdminGateway._create_session()
 
             # Note: The retry mechanism is built into RetryClient at the HTTP layer,
             # so this test verifies the configuration is correct, and actual retries
@@ -289,7 +289,7 @@ class TestMinioAdminGatewayRetryBehavior:
             mock_client_session_class.return_value = mock_inner_session
 
             # Create gateway which creates a RetryClient
-            gateway = MinioAdminGateway(
+            gateway = StorageAdminGateway(
                 host="https://minio.example.com",
                 access_key="test_key",
                 secret_key="test_secret",

@@ -1,4 +1,4 @@
-"""MinIO IAM policy builders for storage_credentials.
+"""Storage backend IAM policy builders for storage_credentials.
 
 Two separate functions, never one with an `is_admin` flag: a temporary
 (per-execution) service account must never inherit the admin statements an
@@ -12,7 +12,7 @@ from typing import Any
 
 from storage_credentials.exceptions import CredentialScopeValidationError
 
-# MinIO treats add/remove/update-service-account as an always-on
+# The storage backend treats add/remove/update-service-account as an always-on
 # "self-service" capability of any service account acting for its own parent
 # user -- independent of whether those actions appear in the account's
 # Allow policy: a temporary account with only 3 S3 actions in Allow, and no
@@ -38,13 +38,13 @@ def _normalize_path(path: str) -> str:
 
 
 def build_org_user_policy(bucket: str, org_prefix: str) -> dict[str, Any]:
-    """Policy for the long-lived, org-level MinIO IAM user.
+    """Policy for the long-lived, org-level storage IAM user.
 
     Grants S3 access to its own `org_<id>/*` prefix plus the admin actions
     needed to mint, revoke, and list its own (never another org's) service
     accounts. `admin:CreateServiceAccount`/`RemoveServiceAccount` are safe
     here specifically because `miniopy-async`'s `add_service_account` cannot
-    target another principal, and the MinIO server itself refuses cross-user
+    target another principal, and the storage backend itself refuses cross-user
     minting independent of policy.
     """
     normalized_prefix = org_prefix.strip().rstrip("/")
@@ -81,7 +81,12 @@ def build_org_user_policy(bucket: str, org_prefix: str) -> dict[str, Any]:
                     "admin:RemoveServiceAccount",
                     "admin:ListServiceAccounts",
                 ],
-                "Resource": ["*"],
+                # A bare "*" is valid for MinIO (admin actions aren't
+                # resource-scoped), but RustFS rejects it outright at
+                # policy-creation time.
+                # arn:aws:s3:::* is
+                # accepted by both.
+                "Resource": ["arn:aws:s3:::*"],
             },
         ],
     }
@@ -127,7 +132,7 @@ def build_temporary_policy(bucket: str, allowed_folders: set[str]) -> dict[str, 
             {
                 "Effect": "Deny",
                 "Action": list(_TEMPORARY_ACCOUNT_SELF_MINT_ACTIONS),
-                "Resource": ["*"],
+                "Resource": ["arn:aws:s3:::*"],
             },
         ],
     }

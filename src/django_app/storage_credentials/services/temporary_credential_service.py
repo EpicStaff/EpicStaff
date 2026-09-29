@@ -1,4 +1,4 @@
-"""Mints/revokes one per-execution temporary MinIO service account.
+"""Mints/revokes one per-execution temporary storage service account.
 
 Sync/async boundary: reading `Secret(system=True)` (via `OrgCredentialStore`)
 is a sync Django ORM call. This runs inside the issuer's single event loop
@@ -39,20 +39,13 @@ class TemporaryCredentialService:
             storage_org_prefix=storage_org_prefix,
             storage_allowed_paths=storage_allowed_paths,
         )
-        _org_credentials, gateway = await org_credential_cache.get(
-            org_id=org_id, host=self._host
-        )
-        policy = build_temporary_policy(
-            bucket=self._bucket, allowed_folders=scoped_folders
-        )
+        _org_credentials, gateway = await org_credential_cache.get(org_id=org_id, host=self._host)
+        policy = build_temporary_policy(bucket=self._bucket, allowed_folders=scoped_folders)
         ttl = timedelta(seconds=TEMPORARY_CREDENTIAL_TTL_SECONDS_DEFAULT)
-        access_key, secret_key = await gateway.create_service_account(
-            policy, expiration=ttl
-        )
+        access_key, secret_key = await gateway.create_service_account(policy, expiration=ttl)
+
         return IssuedCredential(access_key=access_key, secret_key=secret_key)
 
     async def revoke(self, *, org_id: int, access_key: str) -> None:
-        _org_credentials, gateway = await org_credential_cache.get(
-            org_id=org_id, host=self._host
-        )
+        _org_credentials, gateway = await org_credential_cache.get(org_id=org_id, host=self._host)
         await gateway.delete_service_account(access_key)

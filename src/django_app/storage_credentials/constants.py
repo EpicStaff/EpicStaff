@@ -1,18 +1,37 @@
-"""Names, TTLs, and Redis key formats for per-execution MinIO credential
+"""Names, TTLs, and Redis key formats for per-execution storage credential
 issuance."""
 
 from src.shared.storage_credentials.constants import (
-    CREDENTIAL_SCOPE_TTL_SECONDS,
     STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE,
     STORAGE_CREDENTIAL_REQUEST_STREAM,
-    STORAGE_CREDENTIAL_WAIT_TIMEOUT_S,
 )
 
-# `Secret(system=True, name=...)` that stores one organization's org-level
-# MinIO IAM user credentials (access_key:secret_key, colon-joined plaintext).
-SECRET_NAME_ORG_MINIO_USER = "system_minio_org_user"
+# Re-exported for `redis/request_consumer.py` (and any other same-package
+# importer) to pull both the local and the shared-module constants from one
+# place: `storage_credentials.constants`. Without `__all__` naming them,
+# `ruff --fix` treats this import as unused (F401) and silently deletes it
+# on the next `pre-commit run --all-files` -- which is exactly what
+# happened here once already.
+__all__ = [
+    "CODE_RESULTS_CHANNEL",
+    "CREDENTIAL_IN_PROGRESS_TTL_SECONDS",
+    "CREDENTIAL_RESPONSE_TTL_SECONDS",
+    "ORG_USER_POLICY_NAME_PREFIX",
+    "SECRET_NAME_ORG_STORAGE_USER",
+    "STORAGE_CREDENTIAL_REQUEST_CLAIM_MIN_IDLE_MS",
+    "STORAGE_CREDENTIAL_REQUEST_CONSUMER_GROUP",
+    "STORAGE_CREDENTIAL_REQUEST_ENVELOPE_TYPE",
+    "STORAGE_CREDENTIAL_REQUEST_STREAM",
+    "TEMPORARY_CREDENTIAL_TTL_SECONDS_DEFAULT",
+    "TEMPORARY_CREDENTIAL_TTL_SECONDS_MAX",
+    "TTL_RECONCILIATION_INTERVAL_SECONDS",
+]
 
-# Named MinIO policy attached to that same org-level user.
+# `Secret(system=True, name=...)` that stores one organization's org-level
+# storage IAM user credentials (access_key:secret_key, colon-joined plaintext).
+SECRET_NAME_ORG_STORAGE_USER = "system_minio_org_user"
+
+# Named storage policy attached to that same org-level user.
 ORG_USER_POLICY_NAME_PREFIX = "org_storage_user_policy"
 
 # TTL for a temporary (per-execution) service account.

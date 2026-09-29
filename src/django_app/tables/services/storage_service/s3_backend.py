@@ -183,7 +183,7 @@ class S3StorageBackend(AbstractStorageBackend):
             logger.info("Created S3 folder {}", full_path)
         except ClientError as error:
             code = error.response["Error"]["Code"]
-            if code in ("400", "XMinioInvalidObjectName"):
+            if code in ("400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"):
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
 
@@ -343,7 +343,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 pass
-            elif code in ("400", "XMinioInvalidObjectName"):
+            elif code in ("400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"):
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
@@ -361,7 +361,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 pass
-            elif code in ("400", "XMinioInvalidObjectName"):
+            elif code in ("400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"):
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
