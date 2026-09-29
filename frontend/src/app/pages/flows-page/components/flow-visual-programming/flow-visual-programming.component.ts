@@ -15,6 +15,7 @@ import {
     OnInit,
     signal,
     ViewChild,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -67,6 +68,7 @@ import { RunSessionSSEService } from '../../../../pages/running-graph/services/g
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
+import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
@@ -76,6 +78,7 @@ import {
     ScheduleTriggerNodeModel,
     TaskNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
+import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter-egg/snake-game/snake-game-overlay.component';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
@@ -113,6 +116,7 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
         FlowAssistantPanelComponent,
         VersionHistoryPanelComponent,
         FlowVersionPreviewComponent,
+        SnakeGameOverlayComponent,
     ],
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
@@ -123,6 +127,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
     private readonly injector = inject(Injector);
+    private readonly easterEggTrigger = inject(EasterEggTriggerService);
+    private readonly flowGraphHost = viewChild(FlowGraphComponent, { read: ElementRef<HTMLElement> });
+    private readonly isSnakeGameActive = signal(false);
+    /** Board element the snake-game overlay covers; null while no game is running. */
+    protected readonly snakeGameBoard = computed<HTMLElement | null>(() =>
+        this.isSnakeGameActive() ? (this.flowGraphHost()?.nativeElement ?? null) : null
+    );
+    /** Read-only node id to node-type colour lookup for the snake-game intro; only evaluated while a game runs. */
+    protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
+        () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
+    );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
@@ -271,6 +286,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.savedViewport.set(null);
             this.selectedVersionId.set(null);
             this.isVersionHistoryOpen.set(false);
+            this.isSnakeGameActive.set(false);
             this.undoRedoService.setUndoStack([]);
             this.undoRedoService.setRedoStack([]);
             const warnings = this.createGraphWarningService.readPending();
@@ -278,6 +294,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.restoreWarnings.set(warnings);
             this.fetchGraph(graphId);
         });
+
+        this.easterEggTrigger.activated$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.startSnakeGame());
 
         this.sidePanelService.saveNodeRequest$
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -303,6 +323,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.unsavedChangesRegistry.register(this, {
             onRefresh: this.refreshCurrentFlow.bind(this),
         });
+    }
+
+    protected closeSnakeGame(): void {
+        this.isSnakeGameActive.set(false);
     }
 
     public refreshCurrentFlow(): void {
@@ -1005,6 +1029,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.unsavedChangesRegistry.unregister(this);
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
+    }
+
+    /** Starts the purely visual snake easter egg over the open flow; ignored while loading or already playing. */
+    private startSnakeGame(): void {
+        if (!this.isLoaded() || this.isSnakeGameActive() || !this.flowGraphHost()) return;
+        this.isSnakeGameActive.set(true);
     }
 
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {

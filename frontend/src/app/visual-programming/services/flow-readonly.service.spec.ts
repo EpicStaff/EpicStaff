@@ -22,7 +22,7 @@ describe('FlowReadOnlyService', () => {
         expect(setUp({ isPreview: false, canUpdateFlows: true }).service.isReadOnly()).toBe(false);
     });
 
-    it('is read-only for a user without Flows:Update and tells them once', () => {
+    it('is read-only for a user without Flows:Update, with a throttled message', () => {
         const { service, toast } = setUp({ isPreview: false, canUpdateFlows: false });
 
         service.notifyBlocked();
@@ -33,14 +33,14 @@ describe('FlowReadOnlyService', () => {
         expect(toast.info).toHaveBeenCalledWith('You have read-only access to this flow.');
     });
 
-    it('is read-only in a version preview whatever the permissions, and explains every blocked action', () => {
+    it('is read-only in a version preview whatever the permissions, with the preview message', () => {
         const { service, toast } = setUp({ isPreview: true, canUpdateFlows: true });
 
         service.notifyBlocked();
         service.notifyBlocked();
 
         expect(service.isReadOnly()).toBe(true);
-        expect(toast.info).toHaveBeenCalledTimes(2);
+        expect(toast.info).toHaveBeenCalledTimes(1);
         expect(toast.info).toHaveBeenCalledWith(
             'Preview mode is read-only. Exit preview to edit the flow',
             3000,

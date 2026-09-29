@@ -100,7 +100,7 @@
                         [class.multi-select__item--readonly]="readonlyView()"
                         (click)="toggleValue(item.value)"
                     >
-                        @if (checkboxPosition() === 'left') {
+                        @if (!readonlyView() && checkboxPosition() === 'left') {
                             <app-checkbox
                                 [disabled]="readonlyView()"
                                 mod="multiselect"
@@ -119,7 +119,7 @@
                                 </span>
                             }
                         </span>
-                        @if (checkboxPosition() === 'right') {
+                        @if (!readonlyView() && checkboxPosition() === 'right') {
                             <app-checkbox
                                 [disabled]="readonlyView()"
                                 color="secondary"

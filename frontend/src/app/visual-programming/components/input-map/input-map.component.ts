@@ -78,31 +78,35 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             </div>
 
             @if (readonly()) {
-                <div
-                    class="readonly-table"
-                    role="table"
-                    aria-label="Input list"
-                >
-                    @for (pair of pairs.controls; track pair) {
-                        <div
-                            class="readonly-row"
-                            role="row"
-                        >
+                @if (hasNoMeaningfulPairs()) {
+                    <span class="readonly-empty">—</span>
+                } @else {
+                    <div
+                        class="readonly-table"
+                        role="table"
+                        aria-label="Input list"
+                    >
+                        @for (pair of pairs.controls; track pair) {
                             <div
-                                class="readonly-cell"
-                                role="cell"
+                                class="readonly-row"
+                                role="row"
                             >
-                                {{ pair.value.key || '—' }}
+                                <div
+                                    class="readonly-cell"
+                                    role="cell"
+                                >
+                                    {{ pair.value.key || '—' }}
+                                </div>
+                                <div
+                                    class="readonly-cell"
+                                    role="cell"
+                                >
+                                    {{ pair.value.value || '—' }}
+                                </div>
                             </div>
-                            <div
-                                class="readonly-cell"
-                                role="cell"
-                            >
-                                {{ pair.value.value || '—' }}
-                            </div>
-                        </div>
-                    }
-                </div>
+                        }
+                    </div>
+                }
             } @else if (!testMode) {
                 <!-- Normal mode: input map list -->
                 <div
@@ -454,6 +458,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 margin-top: 8px;
             }
 
+            .readonly-empty {
+                font-size: 0.875rem;
+                color: var(--color-text-secondary);
+            }
+
             .readonly-table {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -621,6 +630,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     get testPairs(): FormArray {
         return this.parentForm.get('test_input') as FormArray;
+    }
+
+    hasNoMeaningfulPairs(): boolean {
+        return this.pairs.controls.length === 0 || !this.pairs.controls.some((p) => p.value.key?.trim());
     }
 
     addPair() {

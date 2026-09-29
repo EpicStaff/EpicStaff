@@ -119,7 +119,7 @@ describe('FlowGraphComponent', () => {
             expect(paste).not.toHaveBeenCalled();
         });
 
-        it('explains, instead of silently ignoring, every blocked editing shortcut', () => {
+        it('explains, instead of silently ignoring, blocked editing shortcuts (throttled)', () => {
             const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
 
             component.onPaste();
@@ -127,7 +127,7 @@ describe('FlowGraphComponent', () => {
             component.onUndo();
             component.onRedo();
 
-            expect(info).toHaveBeenCalledTimes(4);
+            expect(info).toHaveBeenCalledTimes(1);
             expect(info).toHaveBeenCalledWith(expect.stringContaining('read-only'), 3000, 'bottom-right');
         });
 

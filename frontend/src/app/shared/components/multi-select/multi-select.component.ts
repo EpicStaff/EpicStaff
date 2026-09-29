@@ -51,8 +51,7 @@ export class MultiSelectComponent implements OnInit {
 
     grouped = input<boolean>(false);
     showSearch = input<boolean>(true);
-    /** 'none' for a read-only list of only the chosen items, where a checkbox on every row says nothing. */
-    checkboxPosition = input<'left' | 'right' | 'none'>('right');
+    checkboxPosition = input<'left' | 'right'>('right');
     color = input<'primary' | 'white'>('primary');
     disabled = input<boolean>(false);
     panelWidth = input<string>('338px');

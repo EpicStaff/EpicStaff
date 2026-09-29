@@ -7,7 +7,7 @@ const ITEMS = [
     { name: 'OPENAI_KEY', value: 'OPENAI_KEY' },
 ];
 
-function openReadonly(checkboxPosition: 'left' | 'right' | 'none'): HTMLElement[] {
+function openReadonly(checkboxPosition: 'left' | 'right'): HTMLElement[] {
     const fixture = TestBed.createComponent(MultiSelectComponent);
     fixture.componentRef.setInput('items', ITEMS);
     fixture.componentRef.setInput('selectedValues', ['STRIPE_KEY']);
@@ -25,12 +25,9 @@ function openReadonly(checkboxPosition: 'left' | 'right' | 'none'): HTMLElement[
 describe('MultiSelectComponent read-only view', () => {
     afterEach(() => document.querySelectorAll('.cdk-overlay-container').forEach((container) => container.remove()));
 
-    it('shows no checkboxes for a list of only the chosen items', () => {
-        expect(openReadonly('none')).toHaveLength(0);
+    it('shows no checkboxes in a read-only view', () => {
+        expect(openReadonly('left')).toHaveLength(0);
+        expect(openReadonly('right')).toHaveLength(0);
         expect(document.querySelector('.cdk-overlay-container')?.textContent).toContain('STRIPE_KEY');
-    });
-
-    it('keeps a checkbox per row where the list mixes chosen and unchosen items', () => {
-        expect(openReadonly('left')).toHaveLength(ITEMS.length);
     });
 });
