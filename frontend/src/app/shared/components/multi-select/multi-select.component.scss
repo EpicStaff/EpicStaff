@@ -163,6 +163,9 @@
 
         &--readonly {
             cursor: default;
+            background: transparent;
+            border-color: var(--purple-alpha-70);
+            color: var(--text-secondary-60);
         }
 
         &--checkbox-left {
