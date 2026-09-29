@@ -29,7 +29,8 @@
         <button
             class="filters-panel__tab"
             type="button"
-            disabled
+            [class.is-active]="activeTab() === 'query'"
+            (click)="setActiveTab('query')"
         >
             Query Code
         </button>
@@ -276,6 +277,85 @@
                         [showKey]="false"
                     />
                 </app-audit-filter-group>
+            </div>
+        } @else if (activeTab() === 'query') {
+            <div class="filters-panel__query">
+                <label
+                    class="filters-panel__section"
+                    for="audit-query"
+                >
+                    Query
+                </label>
+                <textarea
+                    #queryInput
+                    id="audit-query"
+                    class="filters-panel__query-input"
+                    rows="4"
+                    placeholder='e.g. status in (failed) and name == "Session Start"'
+                    [value]="filter().query"
+                    (input)="setQuery($event)"
+                ></textarea>
+
+                @if (queryError()) {
+                    <p
+                        class="filters-panel__query-error"
+                        role="alert"
+                    >
+                        {{ queryError() }}
+                    </p>
+                }
+
+                <details
+                    class="filters-panel__help"
+                    open
+                >
+                    <summary class="filters-panel__section">Syntax</summary>
+                    <p>
+                        <strong>column</strong> or <strong>value</strong>, combined with <strong>and</strong> /
+                        <strong>or</strong> / <strong>not</strong> and parentheses.
+                    </p>
+                    <p class="filters-panel__muted">
+                        Operators: = / != / : (contains) / !: / &gt; / &lt; / &gt;= / &lt;= / in (a, b, c) / not in
+                        (...) / is empty / is not empty
+                    </p>
+                    <p class="filters-panel__muted">
+                        Free text across every field: <strong>text: serper</strong> — or just type a bare word.
+                    </p>
+                </details>
+
+                <details
+                    class="filters-panel__help"
+                    open
+                >
+                    <summary class="filters-panel__section">Example</summary>
+                    @for (example of queryExamples; track example) {
+                        <button
+                            class="filters-panel__example"
+                            type="button"
+                            (click)="useExample(example)"
+                        >
+                            {{ example }}
+                        </button>
+                    }
+                </details>
+
+                <details
+                    class="filters-panel__help"
+                    open
+                >
+                    <summary class="filters-panel__section">Fields you can use</summary>
+                    <div class="filters-panel__fields">
+                        @for (field of queryFields; track field) {
+                            <button
+                                class="filters-panel__field"
+                                type="button"
+                                (click)="insertField(queryInput, field)"
+                            >
+                                {{ field }}
+                            </button>
+                        }
+                    </div>
+                </details>
             </div>
         }
     </div>

@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent } from '@shared/components';
@@ -39,6 +40,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public isLoading = signal<boolean>(false);
     public loadError = signal<boolean>(false);
+    public loadErrorMessage = signal<string | null>(null);
     public isPartial = signal<boolean>(false);
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
@@ -84,6 +86,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
         describeAuditFilter(this.appliedFilter(), { agents: this.agentOptions(), tools: this.toolOptions() })
     );
     public activeFilterCount = computed(() => this.appliedChips().length);
+    public queryError = computed(() => (this.appliedFilter().mode === 'query' ? this.loadErrorMessage() : null));
     public canGoNewer = computed(() => this.cursorStack().length > 1);
     public canGoOlder = computed(() => this.nextCursor() !== null);
 
@@ -190,13 +193,15 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public loadSessions(): void {
         const stack = this.cursorStack();
-        const { filters, matchScope } = compileAuditFilter(this.appliedFilter());
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
         this.isLoading.set(true);
         this.loadError.set(false);
+        this.loadErrorMessage.set(null);
 
         this.auditApiService
             .searchSessions({
                 filters,
+                query,
                 match_scope: matchScope,
                 cursor: stack[stack.length - 1],
                 size: this.pageSize(),
@@ -209,7 +214,9 @@ export class AuditSessionsBrowserComponent implements OnInit {
                     this.isLoading.set(false);
                     this.collapsedIds.set(new Set());
                 },
-                error: () => {
+                error: (error: HttpErrorResponse) => {
+                    const detail = error.error?.detail;
+                    this.loadErrorMessage.set(error.status === 400 && typeof detail === 'string' ? detail : null);
                     this.rawEvents.set([]);
                     this.nextCursor.set(null);
                     this.isPartial.set(false);

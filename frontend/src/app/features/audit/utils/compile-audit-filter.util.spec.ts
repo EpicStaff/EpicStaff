@@ -52,3 +52,32 @@ describe('audit condition groups', () => {
         });
     });
 });
+
+describe('audit query mode', () => {
+    it('sends the trimmed query instead of the builder filters', () => {
+        const result = compileAuditFilter({
+            ...EMPTY_AUDIT_FILTER,
+            mode: 'query',
+            query: '  status in ["failed"]  ',
+            input: [group('and', 'ignored')],
+        });
+        expect(result.filters).toBeUndefined();
+        expect(result.query).toBe('status in ["failed"]');
+    });
+
+    it('sends neither filters nor query for an empty query', () => {
+        const result = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, mode: 'query', query: '   ' });
+        expect(result.filters).toBeUndefined();
+        expect(result.query).toBeUndefined();
+    });
+
+    it('shows a single query chip', () => {
+        const chips = describeAuditFilter({
+            ...EMPTY_AUDIT_FILTER,
+            mode: 'query',
+            query: 'name == "Session Start"',
+            input: [group('and', 'ignored')],
+        });
+        expect(chips).toEqual([{ key: 'query', label: 'Query', value: 'name == "Session Start"' }]);
+    });
+});

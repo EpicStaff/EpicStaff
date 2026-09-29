@@ -64,6 +64,7 @@ export interface AuditCondition {
 }
 
 export type AuditIdMode = 'range' | 'gt' | 'lt' | 'equals' | 'in';
+export type AuditFilterMode = 'builder' | 'query';
 
 export interface AuditIdFilter {
     mode: AuditIdMode;
@@ -90,6 +91,8 @@ export const DEFAULT_MATCH_SCOPE: AuditMatchScopeState = {
 export const MAX_ROWS_BEFORE = 20; // backend MatchScope.rows_before le=20
 
 export interface AuditFilterState {
+    mode: AuditFilterMode;
+    query: string;
     matchScope: AuditMatchScopeState;
     kinds: AuditEventKind[];
     statuses: AuditEventStatus[];
@@ -120,6 +123,8 @@ export interface AuditConditionGroup {
 export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNot;
 
 export const EMPTY_AUDIT_FILTER: AuditFilterState = {
+    mode: 'builder',
+    query: '',
     matchScope: DEFAULT_MATCH_SCOPE,
     kinds: [],
     statuses: [],

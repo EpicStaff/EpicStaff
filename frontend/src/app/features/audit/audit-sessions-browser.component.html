@@ -86,7 +86,13 @@
                 @if (isLoading()) {
                     <p class="audit-browser__state">Loading...</p>
                 } @else if (loadError()) {
-                    <p class="audit-browser__state audit-browser__state--error">Failed to load audit sessions.</p>
+                    <p class="audit-browser__state audit-browser__state--error">
+                        {{
+                            loadErrorMessage()
+                                ? 'Invalid search: ' + loadErrorMessage()
+                                : 'Failed to load audit sessions.'
+                        }}
+                    </p>
                 } @else if (rows().length === 0) {
                     <p class="audit-browser__state">No matching records found</p>
                 } @else {
@@ -273,6 +279,7 @@
                     (closed)="closeFiltersPanel()"
                     (applied)="applyFilters()"
                     (cleared)="clearFilters()"
+                    [queryError]="queryError()"
                 />
             </aside>
         }

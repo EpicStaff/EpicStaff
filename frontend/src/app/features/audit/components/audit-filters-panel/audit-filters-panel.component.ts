@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model, OnInit, output, signal } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 import { DateRangeFilter } from 'src/app/shared/models';
 
@@ -18,6 +18,8 @@ import {
     JSON_OPERATORS,
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
+    QUERY_EXAMPLES,
+    QUERY_FIELDS,
     RUN_TYPE_OPTIONS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
@@ -57,7 +59,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
     styleUrls: ['./audit-filters-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AuditFiltersPanelComponent {
+export class AuditFiltersPanelComponent implements OnInit {
     public readonly closed = output<void>();
     public readonly applied = output<void>();
     public readonly cleared = output<void>();
@@ -65,12 +67,12 @@ export class AuditFiltersPanelComponent {
     public readonly flowNames = input<string[]>([]);
     public readonly agentOptions = input<AuditEnumOption[]>([]);
     public readonly toolOptions = input<AuditEnumOption[]>([]);
+    public readonly queryError = input<string | null>(null);
 
     public readonly flowOptions = computed<AuditEnumOption[]>(() =>
         this.flowNames().map((name) => ({ value: name, label: name }))
     );
 
-    public activeTab = signal<AuditFilterTab>('builder');
     public filter = model<AuditFilterState>(EMPTY_AUDIT_FILTER);
 
     public readonly kindOptions = KIND_OPTIONS;
@@ -80,6 +82,14 @@ export class AuditFiltersPanelComponent {
     public readonly errorOperators = ERROR_OPERATORS;
     public readonly jsonOperators = JSON_OPERATORS;
     public readonly deepTextOperators = DEEP_TEXT_OPERATORS;
+    public readonly queryExamples = QUERY_EXAMPLES;
+    public readonly queryFields = QUERY_FIELDS;
+
+    public activeTab = signal<AuditFilterTab>('builder');
+
+    public ngOnInit(): void {
+        this.activeTab.set(this.filter().mode);
+    }
 
     public setActiveTab(tab: AuditFilterTab): void {
         this.activeTab.set(tab);
@@ -123,6 +133,20 @@ export class AuditFiltersPanelComponent {
         return isFieldEnabled('tool', state) ? '' : 'Only events carry a tool';
     });
 
+    public useExample(query: string): void {
+        this.filter.update((current) => ({ ...current, query, mode: 'query' }));
+    }
+
+    // paste where cursor is and cursors appear after pasted word
+    public insertField(textarea: HTMLTextAreaElement, field: string): void {
+        const start = textarea.selectionStart;
+        const query = textarea.value.slice(0, start) + field + textarea.value.slice(textarea.selectionEnd);
+        textarea.value = query;
+        textarea.setSelectionRange(start + field.length, start + field.length);
+        textarea.focus();
+        this.filter.update((current) => ({ ...current, query, mode: 'query' }));
+    }
+
     public disabledStatuses = computed(() =>
         this.isStatusEnabled() ? [] : this.statusOptions.map((option) => option.value)
     );
@@ -141,7 +165,7 @@ export class AuditFiltersPanelComponent {
     }));
 
     public setDateRange(range: DateRangeFilter): void {
-        this.filter.update((current) => ({ ...current, dateFrom: range.after, dateTo: range.before }));
+        this.updateBuilder({ dateFrom: range.after, dateTo: range.before });
     }
 
     public setMatchScope(matchScope: AuditMatchScopeState): void {
@@ -149,70 +173,79 @@ export class AuditFiltersPanelComponent {
     }
 
     public setKinds(kinds: string[]): void {
-        this.filter.update((current) => ({ ...current, kinds: kinds as AuditEventKind[] }));
+        this.updateBuilder({ kinds: kinds as AuditEventKind[] });
     }
 
     public setStatuses(statuses: string[]): void {
-        this.filter.update((current) => ({ ...current, statuses: statuses as AuditEventStatus[] }));
+        this.updateBuilder({ statuses: statuses as AuditEventStatus[] });
     }
 
     public setRunTypes(values: string[]): void {
-        this.filter.update((current) => ({ ...current, runTypes: values as AuditRunBucket[] }));
+        this.updateBuilder({ runTypes: values as AuditRunBucket[] });
     }
 
     public setNodeTypes(values: string[]): void {
-        this.filter.update((current) => ({ ...current, nodeTypes: values as AuditNodeType[] }));
+        this.updateBuilder({ nodeTypes: values as AuditNodeType[] });
     }
 
     public setFlow(flow: AuditValuesFilter): void {
-        this.filter.update((current) => ({ ...current, flow }));
+        this.updateBuilder({ flow });
     }
 
     public setId(id: AuditIdFilter): void {
-        this.filter.update((current) => ({ ...current, id }));
+        this.updateBuilder({ id });
     }
 
     public setError(error: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, error }));
+        this.updateBuilder({ error });
     }
 
     public setInput(input: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, input }));
+        this.updateBuilder({ input });
     }
 
     public setOutput(output: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, output }));
+        this.updateBuilder({ output });
     }
 
     public setDetails(details: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, details }));
+        this.updateBuilder({ details });
     }
 
     public setAgent(agent: AuditValuesFilter): void {
-        this.filter.update((current) => ({ ...current, agent }));
+        this.updateBuilder({ agent });
     }
 
     public setTool(tool: AuditValuesFilter): void {
-        this.filter.update((current) => ({ ...current, tool }));
+        this.updateBuilder({ tool });
     }
 
     public setTask(task: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, task }));
+        this.updateBuilder({ task });
     }
 
     public setPrompt(prompt: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, prompt }));
+        this.updateBuilder({ prompt });
     }
 
     public setMessageText(messageText: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, messageText }));
+        this.updateBuilder({ messageText });
     }
 
     public setMessageThought(messageThought: AuditConditionGroup[]): void {
-        this.filter.update((current) => ({ ...current, messageThought }));
+        this.updateBuilder({ messageThought });
     }
 
     public setTokens(tokens: AuditNumberFilter): void {
-        this.filter.update((current) => ({ ...current, tokens }));
+        this.updateBuilder({ tokens });
+    }
+
+    public setQuery(event: Event): void {
+        const query = (event.target as HTMLTextAreaElement).value;
+        this.filter.update((current) => ({ ...current, query, mode: 'query' }));
+    }
+
+    private updateBuilder(change: Partial<AuditFilterState>): void {
+        this.filter.update((current) => ({ ...current, ...change, mode: 'builder' }));
     }
 }

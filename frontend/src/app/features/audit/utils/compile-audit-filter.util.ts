@@ -20,6 +20,7 @@ const RUN_TYPES_BY_BUCKET: Record<AuditRunBucket, AuditRunType[]> = {
 
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
+    query?: string;
     matchScope: AuditMatchScope;
 }
 
@@ -71,8 +72,14 @@ function compileMatchScope(scope: AuditMatchScopeState): AuditMatchScope {
 }
 
 export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
-    const leaves: AuditFilterNode[] = [];
+    const matchScope = compileMatchScope(state.matchScope);
 
+    if (state.mode === 'query') {
+        const query = state.query.trim();
+        return query === '' ? { matchScope } : { query, matchScope };
+    }
+
+    const leaves: AuditFilterNode[] = [];
     if (state.kinds.length > 0) {
         leaves.push({ field: 'kind', op: 'in', value: state.kinds });
     }
@@ -180,11 +187,11 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     }
 
     if (leaves.length === 0) {
-        return { matchScope: compileMatchScope(state.matchScope) };
+        return { matchScope };
     }
 
     return {
         filters: leaves.length === 1 ? leaves[0] : { op: 'and', children: leaves },
-        matchScope: compileMatchScope(state.matchScope),
+        matchScope,
     };
 }

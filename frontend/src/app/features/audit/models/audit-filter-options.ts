@@ -106,3 +106,32 @@ export const TOKEN_OPERATOR_LABELS: Record<string, string> = {
 };
 
 export const TOKEN_STEP = 100;
+
+export const QUERY_EXAMPLES: string[] = [
+    'status in ["failed"] or node_type in ["AGENT", "PYTHON"]',
+    'name == "Session Start"',
+    'error is not empty and not session_id == 66',
+    'input : est3285 and output : Greetings',
+];
+
+export const QUERY_FIELDS: string[] = [
+    'kind',
+    'session_id',
+    'name',
+    'flow_name',
+    'node_type',
+    'run_type',
+    'status',
+    'event_time',
+    'duration',
+    'input',
+    'output',
+    'error',
+    'details',
+    'agent',
+    'task',
+    'prompt',
+    'message_text',
+    'message_thought',
+    'id',
+];
