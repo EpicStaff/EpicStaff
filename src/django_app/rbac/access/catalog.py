@@ -1,8 +1,9 @@
 """Static taxonomy for the permission matrix UI.
 
-Single source of truth for which actions apply to which resource type.
-Read by `PermissionCatalogView` (FE matrix UI) and indirectly by the
-built-in role seed migration (for sanity-checking applicable bits).
+Single source of truth for which actions apply to which resource type. The
+seeder validates `builtin_roles.json` against `applicable_actions`, so
+removing an action here while that file still grants it makes the container
+fail to start.
 """
 
 from functools import reduce

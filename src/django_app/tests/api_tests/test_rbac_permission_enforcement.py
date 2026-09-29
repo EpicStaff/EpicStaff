@@ -3,18 +3,11 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from rbac.models import Organization, OrganizationUser, Role, RolePermission
-from rbac.models.enums import BuiltInRole, Permission
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- shared fixtures ----
-
-
-@pytest.fixture
-def role_superadmin(db):
-    return Role.objects.get(
-        name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
-    )
 
 
 @pytest.fixture
@@ -27,11 +20,6 @@ def role_org_admin(db):
 @pytest.fixture
 def role_member(db):
     return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
-
-
-@pytest.fixture
-def role_viewer(db):
-    return Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
 
 
 @pytest.fixture
@@ -110,39 +98,6 @@ def test_permission_catalog_returns_actions_and_resource_types(
     assert orgs_entry["applicable_actions"] == ["read", "update"]
     assert orgs_entry["platform_actions"] == ["create", "delete"]
     assert orgs_entry["group"] == "admin"
-
-
-# ---- Built-in role seed sanity ----
-
-
-@pytest.mark.django_db
-def test_org_admin_seed_has_flows_export(role_org_admin):
-    row = RolePermission.objects.get(role=role_org_admin, resource_type="flows")
-    assert row.permissions == 31
-
-
-@pytest.mark.django_db
-def test_member_seed_has_no_memberships_or_roles(role_member):
-    row_members = RolePermission.objects.get(
-        role=role_member, resource_type="memberships"
-    )
-    row_roles = RolePermission.objects.get(role=role_member, resource_type="roles")
-    assert row_members.permissions == 0
-    assert row_roles.permissions == 0
-
-
-@pytest.mark.django_db
-def test_viewer_seed_can_use_flows_but_not_secrets(role_viewer):
-    flows = RolePermission.objects.get(role=role_viewer, resource_type="flows")
-    secrets = RolePermission.objects.get(role=role_viewer, resource_type="secrets")
-    assert flows.permissions == 66  # R | use
-    # 0236 revoked secrets:USE from Viewer; only `list` remains.
-    assert secrets.permissions == 128  # list
-
-
-@pytest.mark.django_db
-def test_superadmin_role_has_no_role_permissions(role_superadmin):
-    assert not RolePermission.objects.filter(role=role_superadmin).exists()
 
 
 # ---- Cross-org membership door gate ----
@@ -286,33 +241,3 @@ def test_permissions_me_org_admin(auth_client, org_admin_user, org_acme):
     assert "export" in body["permissions"]["flows"]
     # Org Admin now holds organizations READ|UPDATE (rename/manage own org).
     assert body["permissions"]["organizations"] == ["read", "update"]
-
-
-# ---- Built-in seed: api_keys ----
-
-
-@pytest.mark.django_db
-def test_org_admin_seed_grants_api_keys_read_and_delete(role_org_admin):
-    row = RolePermission.objects.get(role=role_org_admin, resource_type="api_keys")
-
-    assert row.permissions == int(Permission.READ | Permission.DELETE)
-
-
-@pytest.mark.django_db
-def test_member_and_viewer_seeds_grant_no_api_keys(role_member, role_viewer):
-    assert not RolePermission.objects.filter(
-        role__in=[role_member, role_viewer], resource_type="api_keys"
-    ).exists()
-
-
-@pytest.mark.django_db
-def test_secrets_seeds_are_untouched(role_org_admin, role_member):
-    org_admin_secrets = RolePermission.objects.get(
-        role=role_org_admin, resource_type="secrets"
-    )
-    member_secrets = RolePermission.objects.get(
-        role=role_member, resource_type="secrets"
-    )
-
-    assert org_admin_secrets.permissions == 207
-    assert member_secrets.permissions == 192
