@@ -15,7 +15,6 @@ from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
     HasOrgPermission,
-    IsSuperadmin,
 )
 from rbac.access.org_context import OrgContextService
 from rbac.models import ApiKey
@@ -811,16 +810,26 @@ class QuickstartApplyView(APIView):
     Applies a quickstart config to DefaultModels.
     If config_name is omitted, the most recently created quickstart config is used.
 
-    Writes the active organization's DefaultModels row and is restricted to superadmins.
+    Writes the active organization's DefaultModels row and requires LLM config create and
+    update permissions.
     """
 
-    # TODO: refactor to set default models based on user permissions
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    # Checked one by one: a combined IntFlag passes `can()` when either bit is held.
+    rbac_required_actions = (Permission.CREATE, Permission.UPDATE)
     _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        for required_action in self.rbac_required_actions:
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=self.rbac_resource_type,
+                action=required_action,
+            )
         last = quickstart_service.get_last_quickstart(org_id)
         if not last:
             return Response(
