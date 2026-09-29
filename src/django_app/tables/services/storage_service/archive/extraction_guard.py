@@ -27,8 +27,7 @@ class ArchiveExtractionGuard:
 
 
 class GuardedMemberReader:
-    """File-like reader over one archive member that counts every byte read
-    against the guard, so a zip bomb is stopped mid-read, not after unpacking."""
+    """File-like reader that counts each byte against the guard, so a zip bomb stops mid-read."""
 
     def __init__(self, member_file, guard: ArchiveExtractionGuard, name: str):
         self._f = member_file

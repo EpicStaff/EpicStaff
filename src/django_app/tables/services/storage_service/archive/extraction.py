@@ -12,13 +12,8 @@ from tables.services.storage_service.path_utils import sanitize_storage_path
 def iter_archive_members(
     archive_file, guard: ArchiveExtractionGuard
 ) -> Iterator[tuple[str, GuardedMemberReader]]:
-    """Yield (safe_name, GuardedMemberReader) per file member, streaming.
-
-    Rejects symlinks, hardlinks and any tar member that is not a plain file or
-    folder (every tar member, folders too, counts toward the guard's entry
-    cap) and sanitizes names, but does not read member bytes here — the
-    caller streams each reader to storage before advancing to the next
-    member (member stays open during the yield)."""
+    """Yield (safe_name, guarded reader) per file member; rejects links and non-plain members.
+    The member stays open during the yield: consume the reader before advancing."""
     pos = archive_file.tell()
 
     if zipfile.is_zipfile(archive_file):

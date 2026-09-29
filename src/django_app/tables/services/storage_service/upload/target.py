@@ -27,8 +27,7 @@ def clean_folder(path: str) -> str:
 
 
 def target_path(org_id: int, path: str, filename: str, validator: FileValidator) -> str:
-    """Check the name (blocked extensions, path tricks, length) and build the one path
-    used for both the storage object and its StorageFile row, so the two never differ."""
+    """Validate the file name and build the one path used for both the object and its row."""
     validator.validate_name(filename)
     if "/" in filename or "\\" in filename:
         raise ValidationError({"filename": "filename must not contain a path separator."})
@@ -46,9 +45,7 @@ def target_path(org_id: int, path: str, filename: str, validator: FileValidator)
 
 
 def check_target(org_id: int, target: str, authorize_overwrite: Callable[[], None] | None) -> None:
-    """Early rejects from the StorageFile rows, before the upload waits for a slot:
-    StoragePathIsFile (409) when a folder on the way to `target` is a file, and
-    `authorize_overwrite()` when a file is already at `target`."""
+    """Early reject from StorageFile rows: 409 if a parent is a file; authorize an overwrite."""
     segments = target.split("/")
     parents = ["/".join(segments[:depth]) for depth in range(1, len(segments))]
     existing_files = set(

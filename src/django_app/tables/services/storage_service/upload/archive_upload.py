@@ -38,19 +38,16 @@ from tables.services.storage_service.upload.target import (
 from tables.validators.file_upload_validator import FileValidator
 from utils.logger import logger
 
-# Chunk size for re-reading an already buffered file: well under one part, so
-# upload_chunks still holds about one part.
+# Well under one part, so upload_chunks still holds about one part.
 _BUFFERED_READ_CHUNK = 1024 * 1024
 
 # Returned by _unpack_to_storage when the "archive" turned out to be a plain file.
 _NOT_AN_ARCHIVE = object()
 
-# Lost folder claims _reserve_folder tolerates; each loss means a concurrent upload
-# of the same archive name, so real contention stays far below this.
+# Lost folder claims _reserve_folder tolerates before giving up.
 _MAX_FOLDER_CLAIMS = 100
 
-# Lost claims of one name the store still reports free, after which _reserve_folder
-# takes the name as blocked for good rather than held by a claim still in flight.
+# Refusals of a name the store reports free, after which the name counts as blocked.
 _MAX_REFUSALS_OF_ONE_NAME = 3
 
 
@@ -70,21 +67,13 @@ async def upload_archive(
     validator: FileValidator | None = None,
     authorize_overwrite: Callable[[], None] | None = None,
 ) -> dict:
-    """Collect an archive from the request body (up to MAX_ARCHIVE_FILE_SIZE), check
-    it and unpack it into a new folder in object storage; the unpacked size is
-    bounded only by the org's free space. Returns {"path", "extracted"}, or
-    {"path", "size"} when the file only looked like an archive and was stored as is.
-
-    A real archive never replaces anything, so `authorize_overwrite` (see
-    upload_file) runs only when a file stored as is would replace one."""
+    """Unpack an uploaded archive into a new storage folder, or store it as is if not an archive."""
     backend = backend or get_storage_backend(organization_prefix="")
     validator = validator or FileValidator()
     target = target_path(org_id, path, filename, validator)  # before the body is read
 
     cap = settings.MAX_ARCHIVE_FILE_SIZE
-    # Early rejects before waiting for a slot; the count below stays the real limit,
-    # since Content-Length may be missing or lie. No quota check here: the unpacked
-    # size is unknown until the archive is read.
+    # Early rejects before waiting for a slot; Content-Length may lie, the count below is the limit.
     if declared_size is not None and declared_size > cap:
         raise UploadTooLarge()
     await sync_to_async(check_target)(org_id, target, None)
@@ -93,8 +82,7 @@ async def upload_archive(
     async with get_upload_admission().admit(org_id):
         with (
             storage_errors_as_unavailable(),
-            # ZIP keeps its index at the end, so the whole archive must be at hand;
-            # past one part it goes to disk instead of RAM.
+            # ZIP keeps its index at the end, so buffer it all; past one part it spills to disk.
             tempfile.SpooledTemporaryFile(max_size=backend.part_size) as buffered,
         ):
             total = 0
@@ -102,13 +90,11 @@ async def upload_archive(
                 total += len(chunk)
                 if total > cap:
                     raise UploadTooLarge()
-                # A write past max_size rolls the buffer over to disk.
                 await asyncio.to_thread(buffered.write, chunk)
             buffered.seek(0)
 
             try:
-                # Thread-sensitive, so its DB work uses the request's own connection,
-                # which the request_finished signal closes.
+                # Thread-sensitive, so its DB work uses the request's connection.
                 result = await sync_to_async(_unpack_to_storage)(
                     org_id, path, filename, buffered, backend, validator
                 )
@@ -120,9 +106,7 @@ async def upload_archive(
                 zlib.error,
                 lzma.LZMAError,
             ) as exc:
-                # zip bomb, zip-slip, symlink, encrypted or corrupt archive: the
-                # client's fault, so 400 with the reason rather than a server error.
-                # Unlabelled: the reason already names the archive.
+                # A bad archive (bomb, zip-slip, symlink, encrypted, corrupt) is a 400.
                 raise ValidationError(str(exc)) from exc
 
             if result is _NOT_AN_ARCHIVE:
@@ -139,15 +123,11 @@ async def upload_archive(
 
 
 def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
-    """Validate the buffered archive and unpack it into a new "<name> (n)" folder,
-    then write the rows within the quota. On failure exactly the objects this call
-    created are removed again, never by name or prefix: a file named like the
-    folder ("report" next to "report.zip") or anything another upload put in the
-    folder meanwhile is not this call's to delete."""
+    """Validate the buffered archive, unpack it into a new "<name> (n)" folder and record it.
+    On failure only the objects this call created are removed, never by name or prefix."""
     free = org_free_bytes(org_id)
 
-    # The route was picked by file name alone, so a plain file with an archive
-    # suffix (a text dump named .tar.gz, a truncated download) lands here too.
+    # The route is picked by name alone, so a plain file with an archive suffix lands here too.
     archive_dirs = inspect_archive(
         buffered,
         filename,
@@ -195,17 +175,8 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
 
 
 def _reserve_folder(org_id: int, folder: str, backend) -> str:
-    """Storage key of the first free "<folder>", "<folder> (1)", ..., claimed with a
-    conditional marker write, so two uploads of one archive never share a folder.
-
-    No DB lock is held: the store itself refuses the second claim of a name, and the
-    loser probes again, now seeing the winner's marker, so the loop moves on to a
-    later name. A name refused _MAX_REFUSALS_OF_ONE_NAME times in a row while the
-    probe keeps reporting it free is blocked by something the probe does not see
-    (MinIO refuses to write under a file at a parent path): StoragePathIsFile (409).
-    The cap only stops a store that refuses every new name from spinning forever.
-    ValueError for a name or path the " (n)" suffix made too long, before the store
-    sees it."""
+    """Claim the first free "<folder>", "<folder> (1)", ... with a marker write; return its key.
+    The store refuses a second claim of a name, so two uploads never share a folder."""
     org_prefix = storage_key(org_id, "")
     wanted = storage_key(org_id, folder)
     refused_key, refusals = None, 0

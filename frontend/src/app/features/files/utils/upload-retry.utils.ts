@@ -2,19 +2,18 @@ import { HttpErrorResponse } from '@angular/common/http';
 
 import { getUploadErrorCode, UploadErrorCode } from './upload-error.utils';
 
-/** Attempts per file, the first one included, while the server answers 429/503. */
+/** Max attempts per file on 429/503, the first one included. */
 export const UPLOAD_MAX_ATTEMPTS = 5;
-/** Waits used when a 429/503 carries no readable Retry-After. */
+/** Fallback wait when a 429/503 has no readable Retry-After. */
 export const UPLOAD_RETRY_FALLBACK_SECONDS = 30;
 export const STORAGE_UNAVAILABLE_RETRY_FALLBACK_SECONDS = 5;
-/** Upper bound on one wait, whatever Retry-After says. */
+/** Upper bound on one wait. */
 const UPLOAD_RETRY_MAX_SECONDS = 120;
 
-/** 429 (org upload limit) and 503 (slots busy, storage unavailable) are the only
- *  answers where sending the same file again later can succeed. */
+/** The only statuses where re-sending the same file later can succeed. */
 const RETRYABLE_UPLOAD_STATUSES = new Set([429, 503]);
 
-/** How long to wait before re-sending after `error`, or null when it must not be retried. */
+/** Delay before re-sending after `error`, or null when it must not be retried. */
 export function uploadRetryDelayMs(error: unknown): number | null {
     if (!(error instanceof HttpErrorResponse) || !RETRYABLE_UPLOAD_STATUSES.has(error.status)) return null;
     const fallback =
@@ -25,7 +24,7 @@ export function uploadRetryDelayMs(error: unknown): number | null {
     return Math.min(seconds, UPLOAD_RETRY_MAX_SECONDS) * 1000;
 }
 
-/** Retry-After is either delay-seconds or an HTTP date (RFC 9110 §10.2.3). */
+/** Parses Retry-After, which is delay-seconds or an HTTP date. */
 function parseRetryAfterSeconds(header: string | null): number | null {
     if (!header) return null;
     const value = header.trim();

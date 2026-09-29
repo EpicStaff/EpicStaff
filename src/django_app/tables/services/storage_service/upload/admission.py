@@ -7,13 +7,7 @@ from tables.exceptions import OrgUploadLimitReached, UploadSlotsBusy
 
 
 class UploadAdmission:
-    """Decides which streaming uploads of this worker may run.
-
-    At most `max_concurrency` run at once. One organization holds at most
-    `per_org_limit` of them, counting its uploads still waiting for a slot, so it
-    cannot line up behind a full worker; below `max_concurrency` it also cannot
-    fill every slot. A waiter gives up after `slot_timeout` seconds (None: never).
-
+    """Per-worker gate on streaming uploads: a global slot limit plus a per-org cap.
     Lives on the worker's single event loop, so the counters need no lock."""
 
     def __init__(self, *, max_concurrency: int, per_org_limit: int, slot_timeout: float):
@@ -28,11 +22,7 @@ class UploadAdmission:
 
     @contextlib.asynccontextmanager
     async def admit(self, org_id: int):
-        """Hold one slot for `org_id` for the duration of the block.
-
-        OrgUploadLimitReached (429) when the org is at its limit, UploadSlotsBusy
-        (503) when no slot frees up in time. Both counters are given back on every
-        exit: success, error, and cancellation (client disconnect)."""
+        """Hold one upload slot for `org_id` for the block; released on every exit."""
         if self._uploads_by_org[org_id] >= self._per_org_limit:
             raise OrgUploadLimitReached(wait=self._slot_timeout)
         self._uploads_by_org[org_id] += 1

@@ -10,11 +10,9 @@ import { PermissionsService } from '../../../../../../../../services/auth/permis
 import { StorageItem } from '../../../../../../models/storage.models';
 import { StorageApiService } from '../../../../../../services/storage-api.service';
 
-// The preview is rendered on the main thread; past this size only the beginning of a
-// text-like file is fetched, and other types are not previewed at all.
+// Above this size text-like files are previewed partially and other types not at all.
 const MAX_PREVIEW_FILE_SIZE = 5 * 1024 * 1024;
-// How much of a larger text-like file is fetched: enough for the rows/characters the
-// preview renders (see blob-preview), so the rest is never downloaded.
+// Bytes fetched for a partial preview; enough for what blob-preview renders.
 const PARTIAL_PREVIEW_BYTES = 1024 * 1024;
 
 type PreviewMode = 'none' | 'full' | 'partial' | 'too-large';
@@ -54,7 +52,7 @@ export class StoragePreviewComponent {
     readonly previewMode = computed(() => resolvePreviewMode(this.item()));
 
     constructor() {
-        // switchMap drops the previous file's download, so a late answer can't land under the new file.
+        // switchMap drops the previous download, so a late answer can't land under the new file.
         toObservable(this.item)
             .pipe(
                 switchMap((item) => this.loadPreview(item)),

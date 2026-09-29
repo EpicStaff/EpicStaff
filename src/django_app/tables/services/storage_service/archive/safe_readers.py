@@ -1,23 +1,15 @@
-"""Open uploaded archives without letting their headers decide how much memory is used.
-
-tarfile reads a GNU long-name/long-link or pax header's whole declared size into
-memory, and zipfile builds an object for every central-directory entry, both
-before a caller sees a single member to count. The readers here refuse such an
-archive while its headers are being read."""
+"""Open untrusted archives without letting their headers decide how much memory is used.
+tarfile buffers an extended header's declared size; zipfile builds an object per entry."""
 
 import struct
 import tarfile
 import zipfile
 
-# A pax or GNU long-name/long-link header holds one member's metadata: a path
-# (PATH_MAX is 4096) plus a few attributes. 64 KiB is far past any real one, and
-# at most MAX_TAR_HEADER_CHAIN of them are held at once.
+# One pax/GNU long-name header holds a path (PATH_MAX 4096) and a few attributes.
 MAX_TAR_EXTENDED_HEADER_BYTES = 64 * 1024
-# Extended headers stacked in front of one member. Real archives use at most
-# three (global pax + pax + GNU long name); tarfile recurses once per header.
+# Extended headers stacked before one member; real archives use at most three.
 MAX_TAR_HEADER_CHAIN = 8
-# Global pax headers merge into one dict tarfile keeps for the whole archive, so
-# their sum is bounded, not only each one (git archive writes a single ~50 bytes).
+# Global pax headers merge into one archive-wide dict, so their sum is bounded too.
 MAX_TAR_GLOBAL_HEADER_BYTES = 64 * 1024
 
 _EXTENDED_HEADER_TYPES = frozenset(
@@ -43,14 +35,8 @@ class UnsafeTarHeader(ValueError):  # noqa: N818 (named like ArchiveLimitExceede
 
 
 class _BoundedTarInfo(tarfile.TarInfo):
-    """TarInfo that checks each header before tarfile processes it.
-
-    _proc_member is the per-header dispatch that tarfile documents as the hook for
-    subclasses; it runs for every header, including the one that follows an
-    extended header (tarfile reads that through self.fromtarfile, a classmethod,
-    so it is a _BoundedTarInfo too). _proc_gnusparse_10 is private: signature
-    checked against CPython 3.12.3 and 3.12.10. test_archive_readers fails
-    loudly if tarfile stops calling either (the bomb would then be read)."""
+    """TarInfo that bounds each header before tarfile processes it.
+    Hooks _proc_member and private _proc_gnusparse_10; test_archive_readers guards both."""
 
     def _proc_member(self, tar):
         if self.size < 0:
@@ -83,9 +69,7 @@ class _BoundedTarInfo(tarfile.TarInfo):
             tar.header_chain -= 1
 
     def _moving_forward(self, tar, member):
-        """`member` unless its size (possibly set by a pax `size` or `GNU.sparse.size`
-        record) is negative or the next header would not come after this one: a
-        backwards offset makes tarfile re-read earlier members in a loop."""
+        """Return `member`, rejecting a negative size or a backwards offset (a re-read loop)."""
         if member.size < 0 or tar.offset <= self.offset:
             raise UnsafeTarHeader(
                 f"Archive has a tar header that points backwards: {member.name!r}"
@@ -98,36 +82,28 @@ class _BoundedTarInfo(tarfile.TarInfo):
 
 
 class BoundedTarFile(tarfile.TarFile):
-    """Read-only TarFile for untrusted archives: bounded headers (_BoundedTarInfo)
-    and iteration that does not keep every member it has passed.
-
-    Only iterate it: getmembers(), extractall() and link targets need the member
-    list that iteration drops."""
+    """Read-only TarFile for untrusted archives: bounded headers, members not retained.
+    Only iterate it: getmembers(), extractall() and link targets need the dropped list."""
 
     tarinfo = _BoundedTarInfo
-    # Per-archive state for _BoundedTarInfo; class defaults, set per instance on use.
+    # Per-archive state for _BoundedTarInfo.
     header_chain = 0
     global_header_bytes = 0
 
     def __iter__(self):
-        # tarfile appends every header it reads to self.members; nothing reads them
-        # back here, so without this a long archive grows the list to its end.
+        # tarfile appends every header to self.members; clearing keeps memory bounded.
         while (member := self.next()) is not None:
             self.members.clear()
             yield member
 
 
 def open_tar(file_object, mode: str = "r:*") -> BoundedTarFile:
-    """tarfile.open for reading an untrusted archive. UnsafeTarHeader when a
-    header is over the bounds above (a ValueError, not a tarfile.TarError)."""
+    """Open an untrusted tar for reading with bounded headers."""
     return BoundedTarFile.open(fileobj=file_object, mode=mode)
 
 
 def is_tar(file_object) -> bool:
-    """tarfile.is_tarfile over open_tar, since is_tarfile takes no tarinfo: whether
-    the bytes open as a tar. Anything tarfile cannot read is simply not a tar,
-    but UnsafeTarHeader propagates, since the bytes are a tar, a hostile one.
-    Leaves the file position where it was."""
+    """Whether the bytes open as a tar; UnsafeTarHeader propagates, as a hostile tar is a tar."""
     position = file_object.tell()
     try:
         with open_tar(file_object):
@@ -141,18 +117,11 @@ def is_tar(file_object) -> bool:
 
 
 def zip_entry_count(file_object, *, stop_after: int) -> int:
-    """How many entries zipfile.ZipFile would build from this archive, counted
-    from the raw central directory without building them. Past `stop_after` it
-    returns as soon as that is known, with a number over stop_after but not
-    necessarily the full count. The declared total is not trusted: ZipFile
-    ignores it and reads entries until the directory's byte size is used up, so
-    this walks the same bytes. Stops quietly at anything malformed and leaves reporting it to
-    ZipFile. BadZipFile: no end-of-central-directory record. Leaves the file
-    position where it was."""
+    """Count the entries ZipFile would build, from the raw central directory, up to stop_after.
+    Walks the directory bytes like ZipFile does, since ZipFile ignores the declared total."""
     position = file_object.tell()
     try:
-        # zipfile's own reader (private, stable since Python 2), so the record found
-        # here is the one ZipFile will use; it also resolves the zip64 record.
+        # zipfile's private reader, so this finds the same end record ZipFile uses.
         try:
             end_record = zipfile._EndRecData(file_object)
         except OSError as exc:
@@ -175,12 +144,7 @@ def zip_entry_count(file_object, *, stop_after: int) -> int:
 
 
 def _zip_directory_start(file_object, end_record) -> int:
-    """Where ZipFile._RealGetContents starts reading the central directory: right
-    before the end records, whatever the directory offset field claims.
-
-    For zip64, CPython versions disagree on what the record location points at
-    (the classic end record in 3.12.10, the zip64 one in later patch releases);
-    reading the signature there covers both."""
+    """Where ZipFile starts reading the central directory: right before the end records."""
     location = end_record[zipfile._ECD_LOCATION]
     start = location - end_record[zipfile._ECD_SIZE]
     if end_record[zipfile._ECD_SIGNATURE] == zipfile.stringEndArchive64:
@@ -191,8 +155,7 @@ def _zip_directory_start(file_object, end_record) -> int:
 
 
 def _count_central_headers(file_object, start: int, directory_size: int, stop_after: int) -> int:
-    """Entries in the directory as ZipFile parses them, up to stop_after + 1. Reads
-    only each fixed header, so the cost is bounded by stop_after, not the directory."""
+    """Count central-directory headers up to stop_after + 1, reading only the fixed part."""
     count = offset = 0
     while offset < directory_size and count <= stop_after:
         file_object.seek(start + offset)

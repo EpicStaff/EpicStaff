@@ -18,8 +18,7 @@ from tables.services.storage_service.dataclasses import (
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from utils.logger import logger
 
-# For head_file: its caller (the shared pub/sub listener thread) must not stall for
-# minutes on a slow or unreachable object store, so one short attempt and no retries.
+# One short attempt, no retries: head_file's caller (the pub/sub listener) must not stall.
 _HEAD_FILE_CONFIG = Config(
     connect_timeout=2, read_timeout=5, retries={"mode": "standard", "total_max_attempts": 1}
 )
@@ -27,11 +26,8 @@ _HEAD_FILE_CONFIG = Config(
 # S3 DeleteObjects accepts at most this many keys per request.
 _DELETE_OBJECTS_BATCH = 1000
 
-# Error codes that S3-compatible stores answer with. Vendor-specific codes (e.g.
-# MinIO's XMinio*) live only in these tables. A bare status ("412", "400") is the
-# code botocore reports when the response carries no error body.
-# The name is already taken: 412 the key exists; 409 a concurrent conditional write
-# is in flight; XMinioParentIsObject a file of that name exists where a folder goes.
+# A bare status ("412", "400") is what botocore reports when the response has no error body.
+# The name is taken: 412 key exists, 409 concurrent conditional write, MinIO parent is a file.
 _NAME_TAKEN_CODES = frozenset(
     {"PreconditionFailed", "412", "ConditionalRequestConflict", "409", "XMinioParentIsObject"}
 )
@@ -40,18 +36,14 @@ _INVALID_NAME_CODES = frozenset({"400", "XMinioInvalidObjectName"})
 
 
 def _drop_expect_on_empty_body(request, **kwargs):
-    # Some S3-compatible stores (e.g. MinIO) answer an empty PUT sent with
-    # "Expect: 100-continue" in a way that stalls the next request on that pooled
-    # connection for ~30 s.
+    # MinIO answers an empty PUT with "Expect: 100-continue" so the next pooled request stalls.
     if request.headers.get("Content-Length") == "0":
         request.headers.pop("Expect", None)
 
 
 @contextlib.contextmanager
 def _outage_as_storage_unreachable():
-    """Re-raise a store that is unreachable, timing out or answering 5xx as
-    StorageUnreachable, so callers need no SDK types. A 4xx (bad credentials,
-    missing bucket) is a misconfiguration and propagates unchanged."""
+    """Re-raise connection errors and 5xx answers as StorageUnreachable; a 4xx propagates."""
     try:
         yield
     except (SdkConnectionError, HTTPClientError) as error:
@@ -110,8 +102,7 @@ class S3StorageBackend(AbstractStorageBackend):
         return self._part_size
 
     async def upload_chunks(self, path, chunks, *, size_guard=None, before_commit=None) -> int:
-        """As multipart parts of part_size, each handed to boto as is (not copied);
-        a body smaller than one part goes up as a single PutObject."""
+        """Upload as multipart parts of part_size, or one PutObject for a body under one part."""
         part_size = self._part_size
         full_key = self._full_path(path)
         total = 0
@@ -188,8 +179,7 @@ class S3StorageBackend(AbstractStorageBackend):
 
     @_outage_as_storage_unreachable()
     def upload_stream(self, path: str, file_object) -> None:
-        """One part at a time on this thread, instead of boto's defaults (8 MB chunks
-        on up to 10 threads)."""
+        """Upload one part at a time on this thread, instead of boto's threaded default."""
         config = TransferConfig(
             multipart_threshold=self._part_size,
             multipart_chunksize=self._part_size,
@@ -472,8 +462,7 @@ class S3StorageBackend(AbstractStorageBackend):
             raise
 
     def _name_taken(self, key: str, is_folder: bool) -> bool:
-        """A folder name is also taken by a file of that name: some S3-compatible
-        stores (e.g. MinIO) refuse to write under a path whose parent is an object."""
+        """Whether key is taken; a folder also clashes with a file (MinIO can't write under one)."""
         if is_folder:
             return self._key_exists(key, is_folder=True) or self._key_exists(
                 key.rstrip("/"), is_folder=False
@@ -501,11 +490,8 @@ class S3StorageBackend(AbstractStorageBackend):
         Copy source into the destination folder, deduping the destination name
         against existing keys.
 
-        Returns (actual_destination_base, created): for a file, the exact target
-        key and [(target_key, size)]; for a folder, the deduped folder base (ending
-        in "/") and (key, size) of every object created underneath it. Sizes come
-        from the source objects. If a copy fails midway, the objects already
-        created are deleted again before the error propagates.
+        Returns (actual_destination_base, [(key, size)] of every object created).
+        A copy failing midway deletes what it already created.
         """
         full_source = self._full_path(source_path)
         full_destination = self._full_path(destination_path)
@@ -638,8 +624,7 @@ class S3StorageBackend(AbstractStorageBackend):
         return self._object_size(path) is not None
 
     def _object_size(self, path: str) -> int | None:
-        """Size of the object at path (a trailing "/" means the folder marker);
-        None when there is none."""
+        """Size of the object at path (a trailing "/" means the folder marker), or None."""
         full_path = self._full_path(path)
         if path.endswith("/") and not full_path.endswith("/"):
             full_path += "/"

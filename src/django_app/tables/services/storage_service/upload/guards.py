@@ -9,10 +9,7 @@ from utils.logger import logger
 
 @contextlib.contextmanager
 def storage_errors_as_unavailable():
-    """Object storage down, timing out or failing on its side (StorageUnreachable)
-    is an outage, not a bug in this request: StorageUnavailable (503). Any other
-    storage error (bad credentials, missing bucket) is a misconfiguration and
-    stays an unexpected error."""
+    """Turn StorageUnreachable into StorageUnavailable (503); other storage errors propagate."""
     try:
         yield
     except StorageUnreachable as exc:
@@ -21,13 +18,8 @@ def storage_errors_as_unavailable():
 
 
 async def within_time_limits(chunks):
-    """Pass `chunks` through, aborting when the client sends nothing for
-    UPLOAD_IDLE_TIMEOUT (slow-loris guard) or the upload outlives
-    UPLOAD_MAX_DURATION (kept under the object storage's stale-upload expiry,
-    which would otherwise drop the parts of a still-running multipart upload).
-
-    Only time spent waiting for the client counts as idle: while a part goes
-    to object storage nothing is read, and the client is merely back-pressured."""
+    """Pass `chunks` through, aborting on client idle time (slow-loris guard) or total duration.
+    Only waiting for the client counts as idle, not time spent sending a part to storage."""
     loop = asyncio.get_running_loop()
     idle_timeout = settings.UPLOAD_IDLE_TIMEOUT
     max_duration = settings.UPLOAD_MAX_DURATION

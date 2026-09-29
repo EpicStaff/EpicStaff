@@ -494,8 +494,7 @@ class UploadTooLarge(CustomAPIExeption):
 
 
 class StoragePathIsFile(CustomAPIExeption):
-    """A folder is needed at a path where a file of that name, or of one of its parent
-    folders, already exists."""
+    """A folder is needed where a file of that name, or of a parent folder, exists."""
 
     status_code = 409
     default_code = "storage_path_is_file"
@@ -507,8 +506,7 @@ class StoragePathIsFile(CustomAPIExeption):
 
 
 class OverwriteNotPermitted(CustomAPIExeption):
-    """The upload would replace an existing file, and replacing needs FILES:UPDATE
-    on top of the FILES:CREATE that uploading does."""
+    """Replacing an existing file needs FILES:UPDATE on top of FILES:CREATE."""
 
     status_code = 403
     default_detail = "Replacing an existing file requires permission to edit files."
@@ -527,8 +525,7 @@ class RangeNotSatisfiable(CustomAPIExeption):
 
 
 class UploadSlotsBusy(CustomAPIExeption):
-    """Every upload slot of this worker stayed taken for the whole wait: the server,
-    not the caller, is at capacity."""
+    """No upload slot of this worker freed up in time."""
 
     status_code = 503
     default_detail = "The server is busy with other uploads. Please retry shortly."
@@ -540,8 +537,7 @@ class UploadSlotsBusy(CustomAPIExeption):
 
 
 class OrgUploadLimitReached(Throttled):
-    """The organization already runs its share of this worker's uploads. A Throttled,
-    so it renders as 429 + Retry-After exactly like DRF's rate limiting."""
+    """The organization already runs its share of uploads; a Throttled, so it renders as 429."""
 
     default_detail = "Your organization already has the maximum number of uploads in progress."
     default_code = "org_upload_limit_reached"

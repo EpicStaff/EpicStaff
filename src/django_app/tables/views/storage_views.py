@@ -67,8 +67,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "search": Permission.READ,
         "upload_limits": Permission.READ,
         "download_zip": Permission.EXPORT,
-        # Served by tables.views.storage_upload_stream_view (raw ASGI), gated through this viewset;
-        # replacing an existing file additionally needs UPDATE, checked there.
+        # Served by storage_upload_stream_view (raw ASGI); overwrites also need UPDATE there.
         "upload_stream": Permission.CREATE,
         "mkdir": Permission.CREATE,
         "add_to_graph": Permission.CREATE,

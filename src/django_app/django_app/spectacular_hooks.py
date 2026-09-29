@@ -203,11 +203,7 @@ def add_org_header_postprocessing_hook(result, generator, request, public, **kwa
 
 
 def add_stream_upload_postprocessing_hook(result, generator, request, public, **kwargs):
-    """Inject the streaming-upload endpoint into the schema.
-
-    It is a raw ASGI handler mounted in asgi.py (Django buffers whole bodies
-    before a view, so it cannot be a DRF view) — the generator never sees it,
-    yet it must be testable from Swagger like any other endpoint."""
+    """Add the streaming-upload endpoint to the schema; it is raw ASGI, which the generator misses."""
     result.setdefault("paths", {})[UPLOAD_STREAM_PATH] = {
         "post": {
             "operationId": "storage_upload_stream",

@@ -156,12 +156,11 @@ export class CreateFolderDialogComponent {
 
     readonly isUploading = signal(false);
     private confirmInFlight = false;
-    /** Every file that landed so far, recorded as each one completes (not when its batch
-     *  ends), so closing mid-upload reports them; they are not sent again. */
+    /** Files uploaded so far, recorded per file so closing mid-upload still reports them. */
     private readonly uploadedFiles = new Set<File>();
     /** The "close during upload" question is open. */
     private isConfirmingClose = false;
-    /** The batch succeeded while that question was open: close once it is answered. */
+    /** The upload finished while that question was open; close once it is answered. */
     private closeDeferredByConfirmation = false;
     /** Maps filename → why the server did not take that file on the last attempt */
     readonly fileServerErrors = signal<Map<string, UploadErrorDescription>>(new Map());
@@ -174,7 +173,7 @@ export class CreateFolderDialogComponent {
         () => !this.hasBlockedFiles() && (this.files().length > 0 || this.folderName().trim().length > 0)
     );
     readonly totalSizeBytes = computed(() => this.files().reduce((sum, f) => sum + f.size, 0));
-    /** The backend's limits and archive naming; null until loaded, or when unknown. */
+    /** Upload limits from the backend; null until loaded or when unknown. */
     private readonly uploadLimits = toSignal(
         this.storageApiService.getUploadLimits().pipe(
             map(usableUploadLimits),
@@ -182,7 +181,7 @@ export class CreateFolderDialogComponent {
         ),
         { initialValue: null }
     );
-    /** Size caps shown next to the file list; null (nothing shown) when they are unknown. */
+    /** Size-cap hint for the file list; null when the limits are unknown. */
     protected readonly uploadLimitsHint = computed(() => describeUploadLimits(this.uploadLimits()));
     protected readonly uploadLimitsHintId = 'create-folder-dialog-upload-limits';
 
@@ -258,8 +257,7 @@ export class CreateFolderDialogComponent {
     }
 
     isArchive(file: File): boolean {
-        // Only the backend's own rule decides what gets unpacked ("x.sql.gz" is stored as is);
-        // without the limits there is no badge rather than a guess that may disagree.
+        // No limits, no badge: only the backend's rule decides what gets unpacked.
         const limits = this.uploadLimits();
         return limits !== null && isArchiveForLimits(file.name, limits);
     }
@@ -328,8 +326,7 @@ export class CreateFolderDialogComponent {
             });
     }
 
-    /** Cancel button, Escape and backdrop. While files are uploading, closing would cancel
-     *  them, so it asks first. */
+    /** Closes the dialog (Cancel, Escape, backdrop), asking first while files are uploading. */
     onCancel(): void {
         if (this.isConfirmingClose) return;
         if (!this.isUploading()) {
@@ -342,8 +339,7 @@ export class CreateFolderDialogComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 this.isConfirmingClose = false;
-                // Always an 'upload' result, even with none counted: a file cancelled
-                // mid-send may still have landed, so the opener reloads its tree.
+                // Always an 'upload' result: a file cancelled mid-send may still have landed.
                 if (result === true || this.closeDeferredByConfirmation) this.closeWithUploads();
             });
     }
@@ -466,8 +462,7 @@ export class CreateFolderDialogComponent {
         this.dialogRef.close({ type: 'upload', count: this.uploadedFiles.size });
     }
 
-    /** Backdrop click and Escape go through onCancel, so files that already landed
-     *  still reach the opener and its tree reloads, and an upload is never dropped unasked. */
+    /** Routes backdrop click and Escape through onCancel, so an upload is never dropped unasked. */
     private closeThroughCancelOnDismiss(): void {
         this.dialogRef.disableClose = true;
         merge(

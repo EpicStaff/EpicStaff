@@ -22,8 +22,7 @@ def size_of_paths(org_id: int, paths) -> int:
 
 
 def org_free_bytes(org_id: int, replacing=()) -> int:
-    """Bytes the org may still upload. Files at `replacing` count as freed,
-    since an overwrite only costs the size difference."""
+    """Bytes the org may still upload; files at `replacing` count as freed."""
     freed = size_of_paths(org_id, replacing) if replacing else 0
     return max(0, settings.ORG_STORAGE_QUOTA - org_used_bytes(org_id) + freed)
 
@@ -33,16 +32,14 @@ def is_over_quota(org_id: int) -> bool:
 
 
 def ensure_fits_quota(org_id: int, size: int, replacing=()) -> None:
-    """Raise 413 unless `size` more bytes fit the org's quota. Outside
-    record_files_within_quota's lock this is only an early reject."""
+    """Raise 413 unless `size` more bytes fit; final only under record_files_within_quota's lock."""
     if size > org_free_bytes(org_id, replacing=replacing):
         raise StorageQuotaExceeded()
 
 
 def record_files_within_quota(org_id: int, files: list[tuple[str, int]], folders=()) -> None:
-    """Write StorageFile rows for already-stored files [(path, size)] and empty
-    `folders`, or raise 413 if the files no longer fit. The org row lock makes
-    concurrent writers of one org check the quota one after another."""
+    """Write rows for stored files [(path, size)] and empty folders, or raise 413 if they don't fit.
+    The org row lock serializes the quota check across concurrent writers of one org."""
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=org_id)
         ensure_fits_quota(

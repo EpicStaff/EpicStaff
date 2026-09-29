@@ -12,13 +12,11 @@ from tables.services.storage_service.archive.safe_readers import (
 )
 from tables.services.storage_service.path_utils import check_new_name, sanitize_storage_path
 
-# Magic bytes of what the archive route can unpack: bytes carrying one of these
-# but failing to parse are a broken archive, not a plain file to store as is.
+# Bytes with one of these signatures that fail to parse are a broken archive, not a plain file.
 _ARCHIVE_SIGNATURES = (b"PK\x03\x04", b"\x1f\x8b", b"BZh", b"\xfd7zXZ\x00")
 _TAR_MAGIC_OFFSET = 257
 
-# What zipfile can inflate; any other method (Deflate64, implode, ...) passes the
-# central directory and only fails with NotImplementedError once extracted.
+# Other methods (Deflate64, implode) pass the directory check and fail only on extraction.
 _SUPPORTED_ZIP_COMPRESSION = frozenset(
     {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA}
 )
@@ -27,17 +25,8 @@ _SUPPORTED_ZIP_COMPRESSION = frozenset(
 def inspect_archive(
     file_object, filename: str, *, max_entries: int, free_bytes: int, is_blocked
 ) -> list[str] | None:
-    """Check a buffered archive before any of it is written. Returns its directory
-    entries (sanitized, possibly []), or None when the bytes carry no archive
-    signature at all (the name alone can lie). One pass over the headers,
-    stopping at the first limit hit, so a bomb costs no more than `free_bytes`
-    of decompression. Leaves the file position where it was.
-
-    ValueError: empty, encrypted, damaged, symlinked, too many entries, a member
-    that is not a plain file or folder, an unsupported compression method, an
-    oversized tar header, a bad or escaping member name, a file clashing with a
-    folder, or a blocked extension inside. StorageQuotaExceeded: the declared
-    unpacked size does not fit."""
+    """Validate a buffered archive before extraction.
+    Returns its folder entries, or None when the bytes are not an archive."""
     pos = file_object.tell()
     try:
         if zipfile.is_zipfile(file_object):
@@ -98,8 +87,8 @@ def _has_archive_signature(file_object) -> bool:
 
 
 def _zip_members(file_object, filename: str, max_entries: int):
-    """(name, declared size, is_dir) per member, from the central directory only.
-    The entries are counted before ZipFile builds one object for each of them."""
+    """Yield (name, declared size, is_dir) per zip member from the central directory.
+    Entries are counted before ZipFile builds an object for each one."""
     try:
         if zip_entry_count(file_object, stop_after=max_entries) > max_entries:
             raise ArchiveLimitExceeded(f"Archive contains more than {max_entries} entries")
@@ -118,15 +107,12 @@ def _zip_members(file_object, filename: str, max_entries: int):
                     )
                 yield entry.filename, entry.file_size, False
     except (zipfile.BadZipFile, NotImplementedError) as exc:
-        # A wrecked central directory can read as an unsupported zip version,
-        # which zipfile reports as NotImplementedError rather than BadZipFile.
+        # A wrecked central directory can raise NotImplementedError instead of BadZipFile.
         raise ValueError(f"Archive '{filename}' is damaged or unreadable") from exc
 
 
 def _tar_members(file_object, filename: str):
-    """(name, size, is_dir) per member; headers are read lazily, so an early stop
-    skips decompressing the rest. Every member is yielded or rejected, so each
-    one counts toward the entry limit."""
+    """Yield (name, size, is_dir) per tar member, reading headers lazily."""
     try:
         with open_tar(file_object) as tf:
             for member in tf:

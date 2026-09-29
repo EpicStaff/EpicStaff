@@ -30,9 +30,9 @@ interface SheetData {
     isCapped: boolean;
 }
 
-// Every row becomes DOM nodes (no virtual scroll), so a long sheet would freeze the tab.
+// No virtual scroll: every row is DOM, so a long sheet would freeze the tab.
 const MAX_SHEET_ROWS = 1000;
-// One <pre> is laid out on the main thread: measured ~0.2 s for 256 KB, ~4.5 s for 5 MB.
+// One <pre> is laid out on the main thread (~4.5 s for 5 MB).
 const MAX_TEXT_PREVIEW_CHARS = 256 * 1024;
 
 function getExtension(fileName: string): string {
@@ -51,8 +51,7 @@ function resolvePreviewType(fileName: string): PreviewType {
     return 'unsupported';
 }
 
-/** Whether the preview still makes sense for only the first bytes of this file
- *  (a cut JSON won't parse, so it is shown as plain text). */
+/** Whether this file can be previewed from its first bytes only (cut JSON is shown as text). */
 export function canPreviewFilePart(fileName: string): boolean {
     const type = resolvePreviewType(fileName);
     return type === 'text' || type === 'json' || getExtension(fileName) === 'csv';
@@ -193,7 +192,7 @@ export class BlobPreviewComponent {
             case 'json':
                 blob.text().then((text) => {
                     if (!guard()) return;
-                    // Pretty-printing a big document is even heavier than the raw text.
+                    // Pretty-printing a big document is heavier than the raw text.
                     if (text.length > MAX_TEXT_PREVIEW_CHARS) {
                         this.setTextContent(text);
                         this.previewType.set('text');
@@ -264,7 +263,7 @@ export class BlobPreviewComponent {
         const config: Papa.ParseConfig = {
             header: false,
             skipEmptyLines: true,
-            // Header + one row past the cap, so a capped sheet can be told apart.
+            // Header + one extra row, so a capped sheet can be detected.
             preview: MAX_SHEET_ROWS + 2,
         };
         if (delimiter !== 'auto') {

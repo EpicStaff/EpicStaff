@@ -193,31 +193,27 @@ export class StorageApiService {
         });
     }
 
-    /** The backend's size caps and free space. Without Files/Read no request is made and
-     *  it emits null: the limits are unknown (the backend still enforces them). */
+    /** Fetches the upload size caps and free space; emits null without Files/Read. */
     getUploadLimits(): Observable<StorageUploadLimits | null> {
         return this.http.get<StorageUploadLimits | null>(`${this.apiUrl}upload-limits/`, {
             context: withPermission<StorageUploadLimits | null>(ResourceCode.Files, ActionCode.Read, null),
         });
     }
 
-    /** One file, one request; a 429/503 is re-sent after its Retry-After, up to UPLOAD_MAX_ATTEMPTS. */
+    /** Streams one file to storage; retries 429/503 after Retry-After, up to UPLOAD_MAX_ATTEMPTS. */
     uploadStream(path: string, file: File): Observable<StorageStreamUploadResponse> {
         const normalized = this.normalizePath(path);
-        // Built by hand because HttpParams leaves "+" unescaped and Django reads it
-        // back as a space, silently renaming files like "a+b.txt".
+        // Built by hand because HttpParams leaves "+" unescaped and Django reads it as a space.
         const query =
             `?filename=${encodeURIComponent(file.name)}` +
             (normalized ? `&path=${encodeURIComponent(normalized)}` : '');
 
-        // The File itself is the body: the browser streams it from disk. Wrapping it
-        // in FormData, or reading it into memory first, defeats the whole endpoint.
+        // The File itself is the body; FormData or reading it into memory would defeat streaming.
         return this.http
             .post<StorageStreamUploadResponse>(`${this.apiUrl}upload/stream${query}`, file, {
                 headers: new HttpHeaders({ 'Content-Type': 'application/octet-stream' }),
             })
             .pipe(
-                // A busy server (429/503) says when to come back; anything else is final.
                 retry({
                     count: UPLOAD_MAX_ATTEMPTS - 1,
                     delay: (error: unknown) => {

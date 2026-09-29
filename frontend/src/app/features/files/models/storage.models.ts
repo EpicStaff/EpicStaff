@@ -74,14 +74,13 @@ export interface UploadFailure {
     error: unknown;
 }
 
-/** How a multi-file upload ended: every file lands in exactly one of the two lists. */
+/** Result of a multi-file upload: each file is in exactly one list. */
 export interface StorageUploadBatchResult {
     uploaded: UploadedFile[];
     failed: UploadFailure[];
 }
 
-/** One file streamed to POST storage/upload/stream: `size` on a plain file,
- *  `extracted` when the backend unpacked an archive into a new folder. */
+/** Response of POST storage/upload/stream: `size` for a file, `extracted` for an unpacked archive. */
 export interface StorageStreamUploadResponse {
     status: 'DONE';
     path: string;
@@ -98,13 +97,13 @@ export type StorageUploadOutcome =
 export interface StorageUploadLimits {
     /** Null when plain files are not capped. */
     max_file_size: number | null;
-    /** Applies to names the backend treats as archives (see isArchiveForLimits). */
+    /** Size cap for archives (see isArchiveForLimits). */
     max_archive_size: number;
-    /** Room left in the organization's storage; changes after every upload. */
+    /** Free space left in the organization's storage. */
     free_bytes: number;
-    /** Lower-case with a leading dot (".tar.gz"). Older backends omit both lists. */
+    /** Archive suffixes, lower-case with a leading dot (".tar.gz"). */
     archive_suffixes: string[];
-    /** Names ending in one of these are never archives, even when they end in an archive suffix (".docx"). */
+    /** Extensions that are never archives, even with an archive suffix (".docx"). */
     document_extensions: string[];
 }
 

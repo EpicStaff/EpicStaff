@@ -14,15 +14,8 @@ def upload_archive_members(
     workers,
     check_member: Callable[[str], None] | None = None,
 ) -> dict[str, int]:
-    """Unpack archive_file into storage under folder_key; returns {path in archive: size}.
-
-    Files are read one after another (zip/tar can't be read in parallel), but
-    their uploads overlap in a pool of `workers`. A file up to the backend's
-    part_size is sent from memory in one PUT, a bigger one is streamed, so RAM
-    stays near workers x part_size. On any error the PUTs already running finish first,
-    then every key this call wrote (or started to) is deleted again, so nothing
-    it created is left behind; the error is re-raised. `check_member(name)` may raise
-    to reject a member before it is written."""
+    """Unpack archive_file into storage under folder_key; return {path in archive: size}.
+    On any error, every key this call wrote or started is deleted before re-raising."""
     started: list[str] = []
     try:
         return _upload_members(
@@ -37,8 +30,7 @@ def upload_archive_members(
 def _upload_members(
     archive_file, guard, backend, folder_key, workers, started: list[str], check_member
 ) -> dict[str, int]:
-    """upload_archive_members without the cleanup; appends each key to `started`
-    before writing it, so a failure knows what to take back."""
+    """upload_archive_members without cleanup; records each key in `started` before writing it."""
     part_size = backend.part_size
     written: dict[str, int] = {}
     pending: dict[str, Future] = {}
@@ -89,10 +81,8 @@ def _read_at_most(reader, limit: int) -> bytes:
 
 
 class _ReplayingReader:
-    """File-like: gives back the bytes already read off a member, then the rest of
-    it, counting what it hands out. read(n) returns n bytes until EOF, as
-    upload_stream requires (a read becomes one part, and a short part mid-upload
-    is rejected by S3-compatible stores)."""
+    """File-like reader that replays the already-read head, then the rest of the member.
+    read(n) returns exactly n bytes until EOF: S3 rejects a short part mid-upload."""
 
     def __init__(self, head: bytes, rest):
         self._head = head

@@ -157,8 +157,7 @@ class RedisPubSub:
                 if rel_path and rel_path.startswith(org_prefix + "/"):
                     rel_path = rel_path[len(org_prefix) + 1 :]
 
-                # One bad mutation must not drop the rest of the batch or the session
-                # bookkeeping below.
+                # One bad mutation must not drop the rest of the batch or the bookkeeping below.
                 try:
                     if mutation.op == "write":
                         self._record_external_write(org_id, rel_path)
@@ -202,9 +201,7 @@ class RedisPubSub:
 
     @staticmethod
     def _record_external_write(org_id: int, rel_path: str) -> None:
-        """Record an agent write at its stored size. When the store cannot be asked
-        (error, timeout, a path it rejects), the row is still written, without a
-        size, as before sizes were tracked."""
+        """Record an agent write at its stored size; if the store can't be asked, without a size."""
         from tables.services.storage_service import get_storage_manager
         from tables.services.storage_service.db_sync import StorageFileSync
 

@@ -25,8 +25,7 @@ from django_app.routing import websocket_urlpatterns
 
 
 async def http_dispatcher(scope, receive, send):
-    # OPTIONS stays with Django so corsheaders answers the preflight; every other
-    # method goes to the handler, which replies 405 instead of a Django HTML 404.
+    # OPTIONS stays with Django so corsheaders answers the preflight.
     if scope.get("path") == UPLOAD_STREAM_PATH and scope.get("method") != "OPTIONS":
         await upload_stream_app(scope, receive, send)
         return

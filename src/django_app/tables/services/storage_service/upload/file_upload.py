@@ -30,16 +30,12 @@ async def upload_file(
     validator: FileValidator | None = None,
     authorize_overwrite: Callable[[], None] | None = None,
 ) -> dict:
-    """Stream a plain file from the request body (`chunks`) into object storage and
-    record it. Returns {"path", "size"}.
-
-    `authorize_overwrite()` runs when a file already exists at the target and raises
-    to refuse replacing it; without it an existing file is replaced silently."""
+    """Stream a plain file from the request body into object storage and record it.
+    `authorize_overwrite()` may raise to refuse replacing a file; None replaces silently."""
     backend = backend or get_storage_backend(organization_prefix="")
     target = target_path(org_id, path, filename, validator or FileValidator())
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
-    # Early rejects before waiting for a slot; save_stream checks the size, the
-    # quota and the overwrite for real.
+    # Early rejects before waiting for a slot; save_stream enforces them for real.
     if declared_size is not None and max_size is not None and declared_size > max_size:
         raise UploadTooLarge()
     await sync_to_async(check_target)(org_id, target, authorize_overwrite)
@@ -66,9 +62,7 @@ async def save_stream(
     authorize_overwrite: Callable[[], None] | None,
 ):
     """Upload `chunks` to `target` and write its StorageFile row within the quota.
-    The row is written after the last byte but before the store commits the object,
-    so a rejected row (quota, refused overwrite) aborts the upload and an overwritten
-    file stays intact. The caller holds an upload slot."""
+    The row is written before the store commits, so a rejected row aborts the upload."""
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
     free = await sync_to_async(org_free_bytes)(org_id, replacing=[target])
 
@@ -91,8 +85,7 @@ async def save_stream(
         )
         written_size = size
 
-    # The stream can outlast any DB timeout: release the connection now and let
-    # the row write open a fresh one.
+    # The stream can outlast any DB timeout, so release the connection now.
     await sync_to_async(close_old_connections)()
     try:
         size = await backend.upload_chunks(
@@ -112,11 +105,7 @@ async def save_stream(
 def _write_file_row(
     org_id: int, target: str, size: int, authorize_overwrite: Callable[[], None] | None
 ) -> tuple[int | None] | None:
-    """Write the upload's file row within the quota; returns (size,) of
-    the file row it replaced, or None. Read under the org lock that
-    record_files_within_quota holds for the write, so it is the row this write really
-    replaced even while other uploads of the same path run, and the overwrite is
-    authorized against the file that is really there."""
+    """Write the upload's row under the org lock; return the replaced row's (size,), or None."""
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=org_id)
         replaced_row = (
@@ -137,17 +126,11 @@ def _undo_file_row(
     replaced_row: tuple[int | None] | None,
     backend,
 ) -> None:
-    """Put the row at `target` back in line with the store after the upload failed
-    once its row was written. The failure can be ambiguous (a timeout after the
-    store committed), so the store decides: the new row stays when the object there
-    has the new size, the replaced row comes back as it was when the old object is
-    there, and the row goes when nothing is. A row no longer at the new size was
-    written by another upload since and is left alone."""
+    """After a failed upload, bring the row at `target` back in line with what the store holds."""
     try:
         stored = backend.head_file(storage_key(org_id, target))
     except Exception:
-        # The store can't be asked. The error being re-raised most likely means it
-        # did not commit, so the old state is the best guess.
+        # The store can't be asked; the failure most likely means it did not commit.
         logger.exception("Could not check {} after a failed upload", target)
         object_there = replaced_row is not None
     else:

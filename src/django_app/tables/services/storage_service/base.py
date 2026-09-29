@@ -15,12 +15,7 @@ class StorageUnreachable(Exception):  # noqa: N818
 
 class AbstractStorageBackend(ABC):
     """Object storage of flat keys, where a key ending in "/" is a folder marker.
-
-    Only the streaming-upload methods (upload_chunks, upload_stream, put_bytes,
-    unique_key, claim_folder, mkdir, delete_keys) raise StorageUnreachable on an
-    outage, so their callers can tell an outage from a bug without knowing the
-    store's client library. The other methods raise whatever the store's client
-    raises."""
+    Only the streaming-upload methods raise StorageUnreachable on an outage."""
 
     @staticmethod
     def _increment_name(name: str, is_folder: bool = False) -> str:
@@ -58,22 +53,16 @@ class AbstractStorageBackend(ABC):
     @property
     @abstractmethod
     def part_size(self) -> int:
-        """Bytes per part of upload_chunks and upload_stream, so each holds about one
-        part in memory; callers size what they keep in memory by it too."""
+        """Bytes per part of upload_chunks and upload_stream; callers size buffers by it."""
 
     @abstractmethod
     async def upload_chunks(self, path: str, chunks, *, size_guard=None, before_commit=None) -> int:
-        """Store an async stream of byte chunks at path; returns the byte count.
-
-        Holds about one part_size in memory. size_guard(total) is called as bytes
-        arrive and raises to stop. `await before_commit(total)` runs once every byte
-        is in the store but before the object becomes visible: if it raises, the
-        upload is aborted and an object already at path stays untouched."""
+        """Store an async stream of byte chunks at path; return the byte count.
+        `before_commit(total)` runs before the object becomes visible; raising aborts the upload."""
 
     @abstractmethod
     def upload_stream(self, path: str, file_object) -> None:
-        """Store a readable of unknown size at path, holding about one part_size in
-        memory. file_object.read(n) must return n bytes until EOF."""
+        """Store a readable of unknown size at path; read(n) must return n bytes until EOF."""
 
     @abstractmethod
     def put_bytes(self, path: str, data: bytes) -> int:
@@ -85,14 +74,11 @@ class AbstractStorageBackend(ABC):
 
     @abstractmethod
     def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
-        """Bytes first..last (inclusive; None = to the end) and their Content-Range, taken
-        from the stored object itself. RangeNotSatisfiable if first is past its end."""
+        """Return bytes first..last (inclusive; None = to the end) and their Content-Range."""
 
     @abstractmethod
     def unique_key(self, key: str, is_folder: bool = False) -> str:
-        """key, or its first "name (n)" variant that nothing exists at yet. For a
-        folder, a file of the same name counts as existing: nothing can be written
-        under it."""
+        """Return key or its first free "name (n)" variant; a folder also clashes with a file."""
 
     @abstractmethod
     def delete(self, path: str) -> None:
@@ -104,9 +90,7 @@ class AbstractStorageBackend(ABC):
 
     @abstractmethod
     def claim_folder(self, path: str) -> bool:
-        """Create the folder marker only if none exists yet, atomically in the store.
-        False when another writer got there first, with a folder or a file of that
-        name."""
+        """Atomically create the folder marker if nothing of that name exists; False if taken."""
 
     @abstractmethod
     def move(self, source_path: str, destination_path: str) -> str:
@@ -130,8 +114,7 @@ class AbstractStorageBackend(ABC):
 
     @abstractmethod
     def copy(self, source_path: str, destination_path: str) -> list[tuple[str, int]]:
-        """Copy file or folder into the destination folder. Returns (key, size) of
-        every object created, sizes read from the store; folder markers end in "/".
+        """Copy a file or folder into the destination folder; return (key, size) per created object.
         On failure nothing it created is left behind."""
 
     @abstractmethod
@@ -139,8 +122,7 @@ class AbstractStorageBackend(ABC):
         """Delete exactly these keys (as copy returns them), nothing else."""
 
     def discard_keys(self, keys: list[str]) -> None:
-        """Best-effort removal of the keys a failed write created. A failure is only
-        logged, so the caller re-raises the error that made the write fail."""
+        """Best-effort removal of the keys a failed write created; failures are only logged."""
         if not keys:
             return
         try:
@@ -155,8 +137,7 @@ class AbstractStorageBackend(ABC):
 
     @abstractmethod
     def head_file(self, path: str) -> FileInfo | None:
-        """Metadata of the file at path from one quick, non-retried request; None when
-        no file is there. For callers that must not stall on a slow store."""
+        """Metadata of the file at path from one quick, non-retried request, or None."""
 
     @abstractmethod
     def exists(self, path: str) -> bool:

@@ -28,9 +28,7 @@ _BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
 
 
 def _parse_byte_range(header: str | None) -> tuple[int, int | None] | None:
-    """(first, last) of a single "bytes=first-[last]" Range; last None = to the end.
-    None means "send the whole file": RFC 9110 lets a server ignore a Range it
-    does not support (suffix and multi ranges included)."""
+    """Parse a single "bytes=first-[last]" Range into (first, last); None = send the whole file."""
     match = _BYTE_RANGE.fullmatch(header.strip()) if header else None
     if not match:
         return None
@@ -130,8 +128,7 @@ class StorageManager:
             raise FileNotFoundError(f"File does not exist: {path}")
         key = self._build_storage_key(org_id, path)
 
-        # Offsets and length come from the object, not StorageFile.size: agent writes
-        # can overwrite a file without updating its row.
+        # Offsets come from the object, not StorageFile.size: agent writes can skip the row.
         byte_range = _parse_byte_range(range_header)
         if byte_range is None:
             return FileDownload(self._backend.download(key))
@@ -175,11 +172,8 @@ class StorageManager:
     def _copy_within_quota(
         self, src_org_id: int, source_path: str, dst_org_id: int, destination_path: str
     ) -> None:
-        """Copy source into the destination folder, then record the copies at the
-        sizes the store reports within the destination org's quota. Over quota, the
-        copies are deleted again and StorageQuotaExceeded (413) is raised.
-
-        The org lock is taken only for the row write, never across the S3 copy."""
+        """Copy source into the destination folder and record the copies within its org's quota.
+        Over quota the copies are deleted again; the org lock is never held across the S3 copy."""
         # Early reject only: rows of files that predate size tracking count as 0 here.
         ensure_fits_quota(dst_org_id, self._recorded_size(src_org_id, source_path))
 
@@ -212,9 +206,7 @@ class StorageManager:
         return rows.aggregate(total=Sum("size"))["total"] or 0
 
     def record_external_write(self, org_id: int, path: str) -> None:
-        """Record a file another service (agent, sandbox) already wrote, at the size
-        stored in S3 (one quick, non-retried request). Not quota-checked: the bytes are
-        already there. FileNotFoundError when no file exists at `path`."""
+        """Record a file an agent or sandbox already wrote, at its stored size; no quota check."""
         stored = self._backend.head_file(self._build_storage_key(org_id, path))
         if stored is None:
             raise FileNotFoundError(f"No file at {path}")

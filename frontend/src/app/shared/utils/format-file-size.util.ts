@@ -1,9 +1,6 @@
 export type FileSizeDecimalPlaces = number | 'auto';
 
-/**
- * Size in binary units (1 KB = 1024 B), as `FileSizePipe` shows it.
- * @param decimalPlaces Fixed decimal count, or `'auto'` for 0 dp up to KB and 1 dp for MB+.
- */
+/** Formats bytes in binary units (1 KB = 1024 B); `'auto'` gives 0 dp up to KB, 1 dp from MB. */
 export function formatFileSize(bytes: number | null | undefined, decimalPlaces: FileSizeDecimalPlaces = 0): string {
     if (bytes === null || isNaN(Number(bytes)) || !Number(bytes)) return '0 B';
 

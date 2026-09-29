@@ -98,7 +98,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     readonly isLoadingRoot = signal(true);
     readonly isSaving = signal(false);
     readonly isUploading = signal(false);
-    /** Size caps shown under the drop area; null (nothing shown) when they are unknown. */
+    /** Size-cap hint under the drop area; null when the limits are unknown. */
     protected readonly uploadLimitsHint = toSignal(
         this.storageApiService.getUploadLimits().pipe(
             map(describeUploadLimits),
@@ -447,8 +447,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
             });
     }
 
-    /** Cancel button, Escape and backdrop. While files are uploading, closing would cancel
-     *  them, so it asks first. */
+    /** Closes the dialog (Cancel, Escape, backdrop), asking first while files are uploading. */
     onCancel(): void {
         if (this.isConfirmingClose) return;
         if (!this.isUploading()) {
@@ -511,7 +510,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
             });
     }
 
-    /** Backdrop click and Escape go through onCancel, so an upload is never dropped unasked. */
+    /** Routes backdrop click and Escape through onCancel, so an upload is never dropped unasked. */
     private closeThroughCancelOnDismiss(): void {
         this.dialogRef.disableClose = true;
         merge(

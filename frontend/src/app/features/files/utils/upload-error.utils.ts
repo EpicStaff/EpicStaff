@@ -3,7 +3,7 @@ import { formatFileSize } from '@shared/utils';
 
 import { UploadFailure } from '../models/storage.models';
 
-/** `code` values the streaming-upload endpoint puts in its `{status_code, code, message}` envelope. */
+/** Error `code` values of the streaming-upload endpoint. */
 export const UploadErrorCode = {
     QuotaExceeded: 'storage_quota_exceeded',
     TooLarge: 'upload_too_large',
@@ -16,7 +16,7 @@ export const UploadErrorCode = {
     OverwriteNotPermitted: 'overwrite_not_permitted',
 } as const;
 
-/** A file of a batch that was never sent, because an earlier file hit a stop condition. */
+/** A batch file not sent because an earlier file hit a stop condition. */
 export class UploadSkippedError extends Error {
     constructor(readonly reason: unknown) {
         super('Upload skipped');
@@ -24,7 +24,7 @@ export class UploadSkippedError extends Error {
     }
 }
 
-/** A file of a batch that was never sent, because it is larger than the backend accepts. */
+/** A batch file not sent because it exceeds the backend's size cap. */
 export class FileTooLargeError extends Error {
     constructor(readonly limitBytes: number) {
         super('File too large');
@@ -37,7 +37,7 @@ export interface UploadErrorDescription {
     label: string;
     /** Full sentence for a toast or tooltip. */
     message: string;
-    /** False when sending the same file again cannot succeed (the user has to change something first). */
+    /** False when re-sending the same file cannot succeed. */
     canRetry: boolean;
 }
 
@@ -112,7 +112,7 @@ const DESCRIPTION_BY_CODE: Record<string, UploadErrorDescription> = {
     [UploadErrorCode.OverwriteNotPermitted]: OVERWRITE_NOT_PERMITTED,
 };
 
-/** For answers without a known `code` (e.g. a proxy in front of Django answered). */
+/** Fallback descriptions for errors without a known `code` (e.g. from a proxy). */
 const DESCRIPTION_BY_STATUS: Record<number, UploadErrorDescription> = {
     401: NOT_ALLOWED,
     403: NOT_ALLOWED,
@@ -146,7 +146,7 @@ export function isStorageQuotaExceeded(error: unknown): boolean {
     return getUploadErrorCode(error) === UploadErrorCode.QuotaExceeded;
 }
 
-/** Maps the error one uploaded file failed with to what the user should read. */
+/** Maps a file's upload error to a user-facing description. */
 export function describeUploadError(error: unknown): UploadErrorDescription {
     if (error instanceof UploadSkippedError) return SKIPPED;
     if (error instanceof FileTooLargeError) {
@@ -156,8 +156,7 @@ export function describeUploadError(error: unknown): UploadErrorDescription {
         };
     }
     if (!(error instanceof HttpErrorResponse)) return UNKNOWN_FAILURE;
-    // Status 0 on this endpoint almost always means the server rejected the body
-    // while it was still being sent (quota, size limit), so the browser saw no answer.
+    // Status 0 here usually means the server rejected the body mid-send (quota, size limit).
     if (error.status === 0) return INTERRUPTED;
 
     const code = getUploadErrorCode(error);
@@ -184,10 +183,10 @@ export function describeUploadError(error: unknown): UploadErrorDescription {
     return { ...UNKNOWN_FAILURE, message: serverMessage || UNKNOWN_FAILURE.message };
 }
 
-/** One sentence for a toast about every file of a batch that did not upload. */
+/** One toast sentence covering every file of a batch that failed. */
 export function describeUploadFailures(failures: UploadFailure[]): string {
     if (!failures.length) return '';
-    // A skipped file only echoes another failure; lead with the failure that caused it.
+    // Lead with a real failure; a skipped file only echoes one.
     const leading = failures.find((failure) => !(failure.error instanceof UploadSkippedError)) ?? failures[0];
     const message = describeUploadError(leading.error).message;
     if (failures.length === 1) return `Failed to upload "${leading.file.name}". ${message}`;

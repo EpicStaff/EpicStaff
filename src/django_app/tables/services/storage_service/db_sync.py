@@ -101,9 +101,7 @@ class StorageFileSync:
 
     @staticmethod
     def on_bulk_upload(org_id: int, files: list[tuple[str, int]], folders=()) -> None:
-        """on_upload for many files [(path, size)] and extra (empty) folders at once:
-        two INSERTs instead of several queries per file, which matters while the
-        caller holds the org lock over a whole unpacked archive."""
+        """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs."""
         folder_paths = {folder.rstrip("/") + "/" for folder in folders}
         for path in [*(path for path, _ in files), *folder_paths]:
             folder_paths.update(_ancestor_paths(path))

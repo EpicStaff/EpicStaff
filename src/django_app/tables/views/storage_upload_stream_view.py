@@ -28,9 +28,7 @@ from utils.logger import logger
 
 UPLOAD_STREAM_ACTION = "upload_stream"
 
-# Served by upload_stream_app, which asgi.py routes this path to (not a URLconf
-# route). The same literal is the unbuffered location in
-# nginx/templates/default.conf.template and StorageApiService.uploadStream.
+# Routed by asgi.py, not a URLconf; nginx's template and StorageApiService repeat this literal.
 UPLOAD_STREAM_PATH = "/api/storage/upload/stream"
 
 
@@ -39,11 +37,7 @@ class ClientDisconnectedError(Exception):
 
 
 async def upload_stream_app(scope, receive, send) -> None:
-    """ASGI app for POST /api/storage/upload/stream (routed here from asgi.py).
-
-    Wraps the upload the way Django's ASGIHandler wraps any view: its own sync
-    thread (so its own DB connection) and the request_started/finished signals
-    that close stale connections."""
+    """ASGI app for the upload stream, wrapped like ASGIHandler: own sync thread and signals."""
     async with ThreadSensitiveContext():
         await signals.request_started.asend(sender=ASGIHandler, scope=scope)
         try:
@@ -95,8 +89,7 @@ async def _serve_upload(scope, receive, send) -> None:
 
 
 def _reject_non_utf8_query(scope) -> None:
-    """400 for a query string that is not UTF-8: raw bytes would crash ASGIRequest,
-    and a bad %XX escape would silently become U+FFFD in the stored file name."""
+    """400 for a non-UTF-8 query string, which would crash ASGIRequest or corrupt the file name."""
     try:
         parse_qsl(scope.get("query_string", b"").decode(), keep_blank_values=True, errors="strict")
     except UnicodeDecodeError as exc:
@@ -104,11 +97,7 @@ def _reject_non_utf8_query(scope) -> None:
 
 
 def _check_access(scope) -> tuple[Request, int]:
-    """Authenticate and authorize exactly as StorageAPIView would (its authenticators,
-    permission classes and rbac_action_map); returns the request and the active org id.
-
-    The view is assembled the way ViewSet.as_view() does it; only the handler
-    body is skipped, since the upload never goes through Django."""
+    """Authenticate and authorize exactly as StorageAPIView would; return the request and org id."""
     view = StorageAPIView()
     view.action_map = {"post": UPLOAD_STREAM_ACTION}
     view.args, view.kwargs = (), {}
@@ -130,8 +119,7 @@ def _check_access(scope) -> tuple[Request, int]:
 
 
 def _overwrite_authorizer(user, org_id: int):
-    """The check the upload runs when a file is already at its target. Creating is
-    what the gate checked; replacing a file is an update, as rename and move are."""
+    """Build the check run when a file is already at the target: replacing needs UPDATE."""
 
     def authorize_overwrite() -> None:
         try:
@@ -171,8 +159,7 @@ def _header(scope, name: bytes) -> str | None:
 
 
 def _cors_headers(scope) -> list[tuple[bytes, bytes]]:
-    """The CORS headers corsheaders would have added; skipping Django skips it too,
-    and without them a cross-origin frontend (ng serve) can't read the answer."""
+    """The CORS headers corsheaders would add, since this app bypasses Django."""
     origin = _header(scope, b"origin")
     if not origin:
         return []
@@ -206,9 +193,7 @@ async def _send_json(
 
 
 async def _send_error(send, scope, exc: Exception) -> None:
-    """Answer with what custom_exception_handler renders for `exc`, as any DRF view
-    of the project would. Like a DRF view, re-raises what it renders no answer for
-    (a non-API error while DEBUG is on)."""
+    """Answer with what custom_exception_handler renders for `exc`; re-raise if it renders none."""
     response = await sync_to_async(custom_exception_handler)(exc, {})
     if response is None:
         raise exc
