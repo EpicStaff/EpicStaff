@@ -27,7 +27,7 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
-import { copyWithFeedback, deepEqual, extractHttpErrorMessage } from '@shared/utils';
+import { copyWithFeedback, deepEqual, escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -61,7 +61,6 @@ import {
 
 import { ToastService } from '../../../../services/notifications';
 import { copyableValue, editableValue, previewText } from '../../helpers/entry-value-preview';
-import { escapeHtml } from '../../helpers/escape-html';
 import { overlayScrollbarRoom } from '../../helpers/overlay-scrollbar-room';
 import {
     KeyValueEntryOrdering,

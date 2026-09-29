@@ -96,7 +96,11 @@ export class PermissionsService implements StorageService {
     }
 
     canEditSecrets(subjectResource: ResourceCode): boolean {
-        return this.can(subjectResource, ActionCode.Read) && this.can(ResourceCode.Secrets, ActionCode.Use);
+        return (
+            this.can(subjectResource, ActionCode.Read) &&
+            this.can(subjectResource, ActionCode.Update) &&
+            this.can(ResourceCode.Secrets, ActionCode.Use)
+        );
     }
 
     canOpenConfigureModelsDialog(): boolean {

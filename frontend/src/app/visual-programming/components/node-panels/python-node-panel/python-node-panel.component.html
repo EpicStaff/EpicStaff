@@ -26,6 +26,7 @@
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
@@ -33,7 +34,8 @@
                     <div class="input-map">
                         <app-input-map
                             [activeColor]="activeColor"
-                            [showTestMode]="true"
+                            [readonly]="isReadOnly()"
+                            [showTestMode]="!isReadOnly()"
                             [testMode]="isOpenTestMode()"
                             [pythonNodeId]="node().backendId"
                             [graphId]="graphId()"
@@ -60,6 +62,7 @@
                         formControlName="output_variable_path"
                         placeholder="Enter output variable path (leave empty for null)"
                         [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
 
                     <app-custom-input
@@ -68,9 +71,11 @@
                         formControlName="libraries"
                         placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                         [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
 
                     <app-node-storage-section
+                        [readonly]="isReadOnly()"
                         [useStorage]="useStorage()"
                         (onToggleChange)="onStorageToggle($event)"
                         (onInsertCode)="insertStorageCode($event)"
@@ -101,11 +106,12 @@
                             [pythonCode]="pythonCode"
                             [secretNames]="secretNames()"
                             [inputMapKeys]="inputMapKeys()"
+                            [readOnly]="isReadOnly()"
                             (pythonCodeChange)="onPythonCodeChange($event)"
                             (errorChange)="onCodeErrorChange($event)"
                         ></app-code-editor>
 
-                        @if (isOpenTestMode()) {
+                        @if (isOpenTestMode() && !isReadOnly()) {
                             <app-python-terminal
                                 [logs]="terminalLogs()"
                                 [terminalHeight]="terminalHeight()"

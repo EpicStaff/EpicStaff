@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('rbac', '0003_key_value_tables_resource_type'),
-        ('tables', '0250_alter_sessionprincipal_api_key_alter_agent_org_and_more'),
+        ('tables', '0251_backfill_session_finished_at'),
     ]
 
     operations = [

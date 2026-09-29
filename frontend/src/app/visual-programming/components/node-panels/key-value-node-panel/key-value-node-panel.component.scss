@@ -61,6 +61,17 @@
         cursor: not-allowed;
     }
 
+    // A read-only flow: plain text, as the Mode select beside it shows its value.
+    &--readonly,
+    &--readonly:disabled {
+        height: auto;
+        padding: 0;
+        background: transparent;
+        border: none;
+        opacity: 1;
+        cursor: default;
+    }
+
     &__label {
         overflow: hidden;
         text-overflow: ellipsis;

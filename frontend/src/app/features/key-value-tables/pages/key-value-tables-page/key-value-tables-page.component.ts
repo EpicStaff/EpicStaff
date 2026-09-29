@@ -4,7 +4,7 @@ import { Component, computed, DestroyRef, effect, inject, signal } from '@angula
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -15,7 +15,6 @@ import {
     KeyValueTableDialogData,
 } from '../../components/key-value-table-dialog/key-value-table-dialog.component';
 import { KeyValueTableListComponent } from '../../components/key-value-table-list/key-value-table-list.component';
-import { escapeHtml } from '../../helpers/escape-html';
 import { KeyValueTable, KeyValueTableUsage } from '../../models/key-value-table.model';
 import { KeyValueTablesApiService } from '../../services/key-value-tables-api.service';
 import { KeyValueTablesStorageService } from '../../services/key-value-tables-storage.service';

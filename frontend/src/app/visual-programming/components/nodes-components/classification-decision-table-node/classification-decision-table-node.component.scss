@@ -23,7 +23,7 @@
         z-index: 2;
         cursor: pointer;
 
-        &:hover .port-circle {
+        &:not(.no-hover):hover .port-circle {
             transform: translate(-50%, -50%) scale(1.5);
             background-color: var(--project-node-accent-color);
 
@@ -165,7 +165,7 @@
             z-index: 2;
             cursor: pointer;
 
-            &:hover .port-circle {
+            &:not(.no-hover):hover .port-circle {
                 transform: translate(-50%, -50%) scale(1.5);
                 background-color: var(--project-node-accent-color);
 

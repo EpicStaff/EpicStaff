@@ -42,6 +42,7 @@ import {
     catchError,
     debounceTime,
     distinctUntilChanged,
+    EMPTY,
     finalize,
     map,
     Observable,
@@ -187,8 +188,13 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected readonly canReadData = computed(() => this.permissions.can(ResourceCode.KeyValueTables, ActionCode.Read));
     // The saved mode, not the form's: a node the user may not configure keeps its mode, table and keys.
     protected readonly modeLocked = computed(() => !this.canConfigure(this.node().data.mode));
-    protected readonly configurationLocked = computed(() => !this.canReadData() || this.modeLocked());
+    // A read-only flow locks the configuration too, and the base panel disables the rest of the form.
+    protected readonly configurationLocked = computed(
+        () => this.isReadOnly() || !this.canReadData() || this.modeLocked()
+    );
     protected readonly permissionNotice = computed<string | null>(() => {
+        // Every panel of a read-only flow is locked alike; a Key-Value permission would not unlock this one.
+        if (this.isReadOnly()) return null;
         if (!this.canReadData()) return NO_READ_NOTICE;
         return this.modeLocked() ? MODE_LOCKED_NOTICE[this.node().data.mode] : null;
     });
@@ -266,7 +272,8 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     private readonly viewContainerRef = inject(ViewContainerRef);
     private readonly injector = inject(Injector);
     private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-    private readonly keySearch$ = new Subject<KeySearch>();
+    // Null cancels a search still debouncing or in flight.
+    private readonly keySearch$ = new Subject<KeySearch | null>();
     private suggestionOverlay: OverlayRef | null = null;
     private tablesLoad: Subscription | null = null;
     private suggestionDropdown: VariableDropdownOverlayComponent | null = null;
@@ -282,7 +289,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         this.keySearch$
             .pipe(
                 debounceTime(250),
-                switchMap((search) => this.fetchKeySuggestions(search)),
+                switchMap((search) => (search === null ? EMPTY : this.fetchKeySuggestions(search))),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((result) => this.showKeySuggestions(result));
@@ -301,11 +308,16 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         // Permissions may arrive or change after the form is built, e.g. on an org switch.
         effect(() => {
             const locked = this.configurationLocked();
+            const readOnly = this.isReadOnly();
             untracked(() => {
                 if (!this.form) return;
-                // A relock mid-edit: put back what is saved, so no edit the server would refuse is kept.
+                // A list anchored to a row the relock replaces would write into the new, disabled row.
+                if (locked) this.closeEntryLists();
+                // A relock mid-edit: put back the node as the flow holds it, so no edit the server
+                // would refuse is kept.
                 if (locked && this.form.get('mode')?.enabled) this.restoreSavedConfiguration(this.form);
                 this.applyConfigurationLock(this.form, locked);
+                this.applyNameLock(this.form, readOnly);
             });
         });
     }
@@ -319,6 +331,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
      * in every other panel.
      */
     public override onSave(): KeyValueNodeModel | null {
+        if (this.isReadOnly()) return super.onSave();
         if (!this.form || this.form.controls['node_name'].invalid) return null;
         const updatedNode = this.createUpdatedNode();
         this.initialNodeSnapshot = JSON.stringify(updatedNode);
@@ -335,6 +348,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     // (dev data only) passes here; the flow save's own check (hasValidKeyValueEntries) still
     // refuses it, and only a user allowed to configure the node can fix it.
     public override captureForValidation(): KeyValueNodeModel | null {
+        if (this.isReadOnly()) return super.captureForValidation();
         if (!this.form) return null;
         this.form.markAllAsTouched();
         if (this.form.invalid) {
@@ -625,8 +639,25 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     }
 
     /**
-     * The node's saved mode, table and keys, without the form emitting (so nothing autosaves). Only
-     * for a relock: a fresh form already holds them, with the values a delete node keeps hidden.
+     * Only a read-only flow locks the name. The base panel disables the whole form when it builds
+     * it read-only; this follows a change after that, putting back the name the flow holds on a relock.
+     */
+    private applyNameLock(form: FormGroup, readOnly: boolean): void {
+        const name = form.get('node_name');
+        if (!name || name.disabled === readOnly) return;
+        if (readOnly) {
+            name.setValue(this.node().node_name, { emitEvent: false });
+            name.disable({ emitEvent: false });
+        } else {
+            name.enable({ emitEvent: false });
+        }
+        this.notifyExternalChange();
+    }
+
+    /**
+     * The mode, table and keys the flow holds for the node (node()), without the form emitting (so
+     * nothing autosaves). Only for a relock: a fresh form already holds them, with the values a
+     * delete node keeps hidden.
      */
     private restoreSavedConfiguration(form: FormGroup): void {
         const { mode, key_value_table, entries } = this.node().data;
@@ -780,8 +811,16 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     }
 
     private dismissSuggestions(): void {
+        this.keySearch$.next(null);
         this.suggestionTarget.set(null);
         this.suggestions.set([]);
+    }
+
+    /** The key suggestions and both variable pickers, with any key search still pending. */
+    private closeEntryLists(): void {
+        this.dismissSuggestions();
+        this.keyVariablePicker.close();
+        this.variablePicker.close();
     }
 
     private showKeySuggestions(result: KeySearchResult): void {

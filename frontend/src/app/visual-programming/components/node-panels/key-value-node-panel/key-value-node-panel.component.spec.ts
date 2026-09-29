@@ -33,6 +33,7 @@ import { FlowModel } from '../../../core/models/flow.model';
 import { GetKeyValueNodeRequest, KeyValueEntry, KeyValueMode } from '../../../core/models/key-value-node.model';
 import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-drafts.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UniqueNodeNameValidatorService } from '../../../services/unique-node-name.validator';
@@ -106,6 +107,7 @@ function createPanel(
         initialState = {},
         flowService,
         errorOnUnknownProperties = true,
+        readOnly = false,
     }: {
         renderTemplate?: boolean;
         /** What the user may do on Key-Value Tables; everything by default. */
@@ -122,6 +124,8 @@ function createPanel(
         /** A real one, loaded with a flow; else a stand-in offering initialState. */
         flowService?: FlowService;
         errorOnUnknownProperties?: boolean;
+        /** Whether the flow is read-only (no Flows Update); editable by default. */
+        readOnly?: boolean;
     } = {}
 ): {
     panel: KeyValueNodePanelComponent;
@@ -134,12 +138,17 @@ function createPanel(
     storedTables: WritableSignal<KeyValueTable[]>;
     /** What the user may do on Key-Value Tables; set it to change permissions after opening. */
     permittedActions: WritableSignal<ActionCode[]>;
+    /** Whether the flow is read-only; set it to change that after opening. */
+    flowReadOnly: WritableSignal<boolean>;
+    notifyBlocked: ReturnType<typeof vi.fn>;
 } {
     const triggerAutosave = vi.fn();
     const toastError = vi.fn();
     const openDialog = vi.fn(() => ({ closed: createdTable }));
     const storedTables = signal<KeyValueTable[]>(tables);
     const permittedActions = signal<ActionCode[]>(actions);
+    const flowReadOnly = signal(readOnly);
+    const notifyBlocked = vi.fn();
     const loadTables = vi.fn(() => tablesLoad ?? of(storedTables()));
     const reloadTables = vi.fn(() => tablesReload ?? of(storedTables()));
     TestBed.configureTestingModule({
@@ -156,6 +165,8 @@ function createPanel(
                     can: (_resource: string, action: ActionCode) => permittedActions().includes(action),
                 },
             },
+            // Its own stand-in: the one above answers every resource alike, Flows included.
+            { provide: FlowReadOnlyService, useValue: { isReadOnly: flowReadOnly, notifyBlocked } },
             { provide: Dialog, useValue: { open: openDialog } },
             {
                 provide: UniqueNodeNameValidatorService,
@@ -203,6 +214,8 @@ function createPanel(
         reloadTables,
         storedTables,
         permittedActions,
+        flowReadOnly,
+        notifyBlocked,
     };
 }
 
@@ -1302,6 +1315,43 @@ describe('KeyValueNodePanelComponent', () => {
             fixture.detectChanges();
 
             expect(firstKey(panel)).toBe('greeting_formal');
+            expect(suggestionItems()).toEqual([]);
+        });
+
+        it('closes an open list when the flow turns read-only, so it writes into no row', () => {
+            const { panel, fixture, flowReadOnly } = createPanel(mapKeyValueNodeToModel(DTO), {
+                renderTemplate: true,
+                getEntries: () => of(page(['greeting', 'greeting_formal'])),
+            });
+            const input = typeKey(fixture, 'gre');
+            expect(suggestionItems().length).toBe(2);
+
+            flowReadOnly.set(true);
+            fixture.detectChanges();
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+            fixture.detectChanges();
+
+            expect(suggestionItems()).toEqual([]);
+            // The relock put back the key the flow holds; the list picked nothing into it.
+            expect(firstKey(panel)).toBe('profile');
+        });
+
+        it('drops a key search still pending when the flow turns read-only', () => {
+            const getEntries = vi.fn(() => of(page(['greeting'])));
+            const { fixture, flowReadOnly } = createPanel(mapKeyValueNodeToModel(DTO), {
+                renderTemplate: true,
+                getEntries,
+            });
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+            input.value = 'gre';
+            input.dispatchEvent(new Event('input'));
+
+            flowReadOnly.set(true);
+            fixture.detectChanges();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+
+            expect(getEntries).not.toHaveBeenCalled();
             expect(suggestionItems()).toEqual([]);
         });
 
@@ -2772,6 +2822,79 @@ describe('KeyValueNodePanelComponent', () => {
             expect(invalidKeyValueNodeMessages([captured!])).toEqual([
                 '"Key-Value #1" has invalid keys or variable paths',
             ]);
+        });
+    });
+
+    describe('read-only flow', () => {
+        const { Read } = ActionCode;
+        const writeNode = nodeWith('write', [{ key: 'profile', value: 'variables.user' }]);
+        const query = (fixture: ComponentFixture<KeyValueNodePanelComponent>, selector: string): HTMLElement | null =>
+            fixture.nativeElement.querySelector(selector);
+        const notice = (fixture: ComponentFixture<KeyValueNodePanelComponent>): string | null =>
+            query(fixture, '.permission-notice')!.textContent!.trim() || null;
+
+        it('shows the node without anything that edits it, and saves nothing', () => {
+            const { panel, fixture, notifyBlocked, openDialog, toastError } = createPanel(writeNode, {
+                renderTemplate: true,
+                readOnly: true,
+            });
+
+            expect(panel.form.disabled).toBe(true);
+            expect(query(fixture, '.add-entry')).toBeNull();
+            expect(query(fixture, '.remove-entry')).toBeNull();
+            expect((query(fixture, 'input[aria-label="Key"]') as HTMLInputElement).disabled).toBe(true);
+            const trigger = query(fixture, '.dropdown-trigger')!;
+            expect(trigger.classList).toContain('dropdown-trigger--readonly');
+            expect(trigger.querySelector('app-svg-icon')).toBeNull();
+            // Nor does the table list open, so its "+" can't create a table.
+            trigger.click();
+            fixture.detectChanges();
+            expect(document.querySelector('.select-dropdown__row')).toBeNull();
+            expect(document.querySelector('.select-dropdown__action')).toBeNull();
+            expect(openDialog).not.toHaveBeenCalled();
+
+            expect(panel.onSave()).toBeNull();
+            expect(notifyBlocked).toHaveBeenCalledTimes(1);
+            expect(panel.onSaveSilently()).toBeNull();
+            expect(panel.captureForValidation()).toBeNull();
+            expect(toastError).not.toHaveBeenCalled();
+        });
+
+        it('shows no Key-Value permission notice, which would name a permission that does not unlock it', () => {
+            const { panel, fixture } = createPanel(writeNode, {
+                renderTemplate: true,
+                actions: [Read],
+                readOnly: true,
+            });
+
+            expect(notice(fixture)).toBeNull();
+            expect(panel.form.disabled).toBe(true);
+        });
+
+        it('follows the flow turning read-only mid-edit, putting back the node the flow holds, and turning editable again', () => {
+            vi.useFakeTimers();
+            const { panel, fixture, flowReadOnly, triggerAutosave } = createPanel(writeNode, {
+                renderTemplate: true,
+            });
+            panel.form.get('node_name')!.setValue('Renamed');
+            panel.form.get('mode')!.setValue('delete');
+            fixture.detectChanges();
+            vi.advanceTimersByTime(1000);
+            triggerAutosave.mockClear();
+
+            flowReadOnly.set(true);
+            fixture.detectChanges();
+            vi.advanceTimersByTime(1000);
+
+            expect(panel.form.disabled).toBe(true);
+            expect(panel.form.getRawValue()).toMatchObject({ node_name: 'Key-Value #1', mode: 'write' });
+            expect(triggerAutosave).not.toHaveBeenCalled();
+
+            flowReadOnly.set(false);
+            fixture.detectChanges();
+
+            expect(panel.form.enabled).toBe(true);
+            expect(notice(fixture)).toBeNull();
         });
     });
 

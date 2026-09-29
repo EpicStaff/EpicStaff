@@ -11,6 +11,8 @@ class TablesConfig(AppConfig):
 
     def ready(self):
         # ruff: noqa: F401
+        from rbac.governance.organization_deletion import register_participant
+
         import tables.import_export.version_conversions.convertions
         import tables.signals.graph_signals
         import tables.signals.naive_rag_signals
@@ -54,6 +56,7 @@ class TablesConfig(AppConfig):
             webhook_trigger_node,
         )
         from tables.services.converter_service import ConverterService
+        from tables.services.organization_deletion import TablesOrganizationDeletion
         from tables.services.realtime_service import RealtimeService
         from tables.services.redis_service import RedisService
         from tables.services.run_python_code_service import RunPythonCodeService
@@ -97,6 +100,8 @@ class TablesConfig(AppConfig):
             webhook_trigger_service=webhook_trigger_service,
         )
         ScheduleTriggerService(session_manager_service=session_manager_service)
+
+        register_participant(TablesOrganizationDeletion())
 
         # Register strategies for import/export entities
         entity_registry.register(llm_models.LLMModelStrategy())

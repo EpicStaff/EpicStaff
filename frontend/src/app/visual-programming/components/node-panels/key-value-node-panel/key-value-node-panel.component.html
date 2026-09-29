@@ -11,6 +11,7 @@
                     formControlName="node_name"
                     placeholder="Enter node name"
                     [activeColor]="activeColor"
+                    [readonly]="isReadOnly()"
                 ></app-custom-input>
                 <app-validation-errors [control]="form.get('node_name')!" />
             </div>
@@ -45,6 +46,7 @@
                             [items]="tableItems()"
                             [selected]="selectedTableValue()"
                             [headerAction]="createTableAction()"
+                            [readonly]="isReadOnly()"
                             (selectionChange)="onTableSelectionChange($event)"
                             (headerActionClick)="openCreateTable()"
                         >
@@ -52,6 +54,7 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
+                                [class.dropdown-trigger--readonly]="isReadOnly()"
                                 [disabled]="configurationLocked()"
                             >
                                 <span
@@ -61,10 +64,12 @@
                                 >
                                     {{ tableTriggerLabel() }}
                                 </span>
-                                <app-svg-icon
-                                    icon="chevron-down-filled"
-                                    size="8px"
-                                />
+                                @if (!isReadOnly()) {
+                                    <app-svg-icon
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                }
                             </button>
                         </app-select-dropdown>
                         @if (selectedTableId() === null) {
@@ -77,6 +82,7 @@
                         tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
                         formControlName="mode"
                         [items]="modeItems()"
+                        [readonly]="isReadOnly()"
                     />
                 </div>
             </div>
@@ -183,34 +189,39 @@
                                     <ng-container [ngTemplateOutlet]="keyField" />
                                 }
                             }
-                            <button
-                                type="button"
-                                class="remove-entry"
-                                title="Remove"
-                                [disabled]="configurationLocked()"
-                                (click)="removeEntry(i)"
-                            >
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="1rem"
-                                />
-                            </button>
+                            @if (!isReadOnly()) {
+                                <button
+                                    type="button"
+                                    class="remove-entry"
+                                    title="Remove"
+                                    [disabled]="configurationLocked()"
+                                    (click)="removeEntry(i)"
+                                >
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                    />
+                                </button>
+                            }
                         </div>
                     }
                 </div>
-                <button
-                    type="button"
-                    class="add-entry"
-                    [disabled]="atKeyLimit || configurationLocked()"
-                    (click)="addEntry()"
-                >
-                    <app-svg-icon
-                        icon="plus"
-                        size="16px"
-                    />
-                    Add key
-                </button>
-                @if (atKeyLimit) {
+                <!-- Hidden in a read-only flow, as the other panels hide what only edits. -->
+                @if (!isReadOnly()) {
+                    <button
+                        type="button"
+                        class="add-entry"
+                        [disabled]="atKeyLimit || configurationLocked()"
+                        (click)="addEntry()"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="16px"
+                        />
+                        Add key
+                    </button>
+                }
+                @if (atKeyLimit && !isReadOnly()) {
                     <div class="entry-hint">{{ keyLimitHint }}</div>
                 }
             </div>
