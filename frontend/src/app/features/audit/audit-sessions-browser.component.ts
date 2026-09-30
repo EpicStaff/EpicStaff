@@ -1,9 +1,18 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    DOCUMENT,
+    inject,
+    OnInit,
+    signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent } from '@shared/components';
-import { catchError, forkJoin, of } from 'rxjs';
+import { catchError, filter, forkJoin, fromEvent, interval, merge, of, Subscription } from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -20,6 +29,7 @@ import { clearAuditFilterField, describeAuditFilter } from './utils/describe-aud
 import { sanitizeToolName } from './utils/sanitize-tool-name.util';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const POLL_INTERVAL_MS = 10_000;
 
 @Component({
     selector: 'app-audit-sessions-browser',
@@ -36,6 +46,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private customToolsService = inject(CustomToolsService);
     private mcpToolsService = inject(McpToolsService);
     private destroyRef = inject(DestroyRef);
+    private document = inject(DOCUMENT);
+    private searchSubscription: Subscription | null = null;
     public readonly timeZoneLabel = buildTimeZoneLabel();
 
     public isLoading = signal<boolean>(false);
@@ -119,6 +131,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.loadFlowNames();
         this.loadAgents();
         this.loadTools();
+        this.startPolling();
     }
 
     public stepPageSize(delta: number): void {
@@ -192,14 +205,17 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.loadSessions();
     }
 
-    public loadSessions(): void {
+    public loadSessions(silent = false): void {
+        this.searchSubscription?.unsubscribe();
         const stack = this.cursorStack();
         const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
-        this.isLoading.set(true);
-        this.loadError.set(false);
-        this.loadErrorMessage.set(null);
+        if (!silent) {
+            this.isLoading.set(true);
+            this.loadError.set(false);
+            this.loadErrorMessage.set(null);
+        }
 
-        this.auditApiService
+        this.searchSubscription = this.auditApiService
             .searchSessions({
                 filters,
                 query,
@@ -207,15 +223,22 @@ export class AuditSessionsBrowserComponent implements OnInit {
                 cursor: stack[stack.length - 1],
                 size: this.pageSize(),
             })
+            .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (response) => {
                     this.rawEvents.set(response.items);
                     this.nextCursor.set(response.next_cursor);
                     this.isPartial.set(response.partial);
+                    if (silent) {
+                        return;
+                    }
                     this.isLoading.set(false);
                     this.collapsedIds.set(new Set());
                 },
                 error: (error: HttpErrorResponse) => {
+                    if (silent) {
+                        return;
+                    }
                     const detail = error.error?.detail;
                     this.loadErrorMessage.set(error.status === 400 && typeof detail === 'string' ? detail : null);
                     this.rawEvents.set([]);
@@ -276,6 +299,25 @@ export class AuditSessionsBrowserComponent implements OnInit {
                 },
                 error: () => this.agentOptions.set([]),
             });
+    }
+
+    private startPolling(): void {
+        merge(interval(POLL_INTERVAL_MS), fromEvent(this.document, 'visibilitychange'))
+            .pipe(
+                filter(() => this.canRefreshSilently()),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.loadSessions(true));
+    }
+
+    private canRefreshSilently(): boolean {
+        return (
+            this.cursorStack().length === 1 &&
+            this.document.visibilityState === 'visible' &&
+            !this.isLoading() &&
+            !this.loadError() &&
+            (this.searchSubscription?.closed ?? true)
+        );
     }
 }
 
