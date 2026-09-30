@@ -32,7 +32,8 @@ def display_name_from_email(email: str) -> str:
     When no piece survives ("+tag@x.com"), falls back to the raw local part,
     then to the whole email, so the result is never empty for a non-blank email.
 
-    Kept pure and module-level so a data migration can copy it verbatim.
+    Kept pure and module-level so a data migration can freeze a copy; the copy
+    must include `_LOCAL_PART_SEPARATORS` and `DISPLAY_NAME_MAX_LENGTH` too.
     """
     local_part = email.rpartition("@")[0] if "@" in email else email
     untagged = local_part.split("+", 1)[0]
