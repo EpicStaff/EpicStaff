@@ -117,25 +117,10 @@ export function getCdtSectionRanges(
     return ranges;
 }
 
-/**
- * Sections nested inside a collapsed section: every row of theirs lies strictly between the
- * collapsed section's first and last row, so they are hidden along with it. Interleaved
- * sections — neither inside the other — are left out and collapse independently.
- */
-export function getCdtSectionsInsideCollapsed(
-    rowSections: readonly (string | null | undefined)[],
-    collapsed: ReadonlySet<string>
-): Set<string> {
-    const ranges = getCdtSectionRanges(rowSections);
-    const inside = new Set<string>();
-    for (const collapsedId of collapsed) {
-        const outer = ranges.get(collapsedId);
-        if (!outer) continue;
-        ranges.forEach((inner, sectionId) => {
-            if (inner.firstIdx > outer.firstIdx && inner.lastIdx < outer.lastIdx) inside.add(sectionId);
-        });
-    }
-    return inside;
+/** True when the row indices form one unbroken run (e.g. 2,3,4 — not 1,3). Order of the input does not matter. */
+export function isContiguousRun(indices: readonly number[]): boolean {
+    if (indices.length === 0) return true;
+    return Math.max(...indices) - Math.min(...indices) + 1 === new Set(indices).size && !indices.includes(-1);
 }
 
 /** Drops sections no longer referenced by any row (Ungroup / delete rows / cross-group move). */
