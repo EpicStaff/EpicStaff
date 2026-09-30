@@ -272,3 +272,71 @@ class TestCrossOrg:
         assert StorageFile.objects.filter(
             org=second_org, path="archive/", item_type="folder"
         ).exists()
+
+
+class TestAuthorship:
+    @pytest.fixture
+    def actor(self, org_user):
+        return org_user.user
+
+    @pytest.fixture
+    def colleague(self, second_org_user):
+        return second_org_user.user
+
+    def test_writes_without_user_leave_rows_unauthored(self, org):
+        StorageFileSync.on_upload(org.id, "a/file.txt")
+        StorageFileSync.on_mkdir(org.id, "b/c")
+        StorageFileSync.on_copy(org.id, ["d/copy.txt"])
+
+        assert set(StorageFile.objects.values_list("created_by_id", flat=True)) == {None}
+
+    def test_anonymous_user_does_not_become_author(self, org):
+        from django.contrib.auth.models import AnonymousUser
+
+        StorageFileSync.on_upload(org.id, "a/file.txt", user=AnonymousUser())
+
+        assert set(StorageFile.objects.values_list("created_by_id", flat=True)) == {None}
+
+    def test_on_copy_conflict_keeps_existing_row_author(self, org, actor, colleague):
+        StorageFile.objects.create(org=org, path="dup.txt", name="dup.txt", created_by=colleague)
+
+        StorageFileSync.on_copy(org.id, ["dup.txt", "new.txt"], user=actor)
+
+        assert StorageFile.objects.get(org=org, path="dup.txt").created_by_id == colleague.id
+        assert StorageFile.objects.get(org=org, path="new.txt").created_by_id == actor.id
+
+    def test_on_move_cross_org_onto_unauthored_file_claims_it(
+        self, org, second_org, actor
+    ):
+        StorageFile.objects.create(org=org, path="moved.txt", size=3)
+        StorageFile.objects.create(org=second_org, path="landed.txt", size=1)
+
+        StorageFileSync.on_move_cross_org(
+            org.id, "moved.txt", second_org.id, "landed.txt", user=actor
+        )
+
+        row = StorageFile.objects.get(org=second_org, path="landed.txt")
+        assert row.created_by_id == actor.id
+        assert row.size == 3
+
+    def test_on_move_cross_org_onto_authored_file_keeps_author(
+        self, org, second_org, actor, colleague
+    ):
+        StorageFile.objects.create(org=org, path="moved.txt")
+        StorageFile.objects.create(org=second_org, path="landed.txt", created_by=colleague)
+
+        StorageFileSync.on_move_cross_org(
+            org.id, "moved.txt", second_org.id, "landed.txt", user=actor
+        )
+
+        row = StorageFile.objects.get(org=second_org, path="landed.txt")
+        assert row.created_by_id == colleague.id
+
+    def test_on_move_claim_ignores_rows_in_other_orgs(self, org, second_org, actor):
+        StorageFile.objects.create(org=org, path="old.txt")
+        StorageFile.objects.create(org=second_org, path="new.txt")
+
+        StorageFileSync.on_move(org.id, "old.txt", "new.txt", user=actor)
+
+        assert StorageFile.objects.get(org=org, path="new.txt").created_by_id == actor.id
+        assert StorageFile.objects.get(org=second_org, path="new.txt").created_by_id is None

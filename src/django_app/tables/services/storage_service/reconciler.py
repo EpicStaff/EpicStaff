@@ -72,6 +72,7 @@ class StorageReconciler:
         batch_size = 1000
         for i in range(0, len(rows_to_upsert), batch_size):
             batch = rows_to_upsert[i : i + batch_size]
+            # NOTE: never add created_by to update_fields: the upsert would erase authors.
             StorageFile.objects.bulk_create(
                 batch,
                 update_conflicts=True,

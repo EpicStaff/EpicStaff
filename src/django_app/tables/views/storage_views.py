@@ -1,6 +1,8 @@
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import resolve_author
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
@@ -31,7 +33,6 @@ from tables.serializers.storage_serializers import (
     StorageTreeQuerySerializer,
     StorageUploadSerializer,
 )
-from rbac.access.asserts import assert_org_permission
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
@@ -165,7 +166,10 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         files = serializer.validated_data["files"]
 
         try:
-            results = [self.manager.upload_file(org_id, path, f) for f in files]
+            results = [
+                self.manager.upload_file(org_id, path, file_object, user=request.user)
+                for file_object in files
+            ]
         except ValueError as e:
             raise ValidationError({"detail": str(e)}) from e
 
@@ -211,7 +215,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise ValidationError({"detail": str(e)}) from e
 
         try:
-            self.manager.mkdir(org_id, path)
+            self.manager.mkdir(org_id, path, user=request.user)
         except ValueError as e:
             raise ValidationError({"detail": str(e)}) from e
         return Response({"path": path, "created": True}, status=status.HTTP_201_CREATED)
@@ -238,7 +242,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         to_path = serializer.validated_data["to"]
 
         try:
-            self.manager.rename(org_id, from_path, to_path)
+            self.manager.rename(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except FileExistsError as e:
@@ -261,9 +265,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.move_cross_org(int(src_org_id), from_path, int(dst_org_id), to_path)
+                self.manager.move_cross_org(
+                    int(src_org_id), from_path, int(dst_org_id), to_path, user=request.user
+                )
             else:
-                self.manager.move(org_id, from_path, to_path)
+                self.manager.move(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
@@ -284,9 +290,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.copy_cross_org(int(src_org_id), from_path, int(dst_org_id), to_path)
+                self.manager.copy_cross_org(
+                    int(src_org_id), from_path, int(dst_org_id), to_path, user=request.user
+                )
             else:
-                self.manager.copy(org_id, from_path, to_path)
+                self.manager.copy(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
@@ -325,7 +333,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             if isinstance(path_info, FolderInfo) and not path.endswith("/"):
                 path = path + "/"
 
-            sf, _ = StorageFile.objects.get_or_create(org_id=org_id, path=path)
+            sf, _ = StorageFile.objects.get_or_create(
+                org_id=org_id,
+                path=path,
+                defaults={"created_by": resolve_author(request.user)},
+            )
 
             for graph_id in graph_ids:
                 obj, _ = GraphStorageFile.objects.get_or_create(graph_id=graph_id, storage_file=sf)

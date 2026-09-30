@@ -958,15 +958,11 @@ class GraphVersion(SoftDeleteMixin):
         ordering = ["-created_at"]
 
 
-class StorageFile(models.Model):
+class StorageFile(OrgScopedModel):
+    """A file or folder in an organization's storage, mirrored from the storage backend."""
+
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
 
-    org = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="storage_files",
-        help_text="Organization that owns this storage entry.",
-    )
     path = models.CharField(
         max_length=1000,
         help_text="Org-relative path, never starts with '/'. Folders end with '/'.",
@@ -1006,11 +1002,12 @@ class StorageFile(models.Model):
         help_text="Timestamp of the last update to this row.",
     )
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         constraints = [
             models.UniqueConstraint(fields=["org", "path"], name="unique_storage_file_per_org")
         ]
         indexes = [
+            *OrgScopedModel.Meta.indexes,
             models.Index(fields=["org", "path"]),
             models.Index(fields=["org", "parent_path"]),
         ]
