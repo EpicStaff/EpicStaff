@@ -355,8 +355,14 @@ def main(**kwargs) -> dict:
                 },
             }
 
+        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
+        model = (
+            llm_config.model
+            if llm_config.model.startswith(f"{llm.provider}/")
+            else f"{llm.provider}/{llm_config.model}"
+        )
         params = {
-            "model": f"{llm.provider}/{llm_config.model}",
+            "model": model,
             "timeout": llm_config.timeout,
             "temperature": llm_config.temperature,
             "top_p": llm_config.top_p,
