@@ -25,7 +25,7 @@ from tables.models.graph_models import (
 )
 from tables.models.llm_models import LLMConfig
 from tables.models.secret_models import Secret
-from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+from tables.models.webhook_models import WebhookTrigger
 from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
@@ -64,7 +64,7 @@ class ExternalRefKind(StrEnum):
     SCALAR = "scalar"  # top-level scalar FK, e.g. code_agent_node_list.llm_config
     SCALAR_LIST = "scalar_list"  # top-level list of pks (M2M), e.g. surface_list
     NESTED_OBJECT = "nested_object"  # FK inside a top-level nested object, e.g.
-    # webhook_trigger.ngrok_webhook_config
+    # subgraph_detail.id
     NESTED_LIST = "nested_list"  # FK inside each item of a top-level nested
     # list, e.g. prompt_configs[].llm_config
     NESTED_SCALAR_LIST = "nested_scalar_list"  # list of pks (M2M) inside a
@@ -74,7 +74,7 @@ class ExternalRefKind(StrEnum):
 @dataclass(frozen=True)
 class ExternalRefField:
     """One outward FK/M2M reference on a node type that points OUTSIDE the
-    graph (LLMConfig, NgrokWebhookConfig, a subgraph Graph, Secret,
+    graph (LLMConfig, WebhookTrigger, a subgraph Graph, Secret,
     AgentDefinition, Surface) — as opposed to intra-graph node refs like
     edges/routing, which are validated elsewhere.
 
@@ -89,13 +89,13 @@ class ExternalRefField:
     also what gets reported in a broadcast ``changed_fields`` list, since the
     frontend merges by top-level key. ``leaf_field`` is the field that
     actually carries the pk(s); equal to ``top_level_field`` for SCALAR and
-    SCALAR_LIST, distinct for the two nested kinds (e.g. top_level_field=
-    "webhook_trigger", leaf_field="ngrok_webhook_config").
+    SCALAR_LIST, distinct for the nested kinds (e.g. top_level_field=
+    "subgraph_detail", leaf_field="id").
 
     ``org_lookup`` mirrors the ORM path the field's own
     OrgScopedPrimaryKeyRelatedField/OrganizationScopedPrimaryKeyRelatedField
     uses to scope existence — ``None`` when the target model has no org field
-    at all (NgrokWebhookConfig), matching that field's plain
+    at all, matching that field's plain
     PrimaryKeyRelatedField (no org scoping to replicate).
     """
 
@@ -262,13 +262,6 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         WebhookTriggerNode,
         WebhookTriggerNodeBulkSerializer,
         external_ref_fields=(
-            ExternalRefField(
-                "webhook_trigger",
-                "ngrok_webhook_config",
-                NgrokWebhookConfig,
-                None,
-                kind=ExternalRefKind.NESTED_OBJECT,
-            ),
             ExternalRefField("webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"),
             ExternalRefField(
                 "python_code",
@@ -285,13 +278,6 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         TelegramTriggerNode,
         TelegramTriggerNodeBulkSerializer,
         external_ref_fields=(
-            ExternalRefField(
-                "webhook_trigger",
-                "ngrok_webhook_config",
-                NgrokWebhookConfig,
-                None,
-                kind=ExternalRefKind.NESTED_OBJECT,
-            ),
             ExternalRefField("webhook_trigger", "webhook_trigger", WebhookTrigger, "org_id"),
             ExternalRefField(
                 "telegram_bot_api_key_secret_id",

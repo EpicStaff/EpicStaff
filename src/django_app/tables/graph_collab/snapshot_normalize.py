@@ -157,7 +157,7 @@ def reconcile_against_db(payload: dict, graph) -> tuple[dict, list[DeadRef]]:
     nulled_routing_refs = _null_dangling_routing_refs(payload, surviving_node_ids)
 
     # External (non-graph) FK/M2M refs — LLMConfig, subgraph Graph, secrets,
-    # ngrok config, AgentDefinition, Surface — whose target was deleted or
+    # webhook trigger, AgentDefinition, Surface — whose target was deleted or
     # moved to another org out-of-band. Unlike the pruning above, the node row
     # itself survives; only the stale ref gets nulled. See external_refs.py.
     dead_external_refs = find_dead_external_refs(payload, graph)

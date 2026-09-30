@@ -160,7 +160,7 @@ def _pin_privileged_fields(
 
         nested_incoming = incoming[nested_key]
         if not isinstance(nested_incoming, dict):
-            # e.g. webhook_trigger: None — no nested object is being written,
+            # e.g. a nested key sent as None — no nested object is being written,
             # so there is nothing to pin.
             continue
 
@@ -585,7 +585,7 @@ class GraphLiveStateService:
         ``{"list_key", "node", "changed_fields"}`` — so the caller can push a
         merge-style ``node_updated`` to connected editors. ``node`` always
         carries the whole (already-nulled) value of every top-level field in
-        ``changed_fields``, since nested refs (e.g. webhook_trigger) must be
+        ``changed_fields``, since nested refs (e.g. subgraph_detail) must be
         sent as their whole containing object — the frontend merges by
         top-level key.
         """
@@ -866,7 +866,7 @@ class GraphLiveStateService:
 
         # Pinning happens after the CAS check above — a pin must never mask
         # a legitimate precondition_failed rejection.
-        # overlay's nested-field values (e.g. "webhook_trigger") are the SAME
+        # overlay's nested-field values are the SAME
         # dict objects as message.node's, since overlay/filtered are shallow
         # copies. Pinning in place therefore also mutates message.node, which
         # consumers.py::_handle_relay relays as-is — that's how peers receive

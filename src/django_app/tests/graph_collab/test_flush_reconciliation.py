@@ -393,7 +393,7 @@ async def test_flush_reaps_preexisting_orphan_conditional_edge_from_db(
 
 # ---------------------------------------------------------------------------
 # reconcile_against_db (via find_dead_external_refs) nulls a surviving node's
-# outward FK/M2M ref — LLMConfig, subgraph Graph, NgrokWebhookConfig, Secret,
+# outward FK/M2M ref — LLMConfig, subgraph Graph, WebhookTrigger, Secret,
 # AgentDefinition, Surface — whose target was deleted or moved to another org
 # out-of-band, instead of failing the whole flush's PrimaryKeyRelatedField
 # validation and wedging autosave forever. Unlike the node/edge pruning above,
@@ -558,40 +558,37 @@ async def test_flush_nulls_dead_llm_config_nested_in_prompt_configs(
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_flush_nulls_dead_ngrok_config_nested_in_webhook_trigger_and_broadcasts(
+async def test_flush_nulls_dead_subgraph_nested_in_subgraph_detail_and_broadcasts(
     graph, test_user, base_snapshot, flush_service
 ):
-    """The ngrok_webhook_config nested inside webhook_trigger must be nulled,
-    and since it is a nested field, the frontend merges by TOP-LEVEL key —
-    so the broadcast must carry the WHOLE webhook_trigger object with
-    changed_fields=["webhook_trigger"], not a bare ngrok_webhook_config key."""
-    from tables.models.graph_models import TelegramTriggerNode
-    from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+    """The subgraph id nested inside subgraph_detail must be nulled, and
+    since it is a nested field, the frontend merges by TOP-LEVEL key — so
+    the broadcast must carry the WHOLE subgraph_detail object with
+    "subgraph_detail" in changed_fields, not a bare nested id key."""
+    from tables.models import Graph
+    from tables.models.graph_models import SubGraphNode
 
-    ngrok_config = await sync_to_async(NgrokWebhookConfig.objects.create)(
-        name="dead-ngrok", auth_token="dead-ngrok-token"
+    subgraph = await sync_to_async(Graph.objects.create)(
+        name="dead-nested-subgraph", org=graph.org
     )
-    webhook_trigger = await sync_to_async(WebhookTrigger.objects.create)(
-        path="dead-ngrok-path", ngrok_webhook_config=ngrok_config
+    node = await sync_to_async(SubGraphNode.objects.create)(
+        graph=graph, node_name="Subgraph-Nested", subgraph=subgraph
     )
-    node = await sync_to_async(TelegramTriggerNode.objects.create)(
-        graph=graph, node_name="Telegram-1", webhook_trigger=webhook_trigger
-    )
-    dead_ngrok_id = ngrok_config.id
-    await sync_to_async(ngrok_config.delete)()
+    dead_subgraph_id = subgraph.id
+    await sync_to_async(subgraph.delete)()
 
     snap = base_snapshot(
         save_version=graph.save_version,
-        telegram_trigger_node_list=[
+        subgraph_node_list=[
             {
                 "id": node.id,
                 "graph": graph.id,
-                "node_name": "Telegram-1",
-                "webhook_trigger": {
-                    "path": webhook_trigger.path,
-                    "ngrok_webhook_config": dead_ngrok_id,
+                "node_name": "Subgraph-Nested",
+                "subgraph": dead_subgraph_id,
+                "subgraph_detail": {
+                    "id": dead_subgraph_id,
+                    "name": "dead-nested-subgraph",
                 },
-                "fields": [],
             }
         ],
     )
@@ -611,19 +608,65 @@ async def test_flush_nulls_dead_ngrok_config_nested_in_webhook_trigger_and_broad
 
     message = await communicator.receive_json_from()
     assert message["type"] == "node_updated"
-    assert message["changed_fields"] == ["webhook_trigger"]
+    assert message["changed_fields"] == ["subgraph", "subgraph_detail"]
     assert message["node"]["id"] == node.id
-    assert message["node"]["webhook_trigger"]["ngrok_webhook_config"] is None
-    assert message["node"]["webhook_trigger"]["path"] == webhook_trigger.path
+    assert message["node"]["subgraph"] is None
+    assert message["node"]["subgraph_detail"]["id"] is None
+    assert message["node"]["subgraph_detail"]["name"] == "dead-nested-subgraph"
 
-    await sync_to_async(webhook_trigger.refresh_from_db)()
-    assert webhook_trigger.ngrok_webhook_config_id is None
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["subgraph_node_list"][0]
+    assert entry["subgraph_detail"]["id"] is None
+
+    await communicator.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_flush_nulls_dead_webhook_trigger_on_telegram_trigger(
+    graph, base_snapshot, flush_service
+):
+    """TelegramTriggerNode.webhook_trigger whose WebhookTrigger was deleted
+    out-of-band must be nulled like any other scalar outward ref."""
+    from tables.models.graph_models import TelegramTriggerNode
+    from tables.models.webhook_models import WebhookTrigger
+
+    webhook_trigger = await sync_to_async(WebhookTrigger.objects.create)(
+        path="dead-webhook-trigger-path", org=graph.org
+    )
+    node = await sync_to_async(TelegramTriggerNode.objects.create)(
+        graph=graph, node_name="Telegram-Dead-Trigger", webhook_trigger=webhook_trigger
+    )
+    dead_webhook_trigger_id = webhook_trigger.id
+    await sync_to_async(webhook_trigger.delete)()
+
+    snap = base_snapshot(
+        save_version=graph.save_version,
+        telegram_trigger_node_list=[
+            {
+                "id": node.id,
+                "graph": graph.id,
+                "node_name": "Telegram-Dead-Trigger",
+                "webhook_trigger": dead_webhook_trigger_id,
+                "fields": [],
+            }
+        ],
+    )
+    await graph_state_service.seed(graph.id, snap)
+
+    outcome = await flush_service.flush(graph.id)
+
+    assert outcome.status is FlushStatus.SAVED, (
+        f"Expected SAVED but got {outcome.status!r} "
+        f"(failure_reason={outcome.failure_reason!r})."
+    )
+
+    await sync_to_async(node.refresh_from_db)()
+    assert node.webhook_trigger_id is None
 
     snapshot = await graph_state_service.get_snapshot(graph.id)
     entry = snapshot["telegram_trigger_node_list"][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
-
-    await communicator.disconnect()
+    assert entry["webhook_trigger"] is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1041,12 +1084,9 @@ async def test_second_flush_succeeds_after_dead_agent_agent_definition_ref_refre
 # ---------------------------------------------------------------------------
 # Fields that must NOT arm CAS: agent_node_list.surface_list is an M2M
 # (excluded from ContentHashMixin.generate_hash's `self._meta.fields` scan),
-# and the nested webhook_trigger.ngrok_webhook_config only affects the
-# WebhookTrigger row — TelegramTriggerNode's own hash is computed over
-# webhook_trigger_id, which is unchanged by that nested delete. Neither
-# out-of-band delete should ever cause a ContentHashConflictError, and the
-# refresh call must not fabricate a content_hash key where the snapshot entry
-# never carried one (both built by hand here, mirroring the FE's
+# so its out-of-band delete should never cause a ContentHashConflictError,
+# and the refresh call must not fabricate a content_hash key where the
+# snapshot entry never carried one (built by hand here, mirroring the FE's
 # node_created payload shape rather than a DB reseed).
 # ---------------------------------------------------------------------------
 
@@ -1100,59 +1140,6 @@ async def test_flush_succeeds_first_try_after_dead_surface_ref(
     snapshot = await graph_state_service.get_snapshot(graph.id)
     entry = snapshot["agent_node_list"][0]
     assert entry["surface_list"] == [live_surface_id]
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_succeeds_first_try_after_dead_ngrok_ref(
-    graph, base_snapshot, flush_service
-):
-    """Deleting the NgrokWebhookConfig nested under webhook_trigger must not
-    arm CAS — TelegramTriggerNode's own content_hash is computed over
-    webhook_trigger_id, not the nested ngrok row, so the flush must succeed
-    on the FIRST attempt, unlike the scalar ref cases above."""
-    from tables.models.graph_models import TelegramTriggerNode
-    from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
-
-    ngrok_config = await sync_to_async(NgrokWebhookConfig.objects.create)(
-        name="dead-ngrok-hash-guard", auth_token="dead-ngrok-hash-guard-token"
-    )
-    webhook_trigger = await sync_to_async(WebhookTrigger.objects.create)(
-        path="dead-ngrok-hash-guard-path", ngrok_webhook_config=ngrok_config
-    )
-    node = await sync_to_async(TelegramTriggerNode.objects.create)(
-        graph=graph, node_name="Telegram-Hash-Guard", webhook_trigger=webhook_trigger
-    )
-    await sync_to_async(ngrok_config.delete)()
-
-    snap = base_snapshot(
-        save_version=graph.save_version,
-        telegram_trigger_node_list=[
-            {
-                "id": node.id,
-                "graph": graph.id,
-                "node_name": "Telegram-Hash-Guard",
-                "webhook_trigger": {
-                    "path": webhook_trigger.path,
-                    "ngrok_webhook_config": ngrok_config.id,
-                },
-                "fields": [],
-            }
-        ],
-    )
-    await graph_state_service.seed(graph.id, snap)
-
-    outcome = await flush_service.flush(graph.id)
-
-    assert outcome.status is FlushStatus.SAVED, (
-        f"Expected SAVED on the first attempt but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). A dead nested ngrok "
-        "ref must never arm CAS on the containing node."
-    )
-
-    snapshot = await graph_state_service.get_snapshot(graph.id)
-    entry = snapshot["telegram_trigger_node_list"][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -1221,73 +1208,6 @@ async def test_null_external_refs_does_not_fabricate_content_hash_for_surface_li
     snapshot = await graph_state_service.get_snapshot(graph.id)
     entry = snapshot["agent_node_list"][0]
     assert entry["surface_list"] == []
-    assert "content_hash" not in entry, (
-        "The entry never carried a content_hash key — null_external_refs "
-        "must not fabricate one."
-    )
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_null_external_refs_does_not_fabricate_content_hash_for_nested_ngrok(
-    graph, base_snapshot
-):
-    """TelegramTriggerNode's content_hash is computed over webhook_trigger_id,
-    not the nested ngrok row — null_external_refs's content_hash refresh
-    must still respect the `"content_hash" in entry` guard and not invent
-    the key when nulling the nested ngrok_webhook_config ref."""
-    from tables.graph_collab.external_refs import DeadRef
-    from tables.models.graph_models import TelegramTriggerNode
-    from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
-    from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
-
-    ngrok_config = await sync_to_async(NgrokWebhookConfig.objects.create)(
-        name="dead-ngrok-null-refs", auth_token="dead-ngrok-null-refs-token"
-    )
-    webhook_trigger = await sync_to_async(WebhookTrigger.objects.create)(
-        path="dead-ngrok-null-refs-path", ngrok_webhook_config=ngrok_config
-    )
-    node = await sync_to_async(TelegramTriggerNode.objects.create)(
-        graph=graph, node_name="Telegram-Null-Refs", webhook_trigger=webhook_trigger
-    )
-    dead_ngrok_id = ngrok_config.id
-
-    snap = base_snapshot(
-        save_version=graph.save_version,
-        telegram_trigger_node_list=[
-            {
-                "id": node.id,
-                "graph": graph.id,
-                "node_name": "Telegram-Null-Refs",
-                "webhook_trigger": {
-                    "path": webhook_trigger.path,
-                    "ngrok_webhook_config": dead_ngrok_id,
-                },
-                "fields": [],
-            }
-        ],
-    )
-    await graph_state_service.seed(graph.id, snap)
-
-    ref_field = next(
-        f
-        for config in NODE_TYPE_REGISTRY
-        if config.list_key == "telegram_trigger_node_list"
-        for f in config.external_ref_fields
-        if f.top_level_field == "webhook_trigger"
-    )
-    dead_ref = DeadRef(
-        "telegram_trigger_node_list", node.id, ref_field, dead_ngrok_id, "deleted"
-    )
-
-    broadcasts = await graph_state_service.null_external_refs(graph.id, [dead_ref])
-
-    assert len(broadcasts) == 1
-    assert "content_hash" not in broadcasts[0]["node"]
-
-    snapshot = await graph_state_service.get_snapshot(graph.id)
-    entry = snapshot["telegram_trigger_node_list"][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
     assert "content_hash" not in entry, (
         "The entry never carried a content_hash key — null_external_refs "
         "must not fabricate one."

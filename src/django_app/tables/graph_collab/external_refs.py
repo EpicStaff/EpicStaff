@@ -1,7 +1,7 @@
 """Detect and null a live collab payload's stale outward (non-graph) FK/M2M
 refs — see ExternalRefField in tables.services.graph_bulk_save_service.registry
 for the declarative list of which node fields point outside the graph
-(LLMConfig, NgrokWebhookConfig, a subgraph Graph, Secret, AgentDefinition,
+(LLMConfig, WebhookTrigger, a subgraph Graph, Secret, AgentDefinition,
 Surface).
 
 Why this exists: deleting a referenced row fires the model's

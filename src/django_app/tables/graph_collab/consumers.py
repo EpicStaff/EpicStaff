@@ -139,8 +139,8 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         # the permission-recheck backstop) don't re-resolve on every message.
         self._can_edit = effective.can(ResourceType.FLOWS, Permission.UPDATE)
         # Cached alongside _can_edit for the same reason — apply_op needs it
-        # on every relayed op to authorize privileged nested fields (e.g.
-        # ngrok_webhook_config) without re-resolving permissions per message.
+        # on every relayed op to authorize privileged nested fields (see
+        # PRIVILEGED_NESTED_FIELDS) without re-resolving permissions per message.
         # Read from the resolved EffectivePermissions — the single place the
         # superadmin bypass is decided — never from User.is_superadmin directly.
         self._is_superadmin = effective.is_superadmin

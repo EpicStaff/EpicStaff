@@ -287,7 +287,7 @@ async def anotify_node_updated_system(
 ) -> None:
     """Broadcast a merge-style ``node_updated`` attributed to ``_SYSTEM_EDITOR``
     from an async context (the global autosave loop) — used when a node's
-    outward FK/M2M ref (LLMConfig, subgraph, ngrok config, Secret,
+    outward FK/M2M ref (LLMConfig, subgraph, webhook trigger, Secret,
     AgentDefinition, Surface) is nulled after its target was deleted or moved
     to another org out-of-band. See GraphLiveStateService.null_external_refs.
 

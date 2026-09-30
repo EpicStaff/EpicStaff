@@ -1,22 +1,39 @@
 """Tests for the privileged-nested-field pinning added to apply_op:
 a non-superadmin WS caller must never be able to
-smuggle an arbitrary ngrok_webhook_config into the live snapshot, while a
+smuggle an arbitrary privileged nested value into the live snapshot, while a
 superadmin's writes (including explicit clears) pass through untouched, and
 callers that legitimately resend the current value unchanged (resize,
 auto-arrange, reconnect-resync) are never falsely reported as "pinned".
 
 Covers GraphLiveStateService.apply_op / _apply_node_upsert / _apply_node_merge
 via _pin_privileged_fields — see graph_state_service.py and
-constants.PRIVILEGED_NESTED_FIELDS.
+constants.PRIVILEGED_NESTED_FIELDS. The production config may be empty, so
+these tests install a synthetic one (privileged_config.privileged_ref) to
+exercise the generic machinery on its own.
 """
 
 import pytest
 
+from tables.graph_collab import graph_state_service as graph_state_service_module
 from tables.graph_collab.graph_state_service import OpStatus
 from tables.graph_collab.protocol import NodeCreatedMessage, NodeUpdatedMessage
 
 
 LIST_KEYS = ["webhook_trigger_node_list", "telegram_trigger_node_list"]
+
+TEST_PRIVILEGED_NESTED_FIELDS = {
+    list_key: {"privileged_config": frozenset({"privileged_ref"})} for list_key in LIST_KEYS
+}
+
+
+@pytest.fixture(autouse=True)
+def _privileged_nested_fields(monkeypatch):
+    monkeypatch.setattr(
+        graph_state_service_module,
+        "PRIVILEGED_NESTED_FIELDS",
+        TEST_PRIVILEGED_NESTED_FIELDS,
+    )
+    yield
 
 
 def _created(node: dict, list_key: str, editor) -> NodeCreatedMessage:
@@ -39,7 +56,7 @@ def _legacy_update(node: dict, list_key: str, editor) -> NodeUpdatedMessage:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("list_key", LIST_KEYS)
-async def test_merge_op_non_superadmin_different_ngrok_is_pinned(
+async def test_merge_op_non_superadmin_different_privileged_value_is_pinned(
     live_state_service, base_snapshot, editor, list_key
 ):
     await live_state_service.seed(
@@ -50,7 +67,7 @@ async def test_merge_op_non_superadmin_different_ngrok_is_pinned(
                     {
                         "id": 5,
                         "node_name": "Trigger",
-                        "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 1},
+                        "privileged_config": {"label": "abc", "privileged_ref": 1},
                     }
                 ]
             }
@@ -58,9 +75,9 @@ async def test_merge_op_non_superadmin_different_ngrok_is_pinned(
     )
 
     msg = _merge_update(
-        node={"id": 5, "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 99}},
+        node={"id": 5, "privileged_config": {"label": "abc", "privileged_ref": 99}},
         list_key=list_key,
-        changed_fields=["webhook_trigger"],
+        changed_fields=["privileged_config"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg, is_superadmin=False)
@@ -68,12 +85,12 @@ async def test_merge_op_non_superadmin_different_ngrok_is_pinned(
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] == 1
+    assert entry["privileged_config"]["privileged_ref"] == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("list_key", LIST_KEYS)
-async def test_merge_op_non_superadmin_equal_ngrok_not_reported(
+async def test_merge_op_non_superadmin_equal_privileged_value_not_reported(
     live_state_service, base_snapshot, editor, list_key
 ):
     """Regression guard: resize/auto-arrange/reconnect-resync legitimately
@@ -87,7 +104,7 @@ async def test_merge_op_non_superadmin_equal_ngrok_not_reported(
                     {
                         "id": 5,
                         "node_name": "Trigger",
-                        "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 1},
+                        "privileged_config": {"label": "abc", "privileged_ref": 1},
                     }
                 ]
             }
@@ -95,9 +112,9 @@ async def test_merge_op_non_superadmin_equal_ngrok_not_reported(
     )
 
     msg = _merge_update(
-        node={"id": 5, "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 1}},
+        node={"id": 5, "privileged_config": {"label": "abc", "privileged_ref": 1}},
         list_key=list_key,
-        changed_fields=["webhook_trigger"],
+        changed_fields=["privileged_config"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg, is_superadmin=False)
@@ -105,7 +122,7 @@ async def test_merge_op_non_superadmin_equal_ngrok_not_reported(
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] == 1
+    assert entry["privileged_config"]["privileged_ref"] == 1
 
 
 @pytest.mark.asyncio
@@ -113,9 +130,9 @@ async def test_merge_op_non_superadmin_equal_ngrok_not_reported(
 async def test_merge_op_overlay_omitting_key_survives_whole_key_replace(
     live_state_service, base_snapshot, editor, list_key
 ):
-    """merge_entry whole-key-replaces `webhook_trigger` — an overlay that
-    carries the nested key but omits ngrok_webhook_config must not silently
-    drop the existing config."""
+    """merge_entry whole-key-replaces `privileged_config` — an overlay that
+    carries the nested key but omits privileged_ref must not silently
+    drop the existing value."""
     await live_state_service.seed(
         1,
         base_snapshot(
@@ -124,7 +141,7 @@ async def test_merge_op_overlay_omitting_key_survives_whole_key_replace(
                     {
                         "id": 5,
                         "node_name": "Trigger",
-                        "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 1},
+                        "privileged_config": {"label": "abc", "privileged_ref": 1},
                     }
                 ]
             }
@@ -132,9 +149,9 @@ async def test_merge_op_overlay_omitting_key_survives_whole_key_replace(
     )
 
     msg = _merge_update(
-        node={"id": 5, "webhook_trigger": {"path": "xyz"}},
+        node={"id": 5, "privileged_config": {"label": "xyz"}},
         list_key=list_key,
-        changed_fields=["webhook_trigger"],
+        changed_fields=["privileged_config"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg, is_superadmin=False)
@@ -142,8 +159,8 @@ async def test_merge_op_overlay_omitting_key_survives_whole_key_replace(
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] == 1
-    assert entry["webhook_trigger"]["path"] == "xyz"
+    assert entry["privileged_config"]["privileged_ref"] == 1
+    assert entry["privileged_config"]["label"] == "xyz"
 
 
 @pytest.mark.asyncio
@@ -152,7 +169,7 @@ async def test_legacy_upsert_on_existing_node_preserves_current_value(
     live_state_service, base_snapshot, editor, list_key
 ):
     """Legacy no-changed_fields path (_apply_node_upsert) — a non-superadmin
-    caller can't overwrite ngrok_webhook_config on an existing node either."""
+    caller can't overwrite privileged_ref on an existing node either."""
     await live_state_service.seed(
         1,
         base_snapshot(
@@ -161,7 +178,7 @@ async def test_legacy_upsert_on_existing_node_preserves_current_value(
                     {
                         "id": 5,
                         "node_name": "Trigger",
-                        "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 1},
+                        "privileged_config": {"label": "abc", "privileged_ref": 1},
                     }
                 ]
             }
@@ -172,7 +189,7 @@ async def test_legacy_upsert_on_existing_node_preserves_current_value(
         node={
             "id": 5,
             "node_name": "Trigger renamed",
-            "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 99},
+            "privileged_config": {"label": "abc", "privileged_ref": 99},
         },
         list_key=list_key,
         editor=editor,
@@ -182,7 +199,7 @@ async def test_legacy_upsert_on_existing_node_preserves_current_value(
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] == 1
+    assert entry["privileged_config"]["privileged_ref"] == 1
     assert entry["node_name"] == "Trigger renamed"
 
 
@@ -197,7 +214,7 @@ async def test_node_created_by_non_superadmin_stores_none(
         node={
             "temp_id": "temp-1",
             "node_name": "New Trigger",
-            "webhook_trigger": {"path": "new", "ngrok_webhook_config": 42},
+            "privileged_config": {"label": "new", "privileged_ref": 42},
         },
         list_key=list_key,
         editor=editor,
@@ -207,7 +224,7 @@ async def test_node_created_by_non_superadmin_stores_none(
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
+    assert entry["privileged_config"]["privileged_ref"] is None
 
 
 @pytest.mark.asyncio
@@ -223,9 +240,9 @@ async def test_superadmin_set_and_clear_both_persist(
                     {
                         "id": 5,
                         "node_name": "Trigger",
-                        "webhook_trigger": {
-                            "path": "abc",
-                            "ngrok_webhook_config": None,
+                        "privileged_config": {
+                            "label": "abc",
+                            "privileged_ref": None,
                         },
                     }
                 ]
@@ -234,28 +251,28 @@ async def test_superadmin_set_and_clear_both_persist(
     )
 
     set_msg = _merge_update(
-        node={"id": 5, "webhook_trigger": {"path": "abc", "ngrok_webhook_config": 7}},
+        node={"id": 5, "privileged_config": {"label": "abc", "privileged_ref": 7}},
         list_key=list_key,
-        changed_fields=["webhook_trigger"],
+        changed_fields=["privileged_config"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, set_msg, is_superadmin=True)
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] == 7
+    assert entry["privileged_config"]["privileged_ref"] == 7
 
     clear_msg = _merge_update(
         node={
             "id": 5,
-            "webhook_trigger": {"path": "abc", "ngrok_webhook_config": None},
+            "privileged_config": {"label": "abc", "privileged_ref": None},
         },
         list_key=list_key,
-        changed_fields=["webhook_trigger"],
+        changed_fields=["privileged_config"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, clear_msg, is_superadmin=True)
     assert result.status == OpStatus.APPLIED
     assert result.relay is True
     entry = (await live_state_service.get_snapshot(1))[list_key][0]
-    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
+    assert entry["privileged_config"]["privileged_ref"] is None
