@@ -8,7 +8,7 @@ anyone drive another org's live realtime session.
 
 This test confirms `org_id` is populated correctly from the *authoritative*
 source for the surviving conversion path:
-- `convert_rt_agent_definition_chat_to_pydantic` -> `AgentDefinition.organization_id`
+- `convert_rt_agent_definition_chat_to_pydantic` -> `AgentDefinition.org_id`
   (via `RealtimeAgentDefinition.agent_definition`)
 """
 
@@ -43,7 +43,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_org_id_from_defi
     converter, default_org, llm_config
 ):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
         instructions="Be concise and helpful",
@@ -67,4 +67,4 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_org_id_from_defi
     data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
 
     assert data.org_id == default_org.pk
-    assert data.org_id == agent_definition.organization_id
+    assert data.org_id == agent_definition.org_id

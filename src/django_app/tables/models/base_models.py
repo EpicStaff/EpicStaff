@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
+from rbac.models.author import AuthorModel
 
 
 class AbstractDefaultFillableModel(models.Model):
@@ -290,7 +291,7 @@ class ContentHashMixin(models.Model):
         Generates a SHA-256 hash.
         """
 
-        excluded_fields = ["id", "created_at", "updated_at", "metadata"]
+        excluded_fields = ["id", "created_at", "updated_at", "metadata", "created_by"]
 
         data = {
             f.name: str(getattr(self, f.name))
@@ -331,6 +332,15 @@ class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
             from tables.models import Graph
 
             Graph.objects.filter(pk=graph_id).update(updated_at=timezone.now())
+
+
+class GraphAuthorModel(AuthorModel):
+    """Abstract author record for graph-owned rows; their organization is `graph.org`."""
+
+    author_org_lookup = "graph__org_id"
+
+    class Meta:
+        abstract = True
 
 
 class NextVal(Func):

@@ -1,8 +1,6 @@
 from agents.models.agent_models import AgentDefinition
-from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
+from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.realtime_models import (
     ConversationRecording,
@@ -30,9 +28,7 @@ from tables.services.secrets import secret_resolver
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     # Org isolation: only configs/agent definitions from the caller's active
     # org may be referenced.
-    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
-        queryset=AgentDefinition.objects.all()
-    )
+    agent_definition = OrgScopedPrimaryKeyRelatedField(queryset=AgentDefinition.objects.all())
     # ElevenLabs uses a free-form voice id the frontend clears to '' when the
     # user hasn't entered one yet -- must accept blank, same as
     # RealtimeAgentWriteSerializer's identical override below.
@@ -253,7 +249,7 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeChannelSerializer(serializers.ModelSerializer):
+class RealtimeChannelSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     twilio = _TwilioChannelReadSerializer(read_only=True)
     # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).
     # Kept read-only, never writable: the only supported destination going
@@ -264,7 +260,7 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
     realtime_agent = serializers.PrimaryKeyRelatedField(read_only=True)
     realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=RealtimeAgentDefinition.objects.all(),
-        org_lookup="agent_definition__organization_id",
+        org_lookup="agent_definition__org_id",
         required=False,
         allow_null=True,
     )

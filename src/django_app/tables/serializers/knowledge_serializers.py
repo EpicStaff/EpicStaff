@@ -260,7 +260,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "document_count",
             "rag_configurations",
@@ -321,7 +321,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "document_count",
             "rag_configurations",
@@ -374,13 +374,14 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "collection_id",
+            "created_by",
             "status",
             "created_at",
             "updated_at",
@@ -388,7 +389,6 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "collection_name": {"required": False, "allow_blank": True},
             "description": {"required": False, "allow_blank": True},
-            "user_id": {"required": False},
         }
         validators = []
 

@@ -1,5 +1,9 @@
 from collections import defaultdict
 from copy import deepcopy
+from datetime import datetime
+
+from rbac.authorship import resolve_author
+from rbac.models import AuthorModel, OrganizationUser
 
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
@@ -11,7 +15,10 @@ from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.graph import GraphStrategy
-from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
+from tables.import_export.strategies.nodes.node_maps import (
+    NODE_RELATIONS,
+    NODE_TYPE_TO_ENTITY_TYPE,
+)
 from tables.import_export.utils import ensure_unique_identifier
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
@@ -331,6 +338,87 @@ class GraphVersioningManager:
             graph=graph, telegram_bot_api_key_secret__isnull=False
         ).select_related("telegram_bot_api_key_secret")
         return {str(row.pk): row.telegram_bot_api_key_secret.name for row in rows}
+
+    def collect_node_authorship(self, *, graph: Graph) -> dict[str, dict]:
+        """Record each node's author id and ISO-8601 ``created_at``, keyed by node id."""
+        authorship: dict[str, dict] = {}
+        for node_model in self._author_tracked_node_models():
+            rows = node_model.objects.filter(graph=graph).values_list(
+                "id", "created_by_id", "created_at"
+            )
+            for node_id, author_id, created_at in rows:
+                authorship[str(node_id)] = {
+                    "created_by": author_id,
+                    "created_at": created_at.isoformat(),
+                }
+        return authorship
+
+    def restore_node_authorship(
+        self, *, graph: Graph, recorded_authorship: dict | None, node_mapper: IDMapper, user
+    ) -> None:
+        """Give each recreated node its recorded ``created_at`` and, if still possible, author.
+
+        A recorded author who is no longer a member of the graph's organization, or no
+        recorded author, is replaced by ``user``. Nodes that were not recreated are skipped.
+        """
+        if not recorded_authorship:
+            return
+
+        recorded_by_new_id: dict[int, dict] = {}
+        for old_node_id, entry in recorded_authorship.items():
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            if new_node_id is not None:
+                recorded_by_new_id[new_node_id] = entry
+        if not recorded_by_new_id:
+            return
+
+        member_ids = self._org_member_ids(
+            org_id=graph.org_id,
+            user_ids={entry["created_by"] for entry in recorded_by_new_id.values()},
+        )
+        restoring_author = resolve_author(user)
+        restoring_author_id = restoring_author.pk if restoring_author else None
+
+        for node_model in self._author_tracked_node_models():
+            # Through the model manager: the graph's related manager would load each
+            # row's deferred graph_id with its own query.
+            nodes = list(
+                node_model.objects.filter(graph=graph, id__in=list(recorded_by_new_id)).only(
+                    "id", "created_by", "created_at"
+                )
+            )
+            if not nodes:
+                continue
+            for node in nodes:
+                entry = recorded_by_new_id[node.id]
+                recorded_author_id = entry["created_by"]
+                node.created_by_id = (
+                    recorded_author_id if recorded_author_id in member_ids else restoring_author_id
+                )
+                node.created_at = datetime.fromisoformat(entry["created_at"])
+            # Restore replays recorded state, so bypassing AuthorModel.save()'s author-change
+            # guard and created_at's auto_now_add is intended. Must run after every step that
+            # saves recreated nodes: a later full save() of a stale instance would overwrite it.
+            node_model.objects.bulk_update(nodes, ["created_by", "created_at"])
+
+    @staticmethod
+    def _org_member_ids(*, org_id: int, user_ids: set[int | None]) -> set[int]:
+        user_ids = {user_id for user_id in user_ids if user_id is not None}
+        if not user_ids:
+            return set()
+        return set(
+            OrganizationUser.objects.filter(org_id=org_id, user_id__in=user_ids).values_list(
+                "user_id", flat=True
+            )
+        )
+
+    @staticmethod
+    def _author_tracked_node_models() -> list[type[AuthorModel]]:
+        node_models = (
+            Graph._meta.get_field(relation_name).related_model
+            for relation_name in NODE_RELATIONS.values()
+        )
+        return [node_model for node_model in node_models if issubclass(node_model, AuthorModel)]
 
     def collect_dependencies(self, graph: Graph) -> dict:
         """
@@ -778,6 +866,7 @@ class GraphVersioningManager:
         """
         Create a brand-new Graph from a filtered snapshot.
         The new graph is independent — no GraphVersion rows, own id/uuid.
+        `user` authors the new graph and every node recreated in it.
         """
         snapshot_copy = deepcopy(filtered_snapshot)
 
@@ -808,7 +897,7 @@ class GraphVersioningManager:
 
         serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
         serializer.is_valid(raise_exception=True)
-        graph = serializer.save(org_id=org_id)
+        graph = serializer.save(org_id=org_id, created_by=resolve_author(user))
 
         start_node = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(

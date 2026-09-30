@@ -60,7 +60,7 @@ def mcp_tool(default_org):
 @pytest.fixture
 def agent_definition(rich_seeded_db, default_org):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instructions="instructions",
@@ -135,7 +135,7 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service, default_org
     ):
         surface = Surface.objects.create(
-            organization=default_org, name="default_surface_x"
+            org=default_org, name="default_surface_x"
         )
         AgentDefaultSurface.objects.create(
             agent_definition=agent_definition,
@@ -167,7 +167,7 @@ class TestAgentDefinitionStrategy:
         assert strategy.find_existing(data, mapper, org_id=other_org.id) is None
         assert (
             strategy.find_existing(
-                data, mapper, org_id=agent_definition.organization_id
+                data, mapper, org_id=agent_definition.org_id
             )
             is not None
         )
@@ -181,7 +181,7 @@ class TestAgentDefinitionStrategy:
 @pytest.fixture
 def surface_with_tools(rich_seeded_db, default_org, mcp_tool):
     surface = Surface.objects.create(
-        organization=default_org, name="surface_1", instructions="do things"
+        org=default_org, name="surface_1", instructions="do things"
     )
     SurfacePythonTool.objects.create(
         surface=surface,
@@ -252,14 +252,14 @@ class TestSurfaceStrategy:
 @pytest.fixture
 def graph_with_agent_node(rich_seeded_db, default_org):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="flow_agent_def",
         description="description",
         instructions="instructions",
         llm_config=rich_seeded_db["llm_config"],
     )
     shared_surface = Surface.objects.create(
-        organization=default_org, name="flow_shared_surface"
+        org=default_org, name="flow_shared_surface"
     )
 
     graph = Graph.objects.create(

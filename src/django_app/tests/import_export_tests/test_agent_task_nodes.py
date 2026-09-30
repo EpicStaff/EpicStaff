@@ -62,7 +62,7 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
     first) and one TaskNode (with its own inline surface).
     """
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instructions="instructions",
@@ -70,7 +70,7 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     shared_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="shared_surface_1",
     )
 
@@ -398,8 +398,8 @@ class TestGraphImportSurvivesRenamedDefaultOrg:
 
         for agent_definition_id in new_agent_definition_ids:
             agent_definition = AgentDefinition.objects.get(id=agent_definition_id)
-            assert agent_definition.organization_id == active_org.id
+            assert agent_definition.org_id == active_org.id
 
         for surface_id in new_surface_ids:
             surface = Surface.objects.get(id=surface_id)
-            assert surface.organization_id == active_org.id
+            assert surface.org_id == active_org.id

@@ -4,6 +4,7 @@ from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
+from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
 from tables.models import PythonCode, PythonCodeResult
 from tables.services.redis_service import RedisService
@@ -73,7 +74,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         PythonCodeResult.objects.create(
             execution_id=execution_id,
             org_id=organization_id,
-            created_by=user,
+            created_by=resolve_author(user),
             python_code=python_code,
         )
         self._evict_oldest_results(organization_id)

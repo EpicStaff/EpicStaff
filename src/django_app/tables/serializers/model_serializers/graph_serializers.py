@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -39,7 +40,9 @@ from tables.serializers.model_serializers.node_serializers.trigger_serializers i
 from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
 
 
-class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):
+class GraphNoteSerializer(
+    AuthorStampingSerializerMixin, BaseGraphEntityMixin, serializers.ModelSerializer
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -157,7 +160,7 @@ class GraphLightSerializer(GraphLightBaseSerializer):
         return GraphLightBaseSerializer(graphs, many=True).data
 
 
-class GraphSerializer(serializers.ModelSerializer):
+class GraphSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     # Reverse relationships
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)

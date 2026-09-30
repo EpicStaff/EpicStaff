@@ -18,7 +18,7 @@ import threading
 import pytest
 from django.contrib.auth import get_user_model
 
-from tables.models.graph_models import Graph
+from tables.models.graph_models import Graph, GraphNote
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
@@ -626,3 +626,98 @@ def test_unknown_user_is_not_found_before_the_phrase_is_checked(actor):
         UserManagementService().delete_user(
             actor=actor, target_user_id=999_999, verification_phrase=None
         )
+
+
+# ---- superadmin revocation releases authorship ----
+
+
+@pytest.fixture
+def authorship_orgs(db):
+    return (
+        Organization.objects.create(name="Authorship-Org-A"),
+        Organization.objects.create(name="Authorship-Org-B"),
+    )
+
+
+@pytest.mark.django_db
+def test_revoke_after_promotion_releases_authorship_in_every_org(
+    service, active_superadmin, authorship_orgs, django_user_model
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    promoted = django_user_model.objects.create_user(
+        email="promoted-author@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=promoted, org=org_a, role=member_role)
+    OrganizationUser.objects.create(user=promoted, org=org_b, role=member_role)
+    flow_a = Graph.objects.create(name="promoted-flow-a", org=org_a, created_by=promoted)
+    flow_b = Graph.objects.create(name="promoted-flow-b", org=org_b, created_by=promoted)
+    note_b = GraphNote.objects.create(graph=flow_b, content="promoted", created_by=promoted)
+
+    service.grant_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+    flow_a.refresh_from_db()
+    note_b.refresh_from_db()
+    assert flow_a.created_by_id == promoted.pk
+    assert note_b.created_by_id == promoted.pk
+
+    service.revoke_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+
+    flow_a.refresh_from_db()
+    flow_b.refresh_from_db()
+    note_b.refresh_from_db()
+    assert flow_a.created_by_id is None
+    assert flow_b.created_by_id is None
+    assert note_b.created_by_id is None
+
+
+@pytest.mark.django_db
+def test_revoke_keeps_authorship_where_membership_remains(
+    service, active_superadmin, second_active_superadmin, authorship_orgs
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    # A superadmin created directly (first setup, create_superadmin) keeps the
+    # memberships it was created with; they were never purged by a promotion.
+    OrganizationUser.objects.create(user=second_active_superadmin, org=org_a, role=member_role)
+    flow_a = Graph.objects.create(
+        name="kept-flow-a", org=org_a, created_by=second_active_superadmin
+    )
+    flow_b = Graph.objects.create(
+        name="released-flow-b", org=org_b, created_by=second_active_superadmin
+    )
+
+    note_a = GraphNote.objects.create(
+        graph=flow_a, content="kept", created_by=second_active_superadmin
+    )
+    note_b = GraphNote.objects.create(
+        graph=flow_b, content="released", created_by=second_active_superadmin
+    )
+
+    service.revoke_superadmin(
+        actor=active_superadmin, target_user_id=second_active_superadmin.pk
+    )
+
+    flow_a.refresh_from_db()
+    flow_b.refresh_from_db()
+    note_a.refresh_from_db()
+    note_b.refresh_from_db()
+    assert flow_a.created_by_id == second_active_superadmin.pk
+    assert note_a.created_by_id == second_active_superadmin.pk
+    assert flow_b.created_by_id is None
+    assert note_b.created_by_id is None
+
+
+@pytest.mark.django_db
+def test_revoke_of_non_superadmin_keeps_authorship(
+    service, active_superadmin, authorship_orgs, django_user_model
+):
+    org_a, _ = authorship_orgs
+    regular = django_user_model.objects.create_user(
+        email="regular-author@example.com", password="StrongPass123!"
+    )
+    flow = Graph.objects.create(name="regular-flow", org=org_a, created_by=regular)
+
+    service.revoke_superadmin(actor=active_superadmin, target_user_id=regular.pk)
+
+    flow.refresh_from_db()
+    assert flow.created_by_id == regular.pk

@@ -1,0 +1,158 @@
+import pytest
+from django.urls import reverse
+from rest_framework import status
+
+from agents.models import AgentDefinition
+from agents.models.surface_models import Surface
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+
+AGENT_DEFINITION = "agentdefinition"
+SURFACE = "surface"
+MODEL_BY_BASENAME = {AGENT_DEFINITION: AgentDefinition, SURFACE: Surface}
+
+
+@pytest.fixture
+def acme_client(client_as, admin_acme, acme):
+    client = client_as(admin_acme)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client
+
+
+def _list_url(basename: str) -> str:
+    return reverse(f"{basename}-list")
+
+
+def _detail_url(basename: str, pk: int) -> str:
+    return reverse(f"{basename}-detail", args=[pk])
+
+
+def _author_id(basename: str, pk: int) -> int | None:
+    model = MODEL_BY_BASENAME[basename]
+    return model.objects.values_list("created_by_id", flat=True).get(pk=pk)
+
+
+def _create_row(basename: str, org, name: str, author=None):
+    return MODEL_BY_BASENAME[basename].objects.create(org=org, name=name, created_by=author)
+
+
+# ---- create ----
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+def test_create_stamps_active_org_and_acting_user(
+    basename, acme_client, admin_acme, member_only, acme, beta
+):
+    response = acme_client.post(
+        _list_url(basename),
+        {"name": f"authored-{basename}", "org": beta.id, "created_by": member_only.id},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    row = MODEL_BY_BASENAME[basename].objects.get(name=f"authored-{basename}")
+    assert row.org_id == acme.id
+    assert row.created_by_id == admin_acme.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+def test_read_response_exposes_org_and_author(basename, acme_client, member_only, acme):
+    row = _create_row(basename, acme, f"read-{basename}", author=member_only)
+
+    response = acme_client.get(_detail_url(basename, row.pk))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["org"] == acme.id
+    assert response.data["created_by"] == member_only.id
+    assert "organization" not in response.data
+
+
+# ---- update: claim and keep ----
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_update_of_unauthored_row_claims_it(basename, method, acme_client, admin_acme, acme):
+    row = _create_row(basename, acme, f"ownerless-{basename}")
+
+    response = getattr(acme_client, method)(
+        _detail_url(basename, row.pk),
+        {"name": f"claimed-{basename}", "instructions": "claimed"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert _author_id(basename, row.pk) == admin_acme.id
+    assert response.data["created_by"] == admin_acme.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_update_of_authored_row_keeps_author_even_when_body_names_one(
+    basename, method, acme_client, admin_acme, member_only, acme
+):
+    row = _create_row(basename, acme, f"authored-{basename}", author=member_only)
+
+    response = getattr(acme_client, method)(
+        _detail_url(basename, row.pk),
+        {"name": f"renamed-{basename}", "instructions": "edited", "created_by": admin_acme.id},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert _author_id(basename, row.pk) == member_only.id
+
+
+# ---- cross-org ----
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+def test_cross_org_get_returns_404(basename, acme_client, beta):
+    row = _create_row(basename, beta, f"beta-{basename}")
+
+    response = acme_client.get(_detail_url(basename, row.pk))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+def test_cross_org_patch_returns_404_and_leaves_row_unclaimed(basename, acme_client, beta):
+    row = _create_row(basename, beta, f"beta-{basename}")
+
+    response = acme_client.patch(
+        _detail_url(basename, row.pk), {"instructions": "hijacked"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    row.refresh_from_db()
+    assert row.instructions == ""
+    assert row.created_by_id is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+def test_cross_org_delete_returns_404_and_keeps_row(basename, acme_client, beta):
+    row = _create_row(basename, beta, f"beta-{basename}")
+
+    response = acme_client.delete(_detail_url(basename, row.pk))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert MODEL_BY_BASENAME[basename].objects.filter(pk=row.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
+def test_list_shows_only_active_org_rows(basename, acme_client, acme, beta):
+    _create_row(basename, acme, f"acme-{basename}")
+    _create_row(basename, beta, f"beta-{basename}")
+
+    response = acme_client.get(_list_url(basename))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    rows = response.data["results"] if isinstance(response.data, dict) else response.data
+    assert {row["name"] for row in rows} == {f"acme-{basename}"}

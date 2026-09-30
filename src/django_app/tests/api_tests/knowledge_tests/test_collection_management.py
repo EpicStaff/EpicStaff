@@ -3,6 +3,7 @@ Tests for SourceCollection CRUD operations
 """
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -114,10 +115,10 @@ class TestCollectionCreate:
 
         test_collection_name = source_collection.collection_name
         collection_1 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name, user_id="test_user"
+            collection_name=test_collection_name
         )
         collection_2 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name, user_id="test_user"
+            collection_name=test_collection_name
         )
 
         # All should be created successfully with different names
@@ -537,3 +538,103 @@ class TestCollectionBulkDeleteSoftDelete:
         assert DocumentMetadata.objects.filter(
             document_id=document.document_id
         ).exists()
+
+
+@pytest.mark.django_db
+class TestCollectionAuthorship:
+    """SourceCollection records the acting user in created_by."""
+
+    def test_create_authors_collection_with_request_user(self, auth_client, regular_user):
+        response = auth_client.post(
+            reverse("sourcecollection-list"),
+            {"collection_name": "Authored"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        collection = SourceCollection.objects.get(pk=response.json()["collection_id"])
+        assert collection.created_by == regular_user
+
+    def test_user_id_absent_from_responses_and_ignored_on_create(
+        self, auth_client, regular_user
+    ):
+        response = auth_client.post(
+            reverse("sourcecollection-list"),
+            {"collection_name": "Ignored", "user_id": "spoofed"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert "user_id" not in response.json()
+        collection = SourceCollection.objects.get(pk=response.json()["collection_id"])
+        assert not hasattr(collection, "user_id")
+        assert collection.created_by == regular_user
+
+        detail = auth_client.get(
+            reverse("sourcecollection-detail", args=[collection.pk])
+        ).json()
+        listing = auth_client.get(reverse("sourcecollection-list")).json()
+        assert "user_id" not in detail
+        assert all("user_id" not in item for item in listing)
+
+    def test_created_by_is_read_only_and_exposed(self, auth_client, regular_user):
+        other = get_user_model().objects.create_user(
+            email="other@example.com", password="OtherStrongPass123!"
+        )
+        response = auth_client.post(
+            reverse("sourcecollection-list"),
+            {"collection_name": "Spoof", "created_by": other.pk},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["created_by"] == regular_user.pk
+
+    def test_patch_claims_null_author(self, auth_client, source_collection, regular_user):
+        assert source_collection.created_by is None
+
+        response = auth_client.patch(
+            reverse("sourcecollection-detail", args=[source_collection.pk]),
+            {"description": "claimed"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        source_collection.refresh_from_db()
+        assert source_collection.created_by == regular_user
+
+    def test_patch_keeps_existing_author(self, auth_client, source_collection):
+        original_author = get_user_model().objects.create_user(
+            email="author@example.com", password="AuthorStrongPass123!"
+        )
+        source_collection.created_by = original_author
+        source_collection.save()
+
+        response = auth_client.patch(
+            reverse("sourcecollection-detail", args=[source_collection.pk]),
+            {"description": "edited"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        source_collection.refresh_from_db()
+        assert source_collection.created_by == original_author
+
+    def test_copy_is_authored_by_actor(self, auth_client, source_collection, regular_user):
+        original_author = get_user_model().objects.create_user(
+            email="author2@example.com", password="AuthorStrongPass123!"
+        )
+        source_collection.created_by = original_author
+        source_collection.save()
+
+        response = auth_client.post(
+            reverse("sourcecollection-copy", args=[source_collection.pk]),
+            {"new_collection_name": "Copy"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        copied = SourceCollection.objects.get(
+            pk=response.json()["collection"]["collection_id"]
+        )
+        assert copied.created_by == regular_user

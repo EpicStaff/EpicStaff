@@ -142,7 +142,7 @@ def test_quickstart_apply_denied_without_both_create_and_update(
 ):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id, user=None)
     role = Role.objects.create(name="LLM half-writer", org=org, is_built_in=False)
     RolePermission.objects.create(
         role=role,
@@ -164,7 +164,7 @@ def test_quickstart_apply_denied_without_both_create_and_update(
 def test_quickstart_apply_allowed_for_org_admin(db, django_user_model):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id, user=None)
     admin = _org_admin(django_user_model, org, "qadmin@example.com")
 
     resp = _client(admin, org).post("/api/quickstart/apply/", {}, format="json")
@@ -179,8 +179,8 @@ def test_quickstart_apply_writes_only_the_active_orgs_default_models(db, django_
     org_a = Organization.objects.create(name="Org A")
     org_b = Organization.objects.create(name="Org B")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart(provider="openai", api_key="sk-a", org_id=org_a.id)
-    QuickstartService().quickstart(provider="openai", api_key="sk-b", org_id=org_b.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-a", org_id=org_a.id, user=None)
+    QuickstartService().quickstart(provider="openai", api_key="sk-b", org_id=org_b.id, user=None)
     admin_b = _org_admin(django_user_model, org_b, "qadmin-b@example.com")
 
     resp = _client(admin_b, org_b).post("/api/quickstart/apply/", {}, format="json")
@@ -213,7 +213,7 @@ def test_quickstart_apply_allowed_for_superadmin(db, django_user_model):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
     QuickstartService().quickstart(
-        provider="openai", api_key="sk-test", org_id=org.id
+        provider="openai", api_key="sk-test", org_id=org.id, user=None
     )  # seed a config
     root = django_user_model.objects.create_user(
         email="root@example.com", password="StrongPass123!", is_superadmin=True

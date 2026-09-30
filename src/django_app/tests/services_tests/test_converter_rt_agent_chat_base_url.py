@@ -42,7 +42,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_rt_base_url(
     converter, default_org, llm_config
 ):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
         instructions="Be concise and helpful",
@@ -74,7 +74,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_defaults_rt_base_url_to_no
     converter, default_org, llm_config
 ):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent-no-override",
         description="Helps with voice tasks",
         instructions="Be concise and helpful",

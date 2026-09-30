@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
@@ -47,7 +48,9 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
     )
 
 
-class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class WebhookTriggerNestedSerializer(
+    AuthorStampingSerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("auth_secret_id",)
 
     provider_type = serializers.ChoiceField(
@@ -92,7 +95,7 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             path=validated_data.get("path"),
             provider_type=provider_type,
             org_id=org_id,
-            created_by=getattr(request, "user", None),
+            created_by=validated_data.get("created_by"),
         )
 
         if provider_type == ProviderType.NGROK:
@@ -178,6 +181,8 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
         new_provider = validated_data.get("provider_type", instance.provider_type)
         instance.path = validated_data.get("path", instance.path)
         instance.provider_type = new_provider
+        if "created_by" in validated_data:
+            instance.created_by = validated_data["created_by"]
         instance.save()
 
         ngrok_data = validated_data.get("ngrok_config")

@@ -50,11 +50,29 @@ class TestDelegation:
         mock_backend.upload.return_value = UploadResult(
             path="org_{}/docs/f.txt".format(org.id), size=10
         )
-        result = storage_manager.upload(org.id, "docs/f.txt", BytesIO(b"data"))
+        result = storage_manager.upload(
+            org.id, "docs/f.txt", BytesIO(b"data"), user=org_user.user
+        )
         args = mock_backend.upload.call_args[0]
         assert args[0] == f"org_{org.id}/docs/f.txt"
         assert result.path == "docs/f.txt"
-        patch_sync.on_upload.assert_called_once_with(org.id, "docs/f.txt", size=10)
+        patch_sync.on_upload.assert_called_once_with(
+            org.id, "docs/f.txt", size=10, user=org_user.user
+        )
+
+    def test_upload_without_user_syncs_as_system_write(
+        self, storage_manager, mock_backend, org, patch_sync
+    ):
+        mock_backend.upload.return_value = UploadResult(path=f"org_{org.id}/f.txt", size=1)
+        storage_manager.upload(org.id, "f.txt", BytesIO(b"d"))
+        patch_sync.on_upload.assert_called_once_with(org.id, "f.txt", size=1, user=None)
+
+    def test_mkdir_delegates_to_backend_and_syncs_with_user(
+        self, storage_manager, mock_backend, org, org_user, patch_sync
+    ):
+        storage_manager.mkdir(org.id, "docs", user=org_user.user)
+        mock_backend.mkdir.assert_called_once_with(f"org_{org.id}/docs")
+        patch_sync.on_mkdir.assert_called_once_with(org.id, "docs", user=org_user.user)
 
     def test_delete_delegates_to_backend_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
@@ -67,20 +85,24 @@ class TestDelegation:
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
         mock_backend.move.return_value = f"org_{org.id}/dest/a.txt"
-        storage_manager.move(org.id, "a.txt", "dest")
+        storage_manager.move(org.id, "a.txt", "dest", user=org_user.user)
         mock_backend.move.assert_called_once_with(
             f"org_{org.id}/a.txt", f"org_{org.id}/dest"
         )
-        patch_sync.on_move.assert_called_once_with(org.id, "a.txt", "dest/a.txt")
+        patch_sync.on_move.assert_called_once_with(
+            org.id, "a.txt", "dest/a.txt", user=org_user.user
+        )
 
     def test_rename_delegates_and_syncs_via_on_move(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
-        storage_manager.rename(org.id, "old.txt", "new.txt")
+        storage_manager.rename(org.id, "old.txt", "new.txt", user=org_user.user)
         mock_backend.rename.assert_called_once_with(
             f"org_{org.id}/old.txt", f"org_{org.id}/new.txt"
         )
-        patch_sync.on_move.assert_called_once_with(org.id, "old.txt", "new.txt")
+        patch_sync.on_move.assert_called_once_with(
+            org.id, "old.txt", "new.txt", user=org_user.user
+        )
 
     def test_rename_raises_file_exists_when_destination_row_exists(
         self, storage_manager, mock_backend, org, org_user, patch_sync
@@ -97,8 +119,10 @@ class TestDelegation:
             f"org_{org.id}/dest/a.txt",
             f"org_{org.id}/dest/b.txt",
         ]
-        storage_manager.copy(org.id, "src", "dest")
-        patch_sync.on_copy.assert_called_once_with(org.id, ["dest/a.txt", "dest/b.txt"])
+        storage_manager.copy(org.id, "src", "dest", user=org_user.user)
+        patch_sync.on_copy.assert_called_once_with(
+            org.id, ["dest/a.txt", "dest/b.txt"], user=org_user.user
+        )
 
     def test_info_strips_org_prefix_from_result_path(
         self, storage_manager, org, org_user
@@ -171,9 +195,10 @@ class TestUploadFile:
         buf.name = "bundle.zip"
 
         mock_backend.upload_archive.return_value = [f"org_{org.id}/inner.txt"]
-        result = storage_manager.upload_file(org.id, "", buf)
+        result = storage_manager.upload_file(org.id, "", buf, user=org_user.user)
         assert isinstance(result, ArchiveUploadResult)
         mock_backend.upload_archive.assert_called_once()
+        patch_sync.on_upload.assert_called_once_with(org.id, "inner.txt", user=org_user.user)
 
     def test_upload_file_stores_regular_file_when_not_archive(
         self, storage_manager, mock_backend, org, org_user, patch_sync
@@ -183,9 +208,12 @@ class TestUploadFile:
         mock_backend.upload.return_value = UploadResult(
             path=f"org_{org.id}/notes.txt", size=13
         )
-        result = storage_manager.upload_file(org.id, "", buf)
+        result = storage_manager.upload_file(org.id, "", buf, user=org_user.user)
         assert isinstance(result, FileUploadResult)
         assert result.path == "notes.txt"
+        patch_sync.on_upload.assert_called_once_with(
+            org.id, "notes.txt", size=13, user=org_user.user
+        )
 
 
 # --- Cross-org ---
@@ -204,9 +232,13 @@ class TestCrossOrg:
         patch_sync,
     ):
         mock_backend.copy.return_value = [f"org_{second_org.id}/dest.txt"]
-        storage_manager.copy_cross_org(org.id, "src.txt", second_org.id, "dest.txt")
+        storage_manager.copy_cross_org(
+            org.id, "src.txt", second_org.id, "dest.txt", user=org_user.user
+        )
         mock_backend.copy.assert_called_once()
-        patch_sync.on_copy.assert_called_once_with(second_org.id, ["dest.txt"])
+        patch_sync.on_copy.assert_called_once_with(
+            second_org.id, ["dest.txt"], user=org_user.user
+        )
 
     def test_move_cross_org_delegates_to_backend_and_syncs(
         self,
@@ -218,11 +250,16 @@ class TestCrossOrg:
         second_org_user,
         patch_sync,
     ):
-        storage_manager.move_cross_org(org.id, "src.txt", second_org.id, "dest.txt")
+        mock_backend.move.return_value = f"org_{second_org.id}/dest.txt"
+        storage_manager.move_cross_org(
+            org.id, "src.txt", second_org.id, "dest.txt", user=org_user.user
+        )
         mock_backend.move.assert_called_once_with(
             f"org_{org.id}/src.txt", f"org_{second_org.id}/dest.txt"
         )
-        patch_sync.on_move_cross_org.assert_called_once()
+        patch_sync.on_move_cross_org.assert_called_once_with(
+            org.id, "src.txt", second_org.id, "dest.txt", user=org_user.user
+        )
 
 
 @pytest.mark.django_db

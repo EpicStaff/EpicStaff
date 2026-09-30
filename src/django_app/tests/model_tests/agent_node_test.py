@@ -80,7 +80,7 @@ def graph(db, org):
 @pytest.fixture
 def agent(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="agent-node-agent",
         instructions="do things",
     )
@@ -115,7 +115,7 @@ def mcp_tool(db, org):
 @pytest.fixture
 def surface_a(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="agent-node-surface-a",
         instructions="be concise",
     )

@@ -30,7 +30,7 @@ from tests.fixtures import *  # noqa: F401,F403
 @pytest.fixture
 def agent_definition(default_org, llm_config):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
         instructions="Be concise and helpful",
@@ -41,7 +41,7 @@ def agent_definition(default_org, llm_config):
 @pytest.fixture
 def other_agent_definition(default_org, llm_config):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="other-voice-agent",
         llm_config=llm_config,
     )

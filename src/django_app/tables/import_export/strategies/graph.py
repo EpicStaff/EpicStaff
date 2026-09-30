@@ -333,9 +333,9 @@ class GraphStrategy(EntityImportExportStrategy):
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
-        `user` is the acting user, handed to every node strategy so references that
-        need a permission check (e.g. a key-value table) can gate on it. `None` means
-        there is no acting user.
+        `user` is the acting user, handed to every node strategy: it authors each new
+        node, and references that need a permission check (e.g. a key-value table)
+        gate on it. `None` means there is no acting user, so nodes get no author.
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])

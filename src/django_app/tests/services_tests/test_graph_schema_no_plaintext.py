@@ -36,7 +36,7 @@ def graph_with_secret_backed_llm(org):
     )
 
     agent_definition = AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="leak-tester",
         instructions="expose nothing",
         llm_config=llm_config,

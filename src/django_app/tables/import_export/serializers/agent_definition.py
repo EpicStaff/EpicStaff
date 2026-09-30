@@ -5,7 +5,7 @@ from rest_framework import serializers
 class AgentDefinitionImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentDefinition
-        exclude = ["organization", "default_surface_list"]
+        exclude = ["org", "created_by", "default_surface_list"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

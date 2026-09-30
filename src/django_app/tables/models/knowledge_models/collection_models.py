@@ -69,8 +69,6 @@ class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
         default=SourceCollectionOrigin.USER,
     )
 
-    # TODO: change to OneToMany relation with User model after implementation auth
-    user_id = models.CharField(max_length=120, default="dummy_user", blank=True)
     status = models.CharField(
         max_length=20,
         choices=SourceCollectionStatus.choices,

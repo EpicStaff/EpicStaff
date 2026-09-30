@@ -52,6 +52,20 @@ def test_preview_returns_the_snapshot_and_secret_declaration(
 
 
 @pytest.mark.django_db
+def test_preview_omits_the_recorded_node_authorship(client, graph_with_declared_secret):
+    graph, _ = graph_with_declared_secret
+    version_id = save_version(client=client, graph=graph)
+    node_id = str(graph.python_node_list.get().id)
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert "node_authorship" not in response.data["snapshot"]
+    stored_snapshot = GraphVersion.objects.get(pk=version_id).snapshot
+    assert set(stored_snapshot["node_authorship"]) == {node_id}
+
+
+@pytest.mark.django_db
 def test_preview_never_persists_a_graph_or_python_node(
     client, graph_with_declared_secret
 ):

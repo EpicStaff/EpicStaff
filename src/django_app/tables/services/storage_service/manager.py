@@ -67,6 +67,9 @@ class StorageManager:
     IsAuthenticated + HasOrgPermission(FILES) + active-org membership, and
     superadmin-only for cross-org transfers). This manager only composes
     org-scoped keys and delegates to the backend.
+
+    Mutating methods take the acting `user`, which authors the rows they create
+    (see StorageFileSync); system callers omit it.
     """
 
     def __init__(self, backend: AbstractStorageBackend):
@@ -143,10 +146,12 @@ class StorageManager:
 
         return items
 
-    def upload(self, org_id: int, path: str, file_object) -> UploadResult:
+    def upload(
+        self, org_id: int, path: str, file_object, *, user: object | None = None
+    ) -> UploadResult:
         result = self._backend.upload(self._build_storage_key(org_id, path), file_object)
         relative_path = self._strip_org_prefix(org_id, result.path)
-        StorageFileSync.on_upload(org_id, relative_path, size=result.size)
+        StorageFileSync.on_upload(org_id, relative_path, size=result.size, user=user)
         return UploadResult(path=relative_path, size=result.size)
 
     def download(self, org_id: int, path: str) -> bytes:
@@ -162,19 +167,33 @@ class StorageManager:
         self._backend.delete(self._build_storage_key(org_id, path))
         StorageFileSync.on_delete(org_id, path)
 
-    def mkdir(self, org_id: int, path: str) -> None:
+    def mkdir(self, org_id: int, path: str, *, user: object | None = None) -> None:
         self._backend.mkdir(self._build_storage_key(org_id, path))
-        StorageFileSync.on_mkdir(org_id, path)
+        StorageFileSync.on_mkdir(org_id, path, user=user)
 
-    def move(self, org_id: int, source_path: str, destination_path: str) -> None:
+    def move(
+        self,
+        org_id: int,
+        source_path: str,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
         actual_key = self._backend.move(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
         actual_path = self._strip_org_prefix(org_id, actual_key)
-        StorageFileSync.on_move(org_id, source_path, actual_path)
+        StorageFileSync.on_move(org_id, source_path, actual_path, user=user)
 
-    def rename(self, org_id: int, source_path: str, destination_path: str) -> None:
+    def rename(
+        self,
+        org_id: int,
+        source_path: str,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
         destination_clean = destination_path.rstrip("/")
         destination_exists = StorageFile.objects.filter(
             org_id=org_id, path__in=[destination_clean, destination_clean + "/"]
@@ -188,15 +207,22 @@ class StorageManager:
         )
         # rename never dedupes — the guard above confirmed this exact path was
         # free, so destination_path IS the actual path (unlike move).
-        StorageFileSync.on_move(org_id, source_path, destination_path)
+        StorageFileSync.on_move(org_id, source_path, destination_path, user=user)
 
-    def copy(self, org_id: int, source_path: str, destination_path: str) -> None:
+    def copy(
+        self,
+        org_id: int,
+        source_path: str,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
         actual_keys = self._backend.copy(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
         actual_paths = [self._strip_org_prefix(org_id, k) for k in actual_keys]
-        StorageFileSync.on_copy(org_id, actual_paths)
+        StorageFileSync.on_copy(org_id, actual_paths, user=user)
 
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
@@ -309,7 +335,9 @@ class StorageManager:
         file_object.seek(pos)
         return result
 
-    def upload_file(self, org_id: int, path: str, file_object) -> UploadFileResult:
+    def upload_file(
+        self, org_id: int, path: str, file_object, *, user: object | None = None
+    ) -> UploadFileResult:
         """
         Upload a file, auto-extracting archives (ZIP/TAR).
         Returns FileUploadResult or ArchiveUploadResult.
@@ -320,14 +348,14 @@ class StorageManager:
             extracted = self._upload_archive(org_id, path, file_object)
 
             for p in extracted:
-                StorageFileSync.on_upload(org_id, p)
+                StorageFileSync.on_upload(org_id, p, user=user)
 
             return ArchiveUploadResult(type="archive", extracted=extracted)
 
         destination = f"{path.rstrip('/')}/{file_object.name}" if path else file_object.name
         result = self._backend.upload(self._build_storage_key(org_id, destination), file_object)
         relative_path = self._strip_org_prefix(org_id, result.path)
-        StorageFileSync.on_upload(org_id, relative_path, size=result.size)
+        StorageFileSync.on_upload(org_id, relative_path, size=result.size, user=user)
         return FileUploadResult(type="file", path=relative_path, size=result.size)
 
     def list_tree(
@@ -482,6 +510,8 @@ class StorageManager:
         src_path: str,
         dst_org_id: int,
         dst_path: str,
+        *,
+        user: object | None = None,
     ) -> None:
         """
         Copy a file from one org to another. Caller authorization (superadmin)
@@ -493,7 +523,7 @@ class StorageManager:
             self._build_storage_key(dst_org_id, dst_path),
         )
         actual_dst_paths = [self._strip_org_prefix(dst_org_id, k) for k in actual_keys]
-        StorageFileSync.on_copy(dst_org_id, actual_dst_paths)
+        StorageFileSync.on_copy(dst_org_id, actual_dst_paths, user=user)
 
     def move_cross_org(
         self,
@@ -501,6 +531,8 @@ class StorageManager:
         src_path: str,
         dst_org_id: int,
         dst_path: str,
+        *,
+        user: object | None = None,
     ) -> None:
         """
         Move a file from one org to another. Caller authorization (superadmin)
@@ -512,4 +544,6 @@ class StorageManager:
             self._build_storage_key(dst_org_id, dst_path),
         )
         actual_dst_path = self._strip_org_prefix(dst_org_id, actual_key)
-        StorageFileSync.on_move_cross_org(src_org_id, src_path, dst_org_id, actual_dst_path)
+        StorageFileSync.on_move_cross_org(
+            src_org_id, src_path, dst_org_id, actual_dst_path, user=user
+        )

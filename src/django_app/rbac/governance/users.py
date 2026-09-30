@@ -14,6 +14,7 @@ from rbac.exceptions import (
     SelfAccountDeletionError,
     UserNotFoundError,
 )
+from rbac.governance.authorship import AuthorshipReleaseService
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.delete_collector import (
     build_affected_resources,
@@ -191,8 +192,9 @@ class UserManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def revoke_superadmin(self, actor, target_user_id):
-        """Sets is_superadmin=False on target_user_id. Last-active-superadmin
-        guard. Idempotent if already False."""
+        """Sets is_superadmin=False on target_user_id and clears their authorship in
+        every org they are not a member of. Last-active-superadmin guard.
+        Idempotent if already False."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
             UserModel.objects
@@ -211,15 +213,18 @@ class UserManagementService(CrossOrgResourceService):
             if target is None:
                 raise UserNotFoundError()
 
+        released = 0
         if target.is_superadmin:
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
             target.refresh_from_db()
+            released = AuthorshipReleaseService().release_outside_memberships(user_id=target.pk)
 
         logger.info(
-            "UserManagementService.revoke_superadmin actor={a} target={t}",
+            "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r}",
             a=getattr(actor, "email", "system"),
             t=target.email,
+            r=released,
         )
 
         return target

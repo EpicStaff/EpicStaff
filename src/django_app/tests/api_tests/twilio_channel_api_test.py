@@ -103,7 +103,7 @@ def _make_realtime_agent_definition(org):
     """Create a RealtimeAgentDefinition — the only supported destination
     going forward for `RealtimeChannel.realtime_agent_definition`."""
     agent_definition = AgentDefinition.objects.create(
-        organization=org, name="voice-agent-definition"
+        org=org, name="voice-agent-definition"
     )
     return RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
 

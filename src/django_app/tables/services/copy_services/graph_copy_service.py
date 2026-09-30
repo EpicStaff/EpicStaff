@@ -1,3 +1,4 @@
+from rbac.authorship import resolve_author
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
@@ -37,6 +38,7 @@ class GraphCopyService(BaseCopyService):
             time_to_live=graph.time_to_live,
             enable_persistent_variables=graph.enable_persistent_variables,
             org_id=target_org_id,
+            created_by=resolve_author(user),
         )
         new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()

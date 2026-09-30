@@ -114,7 +114,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
             collection = CollectionManagementService.create_collection(
                 collection_name=serializer.validated_data.get("collection_name"),
                 description=serializer.validated_data.get("description", ""),
-                user_id=serializer.validated_data.get("user_id"),
+                created_by=request.user,
                 collection_origin=serializer.validated_data.get("collection_origin"),
                 org_id=self.get_active_org_id(),
             )
@@ -143,6 +143,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 collection_id=instance.collection_id,
                 collection_name=serializer.validated_data.get("collection_name"),
                 description=serializer.validated_data.get("description"),
+                user=request.user,
             )
 
             output_serializer = SourceCollectionDetailSerializer(updated_collection)
@@ -233,6 +234,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 source_collection_id=collection.collection_id,
                 new_collection_name=serializer.validated_data.get("new_collection_name"),
                 org_id=self.get_active_org_id(),
+                user=request.user,
             )
 
             output_serializer = SourceCollectionDetailSerializer(new_collection)

@@ -80,7 +80,7 @@ def graph(db, org):
 @pytest.fixture
 def agent(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="task-node-payload-agent",
         instructions="do things",
     )
@@ -89,7 +89,7 @@ def agent(db, org):
 @pytest.fixture
 def surface_a(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-payload-surface-a",
         instructions="be concise",
     )
@@ -98,7 +98,7 @@ def surface_a(db, org):
 @pytest.fixture
 def surface_b(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-payload-surface-b",
         instructions="use bullet points",
     )
