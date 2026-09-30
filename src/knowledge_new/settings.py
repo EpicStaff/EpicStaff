@@ -31,3 +31,8 @@ MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
 MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
 
 GRAPHRAG_ENCODING = "utf-8"
+
+# Deployment-wide overrides for the embedding endpoint. Unset in every standard
+# install; set only where embeddings are routed through an API gateway.
+CUSTOM_EMBED_BASE_URL = env.str("KNOWLEDGE_CUSTOM_EMBED_BASE_URL", None)
+EMBEDDING_HEADERS = env.dict("KNOWLEDGE_EMBEDDING_HEADERS", None)
