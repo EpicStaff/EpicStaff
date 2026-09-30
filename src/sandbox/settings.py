@@ -20,12 +20,15 @@ CODE_EXEC_CHANNEL = env.str("CODE_EXEC_CHANNEL")
 OUTPUT_PATH = env.path("SANDBOX_OUTPUT_PATH")
 BASE_VENV_PATH = env.path("SANDBOX_BASE_VENV_PATH")
 
+# Non-secret object storage connection details only. Deliberately no
+# STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here: sandbox never holds the admin
+# storage credential (finding #38). Temporary, per-execution credentials are
+# requested from the issuer running in django_app -- see
+# services/storage_credential_client.py and dynamic_venv_executor_chain.py.
 STORAGE_HOST = env.str("STORAGE_HOST")
 STORAGE_PORT = env.str("STORAGE_PORT")
 http = "https" if env.bool("STORAGE_SSL") else "http"
 STORAGE_ENDPOINT = f"{http}://{STORAGE_HOST}:{STORAGE_PORT}"
-STORAGE_ACCESS_KEY = env.str("STORAGE_USER")
-STORAGE_SECRET_KEY = env.str("STORAGE_PASSWORD")
 STORAGE_BUCKET_NAME = env.str("STORAGE_BUCKET")
 
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET")

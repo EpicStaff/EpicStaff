@@ -193,9 +193,7 @@ class S3StorageBackend(AbstractStorageBackend):
                     Bucket=self.bucket_name,
                     Delete={"Objects": objects},
                 )
-                logger.info(
-                    "Deleted {} S3 objects under prefix {}", len(objects), full_prefix
-                )
+                logger.info("Deleted {} S3 objects under prefix {}", len(objects), full_prefix)
 
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)
@@ -206,7 +204,7 @@ class S3StorageBackend(AbstractStorageBackend):
             logger.info("Created S3 folder {}", full_path)
         except ClientError as error:
             code = error.response["Error"]["Code"]
-            if code in ("400", "XMinioInvalidObjectName"):
+            if code in ("400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"):
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             raise
 
@@ -366,7 +364,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 pass
-            elif code in ("400", "XMinioInvalidObjectName"):
+            elif code in ("400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"):
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise
@@ -384,7 +382,7 @@ class S3StorageBackend(AbstractStorageBackend):
             code = error.response["Error"]["Code"]
             if code == "404":
                 pass
-            elif code in ("400", "XMinioInvalidObjectName"):
+            elif code in ("400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"):
                 raise ValueError(f"Invalid storage path: {path!r}") from error
             else:
                 raise

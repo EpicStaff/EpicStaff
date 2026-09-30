@@ -7,7 +7,23 @@ pytest.importorskip(
 
 import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain, AbstractHandler
+from services.storage_credential_client import StorageCredentialRequestError
 from src.shared.models import CodeResultData
+from utils.logger import logger
+
+CREDENTIAL_FAILURE_STDERR = "Failed to obtain scoped storage credentials."
+
+
+@pytest.fixture
+def error_log_messages():
+    """`DynamicVenvExecutorChain` logs through loguru, which never reaches
+    pytest's `caplog` (that only sees stdlib `logging`). Attach a sink instead."""
+    messages: list[str] = []
+    sink_id = logger.add(lambda message: messages.append(str(message)), level="ERROR")
+    try:
+        yield messages
+    finally:
+        logger.remove(sink_id)
 
 
 class FakeChain(AbstractHandler):
@@ -22,33 +38,31 @@ class FakeChain(AbstractHandler):
         return CodeResultData(execution_id=context["execution_id"], returncode=0)
 
 
-class FakeManager:
-    def __init__(self, create_result=("scoped-ak", "scoped-sk"), create_exc=None):
-        self.create_result = create_result
-        self.create_exc = create_exc
-        self.build_policy_calls = []
-        self.created = 0
-        self.revoked = []
+class FakeStorageCredentialClient:
+    """sandbox no longer mints/revokes anything itself; it only asks the
+    issuer (django_app) for credentials by execution_id and never sees --
+    let alone chooses -- org_id/storage_org_prefix/storage_allowed_paths."""
 
-    def build_policy(self, allowed_bucket, org_prefix, allowed_paths):
-        self.build_policy_calls.append((allowed_bucket, org_prefix, allowed_paths))
-        return {"Version": "2012-10-17", "Statement": []}
+    def __init__(self, response=None, error=None):
+        self.response = response or {
+            "access_key": "scoped-ak",
+            "secret_key": "scoped-sk",
+        }
+        self.error = error
+        self.requested_execution_ids: list[str] = []
 
-    async def create(self, policy):
-        self.created += 1
-        if self.create_exc:
-            raise self.create_exc
-        return self.create_result
-
-    async def revoke(self, access_key):
-        self.revoked.append(access_key)
+    async def request(self, execution_id: str) -> dict:
+        self.requested_execution_ids.append(execution_id)
+        if self.error:
+            raise self.error
+        return self.response
 
 
-def make_chain(tmp_path, manager):
+def make_chain(tmp_path, client):
     chain = DynamicVenvExecutorChain(
         output_path=tmp_path / "out",
         base_venv_path=tmp_path / "venvs",
-        storage_credential_manager=manager,
+        storage_credential_client=client,
     )
     fake = FakeChain()
     chain.chain = fake
@@ -66,10 +80,9 @@ COMMON_RUN_KWARGS = dict(
 
 
 @pytest.mark.asyncio
-async def test_use_storage_true_happy_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
-    manager = FakeManager()
-    chain, fake = make_chain(tmp_path, manager)
+async def test_use_storage_true_happy_path(tmp_path):
+    client = FakeStorageCredentialClient()
+    chain, fake = make_chain(tmp_path, client)
 
     result = await chain.run(
         **COMMON_RUN_KWARGS,
@@ -78,33 +91,27 @@ async def test_use_storage_true_happy_path(tmp_path, monkeypatch):
         storage_allowed_paths=["flowA"],
     )
 
-    assert manager.created == 1
+    assert client.requested_execution_ids == ["exec1"]
     assert fake.seen_context["temp_storage_access_key"] == "scoped-ak"
     assert fake.seen_context["temp_storage_secret_key"] == "scoped-sk"
     assert result.returncode == 0
-    assert manager.revoked == ["scoped-ak"]
-
-    assert len(manager.build_policy_calls) == 1
-    assert manager.build_policy_calls[0] == ("epicstaff", "org_1", ["flowA"])
 
 
 @pytest.mark.asyncio
 async def test_use_storage_false_skips_credentials(tmp_path):
-    manager = FakeManager()
-    chain, fake = make_chain(tmp_path, manager)
+    client = FakeStorageCredentialClient()
+    chain, fake = make_chain(tmp_path, client)
 
     await chain.run(**COMMON_RUN_KWARGS, use_storage=False)
 
-    assert manager.created == 0
-    assert manager.revoked == []
+    assert client.requested_execution_ids == []
     assert "temp_storage_access_key" not in (fake.seen_context or {})
 
 
 @pytest.mark.asyncio
-async def test_create_failure_returns_error_result(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
-    manager = FakeManager(create_exc=RuntimeError("boom"))
-    chain, fake = make_chain(tmp_path, manager)
+async def test_issue_failure_returns_error_result_fail_closed(tmp_path, error_log_messages):
+    client = FakeStorageCredentialClient(error=StorageCredentialRequestError("boom"))
+    chain, fake = make_chain(tmp_path, client)
 
     result = await chain.run(
         **COMMON_RUN_KWARGS,
@@ -113,40 +120,107 @@ async def test_create_failure_returns_error_result(tmp_path, monkeypatch):
     )
 
     assert result.returncode == 1
-    assert "boom" in result.stderr
+    assert result.stderr == CREDENTIAL_FAILURE_STDERR
+    assert "boom" not in result.stderr
+    assert any("boom" in message for message in error_log_messages)
     assert fake.seen_context is None
-    assert manager.revoked == []
 
 
 @pytest.mark.asyncio
-async def test_revoke_runs_on_chain_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
-    manager = FakeManager()
-    chain, fake = make_chain(tmp_path, manager)
-    fake.raise_exc = RuntimeError("chain-fail")
-
-    with pytest.raises(RuntimeError, match="chain-fail"):
-        await chain.run(
-            **COMMON_RUN_KWARGS,
-            use_storage=True,
-            storage_org_prefix="org_1",
+async def test_issuer_timeout_fails_closed_without_starting_execution(
+    tmp_path, error_log_messages
+):
+    """Mirrors the exact message `StorageCredentialClient.request()` raises
+    on `asyncio.TimeoutError` (services/storage_credential_client.py) -- the
+    issuer never responding within STORAGE_CREDENTIAL_WAIT_TIMEOUT_S must
+    fail closed the same way any other StorageCredentialRequestError does."""
+    client = FakeStorageCredentialClient(
+        error=StorageCredentialRequestError(
+            "Timed out waiting for storage credentials (execution_id=exec1)"
         )
-
-    assert manager.revoked == ["scoped-ak"]
-
-
-@pytest.mark.asyncio
-async def test_missing_org_prefix_returns_error_result(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
-    manager = FakeManager()
-    chain, fake = make_chain(tmp_path, manager)
+    )
+    chain, fake = make_chain(tmp_path, client)
 
     result = await chain.run(
         **COMMON_RUN_KWARGS,
         use_storage=True,
-        storage_org_prefix=None,
+        storage_org_prefix="org_1",
     )
 
     assert result.returncode == 1
+    assert result.stderr == CREDENTIAL_FAILURE_STDERR
+    assert "Timed out waiting for storage credentials" not in result.stderr
+    assert any(
+        "Timed out waiting for storage credentials" in message
+        for message in error_log_messages
+    )
     assert fake.seen_context is None
-    assert manager.created == 0
+
+
+@pytest.mark.asyncio
+async def test_issuer_reported_error_fails_closed_without_starting_execution(
+    tmp_path, error_log_messages
+):
+    """Mirrors the response `{"error": ...}` path in
+    `StorageCredentialClient.request()`: the issuer answering with an error
+    (e.g. scope_not_published, CredentialScopeValidationError) must fail
+    closed exactly like a timeout does -- code execution must not begin."""
+    client = FakeStorageCredentialClient(
+        error=StorageCredentialRequestError("scope_not_published")
+    )
+    chain, fake = make_chain(tmp_path, client)
+
+    result = await chain.run(
+        **COMMON_RUN_KWARGS,
+        use_storage=True,
+        storage_org_prefix="org_1",
+    )
+
+    assert result.returncode == 1
+    assert result.stderr == CREDENTIAL_FAILURE_STDERR
+    assert "scope_not_published" not in result.stderr
+    assert any("scope_not_published" in message for message in error_log_messages)
+    assert fake.seen_context is None
+
+
+@pytest.mark.asyncio
+async def test_unexpected_issue_failure_keeps_the_exception_text_out_of_stderr(tmp_path):
+    """`stderr` travels to PythonCodeResult, the SSE stream and the tool
+    observation handed to the LLM. An unwrapped exception escaping the
+    credential-request path carries internal detail (module paths, connection
+    strings), so this branch must fail closed with fixed text and leave the
+    detail to `logger.exception`."""
+    client = FakeStorageCredentialClient(
+        error=RuntimeError("redis://storage-issuer-internal:6379 refused the connection")
+    )
+    chain, fake = make_chain(tmp_path, client)
+
+    result = await chain.run(
+        **COMMON_RUN_KWARGS,
+        use_storage=True,
+        storage_org_prefix="org_1",
+    )
+
+    assert result.returncode == 1
+    assert result.stderr == "Unexpected failure obtaining scoped storage credentials."
+    assert "storage-issuer-internal" not in result.stderr
+    assert fake.seen_context is None
+
+
+@pytest.mark.asyncio
+async def test_chain_failure_keeps_the_exception_text_out_of_stderr(
+    tmp_path, error_log_messages
+):
+    """The same rule as the credential branches applies once execution has
+    started: a handler blowing up (venv creation, library install) must fail
+    closed with fixed text so host paths and connection strings never reach
+    the SSE stream or the LLM tool observation."""
+    chain, fake = make_chain(tmp_path, FakeStorageCredentialClient())
+    fake.raise_exc = RuntimeError("/srv/internal/venvs/v/bin/python is missing")
+
+    result = await chain.run(**COMMON_RUN_KWARGS, use_storage=False)
+
+    assert result.returncode == 1
+    assert result.stderr == "Execution chain failed."
+    assert "/srv/internal/venvs" not in result.stderr
+    assert any("/srv/internal/venvs" in message for message in error_log_messages)

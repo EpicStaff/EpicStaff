@@ -9,20 +9,31 @@ import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
-from services.storage_credential_manager import StorageCredentialManager
+from services.storage_credential_client import StorageCredentialClient
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
-from src.shared.models import CodeTaskData
+from src.shared.models import CodeResultData, CodeTaskData
+from src.shared.redis_streams import RedisStreamClient
 from utils.logger import logger
 
-storage_credential_manager = StorageCredentialManager(
-    host=settings.STORAGE_ENDPOINT,
-    access_key=settings.STORAGE_ACCESS_KEY,
-    secret_key=settings.STORAGE_SECRET_KEY,
+# Deliberately no STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here:
+# sandbox no longer holds any static MinIO credential. Temporary,
+# per-execution credentials are requested from the issuer running in
+# django_app -- see StorageCredentialClient / dynamic_venv_executor_chain.py.
+storage_credential_request_stream_client = RedisStreamClient(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    password=settings.REDIS_PASSWORD,
+)
+storage_credential_client = StorageCredentialClient(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    password=settings.REDIS_PASSWORD,
+    stream_client=storage_credential_request_stream_client,
 )
 executor_chain = DynamicVenvExecutorChain(
     output_path=settings.OUTPUT_PATH,
     base_venv_path=settings.BASE_VENV_PATH,
-    storage_credential_manager=storage_credential_manager,
+    storage_credential_client=storage_credential_client,
 )
 redis_service = RedisService(
     host=settings.REDIS_HOST,
@@ -148,6 +159,7 @@ async def init():
     log_secret_masking_state()
     log_isolation_state()
     await redis_service.connect()
+    await storage_credential_request_stream_client.connect()
 
 
 async def listen_redis():
@@ -181,19 +193,65 @@ async def run(code_task_data: CodeTaskData):
     """
     execution_dir = settings.OUTPUT_PATH / code_task_data.execution_id
     try:
-        result = await executor_chain.run(
-            venv_name=code_task_data.venv_name,
-            libraries=code_task_data.libraries,
-            code=code_task_data.code,
-            execution_id=code_task_data.execution_id,
-            entrypoint=code_task_data.entrypoint,
-            func_kwargs=code_task_data.func_kwargs,
-            global_kwargs=code_task_data.global_kwargs,
-            use_storage=code_task_data.use_storage,
-            storage_allowed_paths=code_task_data.storage_allowed_paths,
-            storage_org_prefix=code_task_data.storage_org_prefix,
-            secrets=code_task_data.secrets,
-        )
+        try:
+            result = await executor_chain.run(
+                venv_name=code_task_data.venv_name,
+                libraries=code_task_data.libraries,
+                code=code_task_data.code,
+                execution_id=code_task_data.execution_id,
+                entrypoint=code_task_data.entrypoint,
+                func_kwargs=code_task_data.func_kwargs,
+                global_kwargs=code_task_data.global_kwargs,
+                use_storage=code_task_data.use_storage,
+                storage_allowed_paths=code_task_data.storage_allowed_paths,
+                storage_org_prefix=code_task_data.storage_org_prefix,
+                secrets=code_task_data.secrets,
+            )
+        except asyncio.CancelledError:
+            # A temporary storage credential may already have been minted
+            # for this execution_id (dynamic_venv_executor_chain.py acquires
+            # it before running the chain). Cancellation must still reach
+            # the code_results publish below, or django_app's result_listener
+            # never revokes it and it leaks until the TTL sweep. Publish the
+            # same way the two error paths below do, then re-raise so the
+            # task correctly reports as cancelled.
+            logger.warning(
+                "Execution cancelled (execution_id={}); revoking any minted storage credential",
+                code_task_data.execution_id,
+            )
+            await redis_service.async_publish(
+                channel=settings.CODE_RESULT_CHANNEL,
+                message=CodeResultData(
+                    execution_id=code_task_data.execution_id,
+                    stderr="Execution cancelled.",
+                    stdout="",
+                    returncode=1,
+                ).model_dump(),
+            )
+            raise
+        except Exception as e:
+            # executor_chain.run() is already expected to fail closed and
+            # return an error CodeResultData rather than raise (see
+            # dynamic_venv_executor_chain.py). This is defense in depth: if
+            # something still escapes uncaught, we must still publish a
+            # code_results message so callers waiting on this execution_id
+            # don't hang, and so any temporary storage credential minted for
+            # it is revoked by django_app's result_listener.
+            logger.exception(
+                "Unhandled exception running execution chain (execution_id={})",
+                code_task_data.execution_id,
+            )
+            await redis_service.async_publish(
+                channel=settings.CODE_RESULT_CHANNEL,
+                message=CodeResultData(
+                    execution_id=code_task_data.execution_id,
+                    stderr=f"Unhandled exception running execution chain: {e}",
+                    stdout="",
+                    returncode=1,
+                ).model_dump(),
+            )
+            return
+
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (

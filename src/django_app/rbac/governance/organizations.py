@@ -3,6 +3,10 @@ from dataclasses import dataclass, field
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
 from loguru import logger
+from storage_credentials.exceptions import OrgStorageProvisioningError
+from storage_credentials.services.org_provisioning_service import (
+    org_storage_provisioning_service,
+)
 from tables.models.user import User
 
 from rbac.exceptions import (
@@ -126,6 +130,7 @@ class OrganizationManagementService(CrossOrgResourceService):
             org = Organization.objects.create(name=name)
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
+        org_storage_provisioning_service.provision_for_organization(org)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -144,20 +149,38 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def deactivate_organization(self, org_id: int) -> Organization:
-        orgs = Organization.objects.filter(is_active=True).order_by("pk").select_for_update()
-        orgs_map = {o.pk: o for o in orgs}
-        if org_id in orgs_map:
-            if len(orgs_map) <= 1:
-                raise LastActiveOrganizationError()
-            target = orgs_map[org_id]
-        else:
-            target = self._get_locked_org(org_id)
+        org = self._get_locked_org(org_id)
+        if not org.is_active:
+            return self._get_organization_with_member_count(org.pk)
+        self._assert_can_deactivate()
+        org.is_active = False
+        org.save(update_fields=["is_active", "updated_at"])
+        # `is_active` must reflect the caller's intent regardless of MinIO's
+        # availability -- an org that should be deactivated (a
+        # security-relevant action) must not stay active just because MinIO
+        # is unreachable. The failure is logged, not silently swallowed, so
+        # the leftover MinIO user can be reconciled out of band.
+        try:
+            org_storage_provisioning_service.deprovision_for_organization(org)
+        except OrgStorageProvisioningError as error:
+            logger.error(
+                "Failed to deprovision MinIO storage for org_id={} during "
+                "deactivation; org.is_active is False regardless -- the "
+                "MinIO user was left in place and needs out-of-band "
+                "reconciliation: {}",
+                org.id,
+                error,
+            )
+        return self._get_organization_with_member_count(org.pk)
 
-        if target.is_active:
-            target.is_active = False
-            target.save(update_fields=["is_active", "updated_at"])
-
-        return self._get_organization_with_member_count(target.pk)
+    @staticmethod
+    def _assert_can_deactivate() -> None:
+        """Refuses if this would leave zero active organizations. Locks the
+        full set of active orgs (not just the target row) so two concurrent
+        deactivate calls cannot both drive the active count to zero."""
+        active_orgs = Organization.objects.filter(is_active=True).select_for_update()
+        if len(active_orgs) <= 1:
+            raise LastActiveOrganizationError()
 
     @transaction.atomic
     def reactivate_organization(self, org_id: int) -> Organization:
@@ -166,6 +189,18 @@ class OrganizationManagementService(CrossOrgResourceService):
             return self._get_organization_with_member_count(org.pk)
         org.is_active = True
         org.save(update_fields=["is_active", "updated_at"])
+        # Same reasoning as deactivate_organization(): is_active always
+        # commits regardless of MinIO's availability.
+        try:
+            org_storage_provisioning_service.provision_for_organization(org)
+        except OrgStorageProvisioningError as error:
+            logger.error(
+                "Failed to provision MinIO storage for org_id={} during "
+                "reactivation; org.is_active is True regardless -- storage "
+                "for this org needs out-of-band provisioning: {}",
+                org.id,
+                error,
+            )
         return self._get_organization_with_member_count(org.pk)
 
     # ---- deletion ----

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from shared.models.agent_service import ToolResult
-from shared.models.tools import CodeTaskData, PythonCodeToolData
+from pydantic import ValidationError
 
 from app.sandbox.client import SandboxClient
+from shared.models.agent_service import ToolResult
+from shared.models.tools import CodeTaskData, PythonCodeToolData
 
 
 class PythonCodeToolExecutor:
@@ -23,21 +24,28 @@ class PythonCodeToolExecutor:
     async def __call__(self, args: dict) -> ToolResult:
         python_code = self._data.python_code
 
-        task = CodeTaskData(
-            venv_name=python_code.venv_name,
-            libraries=python_code.libraries,
-            code=python_code.code,
-            execution_id=str(uuid.uuid4()),
-            entrypoint=python_code.entrypoint,
-            func_kwargs=args,
-            global_kwargs=python_code.global_kwargs,
-            use_storage=python_code.use_storage,
-            storage_allowed_paths=python_code.storage_allowed_paths,
-            storage_org_prefix=python_code.storage_org_prefix,
-            session_id=python_code.session_id,
-            org_id=python_code.org_id,
-            secrets=python_code.secrets,
-        )
+        try:
+            task = CodeTaskData(
+                venv_name=python_code.venv_name,
+                libraries=python_code.libraries,
+                code=python_code.code,
+                execution_id=str(uuid.uuid4()),
+                entrypoint=python_code.entrypoint,
+                func_kwargs=args,
+                global_kwargs=python_code.global_kwargs,
+                use_storage=python_code.use_storage,
+                storage_allowed_paths=python_code.storage_allowed_paths,
+                storage_org_prefix=python_code.storage_org_prefix,
+                session_id=python_code.session_id,
+                org_id=python_code.org_id,
+                secrets=python_code.secrets,
+            )
+        except ValidationError as error:
+            return ToolResult(
+                tool_call_id="",
+                content=f"Invalid storage scope for code execution: {error}",
+                is_error=True,
+            )
 
         try:
             result = await self._sandbox.submit(task)

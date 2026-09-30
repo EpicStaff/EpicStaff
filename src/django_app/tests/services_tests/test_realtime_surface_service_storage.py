@@ -197,3 +197,21 @@ class TestResolveEndToEnd:
         # org_id is unconditional (not gated on use_storage/grants) -- always
         # the agent-definition's own authoritative org.
         assert python_code.org_id == agent_definition.organization_id
+
+    def test_realtime_agent_definition_storage_tool_not_registered_without_grant(
+        self, agent_definition, surface, storage_py_tool
+    ):
+        """A tool with use_storage=True must be skipped (fail-closed) when
+        storage_org_prefix cannot be resolved (no ALLOW grant exists).
+        This prevents unguarded access to storage."""
+        SurfacePythonTool.objects.create(
+            surface=surface, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        # No storage grant on the surface
+        _attach_default_surface(agent_definition, surface)
+
+        resolution = RealtimeSurfaceService(
+            converter_service=ConverterService()
+        ).resolve(agent_definition)
+
+        assert len(resolution.tools) == 0

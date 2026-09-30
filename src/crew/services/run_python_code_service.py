@@ -4,9 +4,11 @@ from typing import Any
 
 import settings
 from loguru import logger
+from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.storage_credentials import publish_credential_scope_async
 from utils.singleton_meta import SingletonMeta
 
 
@@ -37,21 +39,31 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             merged_global_kwargs["org_id"] = python_code_data.org_id
 
         unique_task_id = str(uuid.uuid4())
-        code_task_data = CodeTaskData(
-            venv_name=venv_name,
-            libraries=libraries,
-            code=code,
-            execution_id=unique_task_id,
-            entrypoint=entrypoint,
-            func_kwargs=inputs,
-            global_kwargs=merged_global_kwargs,
-            use_storage=python_code_data.use_storage,
-            storage_allowed_paths=python_code_data.storage_allowed_paths,
-            storage_org_prefix=python_code_data.storage_org_prefix,
-            session_id=python_code_data.session_id,
-            secrets=python_code_data.secrets,
-            org_id=python_code_data.org_id,
-        )
+        try:
+            code_task_data = CodeTaskData(
+                venv_name=venv_name,
+                libraries=libraries,
+                code=code,
+                execution_id=unique_task_id,
+                entrypoint=entrypoint,
+                func_kwargs=inputs,
+                global_kwargs=merged_global_kwargs,
+                use_storage=python_code_data.use_storage,
+                storage_allowed_paths=python_code_data.storage_allowed_paths,
+                storage_org_prefix=python_code_data.storage_org_prefix,
+                session_id=python_code_data.session_id,
+                secrets=python_code_data.secrets,
+                org_id=python_code_data.org_id,
+            )
+        except ValidationError as error:
+            logger.error("Invalid storage scope for code execution: {}", error)
+            return CodeResultData(
+                execution_id=unique_task_id,
+                stderr=f"Invalid storage scope for code execution: {error}",
+                stdout="",
+                returncode=1,
+            ).model_dump()
+
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
@@ -60,6 +72,10 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
+
+        # Trusted scope for the storage-credential issuer, written before the
+        # task itself is published.
+        await publish_credential_scope_async(self.redis_service.aioredis_client, code_task_data)
         await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
         logger.info("Waiting for code_results")
 

@@ -15,6 +15,10 @@ python manage.py migrate
 echo "Seeding built-in roles..."
 python manage.py seed_builtin_roles
 
+# Backfill MinIO storage credentials for any organization missing them
+echo "Backfilling org storage credentials..."
+python manage.py backfill_org_storage_credentials
+
 # Fix PostgreSQL sequences for all tables
 echo "Fixing PostgreSQL sequences..."
 python manage.py fix_sequences

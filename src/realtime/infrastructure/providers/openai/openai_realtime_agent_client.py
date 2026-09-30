@@ -217,13 +217,22 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         await self.send_server(event)
 
     async def call_tool(self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]) -> None:
-        tool_result = await self.tool_manager_service.execute(
-            connection_key=self.connection_key,
-            tool_name=tool_name,
-            call_arguments=tool_arguments,
-        )
-
-        await self.send_function_result(call_id, str(tool_result))
+        try:
+            tool_result = await self.tool_manager_service.execute(
+                connection_key=self.connection_key,
+                tool_name=tool_name,
+                call_arguments=tool_arguments,
+            )
+            await self.send_function_result(call_id, str(tool_result))
+        except Exception as e:
+            # Never interpolate the exception itself into the log or the
+            # model-visible result: tool failures can carry secret plaintext
+            # or other sensitive detail (see the equivalent CodeTaskData
+            # ValidationError fix in python_code_executor_service.py).
+            logger.error(
+                "OpenAI: Tool execution failed (tool_name={}): {}", tool_name, type(e).__name__
+            )
+            await self.send_function_result(call_id, "Error: tool execution failed.")
 
         if self.is_twilio:
             # Appending a function_call_output item does NOT by itself make the

@@ -54,7 +54,7 @@ def org_request(default_org, superadmin_user):
     """Authenticated request scoped to `default_org`, for serializers built
     directly (not through a view). `TaskNodeSerializer`/`AgentNodeSerializer`
     resolve their `graph` field's org scope from `request` via
-    `OrgContextService` (see `tables/serializers/org_scoped_fields.py`) —
+    `OrgContextService` (see `rbac/scoping/fields.py`) —
     without a request they deny every pk."""
     request = APIRequestFactory().post("/", HTTP_X_ORGANIZATION_ID=str(default_org.pk))
     request.user = superadmin_user

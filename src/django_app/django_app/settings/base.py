@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "django_redis",
     "channels",
     "channels_redis",
+    "storage_credentials",
 ]
 
 MIDDLEWARE = [

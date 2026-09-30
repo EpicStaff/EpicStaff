@@ -27,7 +27,6 @@ Design notes
 
 import json
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -38,6 +37,26 @@ pytest.importorskip(
 
 import dynamic_venv_executor_chain
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+
+
+class FakeStorageCredentialClient:
+    """sandbox no longer mints/revokes anything itself; it only asks the
+    issuer (django_app) for credentials by execution_id and never sees --
+    let alone chooses -- org_id/storage_org_prefix/storage_allowed_paths."""
+
+    def __init__(self, response=None, error=None):
+        self.response = response or {
+            "access_key": "scoped-ak",
+            "secret_key": "scoped-sk",
+        }
+        self.error = error
+        self.requested_execution_ids: list[str] = []
+
+    async def request(self, execution_id: str) -> dict:
+        self.requested_execution_ids.append(execution_id)
+        if self.error:
+            raise self.error
+        return self.response
 
 
 class _FakeProcess:
@@ -129,12 +148,12 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
         _make_fake_exec(result_file_path, expected_result, recorded_exec_calls),
     )
 
-    storage_credential_manager = Mock(spec=["build_policy", "create", "revoke"])
+    fake_client = FakeStorageCredentialClient()
 
     chain = DynamicVenvExecutorChain(
         output_path=output_path,
         base_venv_path=base_venv_path,
-        storage_credential_manager=storage_credential_manager,
+        storage_credential_client=fake_client,
     )
 
     result = await chain.run(
@@ -159,6 +178,83 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
     assert (
         len(recorded_exec_calls) >= 1
     ), "Expected at least one create_subprocess_exec call (code execution)"
-    storage_credential_manager.build_policy.assert_not_called()
-    storage_credential_manager.create.assert_not_called()
-    storage_credential_manager.revoke.assert_not_called()
+    assert fake_client.requested_execution_ids == []
+
+
+@pytest.mark.asyncio
+async def test_chain_run_propagates_cancelled_error(tmp_path, monkeypatch):
+    """DynamicVenvExecutorChain.run() raises asyncio.CancelledError when cancelled.
+
+    Assertions:
+    - When a task running chain.run() is cancelled, asyncio.CancelledError
+      propagates out (not suppressed by the except Exception handler --
+      asyncio.CancelledError derives from BaseException, so it was never
+      caught there in the first place; this guards against a regression
+      such as replacing `except Exception` with `except BaseException`).
+    """
+    import asyncio
+
+    output_path = tmp_path / "output"
+    base_venv_path = tmp_path / "venvs"
+    output_path.mkdir()
+    base_venv_path.mkdir()
+
+    execution_id = "test-chain-cancel-001"
+
+    # Create a handler that hangs indefinitely so we can cancel it
+    async def _fake_slow_shell(cmd: str, **kwargs):
+        recorded_shell_calls.append(cmd)
+        venv_path_str = cmd.strip().split()[-1]
+        Path(venv_path_str).mkdir(parents=True, exist_ok=True)
+        return _FakeProcess()
+
+    async def _fake_slow_exec(*args, **kwargs):
+        recorded_exec_calls.append(args)
+        # Hang indefinitely so the task can be cancelled
+        await asyncio.sleep(float("inf"))
+
+    recorded_shell_calls: list = []
+    recorded_exec_calls: list = []
+
+    monkeypatch.setattr(
+        dynamic_venv_executor_chain.asyncio,
+        "create_subprocess_shell",
+        _fake_slow_shell,
+    )
+    monkeypatch.setattr(
+        dynamic_venv_executor_chain.asyncio,
+        "create_subprocess_exec",
+        _fake_slow_exec,
+    )
+
+    fake_client = FakeStorageCredentialClient()
+
+    chain = DynamicVenvExecutorChain(
+        output_path=output_path,
+        base_venv_path=base_venv_path,
+        storage_credential_client=fake_client,
+    )
+
+    # Create a task and cancel it while chain.run() is executing
+    task = asyncio.create_task(
+        chain.run(
+            libraries=[],
+            venv_name="test-venv",
+            execution_id=execution_id,
+            code="def main(**kwargs):\n    return {'answer': 42}",
+            entrypoint="main",
+            func_kwargs={},
+            global_kwargs={},
+            use_storage=False,
+        )
+    )
+
+    # Give the task time to start executing
+    await asyncio.sleep(0.1)
+
+    # Cancel the task
+    task.cancel()
+
+    # Verify that CancelledError is raised (not suppressed)
+    with pytest.raises(asyncio.CancelledError):
+        await task

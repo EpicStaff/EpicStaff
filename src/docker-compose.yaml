@@ -137,6 +137,84 @@ services:
       timeout: 10s
       retries: 100
 
+  storage-credential-issuer:
+    image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./django_app/Dockerfile.dj
+    container_name: storage-credential-issuer
+    init: true
+    command: python manage.py run_storage_credential_issuer
+    environment:
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
+      DB_USER: ${DB_USER:?}
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
+      DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
+      DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
+      DJANGO_SGI_MAX_REQUESTS_JITTER: ${DJANGO_SGI_MAX_REQUESTS_JITTER:?}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:?}
+      DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
+      DJANGO_TIMEZONE: ${DJANGO_TIMEZONE:?}
+      DJANGO_JWT_ACCESS_LIFETIME: ${DJANGO_JWT_ACCESS_LIFETIME:?}
+      DJANGO_JWT_REFRESH_LIFETIME: ${DJANGO_JWT_REFRESH_LIFETIME:?}
+      DJANGO_REFRESH_COOKIE_SECURE: ${DJANGO_REFRESH_COOKIE_SECURE:?}
+      DJANGO_EMAIL_HOST: ${DJANGO_EMAIL_HOST}
+      DJANGO_EMAIL_PORT: ${DJANGO_EMAIL_PORT}
+      DJANGO_EMAIL_USER: ${DJANGO_EMAIL_USER}
+      DJANGO_EMAIL_PASSWORD: ${DJANGO_EMAIL_PASSWORD}
+      DJANGO_EMAIL_USE_TLS: ${DJANGO_EMAIL_USE_TLS}
+      DJANGO_EMAIL_USE_SSL: ${DJANGO_EMAIL_USE_SSL}
+      DJANGO_DEFAULT_FROM_EMAIL: ${DJANGO_DEFAULT_FROM_EMAIL}
+      DJANGO_PASSWORD_RESET_TOKEN_TTL: ${DJANGO_PASSWORD_RESET_TOKEN_TTL:?}
+      DJANGO_PASSWORD_CHANGE_TICKET_TTL: ${DJANGO_PASSWORD_CHANGE_TICKET_TTL:?}
+      DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE:?}
+      DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE:?}
+      DJANGO_NOTIFY_EMAIL_THROTTLE_RATE: ${DJANGO_NOTIFY_EMAIL_THROTTLE_RATE:?}
+      DJANGO_LOGIN_THROTTLE_RATE: ${DJANGO_LOGIN_THROTTLE_RATE:?}
+      DJANGO_TOKEN_REFRESH_THROTTLE_RATE: ${DJANGO_TOKEN_REFRESH_THROTTLE_RATE:?}
+      DJANGO_FIRST_SETUP_MODE: ${DJANGO_FIRST_SETUP_MODE:?}
+      DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
+      DJANGO_FRONTEND_PASSWORD_RESET_PATH: ${DJANGO_FRONTEND_PASSWORD_RESET_PATH:?}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
+      DJANGO_API_KEY: ${DJANGO_API_KEY}
+      DJANGO_AVATAR_MAX_SIZE: ${DJANGO_AVATAR_MAX_SIZE:?}
+      DJANGO_AVATAR_ALLOWED_FORMATS: ${DJANGO_AVATAR_ALLOWED_FORMATS:?}
+      DJANGO_MAX_UPLOAD_FILE_SIZE: ${DJANGO_MAX_UPLOAD_FILE_SIZE:?}
+      DJANGO_MAX_UPLOAD_TOTAL_SIZE: ${DJANGO_MAX_UPLOAD_TOTAL_SIZE:?}
+      DJANGO_MAX_ARCHIVE_ENTRIES: ${DJANGO_MAX_ARCHIVE_ENTRIES:?}
+      DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE: ${DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE:?}
+      DJANGO_MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
+      DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
+
+      WEBHOOK_USE_TUNNEL: ${WEBHOOK_USE_TUNNEL:?}
+      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:?}
+      WEBHOOK_HOST: ${WEBHOOK_HOST:?}
+    networks:
+      backend-network:
+        aliases:
+          - storage-credential-issuer
+    healthcheck:
+      test: ["CMD", "python", "/app/src/django_app/storage_credentials/healthcheck.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      django_app:
+        condition: service_healthy
+
   realtime:
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:-latest}
     container_name: realtime
@@ -304,7 +382,12 @@ services:
     container_name: sandbox
     init: true
     environment:
-      <<: [*docker-env, *redis-env, *storage-env, *communication-env]
+      # Deliberately no *storage-env here: sandbox must never hold the admin
+      # STORAGE_USER/STORAGE_PASSWORD credential (finding #38). Only the
+      # non-secret endpoint/bucket connection details are passed explicitly
+      # below; per-execution credentials are requested at runtime from the
+      # issuer in django_app.
+      <<: [*docker-env, *redis-env, *communication-env]
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
@@ -313,6 +396,10 @@ services:
       SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:-true}
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_SSL: ${STORAGE_SSL:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}

@@ -4,7 +4,7 @@
 
 The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. The default server is [RustFS](https://github.com/rustfs/rustfs) (Apache-2.0), which replaced MinIO in EST-4230 after MinIO stopped publishing images.
 
-The sandbox also uses the MinIO Admin API (which RustFS implements) to create short-lived, org-scoped credentials for each code execution. A plain S3 service without that API (for example AWS S3) can serve files, but sandbox storage access will not work.
+The sandbox also uses the storage backend Admin API to create short-lived, org-scoped credentials for each code execution. RustFS implements a MinIO-compatible Admin API with documented differences (see **RustFS API Compatibility** below). A plain S3 service without an Admin API (for example AWS S3) can serve files, but sandbox storage access will not work.
 
 ---
 
@@ -250,6 +250,59 @@ Base path: `/api/storage/`
 Archive uploads are auto-detected and extracted. Cross-org move/copy is triggered when `source_org_id` and `destination_org_id` differ.
 
 Full Swagger documentation is available at the `/swagger/` endpoint.
+
+---
+
+## RustFS API Compatibility
+
+RustFS implements a MinIO-compatible Admin API with the following confirmed differences from MinIO:
+
+1. **AEAD ID 2 Encryption in responses** — RustFS returns responses encrypted with AEAD ID 2 (PBKDF2-HMAC-SHA256 + AES-256-GCM), per the official MinIO admin SDK (`madmin-go/encrypt.go`). The `miniopy_async` library only implements AEAD ID 0/1 (Argon2id-based), making it unable to decrypt AEAD ID 2 responses.
+   
+   The application works around this limitation in `StorageAdminGateway`:
+   - `list_service_accounts()` uses `_AdminResponseDecryptor` to decrypt AEAD ID 2 responses from RustFS (PBKDF2 key derivation, same AES-256-GCM cipher the library already implements for AEAD ID 0)
+   - `create_service_account()` sidesteps the problem differently: it generates `access_key`/`secret_key` client-side and never reads the (still AEAD-ID-2-encrypted) response at all — the *request* is still encrypted the ordinary way via the library's own `encrypt()` (Argon2id, AEAD ID 0), nothing PBKDF2 about it
+   
+   This is not a RustFS-specific quirk but a documented third encryption mode in the official MinIO Admin API specification.
+
+2. **Expiration enforcement** — RustFS enforces service account expiration server-side, independent of the issuer's credential revocation. Once a service account reaches its expiration timestamp, the storage backend rejects operations from that account. The sandbox `sweep()` function reads service account expiration timestamps directly from RustFS and cleans up expired accounts based on these backend-sourced timestamps.
+
+3. **Cascade deletion on `remove_user`** — Removing a parent user cascades to revoke all service accounts it minted, identical to MinIO behavior.
+
+4. **Error codes** — RustFS returns error codes different from MinIO:
+   - `"InvalidArgument"` instead of `"XMinioInvalidObjectName"` for invalid object names
+   - `"KeyTooLongError"` for keys exceeding the size limit
+
+---
+
+## Service Account Credential Management
+
+### Temporary credential lifecycle
+
+When the sandbox executes a flow, the `StorageAdminGateway` provisions short-lived, org-scoped service account credentials:
+
+1. **Creation** — `create_service_account()` generates credentials with:
+   - A policy containing a `Deny` statement that blocks the account from self-minting additional service accounts (preventing privilege escalation)
+   - An expiration timestamp (typically 1 hour)
+   - The request body is encrypted with the library's own (Argon2id, AEAD ID 0) `encrypt()` — the response is never read, so the AEAD ID 2 issue doesn't apply here
+
+2. **Expiration enforcement** — RustFS rejects API calls from expired accounts at the storage layer, independent of any application-level tracking.
+
+3. **Cleanup** — `sweep()` reads the live service account list directly from RustFS via `list_service_accounts()` and removes expired accounts based on server-side expiration timestamps, not from a Django registry.
+
+### Deny Statement Verification
+
+The `Deny` statement in the temporary credential policy (`policies.py`'s `build_temporary_policy`) is the primary defense against self-minting: it blocks `admin:CreateServiceAccount`, `admin:RemoveServiceAccount`, `admin:UpdateServiceAccount` with `Resource: ["arn:aws:s3:::*"]`.
+
+Live-fire verified against RustFS (2026-09-29), both directions:
+- With `Resource: ["arn:aws:s3:::*"]` (current code): a temporary credential attempting `admin:CreateServiceAccount` on itself is rejected with `403 AccessDenied`.
+- With `Resource: ["*"]` (the pre-EST-3892 form): RustFS rejects the policy document itself at creation time — `400 InvalidArgument: Policy format is invalid` — a temporary credential could not even be issued.
+
+So the ARN form isn't just a safer choice among two working options — it's the only one RustFS accepts at all. This enforces a hard boundary: sandbox-executed flows cannot expand their own access or mint credentials that outlive their execution.
+
+### Data source for credential tracking
+
+Prior implementations tracked issued credentials in a Django `Secret.metadata` registry as a workaround for a broken `list_service_accounts()` in early RustFS versions. This registry has been removed: `sweep()` now reads directly from the storage backend's authoritative service account list and expiration timestamps via `_AdminResponseDecryptor`, eliminating the need for application-level credential tracking.
 
 ---
 

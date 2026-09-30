@@ -169,6 +169,7 @@ async def test_python_code_executor_forwards_storage_config_from_data():
             "storage_allowed_paths": ["reports/"],
             "storage_org_prefix": "org1",
             "session_id": 42,
+            "org_id": 77,
         },
     )
     builder = ToolRegistryBuilder(sandbox)

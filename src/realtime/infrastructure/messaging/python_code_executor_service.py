@@ -6,7 +6,9 @@ from core import config
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from loguru import logger
+from pydantic import ValidationError
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.storage_credentials import publish_credential_scope_async
 from utils.singleton_meta import SingletonMeta
 
 
@@ -29,25 +31,43 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         global_kwargs = python_code_data.global_kwargs or {}
 
         unique_task_id = str(uuid.uuid4())
-        code_task_data = CodeTaskData(
-            venv_name=venv_name,
-            libraries=libraries,
-            code=code,
-            execution_id=unique_task_id,
-            entrypoint=entrypoint,
-            func_kwargs=inputs,
-            global_kwargs={
-                **global_kwargs,
-                **additional_global_kwargs,
-            },
-            use_storage=python_code_data.use_storage,
-            storage_allowed_paths=python_code_data.storage_allowed_paths,
-            storage_org_prefix=python_code_data.storage_org_prefix,
-            org_id=python_code_data.org_id,
-            secrets=python_code_data.secrets,
-        )
+        try:
+            code_task_data = CodeTaskData(
+                venv_name=venv_name,
+                libraries=libraries,
+                code=code,
+                execution_id=unique_task_id,
+                entrypoint=entrypoint,
+                func_kwargs=inputs,
+                global_kwargs={
+                    **global_kwargs,
+                    **additional_global_kwargs,
+                },
+                use_storage=python_code_data.use_storage,
+                storage_allowed_paths=python_code_data.storage_allowed_paths,
+                storage_org_prefix=python_code_data.storage_org_prefix,
+                org_id=python_code_data.org_id,
+                secrets=python_code_data.secrets,
+            )
+        except (ValidationError, ValueError):
+            # Never log or return `error` itself: pydantic's ValidationError
+            # repr embeds the full constructor input, including `secrets`
+            # plaintext (see CodeTaskData.log_summary(), which exists for
+            # exactly this reason).
+            logger.error(
+                "Invalid storage scope for code execution (execution_id={})", unique_task_id
+            )
+            return CodeResultData(
+                execution_id=unique_task_id,
+                stderr="Invalid storage scope for code execution.",
+                stdout="",
+                returncode=1,
+            ).model_dump()
 
         pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
+        # Trusted scope for the storage-credential issuer, written before the
+        # task itself is published.
+        await publish_credential_scope_async(self.redis_service.aioredis_client, code_task_data)
         await self.redis_service.async_publish(
             config.CODE_EXEC_CHANNEL, code_task_data.model_dump()
         )

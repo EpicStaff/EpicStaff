@@ -50,6 +50,7 @@ from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
+from tables.models.session_models import Session
 from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
@@ -946,7 +947,26 @@ class TestStorageToolAllowedPathsScopedToSurface:
         assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
 
     @pytest.mark.django_db
-    def test_no_surface_storage_items_yields_empty_list_not_none(
+    def test_no_surface_storage_items_with_session_yields_session_fallback(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+        session = Session.objects.create(
+            graph=graph, status=Session.SessionStatus.PENDING, variables={}
+        )
+
+        graph_data = SessionManagerService()._build_graph_data(graph, session=session)
+
+        task_data = graph_data.task_node_list[0]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [f"sessions/{session.pk}/"]
+
+    @pytest.mark.django_db
+    def test_no_surface_storage_items_without_session_yields_empty_list_not_none(
         self, graph, task_node, surface_a, storage_py_tool
     ):
         SurfacePythonTool.objects.create(
