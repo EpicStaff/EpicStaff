@@ -340,6 +340,20 @@ class InstallLibrariesHandler(AbstractHandler):
                     )
 
             # Install libraries
+            #
+            # Deliberately NOT passing _privilege_drop_kwargs() here, unlike the
+            # code-execution subprocess below -- pip for a caller-supplied specifier
+            # (which can run setup.py/PEP 517 build code at install time) runs as this
+            # container's own user, not sandboxuser. Accepted risk (Igor Polishchuk /
+            # Volodymyr Panchyshyn, 2026-09-07/08): the install subprocess gets the same
+            # curated, minimal env as user code (build_base_env -- no os.environ
+            # inheritance, no credentials), the container has cap_drop: ALL and
+            # no-new-privileges, and no Docker socket is mounted, so install-time root
+            # has no path off this container and no secret to reach. This is a real,
+            # accepted asymmetry with the code-execution path below, not an oversight
+            # left uncommented -- don't "fix" it by adding drop_kwargs without checking
+            # whether pip still needs root for its own reasons (writing into root-owned
+            # venv directories) first.
             for library in context["libraries"]:
                 logger.info(f"Installing {library}...")
                 process = await asyncio.create_subprocess_exec(
