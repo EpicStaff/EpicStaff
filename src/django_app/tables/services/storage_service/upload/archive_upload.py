@@ -25,7 +25,7 @@ from tables.services.storage_service.path_utils import (
 )
 from tables.services.storage_service.quota import org_free_bytes, record_files_within_quota
 from tables.services.storage_service.upload.admission import get_upload_admission
-from tables.services.storage_service.upload.archive_members import upload_archive_members
+from tables.services.storage_service.upload.archive_members import ArchiveMemberUploader
 from tables.services.storage_service.upload.file_upload import save_stream
 from tables.services.storage_service.upload.guards import (
     storage_errors_as_unavailable,
@@ -159,14 +159,13 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
         # Takes back its own members if it fails.
         # Unpack one member at a time and send it to storage right away:
         # up to one part in a single PUT (several in parallel), larger ones as multipart.
-        sizes = upload_archive_members(
-            buffered,
-            guard,
+        sizes = ArchiveMemberUploader(
             backend,
             folder_key,
+            guard,
             workers=settings.ARCHIVE_UPLOAD_CONCURRENCY,
             check_member=lambda name: check_path_length(org_id, f"{folder}/{name}"),
-        )
+        ).upload(buffered)
         created += [f"{folder_key}/{name}" for name in sizes]
         files = [(f"{folder}/{name}", size) for name, size in sizes.items()]
         # A folder with nothing under it exists in object storage only as a marker.

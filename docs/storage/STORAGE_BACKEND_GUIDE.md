@@ -171,7 +171,7 @@ is read, so a ZIP whose declared sizes lie is still stopped mid-member; the
 keys written so far are then deleted (exactly those keys, plus the claimed
 folder marker, via `delete_keys`; never a name- or prefix-based `delete`, which
 could hit a plain file named like the folder). Their uploads to storage overlap
-(`upload/archive_members.py`'s `upload_archive_members`, up to
+(`upload/archive_members.py`'s `ArchiveMemberUploader`, up to
 `DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` at a time).
 
 Archives extract into a subfolder named after the archive stem, deduped as

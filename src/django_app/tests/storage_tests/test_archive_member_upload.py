@@ -1,4 +1,4 @@
-"""upload_archive_members leaves nothing it wrote behind when it fails, and takes
+"""ArchiveMemberUploader leaves nothing it wrote behind when it fails, and takes
 back exactly its own keys: never a neighbour that shares the folder's name."""
 
 import io
@@ -10,8 +10,8 @@ from tables.services.storage_service.archive_unpacking.extraction_guard import (
     ArchiveLimitExceeded,
 )
 from tables.services.storage_service.upload.archive_members import (
+    ArchiveMemberUploader,
     _ReplayingReader,
-    upload_archive_members,
 )
 from tables.services.storage_service.base import StorageUnreachable
 from tests.storage_tests.in_memory_backend import (
@@ -26,8 +26,8 @@ FOLDER = "org_1/report"
 
 def _upload(backend, members: dict[str, bytes], *, guard=None, workers=2):
     guard = guard or ArchiveExtractionGuard(max_entries=100, max_total_bytes=10_000)
-    return upload_archive_members(
-        io.BytesIO(zip_bytes(members)), guard, backend, FOLDER, workers=workers
+    return ArchiveMemberUploader(backend, FOLDER, guard, workers=workers).upload(
+        io.BytesIO(zip_bytes(members))
     )
 
 

@@ -7,74 +7,95 @@ from tables.services.storage_service.archive_unpacking.extraction_guard import (
 )
 
 
-def upload_archive_members(
-    archive_file,
-    guard: ArchiveExtractionGuard,
-    backend,
-    folder_key: str,
-    *,
-    workers,
-    check_member: Callable[[str], None] | None = None,
-) -> dict[str, int]:
-    """Unpack archive_file into storage under folder_key; return {path in archive: size}.
-    On any error, every key this call wrote or started is deleted before re-raising."""
-    # Every key goes here before its write starts, so a failure knows what to delete.
-    started: list[str] = []
-    try:
-        return _upload_members(
-            archive_file, guard, backend, folder_key, workers, started, check_member
-        )
-    except BaseException:
-        # The pool has shut down by now, so no PUT can land after this delete.
-        backend.discard_keys(started)
-        raise
+class ArchiveMemberUploader:
+    """Unpack one archive into storage under folder_key, a few PUTs in parallel.
+    An instance serves one archive and is not reused: it holds that upload's state."""
 
+    def __init__(
+        self,
+        backend,
+        folder_key: str,
+        guard: ArchiveExtractionGuard,
+        *,
+        workers: int,
+        check_member: Callable[[str], None] | None = None,
+    ):
+        self._backend = backend
+        self._folder_key = folder_key
+        self._guard = guard
+        self._workers = workers
+        self._check_member = check_member
+        # Every key goes here before its write starts, so a failure knows what to delete.
+        self._started: list[str] = []
+        self._pending: dict[str, Future] = {}
+        self._written: dict[str, int] = {}
 
-def _upload_members(
-    archive_file, guard, backend, folder_key, workers, started: list[str], check_member
-) -> dict[str, int]:
-    """upload_archive_members without cleanup; records each key in `started` before writing it."""
-    part_size = backend.part_size
-    written: dict[str, int] = {}
-    pending: dict[str, Future] = {}
-
-    # Small members are sent from this pool, several at once.
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="archive-put") as pool:
+    def upload(self, archive_file) -> dict[str, int]:
+        """Unpack archive_file into storage under folder_key; return {path in archive: size}.
+        On any error, every key this call wrote or started is deleted before re-raising."""
         try:
-            # One member at a time: `reader` inflates its bytes only as they are read,
-            # and the guard stops the loop once the real size passes the free space.
-            for name, reader in iter_archive_members(archive_file, guard):
-                if check_member is not None:
-                    check_member(name)
-                key = f"{folder_key}/{name}"
-                if name in pending:
-                    # The same name twice in one archive: the later file must win.
-                    pending.pop(name).result()
-
-                # Unpack up to one part plus a byte: this tells a small member from a large one.
-                head = _read_at_most(reader, part_size + 1)
-                if len(head) <= part_size:
-                    # Small member: already whole in memory, send it with one PUT in the pool.
-                    _wait_for_free_worker(pending, workers)
-                    started.append(key)
-                    pending[name] = pool.submit(backend.put_bytes, key, head)
-                    written[name] = len(head)
-                else:
-                    # Large member: keep unpacking while it streams as multipart, part by part.
-                    member = _ReplayingReader(head, reader)
-                    started.append(key)
-                    backend.upload_stream(key, member)
-                    written[name] = member.bytes_read
-
-            # Archive fully read: wait for the PUTs still running.
-            for future in pending.values():
-                future.result()
+            return self._upload_all(archive_file)
         except BaseException:
-            for future in pending.values():
-                future.cancel()
+            # The pool has shut down by now, so no PUT can land after this delete.
+            self._backend.discard_keys(self._started)
             raise
 
-    return written
+    def _upload_all(self, archive_file) -> dict[str, int]:
+        """upload without cleanup; records each key in `_started` before writing it."""
+        part_size = self._backend.part_size
+
+        # Small members are sent from this pool, several at once.
+        with ThreadPoolExecutor(
+            max_workers=self._workers, thread_name_prefix="archive-put"
+        ) as pool:
+            try:
+                # One member at a time: `reader` inflates its bytes only as they are read,
+                # and the guard stops the loop once the real size passes the free space.
+                for name, reader in iter_archive_members(archive_file, self._guard):
+                    if self._check_member is not None:
+                        self._check_member(name)
+                    key = f"{self._folder_key}/{name}"
+                    if name in self._pending:
+                        # The same name twice in one archive: the later file must win.
+                        self._pending.pop(name).result()
+
+                    # Unpack up to one part plus a byte: this tells a small member from a large one.
+                    head = _read_at_most(reader, part_size + 1)
+                    if len(head) <= part_size:
+                        # Small member: already whole in memory, send it with one PUT in the pool.
+                        self._put_small(pool, name, key, head)
+                    else:
+                        # Large member: keep unpacking while it streams as multipart, part by part.
+                        self._stream_large(name, key, head, reader)
+
+                # Archive fully read: wait for the PUTs still running.
+                for future in self._pending.values():
+                    future.result()
+            except BaseException:
+                for future in self._pending.values():
+                    future.cancel()
+                raise
+
+        return self._written
+
+    def _put_small(self, pool: ThreadPoolExecutor, name: str, key: str, head: bytes) -> None:
+        self._wait_for_free_worker()
+        self._started.append(key)
+        self._pending[name] = pool.submit(self._backend.put_bytes, key, head)
+        self._written[name] = len(head)
+
+    def _stream_large(self, name: str, key: str, head: bytes, reader) -> None:
+        member = _ReplayingReader(head, reader)
+        self._started.append(key)
+        self._backend.upload_stream(key, member)
+        self._written[name] = member.bytes_read
+
+    def _wait_for_free_worker(self) -> None:
+        """Block until fewer than `workers` uploads are running; re-raise any that failed."""
+        while len(self._pending) >= self._workers:
+            done, _ = wait(self._pending.values(), return_when=FIRST_COMPLETED)
+            for name in [n for n, f in self._pending.items() if f in done]:
+                self._pending.pop(name).result()
 
 
 def _read_at_most(reader, limit: int) -> bytes:
@@ -108,11 +129,3 @@ class _ReplayingReader:
                 out += _read_at_most(self._rest, size - len(out))
         self.bytes_read += len(out)
         return out
-
-
-def _wait_for_free_worker(pending: dict[str, Future], workers: int) -> None:
-    """Block until fewer than `workers` uploads are running; re-raise any that failed."""
-    while len(pending) >= workers:
-        done, _ = wait(pending.values(), return_when=FIRST_COMPLETED)
-        for name in [n for n, f in pending.items() if f in done]:
-            pending.pop(name).result()

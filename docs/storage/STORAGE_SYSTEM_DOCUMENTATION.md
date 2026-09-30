@@ -181,7 +181,7 @@ When a ZIP or TAR file is uploaded, it is automatically extracted rather than st
 2. The body is buffered (up to `DJANGO_MAX_ARCHIVE_FILE_SIZE`, spilling to disk past one part)
 3. `archive_unpacking/inspection.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
 4. `_reserve_folder()` claims a subfolder named after the archive stem with a conditional marker write (e.g., `data.zip` → `data/`); a taken name auto-increments: `data` → `data (1)` → `data (2)`
-5. `upload/archive_members.upload_archive_members()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
+5. `upload/archive_members.ArchiveMemberUploader.upload()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
 6. `quota.record_files_within_quota()` writes all rows under the org lock; any failure removes exactly the objects this upload created
 
 ### Document Extensions Treated as Regular Files (Not Extracted)
