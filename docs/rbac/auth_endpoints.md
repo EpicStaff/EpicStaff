@@ -167,23 +167,27 @@ create_superadmin` workflow).
   ```json
   {
     "email": "admin@acme.com",
-    "password": "StrongPass123!"
+    "password": "StrongPass123!",
+    "display_name": "Admin"
   }
   ```
   - `email` — must be a valid email.
   - `password` — must pass Django's `AUTH_PASSWORD_VALIDATORS` (min length,
     not-too-common, not-all-numeric, not-too-similar-to-email).
+  - `display_name` — optional. Trimmed; must be a non-blank string of at
+    most 255 characters. Omit it or send `null` to derive it from the email
+    (`john.smith@acme.com` → `"John Smith"`).
   - Organization name is **not** taken from the request body; it comes from
     the `DEFAULT_ORGANIZATION_NAME` setting (env-driven, default
-    `"Organization"`). Any `organization_name` / `display_name`
-    fields passed in the body are silently ignored.
+    `"Organization"`). An `organization_name` field passed in the body is
+    silently ignored.
 - **Response 201:**
   ```json
   {
     "user": {
       "id": 1,
       "email": "admin@acme.com",
-      "display_name": null,
+      "display_name": "Admin",
       "is_superadmin": true
     },
     "organization": {
@@ -500,8 +504,11 @@ Two entry points, same semantics, different callers.
   `POST /api/profile/api-keys/` after logging in as the new superadmin.
 - **Request body:**
   ```json
-  { "email": "new@acme.com", "password": "AnotherPass123!" }
+  { "email": "new@acme.com", "password": "AnotherPass123!", "display_name": "New Admin" }
   ```
+  - `display_name` — optional. Trimmed; must be a non-blank string of at
+    most 255 characters. Omit it or send `null` to derive it from the email
+    (`john.smith@acme.com` → `"John Smith"`).
 - **Response 201:**
   ```json
   { "access": "<jwt-access>" }

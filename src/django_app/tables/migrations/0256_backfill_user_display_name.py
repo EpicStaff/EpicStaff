@@ -5,7 +5,7 @@ from django.db.models import Q
 
 BATCH_SIZE = 500
 
-# Frozen copy of display_name_from_email (tables/models/user.py) as of EST-4368.
+# Frozen copy of tables.models.user.display_name_from_email; do not sync it with the live helper.
 DISPLAY_NAME_MAX_LENGTH = 255
 
 _LOCAL_PART_SEPARATORS = re.compile(r"[._-]")
@@ -22,10 +22,10 @@ def display_name_from_email(email):
 
 
 def backfill_display_name(apps, schema_editor):
-    """Give every user without a display name one derived from their email.
+    """Give every user with a NULL or whitespace-only display name one derived from their email.
 
-    Only NULL, empty and whitespace-only names are touched; a real name is never
-    overwritten. bulk_update bypasses auto_now, so updated_at is left as it was.
+    bulk_update bypasses auto_now, so updated_at is left as it was.
+    Batches bound memory only; the migration is one transaction, so rows stay locked until commit.
     """
     User = apps.get_model("tables", "User")
     users_without_name = User.objects.filter(

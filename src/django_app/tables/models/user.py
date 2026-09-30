@@ -24,16 +24,10 @@ _LOCAL_PART_SEPARATORS = re.compile(r"[._-]")
 
 
 def display_name_from_email(email: str) -> str:
-    """Derive a human-readable default display name from an email address.
+    """Derive a display name from an email: "john.smith+test@acme.com" -> "John Smith".
 
-    "john.smith+test@acme.com" becomes "John Smith": the local part loses its
-    `+tag`, is split on `.`, `_` and `-`, and each piece gets an uppercase
-    first letter with the rest kept as typed ("mcDonald" -> "McDonald").
-    When no piece survives ("+tag@x.com"), falls back to the raw local part,
-    then to the whole email, so the result is never empty for a non-blank email.
-
-    Kept pure and module-level so a data migration can freeze a copy; the copy
-    must include `_LOCAL_PART_SEPARATORS` and `DISPLAY_NAME_MAX_LENGTH` too.
+    Falls back to the raw local part, then the whole email, so a non-blank email never
+    yields an empty name. Migration 0256 holds a frozen copy of this function.
     """
     local_part = email.rpartition("@")[0] if "@" in email else email
     untagged = local_part.split("+", 1)[0]
@@ -51,11 +45,8 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError("Users must have an email address")
         email = self.normalize_email(email)
-        # Every creation path (first setup, reset user, create_superadmin,
-        # admin user create) funnels through here, so this is the one place
-        # that guarantees a new user never starts without a display name.
-        # A non-blank caller value is kept as given; trimming is the
-        # validators' job.
+        # Every user is created here, so this guarantees a display name; a non-blank
+        # caller value is kept as given (trimming is the validators' job).
         display_name = extra_fields.get("display_name")
         if display_name is None or not display_name.strip():
             extra_fields["display_name"] = display_name_from_email(email)

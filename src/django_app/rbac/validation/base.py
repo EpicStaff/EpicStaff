@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
+from tables.models.user import DISPLAY_NAME_MAX_LENGTH
 
 from rbac.exceptions import FormValidationError
 
@@ -104,6 +105,38 @@ class BaseRBACValidator(ABC):
                 FieldError(field_name, self._echo(field_name, value), msg) for msg in exc.messages
             ]
         return []
+
+    def _clean_display_name(
+        self,
+        value: Any,
+        *,
+        blank_reason: str = "Must not be blank. Omit it or use null to derive it from the email.",
+    ) -> tuple[str | None, list[FieldError]]:
+        # None passes through: creation derives a name from it, profile PATCH clears the name.
+        if value is None:
+            return None, []
+        if not isinstance(value, str):
+            return None, [
+                FieldError(
+                    "display_name",
+                    self._echo("display_name", value),
+                    "Must be a string or null.",
+                )
+            ]
+        trimmed = value.strip()
+        if not trimmed:
+            return None, [
+                FieldError("display_name", self._echo("display_name", value), blank_reason)
+            ]
+        if len(trimmed) > DISPLAY_NAME_MAX_LENGTH:
+            return None, [
+                FieldError(
+                    "display_name",
+                    self._echo("display_name", value),
+                    f"Must be {DISPLAY_NAME_MAX_LENGTH} characters or fewer.",
+                )
+            ]
+        return trimmed, []
 
     def _validate_positive_int_field(self, field: str, value: Any) -> list[FieldError]:
         if value is None or value == "":

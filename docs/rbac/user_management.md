@@ -222,8 +222,12 @@ are shown.
 ### POST `/api/admin/users/`
 
 ```json
-{"email": "new@example.com", "password": "StrongPass123!", "organization_id": 1, "role_id": 3}
+{"email": "new@example.com", "password": "StrongPass123!", "display_name": "New User", "organization_id": 1, "role_id": 3}
 ```
+
+`display_name` is optional: it's trimmed and must be a non-blank string of at
+most 255 characters; omit it or send `null` to derive it from the email
+(`anna-maria@x.com` → `"Anna Maria"`).
 
 `organization_id` and `role_id` are optional; with `organization_id` and no
 `role_id` the server assigns the built-in **Member** role. **201** →

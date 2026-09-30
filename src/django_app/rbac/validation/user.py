@@ -23,8 +23,8 @@ class UserValidationService(BaseRBACValidator):
 
     def validate_create_user(self, data: dict) -> dict:
         """`POST /api/admin/users/`. Body: email, password, optional
-        organization_id, optional role_id (only meaningful when
-        organization_id is given)."""
+        display_name, optional organization_id, optional role_id (only
+        meaningful when organization_id is given)."""
         email = data.get("email")
         password = data.get("password")
         organization_id = data.get("organization_id")
@@ -33,6 +33,8 @@ class UserValidationService(BaseRBACValidator):
         errors: list[FieldError] = []
         errors.extend(self._validate_email_field(email))
         errors.extend(self._validate_password_field(password, user_hints={"email": email}))
+        display_name, display_name_errors = self._clean_display_name(data.get("display_name"))
+        errors.extend(display_name_errors)
         if organization_id is not None:
             errors.extend(self._validate_positive_int_field("organization_id", organization_id))
             if role_id is not None:
@@ -42,6 +44,7 @@ class UserValidationService(BaseRBACValidator):
         return {
             "email": email,
             "password": password,
+            "display_name": display_name,
             "organization_id": int(organization_id) if organization_id is not None else None,
             "role_id": int(role_id) if role_id is not None else None,
         }
@@ -196,37 +199,12 @@ class UserValidationService(BaseRBACValidator):
         errors: list[FieldError] = []
 
         if "display_name" in data:
-            value = data["display_name"]
-            if value is None:
-                cleaned["display_name"] = None
-            elif not isinstance(value, str):
-                errors.append(
-                    FieldError(
-                        "display_name",
-                        self._echo("display_name", value),
-                        "Must be a string or null.",
-                    )
-                )
-            else:
-                trimmed = value.strip()
-                if len(trimmed) == 0:
-                    errors.append(
-                        FieldError(
-                            "display_name",
-                            self._echo("display_name", value),
-                            "Must not be blank. Use null to clear.",
-                        )
-                    )
-                elif len(trimmed) > 255:
-                    errors.append(
-                        FieldError(
-                            "display_name",
-                            self._echo("display_name", value),
-                            "Must be 255 characters or fewer.",
-                        )
-                    )
-                else:
-                    cleaned["display_name"] = trimmed
+            display_name, display_name_errors = self._clean_display_name(
+                data["display_name"], blank_reason="Must not be blank. Use null to clear."
+            )
+            errors.extend(display_name_errors)
+            if not display_name_errors:
+                cleaned["display_name"] = display_name
 
         self._raise_if_any(errors)
         return cleaned
