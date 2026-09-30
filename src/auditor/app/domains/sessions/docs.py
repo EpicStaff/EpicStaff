@@ -46,6 +46,10 @@ every field - an invalid combination 400s with the allowed set for that field.
 field - it may only be combined with other conditions via top-level `and` (never
 `or`/`not`).
 
+**`status`**: session rows show the status of their Session End event, but `status`
+filters match the stored value, which is null on session rows - so `status` filters
+effectively select events.
+
 Example leaf: `{{"field": "status", "op": "in", "value": ["failed", "error"]}}`
 """
 

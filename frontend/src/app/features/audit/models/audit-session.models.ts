@@ -19,11 +19,6 @@ export type AuditNodeType =
     | 'TELEGRAM_TRIGGER';
 export type AuditRunBucket = 'manual' | 'api';
 
-export const AUDIT_MESSAGE_TYPE = {
-    sessionStart: 'session_start',
-    sessionEnd: 'session_end',
-};
-
 export interface AuditSessionEvent {
     id: string;
     parent_id: string;

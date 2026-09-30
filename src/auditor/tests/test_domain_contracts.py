@@ -33,7 +33,7 @@ from app.domains.base import (
     ScopingPolicy,
 )
 from app.domains.sessions.domain import SESSIONS
-from app.domains.sessions.expansion import MatchScope, expand_matches
+from app.domains.sessions.expansion import MatchScope, SessionTreeExpander, expand_matches
 from app.filtering.ast import FieldSpec, FilterValidationError
 from app.filtering.constants import SELECT_OPS, TEXT_CONDITION_OPS
 from app.repositories.compiler import FilterCompileError, QueryCompiler
@@ -144,7 +144,8 @@ async def test_expansion_follow_up_queries_use_the_domain_scoping_policy():
     )
 
     assert {event.id for event in events} == {"sess-1", "node-1", "evt-start", "evt-finish"}
-    assert len(repository.queries) == 2
+    # Base search, full-history fetch, session status lookup.
+    assert len(repository.queries) == 3
     _assert_every_query_used_custom_policy(repository.queries)
 
 
@@ -465,3 +466,77 @@ async def test_ancestors_cover_rows_pulled_in_by_rows_before():
     # evt-a1 arrives via rows_before; without node-a the tree shows it as a detached root.
     assert set(result_ids) == {"sess", "node-a", "evt-a1", "node-b", "evt-b1"}
     assert len(result_ids) == len(set(result_ids))
+
+
+def _session_event(event_id, parent_id, message_type, status, seconds):
+    return SessionAuditEvent(
+        id=event_id,
+        parent_id=parent_id,
+        session_id=100,
+        kind="event",
+        status=status,
+        details={"message_type": message_type},
+        event_time=NOW + timedelta(seconds=seconds),
+        org_id=ORG_ID,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session_end_status", ["completed", "failed"])
+async def test_session_row_status_comes_from_its_session_end_event(session_end_status):
+    session_end = _session_event("evt-end", "sess-1", "session_end", session_end_status, 9)
+    repository = RecordingRepository(_session_tree() + [session_end])
+    matched = [event for event in _session_tree() if event.id == "evt-finish"]
+    query_builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(ORG_ID, 0))
+
+    result = await expand_and_mark(
+        repository, matched, MatchScope(ancestors=True), SessionTreeExpander(), query_builder
+    )
+
+    by_id = {row.id: row for row in result}
+    assert [row.id for row in result] == ["evt-finish", "node-1", "sess-1"]
+    assert by_id["sess-1"].status == session_end_status
+    assert by_id["evt-finish"].filter_matched is True
+    assert by_id["sess-1"].filter_matched is False
+    # Two ancestor hops plus exactly one status lookup.
+    assert len(repository.queries) == 3
+
+
+@pytest.mark.asyncio
+async def test_session_status_takes_the_latest_session_end_event():
+    session = SessionAuditEvent(id="sess-1", session_id=100, kind="session", event_time=NOW, org_id=ORG_ID)
+    repository = RecordingRepository(
+        [
+            session,
+            _session_event("evt-end-late", "sess-1", "session_end", "failed", 9),
+            _session_event("evt-end-early", "sess-1", "session_end", "completed", 5),
+        ]
+    )
+    query_builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(ORG_ID, 0))
+
+    result = await SessionTreeExpander().expand(repository, [session], MatchScope(), query_builder)
+
+    assert [(row.id, row.status) for row in result] == [("sess-1", "failed")]
+
+
+@pytest.mark.asyncio
+async def test_session_status_is_batched_and_stays_none_without_session_end():
+    ended = SessionAuditEvent(id="sess-1", session_id=100, kind="session", event_time=NOW, org_id=ORG_ID)
+    running = SessionAuditEvent(id="sess-2", session_id=200, kind="session", event_time=NOW, org_id=ORG_ID)
+    repository = RecordingRepository(
+        [
+            ended,
+            running,
+            _session_event("evt-end-1", "sess-1", "session_end", "completed", 5),
+            _session_event("evt-start-2", "sess-2", "session_start", "completed", 1),
+        ]
+    )
+    query_builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(ORG_ID, 0))
+
+    result = await SessionTreeExpander().expand(
+        repository, [ended, running], MatchScope(), query_builder
+    )
+
+    assert [(row.id, row.status) for row in result] == [("sess-1", "completed"), ("sess-2", None)]
+    assert ended.status is None
+    assert len(repository.queries) == 1

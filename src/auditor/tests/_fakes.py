@@ -28,13 +28,21 @@ def _range_matches(event: SessionAuditEvent, clause: dict) -> bool:
     return True
 
 
+def _field_value(event: SessionAuditEvent, field: str):
+    # A dotted path such as "details.message_type" is a flat_object sub-key.
+    if "." in field:
+        root, key = field.split(".", 1)
+        return (getattr(event, root, None) or {}).get(key)
+    return getattr(event, field, None)
+
+
 def _clause_matches(event: SessionAuditEvent, clause: dict) -> bool:
     if "term" in clause:
         (field, value), = clause["term"].items()
-        return getattr(event, field, None) == value
+        return _field_value(event, field) == value
     if "terms" in clause:
         (field, values), = clause["terms"].items()
-        return getattr(event, field, None) in values
+        return _field_value(event, field) in values
     if "range" in clause:
         return _range_matches(event, clause)
     # bool/wildcard/etc. clauses aren't exercised by the current tests built

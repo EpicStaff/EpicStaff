@@ -210,11 +210,48 @@ def _dedupe_and_sort(events: list[SessionAuditEvent]) -> list[SessionAuditEvent]
     return sorted(by_id.values(), key=lambda e: (e.event_time, e.id), reverse=True)
 
 
+async def _fill_session_status(
+    repository: AuditRepository,
+    rows: list[SessionAuditEvent],
+    query_builder: ScopedQueryBuilder,
+) -> list[SessionAuditEvent]:
+    """The kind="session" identity doc is write-once with status=None; the
+    real outcome lives on its Session End event (parent_id == the doc's own
+    id). One batched lookup for every session doc in the result; the latest
+    Session End event wins. No Session End event keeps status=None (still
+    running, or never ended). The Session End events themselves are not
+    added to the rows."""
+    session_doc_ids = sorted({row.id for row in rows if row.kind == "session"})
+    if not session_doc_ids:
+        return rows
+    terminal_events = await _fetch_all(
+        repository,
+        [
+            {"terms": {"parent_id": session_doc_ids}},
+            {"term": {"details.message_type": "session_end"}},
+        ],
+        query_builder,
+    )
+    latest_by_session: dict[str, SessionAuditEvent] = {}
+    for event in terminal_events:
+        latest = latest_by_session.get(event.parent_id)
+        if latest is None or event.event_time > latest.event_time:
+            latest_by_session[event.parent_id] = event
+    return [
+        row.model_copy(update={"status": latest_by_session[row.id].status})
+        if row.id in latest_by_session
+        else row
+        for row in rows
+    ]
+
+
 class SessionTreeExpander:
     """MatchExpander implementation (see app/domains/base.py) for the
-    sessions domain."""
+    sessions domain. Also fills each session identity doc's status from its
+    terminal event - see _fill_session_status."""
 
     async def expand(
         self, repository, events, match_scope: MatchScope, query_builder: ScopedQueryBuilder
     ) -> list[SessionAuditEvent]:
-        return await expand_matches(repository, events, match_scope, query_builder)
+        rows = await expand_matches(repository, events, match_scope, query_builder)
+        return await _fill_session_status(repository, rows, query_builder)
