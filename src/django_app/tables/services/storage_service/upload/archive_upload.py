@@ -12,10 +12,11 @@ from django.db import close_old_connections
 from rest_framework.exceptions import ValidationError
 from tables.exceptions import StoragePathIsFile, StorageUnavailable, UploadTooLarge
 from tables.services.storage_service import get_storage_backend
-from tables.services.storage_service.archive.extraction_guard import ArchiveExtractionGuard
-from tables.services.storage_service.archive.inspection import inspect_archive
-from tables.services.storage_service.archive.member_upload import upload_archive_members
-from tables.services.storage_service.archive.names import strip_archive_suffix
+from tables.services.storage_service.archive_unpacking.extraction_guard import (
+    ArchiveExtractionGuard,
+)
+from tables.services.storage_service.archive_unpacking.inspection import inspect_archive
+from tables.services.storage_service.archive_unpacking.names import strip_archive_suffix
 from tables.services.storage_service.path_utils import (
     check_new_name,
     check_path_length,
@@ -24,6 +25,7 @@ from tables.services.storage_service.path_utils import (
 )
 from tables.services.storage_service.quota import org_free_bytes, record_files_within_quota
 from tables.services.storage_service.upload.admission import get_upload_admission
+from tables.services.storage_service.upload.archive_members import upload_archive_members
 from tables.services.storage_service.upload.file_upload import save_stream
 from tables.services.storage_service.upload.guards import (
     storage_errors_as_unavailable,
@@ -86,15 +88,20 @@ async def upload_archive(
             tempfile.SpooledTemporaryFile(max_size=backend.part_size) as buffered,
         ):
             total = 0
+            # The request body is first read here, with idle and total time limits.
             async for chunk in within_time_limits(chunks):
                 total += len(chunk)
+                # 413 once the bytes actually received pass the archive cap.
                 if total > cap:
                     raise UploadTooLarge()
+                # Buffer the chunk; past one part the buffer moves to disk.
                 await asyncio.to_thread(buffered.write, chunk)
             buffered.seek(0)
 
             try:
                 # Thread-sensitive, so its DB work uses the request's connection.
+                # Validate the archive, unpack it into storage and write its rows;
+                # returns the response {"path", "extracted"} or _NOT_AN_ARCHIVE.
                 result = await sync_to_async(_unpack_to_storage)(
                     org_id, path, filename, buffered, backend, validator
                 )
@@ -111,6 +118,7 @@ async def upload_archive(
 
             if result is _NOT_AN_ARCHIVE:
                 buffered.seek(0)
+                # Not an archive: store the buffer as a plain file, read back in 1 MB chunks.
                 return await save_stream(
                     org_id,
                     target,
@@ -128,6 +136,7 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
     free = org_free_bytes(org_id)
 
     # The route is picked by name alone, so a plain file with an archive suffix lands here too.
+    # Headers only, nothing is unpacked: entries, names, declared size vs. quota, executables.
     archive_dirs = inspect_archive(
         buffered,
         filename,
@@ -148,6 +157,8 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
     created = [f"{folder_key}/"]  # the marker _reserve_folder claimed
     try:
         # Takes back its own members if it fails.
+        # Unpack one member at a time and send it to storage right away:
+        # up to one part in a single PUT (several in parallel), larger ones as multipart.
         sizes = upload_archive_members(
             buffered,
             guard,

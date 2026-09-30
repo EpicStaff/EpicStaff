@@ -21,7 +21,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from tables.exceptions import OverwriteNotPermitted
 from tables.services.storage_service import upload as upload_service
-from tables.services.storage_service.archive.names import is_archive_name
+from tables.services.storage_service.archive_unpacking.names import is_archive_name
 from tables.views.storage_views import StorageAPIView
 from utils.exception_handler import custom_exception_handler
 from utils.logger import logger
@@ -54,6 +54,7 @@ async def _serve_upload(scope, receive, send) -> None:
             raise MethodNotAllowed(method or "")
 
         _reject_non_utf8_query(scope)
+        # Check auth, permissions (FILES:CREATE) and throttling the same way StorageAPIView does.
         request, org_id = await sync_to_async(_check_access)(scope)
 
         path = request.query_params.get("path", "")
@@ -61,13 +62,16 @@ async def _serve_upload(scope, receive, send) -> None:
         if not filename:
             raise ValidationError({"filename": "Query param 'filename' is required."})
 
+        # Only builds the chunk generator: the service reads the body later, after checks and a slot.
         chunks = _request_body_chunks(receive)
         declared_size = _declared_size(request)
+        # The file name decides the route: archive or plain file.
         upload = (
             upload_service.upload_archive
             if is_archive_name(filename)
             else upload_service.upload_file
         )
+        # A plain file streams straight to storage; an archive is buffered first.
         result = await upload(
             org_id,
             path,
@@ -140,6 +144,9 @@ def _declared_size(request: Request) -> int | None:
 
 async def _request_body_chunks(receive):
     """Yield the request body chunk by chunk as the ASGI server receives it."""
+    # Each await receive() returns the next ASGI event:
+    # - http.request carries a body chunk; more_body=False means the body is complete;
+    # - http.disconnect means the client left, so raise ClientDisconnectedError.
     while True:
         event = await receive()
         if event["type"] == "http.disconnect":

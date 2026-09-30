@@ -14,7 +14,7 @@ import zipfile
 
 import pytest
 
-from tables.services.storage_service.archive.safe_readers import (
+from tables.services.storage_service.archive_unpacking.safe_readers import (
     MAX_TAR_EXTENDED_HEADER_BYTES,
     MAX_TAR_GLOBAL_HEADER_BYTES,
     MAX_TAR_HEADER_CHAIN,

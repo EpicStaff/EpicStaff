@@ -1,5 +1,8 @@
 from django.conf import settings
-from tables.services.storage_service.archive.names import ARCHIVE_SUFFIXES, DOCUMENT_EXTENSIONS
+from tables.services.storage_service.archive_unpacking.names import (
+    ARCHIVE_SUFFIXES,
+    DOCUMENT_EXTENSIONS,
+)
 from tables.services.storage_service.quota import org_free_bytes
 
 

@@ -14,11 +14,11 @@ from io import BytesIO
 
 import pytest
 
-from tables.services.storage_service.archive.extraction import (
+from tables.services.storage_service.archive_unpacking.extraction import (
     _sanitize_archive_member_name,
     iter_archive_members,
 )
-from tables.services.storage_service.archive.extraction_guard import (
+from tables.services.storage_service.archive_unpacking.extraction_guard import (
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,
 )

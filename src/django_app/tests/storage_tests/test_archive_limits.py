@@ -12,7 +12,7 @@ from io import BytesIO
 
 import pytest
 
-from tables.services.storage_service.archive.extraction_guard import (
+from tables.services.storage_service.archive_unpacking.extraction_guard import (
     GuardedMemberReader,
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,

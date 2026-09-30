@@ -1,11 +1,11 @@
 import zipfile
 from collections.abc import Iterator
 
-from tables.services.storage_service.archive.extraction_guard import (
+from tables.services.storage_service.archive_unpacking.extraction_guard import (
     ArchiveExtractionGuard,
     GuardedMemberReader,
 )
-from tables.services.storage_service.archive.safe_readers import is_tar, open_tar
+from tables.services.storage_service.archive_unpacking.safe_readers import is_tar, open_tar
 from tables.services.storage_service.path_utils import sanitize_storage_path
 
 

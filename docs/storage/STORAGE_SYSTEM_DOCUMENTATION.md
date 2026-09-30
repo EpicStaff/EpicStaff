@@ -177,11 +177,11 @@ The rename serializer additionally validates that the destination filename does 
 
 When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is (`upload/archive_upload.upload_archive`).
 
-1. The name decides the route (`archive/names.is_archive_name`) — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
+1. The name decides the route (`archive_unpacking/names.is_archive_name`) — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
 2. The body is buffered (up to `DJANGO_MAX_ARCHIVE_FILE_SIZE`, spilling to disk past one part)
-3. `archive/inspection.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
+3. `archive_unpacking/inspection.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
 4. `_reserve_folder()` claims a subfolder named after the archive stem with a conditional marker write (e.g., `data.zip` → `data/`); a taken name auto-increments: `data` → `data (1)` → `data (2)`
-5. `archive/member_upload.upload_archive_members()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
+5. `upload/archive_members.upload_archive_members()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
 6. `quota.record_files_within_quota()` writes all rows under the org lock; any failure removes exactly the objects this upload created
 
 ### Document Extensions Treated as Regular Files (Not Extracted)
@@ -254,8 +254,8 @@ Authorization (superadmin) is enforced at the API layer; the `StorageManager` pe
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
 | `tables/services/storage_service/quota.py` | Org storage quota: free bytes, row writes under the org lock |
-| `tables/services/storage_service/upload/` | Streaming upload: plain file, archive, admission gate, upload limits |
-| `tables/services/storage_service/archive/` | Archive routing by name, inspection, bounded readers, member extraction |
+| `tables/services/storage_service/upload/` | Streaming upload: plain file, archive, archive member writes, admission gate, upload limits |
+| `tables/services/storage_service/archive_unpacking/` | Archive routing by name, inspection, bounded readers, member extraction (no storage writes) |
 | `tables/views/storage_upload_stream_view.py` | Raw ASGI handler of `POST /api/storage/upload/stream` |
 | `tables/validators/file_upload_validator.py` | `FileValidator` (upload security) |
 | `shared/epicstaff_storage/storage.py` | Storage SDK for flow execution |

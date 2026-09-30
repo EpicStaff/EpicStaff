@@ -139,7 +139,7 @@ the org row lock (`record_files_within_quota`).
 `GET /api/storage/upload-limits/` (`FILES:READ`) returns what
 `upload/limits.py`'s `upload_limits()` assembles: `max_file_size` (null =
 unlimited), `max_archive_size`, `free_bytes`, and the sorted `archive_suffixes` /
-`document_extensions` from `archive/names.py`, so the frontend can apply
+`document_extensions` from `archive_unpacking/names.py`, so the frontend can apply
 `is_archive_name()`'s rule itself. `free_bytes` ignores uploads in flight and does
 not credit a file an upload would overwrite; the upload's own 413 is
 authoritative. See `STORAGE_API_REFERENCE.md` → Upload Limits.
@@ -155,7 +155,7 @@ with control characters or blank segments, a file and a folder with the same
 name, embedded executables, more than `DJANGO_MAX_ARCHIVE_ENTRIES` entries
 (folders included), and a declared unpacked size past the free quota (413).
 
-Tars are opened through `archive/safe_readers.py`, never bare `tarfile.open`/`is_tarfile`:
+Tars are opened through `archive_unpacking/safe_readers.py`, never bare `tarfile.open`/`is_tarfile`:
 `open_tar()`/`is_tar()` reject a GNU long-name/long-link or pax header over
 `MAX_TAR_EXTENDED_HEADER_BYTES` (64 KiB), more than `MAX_TAR_HEADER_CHAIN`
 headers stacked on one member, and global pax headers over 64 KiB in total,
@@ -165,13 +165,13 @@ object per entry, so the entry cap fires first. The knowledge upload validator
 (`FileValidator`) does not use these readers yet: it still calls `tarfile` and
 `zipfile` directly.
 
-Members are read in archive order through `archive/extraction.py`'s `iter_archive_members()`,
+Members are read in archive order through `archive_unpacking/extraction.py`'s `iter_archive_members()`,
 and `ArchiveExtractionGuard` (capped at the same free quota) is charged as each
 is read, so a ZIP whose declared sizes lie is still stopped mid-member; the
 keys written so far are then deleted (exactly those keys, plus the claimed
 folder marker, via `delete_keys`; never a name- or prefix-based `delete`, which
 could hit a plain file named like the folder). Their uploads to storage overlap
-(`archive/member_upload.py`'s `upload_archive_members`, up to
+(`upload/archive_members.py`'s `upload_archive_members`, up to
 `DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` at a time).
 
 Archives extract into a subfolder named after the archive stem, deduped as

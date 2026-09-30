@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from rbac.models import OrganizationUser, Role
 from tables.models import StorageFile
-from tables.services.storage_service.archive.names import (
+from tables.services.storage_service.archive_unpacking.names import (
     ARCHIVE_SUFFIXES,
     DOCUMENT_EXTENSIONS,
     is_archive_name,

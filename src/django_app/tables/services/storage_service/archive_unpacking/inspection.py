@@ -4,8 +4,8 @@ import zipfile
 import zlib
 
 from tables.exceptions import StorageQuotaExceeded
-from tables.services.storage_service.archive.extraction_guard import ArchiveLimitExceeded
-from tables.services.storage_service.archive.safe_readers import (
+from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
+from tables.services.storage_service.archive_unpacking.safe_readers import (
     is_tar,
     open_tar,
     zip_entry_count,
