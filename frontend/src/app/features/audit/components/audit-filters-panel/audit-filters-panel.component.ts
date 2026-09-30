@@ -37,6 +37,7 @@ import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-gr
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
 import { AuditMatchScopeComponent } from '../audit-match-scope/audit-match-scope.component';
+import { AuditPresetsComponent } from '../audit-presets/audit-presets.component';
 import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | 'presets';
@@ -54,6 +55,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
         AuditDateFilterComponent,
         AuditTokensFilterComponent,
         AuditMatchScopeComponent,
+        AuditPresetsComponent,
     ],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
@@ -63,6 +65,7 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly closed = output<void>();
     public readonly applied = output<void>();
     public readonly cleared = output<void>();
+    public readonly presetApplied = output<AuditFilterState>();
 
     public readonly flowNames = input<string[]>([]);
     public readonly agentOptions = input<AuditEnumOption[]>([]);
@@ -86,13 +89,25 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly queryFields = QUERY_FIELDS;
 
     public activeTab = signal<AuditFilterTab>('builder');
+    public isCreatingPreset = signal(false);
 
     public ngOnInit(): void {
         this.activeTab.set(this.filter().mode);
     }
 
     public setActiveTab(tab: AuditFilterTab): void {
+        this.isCreatingPreset.set(false);
         this.activeTab.set(tab);
+    }
+
+    public createPreset(): void {
+        this.isCreatingPreset.set(true);
+        this.activeTab.set('presets');
+    }
+
+    public openQuery(query: string): void {
+        this.filter.update((current) => ({ ...current, query, mode: 'query' }));
+        this.activeTab.set('query');
     }
 
     public disabledKinds = computed(() => {

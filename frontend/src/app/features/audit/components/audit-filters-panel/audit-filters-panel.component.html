@@ -38,7 +38,8 @@
         <button
             class="filters-panel__tab"
             type="button"
-            disabled
+            [class.is-active]="activeTab() === 'presets'"
+            (click)="setActiveTab('presets')"
         >
             Presets
         </button>
@@ -357,31 +358,49 @@
                     </div>
                 </details>
             </div>
+        } @else if (activeTab() === 'presets') {
+            <app-audit-presets
+                [currentFilter]="filter()"
+                [agentOptions]="agentOptions()"
+                [toolOptions]="toolOptions()"
+                [openCreateOnInit]="isCreatingPreset()"
+                (presetApplied)="presetApplied.emit($event)"
+                (queryCopied)="openQuery($event)"
+            />
         }
     </div>
 
-    <div class="filters-panel__footer">
-        <button
-            class="filters-panel__btn"
-            type="button"
-            (click)="cleared.emit()"
-        >
-            Clear Filters
-        </button>
-        <span class="filters-panel__footer-spacer"></span>
-        <button
-            class="filters-panel__btn"
-            type="button"
-            (click)="closed.emit()"
-        >
-            Cancel
-        </button>
-        <button
-            class="filters-panel__btn filters-panel__btn--primary"
-            type="button"
-            (click)="applied.emit()"
-        >
-            Apply Filters
-        </button>
-    </div>
+    @if (activeTab() !== 'presets') {
+        <div class="filters-panel__footer">
+            <button
+                class="filters-panel__btn"
+                type="button"
+                (click)="cleared.emit()"
+            >
+                Clear Filters
+            </button>
+            <span class="filters-panel__footer-spacer"></span>
+            <button
+                class="filters-panel__btn"
+                type="button"
+                (click)="closed.emit()"
+            >
+                Cancel
+            </button>
+            <button
+                class="filters-panel__btn filters-panel__btn--accent"
+                type="button"
+                (click)="createPreset()"
+            >
+                Create & Apply Preset
+            </button>
+            <button
+                class="filters-panel__btn filters-panel__btn--primary"
+                type="button"
+                (click)="applied.emit()"
+            >
+                Apply Filters
+            </button>
+        </div>
+    }
 </div>

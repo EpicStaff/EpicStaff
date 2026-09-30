@@ -128,6 +128,15 @@
     }
 }
 
+.filters-panel__btn--accent {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+
+    &:hover:not(:disabled) {
+        background-color: var(--color-ghost-btn-hover);
+    }
+}
+
 .filters-panel__btn--primary {
     background-color: var(--accent-color);
     border-color: var(--accent-color);

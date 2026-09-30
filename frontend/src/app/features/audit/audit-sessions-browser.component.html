@@ -279,6 +279,7 @@
                     (closed)="closeFiltersPanel()"
                     (applied)="applyFilters()"
                     (cleared)="clearFilters()"
+                    (presetApplied)="applyFilters($event)"
                     [queryError]="queryError()"
                 />
             </aside>

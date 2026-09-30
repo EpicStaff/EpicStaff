@@ -169,8 +169,9 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.isFiltersPanelOpen.set(false);
     }
 
-    public applyFilters(): void {
-        this.appliedFilter.set(this.draftFilter());
+    public applyFilters(state: AuditFilterState = this.draftFilter()): void {
+        this.draftFilter.set(state);
+        this.appliedFilter.set(state);
         this.cursorStack.set([null]);
         this.isFiltersPanelOpen.set(false);
         this.loadSessions();
