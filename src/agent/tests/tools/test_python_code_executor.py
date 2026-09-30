@@ -190,6 +190,7 @@ async def test_storage_config_read_from_tool_data():
             "storage_allowed_paths": ["reports/"],
             "storage_org_prefix": "org1",
             "session_id": 42,
+            "org_id": 77,
         }
     )
     executor = PythonCodeToolExecutor(sandbox, data)
