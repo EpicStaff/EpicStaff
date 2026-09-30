@@ -35,7 +35,6 @@ def org(db):
 def collection(db, org):
     return SourceCollection.objects.create(
         collection_name="RealtimeSurfaceRagLlmSecret Collection",
-        user_id="test_user",
         org=org,
     )
 

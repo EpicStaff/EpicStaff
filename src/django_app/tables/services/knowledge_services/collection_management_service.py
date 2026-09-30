@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models, transaction
 from django.db.models import Avg, Count, Prefetch
 from loguru import logger
+from rbac.authorship import claim_authorship, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
@@ -115,7 +116,7 @@ class CollectionManagementService:
     def create_collection(
         collection_name: str | None = None,
         description: str = "",
-        user_id: str | None = None,
+        created_by: object = None,
         collection_origin: str | None = None,
         org_id: int | None = None,
     ) -> SourceCollection:
@@ -126,7 +127,7 @@ class CollectionManagementService:
             collection_name: Name for collection (auto-generated if None)
             description: LLM-facing context appended to generated knowledge tool
                 descriptions (defaults to blank)
-            user_id: User ID (defaults to "dummy_user")
+            created_by: Acting user recorded as author (no author if not a real user)
             collection_origin: Origin of collection (defaults to USER)
             org_id: Owning organization id (required — collection.org is NOT NULL)
 
@@ -136,7 +137,7 @@ class CollectionManagementService:
         collection = SourceCollection.objects.create(
             collection_name=collection_name or "Untitled Collection",
             description=description or "",
-            user_id=user_id or "dummy_user",
+            created_by=resolve_author(created_by),
             collection_origin=collection_origin or SourceCollection.SourceCollectionOrigin.USER,
             org_id=org_id,
         )
@@ -153,6 +154,7 @@ class CollectionManagementService:
         collection_id: int,
         collection_name: str | None = None,
         description: str | None = None,
+        user: object = None,
     ) -> SourceCollection:
         """
         Update collection name and/or description.
@@ -161,6 +163,7 @@ class CollectionManagementService:
             collection_id: ID of collection to update
             collection_name: New collection name (unchanged if None)
             description: New description (unchanged if None)
+            user: Acting user; becomes the author if the collection has none
 
         Returns:
             SourceCollection: Updated collection
@@ -171,6 +174,9 @@ class CollectionManagementService:
         collection = CollectionManagementService.get_collection(collection_id)
 
         update_fields = []
+
+        if claim_authorship(collection, user):
+            update_fields.append("created_by")
 
         if collection_name is not None:
             collection.collection_name = collection_name
@@ -360,6 +366,7 @@ class CollectionManagementService:
         source_collection_id: int,
         new_collection_name: str | None = None,
         org_id: int | None = None,
+        user: object = None,
     ) -> SourceCollection:
         """
         Copy a collection without duplicating binary content.
@@ -368,7 +375,8 @@ class CollectionManagementService:
         Args:
             source_collection_id: ID of collection to copy
             new_collection_name: Name for new collection (auto-generated if None)
-            user_id: User ID for new collection (uses source if None)
+            org_id: Owning organization id of the new collection
+            user: Acting user recorded as author of the copy
 
         Returns:
             SourceCollection: New collection instance
@@ -384,6 +392,7 @@ class CollectionManagementService:
             collection_name=new_collection_name or f"{source_collection.collection_name} (Copy)",
             description=source_collection.description,
             org_id=org_id,
+            created_by=resolve_author(user),
         )
 
         # Get source documents with content
