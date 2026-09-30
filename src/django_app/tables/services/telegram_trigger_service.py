@@ -1,10 +1,16 @@
 import functools
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import requests
 from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
-from tables.exceptions import RegisterTelegramTriggerError
+from tables.exceptions import (
+    RegisterTelegramTriggerError,
+    TelegramBotKeyNotConfiguredError,
+    TelegramWebhookInfoUnavailableError,
+)
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
@@ -22,6 +28,37 @@ from tables.validators.telegram_secret_token_validator import (
 from utils.singleton_meta import SingletonMeta
 
 TELEGRAM_WEBHOOK_HEADER = WebhookTriggerAuth.HEADER_NAMES[WebhookTriggerAuthKind.TELEGRAM]
+
+TELEGRAM_API_TIMEOUT_SECONDS = 10
+# A single short attempt: this backs a panel read, so the retrying
+# `_call_telegram_api` (up to ~34 s) would leave the UI hanging. `requests`
+# applies a (connect, read) pair separately, so the worst case is their sum
+# (~8 s); the read limit is per socket read, not a total-response deadline.
+WEBHOOK_INFO_CONNECT_READ_TIMEOUT_SECONDS = (3, 5)
+
+
+def build_telegram_callback_url(tunnel_url: str, webhook_trigger_path: str) -> str:
+    """Return the URL Telegram must call for a trigger path: `<tunnel>/webhooks/<path>/`."""
+    return f"{tunnel_url}/webhooks/{webhook_trigger_path}/"
+
+
+@dataclass(frozen=True)
+class TelegramWebhookStatus:
+    """What Telegram has registered for a node's bot key, next to what this node expects.
+
+    Telegram keeps one webhook per bot key, so `registered_url` can belong to a
+    different trigger node that shares the key; `is_match` flags that case.
+    `expected_url` is None when this node has no reachable callback URL right now.
+    `is_match` is False when Telegram has no webhook set (this node cannot be
+    receiving messages), and None only when `expected_url` is unknown.
+    """
+
+    registered_url: str | None
+    expected_url: str | None
+    is_match: bool | None
+    pending_update_count: int | None
+    last_error_message: str | None
+    last_error_date: datetime | None
 
 
 def _retry_on_connection_errors(func):
@@ -51,13 +88,27 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         self.webhook_trigger_service = webhook_trigger_service
         self.session_manager_service = session_manager_service or SessionManagerService()
 
-    @_retry_on_connection_errors
-    def _call_telegram_api(
-        self, method: str, api_key: str, endpoint: str, params: dict | None = None
-    ):
-        """Handle Telegram API calls with retries."""
+    def _send_telegram_request(
+        self,
+        method: str,
+        api_key: str,
+        endpoint: str,
+        params: dict | None = None,
+        timeout: float | tuple[float, float] = TELEGRAM_API_TIMEOUT_SECONDS,
+    ) -> dict:
+        """Make one Telegram Bot API call and return its decoded body.
+
+        The request URL embeds the bot token, so the `requests` exceptions
+        raised here carry it in their message: callers must never surface
+        `str(error)` to a client or a log line.
+
+        Raises:
+            requests.RequestException: Network failure, timeout, non-2xx, or a
+                body that is not JSON.
+            ValueError: Telegram answered `ok: false`.
+        """
         url = f"https://api.telegram.org/bot{api_key}/{endpoint}"
-        response = requests.request(method, url, params=params, timeout=10)
+        response = requests.request(method, url, params=params, timeout=timeout)
 
         response.raise_for_status()
         data = response.json()
@@ -66,6 +117,13 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             raise ValueError(f"Telegram API error: {data.get('description')}")
 
         return data
+
+    @_retry_on_connection_errors
+    def _call_telegram_api(
+        self, method: str, api_key: str, endpoint: str, params: dict | None = None
+    ):
+        """Handle Telegram API calls with retries."""
+        return self._send_telegram_request(method, api_key, endpoint, params=params)
 
     def register_telegram_trigger(
         self, telegram_trigger_instance: TelegramTriggerNode, force: bool = False
@@ -119,7 +177,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 status_code=503,
             )
 
-        telegram_webhook_url = f"{webhook_tunnel_url}/webhooks/{webhook_trigger.path}/"
+        telegram_webhook_url = build_telegram_callback_url(webhook_tunnel_url, webhook_trigger.path)
 
         trigger_auth: WebhookTriggerAuth | None = getattr(webhook_trigger, "auth", None)
         if trigger_auth is not None and trigger_auth.kind != WebhookTriggerAuthKind.TELEGRAM:
@@ -225,10 +283,78 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 trigger=TriggerSpec.telegram(telegram_trigger_node, payload),
             )
 
-    def get_trigger_info(self, telegram_bot_api_key: str):
+    def get_webhook_status(
+        self, telegram_trigger_node: TelegramTriggerNode
+    ) -> TelegramWebhookStatus:
+        """Ask Telegram which webhook URL is registered for this node's bot key.
+
+        Reads Telegram's `getWebhookInfo` (the source of truth) rather than the
+        stored `WebhookTriggerAuth.registered_webhook_url`, which is kept per
+        trigger and goes stale as soon as another node sharing the bot key
+        registers its own URL. Makes one attempt with a short timeout.
+
+        Args:
+            telegram_trigger_node: A saved node; its graph's org scopes the
+                bot-key lookup, so the caller must have org-scoped it already.
+
+        Raises:
+            TelegramBotKeyNotConfiguredError: The node has no bot key secret.
+            TelegramWebhookInfoUnavailableError: Telegram was unreachable, answered
+                non-2xx, or answered `ok: false`.
+        """
+        if telegram_trigger_node.telegram_bot_api_key_secret_id is None:
+            raise TelegramBotKeyNotConfiguredError()
+
+        bot_api_key = secret_resolver.resolve(
+            secret_id=telegram_trigger_node.telegram_bot_api_key_secret_id,
+            org_id=telegram_trigger_node.graph.org_id,
+            context="TelegramTriggerNode.telegram_bot_api_key",
+        )
         try:
-            return self._call_telegram_api(
-                method="GET", api_key=telegram_bot_api_key, endpoint="getWebhookInfo"
+            webhook_info = self._send_telegram_request(
+                method="GET",
+                api_key=bot_api_key,
+                endpoint="getWebhookInfo",
+                timeout=WEBHOOK_INFO_CONNECT_READ_TIMEOUT_SECONDS,
+            )["result"]
+        except (requests.RequestException, ValueError) as error:
+            # Never log `error` itself: its message carries the bot-token URL.
+            response = getattr(error, "response", None)
+            logger.warning(
+                "[TelegramTrigger] getWebhookInfo failed for node {node_id}: {error_type} (HTTP status {status})",
+                node_id=telegram_trigger_node.pk,
+                error_type=type(error).__name__,
+                status=response.status_code if response is not None else None,
             )
-        except Exception:
+            raise TelegramWebhookInfoUnavailableError() from None
+
+        registered_url = webhook_info.get("url") or None
+        expected_url = self._get_expected_callback_url(telegram_trigger_node)
+        is_match = None
+        if expected_url is not None:
+            is_match = registered_url is not None and (
+                registered_url.rstrip("/") == expected_url.rstrip("/")
+            )
+
+        last_error_timestamp = webhook_info.get("last_error_date")
+        return TelegramWebhookStatus(
+            registered_url=registered_url,
+            expected_url=expected_url,
+            is_match=is_match,
+            pending_update_count=webhook_info.get("pending_update_count"),
+            last_error_message=webhook_info.get("last_error_message"),
+            last_error_date=(
+                datetime.fromtimestamp(last_error_timestamp, tz=UTC)
+                if last_error_timestamp
+                else None
+            ),
+        )
+
+    def _get_expected_callback_url(self, telegram_trigger_node: TelegramTriggerNode) -> str | None:
+        webhook_trigger = telegram_trigger_node.webhook_trigger
+        if webhook_trigger is None or webhook_trigger.provider_type in LOCAL_ONLY_PROVIDERS:
             return None
+        tunnel_url = self.webhook_trigger_service.get_tunnel_url_for_trigger(webhook_trigger)
+        if not tunnel_url:
+            return None
+        return build_telegram_callback_url(tunnel_url, webhook_trigger.path)

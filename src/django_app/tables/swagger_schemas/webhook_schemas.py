@@ -1,3 +1,8 @@
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+
+from tables.serializers.model_serializers import TelegramWebhookInfoSerializer
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+
 WEBHOOK_TRIGGER_NODE_CREATE = {
     "description": (
         "Auth for this node's inbound webhook is not configured here -- it "
@@ -36,3 +41,61 @@ WEBHOOK_TRIGGER_CREATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 WEBHOOK_TRIGGER_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 
 WEBHOOK_TRIGGER_PARTIAL_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
+
+
+TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET = {
+    "summary": "Return the webhook URL Telegram has registered for this node's bot key.",
+    "description": (
+        "Calls Telegram's `getWebhookInfo` for the node's bot key (one attempt, short "
+        "timeout) and compares the result with this node's own callback URL "
+        "(`<tunnel>/webhooks/<path>/`). Telegram keeps only the last `setWebhook` URL "
+        "per bot key, so when several Telegram trigger nodes share a key only one of "
+        "them receives messages -- `is_match: false` flags a node that is not it. "
+        "`registered_url` is null when Telegram has no webhook set. `expected_url` is "
+        "null when the node has no webhook trigger, the trigger has no tunnel "
+        "provider, uses the localhost provider, or its tunnel URL is not currently "
+        "available. `is_match` is false when Telegram has no webhook set, and null "
+        "only when `expected_url` is null (the match cannot be determined); the "
+        "comparison ignores a trailing slash. `last_error_date` is ISO-8601 UTC. The "
+        "bot key is never returned."
+    ),
+    "responses": {
+        200: TelegramWebhookInfoSerializer,
+        400: OpenApiResponse(
+            description="The node has no bot key configured.",
+            examples=[
+                OpenApiExample(
+                    "No bot key",
+                    value={
+                        "status_code": 400,
+                        "code": "telegram_bot_key_not_configured",
+                        "message": "This Telegram trigger node has no bot key configured.",
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(description="The caller lacks read permission on flows."),
+        404: OpenApiResponse(description="No such node in the active organization."),
+        500: OpenApiResponse(
+            description="The node's bot key secret could not be resolved (missing or not decryptable, e.g. after an encryption key rotation)."
+        ),
+        502: OpenApiResponse(
+            description="Telegram was unreachable, answered non-2xx, or answered `ok: false`.",
+            examples=[
+                OpenApiExample(
+                    "Telegram unavailable",
+                    value={
+                        "status_code": 502,
+                        "code": "telegram_webhook_info_unavailable",
+                        "message": "Could not fetch webhook info from Telegram.",
+                    },
+                    response_only=True,
+                    status_codes=["502"],
+                ),
+            ],
+        ),
+    },
+}

@@ -87,6 +87,24 @@ class RegisterTelegramTriggerError(CustomAPIExeption):
     default_detail = "Error occurred while registering Telegram trigger"
 
 
+class TelegramBotKeyNotConfiguredError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "This Telegram trigger node has no bot key configured."
+    default_code = "telegram_bot_key_not_configured"
+
+
+class TelegramWebhookInfoUnavailableError(CustomAPIExeption):
+    """Raised when Telegram's getWebhookInfo cannot be read.
+
+    The detail is fixed on purpose: the underlying `requests` error message
+    contains the request URL, which embeds the bot token.
+    """
+
+    status_code = 502
+    default_detail = "Could not fetch webhook info from Telegram."
+    default_code = "telegram_webhook_info_unavailable"
+
+
 class PythonCodeToolConfigSerializerError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeToolConfig.

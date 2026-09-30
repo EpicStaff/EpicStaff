@@ -48,6 +48,7 @@ from .node_serializers import (
     TelegramTriggerNodeFieldSerializer,
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramWebhookInfoSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
@@ -167,6 +168,7 @@ __all__ = [
     "TelegramTriggerNodeFieldSerializer",
     "TelegramTriggerNodeReadSerializer",
     "TelegramTriggerNodeSerializer",
+    "TelegramWebhookInfoSerializer",
     "TwilioChannelSerializer",
     "UserSessionMessageSerializer",
     "WebhookTriggerNodeReadSerializer",

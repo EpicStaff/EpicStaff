@@ -676,6 +676,65 @@ class TestUserProvidedTelegramSecretRegistration:
         assert auth.kind == WebhookTriggerAuthKind.TELEGRAM
         assert auth.header_name == "X-Telegram-Bot-Api-Secret-Token"
 
+    def test_setwebhook_receives_the_tunnel_callback_url_for_the_trigger_path(
+        self, default_org, fresh_service, monkeypatch
+    ):
+        node = self._make_node(
+            default_org=default_org,
+            path="callback-url-format",
+            telegram_secret_token="UserSecretURL123-xxxxxxxxxxxxxxx",
+        )
+        service, _calls = fresh_service(tunnel_url="https://tunnel.test")
+        seen = {}
+        monkeypatch.setattr(
+            service,
+            "_call_telegram_api",
+            lambda method, api_key, endpoint, params=None: seen.update(
+                endpoint=endpoint, params=params
+            )
+            or {"ok": True},
+        )
+
+        service.register_telegram_trigger(telegram_trigger_instance=node)
+
+        assert seen["endpoint"] == "setWebhook"
+        assert seen["params"]["url"] == "https://tunnel.test/webhooks/callback-url-format/"
+        node.refresh_from_db()
+        assert (
+            node.webhook_trigger.auth.registered_webhook_url
+            == "https://tunnel.test/webhooks/callback-url-format/"
+        )
+
+    def test_setwebhook_still_retries_connection_errors_three_times(
+        self, default_org, fresh_service, monkeypatch
+    ):
+        """`getWebhookInfo` uses a single attempt; registration must keep its retries."""
+        import requests
+
+        from tables.exceptions import RegisterTelegramTriggerError
+
+        node = self._make_node(
+            default_org=default_org,
+            path="setwebhook-retries",
+            telegram_secret_token="UserSecretRetry123-xxxxxxxxxxxxx",
+        )
+        service, _calls = fresh_service()
+        attempts = []
+
+        def _unreachable(method, url, **kwargs):
+            attempts.append(url)
+            raise requests.exceptions.ConnectionError("unreachable")
+
+        monkeypatch.setattr(
+            "tables.services.telegram_trigger_service.requests.request", _unreachable
+        )
+        monkeypatch.setattr("tables.services.telegram_trigger_service.time.sleep", lambda _: None)
+
+        with pytest.raises(RegisterTelegramTriggerError):
+            service.register_telegram_trigger(telegram_trigger_instance=node)
+
+        assert len(attempts) == 3
+
     def test_resync_skipped_when_nothing_changed(
         self, default_org, fresh_service, monkeypatch
     ):

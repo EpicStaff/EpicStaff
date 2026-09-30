@@ -1,11 +1,18 @@
+import json
+
 import pytest
+import requests
 from django.urls import reverse
+from loguru import logger as loguru_logger
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.models import Secret
 from tables.models.graph_models import Graph, TelegramTriggerNode
-from tables.models.webhook_models import WebhookTrigger
+from tables.models.webhook_models import NgrokWebhookConfig, ProviderType, WebhookTrigger
 from tables.services.secrets import secret_encryption, secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 @pytest.mark.django_db
@@ -334,3 +341,305 @@ class TestTelegramTriggerServiceLocalhostGuard:
         result = TelegramTriggerService().register_telegram_trigger(node, force=True)
         assert result == {"ok": True}
         mock_call.assert_called_once()
+
+
+BOT_TOKEN = "987654321:AAH-webhook-info-SECRET-bot-token"
+TUNNEL_URL = "https://abcd1234.ngrok-free.app"
+
+
+def _telegram_response(url, *, status_code=200, body=None):
+    """A real `requests.Response`, so `raise_for_status()` and `.json()` behave as in production."""
+    response = requests.models.Response()
+    response.status_code = status_code
+    response.url = url
+    response._content = json.dumps(body if body is not None else {}).encode()
+    return response
+
+
+def _webhook_info_body(url, **extra):
+    return {"ok": True, "result": {"url": url, "pending_update_count": 0, **extra}}
+
+
+def _webhook_info_url(node_id):
+    return reverse("telegramtriggernode-webhook-info", args=[node_id])
+
+
+@pytest.mark.django_db
+class TestTelegramTriggerNodeWebhookInfo:
+    @pytest.fixture(autouse=True)
+    def _stub_signal_side_effects(self, mocker, mock_telegram_service):
+        # Node saves resync tunnels over Redis and call setWebhook; neither is under test here.
+        mocker.patch.object(WebhookTriggerService, "register_webhooks", return_value=True)
+
+    @pytest.fixture
+    def tunnel_url(self, mocker):
+        return mocker.patch.object(
+            WebhookTriggerService, "get_tunnel_url_for_trigger", return_value=TUNNEL_URL
+        )
+
+    @pytest.fixture
+    def telegram_api(self, mocker):
+        """Patch only the outbound HTTP call; each test sets its return value or side effect."""
+        return mocker.patch("tables.services.telegram_trigger_service.requests.request")
+
+    @pytest.fixture
+    def captured_logs(self):
+        messages = []
+        sink_id = loguru_logger.add(lambda message: messages.append(str(message)), level="DEBUG")
+        yield messages
+        loguru_logger.remove(sink_id)
+
+    def _make_node(
+        self, org, *, path="tg-info-path", with_bot_key=True, provider_type=ProviderType.NGROK
+    ):
+        trigger = WebhookTrigger.objects.create(path=path, provider_type=provider_type, org=org)
+        if provider_type == ProviderType.NGROK:
+            NgrokWebhookConfig.objects.create(
+                trigger=trigger,
+                name=f"cfg-{path}",
+                auth_token_secret=secret_service.create(
+                    text="ngrok-token", org=org, name=f"{path}-ngrok-secret"
+                ),
+            )
+        return TelegramTriggerNode.objects.create(
+            node_name=f"node-{path}",
+            graph=Graph.objects.create(name=f"graph-{path}", org=org),
+            webhook_trigger=trigger,
+            telegram_bot_api_key_secret=(
+                secret_service.create(text=BOT_TOKEN, org=org, name=f"{path}-bot-key")
+                if with_bot_key
+                else None
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        "registered_url",
+        [f"{TUNNEL_URL}/webhooks/tg-info-path/", f"{TUNNEL_URL}/webhooks/tg-info-path"],
+    )
+    def test_registered_url_equal_to_own_callback_is_a_match(
+        self, auth_client, default_org, tunnel_url, telegram_api, registered_url
+    ):
+        node = self._make_node(default_org)
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body(registered_url)
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json() == {
+            "registered_url": registered_url,
+            "expected_url": f"{TUNNEL_URL}/webhooks/tg-info-path/",
+            "is_match": True,
+            "pending_update_count": 0,
+            "last_error_message": None,
+            "last_error_date": None,
+        }
+        method, url = telegram_api.call_args.args
+        assert method == "GET"
+        assert url == f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
+        assert BOT_TOKEN not in response.content.decode()
+
+    def test_url_registered_by_another_node_sharing_the_key_is_a_mismatch(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = self._make_node(default_org)
+        other_url = f"{TUNNEL_URL}/webhooks/other-node-path/"
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org",
+            body=_webhook_info_body(
+                other_url,
+                pending_update_count=3,
+                last_error_date=1700000000,
+                last_error_message="Wrong response from the webhook: 404 Not Found",
+            ),
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert body["registered_url"] == other_url
+        assert body["expected_url"] == f"{TUNNEL_URL}/webhooks/tg-info-path/"
+        assert body["is_match"] is False
+        assert body["pending_update_count"] == 3
+        assert body["last_error_message"] == "Wrong response from the webhook: 404 Not Found"
+        assert body["last_error_date"] == "2023-11-14T22:13:20Z"
+
+    def test_no_webhook_registered_returns_null_url_and_no_match(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = self._make_node(default_org)
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body("")
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json()["registered_url"] is None
+        assert response.json()["expected_url"] == f"{TUNNEL_URL}/webhooks/tg-info-path/"
+        assert response.json()["is_match"] is False
+
+    def test_unavailable_tunnel_returns_null_expected_url_but_still_the_registered_url(
+        self, auth_client, default_org, telegram_api, mocker
+    ):
+        mocker.patch.object(WebhookTriggerService, "get_tunnel_url_for_trigger", return_value=None)
+        node = self._make_node(default_org)
+        registered_url = f"{TUNNEL_URL}/webhooks/tg-info-path/"
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body(registered_url)
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json()["registered_url"] == registered_url
+        assert response.json()["expected_url"] is None
+        assert response.json()["is_match"] is None
+
+    def test_trigger_without_tunnel_provider_has_no_expected_url(
+        self, auth_client, default_org, telegram_api
+    ):
+        # The real tunnel lookup runs: with no provider it resolves no config before touching Redis.
+        node = self._make_node(default_org, provider_type=None)
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body("")
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json()["expected_url"] is None
+        # Neither URL is known: whether this node would match cannot be determined.
+        assert response.json()["registered_url"] is None
+        assert response.json()["is_match"] is None
+
+    def test_localhost_trigger_has_no_expected_url_even_with_a_tunnel(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = self._make_node(default_org, provider_type=ProviderType.LOCALHOST)
+        registered_url = f"{TUNNEL_URL}/webhooks/tg-info-path/"
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body(registered_url)
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json()["expected_url"] is None
+        assert response.json()["is_match"] is None
+        tunnel_url.assert_not_called()
+
+    def test_node_without_bot_key_returns_400_without_calling_telegram(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = self._make_node(default_org, with_bot_key=False)
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 400, response.content
+        assert response.json()["message"] == "This Telegram trigger node has no bot key configured."
+        telegram_api.assert_not_called()
+
+    def test_undecryptable_bot_key_returns_500_without_calling_telegram(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = self._make_node(default_org)
+        Secret.objects.filter(pk=node.telegram_bot_api_key_secret_id).update(
+            value="not-a-fernet-token"
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 500, response.content
+        assert response.json()["code"] == "secret_resolution_error"
+        assert BOT_TOKEN not in response.content.decode()
+        telegram_api.assert_not_called()
+
+    @pytest.mark.parametrize("failure", ["connection_error", "timeout", "http_401", "ok_false"])
+    def test_telegram_failure_returns_502_after_one_attempt_without_leaking_the_token(
+        self, auth_client, default_org, tunnel_url, telegram_api, captured_logs, failure
+    ):
+        node = self._make_node(default_org)
+
+        def _fail(method, url, **kwargs):
+            if failure == "connection_error":
+                raise requests.exceptions.ConnectionError(f"Max retries exceeded with url: {url}")
+            if failure == "timeout":
+                raise requests.exceptions.Timeout(f"Read timed out: {url}")
+            if failure == "http_401":
+                return _telegram_response(
+                    url, status_code=401, body={"ok": False, "description": "Unauthorized"}
+                )
+            return _telegram_response(url, body={"ok": False, "description": f"bad {url}"})
+
+        telegram_api.side_effect = _fail
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 502, response.content
+        assert response.json()["message"] == "Could not fetch webhook info from Telegram."
+        assert BOT_TOKEN not in response.content.decode()
+        assert telegram_api.call_count == 1
+        assert telegram_api.call_args.kwargs["timeout"] == (3, 5)
+        assert any("getWebhookInfo failed" in message for message in captured_logs)
+        assert not any(BOT_TOKEN in message for message in captured_logs)
+
+    def test_node_in_another_org_returns_404(
+        self, client_as, admin_acme, acme, beta, tunnel_url, telegram_api
+    ):
+        own_node = self._make_node(acme, path="acme-tg-path")
+        foreign_node = self._make_node(beta, path="beta-tg-path")
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body("")
+        )
+        acme_client = client_as(admin_acme)
+        acme_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+        own_response = acme_client.get(_webhook_info_url(own_node.id))
+        foreign_response = acme_client.get(_webhook_info_url(foreign_node.id))
+
+        # Positive control: the same caller reads its own org's node, so the 404 is the org filter.
+        assert own_response.status_code == 200, own_response.content
+        assert foreign_response.status_code == 404, foreign_response.content
+        assert "registered_url" not in foreign_response.json()
+        assert telegram_api.call_count == 1
+
+    def test_role_without_flows_read_gets_403(
+        self, django_user_model, client_as, acme, tunnel_url, telegram_api
+    ):
+        node = self._make_node(acme)
+        role = Role.objects.create(name="role-no-flows-tg", org=acme, is_built_in=False)
+        RolePermission.objects.create(
+            role=role, resource_type=ResourceType.SECRETS.value, permissions=int(Permission.READ)
+        )
+        user = django_user_model.objects.create_user(
+            email="no-flows-tg@example.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=user, org=acme, role=role)
+        client = client_as(user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+        response = client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 403, response.content
+        telegram_api.assert_not_called()
+
+    def test_viewer_with_flows_read_gets_200(
+        self, django_user_model, client_as, acme, role_viewer, tunnel_url, telegram_api
+    ):
+        node = self._make_node(acme)
+        user = django_user_model.objects.create_user(
+            email="viewer-tg@example.com", password="StrongPass123!"
+        )
+        OrganizationUser.objects.create(user=user, org=acme, role=role_viewer)
+        client = client_as(user)
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body("")
+        )
+
+        response = client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content

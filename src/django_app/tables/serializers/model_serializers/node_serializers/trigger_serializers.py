@@ -1,3 +1,5 @@
+from datetime import UTC
+
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
@@ -186,6 +188,23 @@ class TelegramTriggerNodeReadSerializer(TelegramTriggerNodeSerializer):
 
 class TelegramTriggerNodeDataFieldsSerializer(serializers.Serializer):
     data = serializers.JSONField()
+
+
+class TelegramWebhookInfoSerializer(serializers.Serializer):
+    """Read-only shape of `TelegramWebhookStatus` for the node's webhook-info action."""
+
+    registered_url = serializers.CharField(allow_null=True)
+    expected_url = serializers.CharField(allow_null=True)
+    is_match = serializers.BooleanField(
+        allow_null=True,
+        help_text=(
+            "False when Telegram has no webhook set or it points elsewhere; "
+            "null only when `expected_url` is null."
+        ),
+    )
+    pending_update_count = serializers.IntegerField(allow_null=True)
+    last_error_message = serializers.CharField(allow_null=True)
+    last_error_date = serializers.DateTimeField(allow_null=True, default_timezone=UTC)
 
 
 class _ScheduleIntervalInputSerializer(serializers.Serializer):

@@ -213,6 +213,7 @@ from tables.serializers.model_serializers import (
     TaskNodeSerializer,
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramWebhookInfoSerializer,
     TwilioChannelSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
@@ -251,6 +252,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
+from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
     get_python_code_tool_usage_detail,
@@ -297,6 +299,7 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
 from tables.swagger_schemas.webhook_schemas import (
+    TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET,
     WEBHOOK_TRIGGER_CREATE,
     WEBHOOK_TRIGGER_NODE_CREATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
@@ -2373,6 +2376,7 @@ class TelegramTriggerNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "webhook_info": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = TelegramTriggerNode.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
@@ -2383,6 +2387,12 @@ class TelegramTriggerNodeViewSet(
         if self.action in ["list", "retrieve"]:
             return TelegramTriggerNodeReadSerializer
         return TelegramTriggerNodeSerializer
+
+    @extend_schema(**TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET)
+    @action(detail=True, methods=["get"], url_path="webhook-info")
+    def webhook_info(self, request, pk=None):
+        webhook_status = TelegramTriggerService().get_webhook_status(self.get_object())
+        return Response(TelegramWebhookInfoSerializer(webhook_status).data)
 
 
 class ScheduleTriggerNodeViewSet(
