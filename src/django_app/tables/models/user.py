@@ -11,11 +11,36 @@ Everything else RBAC lives in the `rbac` app.
 """
 
 import pathlib
+import re
 import uuid
 
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+
+DISPLAY_NAME_MAX_LENGTH = 255
+
+_LOCAL_PART_SEPARATORS = re.compile(r"[._-]")
+
+
+def display_name_from_email(email: str) -> str:
+    """Derive a human-readable default display name from an email address.
+
+    "john.smith+test@acme.com" becomes "John Smith": the local part loses its
+    `+tag`, is split on `.`, `_` and `-`, and each piece gets an uppercase
+    first letter with the rest kept as typed ("mcDonald" -> "McDonald").
+    When no piece survives ("+tag@x.com"), falls back to the raw local part,
+    then to the whole email, so the result is never empty for a non-blank email.
+
+    Kept pure and module-level so a data migration can copy it verbatim.
+    """
+    local_part = email.rpartition("@")[0] if "@" in email else email
+    untagged = local_part.split("+", 1)[0]
+    pieces = [piece.strip() for piece in _LOCAL_PART_SEPARATORS.split(untagged) if piece.strip()]
+    display_name = " ".join(piece[0].upper() + piece[1:] for piece in pieces)
+    if not display_name:
+        display_name = local_part.strip() or email.strip()
+    return display_name[:DISPLAY_NAME_MAX_LENGTH].rstrip()
 
 
 class UserManager(BaseUserManager):
@@ -56,7 +81,7 @@ def _avatar_upload_path(instance, filename):
 
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
-    display_name = models.CharField(max_length=255, blank=True, null=True)
+    display_name = models.CharField(max_length=DISPLAY_NAME_MAX_LENGTH, blank=True, null=True)
     avatar = models.ImageField(upload_to=_avatar_upload_path, blank=True, null=True)
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
