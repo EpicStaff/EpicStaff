@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
-
 from rbac.models.org_scoped import OrgScopedModel
+
 from tables.models.base_models import TimestampMixin
 
 
@@ -9,11 +9,11 @@ class AuditFilterPreset(OrgScopedModel, TimestampMixin):
     """
     A user's saved audit-search filter - owner-only (see created_by), never
     shared/visible across users, even to an Org Admin. `filter_body` is the
-    exact same {"filters"|"query", "match_scope"} shape the auditor search
-    endpoint accepts - opaque JSON here, never parsed/validated in
-    django_app (that only happens once, at search time, in `auditor` -
-    django_app has no import path to auditor's AST module and isn't meant
-    to grow one just for this).
+    auditor search request body (`filters` | `query`, `match_scope`,
+    `cursor`, `size`) plus an optional frontend-only `ui_state` (the filters
+    panel state), which is never sent to the auditor. Its shape is checked
+    in tables/validators/audit_filter_body_validator.py; the filter grammar
+    itself is only checked by `auditor` at search time.
     """
 
     created_by = models.ForeignKey(

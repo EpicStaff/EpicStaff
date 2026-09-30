@@ -96,6 +96,52 @@ class TestAuditFilterPresetExport:
 
 
 @pytest.mark.django_db
+class TestAuditFilterPresetCreateFilterBody:
+    def _create(self, auth_client, filter_body):
+        url = reverse("auditfilterpreset-list")
+        return auth_client.post(
+            url, {"name": "preset", "filter_body": filter_body}, format="json"
+        )
+
+    @pytest.mark.parametrize(
+        "filter_body",
+        [
+            {
+                "filters": {"op": "and", "children": []},
+                "ui_state": {
+                    "version": 1,
+                    "state": {"mode": "builder", "kinds": ["event"]},
+                },
+            },
+            {
+                "query": 'status in ["failed"]',
+                "ui_state": {
+                    "version": 1,
+                    "state": {"mode": "query", "query": 'status in ["failed"]'},
+                },
+            },
+        ],
+    )
+    def test_ui_state_object_is_accepted(self, auth_client, filter_body):
+        response = self._create(auth_client, filter_body)
+
+        assert response.status_code == 201
+        assert AuditFilterPreset.objects.get(name="preset").filter_body == filter_body
+
+    def test_unknown_key_is_rejected(self, auth_client):
+        response = self._create(auth_client, {"query": "", "not_a_key": {}})
+
+        assert response.status_code == 400
+        assert not AuditFilterPreset.objects.exists()
+
+    def test_non_object_ui_state_is_rejected(self, auth_client):
+        response = self._create(auth_client, {"query": "", "ui_state": "open"})
+
+        assert response.status_code == 400
+        assert not AuditFilterPreset.objects.exists()
+
+
+@pytest.mark.django_db
 class TestAuditFilterPresetImport:
     def _import(self, auth_client, payload, filename="import.json"):
         file = data_to_json_file(payload, filename)
@@ -187,6 +233,21 @@ class TestAuditFilterPresetImport:
 
         assert response.status_code == 400
         assert not AuditFilterPreset.objects.filter(name="bad body").exists()
+
+    def test_import_accepts_ui_state(self, auth_client):
+        filter_body = {
+            "query": 'status in ["failed"]',
+            "ui_state": {
+                "version": 1,
+                "state": {"mode": "query", "query": 'status in ["failed"]'},
+            },
+        }
+        payload = _envelope([{"id": 1, "name": "with ui", "filter_body": filter_body}])
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        created = AuditFilterPreset.objects.get(name="with ui")
+        assert created.filter_body == filter_body
 
     def test_import_rejects_name_over_max_length(self, auth_client):
         payload = _envelope([{"id": 1, "name": "n" * 151, "filter_body": {}}])

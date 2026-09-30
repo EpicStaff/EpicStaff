@@ -1,14 +1,17 @@
 from rest_framework import serializers
 
-
 # Mirrors SessionSearchRequest's own field set (src/auditor/app/controllers/
-# query_routes.py) - keep these two in sync if that shape ever changes.
+# query_routes.py) - keep these two in sync if that shape ever changes -
+# plus `ui_state`, the frontend's own panel state. `ui_state` is never sent
+# to the auditor (its request model forbids extra keys); the frontend strips
+# it before searching and only uses it to restore the filters panel.
 _FILTER_BODY_KEY_TYPES: dict[str, type] = {
     "filters": dict,
     "query": str,
     "match_scope": dict,
     "cursor": str,
     "size": int,
+    "ui_state": dict,
 }
 
 
@@ -16,7 +19,8 @@ def validate_filter_body_shape(value):
     """
     filter_body must be a JSON object matching the search request body
     shape ({"filters": FilterNode} | {"query": str}, optionally with
-    match_scope/cursor/size) - not just any dict. Checked here: known keys
+    match_scope/cursor/size), plus an optional frontend-only `ui_state`
+    object - not just any dict. Checked here: known keys
     only, and each present key has the right JSON type. NOT checked here:
     the actual FilterNode/query-language grammar inside `filters`/`query`
     (field names, ops, values) - that only happens once, at search time, in
