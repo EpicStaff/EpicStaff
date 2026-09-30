@@ -195,12 +195,16 @@
                         @if (hasBlockedFiles()) {
                             <span class="create-folder-dialog__file-validation-error">File validation errors</span>
                         }
-                        <label class="create-folder-dialog__add-more-btn">
+                        <label
+                            class="create-folder-dialog__add-more-btn"
+                            [class.create-folder-dialog__add-more-btn--disabled]="isAddingFilesBlocked()"
+                        >
                             + Add More Files
                             <input
                                 type="file"
                                 multiple
                                 hidden
+                                [disabled]="isAddingFilesBlocked()"
                                 [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
                                 (change)="onFileInputChange($event)"
                             />

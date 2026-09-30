@@ -39,12 +39,14 @@ describe('CreateFolderDialogComponent dismissal', () => {
                     useValue: {
                         list: () => of([]),
                         getUploadLimits: () => of(null),
-                        confirmOverwrite: () => of(true),
                     } as unknown as StorageApiService,
                 },
                 {
                     provide: StorageUploadService,
-                    useValue: { uploadEach: () => uploadOutcomes } as unknown as StorageUploadService,
+                    useValue: {
+                        uploadEach: () => uploadOutcomes,
+                        confirmUploadPlan: (_targetPath: string, files: File[]) => of(files),
+                    } as unknown as StorageUploadService,
                 },
                 { provide: ConfirmationDialogService, useValue: { confirm } as unknown as ConfirmationDialogService },
                 { provide: ToastService, useValue: { error: vi.fn() } as unknown as ToastService },

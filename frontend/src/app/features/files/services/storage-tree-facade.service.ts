@@ -385,10 +385,13 @@ export class StorageTreeFacade {
         if (!validFiles.length) {
             return;
         }
-        this.storageApiService
-            .confirmOverwrite('', validFiles)
+        this.storageUploadService
+            .confirmUploadPlan('', validFiles)
             .pipe(
-                switchMap((confirmed) => (confirmed ? this.storageUploadService.uploadMany('', validFiles) : EMPTY)),
+                // Files skipped for lack of Files/Update were already named in the dialog; they are not sent.
+                switchMap((filesToUpload) =>
+                    filesToUpload ? this.storageUploadService.uploadMany('', filesToUpload) : EMPTY
+                ),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({

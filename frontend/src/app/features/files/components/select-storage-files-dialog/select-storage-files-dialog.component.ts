@@ -494,12 +494,13 @@ export class SelectStorageFilesDialogComponent implements OnInit {
         const files = Array.from(dropped);
 
         this.isUploading.set(true);
-        this.storageApiService
-            .confirmOverwrite('', files)
+        this.storageUploadService
+            .confirmUploadPlan('', files)
             .pipe(
-                switchMap((confirmed) => {
-                    if (!confirmed) return EMPTY;
-                    return this.storageUploadService.uploadMany('', files);
+                // Files skipped for lack of Files/Update were already named in the dialog; they are not sent.
+                switchMap((filesToUpload) => {
+                    if (!filesToUpload) return EMPTY;
+                    return this.storageUploadService.uploadMany('', filesToUpload);
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )

@@ -155,7 +155,10 @@ export class CreateFolderDialogComponent {
     }
 
     readonly isUploading = signal(false);
-    private confirmInFlight = false;
+    /** From Confirm until the attempt settles: the overwrite check, then the upload itself. */
+    private readonly confirmInFlight = signal(false);
+    /** New files would not be part of the running attempt, and a successful one closes the dialog without them. */
+    protected readonly isAddingFilesBlocked = computed(() => this.isUploading() || this.confirmInFlight());
     /** Files uploaded so far, recorded per file so closing mid-upload still reports them. */
     private readonly uploadedFiles = new Set<File>();
     /** The "close during upload" question is open. */
@@ -232,16 +235,16 @@ export class CreateFolderDialogComponent {
 
     onFilesUploaded(files: FileList): void {
         if (files.length) {
-            this.addFiles(Array.from(files));
+            this.tryAddFiles(Array.from(files));
         }
     }
 
     onFileInputChange(event: Event): void {
         const input = event.target as HTMLInputElement;
         if (input.files?.length) {
-            this.addFiles(Array.from(input.files));
-            input.value = '';
+            this.tryAddFiles(Array.from(input.files));
         }
+        input.value = '';
     }
 
     removeFile(index: number): void {
@@ -276,7 +279,7 @@ export class CreateFolderDialogComponent {
     }
 
     onConfirm(): void {
-        if (!this.isValid() || this.isUploading() || this.confirmInFlight) return;
+        if (!this.isValid() || this.isUploading() || this.confirmInFlight()) return;
         const destination = this.selectedPath();
         const subfolder = this.folderName().trim();
         const targetPath = subfolder ? (destination ? `${destination}/${subfolder}` : subfolder) : destination;
@@ -289,16 +292,18 @@ export class CreateFolderDialogComponent {
         const mkdirOnly = files.length === 0;
 
         this.fileServerErrors.set(new Map());
-        this.confirmInFlight = true;
+        this.confirmInFlight.set(true);
 
-        const confirmed$ = mkdirOnly ? of(true) : this.storageApiService.confirmOverwrite(targetPath, files);
+        const uploadPlan$: Observable<File[] | null> = mkdirOnly
+            ? of([])
+            : this.storageUploadService.confirmUploadPlan(targetPath, files);
 
-        confirmed$
+        uploadPlan$
             .pipe(
-                switchMap((confirmed) => {
-                    if (!confirmed) return EMPTY;
+                switchMap((filesToUpload) => {
+                    if (!filesToUpload) return EMPTY;
                     this.isUploading.set(true);
-                    return mkdirOnly ? this.createFolder(targetPath) : this.uploadFiles(targetPath, files);
+                    return mkdirOnly ? this.createFolder(targetPath) : this.uploadFiles(targetPath, filesToUpload);
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
@@ -312,7 +317,7 @@ export class CreateFolderDialogComponent {
                 },
                 // Upload failures come back in the batch; only mkdir or the overwrite check error.
                 error: (error: unknown) => {
-                    this.confirmInFlight = false;
+                    this.confirmInFlight.set(false);
                     this.isUploading.set(false);
                     const fallback = mkdirOnly ? 'Failed to create folder' : 'Failed to check existing files';
                     this.toastService.error(
@@ -320,7 +325,7 @@ export class CreateFolderDialogComponent {
                     );
                 },
                 complete: () => {
-                    this.confirmInFlight = false;
+                    this.confirmInFlight.set(false);
                     this.isUploading.set(false);
                 },
             });
@@ -450,12 +455,24 @@ export class CreateFolderDialogComponent {
             this.closeWithUploads();
             return;
         }
-        // Keep only what failed, so the next Confirm sends just those files again.
-        this.files.update((list) => list.filter((file) => !this.uploadedFiles.has(file)));
+        // Keep only what failed, so the next Confirm sends just those files again. Files skipped for
+        // lack of Files/Update were never sent and are dropped too (the user agreed). Nothing can be
+        // added between Confirm and here (isAddingFilesBlocked), so the list holds only this attempt.
+        const failedFiles = new Set(batch.failed.map((failure) => failure.file));
+        this.files.update((list) => list.filter((file) => failedFiles.has(file)));
         this.fileServerErrors.set(
             new Map(batch.failed.map((failure) => [failure.file.name, describeUploadError(failure.error)]))
         );
         this.toastService.error(describeUploadFailures(batch.failed));
+    }
+
+    /** Adds the files unless an attempt is running; refusing them is announced, never silent. */
+    private tryAddFiles(newFiles: File[]): void {
+        if (this.isAddingFilesBlocked()) {
+            this.toastService.info('Wait for the current upload to finish before adding more files.');
+            return;
+        }
+        this.addFiles(newFiles);
     }
 
     private closeWithUploads(): void {
