@@ -683,9 +683,11 @@ $group-gutter-width: 28px;
             width: 16px;
             height: 16px;
             border-radius: 3px !important;
+            box-shadow: none !important;
 
             &.ag-checked {
                 background-color: var(--white) !important;
+                border-color: var(--white) !important;
 
                 &::after {
                     color: var(--accent-color) !important;
