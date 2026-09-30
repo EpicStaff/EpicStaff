@@ -1,3 +1,4 @@
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -91,7 +92,12 @@ class RealtimeTranscriptionConfigSerializer(SecretReferenceGuardMixin, serialize
         read_only_fields = ["org", "created_by"]
 
 
-class LLMConfigSerializer(SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer):
+class LLMConfigSerializer(
+    AuthorStampingSerializerMixin,
+    SecretReferenceGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(

@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from django.contrib.auth import get_user_model
+
+from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedViewSetMixin,
@@ -49,9 +52,18 @@ def test_child_queryset_filters_by_parent_path():
 
 def test_perform_create_stamps_org_and_created_by():
     view = _make(_TopView(MagicMock()))
+    view.request.user = get_user_model()(pk=42, email="author@example.com")
     serializer = MagicMock()
     view.perform_create(serializer)
     serializer.save.assert_called_once_with(org_id=7, created_by=view.request.user)
+
+
+def test_perform_create_by_system_principal_stamps_no_author():
+    view = _make(_TopView(MagicMock()))
+    view.request.user = SystemServicePrincipal()
+    serializer = MagicMock()
+    view.perform_create(serializer)
+    serializer.save.assert_called_once_with(org_id=7, created_by=None)
 
 
 def test_active_org_id_is_cached_per_request():

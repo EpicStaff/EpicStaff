@@ -1,4 +1,5 @@
 from agents.models.agent_models import AgentDefinition
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.realtime_models import (
@@ -248,7 +249,7 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeChannelSerializer(serializers.ModelSerializer):
+class RealtimeChannelSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     twilio = _TwilioChannelReadSerializer(read_only=True)
     # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).
     # Kept read-only, never writable: the only supported destination going

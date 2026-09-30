@@ -777,6 +777,7 @@ class QuickstartView(APIView):
             api_key=api_key,
             secret=secret,
             org_id=org_id,
+            user=request.user,
         )
 
         if not result.get("success", False):

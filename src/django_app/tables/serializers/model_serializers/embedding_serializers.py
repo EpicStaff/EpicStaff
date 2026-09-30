@@ -1,3 +1,4 @@
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -49,7 +50,10 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
 
 class EmbeddingConfigSerializer(
-    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    SecretReferenceGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
 

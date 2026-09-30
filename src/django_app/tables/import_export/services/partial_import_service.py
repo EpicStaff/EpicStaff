@@ -1,5 +1,6 @@
 from django.db import transaction
 from loguru import logger
+from rbac.authorship import claim_authorship
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -90,6 +91,8 @@ class PartialImportService:
                 is_partial=True,
                 user=user,
             )
+            if claim_authorship(graph, user):
+                graph.save(update_fields=["created_by"])
 
         return id_mapper
 

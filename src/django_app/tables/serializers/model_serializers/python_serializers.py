@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -163,7 +164,7 @@ class PythonCodeSerializer(
         return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
-class PythonCodeToolSerializer(serializers.ModelSerializer):
+class PythonCodeToolSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
     is_favorite = serializers.BooleanField(read_only=True, default=False)
@@ -231,6 +232,9 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         labels = validated_data.pop("labels", None)
         python_code_data = validated_data.pop("python_code", None)
+        if instance.built_in:
+            # Built-in tools are shared by every org and never get an author.
+            validated_data.pop("created_by", None)
 
         if instance.built_in and (validated_data or python_code_data):
             raise BuiltInToolModificationError(

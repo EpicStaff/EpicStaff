@@ -3,6 +3,7 @@ from collections.abc import Callable
 from typing import Any
 
 from django.db.models import Q
+from rbac.authorship import claim_authorship
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -72,15 +73,9 @@ class EntityImportExportStrategy(ABC):
 
             instance = self.create_entity(data, id_mapper, **create_kwargs)
 
-        user = kwargs.get("user")
         # Fresh instances arrive without an author (created_by is dropped above); a
         # row that create_entity updated in place (graph replace) keeps its own.
-        if (
-            user is not None
-            and hasattr(instance, "created_by_id")
-            and instance.created_by_id is None
-        ):
-            instance.created_by = user
+        if hasattr(instance, "created_by_id") and claim_authorship(instance, kwargs.get("user")):
             instance.save(update_fields=["created_by"])
 
         return instance

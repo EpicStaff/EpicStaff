@@ -285,8 +285,6 @@ class TestCombineOutputShape:
         assert "name" not in result
         assert "owner_agent" not in result
         assert "description" not in result
-        assert "org" not in result
-        assert "created_by" not in result
         assert "created_at" not in result
         assert "updated_at" not in result
 

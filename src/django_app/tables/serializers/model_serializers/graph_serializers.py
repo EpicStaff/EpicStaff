@@ -160,7 +160,7 @@ class GraphLightSerializer(GraphLightBaseSerializer):
         return GraphLightBaseSerializer(graphs, many=True).data
 
 
-class GraphSerializer(serializers.ModelSerializer):
+class GraphSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     # Reverse relationships
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)

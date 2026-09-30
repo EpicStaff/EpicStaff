@@ -32,6 +32,7 @@ from rbac.access.gates import (
     IsSystemApiKeyAuthenticated,
 )
 from rbac.access.resolver import PermissionResolver
+from rbac.authorship import resolve_author
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
@@ -804,7 +805,7 @@ class GraphViewSet(
 
     def perform_create(self, serializer):
         org_id = self.get_active_org_id()
-        created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
+        created_graph = serializer.save(org_id=org_id, created_by=resolve_author(self.request.user))
         GraphOrganization.objects.create(graph=created_graph)
 
     @action(detail=True, methods=["get"])
@@ -2431,7 +2432,7 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         # source of truth for which label tree a new row joins.
         serializer.save(
             org_id=self.get_active_org_id(),
-            created_by=self.request.user,
+            created_by=resolve_author(self.request.user),
             scope=self.label_scope,
         )
 
