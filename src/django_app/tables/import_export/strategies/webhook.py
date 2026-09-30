@@ -7,6 +7,10 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.webhook import WebhookTriggerImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.models import WebhookTrigger
+from tables.services.webhook_trigger_service import (
+    find_available_path,
+    organization_suffixed_path,
+)
 
 
 class WebhookTriggerStrategy(EntityImportExportStrategy):
@@ -34,6 +38,10 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Any:
         org_id = kwargs.get("org_id")
+        # find_existing already reused this org's trigger under the path or its
+        # org-suffixed rename, so a path that is still taken belongs to another
+        # org and cannot be shared.
+        data = {**data, "path": find_available_path(data.get("path"), org_id)}
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
         return serializer.save(org_id=org_id)
@@ -41,10 +49,16 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
     def find_existing(
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> Any | None:
+        """Reuse the importing org's trigger for this path, if it has one.
+
+        The exact path wins. Otherwise the org may hold the trigger an earlier
+        import created under `-org<org_id>` because another org had the path;
+        reusing it keeps re-imports from minting `-org<org_id>-2`, `-3`, ...
+        Only triggers owned by the importing org are ever returned.
+        """
         webhook_path = data.get("path")
-        existing_webhook = (
-            WebhookTrigger.objects.filter(path=webhook_path)
-            .filter(self.get_org_scope_q(org_id))
-            .first()
-        )
-        return existing_webhook
+        org_triggers = WebhookTrigger.objects.filter(self.get_org_scope_q(org_id))
+        existing_webhook = org_triggers.filter(path=webhook_path).first()
+        if existing_webhook is not None or org_id is None or not webhook_path:
+            return existing_webhook
+        return org_triggers.filter(path=organization_suffixed_path(webhook_path, org_id)).first()
