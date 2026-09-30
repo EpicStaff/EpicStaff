@@ -514,7 +514,7 @@ def test_first_setup_ignores_organization_name_and_display_name_in_body(api_clie
     )
     assert r.status_code == 201
     body = r.json()
-    assert body["user"]["display_name"] is None
+    assert body["user"]["display_name"] == "Admin"
     assert body["organization"]["name"] == settings.DEFAULT_ORGANIZATION_NAME
 
 
@@ -528,6 +528,19 @@ def test_first_setup_uses_django_default_org_name_from_settings(api_client):
     )
     assert r.status_code == 201
     assert r.json()["organization"]["name"] == "Override Co"
+
+
+@pytest.mark.django_db
+def test_first_setup_derives_display_name_from_email(api_client):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={"email": "john.smith@example.com", "password": "StrongPass123!"},
+        format="json",
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "John Smith"
+    user = get_user_model().objects.get(email="john.smith@example.com")
+    assert user.display_name == "John Smith"
 
 
 # ---------------- AuthValidationService: aggregated + redacted errors ----------------

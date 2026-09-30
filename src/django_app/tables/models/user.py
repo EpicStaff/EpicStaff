@@ -50,6 +50,14 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError("Users must have an email address")
         email = self.normalize_email(email)
+        # Every creation path (first setup, reset user, create_superadmin,
+        # admin user create) funnels through here, so this is the one place
+        # that guarantees a new user never starts without a display name.
+        # A non-blank caller value is kept as given; trimming is the
+        # validators' job.
+        display_name = extra_fields.get("display_name")
+        if display_name is None or not display_name.strip():
+            extra_fields["display_name"] = display_name_from_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)

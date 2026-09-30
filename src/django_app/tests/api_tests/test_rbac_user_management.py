@@ -385,6 +385,21 @@ class TestCreateUser:
         assert resp.data["memberships"] == []
         assert resp.data["is_superadmin"] is False
 
+    def test_create_derives_display_name_from_email(
+        self, authed_client, superadmin, django_user_model
+    ):
+        resp = authed_client(superadmin).post(
+            USERS_LIST,
+            {"email": "anna-maria@x.com", "password": "StrongPass123!"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.data["display_name"] == "Anna Maria"
+        assert (
+            django_user_model.objects.get(email="anna-maria@x.com").display_name
+            == "Anna Maria"
+        )
+
     def test_create_with_org_and_role(
         self, authed_client, superadmin, org_acme, role_member
     ):

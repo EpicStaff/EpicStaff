@@ -29,3 +29,19 @@ def test_reset_user_returns_access_and_no_api_key(api_client, superadmin):
     assert "access" in body
     assert "api_key" not in body
     assert get_user_model().objects.get().email == "new-root@example.com"
+
+
+@pytest.mark.django_db
+def test_reset_user_derives_display_name_from_email(api_client, superadmin):
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {TokenPair.for_user(superadmin).access}"
+    )
+
+    r = api_client.post(
+        reverse("reset_user"),
+        data={"email": "jane.doe@example.com", "password": "AnotherPass456!"},
+        format="json",
+    )
+
+    assert r.status_code == 201
+    assert get_user_model().objects.get().display_name == "Jane Doe"
