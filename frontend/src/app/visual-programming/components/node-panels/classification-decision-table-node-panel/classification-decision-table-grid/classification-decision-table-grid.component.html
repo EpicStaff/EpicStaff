@@ -71,7 +71,7 @@
             [class.animating]="groupOverlaysAnimating()"
             [style.--cdt-group-toggle-duration]="groupToggleDuration"
         >
-            @for (item of groupOverlayItems(); track item.sectionId) {
+            @for (item of groupOverlayItems(); track item.key) {
                 <div
                     class="group-overlay"
                     [class.collapsed]="item.isCollapsed"
@@ -83,20 +83,26 @@
                             type="button"
                             class="group-overlay-chevron"
                             [class.collapsed]="item.isCollapsed"
+                            [class.merged]="!!item.members"
                             [style.top.px]="item.isCollapsed ? null : item.chevronTop"
-                            [style.border-color]="item.color"
-                            [style.color]="item.color"
-                            (click)="toggleGroupFromOverlay(item.sectionId, $event)"
-                            (contextmenu)="openGroupMenuFromOverlay(item.sectionId, $event)"
-                            (mouseenter)="hoveredSectionId.set(item.sectionId)"
-                            [title]="
-                                (item.isCollapsed ? 'Expand group' : 'Collapse group') + ' (right-click for options)'
-                            "
+                            [style.border-color]="item.members ? null : item.color"
+                            [style.color]="item.members ? null : item.color"
+                            (click)="toggleGroupFromOverlay(item, $event)"
+                            (contextmenu)="openGroupMenuFromOverlay(item, $event)"
+                            (mouseenter)="hoveredSectionId.set(item.key)"
+                            [title]="groupOverlayIconTitle(item)"
                         >
-                            <app-svg-icon
-                                icon="play"
-                                size="14px"
-                            ></app-svg-icon>
+                            @if (item.members) {
+                                <app-svg-icon
+                                    icon="group-expand"
+                                    size="22px"
+                                ></app-svg-icon>
+                            } @else {
+                                <app-svg-icon
+                                    icon="play"
+                                    size="14px"
+                                ></app-svg-icon>
+                            }
                         </button>
                         @if (!item.isCollapsed && item.bracketHeight > 0) {
                             <div
@@ -107,12 +113,13 @@
                             ></div>
                         }
                     </div>
-                    @if (hoveredSectionId() === item.sectionId) {
+                    @if (hoveredSectionId() === item.key) {
                         @if (item.isCollapsed) {
                             <div
                                 class="group-overlay-seam-line"
+                                [class.merged]="!!item.members"
                                 [style.top.px]="item.seamOffset"
-                                [style.background]="item.color"
+                                [style.background]="item.members ? null : item.color"
                             ></div>
                         } @else {
                             <div
@@ -122,37 +129,40 @@
                         }
                         <div
                             class="group-overlay-chip"
-                            [style.background]="item.color"
-                            [class.is-light]="isLightSectionColor(item.color)"
-                            (mouseenter)="hoveredSectionId.set(item.sectionId)"
+                            [class.merged]="!!item.members"
+                            [style.background]="item.members ? null : item.color"
+                            [class.is-light]="!item.members && isLightSectionColor(item.color)"
+                            (mouseenter)="hoveredSectionId.set(item.key)"
                         >
                             <span
                                 class="group-overlay-chip-name"
                                 [title]="item.name"
                                 >{{ item.name }}</span
                             >
-                            <button
-                                type="button"
-                                class="group-overlay-chip-btn"
-                                title="Edit group"
-                                (click)="openEditGroupDialog(item.sectionId, $event)"
-                            >
-                                <app-svg-icon
-                                    icon="edit-label"
-                                    size="12px"
-                                ></app-svg-icon>
-                            </button>
-                            <button
-                                type="button"
-                                class="group-overlay-chip-btn group-overlay-chip-btn--delete"
-                                title="Ungroup"
-                                (click)="handleChipUngroup(item.sectionId, $event)"
-                            >
-                                <app-svg-icon
-                                    icon="close"
-                                    size="16px"
-                                ></app-svg-icon>
-                            </button>
+                            @if (!item.members) {
+                                <button
+                                    type="button"
+                                    class="group-overlay-chip-btn"
+                                    title="Edit group"
+                                    (click)="openEditGroupDialog(item.sectionId, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="edit-label"
+                                        size="12px"
+                                    ></app-svg-icon>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="group-overlay-chip-btn group-overlay-chip-btn--delete"
+                                    title="Ungroup"
+                                    (click)="handleChipUngroup(item.sectionId, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="close"
+                                        size="16px"
+                                    ></app-svg-icon>
+                                </button>
+                            }
                         </div>
                     }
                 </div>
@@ -254,31 +264,26 @@
 
 <ng-template #groupMenuTemplate>
     <div class="group-menu-dropdown">
-        <div
-            class="group-menu-item"
-            (click)="handleGroupMenuUngroup()"
-        >
-            Ungroup
-        </div>
-        @if (!isCurrentGroupCollapsed()) {
+        @if (isMergedGroupMenu()) {
+            <div
+                class="group-menu-item group-menu-item--submenu"
+                [class.active]="expandGroupMultiSelect?.isOpen()"
+                (click)="openExpandGroupSubmenu($event)"
+            >
+                <span>Expand Group</span>
+                <app-svg-icon
+                    icon="chevron-right"
+                    size="12px"
+                ></app-svg-icon>
+            </div>
+        } @else {
             <div
                 class="group-menu-item"
-                (click)="handleGroupMenuCollapse()"
+                (click)="handleGroupMenuUngroup()"
             >
-                Collapse Group
+                Ungroup
             </div>
         }
-        <div
-            class="group-menu-item group-menu-item--submenu"
-            [class.active]="expandGroupMultiSelect?.isOpen()"
-            (click)="openExpandGroupSubmenu($event)"
-        >
-            <span>Expand Group</span>
-            <app-svg-icon
-                icon="chevron-right"
-                size="12px"
-            ></app-svg-icon>
-        </div>
         <div
             class="group-menu-item"
             (click)="handleGroupMenuExpandAll()"

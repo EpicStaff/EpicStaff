@@ -54,7 +54,7 @@ import {
 } from 'ag-grid-community';
 
 import {
-    CDT_SECTION_DEFAULT_COLOR,
+    CDT_SECTION_LEGACY_WHITE_COLOR,
     CdtSection,
     createCdtSection,
     findCdtSection,
@@ -101,6 +101,32 @@ import { NoDragGhostComponent } from './shared/no-drag-ghost.component';
 import { OverlayMenuController } from './shared/overlay-menu.util';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+interface GroupOverlayMember {
+    sectionId: string;
+    name: string;
+    color: string;
+}
+
+interface GroupOverlayItem {
+    /** The section id, or for a merged icon the ids of its groups joined. Row hover sets a single section id, which equals `key` for every single group. */
+    key: string;
+    sectionId: string;
+    top: number;
+    height: number;
+    isCollapsed: boolean;
+    name: string;
+    color: string;
+    firstRowMid: number;
+    lastRowMid: number;
+    chevronTop: number;
+    bracketTop: number;
+    bracketHeight: number;
+    /** Collapsed groups only: distance from the overlay's top to the seam between the rows it sits between. */
+    seamOffset?: number;
+    /** Set when several collapsed groups share one seam and are drawn as one icon. */
+    members?: GroupOverlayMember[];
+}
 
 @Component({
     selector: 'app-classification-decision-table-grid',
@@ -207,22 +233,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public groupOverlaysAnimating = signal<boolean>(false);
     public readonly groupToggleDuration = `${CDT_GROUP_TOGGLE_ANIMATION_MS}ms`;
 
-    public groupOverlayItems = signal<
-        Array<{
-            sectionId: string;
-            top: number;
-            height: number;
-            isCollapsed: boolean;
-            name: string;
-            color: string;
-            firstRowMid: number;
-            lastRowMid: number;
-            chevronTop: number;
-            bracketTop: number;
-            bracketHeight: number;
-            seamOffset?: number;
-        }>
-    >([]);
+    public groupOverlayItems = signal<GroupOverlayItem[]>([]);
 
     // Enable/disable filter mode (default: show only enabled rows)
     public enableFilterMode = signal<EnableFilterMode>('enabled');
@@ -305,20 +316,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return true;
         };
 
-        const items: Array<{
-            sectionId: string;
-            top: number;
-            height: number;
-            isCollapsed: boolean;
-            name: string;
-            color: string;
-            firstRowMid: number;
-            lastRowMid: number;
-            chevronTop: number;
-            bracketTop: number;
-            bracketHeight: number;
-            seamOffset?: number;
-        }> = [];
+        const items: GroupOverlayItem[] = [];
         const expandedFirstLast = new Map<
             string,
             { firstTop: number; firstHeight: number; lastBottom: number; lastHeight: number }
@@ -370,9 +368,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             return { chevronTop, bracketTop, bracketHeight: Math.max(0, lastRowMid - bracketTop) };
         };
 
-        // Collapsed chevrons keyed by the seam they anchor on. Neighbouring collapsed groups share
-        // a seam (the top of the first visible row after them); their chevrons are stacked there
-        // instead of drawn over each other.
+        // Collapsed groups keyed by the seam they anchor on. Neighbouring collapsed groups share
+        // a seam (the top of the first visible row after them) and are drawn as one merged icon.
         const collapsedBySeam = new Map<number, Array<(typeof items)[number]>>();
 
         sectionRange.forEach((range, sectionId) => {
@@ -411,6 +408,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 const stack = collapsedBySeam.get(seam) ?? [];
                 collapsedBySeam.set(seam, stack);
                 stack.push({
+                    key: sectionId,
                     sectionId,
                     top: 0, // set when the seam's stack is laid out below
                     height: 22,
@@ -436,6 +434,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 const firstRowMid = rowHeight / 2;
                 const lastRowMid = (rowsCount - 1) * rowHeight + rowHeight / 2;
                 items.push({
+                    key: sectionId,
                     sectionId,
                     top: bodyOffsetY + visibleBefore * rowHeight - scrollTop,
                     height: rowsCount * rowHeight,
@@ -452,6 +451,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const firstRowMid = positions.firstHeight / 2;
             const lastRowMid = positions.lastBottom - positions.lastHeight / 2 - positions.firstTop;
             items.push({
+                key: sectionId,
                 sectionId,
                 top: rowsOffsetY + positions.firstTop - scrollTop,
                 height: positions.lastBottom - positions.firstTop,
@@ -464,16 +464,18 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             });
         });
 
-        // Centre each seam's stack of chevrons on the seam, in row order.
-        const chevronStackGap = 2;
+        // Centre each seam's icon on the seam; several groups on one seam become one merged icon, in row order.
         collapsedBySeam.forEach((stack, seam) => {
-            const stackHeight = stack.length * chevronHeight + (stack.length - 1) * chevronStackGap;
-            const seamTop = rowsOffsetY + seam - scrollTop;
-            const stackTop = seamTop - stackHeight / 2;
-            stack.forEach((item, position) => {
-                const top = stackTop + position * (chevronHeight + chevronStackGap);
-                items.push({ ...item, top, seamOffset: seamTop - top });
-            });
+            const top = rowsOffsetY + seam - scrollTop - chevronHeight / 2;
+            const merged =
+                stack.length > 1
+                    ? {
+                          key: stack.map((item) => item.sectionId).join(','),
+                          name: stack.map((item) => item.name).join(', '),
+                          members: stack.map(({ sectionId, name, color }) => ({ sectionId, name, color })),
+                      }
+                    : {};
+            items.push({ ...stack[0], ...merged, top, seamOffset: chevronHeight / 2 });
         });
 
         if (overlaysEl) {
@@ -502,10 +504,20 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.groupOverlayItems.set(items);
     }
 
-    public toggleGroupFromOverlay(sectionId: string, event: MouseEvent): void {
+    public groupOverlayIconTitle(item: GroupOverlayItem): string {
+        if (item.members) return 'Expand groups (right-click for options)';
+        return `${item.isCollapsed ? 'Expand group' : 'Collapse group'} (right-click for options)`;
+    }
+
+    /** A single group folds or unfolds; a merged icon unfolds all of its groups. */
+    public toggleGroupFromOverlay(item: GroupOverlayItem, event: MouseEvent): void {
         event.stopPropagation();
         const collapsed = new Set(this.collapsedGroups());
-        if (!collapsed.delete(sectionId)) collapsed.add(sectionId);
+        if (item.members) {
+            item.members.forEach((member) => collapsed.delete(member.sectionId));
+        } else if (!collapsed.delete(item.sectionId)) {
+            collapsed.add(item.sectionId);
+        }
         this.setCollapsedGroups(collapsed);
     }
 
@@ -548,18 +560,17 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         });
     }
 
-    public openGroupMenuFromOverlay(sectionId: string, event: MouseEvent): void {
+    public openGroupMenuFromOverlay(item: GroupOverlayItem, event: MouseEvent): void {
         event.preventDefault();
-        this.openGroupMenu(sectionId, event.currentTarget as HTMLElement);
+        this.groupMenuMemberIds.set(item.members?.map((member) => member.sectionId) ?? []);
+        this.openGroupMenu(item.sectionId, event.currentTarget as HTMLElement);
     }
 
     private groupMenuOverlayRef: OverlayRef | null = null;
     public groupMenuSectionId = signal<string | null>(null);
-
-    public isCurrentGroupCollapsed = computed<boolean>(() => {
-        const id = this.groupMenuSectionId();
-        return id !== null && this.collapsedGroups().has(id);
-    });
+    /** The groups of the merged icon the menu was opened on; empty for a single group. */
+    public groupMenuMemberIds = signal<string[]>([]);
+    public isMergedGroupMenu = computed<boolean>(() => this.groupMenuMemberIds().length > 1);
 
     // Computed: field names in their column order
     public activeFieldColumns = computed(() =>
@@ -633,10 +644,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         return items;
     });
 
-    /** Items for the Expand Group picker: one entry per section. Ungrouped — no group labels. */
-    public expandGroupMultiSelectItems = computed<SelectItem[]>(() =>
-        this.sectionsState().map((section) => ({ name: section.name, value: section.id }))
-    );
+    /** Items for the Expand Group picker: the groups of the merged icon. Ungrouped — no group labels. */
+    public expandGroupMultiSelectItems = computed<SelectItem[]>(() => {
+        const memberIds = new Set(this.groupMenuMemberIds());
+        return this.sectionsState()
+            .filter((section) => memberIds.has(section.id))
+            .map((section) => ({ name: section.name, value: section.id }));
+    });
 
     // Pre-open model value signals for the multi-selects
     public exprSelectedFieldsModel = signal<unknown[]>([]);
@@ -2695,15 +2709,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.ungroupSection(sectionId);
     }
 
-    public handleGroupMenuCollapse(): void {
-        const sectionId = this.groupMenuSectionId();
-        this.closeGroupMenu();
-        if (!sectionId) return;
-        const newCollapsed = new Set(this.collapsedGroups());
-        newCollapsed.add(sectionId);
-        this.setCollapsedGroups(newCollapsed);
-    }
-
     public handleGroupMenuExpandAll(): void {
         this.closeGroupMenu();
         this.setCollapsedGroups(new Set());
@@ -2721,9 +2726,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public openExpandGroupSubmenu(event: MouseEvent): void {
         const anchor = event.currentTarget as HTMLElement;
         const collapsed = this.collapsedGroups();
-        const expanded = this.sectionsState()
-            .map((s) => s.id)
-            .filter((id) => !collapsed.has(id));
+        const expanded = this.groupMenuMemberIds().filter((id) => !collapsed.has(id));
         this.expandGroupSelectedModel.set(expanded);
         // Flies out to the side of the menu row, not below it: right-of-row / top-aligned first,
         // then the mirrored left side and the two bottom-aligned variants.
@@ -2737,13 +2740,18 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     public onExpandGroupSelectionChange(values: unknown[]): void {
         const expanded = new Set(values.map((v) => String(v)));
-        const allIds = this.sectionsState().map((s) => s.id);
-        this.setCollapsedGroups(new Set(allIds.filter((id) => !expanded.has(id))));
+        const collapsed = new Set(this.collapsedGroups());
+        // Only the groups of the merged icon are in the picker; the others keep their state.
+        for (const id of this.groupMenuMemberIds()) {
+            if (expanded.has(id)) collapsed.delete(id);
+            else collapsed.add(id);
+        }
+        this.setCollapsedGroups(collapsed);
         this.closeGroupMenu();
     }
 
     public isLightSectionColor(color: string | null | undefined): boolean {
-        return (color ?? '').toLowerCase() === CDT_SECTION_DEFAULT_COLOR.toLowerCase();
+        return (color ?? '').toLowerCase() === CDT_SECTION_LEGACY_WHITE_COLOR.toLowerCase();
     }
 
     private getUpdatedRows(): ConditionGroup[] {

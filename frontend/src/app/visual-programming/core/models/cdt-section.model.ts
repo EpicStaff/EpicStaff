@@ -14,18 +14,17 @@ export interface CdtSection {
 
 export interface CdtSectionColorOption {
     /** Stable palette key. */
-    id: 'default' | 'purple' | 'blue' | 'green' | 'orange' | 'red';
+    id: 'purple' | 'blue' | 'green' | 'orange' | 'red';
     /** The value persisted in `metadata.color`. */
     hex: string;
 }
 
 /**
- * Palette hexes mirror `features/flows/models/label.model.ts` `LABEL_COLOR_OPTIONS.circleBg`
- * 1:1 (same colours, same order). These are persisted data (the value travels to the backend
- * in `metadata.color`), not styling tokens, so literal hex here is intentional.
+ * Palette hexes are the `features/flows/models/label.model.ts` `LABEL_COLOR_OPTIONS.circleBg`
+ * colours, same order, without the white one. These are persisted data (the value travels to the
+ * backend in `metadata.color`), not styling tokens, so literal hex here is intentional.
  */
 export const CDT_SECTION_COLOR_OPTIONS: readonly CdtSectionColorOption[] = [
-    { id: 'default', hex: '#D9D9D9' },
     { id: 'purple', hex: '#685FFF' },
     { id: 'blue', hex: '#48CBFF' },
     { id: 'green', hex: '#2ABA6B' },
@@ -34,6 +33,9 @@ export const CDT_SECTION_COLOR_OPTIONS: readonly CdtSectionColorOption[] = [
 ];
 
 export const CDT_SECTION_DEFAULT_COLOR: string = CDT_SECTION_COLOR_OPTIONS[0].hex;
+
+/** White is no longer offered, but groups saved with it (and the migration's backfill) keep it. */
+export const CDT_SECTION_LEGACY_WHITE_COLOR = '#D9D9D9';
 
 /** Creates a new section with a fresh id. `color` falls back to the default palette colour. */
 export function createCdtSection(name: string, color?: string | null): CdtSection {

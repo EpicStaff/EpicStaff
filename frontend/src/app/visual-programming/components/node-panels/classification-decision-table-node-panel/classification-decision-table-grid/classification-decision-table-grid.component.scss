@@ -455,6 +455,24 @@ $group-gutter-width: 28px;
     flex-shrink: 0;
 }
 
+// Several collapsed groups on one seam: a light square replaces the bordered button; the chip and
+// the seam line are the same light shade (the white that is no longer a group colour).
+.group-overlay-chevron.merged {
+    border: 0;
+    background: transparent;
+    color: #212325;
+
+    app-svg-icon {
+        border-radius: 4px;
+        background: var(--gray-217);
+    }
+}
+
+.group-overlay-chip.merged,
+.group-overlay-seam-line.merged {
+    background: var(--gray-217);
+}
+
 .group-overlay-chevron app-svg-icon {
     transform: rotate(90deg);
     transition: transform 0.15s ease;
