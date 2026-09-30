@@ -8,11 +8,16 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
 from tables.serializers.serializers import (
+    BulkDeleteQuerySerializer,
+    BulkDeleteRequestSerializer,
+    BulkDeleteResultSerializer,
     InspectImportRequestSerializer,
     ToolUsageDetailSerializer,
     ToolUsageSerializer,
 )
+from tables.services.rbac.effective_permissions import EffectivePermissions
 from tables.services.rbac.org_context_service import OrgContextService
+from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.services.rbac.rbac_exceptions import BuiltInModelImmutableError
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
@@ -63,6 +68,75 @@ class CopyActionMixin:
         )
 
 
+class BulkDeleteActionMixin:
+    """Adds a ``bulk-delete`` action and a usage-guarded ``perform_destroy``.
+
+    Requires `delete_service_class` (a BaseDeleteService subclass) and
+    `"bulk_delete": Permission.DELETE` in the ViewSet's `rbac_action_map`.
+    Place after the org-scoping mixin, which supplies `get_active_org_id` and
+    `get_effective_permissions`. The OpenAPI schema is attached on each concrete
+    ViewSet with `@extend_schema_view`, not here.
+
+    Single `DELETE` runs the same usage rule as bulk, so a caller cannot bypass a
+    block by deleting one id at a time.
+    """
+
+    delete_service_class = None
+
+    def perform_destroy(self, instance) -> None:
+        self._check_delete_service_class()
+        # One transaction for check and delete, as on the bulk path:
+        # assert_deletable locks the row, so the usage it checked is still the
+        # usage when the delete runs.
+        with transaction.atomic():
+            self.delete_service_class().assert_deletable(
+                instance, self.get_active_org_id(), self.get_effective_permissions()
+            )
+            super().perform_destroy(instance)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        self._check_delete_service_class()
+        query = BulkDeleteQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        body = BulkDeleteRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+
+        org_id = self.get_active_org_id()
+        result = self.delete_service_class().bulk_delete(
+            body.validated_data["ids"],
+            org_id,
+            self.get_effective_permissions(),
+            dry_run=query.validated_data["dry_run"],
+        )
+        logger.info(
+            "Bulk delete {}: org={} user={} dry_run={} deleted={} skipped={} "
+            "not_found={}",
+            self.delete_service_class.model.__name__,
+            org_id,
+            # A system API key's principal has no pk; its str() names it.
+            getattr(request.user, "pk", request.user),
+            result.dry_run,
+            result.deleted_count,
+            len(result.skipped),
+            len(result.not_found_ids),
+        )
+        return Response(
+            BulkDeleteResultSerializer(result).data,
+            status=(
+                status.HTTP_207_MULTI_STATUS
+                if result.is_partial
+                else status.HTTP_200_OK
+            ),
+        )
+
+    def _check_delete_service_class(self) -> None:
+        if not self.delete_service_class:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must set delete_service_class."
+            )
+
+
 class OrgScopedResolverMixin:
     """Resolves and caches the active org id for the request.
 
@@ -75,6 +149,7 @@ class OrgScopedResolverMixin:
     """
 
     _org_context = OrgContextService()
+    _permission_resolver = PermissionResolver()
 
     def get_active_org_id(self) -> int:
         if not hasattr(self.request, "_rbac_active_org_id"):
@@ -82,6 +157,22 @@ class OrgScopedResolverMixin:
                 request=self.request, view_kwargs=self.kwargs
             )
         return self.request._rbac_active_org_id
+
+    def get_effective_permissions(self) -> EffectivePermissions:
+        """The caller's permissions in the active org, resolved once per request.
+
+        Only the view side is cached. HasOrgPermission resolves the same
+        permissions before the view runs and does not share its result, so a
+        request still resolves twice; having HasOrgPermission populate this
+        same attribute is what would remove the second resolution.
+        """
+        if not hasattr(self.request, "_rbac_effective_permissions"):
+            self.request._rbac_effective_permissions = (
+                self._permission_resolver.resolve(
+                    user=self.request.user, org_id=self.get_active_org_id()
+                )
+            )
+        return self.request._rbac_effective_permissions
 
 
 class OrgScopedViewSetMixin(OrgScopedResolverMixin):
