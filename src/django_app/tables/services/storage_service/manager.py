@@ -228,6 +228,20 @@ class StorageManager:
 
         raise FileNotFoundError(f"File does not exist: {path}")
 
+    def object_size(self, org_id: int, path: str) -> int:
+        """Return a file's byte size as the object store reports it.
+
+        Unlike ``info``, this asks the backend rather than the index, for rows
+        whose ``size`` was never recorded (e.g. rows created by ``on_copy``).
+
+        Raises:
+            FileNotFoundError: No file object exists at ``path``.
+        """
+        object_info = self._backend.info(self._build_storage_key(org_id, path))
+        if not isinstance(object_info, FileInfo):
+            raise FileNotFoundError(f"File does not exist: {path}")
+        return object_info.size
+
     def exists(self, org_id: int, path: str) -> bool:
         return self._backend.exists(self._build_storage_key(org_id, path))
 

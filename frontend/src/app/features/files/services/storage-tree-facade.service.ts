@@ -1,13 +1,20 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
+import { computed, DestroyRef, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
-import { EMPTY, forkJoin, Subject } from 'rxjs';
-import { finalize, switchMap } from 'rxjs/operators';
+import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
+import { catchError, concatMap, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
+import {
+    ADD_TO_COLLECTION_DIALOG_TITLE_ID,
+    AddToCollectionDialogComponent,
+    AddToCollectionDialogData,
+} from '../../knowledge-sources/components/add-to-collection-dialog/add-to-collection-dialog.component';
+import { extractStorageFileIds } from '../../knowledge-sources/helpers/storage-import.util';
+import { ImportFromStorageResponse } from '../../knowledge-sources/models/document.model';
 import {
     AddToFlowDialogComponent,
     AddToFlowDialogData,
@@ -36,6 +43,18 @@ export interface StorageContextActionEvent {
     targetPath?: string;
 }
 
+/** `initial` shows the page error state on failure; `preserving` only toasts. */
+interface TreeRefreshRequest {
+    kind: 'initial' | 'preserving';
+    extraPathsToExpand: string[];
+    onDone?: () => void;
+}
+
+interface MoveOutcome {
+    moved: StorageItem[];
+    failed: StorageItem[];
+}
+
 @Injectable()
 export class StorageTreeFacade {
     private destroyRef = inject(DestroyRef);
@@ -45,6 +64,8 @@ export class StorageTreeFacade {
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
+    /** True only until the first tree load settles; later refreshes keep the tree (and any drag source) mounted. */
+    readonly isInitialLoading = computed(() => this.isLoading() && !this.hasLoadedOnce());
     readonly error = signal<string | null>(null);
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
@@ -55,6 +76,8 @@ export class StorageTreeFacade {
 
     afterTreeLoad: (() => void) | null = null;
 
+    private readonly hasLoadedOnce = signal<boolean>(false);
+    private readonly refreshRequests = new Subject<TreeRefreshRequest>();
     private watchRefreshTick = false;
     private suppressNextTick = false;
 
@@ -92,6 +115,7 @@ export class StorageTreeFacade {
     ]);
 
     constructor() {
+        this.subscribeToRefreshRequests();
         effect(() => {
             this.storageApiService.refreshTick();
             if (this.suppressNextTick) {
@@ -99,7 +123,8 @@ export class StorageTreeFacade {
                 return;
             }
             if (!this.watchRefreshTick) return;
-            this.loadTree();
+            // loadTree reads treeData synchronously (switchMap), which must not become a dependency.
+            untracked(() => this.loadTree());
         });
     }
 
@@ -113,60 +138,93 @@ export class StorageTreeFacade {
     }
 
     loadTree(): void {
-        this.isLoading.set(true);
         this.error.set(null);
-        this.storageApiService
-            .list('')
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.isLoading.set(false))
-            )
-            .subscribe({
-                next: (items) => {
-                    this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
-                    this.afterTreeLoad?.();
-                },
-                error: () => this.error.set('Failed to load storage files'),
-            });
+        this.requestRefresh({ kind: 'initial', extraPathsToExpand: [] });
     }
 
+    /**
+     * Refreshes the tree in place: expanded folders stay expanded with their children refreshed,
+     * so existing rows (including a row being dragged) stay mounted. `extraPathsToExpand` are
+     * expanded afterwards (e.g. a move destination).
+     */
     reloadTreePreservingExpansion(extraPathsToExpand: string[] = [], onDone?: () => void): void {
-        const expandedPaths = this.collectExpandedPaths(this.treeData());
-        const all = new Set<string>([...expandedPaths, ...extraPathsToExpand.filter(Boolean)]);
+        this.requestRefresh({ kind: 'preserving', extraPathsToExpand, onDone });
+    }
 
+    private requestRefresh(request: TreeRefreshRequest): void {
         this.isLoading.set(true);
-        this.storageApiService
-            .list('')
+        this.refreshRequests.next(request);
+    }
+
+    /**
+     * One pipeline for every refresh: `switchMap` unsubscribes an outdated refresh, which cancels
+     * its HTTP requests (nested levels included), so an older result or error can never land.
+     * `isLoading` is only reset by the refresh that actually finishes.
+     */
+    private subscribeToRefreshRequests(): void {
+        this.refreshRequests
             .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.isLoading.set(false))
+                switchMap((request) =>
+                    this.fetchMergedLevel('', this.treeData()).pipe(
+                        map((roots) => ({ request, roots })),
+                        catchError(() => {
+                            this.isLoading.set(false);
+                            if (request.kind === 'initial') {
+                                this.error.set('Failed to load storage files');
+                            } else {
+                                this.toastService.error('Failed to load storage files');
+                            }
+                            return EMPTY;
+                        })
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({
-                next: (items) => {
-                    this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
-                    this.notifyStorageChanged();
-                    if (all.size) {
-                        this.restoreExpandedPaths([...all], () => onDone?.());
-                    } else {
-                        onDone?.();
-                    }
-                },
-                error: () => this.toastService.error('Failed to load storage files'),
+            .subscribe(({ request, roots }) => {
+                this.treeData.set(roots);
+                this.hasLoadedOnce.set(true);
+                this.isLoading.set(false);
+                if (request.kind === 'initial') {
+                    this.afterTreeLoad?.();
+                    return;
+                }
+                this.notifyStorageChanged();
+                this.restoreExpandedPaths(request.extraPathsToExpand.filter(Boolean), () => request.onDone?.());
             });
     }
 
-    private collectExpandedPaths(nodes: StorageItem[]): string[] {
-        const paths: string[] = [];
-        const walk = (list: StorageItem[]): void => {
-            for (const n of list) {
-                if (n.type === 'folder' && n.isExpanded && n.path) {
-                    paths.push(n.path);
-                    if (n.children?.length) walk(n.children);
-                }
-            }
-        };
-        walk(nodes);
-        return paths;
+    /**
+     * Lists one level and merges it with the previous nodes of that level by path. Expanded
+     * folders keep `isExpanded` and have their children refreshed recursively; collapsed folders
+     * drop their children so they reload on the next expand. Builds new node objects and never
+     * mutates the current tree, so an outdated refresh can simply be discarded.
+     * Known limitation: an expand/collapse made while a refresh is in flight is lost (the result wins).
+     */
+    private fetchMergedLevel(path: string, previous: StorageItem[]): Observable<StorageItem[]> {
+        const previousByPath = new Map(previous.map((node) => [node.path, node]));
+        return this.storageApiService.list(path).pipe(
+            switchMap((items) => {
+                const merged = this.withPaths(Array.isArray(items) ? items : [], path).map((fresh) => {
+                    const old = previousByPath.get(fresh.path);
+                    const keepExpanded = fresh.type === 'folder' && old?.type === 'folder' && !!old.isExpanded;
+                    if (!keepExpanded) return fresh;
+                    return { ...fresh, isExpanded: true, children: fresh.is_empty ? [] : old?.children };
+                });
+                const expanded = merged.filter((node) => node.isExpanded && !node.is_empty);
+                if (expanded.length === 0) return of(merged);
+                return forkJoin(
+                    expanded.map((folder) =>
+                        this.fetchMergedLevel(folder.path, folder.children ?? []).pipe(
+                            // A failed sub-level keeps what it showed before instead of failing the refresh.
+                            catchError(() => of(folder.children ?? [])),
+                            map((children) => {
+                                folder.children = children;
+                            })
+                        )
+                    )
+                ).pipe(map(() => merged));
+            })
+        );
     }
 
     private restoreExpandedPaths(paths: string[], onAllDone?: () => void): void {
@@ -360,6 +418,9 @@ export class StorageTreeFacade {
             case 'group-selected':
                 this.handleGroupSelected(event);
                 break;
+            case 'add-to-collection':
+                this.handleAddToCollection(event);
+                break;
         }
     }
 
@@ -471,31 +532,27 @@ export class StorageTreeFacade {
         const to = event.targetPath;
         if (!to) return;
 
-        const items = (event.selectedItems?.length ? event.selectedItems : [event.item]).filter((item) => {
-            const from = item.path;
-            return Boolean(from) && from !== to;
-        });
+        const items = (event.selectedItems?.length ? event.selectedItems : [event.item]).filter(
+            (item) => Boolean(item.path) && item.path !== to
+        );
         if (items.length === 0) return;
 
-        const requests = items.map((item) => this.storageApiService.move(item.path, to));
-        forkJoin(requests)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => {
-                    const label = items.length === 1 ? `"${items[0].name}" moved` : `${items.length} items moved`;
-                    this.toastService.success(label);
-                    const selected = this.selectedFile();
-                    if (selected && items.some((item) => item.path === selected.path)) {
-                        this.selectedFile.set(null);
-                    }
-                    const destination = to === '/' ? '' : to;
+        const destination = to === '/' ? '' : to;
+        this.moveSequentially(items, to)
+            .pipe(
+                finalize(() => {
+                    if (this.destroyRef.destroyed) return;
                     this.reloadTreePreservingExpansion(destination ? [destination] : []);
-                },
-                error: () => {
-                    const label =
-                        items.length === 1 ? `Failed to move "${items[0].name}"` : 'Failed to move selected items';
-                    this.toastService.error(label);
-                },
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((outcome) => {
+                this.clearSelectedFileIfMoved(outcome.moved);
+                this.notifyMoveOutcome(outcome, {
+                    success: items.length === 1 ? `"${items[0].name}" moved` : `${items.length} items moved`,
+                    failure: items.length === 1 ? `Failed to move "${items[0].name}"` : 'Failed to move selected items',
+                    partial: `${outcome.moved.length} of ${items.length} items moved`,
+                });
             });
     }
 
@@ -506,29 +563,110 @@ export class StorageTreeFacade {
         const parentPath = this.getParentPath(items[0].path);
         const name = this.buildUniqueFolderName(parentPath);
         const targetPath = parentPath ? `${parentPath}/${name}` : name;
+        let movedCount = 0;
 
         this.storageApiService
             .mkdir(targetPath)
             .pipe(
-                switchMap(() => forkJoin(items.map((item) => this.storageApiService.move(item.path, targetPath)))),
+                switchMap(() => this.moveSequentially(items, targetPath)),
+                switchMap((outcome) =>
+                    outcome.moved.length > 0
+                        ? of(outcome)
+                        : this.removeFolderIfEmpty(targetPath).pipe(map(() => outcome))
+                ),
+                finalize(() => {
+                    if (this.destroyRef.destroyed) return;
+                    const renameNewFolder =
+                        movedCount > 0 ? () => this.triggerRenameForNewFolder(targetPath) : undefined;
+                    this.reloadTreePreservingExpansion([targetPath], renameNewFolder);
+                }),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toastService.success(`${items.length} items grouped into "${name}"`);
-                    const selected = this.selectedFile();
-                    if (selected && items.some((item) => item.path === selected.path)) {
-                        this.selectedFile.set(null);
-                    }
-                    this.reloadTreePreservingExpansion([targetPath], () => {
-                        this.triggerRenameForNewFolder(targetPath);
+                next: (outcome) => {
+                    movedCount = outcome.moved.length;
+                    this.clearSelectedFileIfMoved(outcome.moved);
+                    this.notifyMoveOutcome(outcome, {
+                        success: `${items.length} items grouped into "${name}"`,
+                        failure: 'Failed to group items',
+                        partial: `${outcome.moved.length} of ${items.length} items grouped into "${name}"`,
                     });
                 },
-                error: () => {
-                    this.toastService.error('Failed to group items');
-                    this.reloadTreePreservingExpansion([targetPath]);
-                },
+                error: () => this.toastService.error('Failed to group items'),
             });
+    }
+
+    /**
+     * One `move/` request at a time, never in parallel: parallel moves of two same-named files
+     * into one folder race on the server's name dedup. A failed item does not stop the rest.
+     */
+    private moveSequentially(items: StorageItem[], to: string): Observable<MoveOutcome> {
+        return from(items).pipe(
+            concatMap((item) =>
+                this.storageApiService.move(item.path, to).pipe(
+                    map(() => ({ item, moved: true })),
+                    catchError(() => of({ item, moved: false }))
+                )
+            ),
+            toArray(),
+            map((results) => ({
+                moved: results.filter((result) => result.moved).map((result) => result.item),
+                failed: results.filter((result) => !result.moved).map((result) => result.item),
+            }))
+        );
+    }
+
+    /**
+     * Deletes the folder only when the server reports it empty. A move that failed on the client
+     * (timeout, 504) may still have been applied, and delete is recursive — so never delete blindly.
+     * Any error leaves the folder in place.
+     */
+    private removeFolderIfEmpty(folderPath: string): Observable<void> {
+        return this.storageApiService.list(folderPath).pipe(
+            switchMap((children) =>
+                children.length === 0 ? this.storageApiService.delete([folderPath]) : of(undefined)
+            ),
+            catchError(() => of(undefined))
+        );
+    }
+
+    private notifyMoveOutcome(
+        outcome: MoveOutcome,
+        messages: { success: string; failure: string; partial: string }
+    ): void {
+        if (outcome.failed.length === 0) {
+            this.toastService.success(messages.success);
+        } else if (outcome.moved.length === 0) {
+            this.toastService.error(messages.failure);
+        } else {
+            this.toastService.warning(`${messages.partial}. Failed: ${this.formatNameList(outcome.failed)}`);
+        }
+    }
+
+    private clearSelectedFileIfMoved(moved: StorageItem[]): void {
+        const selected = this.selectedFile();
+        if (selected && moved.some((item) => item.path === selected.path)) {
+            this.selectedFile.set(null);
+        }
+    }
+
+    private formatNameList(items: StorageItem[], maxNames = 3): string {
+        const names = items.slice(0, maxNames).map((item) => `"${item.name}"`);
+        const rest = items.length - names.length;
+        return rest > 0 ? `${names.join(', ')} and ${rest} more` : names.join(', ');
+    }
+
+    private handleAddToCollection(event: { item: StorageItem; selectedItems?: StorageItem[] }): void {
+        const items = event.selectedItems?.length ? event.selectedItems : [event.item];
+        // Unresolvable items are reported by DocumentsStorageService when the import runs.
+        if (extractStorageFileIds(items).storageFileIds.length === 0) {
+            this.toastService.error('None of the selected items could be added');
+            return;
+        }
+        this.dialog.open<ImportFromStorageResponse, AddToCollectionDialogData>(AddToCollectionDialogComponent, {
+            data: { items },
+            ariaLabelledBy: ADD_TO_COLLECTION_DIALOG_TITLE_ID,
+        });
     }
 
     private triggerRenameForNewFolder(targetPath: string, retriesLeft = 20): void {

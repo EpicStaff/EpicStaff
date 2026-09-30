@@ -283,6 +283,11 @@ urlpatterns = [
         name="document-upload",
     ),
     path(
+        "documents/source-collection/<str:collection_id>/from-storage/",
+        DocumentManagementViewSet.as_view({"post": "import_from_storage"}),
+        name="document-import-from-storage",
+    ),
+    path(
         "source-collections/<str:collection_id>/documents/",
         collection_documents_viewset,
         name="collection-documents",

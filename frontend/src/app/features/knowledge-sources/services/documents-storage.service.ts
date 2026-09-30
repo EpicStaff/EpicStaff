@@ -1,13 +1,19 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { forkJoin, Observable, of } from 'rxjs';
-import { catchError, finalize, map, tap } from 'rxjs/operators';
+import { extractHttpErrorMessage } from '@shared/utils';
+import { forkJoin, Observable, of, ReplaySubject } from 'rxjs';
+import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
+import { buildStorageImportSummary, extractStorageFileIds, formatSkippedReasons } from '../helpers/storage-import.util';
 import {
     CollectionDocument,
     CopyDocumentsResponse,
     DisplayedListDocument,
+    ImportFromStorageErrorResponse,
+    ImportFromStorageResponse,
+    StorageImportCandidate,
     UploadDocumentResponse,
 } from '../models/document.model';
 import { CollectionsApiService } from './collections-api.service';
@@ -22,6 +28,8 @@ export class DocumentsStorageService implements StorageService {
     private documentsLoaded = signal<boolean>(false);
     private uploadingDocumentsSignal = signal<DisplayedListDocument[]>([]);
     private deletingDocumentIdsSignal = signal(new Set<number>());
+    /** In-flight import count per collection, so overlapping imports into one collection do not clear each other. */
+    private importCountsByCollectionSignal = signal<ReadonlyMap<number, number>>(new Map<number, number>());
     public readonly documents = this.documentsSignal.asReadonly();
     public readonly isDocumentsLoaded = this.documentsLoaded.asReadonly();
     public readonly uploadingDocuments = this.uploadingDocumentsSignal.asReadonly();
@@ -96,6 +104,39 @@ export class DocumentsStorageService implements StorageService {
         );
     }
 
+    /**
+     * Imports storage files/folders into a collection and toasts the outcome: the imported/skipped
+     * summary, or the server error (403 is already toasted by `forbiddenInterceptor`).
+     *
+     * The request is subscribed here, in this root service, so it outlives the component that
+     * started it: unsubscribing from the returned observable never cancels an import the server
+     * may already have accepted. Emits the response, or `null` when nothing was sent or it failed.
+     */
+    importFromStorage(
+        collectionId: number,
+        items: StorageImportCandidate[]
+    ): Observable<ImportFromStorageResponse | null> {
+        const { storageFileIds, missingCount } = extractStorageFileIds(items);
+        if (storageFileIds.length === 0) {
+            this.toastService.error('None of the selected items could be added');
+            return of(null);
+        }
+        if (missingCount > 0) {
+            this.toastService.warning(`${missingCount} item(s) could not be added`);
+        }
+
+        const result = new ReplaySubject<ImportFromStorageResponse | null>(1);
+        this.adjustImportCount(collectionId, 1);
+        this.requestImport(collectionId, storageFileIds)
+            .pipe(finalize(() => this.adjustImportCount(collectionId, -1)))
+            .subscribe(result);
+        return result.asObservable();
+    }
+
+    isImporting(collectionId: number): boolean {
+        return (this.importCountsByCollectionSignal().get(collectionId) ?? 0) > 0;
+    }
+
     isDeleting(documentId: number | undefined): boolean {
         return !!documentId && this.deletingDocumentIdsSignal().has(documentId);
     }
@@ -153,6 +194,69 @@ export class DocumentsStorageService implements StorageService {
     clear(): void {
         this.documentsSignal.set([]);
         this.documentsLoaded.set(false);
+    }
+
+    private adjustImportCount(collectionId: number, delta: number): void {
+        this.importCountsByCollectionSignal.update((counts) => {
+            const next = new Map(counts);
+            const count = (next.get(collectionId) ?? 0) + delta;
+            if (count > 0) {
+                next.set(collectionId, count);
+            } else {
+                next.delete(collectionId);
+            }
+            return next;
+        });
+    }
+
+    private requestImport(
+        collectionId: number,
+        storageFileIds: number[]
+    ): Observable<ImportFromStorageResponse | null> {
+        return this.documentsApiService.importFromStorage(collectionId, storageFileIds).pipe(
+            tap((response) => {
+                this.mergeImportedDocuments(collectionId, response.documents);
+                const summary = buildStorageImportSummary(response);
+                if (summary.kind === 'success') {
+                    this.toastService.success(summary.message);
+                } else {
+                    this.toastService.warning(summary.message);
+                }
+            }),
+            // Authoritative document_count / status / rag configs for the collection.
+            switchMap((response) =>
+                this.collectionsStorageService.getFullCollection(collectionId, true).pipe(
+                    catchError(() => of(null)),
+                    map(() => response)
+                )
+            ),
+            catchError((error: unknown) => {
+                this.notifyImportError(error);
+                return of(null);
+            })
+        );
+    }
+
+    /**
+     * Only merge when the collection's documents are already cached: a partial cache would make
+     * `getDocumentsByCollectionId` return just the imported documents instead of fetching all.
+     */
+    private mergeImportedDocuments(collectionId: number, documents: CollectionDocument[]): void {
+        const isCollectionCached = this.documentsSignal().some((d) => d.source_collection === collectionId);
+        if (!isCollectionCached || documents.length === 0) return;
+        this.addDocumentsToCache(documents.map((doc) => ({ ...doc, source_collection: collectionId })));
+    }
+
+    private notifyImportError(error: unknown): void {
+        if (!(error instanceof HttpErrorResponse)) {
+            this.toastService.error('Failed to add files to the collection');
+            return;
+        }
+        if (error.status === 403) return;
+        const message = extractHttpErrorMessage(error, 'Failed to add files to the collection');
+        const skipped =
+            error.status === 400 ? (error.error as ImportFromStorageErrorResponse | null)?.skipped : undefined;
+        this.toastService.error(skipped?.length ? `${message} (skipped: ${formatSkippedReasons(skipped)})` : message);
     }
 
     private deleteDocumentFromCache(id: number) {

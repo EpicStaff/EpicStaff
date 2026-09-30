@@ -2,11 +2,15 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
+    computed,
+    DestroyRef,
+    effect,
     ElementRef,
     inject,
     input,
     output,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -14,6 +18,8 @@ import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
+import { canImportStorageToKnowledge } from '../../../../../../../knowledge-sources/helpers/storage-import.util';
 import { StorageItem } from '../../../../../../models/storage.models';
 import { StorageDragService } from '../../../../../../services/storage-drag.service';
 import { getFileExtension } from '../../../../../../utils/storage-file.utils';
@@ -33,9 +39,17 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 })
 export class StorageTreeComponent {
     private readonly storageDrag = inject(StorageDragService);
+    private readonly permissionsService = inject(PermissionsService);
 
     items = input<StorageItem[]>([]);
     showHeader = input<boolean>(true);
+    /** Offers "Add to collection…"; only the Files → Storage page turns this on. */
+    enableKnowledgeImport = input<boolean>(false);
+    /**
+     * The unfiltered tree, when `items` is a filtered view (e.g. search). Selection bookkeeping
+     * uses it so a search never deselects hidden items. Defaults to `items`.
+     */
+    loadedItems = input<StorageItem[] | undefined>(undefined);
     fileSelected = output<StorageItem>();
     folderSelected = output<StorageItem>();
     folderToggled = output<StorageItem>();
@@ -77,6 +91,40 @@ export class StorageTreeComponent {
     dropTargetRoot = signal<boolean>(false);
     private dragExpandTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly dragExpandDelay = 700;
+
+    protected readonly canAddToCollection = computed(
+        () => this.enableKnowledgeImport() && canImportStorageToKnowledge(this.permissionsService)
+    );
+
+    /** The drag service can end a drag on its own (safety net); drop this tree's local drag state too. */
+    private readonly syncLocalDragStateWithService = effect(() => {
+        if (this.storageDrag.isDragging()) return;
+        untracked(() => {
+            if (this.draggedItems().length > 0) this.clearLocalDragState();
+        });
+    });
+
+    /** Deselects only paths that truly disappeared (e.g. after a refresh); a search filter never deselects. */
+    /** Everything the tree has loaded, ignoring any filter applied to `items`. */
+    private readonly allLoadedItems = computed(() => this.loadedItems() ?? this.items());
+
+    private readonly pruneSelectionToLoadedItems = effect(() => {
+        const loadedPaths = new Set(this.collectLoadedNodes(this.allLoadedItems()).map((node) => node.path));
+        untracked(() => {
+            const selected = this.selectedPaths();
+            const kept = [...selected].filter((path) => loadedPaths.has(path));
+            if (kept.length !== selected.size) this.setSelectedPaths(new Set(kept));
+        });
+    });
+
+    constructor() {
+        // A destroyed drag source never fires `dragend`; end a drag this tree started so
+        // drop targets elsewhere (e.g. the collections panel) are not left active.
+        inject(DestroyRef).onDestroy(() => {
+            this.clearDragExpandTimer();
+            if (this.draggedItems().length > 0) this.storageDrag.end();
+        });
+    }
 
     asStorageItems(nodes: StorageItem[] | null | undefined): StorageItem[] {
         return Array.isArray(nodes) ? nodes : [];
@@ -219,6 +267,8 @@ export class StorageTreeComponent {
             } else {
                 this.contextAction.emit({ action, item });
             }
+        } else if (action === 'add-to-collection') {
+            this.contextAction.emit({ action, item, selectedItems: this.resolveSelectionForAction(item) });
         } else {
             this.contextAction.emit({ action, item });
         }
@@ -380,62 +430,85 @@ export class StorageTreeComponent {
             event.preventDefault();
             return;
         }
-        const items = this.resolveDraggedItems(item);
+        const items = this.resolveSelectionForAction(item);
         event.dataTransfer!.effectAllowed = 'copyMove';
         event.dataTransfer!.setData('text/plain', items.map((i) => i.path).join('\n'));
         this.draggedItem.set(item);
         this.draggedItems.set(items);
-        this.storageDrag.start(item);
+        this.storageDrag.start(item, items);
     }
 
+    /**
+     * A folder row is its own drop target; a file row resolves to its parent folder
+     * (or the root). The event never bubbles to the root handler from a row, so a row
+     * can no longer trigger a false "move to root" outline.
+     */
     onDragOver(event: DragEvent, node: StorageItem): void {
-        event.preventDefault();
-        event.dataTransfer!.dropEffect = 'move';
-
         const dragged = this.draggedItems();
         if (dragged.length === 0) return;
 
-        if (node.type !== 'folder' || !this.isValidDropTargetForItems(dragged, node)) {
-            if (this.dropTarget()?.path === node.path) {
-                this.dropTarget.set(null);
-            }
+        event.preventDefault();
+        event.stopPropagation();
+
+        const target = this.resolveDropTarget(node);
+        if (!target || !this.isValidDropTargetForItems(dragged, target.path)) {
+            event.dataTransfer!.dropEffect = 'none';
+            this.dropTarget.set(null);
+            this.dropTargetRoot.set(false);
+            this.clearDragExpandTimer();
             return;
         }
 
-        event.stopPropagation();
-        this.dropTargetRoot.set(false);
+        event.dataTransfer!.dropEffect = 'move';
 
-        if (this.dropTarget()?.path !== node.path) {
-            this.dropTarget.set(node);
+        if (!target.folder) {
+            this.dropTarget.set(null);
             this.clearDragExpandTimer();
-            if (node.type === 'folder' && !node.isExpanded) {
+            this.dropTargetRoot.set(true);
+            return;
+        }
+
+        this.dropTargetRoot.set(false);
+        const folder = target.folder;
+        if (this.dropTarget()?.path !== folder.path) {
+            this.dropTarget.set(folder);
+            this.clearDragExpandTimer();
+            if (!folder.isExpanded) {
                 this.dragExpandTimer = setTimeout(() => {
-                    node.isExpanded = true;
-                    this.folderToggled.emit(node);
+                    folder.isExpanded = true;
+                    this.folderToggled.emit(folder);
                 }, this.dragExpandDelay);
             }
         }
     }
 
-    onDragLeave(_event: DragEvent, node: StorageItem): void {
-        if (this.dropTarget()?.path === node.path) {
-            this.dropTarget.set(null);
-            this.clearDragExpandTimer();
-        }
+    /**
+     * Keeps the highlight while the pointer moves inside the row, or onto another row that
+     * resolves to the same folder (e.g. between sibling files), so it does not flicker.
+     */
+    onDragLeave(event: DragEvent, node: StorageItem): void {
+        const target = this.resolveDropTarget(node);
+        if (!target?.folder || this.dropTarget()?.path !== target.folder.path) return;
+
+        const row = event.currentTarget as HTMLElement | null;
+        const related = event.relatedTarget as Node | null;
+        if (row && related && row.contains(related)) return;
+        if (this.resolveDropTargetOfElement(related)?.path === target.path) return;
+
+        this.dropTarget.set(null);
+        this.clearDragExpandTimer();
     }
 
     onDrop(event: DragEvent, node: StorageItem): void {
+        const dragged = this.draggedItems();
+        if (dragged.length === 0) return;
+
         event.preventDefault();
         event.stopPropagation();
 
-        const dragged = this.draggedItems();
-        if (dragged.length === 0 || node.type !== 'folder' || !this.isValidDropTargetForItems(dragged, node)) {
-            this.resetDragState();
-            return;
-        }
-
-        const movable = this.filterMovableTo(dragged, node.path);
-        if (movable.length === 0) {
+        const target = this.resolveDropTarget(node);
+        const movable = target ? this.filterMovableTo(dragged, target.path) : [];
+        if (!target || movable.length === 0) {
             this.resetDragState();
             return;
         }
@@ -444,7 +517,7 @@ export class StorageTreeComponent {
             action: 'move',
             item: movable[0],
             selectedItems: movable,
-            targetPath: node.path,
+            targetPath: target.path || '/',
         });
         this.resetDragState();
     }
@@ -454,11 +527,14 @@ export class StorageTreeComponent {
     }
 
     onRootDragOver(event: DragEvent): void {
+        const dragged = this.draggedItems();
+        // External (OS file) drags pass through to the page's upload area.
+        if (dragged.length === 0) return;
+
         event.preventDefault();
         event.dataTransfer!.dropEffect = 'move';
 
-        const dragged = this.draggedItems();
-        if (dragged.length === 0 || dragged.every((item) => this.getParentPath(item.path) === '')) {
+        if (dragged.every((item) => this.getParentPath(item.path) === '')) {
             this.dropTargetRoot.set(false);
             return;
         }
@@ -475,10 +551,12 @@ export class StorageTreeComponent {
     }
 
     onRootDrop(event: DragEvent): void {
+        const dragged = this.draggedItems();
+        if (dragged.length === 0) return;
+
         event.preventDefault();
         event.stopPropagation();
 
-        const dragged = this.draggedItems();
         const movable = this.filterMovableTo(dragged, '/');
         if (movable.length === 0) {
             this.resetDragState();
@@ -507,11 +585,15 @@ export class StorageTreeComponent {
     }
 
     private resetDragState(): void {
+        this.clearLocalDragState();
+        this.storageDrag.end();
+    }
+
+    private clearLocalDragState(): void {
         this.draggedItem.set(null);
         this.draggedItems.set([]);
         this.dropTarget.set(null);
         this.dropTargetRoot.set(false);
-        this.storageDrag.end();
         this.clearDragExpandTimer();
     }
 
@@ -522,13 +604,51 @@ export class StorageTreeComponent {
         }
     }
 
-    private resolveDraggedItems(grabbed: StorageItem): StorageItem[] {
+    /**
+     * The grabbed row alone, or — when it is part of a multi-selection — the whole selection.
+     * Walks every loaded node of the unfiltered tree (not only visible ones), so selected items
+     * inside a collapsed folder or hidden by a search are included. The selection is pruned to loaded paths
+     * whenever the tree data changes (`pruneSelectionToLoadedItems`), so it never names an item
+     * the tree no longer has.
+     */
+    private resolveSelectionForAction(grabbed: StorageItem): StorageItem[] {
         const selected = this.selectedPaths();
         if (!selected.has(grabbed.path) || selected.size <= 1) {
             return [grabbed];
         }
-        const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selected.has(node.path));
+        const selectedItems = this.collectLoadedNodes(this.allLoadedItems()).filter((node) => selected.has(node.path));
         return this.pruneNestedItems(selectedItems);
+    }
+
+    /** Root is `{ path: '', folder: null }`; null means the row has no resolvable drop target. */
+    private resolveDropTarget(node: StorageItem): { path: string; folder: StorageItem | null } | null {
+        if (node.type === 'folder') {
+            return { path: node.path, folder: node };
+        }
+        const parentPath = this.getParentPath(node.path);
+        if (!parentPath) {
+            return { path: '', folder: null };
+        }
+        const parent = this.findNodeByPath(this.items(), parentPath);
+        return parent ? { path: parentPath, folder: parent } : null;
+    }
+
+    private resolveDropTargetOfElement(element: Node | null): { path: string; folder: StorageItem | null } | null {
+        const row = element instanceof Element ? element.closest('[data-path]') : null;
+        const path = row?.getAttribute('data-path');
+        const node = path ? this.findNodeByPath(this.items(), path) : undefined;
+        return node ? this.resolveDropTarget(node) : null;
+    }
+
+    private findNodeByPath(nodes: StorageItem[], path: string): StorageItem | undefined {
+        for (const node of nodes) {
+            if (node.path === path) return node;
+            if (node.children?.length && path.startsWith(`${node.path}/`)) {
+                const found = this.findNodeByPath(node.children, path);
+                if (found) return found;
+            }
+        }
+        return undefined;
     }
 
     private pruneNestedItems(items: StorageItem[]): StorageItem[] {
@@ -545,8 +665,8 @@ export class StorageTreeComponent {
         });
     }
 
-    private isValidDropTargetForItems(dragged: StorageItem[], target: StorageItem): boolean {
-        return this.filterMovableTo(dragged, target.path).length > 0;
+    private isValidDropTargetForItems(dragged: StorageItem[], targetPath: string): boolean {
+        return this.filterMovableTo(dragged, targetPath).length > 0;
     }
 
     private getParentPath(path: string): string {
@@ -599,6 +719,17 @@ export class StorageTreeComponent {
             flat.push(node);
             if (node.type === 'folder' && node.isExpanded && node.children?.length) {
                 flat.push(...this.collectVisibleNodes(node.children));
+            }
+        }
+        return flat;
+    }
+
+    private collectLoadedNodes(nodes: StorageItem[]): StorageItem[] {
+        const flat: StorageItem[] = [];
+        for (const node of nodes) {
+            flat.push(node);
+            if (node.type === 'folder' && node.children?.length) {
+                flat.push(...this.collectLoadedNodes(node.children));
             }
         }
         return flat;
