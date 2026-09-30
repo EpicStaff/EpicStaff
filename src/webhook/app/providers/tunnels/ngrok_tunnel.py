@@ -1,9 +1,8 @@
 import asyncio
 import contextlib
+import errno
 import os
 import shutil
-import stat
-import tempfile
 
 import pyngrok.process
 from loguru import logger
@@ -11,14 +10,28 @@ from pyngrok import conf, installer, ngrok
 from pyngrok.conf import PyngrokConfig
 
 from app.providers.tunnels.base import AbstractTunnelProvider
+from app.providers.tunnels.ngrok_working_directory import (
+    NgrokWorkingDirectoryError,
+    create_locked_working_directory,
+    remove_working_directory,
+)
 
 # Headroom on top of pyngrok's own startup and request timeouts when disconnect() waits
 # for an in-flight start.
 START_WAIT_SLACK_SECONDS = 2
 
+# Only these mean the platform or filesystem cannot make symlinks. Any other failure, such
+# as a vanished working directory, must not fall back to copying.
+SYMLINK_UNSUPPORTED_ERRNOS = frozenset({errno.EPERM, errno.EOPNOTSUPP, errno.ENOSYS})
+# Windows reports a missing symlink privilege (Developer Mode off) as EINVAL.
+WINDOWS_ERROR_PRIVILEGE_NOT_HELD = 1314
 
-class NgrokWorkingDirectoryError(RuntimeError):
-    """Raised when the private ngrok working directory or the binary in it is unusable."""
+
+def _means_symlinks_unsupported(error: OSError) -> bool:
+    return (
+        error.errno in SYMLINK_UNSUPPORTED_ERRNOS
+        or getattr(error, "winerror", None) == WINDOWS_ERROR_PRIVILEGE_NOT_HELD
+    )
 
 
 class NgrokTunnel(AbstractTunnelProvider):
@@ -47,6 +60,8 @@ class NgrokTunnel(AbstractTunnelProvider):
         # Private per-instance directory holding the ngrok config and binary. The binary
         # path must stay unique per instance: pyngrok keys its process registry by it.
         self._working_directory: str | None = None
+        # Open for the directory's whole life: the held flock marks it live to the sweep.
+        self._working_directory_lock: int | None = None
         self._binary_placed = False
         self._config = None
         self._start_task: asyncio.Task | None = None
@@ -153,23 +168,35 @@ class NgrokTunnel(AbstractTunnelProvider):
             self._stop_process_and_remove_working_directory()
 
     def _prepare_binary(self, source_path: str) -> str:
-        """Place the ngrok binary in a private working directory (0700 on POSIX), created
-        exclusively.
+        """Place the ngrok binary in a private, locked working directory.
 
-        An entry already at the binary path is refused, never adopted. There is no integrity
-        check of the binary after placement.
+        An entry already at the binary path is refused, never adopted, and the directory is
+        kept so every later attempt refuses too. Any other placement failure discards the
+        directory, so the next attempt starts from a fresh one. There is no integrity check
+        of the binary after placement.
 
         Raises:
             FileExistsError: Something this tunnel did not create occupies the binary path.
-            NgrokWorkingDirectoryError: The directory is not private, or the binary is gone.
+            NgrokWorkingDirectoryError: The temp directory lets other users replace entries,
+                the working directory is not private or cannot be locked, or the binary is
+                gone.
         """
         if self._working_directory is None:
-            self._working_directory = tempfile.mkdtemp(prefix="ngrok_")
-            self._require_private_working_directory()
+            self._working_directory, self._working_directory_lock = (
+                create_locked_working_directory()
+            )
         ngrok_path = os.path.join(self._working_directory, "ngrok")
 
         if not self._binary_placed:
-            self._place_binary(source_path, ngrok_path)
+            try:
+                self._place_binary(source_path, ngrok_path)
+            except FileExistsError:
+                raise
+            except BaseException:
+                # Covers a partial copy too: its file is closed by now, which Windows needs
+                # before the directory can be removed.
+                self._remove_working_directory()
+                raise
             self._binary_placed = True
 
         # pyngrok downloads and runs a fresh binary when the path is missing; exists() is also
@@ -180,43 +207,27 @@ class NgrokTunnel(AbstractTunnelProvider):
             raise NgrokWorkingDirectoryError(f"Refusing to run ngrok: {ngrok_path} is missing.")
         return ngrok_path
 
-    def _require_private_working_directory(self) -> None:
-        # No geteuid means Windows, where os.stat reports no meaningful POSIX mode or owner.
-        if not hasattr(os, "geteuid"):
-            return
-        directory_status = os.stat(self._working_directory)
-        is_private = (
-            stat.S_IMODE(directory_status.st_mode) == 0o700
-            and directory_status.st_uid == os.geteuid()
-        )
-        if not is_private:
-            working_directory = self._working_directory
-            self._remove_working_directory()
-            raise NgrokWorkingDirectoryError(
-                f"Refusing to run ngrok: {working_directory} is not a private 0700 directory."
-            )
-
-    def _place_binary(self, source_path: str, ngrok_path: str) -> None:
+    @staticmethod
+    def _place_binary(source_path: str, ngrok_path: str) -> None:
         try:
             os.symlink(source_path, ngrok_path)
             return
-        except FileExistsError:
-            raise
-        except OSError:
-            logger.debug("Symlinks unsupported, copying the ngrok binary instead.")
+        except OSError as error:
+            if not _means_symlinks_unsupported(error):
+                if not isinstance(error, FileExistsError) and os.path.lexists(ngrok_path):
+                    # Windows reports a directory already at the path as access denied.
+                    raise FileExistsError(
+                        errno.EEXIST, os.strerror(errno.EEXIST), ngrok_path
+                    ) from error
+                raise
+        logger.debug("Symlinks unsupported, copying the ngrok binary instead.")
 
         # O_EXCL fails on any existing entry, including a planted symlink.
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
         with open(source_path, "rb") as source_file:
             file_descriptor = os.open(ngrok_path, flags, 0o700)
-            try:
-                with os.fdopen(file_descriptor, "wb") as destination_file:
-                    shutil.copyfileobj(source_file, destination_file)
-            except BaseException:
-                # This tunnel created the partial copy, so discard the directory; the file is
-                # already closed here, which Windows needs before it can be removed.
-                self._remove_working_directory()
-                raise
+            with os.fdopen(file_descriptor, "wb") as destination_file:
+                shutil.copyfileobj(source_file, destination_file)
 
     def _stop_process_and_remove_working_directory(self) -> None:
         # pyngrok registers the process before its later startup steps can raise, so a
@@ -228,9 +239,9 @@ class NgrokTunnel(AbstractTunnelProvider):
             self._remove_working_directory()
 
     def _remove_working_directory(self) -> None:
-        if self._working_directory is not None:
-            shutil.rmtree(self._working_directory, ignore_errors=True)
+        remove_working_directory(self._working_directory, self._working_directory_lock)
         self._working_directory = None
+        self._working_directory_lock = None
         self._binary_placed = False
 
     async def _monitor_connection(self):

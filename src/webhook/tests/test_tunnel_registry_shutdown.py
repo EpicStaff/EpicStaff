@@ -63,19 +63,6 @@ def _make_ngrok_provider() -> NgrokTunnel:
     return NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token")
 
 
-@pytest.fixture
-def lifespan_dependencies():
-    redis_service = AsyncMock()
-    redis_service.client.publish = AsyncMock(return_value=1)
-    close_redis_connection = AsyncMock()
-    with (
-        patch("app.main.get_redis_service", new=AsyncMock(return_value=redis_service)),
-        patch("app.main.close_redis_connection", new=close_redis_connection),
-        patch("app.main.listen_redis", new=AsyncMock()),
-    ):
-        yield close_redis_connection
-
-
 async def _run_lifespan(registry, timeout=3, while_running=None):
     async def run():
         async with lifespan(MagicMock()):

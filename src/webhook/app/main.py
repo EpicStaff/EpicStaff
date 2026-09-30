@@ -9,6 +9,7 @@ from src.shared.models import WebhookConfigData
 
 from app.controllers import webhook_routes
 from app.core.settings import settings
+from app.providers.tunnels.ngrok_working_directory import remove_stale_working_directories
 from app.services.redis_service import (
     RedisService,
     close_redis_connection,
@@ -48,6 +49,13 @@ async def listen_redis(redis_service: RedisService, tunnel_registry: TunnelRegis
 async def lifespan(app: FastAPI):
     # --- STARTUP ---
     logger.info("Application starting up...")
+
+    # Before the Redis listener starts, so no tunnel of this run exists yet. Best effort:
+    # leftover directories must not keep the service from starting.
+    try:
+        await asyncio.to_thread(remove_stale_working_directories)
+    except Exception:
+        logger.exception("Sweeping stale ngrok working directories failed; continuing startup.")
 
     redis_service = await get_redis_service()
     tunnel_registry = get_tunnel_registry(redis_service=redis_service)

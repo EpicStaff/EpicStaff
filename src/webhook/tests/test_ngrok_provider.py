@@ -9,7 +9,8 @@ import threading
 import pytest
 from unittest.mock import patch, ANY
 from app.providers.tunnels import ngrok_tunnel as ngrok_tunnel_module
-from app.providers.tunnels.ngrok_tunnel import NgrokTunnel, NgrokWorkingDirectoryError
+from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
+from app.providers.tunnels.ngrok_working_directory import NgrokWorkingDirectoryError
 from app.core.settings import settings
 
 
@@ -35,18 +36,8 @@ def _started_config(environment):
     return environment.ngrok.connect.call_args.kwargs["pyngrok_config"]
 
 
-def _stat_reporting_mode(real_stat, mode):
-    """os.stat stand-in that reports `mode` for ngrok working directories."""
-
-    def patched_stat(path, *args, **kwargs):
-        status = real_stat(path, *args, **kwargs)
-        if os.path.basename(path).startswith("ngrok_"):
-            fields = list(status)
-            fields[stat.ST_MODE] = stat.S_IFDIR | mode
-            return os.stat_result(fields)
-        return status
-
-    return patched_stat
+def _is_working_directory(path: str) -> bool:
+    return os.path.basename(path).startswith("ngrok_")
 
 
 @pytest.mark.asyncio
@@ -221,16 +212,22 @@ async def test_next_attempt_after_binary_vanished_uses_fresh_working_directory(
 
 
 @pytest.mark.asyncio
-async def test_working_directory_that_is_not_private_is_refused(ngrok_environment, monkeypatch):
+async def test_working_directory_that_is_not_private_is_refused(
+    ngrok_environment, temp_root_status, reported_status, monkeypatch
+):
+    # A /tmp-like parent, so it is the working directory check that refuses.
+    temp_root_status(mode=stat.S_IFDIR | 0o1777, uid=0)
     real_stat = os.stat
     # geteuid is patched so the check also runs on Windows, which has no geteuid.
     monkeypatch.setattr(
-        os, "geteuid", lambda: real_stat(ngrok_environment.temp_root).st_uid, raising=False
+        os, "geteuid", lambda: real_stat(ngrok_environment.source_binary).st_uid, raising=False
     )
-    monkeypatch.setattr(os, "stat", _stat_reporting_mode(real_stat, 0o755))
+    reported_status(_is_working_directory, permissions=0o755)
     provider = _make_provider()
+    provider._is_running = True
 
-    await provider.connect()
+    with pytest.raises(NgrokWorkingDirectoryError, match="is not a private 0700 directory"):
+        await provider._establish_connection()
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
@@ -239,16 +236,24 @@ async def test_working_directory_that_is_not_private_is_refused(ngrok_environmen
 
 
 @pytest.mark.asyncio
-async def test_working_directory_owned_by_another_user_is_refused(ngrok_environment, monkeypatch):
+async def test_working_directory_owned_by_another_user_is_refused(
+    ngrok_environment, temp_root_status, reported_status, monkeypatch
+):
+    temp_root_status(mode=stat.S_IFDIR | 0o1777, uid=0)
     real_stat = os.stat
     monkeypatch.setattr(
-        os, "geteuid", lambda: real_stat(ngrok_environment.temp_root).st_uid + 1, raising=False
+        os,
+        "geteuid",
+        lambda: real_stat(ngrok_environment.source_binary).st_uid + 1,
+        raising=False,
     )
     # Windows reports st_mode 0o777 for directories, so present a private mode there.
-    monkeypatch.setattr(os, "stat", _stat_reporting_mode(real_stat, 0o700))
+    reported_status(_is_working_directory, permissions=0o700)
     provider = _make_provider()
+    provider._is_running = True
 
-    await provider.connect()
+    with pytest.raises(NgrokWorkingDirectoryError, match="is not a private 0700 directory"):
+        await provider._establish_connection()
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
@@ -484,5 +489,91 @@ async def test_failed_copy_placement_recovers_on_next_attempt(ngrok_environment,
     ngrok_environment.ngrok.connect.assert_called_once()
     with open(_started_config(ngrok_environment).ngrok_path, "rb") as binary_file:
         assert binary_file.read() == ngrok_environment.binary_content
+
+    await provider.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_working_directory_removed_before_placement_recovers_on_next_attempt(
+    ngrok_environment, monkeypatch
+):
+    real_create = ngrok_tunnel_module.create_locked_working_directory
+    created_directories = []
+
+    # Stands in for a temp cleaner deleting the directory right after it was created.
+    def create_then_lose_first_directory():
+        working_directory, lock_descriptor = real_create()
+        created_directories.append(working_directory)
+        if len(created_directories) == 1:
+            shutil.rmtree(working_directory)
+        return working_directory, lock_descriptor
+
+    monkeypatch.setattr(
+        ngrok_tunnel_module, "create_locked_working_directory", create_then_lose_first_directory
+    )
+    provider = _make_provider()
+    provider._is_running = True
+
+    with pytest.raises(FileNotFoundError):
+        await provider._establish_connection()
+
+    assert provider._working_directory is None
+    assert provider._working_directory_lock is None
+
+    await provider._establish_connection()
+
+    ngrok_environment.ngrok.connect.assert_called_once()
+    ngrok_path = _started_config(ngrok_environment).ngrok_path
+    assert os.path.dirname(ngrok_path) == created_directories[1]
+    with open(ngrok_path, "rb") as binary_file:
+        assert binary_file.read() == ngrok_environment.binary_content
+
+    await provider.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_symlink_failure_that_is_not_lack_of_support_is_not_copied_around(
+    ngrok_environment, monkeypatch
+):
+    def symlink_fails(*args, **kwargs):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(os, "symlink", symlink_fails)
+    provider = _make_provider()
+    provider._is_running = True
+
+    with pytest.raises(OSError, match="Input/output error"):
+        await provider._establish_connection()
+
+    ngrok_environment.ngrok.connect.assert_not_called()
+    assert provider._working_directory is None
+    assert list(ngrok_environment.temp_root.iterdir()) == []
+
+    await provider.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_occupied_binary_path_is_refused_whatever_error_symlink_reports(
+    ngrok_environment, tmp_path, monkeypatch
+):
+    planted_directory = tmp_path / "planted"
+    planted_directory.mkdir(mode=0o700)
+    (planted_directory / "ngrok").mkdir()
+    monkeypatch.setattr(tempfile, "mkdtemp", lambda **kwargs: str(planted_directory))
+
+    # What Windows raises for a directory already at the symlink path.
+    def symlink_access_denied(*args, **kwargs):
+        raise PermissionError(errno.EACCES, "Access is denied")
+
+    monkeypatch.setattr(os, "symlink", symlink_access_denied)
+    provider = _make_provider()
+    provider._is_running = True
+
+    with pytest.raises(FileExistsError):
+        await provider._establish_connection()
+
+    ngrok_environment.ngrok.connect.assert_not_called()
+    assert (planted_directory / "ngrok").is_dir()
+    assert provider._working_directory == str(planted_directory)
 
     await provider.disconnect()
