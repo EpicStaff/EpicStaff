@@ -8,7 +8,9 @@ MAX_LOG_LENGTH = 200
 
 def truncate_filter(record):
     msg = record["message"].replace("\r", "").replace("\n", "\\n")
-    if len(msg) > MAX_LOG_LENGTH:
+    # Audit records (logger.bind(audit=True)) must reach the log whole; the
+    # code emitting them bounds their size itself.
+    if len(msg) > MAX_LOG_LENGTH and not record["extra"].get("audit"):
         msg = msg[:MAX_LOG_LENGTH] + "..."
     record["message"] = msg
     return True

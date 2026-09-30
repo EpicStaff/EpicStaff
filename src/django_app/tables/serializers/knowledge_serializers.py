@@ -13,6 +13,10 @@ from tables.models.knowledge_models import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.services.knowledge_services.storage_document_import_service import (
+    SkipReason,
+    max_storage_selection,
+)
 
 COLLECTION_DESCRIPTION_MAX_LENGTH = 2000
 
@@ -215,6 +219,40 @@ class CopyDocumentsSerializer(serializers.Serializer):
 
     def validate_document_ids(self, value):
         return list(dict.fromkeys(value))
+
+
+class ImportFromStorageSerializer(serializers.Serializer):
+    """Input for importing storage files into a collection."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Built per instance: the cap derives from settings, which a class
+        # attribute would freeze at import time.
+        self.fields["storage_file_ids"] = serializers.ListField(
+            child=serializers.IntegerField(min_value=1),
+            allow_empty=False,
+            max_length=max_storage_selection(),
+            help_text="Ids of storage files and/or folders; folders import every file beneath them",
+        )
+
+    def validate_storage_file_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
+class ImportFromStorageSkippedSerializer(serializers.Serializer):
+    """Response shape of one storage file left out of an import (schema only)."""
+
+    storage_file_id = serializers.IntegerField()
+    path = serializers.CharField()
+    reason = serializers.ChoiceField(choices=[reason.value for reason in SkipReason])
+
+
+class ImportFromStorageResponseSerializer(serializers.Serializer):
+    """Response shape of a storage import (schema only)."""
+
+    message = serializers.CharField()
+    documents = DocumentMetadataSerializer(many=True)
+    skipped = ImportFromStorageSkippedSerializer(many=True)
 
 
 class DocumentDetailSerializer(serializers.ModelSerializer):
