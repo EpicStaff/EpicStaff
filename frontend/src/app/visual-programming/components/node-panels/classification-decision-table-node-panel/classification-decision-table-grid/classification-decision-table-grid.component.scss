@@ -321,21 +321,28 @@ $group-gutter-width: 28px;
     clip-path: inset(var(--cdt-overlay-clip-top, 0px) 0 var(--cdt-overlay-clip-bottom, 0px) 0);
 }
 
+// Only while a group folds or unfolds: on scroll the overlays must follow the rows without lag.
+.group-overlays.animating {
+    .group-overlay,
+    .group-overlay-chevron,
+    .group-overlay-bracket {
+        transition:
+            top var(--cdt-group-toggle-duration) ease-out,
+            height var(--cdt-group-toggle-duration) ease-out;
+    }
+}
+
 .group-overlay {
     position: absolute;
     left: 0;
     width: 100%;
     pointer-events: none;
-
-    &.collapsed {
-        width: $group-gutter-width;
-    }
 }
 
 .group-overlay-border {
     position: absolute;
     left: $group-gutter-width;
-    right: 0;
+    right: var(--cdt-overlay-right, 0px);
     top: 0;
     bottom: 0;
     border: 1px solid var(--color-text-primary);
@@ -357,6 +364,20 @@ $group-gutter-width: 28px;
     border-radius: 4px;
     pointer-events: auto;
     overflow: hidden;
+}
+
+.group-overlay.collapsed .group-overlay-chip {
+    top: 0;
+}
+
+.group-overlay-seam-line {
+    position: absolute;
+    left: $group-gutter-width;
+    right: var(--cdt-overlay-right, 0px);
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 1px;
+    pointer-events: none;
 }
 
 .group-overlay-chip-name {

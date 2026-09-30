@@ -2,6 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
@@ -10,6 +11,7 @@ import {
     effect,
     ElementRef,
     inject,
+    Injector,
     input,
     OnDestroy,
     output,
@@ -76,6 +78,7 @@ import {
     CDT_COLUMN_KIND,
     CDT_FIELD_PREFIX,
     CDT_GRID_ROW_HEIGHT,
+    CDT_GROUP_TOGGLE_ANIMATION_MS,
     CDT_MANIP_PREFIX,
     CDT_OVERLAY_ROW_HEIGHT,
 } from '../cdt.constants';
@@ -138,6 +141,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private confirmDialog = inject(ConfirmationDialogService);
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
+    private injector = inject(Injector);
     private hiddenBadgeMenuCtrl = new OverlayMenuController(this.overlay, this.vcr);
 
     private gridApi!: GridApi;
@@ -200,6 +204,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     // Working copy of the named/coloured sections, seeded from the `sections` input.
     public sectionsState = signal<CdtSection[]>([]);
     public hoveredSectionId = signal<string | null>(null);
+    public groupOverlaysAnimating = signal<boolean>(false);
+    public readonly groupToggleDuration = `${CDT_GROUP_TOGGLE_ANIMATION_MS}ms`;
 
     public groupOverlayItems = signal<
         Array<{
@@ -214,6 +220,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             chevronTop: number;
             bracketTop: number;
             bracketHeight: number;
+            seamOffset?: number;
         }>
     >([]);
 
@@ -310,6 +317,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             chevronTop: number;
             bracketTop: number;
             bracketHeight: number;
+            seamOffset?: number;
         }> = [];
         const expandedFirstLast = new Map<
             string,
@@ -460,9 +468,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const chevronStackGap = 2;
         collapsedBySeam.forEach((stack, seam) => {
             const stackHeight = stack.length * chevronHeight + (stack.length - 1) * chevronStackGap;
-            const stackTop = rowsOffsetY + seam - scrollTop - stackHeight / 2;
+            const seamTop = rowsOffsetY + seam - scrollTop;
+            const stackTop = seamTop - stackHeight / 2;
             stack.forEach((item, position) => {
-                items.push({ ...item, top: stackTop + position * (chevronHeight + chevronStackGap) });
+                const top = stackTop + position * (chevronHeight + chevronStackGap);
+                items.push({ ...item, top, seamOffset: seamTop - top });
             });
         });
 
@@ -483,12 +493,63 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 ? wrapperRect.height - Math.max(rowsBottom, ...items.map((item) => item.top + item.height))
                 : Math.max(0, wrapperRect.height - rowsBottom);
             overlaysEl.style.setProperty('--cdt-overlay-clip-bottom', `${clipBottom}px`);
+            const actionsHeader = wrapperEl.querySelector('.ag-header-cell[col-id="actions"]');
+            const viewportRight = bodyRect.left + bodyEl.clientWidth;
+            const columnsRight = Math.min(actionsHeader?.getBoundingClientRect().right ?? viewportRight, viewportRight);
+            overlaysEl.style.setProperty('--cdt-overlay-right', `${Math.max(0, wrapperRect.right - columnsRight)}px`);
         }
 
         this.groupOverlayItems.set(items);
     }
 
+    public toggleGroupFromOverlay(sectionId: string, event: MouseEvent): void {
+        event.stopPropagation();
+        const collapsed = new Set(this.collapsedGroups());
+        if (!collapsed.delete(sectionId)) collapsed.add(sectionId);
+        this.setCollapsedGroups(collapsed);
+    }
+
+    private setCollapsedGroups(collapsed: Set<string>): void {
+        const rowTopsBefore = this.measureRowTops();
+        this.collapsedGroups.set(collapsed);
+        // The icon moves when the group folds or unfolds, so the hover state would point at empty space.
+        this.hoveredSectionId.set(null);
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+        this.groupOverlaysAnimating.set(true);
+        afterNextRender(() => this.slideRows(rowTopsBefore), { injector: this.injector });
+        setTimeout(() => this.groupOverlaysAnimating.set(false), CDT_GROUP_TOGGLE_ANIMATION_MS);
+    }
+
+    private measureRowTops(): Map<string, number> {
+        const tops = new Map<string, number>();
+        this.gridApi?.forEachNodeAfterFilterAndSort((node) => {
+            const name = (node.data as ConditionGroup | undefined)?.group_name;
+            if (name !== undefined && node.rowTop != null) tops.set(name, node.rowTop);
+        });
+        return tops;
+    }
+
+    private slideRows(rowTopsBefore: Map<string, number>): void {
+        const timing: KeyframeAnimationOptions = { duration: CDT_GROUP_TOGGLE_ANIMATION_MS, easing: 'ease-out' };
+        this.elRef.nativeElement.querySelectorAll('.ag-row[row-index]').forEach((rowElement: HTMLElement) => {
+            const node = this.gridApi.getDisplayedRowAtIndex(Number(rowElement.getAttribute('row-index')));
+            const name = (node?.data as ConditionGroup | undefined)?.group_name;
+            if (!node || name === undefined || node.rowTop == null) return;
+            const topBefore = rowTopsBefore.get(name);
+            if (topBefore === undefined) {
+                rowElement.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+            } else if (topBefore !== node.rowTop) {
+                rowElement.animate(
+                    [{ transform: `translateY(${topBefore - node.rowTop}px)` }, { transform: 'translateY(0)' }],
+                    timing
+                );
+            }
+        });
+    }
+
     public openGroupMenuFromOverlay(sectionId: string, event: MouseEvent): void {
+        event.preventDefault();
         this.openGroupMenu(sectionId, event.currentTarget as HTMLElement);
     }
 
@@ -2100,6 +2161,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             'filterChanged',
             'sortChanged',
             'paginationChanged',
+            'columnResized',
+            'displayedColumnsChanged',
+            'gridSizeChanged',
         ] as const;
         for (const ev of overlayEvents) {
             this.gridApi.addEventListener(ev, () => this.recomputeGroupOverlays());
@@ -2637,14 +2701,12 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         if (!sectionId) return;
         const newCollapsed = new Set(this.collapsedGroups());
         newCollapsed.add(sectionId);
-        this.collapsedGroups.set(newCollapsed);
-        queueMicrotask(() => this.recomputeGroupOverlays());
+        this.setCollapsedGroups(newCollapsed);
     }
 
     public handleGroupMenuExpandAll(): void {
         this.closeGroupMenu();
-        this.collapsedGroups.set(new Set());
-        queueMicrotask(() => this.recomputeGroupOverlays());
+        this.setCollapsedGroups(new Set());
     }
 
     public handleGroupMenuCollapseAll(): void {
@@ -2653,8 +2715,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         for (const row of this.rowData()) {
             if (row.section) allSections.add(row.section);
         }
-        this.collapsedGroups.set(allSections);
-        queueMicrotask(() => this.recomputeGroupOverlays());
+        this.setCollapsedGroups(allSections);
     }
 
     public openExpandGroupSubmenu(event: MouseEvent): void {
@@ -2677,9 +2738,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public onExpandGroupSelectionChange(values: unknown[]): void {
         const expanded = new Set(values.map((v) => String(v)));
         const allIds = this.sectionsState().map((s) => s.id);
-        this.collapsedGroups.set(new Set(allIds.filter((id) => !expanded.has(id))));
+        this.setCollapsedGroups(new Set(allIds.filter((id) => !expanded.has(id))));
         this.closeGroupMenu();
-        queueMicrotask(() => this.recomputeGroupOverlays());
     }
 
     public isLightSectionColor(color: string | null | undefined): boolean {

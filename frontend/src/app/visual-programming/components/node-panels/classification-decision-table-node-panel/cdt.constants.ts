@@ -31,6 +31,11 @@ export const CDT_GRID_ROW_HEIGHT = 50;
  */
 export const CDT_OVERLAY_ROW_HEIGHT = 40;
 
+// ── Group collapse animation ──────────────────────────────────────────────────
+
+/** Duration (ms) of the row slide and the overlay glide when a group folds or unfolds. */
+export const CDT_GROUP_TOGGLE_ANIMATION_MS = 250;
+
 // ── Expression-builder popup ──────────────────────────────────────────────────
 
 /** Fixed pixel width of the expression-builder popup editor. */

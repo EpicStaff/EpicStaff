@@ -66,7 +66,11 @@
             </button>
         }
 
-        <div class="group-overlays">
+        <div
+            class="group-overlays"
+            [class.animating]="groupOverlaysAnimating()"
+            [style.--cdt-group-toggle-duration]="groupToggleDuration"
+        >
             @for (item of groupOverlayItems(); track item.sectionId) {
                 <div
                     class="group-overlay"
@@ -74,27 +78,48 @@
                     [style.top.px]="item.top"
                     [style.height.px]="item.height"
                 >
-                    @if (item.isCollapsed) {
-                        <div class="group-overlay-gutter">
-                            <button
-                                type="button"
-                                class="group-overlay-chevron collapsed"
-                                [style.border-color]="item.color"
-                                [style.color]="item.color"
-                                (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
-                                title="Group options"
-                            >
-                                <app-svg-icon
-                                    icon="play"
-                                    size="14px"
-                                ></app-svg-icon>
-                            </button>
-                        </div>
-                    } @else if (hoveredSectionId() === item.sectionId) {
-                        <div
-                            class="group-overlay-border"
+                    <div class="group-overlay-gutter">
+                        <button
+                            type="button"
+                            class="group-overlay-chevron"
+                            [class.collapsed]="item.isCollapsed"
+                            [style.top.px]="item.isCollapsed ? null : item.chevronTop"
                             [style.border-color]="item.color"
-                        ></div>
+                            [style.color]="item.color"
+                            (click)="toggleGroupFromOverlay(item.sectionId, $event)"
+                            (contextmenu)="openGroupMenuFromOverlay(item.sectionId, $event)"
+                            (mouseenter)="hoveredSectionId.set(item.sectionId)"
+                            [title]="
+                                (item.isCollapsed ? 'Expand group' : 'Collapse group') + ' (right-click for options)'
+                            "
+                        >
+                            <app-svg-icon
+                                icon="play"
+                                size="14px"
+                            ></app-svg-icon>
+                        </button>
+                        @if (!item.isCollapsed && item.bracketHeight > 0) {
+                            <div
+                                class="group-overlay-bracket"
+                                [style.top.px]="item.bracketTop"
+                                [style.height.px]="item.bracketHeight"
+                                [style.border-color]="item.color"
+                            ></div>
+                        }
+                    </div>
+                    @if (hoveredSectionId() === item.sectionId) {
+                        @if (item.isCollapsed) {
+                            <div
+                                class="group-overlay-seam-line"
+                                [style.top.px]="item.seamOffset"
+                                [style.background]="item.color"
+                            ></div>
+                        } @else {
+                            <div
+                                class="group-overlay-border"
+                                [style.border-color]="item.color"
+                            ></div>
+                        }
                         <div
                             class="group-overlay-chip"
                             [style.background]="item.color"
@@ -128,31 +153,6 @@
                                     size="16px"
                                 ></app-svg-icon>
                             </button>
-                        </div>
-                    } @else {
-                        <div class="group-overlay-gutter">
-                            <button
-                                type="button"
-                                class="group-overlay-chevron"
-                                [style.top.px]="item.chevronTop"
-                                [style.border-color]="item.color"
-                                [style.color]="item.color"
-                                (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
-                                title="Group options"
-                            >
-                                <app-svg-icon
-                                    icon="play"
-                                    size="14px"
-                                ></app-svg-icon>
-                            </button>
-                            @if (item.bracketHeight > 0) {
-                                <div
-                                    class="group-overlay-bracket"
-                                    [style.top.px]="item.bracketTop"
-                                    [style.height.px]="item.bracketHeight"
-                                    [style.border-color]="item.color"
-                                ></div>
-                            }
                         </div>
                     }
                 </div>
