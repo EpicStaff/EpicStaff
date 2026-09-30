@@ -1,5 +1,9 @@
+import os
+import tempfile
+from types import SimpleNamespace
+
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.providers.tunnels.base import AbstractTunnelProvider
@@ -62,9 +66,7 @@ def register_tunnel_path(tunnel_registry):
 @pytest.fixture
 def app(mock_redis_service):
     with (
-        patch(
-            "app.main.get_redis_service", new=AsyncMock(return_value=mock_redis_service)
-        ),
+        patch("app.main.get_redis_service", new=AsyncMock(return_value=mock_redis_service)),
         patch("app.main.close_redis_connection", new=AsyncMock()),
         patch("app.main.listen_redis", new=AsyncMock()),
     ):
@@ -80,3 +82,37 @@ def client(app, mock_redis_service, tunnel_registry):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def ngrok_environment(tmp_path, monkeypatch):
+    """Mocked pyngrok with a fake source binary and a private temp root for working
+    directories, so NgrokTunnel runs its real file handling."""
+    source_binary = tmp_path / "source" / "ngrok"
+    source_binary.parent.mkdir()
+    binary_content = b"fake-ngrok-binary"
+    source_binary.write_bytes(binary_content)
+    temp_root = tmp_path / "temp"
+    temp_root.mkdir()
+
+    # os.access is only used to detect a system ngrok; disabling it forces the
+    # pyngrok default binary, pointed here at the fake source.
+    monkeypatch.setattr(os, "access", lambda *args, **kwargs: False)
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+
+    with (
+        patch("app.providers.tunnels.ngrok_tunnel.ngrok") as mock_ngrok,
+        patch("app.providers.tunnels.ngrok_tunnel.pyngrok.process") as mock_process,
+        patch("app.providers.tunnels.ngrok_tunnel.conf") as mock_conf,
+    ):
+        mock_conf.get_default.return_value.ngrok_path = str(source_binary)
+        mock_tunnel = MagicMock()
+        mock_tunnel.public_url = "https://real-ngrok-url.com"
+        mock_ngrok.connect.return_value = mock_tunnel
+        yield SimpleNamespace(
+            ngrok=mock_ngrok,
+            process=mock_process,
+            source_binary=source_binary,
+            binary_content=binary_content,
+            temp_root=temp_root,
+        )
