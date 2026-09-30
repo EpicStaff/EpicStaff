@@ -1,4 +1,4 @@
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
@@ -66,6 +66,7 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
 
 class WebhookTriggerNodeSerializer(
     AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
     serializers.ModelSerializer,
@@ -113,6 +114,7 @@ class TelegramTriggerNodeFieldSerializer(ContentHashWritableMixin, serializers.M
 
 class TelegramTriggerNodeSerializer(
     AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
     ContentHashWritableMixin,
     serializers.ModelSerializer,
@@ -234,7 +236,9 @@ class _ScheduleConfigInputSerializer(serializers.Serializer):
     end = _ScheduleEndInputSerializer(required=False, allow_null=True)
 
 
-class ScheduleTriggerNodeSerializer(AuthorStampingSerializerMixin, serializers.Serializer):
+class ScheduleTriggerNodeSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.Serializer
+):
     """Shape/type validation only. Domain rules → ScheduleTriggerValidator.
     Persistence → ScheduleTriggerService.
 

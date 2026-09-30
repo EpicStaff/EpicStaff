@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
@@ -256,7 +256,7 @@ class SurfaceKnowledgeWriteSerializer(serializers.Serializer):
     )
 
 
-class SurfaceReadSerializer(serializers.ModelSerializer):
+class SurfaceReadSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     python_tools = SurfacePythonToolReadSerializer(many=True, read_only=True)
     mcp_tools = SurfaceMcpToolReadSerializer(many=True, read_only=True)
     storage_items = SurfaceStorageItemReadSerializer(many=True, read_only=True)
@@ -282,6 +282,8 @@ class SurfaceReadSerializer(serializers.ModelSerializer):
 
 
 class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializer):
+    last_edit_state_serializer_class = SurfaceReadSerializer
+
     name = serializers.CharField(max_length=255)
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
     python_tools = SurfacePythonToolWriteSerializer(many=True, required=False, default=list)

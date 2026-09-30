@@ -1,4 +1,4 @@
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -51,6 +51,7 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
 class EmbeddingConfigSerializer(
     AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
     TagHandlingMixin,
     serializers.ModelSerializer,

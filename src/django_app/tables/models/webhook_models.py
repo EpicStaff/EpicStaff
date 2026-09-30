@@ -4,6 +4,7 @@ from typing import Protocol
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
@@ -145,7 +146,7 @@ class WebhookTriggerAuth(SoftDeleteFields):
         return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"
 
 
-class WebhookTrigger(OrgScopedModel, models.Model):
+class WebhookTrigger(OrgScopedModel, LastEditTrackedModel, models.Model):
     path = models.CharField(
         max_length=255,
         unique=True,
@@ -188,7 +189,7 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
+class RealtimeChannel(OrgScopedModel, LastEditTrackedModel, EnabledToggleFields, models.Model):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 

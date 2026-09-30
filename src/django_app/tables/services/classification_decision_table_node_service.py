@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 
+from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from tables.exceptions import ClassificationDecisionTableNodeNotFoundError
 from tables.import_export.enums import EntityType
@@ -50,8 +51,14 @@ class ClassificationDecisionTableNodeService:
         raw_condition_groups = data.pop("condition_groups", None)
         raw_prompt_configs = data.pop("prompt_configs", None)
 
+        # One tracker spans the node and its children, which are synced outside the
+        # serializer, so a children-only change still edits the node.
+        context = {"request": request}
+        last_edit_tracker = LastEditTracker(request.user) if request is not None else None
+        if last_edit_tracker is not None:
+            context[LAST_EDIT_TRACKER_CONTEXT_KEY] = last_edit_tracker
         serializer = ClassificationDecisionTableNodeSerializer(
-            instance, data=data, partial=partial, context={"request": request}
+            instance, data=data, partial=partial, context=context
         )
         serializer.is_valid(raise_exception=True)
 
@@ -68,16 +75,19 @@ class ClassificationDecisionTableNodeService:
 
         node = serializer.save()
 
-        if partial and condition_groups_data is None and prompt_configs_data is None:
-            return node, None
-
-        sync_classification_decision_table_children(
-            node,
-            prompt_configs_data=prompt_configs_data,
-            condition_groups_data=condition_groups_data,
+        children_untouched = (
+            partial and condition_groups_data is None and prompt_configs_data is None
         )
+        if not children_untouched:
+            sync_classification_decision_table_children(
+                node,
+                prompt_configs_data=prompt_configs_data,
+                condition_groups_data=condition_groups_data,
+            )
 
-        return node, condition_groups_data
+        if last_edit_tracker is not None:
+            last_edit_tracker.finish()
+        return node, None if children_untouched else condition_groups_data
 
     @staticmethod
     def _validate_children(serializer_class, raw, request):

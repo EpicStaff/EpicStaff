@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import (
     SoftDeleteFields,
@@ -20,7 +21,7 @@ class StorageAccess(models.TextChoices):
     DENY = "deny"  # explicitly forbidden — hard deny, overrides any grant
 
 
-class Surface(OrgScopedModel, TimestampMixin):
+class Surface(OrgScopedModel, LastEditTrackedModel, TimestampMixin):
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier unique within the organization. Used as the user-facing name for this surface.",

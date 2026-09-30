@@ -1,5 +1,6 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
@@ -67,7 +68,7 @@ class DefaultLLMConfig(DefaultBaseModel):
     is_visible = models.BooleanField(default=True)
 
 
-class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
+class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
     custom_name = models.TextField()
     model = models.ForeignKey(LLMModel, on_delete=models.CASCADE, null=True)
     temperature = models.FloatField(

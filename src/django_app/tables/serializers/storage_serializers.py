@@ -1,5 +1,6 @@
 import os
 
+from rbac.authorship import LastEditFieldsSerializerMixin
 from rest_framework import serializers
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.validators.file_upload_validator import FileValidator
@@ -347,7 +348,7 @@ class StorageFilesByIdsQuerySerializer(serializers.Serializer):
         return [int(token) for token in tokens]
 
 
-class StorageFileSerializer(serializers.Serializer):
+class StorageFileSerializer(LastEditFieldsSerializerMixin, serializers.Serializer):
     id = serializers.IntegerField(read_only=True, help_text="StorageFile id")
     path = serializers.CharField(read_only=True, help_text="Org-relative storage path")
     name = serializers.CharField(read_only=True, help_text="Last path segment")

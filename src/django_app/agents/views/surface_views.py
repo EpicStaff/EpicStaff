@@ -29,6 +29,7 @@ class SurfaceViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "org",
         "owner_agent",
     ).prefetch_related(
+        "last_edits",
         "python_tools__python_tool",
         "mcp_tools__mcp_tool",
         "storage_items__storage_file",

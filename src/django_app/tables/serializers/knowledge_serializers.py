@@ -2,6 +2,7 @@ import itertools
 
 from django.db.models import Count, F
 from loguru import logger
+from rbac.authorship import LastEditFieldsSerializerMixin
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     BaseRagType,
@@ -239,7 +240,7 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SourceCollectionListSerializer(serializers.ModelSerializer):
+class SourceCollectionListSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     """
     Serializer for listing collections.
     Shows basic collection info plus a compact view of available RAG
@@ -304,7 +305,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             return []
 
 
-class SourceCollectionDetailSerializer(serializers.ModelSerializer):
+class SourceCollectionDetailSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     """
     Serializer for retrieving a single collection with all details.
     Includes RAG configurations to show what RAG types are available.

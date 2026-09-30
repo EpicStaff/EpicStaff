@@ -1,4 +1,4 @@
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -94,6 +94,7 @@ class RealtimeTranscriptionConfigSerializer(SecretReferenceGuardMixin, serialize
 
 class LLMConfigSerializer(
     AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
     TagHandlingMixin,
     serializers.ModelSerializer,

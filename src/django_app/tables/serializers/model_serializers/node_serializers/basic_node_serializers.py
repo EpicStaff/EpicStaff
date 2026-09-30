@@ -13,7 +13,7 @@ from agents.services.agent_inline_surface_service import AgentInlineSurfaceServi
 from agents.services.inline_surface_service import InlineSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
@@ -115,6 +115,7 @@ def validate_output_schema(value):
 
 class PythonNodeSerializer(
     AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
     NestedPythonCodeMixin,
     serializers.ModelSerializer,
@@ -128,7 +129,10 @@ class PythonNodeSerializer(
 
 
 class FileExtractorNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -166,7 +170,10 @@ class KeyValueTableReferenceField(OrgScopedPrimaryKeyRelatedField):
 
 
 class KeyValueNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     key_value_table = KeyValueTableReferenceField(
@@ -199,7 +206,10 @@ class KeyValueNodeSerializer(
 
 
 class KnowledgeNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     """Plain node serializer (no search configs). Base for bulk-save, which
     persists the config blocks separately via its saveable.
@@ -266,7 +276,10 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
 
 
 class AudioTranscriptionNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -275,7 +288,9 @@ class AudioTranscriptionNodeSerializer(
         fields = "__all__"
 
 
-class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class EdgeSerializer(
+    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -291,7 +306,10 @@ class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
 
 
 class TaskNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     inline_surface = InlineSurfaceWriteSerializer(required=False, allow_null=True, write_only=True)
     # Org isolation: agent_definition/surface_list/graph must belong to the
@@ -401,7 +419,10 @@ class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
 
 
 class AgentNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     tasks = AgentNodeTaskWriteSerializer(many=True, required=False)
     inline_surface = AgentInlineSurfaceWriteSerializer(
@@ -623,7 +644,10 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
 
 
 class SubGraphNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     # Org isolation: the referenced sub-flow must be in the caller's active org.
     subgraph = OrgScopedPrimaryKeyRelatedField(

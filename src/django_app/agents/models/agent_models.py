@@ -1,4 +1,5 @@
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import AbstractDefaultFillableModel
 
@@ -66,7 +67,7 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(OrgScopedModel, AbstractDefaultFillableModel):
+class AgentDefinition(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
     # Identity
     name = models.CharField(
         max_length=255,

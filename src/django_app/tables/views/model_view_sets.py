@@ -32,7 +32,12 @@ from rbac.access.gates import (
     IsSystemApiKeyAuthenticated,
 )
 from rbac.access.resolver import PermissionResolver
-from rbac.authorship import resolve_author
+from rbac.authorship import (
+    LAST_EDIT_TRACKER_CONTEXT_KEY,
+    LastEditDestroyViewSetMixin,
+    LastEditTracker,
+    resolve_author,
+)
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
@@ -392,7 +397,7 @@ class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = LLMConfig.objects.select_related("api_key_secret").all()
+    queryset = LLMConfig.objects.select_related("api_key_secret").prefetch_related("last_edits")
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
@@ -465,7 +470,9 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = EmbeddingConfig.objects.select_related("api_key_secret").all()
+    queryset = EmbeddingConfig.objects.select_related("api_key_secret").prefetch_related(
+        "last_edits"
+    )
     serializer_class = EmbeddingConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingConfigFilter
@@ -526,7 +533,7 @@ class PythonCodeToolViewSet(
     queryset = (
         PythonCodeTool.objects.all()
         .select_related("python_code")
-        .prefetch_related("python_code__secrets")
+        .prefetch_related("python_code__secrets", "last_edits")
     )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
@@ -798,6 +805,7 @@ class GraphViewSet(
                         "graph_drift_search_config",
                     ),
                 ),
+                *GraphSerializer.last_edit_prefetch_lookups(),
             )
             .all()
         )
@@ -913,17 +921,22 @@ class GraphViewSet(
         return Response(summary, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
-        instance.refresh_from_db(fields=["save_version"])
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        # The write drops the prefetched node lists; rendering from a fresh prefetched
+        # graph keeps the response from querying once per node.
+        refreshed = self.get_queryset().get(pk=instance.pk)
 
         GraphEditNotifier.notify_graph_saved(
-            graph_id=instance.pk,
-            new_save_version=instance.save_version,
+            graph_id=refreshed.pk,
+            new_save_version=refreshed.save_version,
             user=request.user,
             saved_at=timezone.now().isoformat(),
         )
-        return response
+        return Response(self.get_serializer(refreshed).data)
 
     @action(detail=True, methods=["post"], url_path="save")
     @extend_schema(**_SAVE_FLOW_SWAGGER)
@@ -991,7 +1004,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return (
             Graph.objects.only("id", "name", "description")
-            .prefetch_related("tags", "labels")
+            .prefetch_related("tags", "labels", "last_edits")
             .filter(org_id=self.get_active_org_id())
         )
 
@@ -1229,6 +1242,7 @@ class IdempotentNodeCreateMixin:
 
 class PythonNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -1236,12 +1250,13 @@ class PythonNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = PythonNode.objects.all()
+    queryset = PythonNode.objects.prefetch_related("last_edits")
     serializer_class = PythonNodeSerializer
 
 
 class FileExtractorNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -1249,12 +1264,13 @@ class FileExtractorNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = FileExtractorNode.objects.all()
+    queryset = FileExtractorNode.objects.prefetch_related("last_edits")
     serializer_class = FileExtractorNodeSerializer
 
 
 class KnowledgeNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -1268,7 +1284,7 @@ class KnowledgeNodeViewSet(
         "graph_local_search_config",
         "graph_global_search_config",
         "graph_drift_search_config",
-    )
+    ).prefetch_related("last_edits")
     serializer_class = KnowledgeNodeWriteSerializer
 
     def get_serializer_class(self):
@@ -1287,6 +1303,7 @@ class KnowledgeNodeViewSet(
 
 class AudioTranscriptionNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -1294,12 +1311,13 @@ class AudioTranscriptionNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = AudioTranscriptionNode.objects.all()
+    queryset = AudioTranscriptionNode.objects.prefetch_related("last_edits")
     serializer_class = AudioTranscriptionNodeSerializer
 
 
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -1309,6 +1327,7 @@ class TaskNodeViewSet(
     rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
+        "last_edits",
         "surface_list",
         "inline_surface__python_tools",
         "inline_surface__mcp_tools",
@@ -1346,6 +1365,7 @@ class TaskNodeViewSet(
 
 class AgentNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -1355,6 +1375,7 @@ class AgentNodeViewSet(
     rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
+        "last_edits",
         "surface_list",
         "tasks",
         "tasks__context_tasks",
@@ -1430,7 +1451,12 @@ class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         self._clean_and_save(serializer)
 
 
-class EdgeViewSet(OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet):
+class EdgeViewSet(
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
@@ -1439,7 +1465,10 @@ class EdgeViewSet(OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, view
 
 
 class ConditionalEdgeViewSet(
-    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
@@ -1656,7 +1685,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = RealtimeChannel.objects.select_related(
         "twilio__webhook_trigger__ngrok",
         "twilio__webhook_trigger__localhost",
-    ).all()
+    ).prefetch_related("last_edits", "twilio__webhook_trigger__last_edits")
     serializer_class = RealtimeChannelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = [
@@ -1864,42 +1893,54 @@ class RealtimeVoicesView(generics.GenericAPIView):
 
 
 class StartNodeModelViewSet(
-    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = StartNode.objects.all()
+    queryset = StartNode.objects.prefetch_related("last_edits")
     serializer_class = StartNodeSerializer
 
 
 class EndNodeModelViewSet(
-    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = EndNode.objects.all()
+    queryset = EndNode.objects.prefetch_related("last_edits")
     serializer_class = EndNodeSerializer
 
 
 class SubGraphNodeModelViewSet(
-    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = SubGraphNode.objects.all()
+    queryset = SubGraphNode.objects.prefetch_related("last_edits", "subgraph__last_edits")
     serializer_class = SubGraphNodeSerializer
 
 
 class DecisionTableNodeModelViewSet(
-    OrgScopedChildViewSetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = DecisionTableNode.objects.all()
+    queryset = DecisionTableNode.objects.prefetch_related("last_edits")
     serializer_class = DecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
@@ -1943,8 +1984,18 @@ class DecisionTableNodeModelViewSet(
         data = data.copy()
         condition_groups_data = data.pop("condition_groups", None)
 
-        # Serialize and save the main DecisionTableNode
-        node_serializer = self.get_serializer(instance, data=data, partial=partial)
+        # One tracker spans the node and its condition groups, which are written
+        # outside the serializer, so a groups-only change still edits the node.
+        last_edit_tracker = LastEditTracker(self.request.user)
+        node_serializer = self.get_serializer(
+            instance,
+            data=data,
+            partial=partial,
+            context={
+                **self.get_serializer_context(),
+                LAST_EDIT_TRACKER_CONTEXT_KEY: last_edit_tracker,
+            },
+        )
         node_serializer.is_valid(raise_exception=True)
         node = node_serializer.save()
 
@@ -1961,17 +2012,16 @@ class DecisionTableNodeModelViewSet(
             )
 
         # If PATCH and no condition_groups provided, skip nested updates
-        if partial and condition_groups_data is None:
-            return node, None
+        if not (partial and condition_groups_data is None):
+            # Delete existing groups and conditions (for update)
+            if instance:
+                self._delete_existing_groups(node)
 
-        # Delete existing groups and conditions (for update)
-        if instance:
-            self._delete_existing_groups(node)
+            # Create new groups and conditions
+            if condition_groups_data:
+                self._create_condition_groups(node, condition_groups_data)
 
-        # Create new groups and conditions
-        if condition_groups_data:
-            self._create_condition_groups(node, condition_groups_data)
-
+        last_edit_tracker.finish()
         return node, condition_groups_data
 
     def _delete_existing_groups(self, node: DecisionTableNode):
@@ -2010,7 +2060,7 @@ class DecisionTableNodeModelViewSet(
 
 
 class ClassificationDecisionTableNodeModelViewSet(
-    OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin, LastEditDestroyViewSetMixin, viewsets.ModelViewSet
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
@@ -2022,7 +2072,7 @@ class ClassificationDecisionTableNodeModelViewSet(
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.select_related(
         "pre_python_code", "post_python_code"
-    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets")
+    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets", "last_edits")
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
@@ -2132,7 +2182,7 @@ class McpToolViewSet(
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
-    queryset = McpTool.objects.select_related("auth_secret").all()
+    queryset = McpTool.objects.select_related("auth_secret").prefetch_related("last_edits")
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = McpToolFilter
@@ -2290,6 +2340,7 @@ class GraphOrganizationUserViewSet(OrgScopedChildViewSetMixin, viewsets.ReadOnly
 )
 class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
@@ -2299,7 +2350,7 @@ class WebhookTriggerNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = WebhookTriggerNode.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
-    )
+    ).prefetch_related("last_edits", "webhook_trigger__last_edits")
     serializer_class = WebhookTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
@@ -2330,7 +2381,9 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = WebhookTrigger.objects.select_related("ngrok", "localhost", "auth", "auth__secret")
+    queryset = WebhookTrigger.objects.select_related(
+        "ngrok", "localhost", "auth", "auth__secret"
+    ).prefetch_related("last_edits")
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = WebhookTriggerFilter
@@ -2368,6 +2421,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
 class TelegramTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
@@ -2377,7 +2431,7 @@ class TelegramTriggerNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = TelegramTriggerNode.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
-    ).prefetch_related("fields")
+    ).prefetch_related("fields", "last_edits", "webhook_trigger__last_edits")
     serializer_class = TelegramTriggerNodeSerializer
 
     def get_serializer_class(self):
@@ -2388,6 +2442,7 @@ class TelegramTriggerNodeViewSet(
 
 class ScheduleTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
@@ -2395,7 +2450,7 @@ class ScheduleTriggerNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = ScheduleTriggerNode.objects.all()
+    queryset = ScheduleTriggerNode.objects.prefetch_related("last_edits")
     serializer_class = ScheduleTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "is_active", "run_mode"]
@@ -2403,6 +2458,7 @@ class ScheduleTriggerNodeViewSet(
 
 class GraphNoteViewSet(
     OrgScopedChildViewSetMixin,
+    LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
@@ -2410,7 +2466,7 @@ class GraphNoteViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = GraphNote.objects.all()
+    queryset = GraphNote.objects.prefetch_related("last_edits")
     serializer_class = GraphNoteSerializer
 
 

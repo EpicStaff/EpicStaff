@@ -3,6 +3,7 @@ import ntpath
 from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
 from loguru import logger
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
@@ -29,7 +30,7 @@ def _is_bare_file_name(file_name: str) -> bool:
     return "/" not in file_name and "\\" not in file_name
 
 
-class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
+class SourceCollection(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin, models.Model):
     objects = ActiveManager()
     all_objects = models.Manager()
 

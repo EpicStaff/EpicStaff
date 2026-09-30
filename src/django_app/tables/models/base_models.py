@@ -2,8 +2,9 @@ import hashlib
 import json
 import time
 from abc import abstractmethod
+from collections.abc import Mapping
 from enum import Enum
-from typing import Self
+from typing import ClassVar, Self
 
 from django.apps import apps
 from django.conf import settings
@@ -11,6 +12,7 @@ from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
 from rbac.models.author import AuthorModel
+from rbac.models.last_edit import LastEditTrackedModel
 
 
 class AbstractDefaultFillableModel(models.Model):
@@ -314,7 +316,20 @@ class ContentHashMixin(models.Model):
         super().save(*args, **kwargs)
 
 
+# Keys of a node's or edge's canvas `metadata` whose change is an edit of the graph.
+# Everything else in it (size, color, icon, badge number, edge waypoints) is
+# presentation and is no edit at all.
+GRAPH_EDIT_METADATA_KEYS = ("position",)
+
+
 class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
+    # Every edit of a node or edge is also an edit of its graph, and canvas metadata is
+    # never an edit of the node or edge itself; see LastEditTracker.
+    last_edit_owner_field: ClassVar[str] = "graph"
+    last_edit_canvas_fields: ClassVar[Mapping[str, tuple[str, ...]]] = {
+        "metadata": GRAPH_EDIT_METADATA_KEYS
+    }
+
     class Meta:
         abstract = True
 
@@ -334,8 +349,8 @@ class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
             Graph.objects.filter(pk=graph_id).update(updated_at=timezone.now())
 
 
-class GraphAuthorModel(AuthorModel):
-    """Abstract author record for graph-owned rows; their organization is `graph.org`."""
+class GraphAuthorModel(AuthorModel, LastEditTrackedModel):
+    """Abstract author and last-edit record for graph nodes; their organization is `graph.org`."""
 
     author_org_lookup = "graph__org_id"
 

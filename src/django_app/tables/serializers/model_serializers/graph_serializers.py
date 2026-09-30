@@ -1,5 +1,5 @@
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -41,7 +41,10 @@ from tables.serializers.model_serializers.tag_serializers import GraphTagSeriali
 
 
 class GraphNoteSerializer(
-    AuthorStampingSerializerMixin, BaseGraphEntityMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    BaseGraphEntityMixin,
+    serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -149,7 +152,7 @@ class GraphLightBaseSerializer(serializers.ModelSerializer):
         ]
 
 
-class GraphLightSerializer(GraphLightBaseSerializer):
+class GraphLightSerializer(LastEditFieldsSerializerMixin, GraphLightBaseSerializer):
     subflows = serializers.SerializerMethodField()
 
     class Meta(GraphLightBaseSerializer.Meta):
@@ -160,7 +163,35 @@ class GraphLightSerializer(GraphLightBaseSerializer):
         return GraphLightBaseSerializer(graphs, many=True).data
 
 
-class GraphSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
+class GraphLastEditStateSerializer(serializers.ModelSerializer):
+    """The Graph's own persisted fields, compared to detect an edit of the Graph itself.
+
+    Nodes and edges are left out: nodes record their own last edits, and a Graph REST
+    write cannot change either.
+    """
+
+    label_ids = serializers.PrimaryKeyRelatedField(many=True, read_only=True, source="labels")
+
+    class Meta:
+        model = Graph
+        fields = [
+            "uuid",
+            "name",
+            "description",
+            "metadata",
+            "time_to_live",
+            "enable_persistent_variables",
+            "epicchat_enabled",
+            "tags",
+            "label_ids",
+        ]
+
+
+class GraphSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
+    last_edit_state_serializer_class = GraphLastEditStateSerializer
+
     # Reverse relationships
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
@@ -237,6 +268,26 @@ class GraphSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer
         super().__init__(*args, **kwargs)
         if self.instance is None:
             self.fields["save_version"].required = False
+
+    @classmethod
+    def last_edit_prefetch_lookups(cls) -> list[str]:
+        """Prefetch lookups that let this serializer render every last edit without a query per row.
+
+        Derived from the declared node-list fields, so a new node list is covered as soon
+        as its serializer carries LastEditFieldsSerializerMixin.
+        """
+        node_relations = [
+            field.source or field_name
+            for field_name, field in cls._declared_fields.items()
+            if isinstance(field, serializers.ListSerializer)
+            and isinstance(field.child, LastEditFieldsSerializerMixin)
+        ]
+        return [
+            "last_edits",
+            *(f"{relation}__last_edits" for relation in node_relations),
+            # SubGraphNodeSerializer renders the referenced flow with GraphLightSerializer.
+            "subgraph_node_list__subgraph__last_edits",
+        ]
 
     def create(self, validated_data):
         labels = validated_data.pop("labels", [])

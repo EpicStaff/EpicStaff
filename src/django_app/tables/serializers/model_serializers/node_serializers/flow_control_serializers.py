@@ -1,5 +1,5 @@
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
@@ -40,7 +40,10 @@ from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 
 class ConditionalEdgeSerializer(
-    ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    ContentHashWritableMixin,
+    NestedPythonCodeMixin,
+    serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -51,7 +54,10 @@ class ConditionalEdgeSerializer(
 
 
 class StartNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     node_name = serializers.SerializerMethodField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -94,7 +100,10 @@ class StartNodeSerializer(
 
 
 class EndNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     node_name = serializers.SerializerMethodField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -133,7 +142,10 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
 
 
 class DecisionTableNodeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     condition_groups = ConditionGroupSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -229,7 +241,7 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
-    AuthorStampingSerializerMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
 ):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     prompt_configs = ClassificationDecisionTablePromptSerializer(many=True, required=False)

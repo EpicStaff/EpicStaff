@@ -413,7 +413,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         org_id = self.get_active_org_id()
         params = StorageFilesByIdsQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
-        qs = StorageFile.objects.filter(org_id=org_id, id__in=params.validated_data["ids"])
+        qs = StorageFile.objects.filter(
+            org_id=org_id, id__in=params.validated_data["ids"]
+        ).prefetch_related("last_edits")
         return Response(StorageFileSerializer(qs, many=True).data)
 
     @extend_schema(**STORAGE_SEARCH_SWAGGER)

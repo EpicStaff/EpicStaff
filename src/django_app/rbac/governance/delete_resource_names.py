@@ -12,13 +12,14 @@ RBAC_RESOURCE_NAMES: dict[str, str] = {
     "rbac.Role": "roles",
 }
 
-# Role sub-detail is implied by "roles". The delete target's own row is
-# always part of the cascade Collector.collect([instance]) reports, but the
-# target is already identified by organization_id/user_id, not an affected
-# resource.
+# Role sub-detail is implied by "roles", and a resource's last-edit record goes
+# with the resource. The delete target's own row is always part of the cascade
+# Collector.collect([instance]) reports, but the target is already identified by
+# organization_id/user_id, not an affected resource.
 RBAC_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
     {
         "rbac.RolePermission",
+        "rbac.ResourceLastEdit",
         "rbac.Organization",
         settings.AUTH_USER_MODEL,
     }

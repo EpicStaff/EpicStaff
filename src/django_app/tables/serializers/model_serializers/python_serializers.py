@@ -1,5 +1,5 @@
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -164,7 +164,9 @@ class PythonCodeSerializer(
         return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
-class PythonCodeToolSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
+class PythonCodeToolSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
     is_favorite = serializers.BooleanField(read_only=True, default=False)

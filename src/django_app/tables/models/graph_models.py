@@ -6,6 +6,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.db.models import F
 from loguru import logger
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.exceptions import GraphSaveVersionConflictError
@@ -52,7 +53,7 @@ class GraphManager(ActiveManager):
         return self.filter(id__in=subgraph_ids).prefetch_related("tags")
 
 
-class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
+class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixin):
     objects = GraphManager()
     all_objects = models.Manager()
 
@@ -958,7 +959,7 @@ class GraphVersion(SoftDeleteMixin):
         ordering = ["-created_at"]
 
 
-class StorageFile(OrgScopedModel):
+class StorageFile(OrgScopedModel, LastEditTrackedModel):
     """A file or folder in an organization's storage, mirrored from the storage backend."""
 
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]

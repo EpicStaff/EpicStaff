@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
@@ -49,7 +49,10 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
 
 
 class WebhookTriggerNestedSerializer(
-    AuthorStampingSerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("auth_secret_id",)
 

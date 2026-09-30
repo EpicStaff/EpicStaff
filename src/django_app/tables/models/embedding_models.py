@@ -1,4 +1,5 @@
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import DefaultBaseModel, EmbedderTask
@@ -32,7 +33,7 @@ class EmbeddingModel(OrgScopedModel, models.Model):
         ]
 
 
-class EmbeddingConfig(OrgScopedModel, models.Model):
+class EmbeddingConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     model = models.ForeignKey("EmbeddingModel", on_delete=models.SET_NULL, null=True)
     custom_name = models.TextField()
     task_type = models.CharField(
