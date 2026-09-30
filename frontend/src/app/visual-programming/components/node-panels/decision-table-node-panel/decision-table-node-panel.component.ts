@@ -64,7 +64,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 name: node.node_name || node.id,
             }));
 
-        return [{ name: '-- Select Node --', value: '' }, ...nodeItems];
+        return [{ name: 'Unselected', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
@@ -163,6 +163,8 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     }
 
     public convertToCdt(): void {
+        if (this.isReadOnly()) return;
+
         this.confirmationDialogService
             .confirm({
                 title: 'Convert to Classification Decision Table?',
@@ -225,4 +227,6 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             })),
         }));
     }
+
+    protected readonly event = event;
 }

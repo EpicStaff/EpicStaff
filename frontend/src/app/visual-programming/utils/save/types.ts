@@ -7,6 +7,7 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     PythonNodeModel,
@@ -41,6 +42,7 @@ export interface NodeDiffByType {
     noteNodes: NodeDiff<GraphNoteModel>;
     classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
     knowledgeRetrieverNodes: NodeDiff<KnowledgeRetrieverNodeModel>;
+    keyValueNodes: NodeDiff<KeyValueNodeModel>;
 }
 
 export interface ConnectionDiff {

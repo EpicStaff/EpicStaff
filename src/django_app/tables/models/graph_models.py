@@ -217,6 +217,31 @@ class FileExtractorNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
+class KeyValueNode(BaseNode, SoftDeleteFields):
+    class Mode(models.TextChoices):
+        READ = "read"
+        WRITE = "write"
+        DELETE = "delete"
+
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="key_value_node_list")
+    # SET_NULL: deleting a table is allowed while nodes use it; they stay with no table
+    # selected (see KeyValueTableService.delete_table).
+    key_value_table = models.ForeignKey(
+        "KeyValueTable",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="nodes",
+    )
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.READ)
+    entries = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
+
 class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"

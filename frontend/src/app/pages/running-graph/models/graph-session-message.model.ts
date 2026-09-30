@@ -1,3 +1,5 @@
+import { KeyValueMode } from '@shared/models';
+
 // Base GraphMessage interface
 export interface GraphMessage {
     id: number;
@@ -27,6 +29,7 @@ export enum MessageType {
     FINDINGS = 'findings',
     TASK_NODE_STREAM = 'task_node_stream',
     AGENT_NODE_STREAM = 'agent_node_stream',
+    KEY_VALUE = 'key_value',
 }
 
 export type FinishStopReason = 'completed' | 'schema_satisfied' | 'max_iter_reached';
@@ -210,6 +213,35 @@ export interface FindingsMessageData {
     message_type: MessageType.FINDINGS;
 }
 
+export type KeyValueMessageMode = KeyValueMode;
+
+// read: `path` is the target variable and `found` is set.
+// write: `path` is the source path (may carry a `|default` suffix) and `created` is set.
+// delete: `path` is null and `found` tells whether the key was stored (and so deleted); `deleted_count` on the
+// message is the number of keys actually removed. Delete messages from before deletes reported it carry
+// `found: null` and `value: null` (crew has always sent both fields, null by default).
+// `value` is the full JSON value: the stored one for a found read, the one written for a write, the deleted one for
+// a found delete, and null when not found. When the message hit its size budget, `truncated` is true and `value`
+// is a string holding the first 200 chars of the JSON text.
+export interface KeyValueMessageEntry {
+    key: string;
+    path: string | null;
+    // read and delete; null for a write, and for a delete message from before deletes reported it.
+    found: boolean | null;
+    created: boolean | null;
+    value: unknown;
+    truncated: boolean;
+}
+
+export interface KeyValueMessageData {
+    mode: KeyValueMessageMode;
+    table_id: number;
+    table_name: string;
+    entries: KeyValueMessageEntry[];
+    deleted_count: number | null;
+    message_type: MessageType.KEY_VALUE;
+}
+
 // TaskNode / AgentNode stream events (task_start / tool_call / tool_result / task_finish) —
 // same envelope shape, only message_type differs. AgentNode events MAY additionally carry
 // `data.task` to indicate which sub-task the activity belongs to (absent for single-task
@@ -284,4 +316,5 @@ export type MessageData =
     | ConditionGroupManipulationMessageData
     | FindingsMessageData
     | TaskNodeStreamMessageData
-    | AgentNodeStreamMessageData;
+    | AgentNodeStreamMessageData
+    | KeyValueMessageData;

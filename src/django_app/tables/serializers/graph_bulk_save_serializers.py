@@ -9,6 +9,7 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphNoteSerializer,
+    KeyValueNodeSerializer,
     KnowledgeNodeSerializer,
     PythonNodeSerializer,
     ScheduleTriggerNodeSerializer,
@@ -40,6 +41,10 @@ class PythonNodeBulkSerializer(BulkSaveEntityMixin, PythonNodeSerializer):
 
 
 class FileExtractorNodeBulkSerializer(BulkSaveEntityMixin, FileExtractorNodeSerializer):
+    pass
+
+
+class KeyValueNodeBulkSerializer(BulkSaveEntityMixin, KeyValueNodeSerializer):
     pass
 
 

@@ -129,6 +129,13 @@
         opacity: 0.5;
         cursor: not-allowed;
     }
+
+    // Square, as tall as the search input beside it.
+    &--icon-only {
+        justify-content: center;
+        width: 40px;
+        padding: 0;
+    }
 }
 
 // ============ LIST ============

@@ -72,28 +72,6 @@ $grid-above-btns-height: 44px;
     gap: 0.5rem;
 }
 
-.grid-header-secondary-btn {
-    height: 32px;
-    padding: 0 12px;
-    border-radius: 6px;
-    background: transparent;
-    border: 1px solid var(--graphite-750);
-    color: var(--color-text-primary);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.grid-header-secondary-btn:hover:not(:disabled) {
-    border-color: var(--accent-color);
-}
-
-.grid-header-secondary-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
 .grid-header-icon-btn {
     width: 32px;
     height: 32px;
@@ -611,31 +589,6 @@ $group-gutter-width: 28px;
             color: var(--purple-alpha-90);
         }
     }
-
-    &--danger {
-        color: var(--red-410);
-
-        i {
-            color: var(--red-410);
-            opacity: 0.8;
-        }
-
-        &:hover {
-            background: var(--red-410-alpha-15);
-            color: var(--red-410);
-
-            i {
-                color: var(--red-410);
-                opacity: 1;
-            }
-        }
-    }
-}
-
-.context-menu-divider {
-    height: 1px;
-    background: var(--white-alpha-10);
-    margin: 3px 0;
 }
 
 :host ::ng-deep {

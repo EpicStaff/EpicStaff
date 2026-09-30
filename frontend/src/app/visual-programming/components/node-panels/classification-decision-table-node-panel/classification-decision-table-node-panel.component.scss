@@ -63,111 +63,12 @@
     }
 }
 
-.header-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    min-width: 0;
-
-    &--toggle {
-        align-items: flex-start;
-        min-width: 100px;
-    }
-}
-
-.header-label {
-    font-size: var(--text-body-small-large-size);
-    font-weight: var(--text-body-small-large-weight);
-    color: var(--white-alpha-55);
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.help-icon {
-    color: var(--purple-alpha-75);
-    font-size: 0.85rem;
-    cursor: help;
-    display: inline-flex;
-    align-items: center;
-    transition: color 0.15s ease;
-
-    &:hover {
-        color: var(--purple-440);
-    }
-}
-
-.header-input {
-    background: var(--white-alpha-6);
-    border: 1px solid var(--white-alpha-12);
-    border-radius: 4px;
-    color: var(--gray-215);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.85rem;
-    box-sizing: border-box;
-    height: 32px;
-    outline: none;
-    transition: border-color 0.15s ease;
-    width: 100%;
-
-    &:focus {
-        border-color: var(--accent-color);
-        box-shadow: 0 0 0 2px var(--purple-alpha-20);
-    }
-
-    &::placeholder {
-        color: var(--white-alpha-25);
-    }
-}
-
-.header-field app-select {
-    width: 100%;
-
-    ::ng-deep .selector__btn--default {
-        height: 32px;
-        font-size: 0.85rem;
-        padding: 0.4rem 2rem 0.4rem 0.6rem;
-    }
-}
-
-.cdt-toggle {
-    position: relative;
-    width: 50px;
-    height: 20px;
-    background: var(--white-alpha-15);
-    border-radius: 8px;
-    cursor: default;
-    transition: background 0.2s ease;
-    margin-top: 2px;
-
-    .toggle-thumb {
-        position: absolute;
-        top: 3px;
-        left: 12px;
-        width: 14px;
-        height: 14px;
-        background: var(--white);
-        border-radius: 30%;
-        transition: transform 0.2s ease;
-    }
-
-    &--on {
-        background: var(--accent-color);
-
-        .toggle-thumb {
-            transform: translateX(16px);
-        }
-    }
-}
-
 // Tab row
 .tabs-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1.5rem;
+    padding: 0 1rem;
     border-bottom: 1px solid var(--white-alpha-10);
     min-height: 44px;
 
@@ -237,39 +138,6 @@
     user-select: none;
 }
 
-// Export / Import action buttons in the tabs row
-.tabs-row__divider {
-    width: 1px;
-    height: 18px;
-    background: var(--white-alpha-12);
-    margin: 0 0.25rem;
-}
-
-.import-btn {
-    display: inline-flex;
-    align-items: center;
-    width: 100px;
-    min-width: 100px;
-    border-radius: 6px;
-    background: var(--accent-color);
-    color: var(--white);
-    border: none;
-    padding: 3px 10px;
-    font-size: 0.8em;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.18s;
-
-    &:hover:not(:disabled) {
-        background: var(--accent-color-hover);
-    }
-}
-
-.hidden-file-input {
-    display: none;
-}
-
 // Grid section
 .grid-section {
     display: flex;
@@ -306,13 +174,6 @@
         gap: 1rem;
         overflow-y: auto;
         padding: 1rem 0.75rem 1rem 1.5rem;
-
-        .section-label {
-            margin: 0;
-            color: var(--white-alpha-70);
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
     }
 
     .code-editor-section {
@@ -336,49 +197,6 @@
 
     ::ng-deep .test-mode-actions {
         display: none !important;
-    }
-}
-
-.section-label {
-    font-size: 2rem;
-    font-weight: 500;
-    color: var(--white);
-    margin: 0;
-}
-
-.help-text {
-    font-size: 0.85rem;
-    color: var(--white-alpha-60);
-    margin: 0;
-
-    code {
-        background: var(--white-alpha-10);
-        padding: 0.2rem 0.4rem;
-        border-radius: 4px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.8rem;
-    }
-}
-
-.scope-info {
-    font-size: 0.85rem;
-    color: var(--white-alpha-70);
-    background: var(--purple-alpha-10);
-    padding: 0.75rem 1rem;
-    border-radius: 6px;
-    border-left: 3px solid var(--accent-color);
-
-    strong {
-        color: var(--white);
-    }
-
-    code {
-        background: var(--white-alpha-10);
-        padding: 0.2rem 0.4rem;
-        border-radius: 4px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.8rem;
-        color: var(--azure-465);
     }
 }
 
@@ -472,64 +290,6 @@
                 color: var(--white);
                 background: var(--purple-alpha-35);
             }
-        }
-    }
-
-    .add-prompt-row {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-    }
-
-    .prompt-id-input {
-        flex: 1;
-        background: var(--graphite-800);
-        border: 1px solid var(--white-alpha-15);
-        border-radius: 4px;
-        color: var(--white);
-        padding: 0.6rem 1rem;
-        font-size: 0.85rem;
-        outline: none;
-        transition: border-color 0.2s ease;
-
-        &:focus {
-            border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px var(--purple-alpha-20);
-        }
-
-        &::placeholder {
-            color: var(--white-alpha-30);
-        }
-    }
-
-    .add-prompt-btn {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: var(--accent-color);
-        color: var(--white);
-        border: none;
-        border-radius: 8px;
-        padding: 0.6rem 1rem;
-        font-size: 0.85rem;
-        font-weight: 500;
-        cursor: pointer;
-        white-space: nowrap;
-        transition:
-            background 0.2s ease,
-            opacity 0.2s ease;
-
-        &:hover:not(:disabled) {
-            background: var(--purple-430);
-        }
-
-        &:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        i {
-            font-size: 1rem;
         }
     }
 
@@ -664,9 +424,15 @@
         border-radius: 4px;
         color: var(--white);
         padding: 0.55rem 0.75rem;
-        font-size: 0.85rem;
+        font-size: 0.875rem;
         outline: none;
         transition: border-color 0.2s ease;
+
+        &:read-only {
+            padding: 0;
+            border: none;
+            background: transparent;
+        }
 
         &:focus {
             border-color: var(--accent-color);

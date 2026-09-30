@@ -13,6 +13,7 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { ViewPort } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 
 @Component({
     selector: 'app-classification-decision-table-node',
@@ -28,6 +29,7 @@ export class ClassificationDecisionTableNodeComponent {
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
     private readonly destroyRef = inject(DestroyRef);
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     public readonly headerHeightPx = CDT_HEADER_HEIGHT;
     public readonly rowHeightPx = CDT_ROW_HEIGHT;

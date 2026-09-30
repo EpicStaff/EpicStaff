@@ -12,6 +12,7 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
@@ -287,6 +288,18 @@ function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unkn
     };
 }
 
+function toKeyValueComparable(node: KeyValueNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        key_value_table: node.data?.key_value_table ?? null,
+        mode: node.data?.mode ?? 'read',
+        entries: node.data?.entries ?? [],
+        metadata: toNodeMetadata(node),
+    };
+}
+
 interface CdtConditionGroupUi {
     group_name: string;
     order?: number;
@@ -452,6 +465,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<KnowledgeRetrieverNodeModel>(previous.nodes, NodeType.KNOWLEDGE_RETRIEVER),
             nodesByType<KnowledgeRetrieverNodeModel>(current.nodes, NodeType.KNOWLEDGE_RETRIEVER),
             toKnowledgeRetrieverComparable
+        ),
+        keyValueNodes: diffNodesByBackendId(
+            nodesByType<KeyValueNodeModel>(previous.nodes, NodeType.KEY_VALUE),
+            nodesByType<KeyValueNodeModel>(current.nodes, NodeType.KEY_VALUE),
+            toKeyValueComparable
         ),
     };
 }

@@ -145,6 +145,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public llmConfigs = input<{ id: number; label: string }[]>([]);
     public preInputMapKeys = input<string[]>([]);
     public domainKeys = input<string[]>([]);
+    public readonly = input<boolean>(false);
     public sections = input<CdtSection[]>([]);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
@@ -717,6 +718,12 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 this.autoCollapseGroupsOnFirstLoad();
             }
         });
+        effect(() => {
+            this.readonly();
+            untracked(() => {
+                this.rebuildColumnDefs();
+            });
+        });
     }
 
     private initFieldColumnsFromData(groups: ConditionGroup[]): void {
@@ -891,6 +898,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         },
         preventDefaultOnContextMenu: true,
         onCellContextMenu: (event) => {
+            if (this.readonly()) return;
             const mouseEvent = event.event as MouseEvent;
             this.contextMenu.set({
                 x: mouseEvent.clientX,
@@ -1818,17 +1826,20 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
         };
 
-        const fixedCols: ColDef[] = [
-            selectionCol,
-            enabledCol,
-            groupNameCol,
-            expressionCol,
-            promptIdCol,
-            manipCol,
-            routeCodeCol,
-            skipCol,
-            deleteCol,
-        ];
+        const readOnly = this.readonly();
+        const fixedCols: ColDef[] = readOnly
+            ? [enabledCol, groupNameCol, expressionCol, promptIdCol, manipCol, routeCodeCol, skipCol]
+            : [
+                  selectionCol,
+                  enabledCol,
+                  groupNameCol,
+                  expressionCol,
+                  promptIdCol,
+                  manipCol,
+                  routeCodeCol,
+                  skipCol,
+                  deleteCol,
+              ];
 
         const exprAnchor = this.clampParamsAnchor(this.exprParamsAfter());
         const manipAnchor = this.clampParamsAnchor(this.manipParamsAfter());
@@ -1844,7 +1855,23 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (this.manipParamsFirst()) groupsAfterCol.reverse();
             result.push(...groupsAfterCol);
         }
-        return result;
+        return readOnly ? this.stripEditability(result) : result;
+    }
+
+    /**
+     * Recursively clones column defs (including nested group children) with editing disabled.
+     * Used to render the grid in read-only mode without mutating the original defs.
+     */
+    private stripEditability(defs: (ColDef | ColGroupDef)[]): (ColDef | ColGroupDef)[] {
+        return defs.map((def) => {
+            if ('children' in def) {
+                return {
+                    ...def,
+                    children: this.stripEditability((def as ColGroupDef).children as (ColDef | ColGroupDef)[]),
+                };
+            }
+            return { ...(def as ColDef), editable: false, singleClickEdit: false };
+        });
     }
 
     private applyWidths(defs: (ColDef | ColGroupDef)[], widthMap: Map<string, number>): (ColDef | ColGroupDef)[] {
@@ -2073,6 +2100,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     addFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_FIELD_PREFIX}${fieldName}`;
         const order = this.movableColumnOrder();
         if (!order.includes(colId)) {
@@ -2082,6 +2110,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     removeFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_FIELD_PREFIX}${fieldName}`;
         this.movableColumnOrder.set(this.movableColumnOrder().filter((id) => id !== colId));
         this.dropRowField('field_expressions', fieldName);
@@ -2113,6 +2142,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     addManipFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_MANIP_PREFIX}${fieldName}`;
         const order = this.manipColumnOrder();
         if (!order.includes(colId)) {
@@ -2122,6 +2152,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     removeManipFieldColumn(fieldName: string): void {
+        if (this.readonly()) return;
         const colId = `${CDT_MANIP_PREFIX}${fieldName}`;
         this.manipColumnOrder.set(this.manipColumnOrder().filter((id) => id !== colId));
         this.dropRowField('field_manipulations', fieldName);
@@ -2155,6 +2186,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     onGridReady(params: GridReadyEvent): void {
         this.gridApi = params.api;
+        this.rebuildColumnDefs();
         this.setupBodyClickListener();
         this.setupOutsideClickListener();
         this.setupRowDragListener();
@@ -2342,6 +2374,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     onCellValueChanged(event: CellValueChangedEvent): void {
         // Guard against recursive loops triggered by programmatic cell writes
         if (this.isSyncing) return;
+        if (this.readonly()) return;
 
         const colId: string = event.colDef.colId ?? '';
         const rowData = event.data as ConditionGroup;
@@ -2492,6 +2525,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     addRow(): void {
+        if (this.readonly()) return;
         const currentRows = this.rowData();
         const maxOrder = currentRows.reduce((max, r) => Math.max(max, r.order ?? 0), 0);
         const maxConditionNumber = currentRows.reduce((max, r) => {
@@ -2519,6 +2553,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     private insertRowAtContext(offset: 0 | 1): void {
+        if (this.readonly()) return;
         const ctx = this.contextMenu();
         if (!ctx || ctx.rowIndex === -1) return;
         const currentRows = this.rowData();
@@ -2534,6 +2569,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     deleteRow(rowIndex: number): void {
+        if (this.readonly()) return;
         if (rowIndex === -1) return;
         const currentRows = this.rowData();
         const updatedRows = currentRows
@@ -2544,6 +2580,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public groupSelectedRows(): void {
+        if (this.readonly()) return;
         const nodes = this.gridApi?.getSelectedNodes() ?? [];
         if (nodes.length === 0) return;
         if (!nodes.every((n: IRowNode) => !(n.data as ConditionGroup | undefined)?.section)) return;
@@ -2614,6 +2651,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public deleteSelectedRows(): void {
+        if (this.readonly()) return;
         const nodes = this.gridApi?.getSelectedNodes() ?? [];
         if (nodes.length === 0) return;
         const namesToDelete = new Set(nodes.map((n: IRowNode) => (n.data as ConditionGroup).group_name));
@@ -2673,6 +2711,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     private ungroupSection(sectionId: string): void {
+        if (this.readonly()) return;
         const rowCount = this.rowData().filter((row) => row.section === sectionId).length;
         const rowLabel = rowCount === 1 ? 'row' : 'rows';
 
@@ -2770,6 +2809,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     }
 
     public handleManualRowReorder(source: IRowNode, over: IRowNode, insertBefore: boolean = true): void {
+        if (this.readonly()) return;
         if (!source || !over || source === over) return;
         const rows = this.rowData();
         const sourceIdx = rows.indexOf(source.data);

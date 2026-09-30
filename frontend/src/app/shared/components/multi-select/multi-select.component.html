@@ -75,7 +75,7 @@
                             }
                         </label>
 
-                        @if (groupActionIcon()[group.group]) {
+                        @if (groupActionIcon()[group.group] && !readonlyView()) {
                             <button
                                 type="button"
                                 class="multi-select__group-action"
@@ -100,8 +100,9 @@
                         [class.multi-select__item--readonly]="readonlyView()"
                         (click)="toggleValue(item.value)"
                     >
-                        @if (checkboxPosition() === 'left' && !readonlyView()) {
+                        @if (!readonlyView() && checkboxPosition() === 'left') {
                             <app-checkbox
+                                [disabled]="readonlyView()"
                                 mod="multiselect"
                                 [checked]="isChecked(item.value)"
                             />
@@ -118,13 +119,14 @@
                                 </span>
                             }
                         </span>
-                        @if (checkboxPosition() === 'right' && !readonlyView()) {
+                        @if (!readonlyView() && checkboxPosition() === 'right') {
                             <app-checkbox
+                                [disabled]="readonlyView()"
                                 color="secondary"
                                 [checked]="isChecked(item.value)"
                             />
                         }
-                        @if (item.trailingActionIcon) {
+                        @if (item.trailingActionIcon && !readonlyView()) {
                             <button
                                 type="button"
                                 class="multi-select__item-action"

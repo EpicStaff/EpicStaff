@@ -1,4 +1,11 @@
-import { DT_MIN_HEIGHT, getClassificationTableVisualHeight, getDecisionTableVisualHeight } from './node-size.util';
+import { NodeType } from '@shared/models';
+
+import {
+    DT_MIN_HEIGHT,
+    getClassificationTableVisualHeight,
+    getDecisionTableVisualHeight,
+    getDefaultNodeSize,
+} from './node-size.util';
 
 describe('getDecisionTableVisualHeight', () => {
     it('reserves one placeholder row when there are no condition groups', () => {
@@ -45,5 +52,11 @@ describe('getClassificationTableVisualHeight', () => {
         }));
 
         expect(getClassificationTableVisualHeight(groups)).toBe(60 + 60 * 8);
+    });
+});
+
+describe('getDefaultNodeSize', () => {
+    it('gives the key-value node the same default size as the Python node', () => {
+        expect(getDefaultNodeSize(NodeType.KEY_VALUE)).toEqual(getDefaultNodeSize(NodeType.PYTHON));
     });
 });

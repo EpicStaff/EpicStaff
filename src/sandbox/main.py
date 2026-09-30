@@ -7,8 +7,10 @@ import isolation
 import landlock
 import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
 from services.storage_credential_manager import StorageCredentialManager
+from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeTaskData
 from utils.logger import logger
 
@@ -69,7 +71,9 @@ def log_secret_masking_state():
 
 
 def log_isolation_state():
-    """Announce the Landlock filesystem-jail state once per process."""
+    """Announce the filesystem, network and signal isolation state once per process."""
+
+    # Filesystem isolation log
     abi = landlock.abi_version()
     if abi >= 1:
         logger.info("Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi)
@@ -85,6 +89,57 @@ def log_isolation_state():
             "{}=false: executions will run UNCONFINED. Do not use this in "
             "production.",
             isolation.REQUIRE_ISOLATION_ENV_VAR,
+        )
+
+    # Network isolation log
+    if not settings.BLOCK_NETWORK:
+        logger.warning(
+            "Network isolation is OFF (SANDBOX_BLOCK_NETWORK=false): executions have "
+            "unrestricted network access."
+        )
+        return
+    # Same decision the handler makes per execution; only use_storage varies.
+    storage_decision = decide_network_policy(
+        block_network=True,
+        use_storage=True,
+        landlock_abi=abi,
+        storage_port=int(settings.STORAGE_PORT),
+    )
+    if storage_decision.policy is NetworkPolicy.ALLOW_PORTS:
+        logger.info(
+            "Network isolation is ON: executions cannot open IP sockets; storage-enabled "
+            "executions may only connect over TCP to port {}.",
+            settings.STORAGE_PORT,
+        )
+    else:
+        logger.warning(
+            "Network isolation is ON for executions without storage; storage-enabled "
+            "executions will be refused (Landlock ABI {} < 4, needs Linux 6.7+).",
+            abi,
+        )
+
+    # Signal isolation log
+    signal_isolation_policy = decide_signal_isolation_policy(
+        landlock_abi=abi, require_signal_isolation=settings.REQUIRE_SIGNAL_ISOLATION
+    )
+    if signal_isolation_policy is SignalIsolationPolicy.ENFORCE:
+        logger.info(
+            "Signal isolation is ON: Landlock blocks signals and abstract UNIX "
+            "sockets from user code to anything outside its own execution."
+        )
+    elif signal_isolation_policy is SignalIsolationPolicy.REFUSE:
+        logger.warning(
+            "Signal isolation is UNAVAILABLE (Landlock ABI {} < 6, needs Linux 6.12+) and "
+            "{} is not false: executions will be refused until this is resolved.",
+            abi,
+            settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR,
+        )
+    elif signal_isolation_policy is SignalIsolationPolicy.UNISOLATED:
+        logger.warning(
+            "Signal isolation is UNAVAILABLE (Landlock ABI {} < 6) and "
+            "{}=false: executions can signal each other. Do not use this in production.",
+            abi,
+            settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR,
         )
 
 

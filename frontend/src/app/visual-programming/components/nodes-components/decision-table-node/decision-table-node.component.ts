@@ -10,6 +10,7 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
@@ -22,6 +23,7 @@ export class DecisionTableNodeComponent {
     @Output() actualClick = new EventEmitter<MouseEvent>();
 
     private flowService = inject(FlowService);
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     public readonly headerHeightPx = DT_HEADER_HEIGHT;
     public readonly rowHeightPx = DT_ROW_HEIGHT;
