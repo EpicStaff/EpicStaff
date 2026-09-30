@@ -1557,7 +1557,7 @@ class RealtimeSessionItemViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelVi
 class RealtimeAgentDefinitionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
-    org_filter_path = "agent_definition__organization_id"
+    org_filter_path = "agent_definition__org_id"
     queryset = RealtimeAgentDefinition.objects.all()
     serializer_class = RealtimeAgentDefinitionSerializer
 

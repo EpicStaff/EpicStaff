@@ -285,7 +285,8 @@ class TestCombineOutputShape:
         assert "name" not in result
         assert "owner_agent" not in result
         assert "description" not in result
-        assert "organization" not in result
+        assert "org" not in result
+        assert "created_by" not in result
         assert "created_at" not in result
         assert "updated_at" not in result
 
@@ -373,7 +374,7 @@ def naive_collection(db, org):
 @pytest.fixture
 def surface_a(db, org, py_tool_a, storage_file_a):
     surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="combine-surface-a",
         instructions="be concise",
     )
@@ -389,7 +390,7 @@ def surface_a(db, org, py_tool_a, storage_file_a):
 @pytest.fixture
 def surface_b(db, org, py_tool_a, py_tool_b):
     surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="combine-surface-b",
         instructions="use bullet points",
     )
@@ -405,7 +406,7 @@ def surface_b(db, org, py_tool_a, py_tool_b):
 @pytest.fixture
 def surface_c(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="combine-surface-c",
         instructions="",
     )
@@ -423,12 +424,12 @@ def test_combine_happy_path_returns_merged_result(
     # The view resolves the active org from the client's X-Organization-Id
     # header, so surfaces must be scoped to that same org.
     s_a = Surface.objects.create(
-        organization=org,
+        org=org,
         name="api-combine-a",
         instructions="be concise",
     )
     s_b = Surface.objects.create(
-        organization=org,
+        org=org,
         name="api-combine-b",
         instructions="use bullets",
     )
@@ -480,8 +481,8 @@ def test_combine_conflicting_knowledge_returns_400(client, org):
         rag_type=BaseRagType.RagType.NAIVE, source_collection=coll
     )
 
-    s_a = Surface.objects.create(organization=org, name="api-conflict-a")
-    s_b = Surface.objects.create(organization=org, name="api-conflict-b")
+    s_a = Surface.objects.create(org=org, name="api-conflict-a")
+    s_b = Surface.objects.create(org=org, name="api-conflict-b")
 
     sk_a = SurfaceKnowledge.objects.create(surface=s_a, collection=coll)
     SurfaceNaiveSearchConfig.objects.create(
@@ -503,7 +504,7 @@ def test_combine_conflicting_knowledge_returns_400(client, org):
 @pytest.mark.django_db
 def test_combine_duplicate_surface_ids_returns_400(client, org):
     surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="api-duplicate-combine",
     )
 
@@ -518,7 +519,7 @@ def test_combine_duplicate_surface_ids_returns_400(client, org):
 @pytest.mark.django_db
 def test_combine_single_surface_returns_its_effective_data(client, org):
     surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="api-single-combine",
         instructions="solo instructions",
     )

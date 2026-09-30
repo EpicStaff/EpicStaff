@@ -69,13 +69,13 @@ class RealtimeSurfaceService:
 
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_grants(
             combined_surface["storage_items"],
-            org_id=agent_definition.organization_id,
+            org_id=agent_definition.org_id,
         )
         tools = self._resolve_python_tools(
             combined_surface["python_tools"],
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
-            org_id=agent_definition.organization_id,
+            org_id=agent_definition.org_id,
         )
         self._warn_on_mcp_tools(combined_surface["mcp_tools"])
 

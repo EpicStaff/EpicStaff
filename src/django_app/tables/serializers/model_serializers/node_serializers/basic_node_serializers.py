@@ -14,10 +14,7 @@ from agents.services.inline_surface_service import InlineSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 from django.db import transaction
 from rbac.authorship import AuthorStampingSerializerMixin
-from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
     AgentNode,
@@ -300,10 +297,10 @@ class TaskNodeSerializer(
     # Org isolation: agent_definition/surface_list/graph must belong to the
     # caller's active org — a cross-org pk is rejected exactly like a
     # non-existent one (no leak).
-    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
+    agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=AgentDefinition.objects.all(), required=False, allow_null=True
     )
-    surface_list = OrganizationScopedPrimaryKeyRelatedField(
+    surface_list = OrgScopedPrimaryKeyRelatedField(
         queryset=Surface.objects.all(), many=True, required=False
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -413,10 +410,10 @@ class AgentNodeSerializer(
     # Org isolation: agent_definition/surface_list/graph must belong to the
     # caller's active org — a cross-org pk is rejected exactly like a
     # non-existent one (no leak).
-    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
+    agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=AgentDefinition.objects.all(), required=False, allow_null=True
     )
-    surface_list = OrganizationScopedPrimaryKeyRelatedField(
+    surface_list = OrgScopedPrimaryKeyRelatedField(
         queryset=Surface.objects.all(), many=True, required=False
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())

@@ -1,4 +1,5 @@
 from django.db import models
+from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import AbstractDefaultFillableModel
 
 
@@ -65,14 +66,8 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(AbstractDefaultFillableModel):
+class AgentDefinition(OrgScopedModel, AbstractDefaultFillableModel):
     # Identity
-    organization = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="agent_definitions",
-        help_text="Organization this agent belongs to.",
-    )
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier (slug-like) unique within an organization. Used to reference this agent from flows, code, and the UI.",
@@ -178,10 +173,10 @@ class AgentDefinition(AbstractDefaultFillableModel):
     def __repr__(self) -> str:
         return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "name"],
+                fields=["org", "name"],
                 name="unique_agent_definition_name_per_organization",
             )
         ]

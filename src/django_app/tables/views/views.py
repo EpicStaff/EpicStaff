@@ -672,7 +672,7 @@ class InitRealtimeAPIView(APIView):
                         "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                     }
                 )
-            org_id = agent_definition.organization_id
+            org_id = agent_definition.org_id
             # Twilio's MediaStream bridge has no end-user session (see comment
             # above) — created_by/user_id stays None for these sessions.
             user_id = None
@@ -695,9 +695,7 @@ class InitRealtimeAPIView(APIView):
             # resulting RealtimeSessionItem rows to them via created_by.
             user_id = request.user.id if getattr(request.user, "is_authenticated", False) else None
 
-        if not AgentDefinition.objects.filter(
-            pk=agent_definition_id, organization_id=org_id
-        ).exists():
+        if not AgentDefinition.objects.filter(pk=agent_definition_id, org_id=org_id).exists():
             raise ValidationError(
                 {
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'

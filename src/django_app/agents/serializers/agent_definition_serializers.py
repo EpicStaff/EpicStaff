@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from django.db import IntegrityError
-from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
+from rbac.authorship import AuthorStampingSerializerMixin
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.llm_models import LLMConfig
 
@@ -26,7 +24,7 @@ class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
 
 
 class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
-    surface = OrganizationScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
+    surface = OrgScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
     place = serializers.ChoiceField(choices=SurfacePlace.choices)
 
 
@@ -64,7 +62,8 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
         model = AgentDefinition
         fields = [
             "id",
-            "organization",
+            "org",
+            "created_by",
             "name",
             "description",
             "instructions",
@@ -88,7 +87,7 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
+class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,

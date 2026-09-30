@@ -5,7 +5,7 @@ from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
 from rbac.models.enums import Permission, ResourceType
-from rbac.scoping.mixins import OrgScopedResolverMixin
+from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -21,12 +21,12 @@ from agents.serializers.surface_serializers import (
 from agents.services.surface_combine_service import SurfaceCombineService
 
 
-class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+class SurfaceViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.SURFACES
     rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
     queryset = Surface.objects.select_related(
-        "organization",
+        "org",
         "owner_agent",
     ).prefetch_related(
         "python_tools__python_tool",
@@ -47,12 +47,9 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
             return SurfacePatchWriteSerializer
         return SurfaceWriteSerializer
 
-    def get_queryset(self):
-        return super().get_queryset().filter(organization_id=self.get_active_org_id())
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organization_id"] = self.get_active_org_id()
+        context["org_id"] = self.get_active_org_id()
         return context
 
     @extend_schema(request=SurfaceWriteSerializer, responses=SurfaceReadSerializer)
@@ -61,7 +58,8 @@ class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         ctx = self.get_serializer_context()
         write_serializer = SurfaceWriteSerializer(data=request.data, context=ctx)
         write_serializer.is_valid(raise_exception=True)
-        instance = write_serializer.save()
+        self.perform_create(write_serializer)
+        instance = write_serializer.instance
         instance.refresh_from_db()
 
         return Response(

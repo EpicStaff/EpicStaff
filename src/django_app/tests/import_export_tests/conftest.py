@@ -165,7 +165,7 @@ def exportable_agent_definition(rich_seeded_db, default_org):
     stamping, import permissions): an AgentDefinition that pulls in an LLMConfig
     dependency and an owned Surface carrying an org-owned python tool."""
     definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instructions="instructions",
@@ -173,7 +173,7 @@ def exportable_agent_definition(rich_seeded_db, default_org):
     )
 
     surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="owned_surface_1",
         instructions="owned surface instructions",
         owner_agent=definition,

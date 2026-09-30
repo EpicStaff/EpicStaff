@@ -24,7 +24,7 @@ class TestAgentDefinitionConflict:
         self, client, default_organization
     ):
         AgentDefinition.objects.create(
-            organization=default_organization,
+            org=default_organization,
             name="duplicate-agent",
             instructions="do things",
         )
@@ -46,12 +46,12 @@ class TestAgentDefinitionConflict:
         self, client, default_organization
     ):
         AgentDefinition.objects.create(
-            organization=default_organization,
+            org=default_organization,
             name="existing-agent",
             instructions="do things",
         )
         other_agent = AgentDefinition.objects.create(
-            organization=default_organization,
+            org=default_organization,
             name="other-agent",
             instructions="do other things",
         )
