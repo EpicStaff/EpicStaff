@@ -7,7 +7,7 @@ BASE_DIR: Path = Path(__file__).resolve().parent
 env = Env()
 
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(BASE_DIR / '../.env')
+    env.read_env(BASE_DIR / "../.env")
 
 DEBUG = env.bool("KNOWLEDGE_DEBUG")
 
@@ -31,3 +31,8 @@ MINIO_SECRET_KEY = env.str("MINIO_PASSWORD")
 MINIO_BUCKET = env.str("KNOWLEDGE_MINIO_BUCKET")
 
 GRAPHRAG_ENCODING = "utf-8"
+
+# Deployment-wide overrides for the embedding endpoint. Unset in every standard
+# install; set only where embeddings are routed through an API gateway.
+CUSTOM_EMBED_BASE_URL = env.str("KNOWLEDGE_CUSTOM_EMBED_BASE_URL", None)
+EMBEDDING_HEADERS = env.dict("KNOWLEDGE_EMBEDDING_HEADERS", None)
