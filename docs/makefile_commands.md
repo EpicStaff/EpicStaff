@@ -118,6 +118,11 @@ make django-migrate ARGS=tables
 make django-migrate ARGS="tables 0010"
 ```
 
+`migrate` does not apply the built-in roles — in Docker, `entrypoint.sh` runs
+`seed_builtin_roles` right after it. Running Django locally, follow it with
+`make django-manage CMD="seed_builtin_roles"` (see
+[DEV_rbac_backend_guide.md](rbac/DEV_rbac_backend_guide.md) §2.2).
+
 ### `make django-manage CMD=<command>`
 
 Run any arbitrary Django management command via `CMD`.

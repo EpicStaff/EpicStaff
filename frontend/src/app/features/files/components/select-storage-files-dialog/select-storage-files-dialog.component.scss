@@ -229,6 +229,10 @@
         &:hover {
             background-color: var(--purple-alpha-8);
         }
+
+        &--disabled {
+            cursor: default;
+        }
     }
 
     &__chevron {
@@ -275,6 +279,11 @@
             background-color: var(--fog-200);
             border-color: var(--fog-200);
             color: var(--color-background-body);
+        }
+
+        &--disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
     }
 

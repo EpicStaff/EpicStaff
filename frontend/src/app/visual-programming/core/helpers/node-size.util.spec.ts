@@ -1,4 +1,6 @@
-import { getClassificationDecisionTableVisualHeight } from './node-size.util';
+import { NodeType } from '@shared/models';
+
+import { getClassificationDecisionTableVisualHeight, getDefaultNodeSize } from './node-size.util';
 
 describe('getClassificationDecisionTableVisualHeight', () => {
     it('reserves one placeholder row when there are no condition groups', () => {
@@ -25,5 +27,11 @@ describe('getClassificationDecisionTableVisualHeight', () => {
         }));
 
         expect(getClassificationDecisionTableVisualHeight(groups)).toBe(60 + 46 * 8);
+    });
+});
+
+describe('getDefaultNodeSize', () => {
+    it('gives the key-value node the same default size as the Python node', () => {
+        expect(getDefaultNodeSize(NodeType.KEY_VALUE)).toEqual(getDefaultNodeSize(NodeType.PYTHON));
     });
 });

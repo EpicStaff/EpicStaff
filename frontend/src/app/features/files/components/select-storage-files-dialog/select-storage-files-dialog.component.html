@@ -19,7 +19,7 @@
                 aria-label="Save changes"
                 matTooltip="Confirm"
                 matTooltipPosition="above"
-                [disabled]="isSaving()"
+                [disabled]="isSaving() || !canUpdateFlows()"
                 (click)="onConfirm()"
             >
                 @if (isSaving()) {
@@ -54,13 +54,15 @@
                     (ngModelChange)="searchQuery.set($event)"
                 />
             </div>
-            <button
-                class="files-dialog__add-btn"
-                [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
-                (click)="onAddFilesToStorage()"
-            >
-                + Add Files to Storage
-            </button>
+            @if (canCreateFiles() && canUpdateFlows()) {
+                <button
+                    class="files-dialog__add-btn"
+                    [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
+                    (click)="onAddFilesToStorage()"
+                >
+                    + Add Files to Storage
+                </button>
+            }
         </div>
     </div>
 
@@ -68,6 +70,8 @@
         <app-drag-drop-area
             class="files-dialog__drop-wrapper"
             [attr.aria-describedby]="uploadLimitsHint() ? uploadLimitsHintId : null"
+            [permissionResource]="ResourceCode.Files"
+            [actionCode]="ActionCode.Create"
             (filesDropped)="onFilesDropped($event)"
         >
             <div class="files-dialog__file-list">
@@ -83,8 +87,9 @@
                             <div
                                 class="files-dialog__item"
                                 [class.files-dialog__item--checked]="isChecked(node)"
+                                [class.files-dialog__item--disabled]="!canUpdateFlows()"
                                 [style.padding-left.px]="20 + node.level * 20"
-                                (click)="toggleCheck(node)"
+                                (click)="onItemClick(node)"
                             >
                                 @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
                                     <button
@@ -105,6 +110,7 @@
                                     class="files-dialog__checkbox"
                                     [class.files-dialog__checkbox--checked]="isChecked(node)"
                                     [class.files-dialog__checkbox--indeterminate]="isIndeterminate(node)"
+                                    [class.files-dialog__checkbox--disabled]="!canUpdateFlows()"
                                 >
                                     @if (isChecked(node)) {
                                         <app-svg-icon

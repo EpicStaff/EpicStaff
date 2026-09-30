@@ -19,6 +19,7 @@ from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
 from secret_scrubber import scrub
 from services.storage_credential_manager import StorageCredentialManager
+from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
 from utils.environment import build_base_env
 from utils.logger import logger
@@ -34,6 +35,9 @@ except KeyError:
     SANDBOX_GID = 1000
 
 
+# NOTE: the root -> sandboxuser drop below is the only thing that stops an
+# execution from signalling this supervisor process on kernels without
+# Landlock signal isolation (ABI < 6)
 def _can_drop_privileges() -> bool:
     """Return True only when the current process is root."""
     return os.geteuid() == 0
@@ -45,6 +49,76 @@ if not _can_drop_privileges():
         "This is expected in local dev/CI but a security risk in production.",
         os.geteuid(),
     )
+
+
+_BASE_PREDEFINED_LIBRARIES: frozenset[str] = frozenset(
+    {
+        "/app/src/shared/dotdict",
+        "/app/src/shared/epicstaff_secrets",
+        "/app/src/shared/epicstaff_common",
+    }
+)
+_STORAGE_PREDEFINED_LIBRARY = "/app/src/shared/epicstaff_storage"
+
+# The only paths _fingerprint_library is allowed to walk. Anything else -- a pip
+# spec or a caller-supplied path -- is hashed as its own string.
+ALLOWED_LOCAL_LIBRARY_PATHS: frozenset[str] = _BASE_PREDEFINED_LIBRARIES | {
+    _STORAGE_PREDEFINED_LIBRARY
+}
+
+
+def _fingerprint_library(library: str) -> str:
+    """Content hash for trusted local path deps; pass-through for everything else.
+
+    Only the directories in ALLOWED_LOCAL_LIBRARY_PATHS are walked: a library
+    entry reaches this function from user-authored code-node metadata, so
+    fingerprinting any directory that happens to exist would let a caller point
+    it at "/" or "/proc/self" and stall the sandbox reading an unbounded tree.
+    Every other entry -- pip specs included -- is returned unchanged.
+
+    For trusted directories, recursively hashes all file paths and content,
+    skipping .venv, __pycache__, .pytest_cache, .git, *.egg-info, and symlinks.
+    """
+    if library not in ALLOWED_LOCAL_LIBRARY_PATHS:
+        return library
+
+    path = Path(library)
+    if not path.is_dir():
+        return library
+
+    skip_dirs = {".venv", "__pycache__", ".pytest_cache", ".git"}
+    skip_suffixes = {".egg-info"}
+
+    digest = hashlib.sha256()
+    for file_path in sorted(path.rglob("*")):
+        if file_path.is_symlink() or not file_path.is_file():
+            continue
+        if any(part in skip_dirs for part in file_path.parts):
+            continue
+        if any(part.endswith(s) for part in file_path.parts for s in skip_suffixes):
+            continue
+        relative = file_path.relative_to(path).as_posix()
+        try:
+            content = file_path.read_bytes()
+        except OSError as exc:
+            logger.warning(
+                "Skipping unreadable file {} while fingerprinting library: {}", file_path, exc
+            )
+            continue
+        digest.update(relative.encode("utf-8"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def _calculate_libraries_hash(libraries: list[str]) -> str:
+    """Calculate a hash of the libraries list, content-aware for local paths.
+
+    Fingerprints each library (content hash for local paths, pass-through for pip specs),
+    then hashes the sorted JSON representation of all fingerprints.
+    """
+    fingerprints = [_fingerprint_library(lib) for lib in libraries]
+    libraries_str = json.dumps(fingerprints, sort_keys=True)
+    return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
 
 
 def _privilege_drop_kwargs() -> dict[str, object]:
@@ -128,26 +202,21 @@ class DummyHandler(AbstractHandler):
 
 class CreateVenvHandler(AbstractHandler):
     def calculate_hash(self, libraries: list[str]) -> str:
-        """Calculate a hash of the libraries list."""
-        libraries_str = json.dumps(libraries, sort_keys=True)
-        return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+        """Calculate a hash of the libraries list, content-aware for local paths."""
+        return _calculate_libraries_hash(libraries)
 
     async def handle(self, context: dict[str, Any]) -> Any:
         """Create virtual environment task."""
 
         context["libraries"] = set(context["libraries"])
         # Install libraries
-        predefined_libraries = {
-            "/app/src/shared/dotdict",
-            "/app/src/shared/epicstaff_secrets",
-            "/app/src/shared/epicstaff_common",
-        }  # TODO: deal with hard coded path
+        predefined_libraries = set(_BASE_PREDEFINED_LIBRARIES)
         if context.get("use_storage"):
-            predefined_libraries.add("/app/src/shared/epicstaff_storage")
+            predefined_libraries.add(_STORAGE_PREDEFINED_LIBRARY)
         context["libraries"].update(predefined_libraries)
 
         context["libraries"] = sorted(context["libraries"])
-        lib_hash = self.calculate_hash(context["libraries"])
+        lib_hash = await asyncio.to_thread(self.calculate_hash, context["libraries"])
         base_venv_path = context.get("base_venv_path")
         venv_path: Path = Path(base_venv_path) / Path(lib_hash)
         python_executable = (
@@ -179,9 +248,8 @@ class CreateVenvHandler(AbstractHandler):
 
 class InstallLibrariesHandler(AbstractHandler):
     def calculate_hash(self, libraries: list[str]) -> str:
-        """Calculate a hash of the libraries list."""
-        libraries_str = json.dumps(libraries, sort_keys=True)
-        return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+        """Calculate a hash of the libraries list, content-aware for local paths."""
+        return _calculate_libraries_hash(libraries)
 
     def _hash_changed(self, lib_hash: str, hash_file: Path) -> bool:
         """Check if the hash of the libraries has changed."""
@@ -272,6 +340,20 @@ class InstallLibrariesHandler(AbstractHandler):
                     )
 
             # Install libraries
+            #
+            # Deliberately NOT passing _privilege_drop_kwargs() here, unlike the
+            # code-execution subprocess below -- pip for a caller-supplied specifier
+            # (which can run setup.py/PEP 517 build code at install time) runs as this
+            # container's own user, not sandboxuser. Accepted risk (Igor Polishchuk /
+            # Volodymyr Panchyshyn, 2026-09-07/08): the install subprocess gets the same
+            # curated, minimal env as user code (build_base_env -- no os.environ
+            # inheritance, no credentials), the container has cap_drop: ALL and
+            # no-new-privileges, and no Docker socket is mounted, so install-time root
+            # has no path off this container and no secret to reach. This is a real,
+            # accepted asymmetry with the code-execution path below, not an oversight
+            # left uncommented -- don't "fix" it by adding drop_kwargs without checking
+            # whether pip still needs root for its own reasons (writing into root-owned
+            # venv directories) first.
             for library in context["libraries"]:
                 logger.info(f"Installing {library}...")
                 process = await asyncio.create_subprocess_exec(
@@ -483,6 +565,35 @@ except Exception:
                 REQUIRE_ISOLATION_ENV_VAR,
             )
 
+        signal_isolation_policy = decide_signal_isolation_policy(
+            landlock_abi=isolation_abi,
+            require_signal_isolation=settings.REQUIRE_SIGNAL_ISOLATION,
+        )
+        if signal_isolation_policy is SignalIsolationPolicy.REFUSE:
+            logger.error(
+                "Sandbox signal isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
+                isolation_abi,
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=(
+                    "Sandbox signal isolation unavailable: executions require Landlock ABI 6+ "
+                    "(Linux 6.12+) to stop them signalling each other; refusing to execute. "
+                    f"Set {settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR}=false to run without it."
+                ),
+                stdout="",
+                returncode=1,
+            )
+        if signal_isolation_policy is SignalIsolationPolicy.UNISOLATED:
+            logger.warning(
+                "Sandbox signal isolation unavailable (Landlock ABI {} < 6); executing {} "
+                "UNISOLATED because {}=false: it can signal other executions.",
+                isolation_abi,
+                context["execution_id"],
+                settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR,
+            )
+
         network_decision = decide_network_policy(
             block_network=settings.BLOCK_NETWORK,
             use_storage=bool(context.get("use_storage")),
@@ -539,7 +650,14 @@ except Exception:
                 network = {"mode": "allow_ports", "ports": list(network_decision.allowed_tcp_ports)}
             else:
                 network = {"mode": "unrestricted"}
-            plan = {"jail": jail, "network": network}
+            # Signal isolation is part of the Landlock ruleset, so it can only be
+            # enforced when a jail is built; ENFORCE implies ABI >= 6, which
+            # implies the jail branch above ran.
+            plan = {
+                "jail": jail,
+                "network": network,
+                "isolate_signals": signal_isolation_policy is SignalIsolationPolicy.ENFORCE,
+            }
             argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
         process = await asyncio.create_subprocess_exec(

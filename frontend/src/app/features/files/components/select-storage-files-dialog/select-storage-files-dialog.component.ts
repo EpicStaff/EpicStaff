@@ -10,8 +10,10 @@ import {
     DragDropAreaComponent,
     Spinner2Component,
 } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, filter, forkJoin, map, merge, of, switchMap, tap } from 'rxjs';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { GraphFileRecord, StorageTreeNode } from '../../models/storage.models';
@@ -69,6 +71,13 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissionsService = inject(PermissionsService);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+
+    readonly canCreateFiles = computed(() => this.permissionsService.can(ResourceCode.Files, ActionCode.Create));
+    readonly canUpdateFlows = computed(() => this.permissionsService.can(ResourceCode.Flows, ActionCode.Update));
 
     readonly flowId = this.data.flowId;
     readonly flowName = this.data.flowName;
@@ -173,6 +182,11 @@ export class SelectStorageFilesDialogComponent implements OnInit {
         node.isExpanded = !node.isExpanded;
         this.rootNodes.update((n) => [...n]);
         this.rebuildAllNodes();
+    }
+
+    onItemClick(node: TreeNode): void {
+        if (!this.canUpdateFlows()) return;
+        this.toggleCheck(node);
     }
 
     toggleCheck(node: TreeNode): void {

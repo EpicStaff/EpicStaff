@@ -1,5 +1,6 @@
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
@@ -70,12 +71,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         # Served by storage_upload_stream_view (raw ASGI); overwrites also need UPDATE there.
         "upload_stream": Permission.CREATE,
         "mkdir": Permission.CREATE,
-        "add_to_graph": Permission.CREATE,
+        "add_to_graph": Permission.READ,
         "rename": Permission.UPDATE,
         "move": Permission.UPDATE,
         "copy": Permission.UPDATE,
         "delete_file": Permission.DELETE,
-        "remove_from_graph": Permission.DELETE,
+        "remove_from_graph": Permission.READ,
     }
 
     def __init__(self, **kwargs):
@@ -287,6 +288,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["post"], url_path="add-to-graph")
     def add_to_graph(self, request):
         org_id = self.get_active_org_id()
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.UPDATE)
         serializer = StorageAddToGraphSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         paths = serializer.validated_data["paths"]
@@ -328,6 +330,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["delete"], url_path="remove-from-graph")
     def remove_from_graph(self, request):
         org_id = self.get_active_org_id()
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.UPDATE)
         serializer = StorageRemoveFromGraphSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         paths = serializer.validated_data["paths"]

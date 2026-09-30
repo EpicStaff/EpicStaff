@@ -3,27 +3,27 @@
     background-color: transparent !important;
 
     .segment-key {
-        color: #e83e8c !important;
+        color: var(--color-json-key) !important;
     }
 
     .segment-value {
-        color: #17a2b8 !important;
+        color: var(--color-json-value) !important;
     }
 
     .segment-type-string .segment-value {
-        color: #28a745 !important;
+        color: var(--color-json-string) !important;
     }
 
     .segment-type-number .segment-value {
-        color: #fd7e14 !important;
+        color: var(--color-json-number) !important;
     }
 
     .segment-type-boolean .segment-value {
-        color: #9370db !important;
+        color: var(--color-json-boolean) !important;
     }
 
     .segment-type-null .segment-value {
-        color: #6c757d !important;
+        color: var(--color-json-null) !important;
         background-color: transparent !important;
     }
 }

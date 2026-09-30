@@ -13,6 +13,7 @@ from tables.views.flow_assistant_views import (
     FlowAssistantSendMessageView,
     FlowAssistantStreamView,
 )
+from tables.views.key_value_runtime_views import KeyValueRuntimeAPIView
 from tables.views.knowledge_views.collection_management_views import (
     SourceCollectionViewSet,
 )
@@ -60,6 +61,8 @@ from tables.views.model_view_sets import (
     GraphSessionMessageReadOnlyViewSet,
     GraphVersionViewSet,
     GraphViewSet,
+    KeyValueTableEntryViewSet,
+    KeyValueTableViewSet,
     KnowledgeNodeViewSet,
     LabelViewSet,
     LLMConfigReadWriteViewSet,
@@ -180,6 +183,10 @@ router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 router.register(r"labels", LabelViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
+router.register(r"key-value-tables", KeyValueTableViewSet, basename="key-value-tables")
+router.register(
+    r"key-value-table-entries", KeyValueTableEntryViewSet, basename="key-value-table-entries"
+)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 urlpatterns = [
@@ -212,6 +219,15 @@ urlpatterns = [
         InitRealtimeAPIView.as_view(),
         name="init-realtime",
     ),
+    *[
+        path(
+            f"internal/sessions/<int:session_id>/key-value-tables/<int:table_id>/{operation}/",
+            KeyValueRuntimeAPIView.as_view(),
+            {"operation": operation},
+            name=f"key-value-runtime-{operation}",
+        )
+        for operation in ("read", "write", "delete")
+    ],
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
     path("quickstart/", QuickstartView.as_view(), name="quickstart"),

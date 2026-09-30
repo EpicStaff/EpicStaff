@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, Input, OnChanges } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, input, OnChanges } from '@angular/core';
 
 interface Segment {
-    key: string;
+    // null for a root scalar drawn without its `(type)` key (showScalarType = false).
+    key: string | null;
     value: unknown;
     type: SegmentType;
     description: string;
@@ -36,8 +37,10 @@ type SegmentType =
                         @if (isExpandable(segment)) {
                             <div class="toggler"></div>
                         }
-                        <span class="segment-key">{{ segment.key }}</span>
-                        <span class="segment-separator">: </span>
+                        @if (segment.key !== null) {
+                            <span class="segment-key">{{ segment.key }}</span>
+                            <span class="segment-separator">: </span>
+                        }
                         @if (!segment.expanded || !isExpandable(segment)) {
                             <span class="segment-value">{{ segment.description }}</span>
                         }
@@ -118,6 +121,8 @@ type SegmentType =
 export class JsonViewerComponent implements OnChanges {
     @Input() public json: unknown;
     @Input() public expanded = true;
+    // false draws a root scalar as just its value, the way an object's values look.
+    public readonly showScalarType = input(true);
 
     public segments: Segment[] = [];
 
@@ -126,7 +131,7 @@ export class JsonViewerComponent implements OnChanges {
         this.segments =
             typeof value === 'object' && value !== null
                 ? Object.keys(value).map((key) => this.parseKeyValue(key, (value as Record<string, unknown>)[key]))
-                : [this.parseKeyValue(`(${typeof value})`, value)];
+                : [this.parseKeyValue(this.showScalarType() ? `(${typeof value})` : null, value)];
     }
 
     public isExpandable(segment: Segment): boolean {
@@ -139,7 +144,7 @@ export class JsonViewerComponent implements OnChanges {
         }
     }
 
-    private parseKeyValue(key: string, value: unknown): Segment {
+    private parseKeyValue(key: string | null, value: unknown): Segment {
         const segment: Segment = {
             key,
             value,

@@ -6,6 +6,7 @@ import {
     EventEmitter,
     forwardRef,
     Input,
+    input,
     Output,
     signal,
     ViewChild,
@@ -37,47 +38,55 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
                 </div>
             }
-            <div class="input-wrapper">
-                <input
-                    #inputEl
-                    [type]="effectiveType"
-                    [id]="id"
-                    [name]="name"
-                    [attr.autocomplete]="effectiveAutocomplete"
-                    [attr.spellcheck]="spellcheck"
-                    [placeholder]="placeholder"
-                    [(ngModel)]="value"
-                    (focus)="focused.set(true)"
-                    (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
-                    class="text-input"
-                    [class.has-toggle]="hasToggle"
-                    [class.masked]="isMasked"
-                    [class.error]="errorMessage"
-                    [disabled]="isDisabled"
-                    [style.--active-color]="activeColor"
-                />
-                @if (hasToggle) {
-                    <button
-                        type="button"
-                        class="toggle-visibility"
-                        [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
-                        matTooltipPosition="above"
-                        (click)="togglePasswordVisibility()"
-                        tabindex="-1"
-                    >
-                        <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
-                    </button>
+            @if (readonly()) {
+                <span
+                    class="readonly-value"
+                    [class.readonly-value--empty]="isReadonlyEmpty"
+                    >{{ readonlyDisplayValue }}</span
+                >
+            } @else {
+                <div class="input-wrapper">
+                    <input
+                        #inputEl
+                        [type]="effectiveType"
+                        [id]="id"
+                        [name]="name"
+                        [attr.autocomplete]="effectiveAutocomplete"
+                        [attr.spellcheck]="spellcheck"
+                        [placeholder]="placeholder"
+                        [(ngModel)]="value"
+                        (focus)="focused.set(true)"
+                        (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
+                        class="text-input"
+                        [class.has-toggle]="hasToggle"
+                        [class.masked]="isMasked"
+                        [class.error]="errorMessage"
+                        [disabled]="isDisabled"
+                        [style.--active-color]="activeColor"
+                    />
+                    @if (hasToggle) {
+                        <button
+                            type="button"
+                            class="toggle-visibility"
+                            [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
+                            matTooltipPosition="above"
+                            (click)="togglePasswordVisibility()"
+                            tabindex="-1"
+                        >
+                            <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
+                        </button>
+                    }
+                </div>
+                @if (errorMessage) {
+                    <div class="error-message">
+                        {{ errorMessage }}
+                    </div>
                 }
-            </div>
-            @if (errorMessage) {
-                <div class="error-message">
-                    {{ errorMessage }}
-                </div>
-            }
-            @if (isSecret && focused() && cautionMessage) {
-                <div class="caution-message">
-                    {{ cautionMessage }}
-                </div>
+                @if (isSecret && focused() && cautionMessage) {
+                    <div class="caution-message">
+                        {{ cautionMessage }}
+                    </div>
+                }
             }
         </div>
     `,
@@ -186,6 +195,17 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     font-size: 0.75rem;
                     color: #ffffffb3;
                 }
+
+                .readonly-value {
+                    color: var(--color-text-primary);
+                    font-size: 0.875rem;
+                    word-break: break-word;
+                    white-space: pre-wrap;
+
+                    &--empty {
+                        color: var(--color-text-secondary);
+                    }
+                }
             }
         `,
     ],
@@ -215,6 +235,8 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
     @Input() cautionMessage: string = '';
+    readonly = input<boolean>(false);
+    readonlyEmptyPlaceholder = input<string>('—');
 
     @Output() blur = new EventEmitter<void>();
 
@@ -282,6 +304,20 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     get isClassIcon(): boolean {
         return !!this.icon && this.icon.trim().includes(' ');
+    }
+
+    get isReadonlyEmpty(): boolean {
+        if (this.isSecret || this.isPassword) {
+            return !this._value;
+        }
+        return !this._value?.length;
+    }
+
+    get readonlyDisplayValue(): string {
+        if (this.isSecret || this.isPassword) {
+            return this._value ? '••••••••' : this.readonlyEmptyPlaceholder();
+        }
+        return this._value?.length ? this._value : this.readonlyEmptyPlaceholder();
     }
 
     togglePasswordVisibility(): void {

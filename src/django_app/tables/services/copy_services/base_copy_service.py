@@ -16,4 +16,10 @@ class BaseCopyService(ABC):
         entity: models.Model,
         name: str | None = None,
         org_id: int | None = None,
-    ) -> models.Model: ...
+        user=None,
+    ) -> models.Model:
+        """Duplicate `entity` and return the new row.
+
+        `user` is the acting user; services that re-bind permission-gated references
+        check it, the rest ignore it.
+        """
