@@ -114,6 +114,7 @@
         >
             @if (canRevokeRow(row)) {
                 <app-stop-button
+                    variant="pause"
                     tooltip="Revoke key"
                     (triggered)="onRevokeKey(row)"
                 />

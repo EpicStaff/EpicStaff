@@ -38,6 +38,7 @@ import { ImportExportService } from '../../../../core/services/import-export.ser
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import {
     ClassificationDecisionTableData,
@@ -72,6 +73,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         HasPermissionDirective,
+        IfFlowEditableDirective,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -113,16 +115,23 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
-    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
+    public readonly canEditSecrets = computed(
+        () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
+    );
     public readonly preSecretsTooltip = computed(() =>
         this.canEditSecrets()
             ? "Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-            : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
+            : this.isReadOnly()
+              ? 'Secrets assigned to this pre-computation code.'
+              : "Secrets already assigned to this pre-computation code. You don't have permission to change which secrets are selected."
     );
     public readonly postSecretsTooltip = computed(() =>
         this.canEditSecrets()
             ? "Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-            : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
+            : this.isReadOnly()
+              ? 'Secrets assigned to this post-computation code.'
+              : "Secrets already assigned to this post-computation code. You don't have permission to change which secrets are selected."
     );
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);

@@ -18,4 +18,5 @@ export const NODE_TYPE_PREFIXES: Record<NodeType, string> = {
     [NodeType.SUBGRAPH]: 'Flow-Node',
     [NodeType.SCHEDULE_TRIGGER]: 'Schedule Trigger',
     [NodeType.KNOWLEDGE_RETRIEVER]: 'Knowledge Retriever',
+    [NodeType.KEY_VALUE]: 'Key-Value',
 };

@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import Mock
 from dotdict import DotDict
+from clients.key_value import KeyValueClient
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.graph_session_manager_service import (
@@ -16,6 +17,7 @@ from src.shared.models import (
     ConditionGroupData,
     LLMConfigData,
     LLMData,
+    KeyValueNodeData,
     PythonCodeData,
     SessionData,
     GraphData,
@@ -72,6 +74,7 @@ def mock_services():
         "python_code_executor_service": FakePythonCodeExecutorService(),
         "knowledge_search_service": Mock(spec=KnowledgeSearchService),
         "agent_task_service": Mock(spec=AgentTaskService),
+        "key_value_client": Mock(spec=KeyValueClient),
     }
 
 
@@ -363,3 +366,42 @@ def test_compile_from_schema_with_agent_node_raises_without_service(
 
     with pytest.raises(RuntimeError):
         builder.compile_from_schema(_agent_node_session_data(mock_llm_data))
+
+
+def _key_value_node_data() -> KeyValueNodeData:
+    return KeyValueNodeData(
+        node_name="persist_1",
+        key_value_table_id=3,
+        mode="read",
+        entries=[{"key": "k", "value": "variables.out"}],
+        input_map={},
+        # Saved by older node data; the builder must not hand it to the node.
+        output_variable_path="variables.stale",
+    )
+
+
+def test_compile_registers_key_value_node(mock_services, mock_session_data):
+    mock_session_data.graph.key_value_node_list = [_key_value_node_data()]
+    builder = SessionGraphBuilder(
+        session_id=mock_session_data.id,
+        redis_service=mock_services["redis_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+        key_value_client=mock_services["key_value_client"],
+    )
+    compiled_graph = builder.compile_from_schema(mock_session_data)
+    assert "persist_1" in compiled_graph.get_graph().nodes
+
+
+def test_compile_without_key_value_client_raises(mock_services, mock_session_data):
+    mock_session_data.graph.key_value_node_list = [_key_value_node_data()]
+    builder = SessionGraphBuilder(
+        session_id=mock_session_data.id,
+        redis_service=mock_services["redis_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+    )
+    with pytest.raises(RuntimeError, match="key_value_client"):
+        builder.compile_from_schema(mock_session_data)

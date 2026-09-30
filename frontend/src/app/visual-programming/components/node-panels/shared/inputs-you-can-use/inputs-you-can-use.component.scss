@@ -1,3 +1,5 @@
+@use '../../../../styles/node-panel-controls.scss' as controls;
+
 .inputs-list-section {
     display: flex;
     flex-direction: column;
@@ -58,6 +60,5 @@
 }
 
 .inputs-chip-empty {
-    font-size: 0.75rem;
-    color: var(--fog-alpha-60);
+    @include controls.hint-text;
 }

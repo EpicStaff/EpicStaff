@@ -262,7 +262,7 @@
                                 <app-help-tooltip text="Define reusable prompts referenced in decision table rules." />
                             </span>
                             <button
-                                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                *appIfFlowEditable
                                 type="button"
                                 class="add-prompt-header-btn"
                                 (click)="addPrompt()"
@@ -300,7 +300,7 @@
                                                 }
                                             </div>
                                             <div
-                                                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                                                *appIfFlowEditable
                                                 class="prompt-card-actions"
                                             >
                                                 <button

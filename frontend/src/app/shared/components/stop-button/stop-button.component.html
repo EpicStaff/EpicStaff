@@ -1,12 +1,18 @@
 <button
     type="button"
     class="stop-btn"
+    [class.stop-btn--pause]="variant() === 'pause'"
     [disabled]="disabled()"
+    [attr.aria-label]="tooltip()"
     [matTooltip]="tooltip()"
     (click)="triggered.emit()"
 >
-    <app-svg-icon
-        icon="pause"
-        size="18px"
-    />
+    @if (variant() === 'pause') {
+        <app-svg-icon
+            icon="pause"
+            size="18px"
+        />
+    } @else {
+        <span class="stop-btn__square"></span>
+    }
 </button>

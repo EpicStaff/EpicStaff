@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
@@ -104,27 +106,41 @@ def webhook_trigger_node_post_delete_handler(sender, instance: WebhookTriggerNod
     _cleanup_orphaned_webhook_node_auth(instance.webhook_trigger_id)
 
 
-def _cleanup_orphaned_auth_if_unclaimed(
-    trigger_id: int | None, kind: str, still_claimed: bool
+def cleanup_orphaned_auth_if_unclaimed(
+    trigger_id: int | None, kind: str, is_claimed: Callable[[], bool]
 ) -> None:
-    if trigger_id is None or still_claimed:
+    """Delete the trigger's `kind` auth after commit unless something claims the trigger.
+
+    Deferred to commit, and the claim re-checked then, so a delete + recreate in one
+    transaction (version restore, import replace) keeps the credentials the
+    recreated node re-attaches to. A rolled-back transaction deletes nothing.
+    """
+    if trigger_id is None:
         return
-    WebhookTriggerAuth.objects.filter(trigger_id=trigger_id, kind=kind).delete()
+
+    def delete_if_unclaimed() -> None:
+        if not is_claimed():
+            WebhookTriggerAuth.objects.filter(trigger_id=trigger_id, kind=kind).delete()
+
+    # robust: a failed cleanup must not turn an already-committed request into a 500.
+    transaction.on_commit(delete_if_unclaimed, robust=True)
 
 
 def _cleanup_orphaned_twilio_auth(trigger_id: int | None) -> None:
-    _cleanup_orphaned_auth_if_unclaimed(
+    cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.TWILIO,
-        still_claimed=TwilioChannel.objects.filter(webhook_trigger_id=trigger_id).exists(),
+        is_claimed=lambda: TwilioChannel.objects.filter(webhook_trigger_id=trigger_id).exists(),
     )
 
 
 def _cleanup_orphaned_webhook_node_auth(trigger_id: int | None) -> None:
-    _cleanup_orphaned_auth_if_unclaimed(
+    cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.WEBHOOK,
-        still_claimed=WebhookTriggerNode.objects.filter(webhook_trigger_id=trigger_id).exists(),
+        is_claimed=lambda: WebhookTriggerNode.objects.filter(
+            webhook_trigger_id=trigger_id
+        ).exists(),
     )
 
 

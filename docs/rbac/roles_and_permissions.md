@@ -102,7 +102,9 @@ of caller and org. Cache-friendly.
     { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "delete", "use"] },
-    { "code": "voice",             "label": "Voice",               "group": "config",    "description": "Voice model configurations and settings",        "applicable_actions": ["create", "read", "update", "delete"] }
+    { "code": "voice",             "label": "Voice",               "group": "config",    "description": "Voice model configurations and settings",        "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "webhooks",          "label": "Webhooks",            "group": "config",    "description": "Webhook trigger ingress routes and their auth configuration", "applicable_actions": ["create", "read", "update", "delete"], "platform_actions": [] },
+    { "code": "key_value_tables",  "label": "Key-Value Tables",    "group": "workspace", "description": "Key-value tables that flows read and write across runs", "applicable_actions": ["create", "read", "update", "delete"], "platform_actions": [] }
   ]
 }
 ```

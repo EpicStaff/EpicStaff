@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, Inject, OnDestroy, OnInit } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { Subscription } from 'rxjs';
 
 export interface SaveVersionDialogResult {
@@ -18,7 +19,7 @@ export interface SaveVersionDialogResult {
 })
 export class SaveVersionDialogComponent implements OnInit, OnDestroy {
     public form = new FormGroup({
-        name: new FormControl('', [Validators.required, Validators.maxLength(255)]),
+        name: new FormControl('', [Validators.required, notWhitespaceValidator(), Validators.maxLength(255)]),
         description: new FormControl(''),
     });
 

@@ -15,6 +15,7 @@ from src.shared.models import (
     EndNodeData,
     FileExtractorNodeData,
     GraphRagSearchConfig,
+    KeyValueNodeData,
     KnowledgeNodeData,
     LLMConfigData,
     LLMData,
@@ -50,6 +51,7 @@ from tables.models.graph_models import (
     FileExtractorNode,
     Graph,
     GraphStorageFile,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
@@ -798,6 +800,20 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+        )
+
+    def convert_key_value_node_to_pydantic(
+        self,
+        key_value_node: KeyValueNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> KeyValueNodeData:
+        return KeyValueNodeData(
+            node_name=resolver(key_value_node.id),
+            key_value_table_id=key_value_node.key_value_table_id,
+            mode=key_value_node.mode,
+            entries=key_value_node.entries,
+            input_map=key_value_node.input_map,
+            output_variable_path=key_value_node.output_variable_path,
         )
 
     def convert_audio_transcription_node_to_pydantic(
