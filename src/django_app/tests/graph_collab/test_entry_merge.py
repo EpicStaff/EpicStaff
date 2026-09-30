@@ -31,12 +31,12 @@ def test_list_value_is_replaced_whole_not_merged():
 
 
 def test_scalar_overlay_wins():
-    base = {"node_name": "old name", "crew_id": 5}
+    base = {"node_name": "old name", "subgraph": 5}
     overlay = {"node_name": "new name"}
 
     result = deep_merge(base, overlay)
 
-    assert result == {"node_name": "new name", "crew_id": 5}
+    assert result == {"node_name": "new name", "subgraph": 5}
 
 
 def test_none_overlay_value_wins_over_existing_scalar():
@@ -49,15 +49,15 @@ def test_none_overlay_value_wins_over_existing_scalar():
 
 
 def test_absent_keys_in_overlay_are_preserved():
-    base = {"id": 1, "crew_id": 5, "node_name": "Crew #1", "metadata": {"x": 1}}
-    overlay = {"node_name": "Crew #1 renamed"}
+    base = {"id": 1, "subgraph": 5, "node_name": "Subgraph #1", "metadata": {"x": 1}}
+    overlay = {"node_name": "Subgraph #1 renamed"}
 
     result = deep_merge(base, overlay)
 
     assert result["id"] == 1
-    assert result["crew_id"] == 5
+    assert result["subgraph"] == 5
     assert result["metadata"] == {"x": 1}
-    assert result["node_name"] == "Crew #1 renamed"
+    assert result["node_name"] == "Subgraph #1 renamed"
 
 
 def test_dict_vs_non_dict_type_mismatch_overlay_replaces_whole():
@@ -197,12 +197,12 @@ def test_merge_entry_does_not_mutate_inputs_and_returns_new_dict():
 
 
 def test_merge_entry_absent_keys_preserved():
-    base = {"id": 1, "crew_id": 5, "node_name": "Crew #1"}
+    base = {"id": 1, "subgraph": 5, "node_name": "Subgraph #1"}
     overlay = {"node_name": "Renamed"}
 
     result = merge_entry(base, overlay)
 
-    assert result == {"id": 1, "crew_id": 5, "node_name": "Renamed"}
+    assert result == {"id": 1, "subgraph": 5, "node_name": "Renamed"}
 
 
 # ---------------------------------------------------------------------------

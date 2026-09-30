@@ -42,7 +42,7 @@ def _partial_update(
 
 
 @pytest.mark.asyncio
-async def test_metadata_only_partial_update_preserves_crew_id(
+async def test_metadata_only_partial_update_preserves_subgraph(
     live_state_service, base_snapshot, editor
 ):
     """FE always sends the whole nested `metadata` dict as one changed field
@@ -53,11 +53,11 @@ async def test_metadata_only_partial_update_preserves_crew_id(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[
+            subgraph_node_list=[
                 {
                     "id": 5,
-                    "crew_id": 7,
-                    "node_name": "Crew #1",
+                    "subgraph": 7,
+                    "node_name": "Subgraph #1",
                     "metadata": {"position": {"x": 0, "y": 0}},
                 }
             ]
@@ -66,16 +66,16 @@ async def test_metadata_only_partial_update_preserves_crew_id(
 
     msg = _partial_update(
         node={"id": 5, "metadata": {"position": {"x": 100, "y": 200}}},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["metadata"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
-    assert entry["crew_id"] == 7
-    assert entry["node_name"] == "Crew #1"
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
+    assert entry["subgraph"] == 7
+    assert entry["node_name"] == "Subgraph #1"
     assert entry["metadata"]["position"] == {"x": 100, "y": 200}
 
 
@@ -126,10 +126,10 @@ async def test_input_map_key_deletion_propagates_through_apply_op(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[
+            subgraph_node_list=[
                 {
                     "id": 20,
-                    "node_name": "Crew #1",
+                    "node_name": "Subgraph #1",
                     "input_map": {"a": "1", "b": "2"},
                 }
             ]
@@ -138,14 +138,14 @@ async def test_input_map_key_deletion_propagates_through_apply_op(
 
     msg = _partial_update(
         node={"id": 20, "input_map": {"a": "1"}},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["input_map"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["input_map"] == {"a": "1"}
     assert "b" not in entry["input_map"]
 
@@ -157,10 +157,10 @@ async def test_metadata_partial_preserves_node_number_set_by_another_op(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[
+            subgraph_node_list=[
                 {
                     "id": 5,
-                    "node_name": "Crew #1",
+                    "node_name": "Subgraph #1",
                     "metadata": {
                         "position": {"x": 0, "y": 0},
                         "nodeNumber": 7,
@@ -173,14 +173,14 @@ async def test_metadata_partial_preserves_node_number_set_by_another_op(
 
     msg = _partial_update(
         node={"id": 5, "metadata": {"position": {"x": 50, "y": 60}}},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["metadata"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["metadata"]["position"] == {"x": 50, "y": 60}
     assert entry["metadata"]["nodeNumber"] == 7
     assert entry["metadata"]["color"] == "#123"
@@ -459,7 +459,7 @@ async def test_mask_name_absent_from_node_is_ignored_and_undeclared_keys_dropped
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[{"id": 5, "crew_id": 7, "node_name": "Old Name"}]
+            subgraph_node_list=[{"id": 5, "subgraph": 7, "node_name": "Old Name"}]
         ),
     )
 
@@ -467,16 +467,16 @@ async def test_mask_name_absent_from_node_is_ignored_and_undeclared_keys_dropped
         # "ghost_field" is declared changed but absent from node -> ignored.
         # "extra_field" is present on node but NOT declared changed -> dropped.
         node={"id": 5, "node_name": "New Name", "extra_field": "should not survive"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["node_name", "ghost_field"],
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["node_name"] == "New Name"
-    assert entry["crew_id"] == 7
+    assert entry["subgraph"] == 7
     assert "extra_field" not in entry
     assert "ghost_field" not in entry
 
@@ -496,21 +496,21 @@ async def test_legacy_node_updated_without_changed_fields_upserts_and_resurrects
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[],
-            deleted={**empty_deleted(), "crew_node_ids": [42]},
+            subgraph_node_list=[],
+            deleted={**empty_deleted(), "subgraph_node_ids": [42]},
         ),
     )
 
     msg = NodeUpdatedMessage(
-        node={"id": 42, "crew_id": 9, "node_name": "Resurrected"},
-        list_key="crew_node_list",
+        node={"id": 42, "subgraph": 9, "node_name": "Resurrected"},
+        list_key="subgraph_node_list",
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
     snapshot = await live_state_service.get_snapshot(1)
-    assert len(snapshot["crew_node_list"]) == 1
-    assert snapshot["crew_node_list"][0]["id"] == 42
-    assert snapshot["crew_node_list"][0]["crew_id"] == 9
-    assert 42 not in snapshot["deleted"]["crew_node_ids"]
+    assert len(snapshot["subgraph_node_list"]) == 1
+    assert snapshot["subgraph_node_list"][0]["id"] == 42
+    assert snapshot["subgraph_node_list"][0]["subgraph"] == 9
+    assert 42 not in snapshot["deleted"]["subgraph_node_ids"]

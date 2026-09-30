@@ -51,13 +51,13 @@ async def test_cas_pass_applies(live_state_service, base_snapshot, editor):
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[{"id": 5, "crew_id": 7, "node_name": "Old Name"}]
+            subgraph_node_list=[{"id": 5, "subgraph": 7, "node_name": "Old Name"}]
         ),
     )
 
     msg = _partial_update(
         node={"id": 5, "node_name": "New Name"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["node_name"],
         expected={"node_name": "Old Name"},
         editor=editor,
@@ -65,7 +65,7 @@ async def test_cas_pass_applies(live_state_service, base_snapshot, editor):
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["node_name"] == "New Name"
 
 
@@ -81,14 +81,14 @@ async def test_cas_scalar_mismatch_rejects_without_mutating_snapshot(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[{"id": 5, "crew_id": 7, "node_name": "Current Name"}]
+            subgraph_node_list=[{"id": 5, "subgraph": 7, "node_name": "Current Name"}]
         ),
     )
     revision_before = live_state_service.current_revision(1)
 
     msg = _partial_update(
         node={"id": 5, "node_name": "New Name"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["node_name"],
         expected={"node_name": "Stale Name"},
         editor=editor,
@@ -100,7 +100,7 @@ async def test_cas_scalar_mismatch_rejects_without_mutating_snapshot(
     assert result.relay is False
     assert result.details == {"mismatched_fields": ["node_name"]}
 
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["node_name"] == "Current Name"
     assert live_state_service.current_revision(1) == revision_before
 
@@ -117,10 +117,10 @@ async def test_cas_position_mismatch_reports_wire_name_ignores_sibling_metadata(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[
+            subgraph_node_list=[
                 {
                     "id": 5,
-                    "node_name": "Crew #1",
+                    "node_name": "Subgraph #1",
                     "metadata": {
                         "position": {"x": 0, "y": 0},
                         "color": "#actual-color-differs-from-expected",
@@ -133,7 +133,7 @@ async def test_cas_position_mismatch_reports_wire_name_ignores_sibling_metadata(
 
     msg = _partial_update(
         node={"id": 5, "position": {"x": 100, "y": 200}},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["position"],
         expected={"position": {"x": 999, "y": 999}},
         editor=editor,
@@ -144,7 +144,7 @@ async def test_cas_position_mismatch_reports_wire_name_ignores_sibling_metadata(
     assert result.reason == "precondition_failed"
     assert result.details == {"mismatched_fields": ["position"]}
 
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["metadata"]["position"] == {"x": 0, "y": 0}
 
 
@@ -164,13 +164,13 @@ async def test_cas_validates_declared_field_absent_from_node_payload(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[{"id": 5, "crew_id": 7, "node_name": "Current Name"}]
+            subgraph_node_list=[{"id": 5, "subgraph": 7, "node_name": "Current Name"}]
         ),
     )
 
     msg = _partial_update(
         node={"id": 5},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["node_name"],
         expected={"node_name": "stale"},
         editor=editor,
@@ -197,10 +197,10 @@ async def test_cas_non_dict_base_metadata_does_not_crash(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[
+            subgraph_node_list=[
                 {
                     "id": 5,
-                    "node_name": "Crew #1",
+                    "node_name": "Subgraph #1",
                     "metadata": "not-a-dict-anymore",
                 }
             ]
@@ -209,7 +209,7 @@ async def test_cas_non_dict_base_metadata_does_not_crash(
 
     msg = _partial_update(
         node={"id": 5, "position": {"x": 100, "y": 200}},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["position"],
         expected={"position": {"x": 0, "y": 0}},
         editor=editor,
@@ -232,12 +232,12 @@ async def test_cas_missing_base_key_equals_expected_none_applies(
 ):
     await live_state_service.seed(
         1,
-        base_snapshot(crew_node_list=[{"id": 5, "node_name": "Crew #1"}]),
+        base_snapshot(subgraph_node_list=[{"id": 5, "node_name": "Subgraph #1"}]),
     )
 
     msg = _partial_update(
         node={"id": 5, "output_variable_path": "new.path"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["output_variable_path"],
         expected={"output_variable_path": None},
         editor=editor,
@@ -245,7 +245,7 @@ async def test_cas_missing_base_key_equals_expected_none_applies(
     result = await live_state_service.apply_op(1, msg)
 
     assert result == OpResult(OpStatus.APPLIED)
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["output_variable_path"] == "new.path"
 
 
@@ -261,10 +261,10 @@ async def test_cas_input_map_whole_value_mismatch_rejects(
     await live_state_service.seed(
         1,
         base_snapshot(
-            crew_node_list=[
+            subgraph_node_list=[
                 {
                     "id": 5,
-                    "node_name": "Crew #1",
+                    "node_name": "Subgraph #1",
                     "input_map": {"a": "1", "b": "2"},
                 }
             ]
@@ -273,7 +273,7 @@ async def test_cas_input_map_whole_value_mismatch_rejects(
 
     msg = _partial_update(
         node={"id": 5, "input_map": {"a": "1"}},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         changed_fields=["input_map"],
         # Client believes the base has no "b" key — but the base does, so
         # the whole-value compare must reject the op.
@@ -286,7 +286,7 @@ async def test_cas_input_map_whole_value_mismatch_rejects(
     assert result.reason == "precondition_failed"
     assert result.details == {"mismatched_fields": ["input_map"]}
 
-    entry = (await live_state_service.get_snapshot(1))["crew_node_list"][0]
+    entry = (await live_state_service.get_snapshot(1))["subgraph_node_list"][0]
     assert entry["input_map"] == {"a": "1", "b": "2"}
 
 
@@ -299,7 +299,7 @@ def test_expected_requires_changed_fields(editor):
     with pytest.raises(ValidationError):
         NodeUpdatedMessage(
             node={"id": 1, "node_name": "X"},
-            list_key="crew_node_list",
+            list_key="subgraph_node_list",
             editor=editor,
             changed_fields=None,
             expected={"node_name": "Y"},
@@ -310,19 +310,19 @@ def test_expected_keys_must_be_subset_of_changed_fields(editor):
     with pytest.raises(ValidationError):
         NodeUpdatedMessage(
             node={"id": 1, "node_name": "X"},
-            list_key="crew_node_list",
+            list_key="subgraph_node_list",
             editor=editor,
             changed_fields=["node_name"],
-            expected={"node_name": "Y", "crew_id": 7},
+            expected={"node_name": "Y", "subgraph": 7},
         )
 
 
 def test_expected_subset_of_changed_fields_is_valid(editor):
     msg = NodeUpdatedMessage(
-        node={"id": 1, "node_name": "X", "crew_id": 8},
-        list_key="crew_node_list",
+        node={"id": 1, "node_name": "X", "subgraph": 8},
+        list_key="subgraph_node_list",
         editor=editor,
-        changed_fields=["node_name", "crew_id"],
+        changed_fields=["node_name", "subgraph"],
         expected={"node_name": "Y"},
     )
     assert msg.expected == {"node_name": "Y"}

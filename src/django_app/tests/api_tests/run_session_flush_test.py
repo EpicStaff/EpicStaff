@@ -17,6 +17,7 @@ from tables.graph_collab import graph_state_service as graph_state_service_modul
 from tables.graph_collab.flush_service import FlushOutcome, FlushStatus, flush_service
 from tables.models import Edge, Graph, PythonNode, Session, SessionWarningMessage, StartNode
 from tests.fixtures import *  # noqa: F401,F403
+from tests.graph_collab.conftest import _base_snapshot
 
 
 @pytest.fixture
@@ -68,48 +69,6 @@ def patch_graph_state_redis(fake_async_redis, monkeypatch):
         "_redis",
         property(lambda self: fake_async_redis),
     )
-
-
-def _base_snapshot(**overrides) -> dict:
-    """Minimal valid superset snapshot for flush tests."""
-    empty_deleted = {
-        "edge_ids": [],
-        "conditional_edge_ids": [],
-        "crew_node_ids": [],
-        "python_node_ids": [],
-        "file_extractor_node_ids": [],
-        "audio_transcription_node_ids": [],
-        "start_node_ids": [],
-        "end_node_ids": [],
-        "subgraph_node_ids": [],
-        "decision_table_node_ids": [],
-        "graph_note_ids": [],
-        "webhook_trigger_node_ids": [],
-        "telegram_trigger_node_ids": [],
-        "schedule_trigger_node_ids": [],
-        "code_agent_node_ids": [],
-    }
-    base = {
-        "save_version": 0,
-        "crew_node_list": [],
-        "python_node_list": [],
-        "file_extractor_node_list": [],
-        "audio_transcription_node_list": [],
-        "start_node_list": [],
-        "end_node_list": [],
-        "subgraph_node_list": [],
-        "decision_table_node_list": [],
-        "graph_note_list": [],
-        "webhook_trigger_node_list": [],
-        "telegram_trigger_node_list": [],
-        "schedule_trigger_node_list": [],
-        "code_agent_node_list": [],
-        "edge_list": [],
-        "conditional_edge_list": [],
-        "deleted": empty_deleted,
-    }
-    base.update(overrides)
-    return base
 
 
 @pytest.mark.django_db(transaction=True)

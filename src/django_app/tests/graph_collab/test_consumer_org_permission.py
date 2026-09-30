@@ -23,7 +23,7 @@ Live-session access changes:
 7. `change_role` downgrading a connected Member to Viewer (loses UPDATE,
    keeps READ) does NOT disconnect them — it downgrades them to read-only,
    verified by a subsequent write attempt being rejected.
-8. `remove_membership` on a connected user closes their socket with 4403
+8. `remove_member` on a connected user closes their socket with 4403
    (genuine zero access).
 9. `revoke_superadmin` on a user with live connections in two different
    orgs, both of which grant only the Viewer role, downgrades both
@@ -69,10 +69,9 @@ from tables.graph_collab import lock_service as _ls_module
 from tables.graph_collab.constants import CURSOR_FLUSH_INTERVAL_SECONDS
 from rbac.models import Organization, OrganizationUser, Role
 from tables.models import Graph
-from tables.services.rbac.organization_management_service import (
-    OrganizationManagementService,
-)
-from tables.services.rbac.user_management_service import UserManagementService
+from rbac.governance.memberships import MembershipManagementService
+from rbac.governance.organizations import OrganizationManagementService
+from rbac.governance.users import UserManagementService
 
 from tests.graph_collab.conftest import (
     _make_communicator,
@@ -88,6 +87,11 @@ async def _connect_raw(communicator, timeout: float = 1.0) -> dict:
     on a ``websocket.close`` response)."""
     await communicator.send_input({"type": "websocket.connect"})
     return await communicator.receive_output(timeout)
+
+
+@sync_to_async
+def _membership_id(user, org) -> int:
+    return OrganizationUser.objects.get(user=user, org=org).id
 
 
 async def _receive_close(communicator, timeout: float = 1.0) -> dict:
@@ -288,7 +292,7 @@ async def test_connect_superadmin_bypasses_org_membership(org_graph, superadmin_
 
 
 # ---------------------------------------------------------------------------
-# Live-session revocation: change_role / remove_membership / revoke_superadmin
+# Live-session revocation: change_role / remove_member / revoke_superadmin
 # must disconnect an already-open socket, not just block future connects.
 # ---------------------------------------------------------------------------
 
@@ -308,11 +312,10 @@ async def test_change_role_downgrade_stays_connected_read_only(
     assert connected
     await _drain_connect(communicator)
 
-    service = UserManagementService()
+    service = MembershipManagementService()
     await sync_to_async(service.change_role)(
         actor=superadmin_user,
-        org_id=default_org.id,
-        user_id=member_member.id,
+        membership_id=await _membership_id(member_member, default_org),
         role_id=viewer_role.id,
     )
 
@@ -353,11 +356,10 @@ async def test_change_role_preserving_update_does_not_disconnect(
     assert connected
     await _drain_connect(communicator)
 
-    service = UserManagementService()
+    service = MembershipManagementService()
     await sync_to_async(service.change_role)(
         actor=superadmin_user,
-        org_id=default_org.id,
-        user_id=regular_user.id,
+        membership_id=await _membership_id(regular_user, default_org),
         role_id=member_role.id,
     )
 
@@ -377,11 +379,10 @@ async def test_remove_membership_disconnects_live_session(
     assert connected
     await _drain_connect(communicator)
 
-    service = UserManagementService()
-    await sync_to_async(service.remove_membership)(
+    service = MembershipManagementService()
+    await sync_to_async(service.remove_member)(
         actor=superadmin_user,
-        org_id=default_org.id,
-        user_id=member_member.id,
+        membership_id=await _membership_id(member_member, default_org),
     )
 
     response = await _receive_close(communicator)
@@ -813,7 +814,7 @@ async def test_viewer_nodes_deleted_rejection_reports_node_ref_from_first_ref(
         {
             "type": "nodes_deleted",
             "refs": [
-                {"list_key": "crew_node_list", "temp_id": "n-ghost"},
+                {"list_key": "subgraph_node_list", "temp_id": "n-ghost"},
             ],
             "editor": editor_payload(viewer_member),
         }
@@ -920,11 +921,10 @@ async def test_downgraded_member_first_write_after_downgrade_is_rejected(
     )
     assert await communicator.receive_nothing(timeout=0.3)
 
-    service = UserManagementService()
+    service = MembershipManagementService()
     await sync_to_async(service.change_role)(
         actor=superadmin_user,
-        org_id=default_org.id,
-        user_id=member_member.id,
+        membership_id=await _membership_id(member_member, default_org),
         role_id=viewer_role.id,
     )
     rights_changed = await communicator.receive_json_from()
@@ -972,11 +972,10 @@ async def test_downgraded_connection_all_three_writes_are_rejected(
     assert connected
     await _drain_connect(communicator)
 
-    service = UserManagementService()
+    service = MembershipManagementService()
     await sync_to_async(service.change_role)(
         actor=superadmin_user,
-        org_id=default_org.id,
-        user_id=member_member.id,
+        membership_id=await _membership_id(member_member, default_org),
         role_id=viewer_role.id,
     )
     rights_changed = await communicator.receive_json_from()

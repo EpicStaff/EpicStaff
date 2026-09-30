@@ -61,7 +61,8 @@ _KNOWLEDGE_FACTORY = KnowledgeNodeSaveableFactory()
 class ExternalRefKind(StrEnum):
     """Shape of one outward reference on a node payload — see ExternalRefField."""
 
-    SCALAR = "scalar"  # top-level scalar FK, e.g. code_agent_node_list.llm_config
+    SCALAR = "scalar"  # top-level scalar FK, e.g.
+    # classification_decision_table_node_list.default_llm_config
     SCALAR_LIST = "scalar_list"  # top-level list of pks (M2M), e.g. surface_list
     NESTED_OBJECT = "nested_object"  # FK inside a top-level nested object, e.g.
     # subgraph_detail.id

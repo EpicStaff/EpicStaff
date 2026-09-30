@@ -29,7 +29,7 @@ async def test_first_connector_receives_graph_state_from_db(test_graph, test_use
     )
     # The snapshot must contain the canonical superset keys.
     assert "save_version" in msg["flow"]
-    assert "crew_node_list" in msg["flow"]
+    assert "subgraph_node_list" in msg["flow"]
     assert "edge_list" in msg["flow"]
     assert "deleted" in msg["flow"]
 

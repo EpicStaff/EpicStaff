@@ -36,7 +36,7 @@ pytestmark = pytest.mark.usefixtures("noop_content_hash_refresh")
 @pytest.mark.asyncio
 async def test_seed_and_get_round_trip(live_state_service, base_snapshot):
     flow = base_snapshot(
-        crew_node_list=[{"id": 1, "crew_id": 7, "node_name": "Crew #1"}]
+        subgraph_node_list=[{"id": 1, "subgraph": 7, "node_name": "Subgraph #1"}]
     )
     await live_state_service.seed(1, flow)
     result = await live_state_service.get_snapshot(1)
@@ -65,15 +65,15 @@ async def test_clear_removes_snapshot(live_state_service, base_snapshot):
 async def test_apply_node_created_adds_node(live_state_service, base_snapshot, editor):
     await live_state_service.seed(1, base_snapshot())
     msg = NodeCreatedMessage(
-        node={"temp_id": "n1", "node_name": "Crew #1", "crew_id": 7},
-        list_key="crew_node_list",
+        node={"temp_id": "n1", "node_name": "Subgraph #1", "subgraph": 7},
+        list_key="subgraph_node_list",
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
     snapshot = await live_state_service.get_snapshot(1)
 
-    assert snapshot["crew_node_list"] == [
-        {"temp_id": "n1", "node_name": "Crew #1", "crew_id": 7}
+    assert snapshot["subgraph_node_list"] == [
+        {"temp_id": "n1", "node_name": "Subgraph #1", "subgraph": 7}
     ]
 
 
@@ -83,17 +83,19 @@ async def test_apply_node_updated_replaces_node(
 ):
     await live_state_service.seed(
         1,
-        base_snapshot(crew_node_list=[{"id": 1, "crew_id": 7, "node_name": "old"}]),
+        base_snapshot(
+            subgraph_node_list=[{"id": 1, "subgraph": 7, "node_name": "old"}]
+        ),
     )
     msg = NodeUpdatedMessage(
-        node={"id": 1, "crew_id": 7, "node_name": "new"},
-        list_key="crew_node_list",
+        node={"id": 1, "subgraph": 7, "node_name": "new"},
+        list_key="subgraph_node_list",
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
     snapshot = await live_state_service.get_snapshot(1)
-    assert len(snapshot["crew_node_list"]) == 1
-    assert snapshot["crew_node_list"][0]["node_name"] == "new"
+    assert len(snapshot["subgraph_node_list"]) == 1
+    assert snapshot["subgraph_node_list"][0]["node_name"] == "new"
 
 
 @pytest.mark.asyncio
@@ -118,23 +120,23 @@ async def test_apply_nodes_deleted_removes_nodes(
 ):
     # _match_entry matches integer ids against integer ids. Use integer node ids.
     initial_nodes = [
-        {"id": 10, "crew_id": 1, "node_name": "Crew #1"},
-        {"id": 20, "crew_id": 2, "node_name": "Crew #2"},
-        {"id": 30, "crew_id": 3, "node_name": "Crew #3"},
+        {"id": 10, "subgraph": 1, "node_name": "Subgraph #1"},
+        {"id": 20, "subgraph": 2, "node_name": "Subgraph #2"},
+        {"id": 30, "subgraph": 3, "node_name": "Subgraph #3"},
     ]
-    await live_state_service.seed(1, base_snapshot(crew_node_list=initial_nodes))
+    await live_state_service.seed(1, base_snapshot(subgraph_node_list=initial_nodes))
     msg = NodesDeletedMessage(
         refs=[
-            EntryDeleteRef(list_key="crew_node_list", id=10),
-            EntryDeleteRef(list_key="crew_node_list", id=30),
+            EntryDeleteRef(list_key="subgraph_node_list", id=10),
+            EntryDeleteRef(list_key="subgraph_node_list", id=30),
         ],
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
     snapshot = await live_state_service.get_snapshot(1)
     # The full surviving entry is compared, proving it was left byte-identical.
-    assert snapshot["crew_node_list"] == [
-        {"id": 20, "crew_id": 2, "node_name": "Crew #2"}
+    assert snapshot["subgraph_node_list"] == [
+        {"id": 20, "subgraph": 2, "node_name": "Subgraph #2"}
     ]
 
 
@@ -149,10 +151,10 @@ async def test_apply_nodes_deleted_does_not_touch_connections(
     # deleted node survives untouched.
     edges = [{"id": 1, "start_node_id": 998, "end_node_id": 999}]
     await live_state_service.seed(
-        1, base_snapshot(crew_node_list=[{"id": 100}], edge_list=edges)
+        1, base_snapshot(subgraph_node_list=[{"id": 100}], edge_list=edges)
     )
     msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=100)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=100)],
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
@@ -174,7 +176,7 @@ async def test_apply_nodes_deleted_cascades_edges_referencing_deleted_node(
     (real refs — start_node_id/end_node_id/source_node_id) and queues their
     real ids for deletion, so the next flush removes the orphan rows too.
     """
-    flow = base_snapshot(crew_node_list=[{"id": 100}, {"id": 200}])
+    flow = base_snapshot(subgraph_node_list=[{"id": 100}, {"id": 200}])
     flow["edge_list"] = [
         {"id": 47, "start_node_id": 100, "end_node_id": 200},
         {"id": 48, "start_node_id": 200, "end_node_id": 999},
@@ -187,7 +189,7 @@ async def test_apply_nodes_deleted_cascades_edges_referencing_deleted_node(
     await live_state_service.seed(1, flow)
 
     msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=200)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=200)],
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
@@ -212,14 +214,14 @@ async def test_apply_nodes_deleted_dedupes_edge_id_already_accumulated(
     must not be duplicated when a subsequent node delete also cascades to it.
     """
     flow = base_snapshot(
-        crew_node_list=[{"id": 100}, {"id": 200}],
+        subgraph_node_list=[{"id": 100}, {"id": 200}],
         edge_list=[{"id": 47, "start_node_id": 100, "end_node_id": 200}],
         deleted={"edge_ids": [47], "conditional_edge_ids": []},
     )
     await live_state_service.seed(1, flow)
 
     msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=200)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=200)],
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
@@ -238,7 +240,7 @@ async def test_apply_nodes_deleted_nulls_decision_table_routing_refs(
     on both DecisionTableNode and ClassificationDecisionTableNode entries.
     """
     flow = base_snapshot(
-        crew_node_list=[{"id": 200}],
+        subgraph_node_list=[{"id": 200}],
         decision_table_node_list=[
             {
                 "id": 1,
@@ -257,7 +259,7 @@ async def test_apply_nodes_deleted_nulls_decision_table_routing_refs(
     await live_state_service.seed(1, flow)
 
     msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=200)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=200)],
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
@@ -282,19 +284,19 @@ async def test_apply_nodes_deleted_temp_only_ref_skips_cascade(
     it can only match string temp_ids, never a real edge/routing int ref.
     """
     flow = base_snapshot(
-        crew_node_list=[{"temp_id": "new-node"}],
+        subgraph_node_list=[{"temp_id": "new-node"}],
         edge_list=[{"id": 1, "start_node_id": 999, "end_node_id": 998}],
     )
     await live_state_service.seed(1, flow)
 
     msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", temp_id="new-node")],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", temp_id="new-node")],
         editor=editor,
     )
     await live_state_service.apply_op(1, msg)
     snapshot = await live_state_service.get_snapshot(1)
 
-    assert snapshot["crew_node_list"] == []
+    assert snapshot["subgraph_node_list"] == []
     assert snapshot["edge_list"] == [
         {"id": 1, "start_node_id": 999, "end_node_id": 998}
     ]
@@ -407,7 +409,7 @@ async def test_apply_connection_waypoints_updated_sets_waypoints(
 @pytest.mark.asyncio
 async def test_apply_op_on_absent_snapshot_is_safe_noop(live_state_service, editor):
     msg = NodeCreatedMessage(
-        node={"temp_id": "n1"}, list_key="crew_node_list", editor=editor
+        node={"temp_id": "n1"}, list_key="subgraph_node_list", editor=editor
     )
     # Must not raise and must not create a snapshot.
     await live_state_service.apply_op(999, msg)
@@ -439,7 +441,7 @@ async def test_seed_from_db_seeds_when_absent(
     live_state_service, base_snapshot, monkeypatch
 ):
     db_snapshot = base_snapshot(
-        crew_node_list=[{"id": 1, "crew_id": 7, "node_name": "Crew #1"}]
+        subgraph_node_list=[{"id": 1, "subgraph": 7, "node_name": "Subgraph #1"}]
     )
     monkeypatch.setattr(_gss_module, "_load_graph_snapshot", _async_return(db_snapshot))
     result = await live_state_service.seed_from_db(7)
@@ -464,9 +466,9 @@ async def test_seed_from_db_does_not_stomp_concurrently_seeded_snapshot(
     # Arrange: live snapshot already seeded + a client op applied on top,
     # carrying a distinctive marker node that a stale DB read would not have.
     already_seeded_snapshot = base_snapshot(
-        crew_node_list=[
-            {"id": 1, "crew_id": 7, "node_name": "Crew #1"},
-            {"temp_id": "marker-node", "crew_id": 99, "node_name": "Marker Node"},
+        subgraph_node_list=[
+            {"id": 1, "subgraph": 7, "node_name": "Subgraph #1"},
+            {"temp_id": "marker-node", "subgraph": 99, "node_name": "Marker Node"},
         ]
     )
     await live_state_service.seed(graph_id, already_seeded_snapshot)
@@ -475,7 +477,7 @@ async def test_seed_from_db_does_not_stomp_concurrently_seeded_snapshot(
 
     # The late racer's stale DB read — barer, missing the marker node.
     stale_db_snapshot = base_snapshot(
-        crew_node_list=[{"id": 1, "crew_id": 7, "node_name": "Crew #1"}]
+        subgraph_node_list=[{"id": 1, "subgraph": 7, "node_name": "Subgraph #1"}]
     )
     monkeypatch.setattr(
         _gss_module, "_load_graph_snapshot", _async_return(stale_db_snapshot)
@@ -489,7 +491,8 @@ async def test_seed_from_db_does_not_stomp_concurrently_seeded_snapshot(
     snapshot = await live_state_service.get_snapshot(graph_id)
     assert snapshot == already_seeded_snapshot
     assert any(
-        entry.get("temp_id") == "marker-node" for entry in snapshot["crew_node_list"]
+        entry.get("temp_id") == "marker-node"
+        for entry in snapshot["subgraph_node_list"]
     )
     # Revision counters must be untouched — a stomp would reset both to 0.
     assert live_state_service.current_revision(graph_id) == 3

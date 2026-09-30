@@ -16,8 +16,7 @@ from django.urls import re_path
 from asgiref.sync import sync_to_async
 
 from tables.models import Graph
-from tables.models.crew_models import Crew
-from tables.models.graph_models import CrewNode
+from tables.models.graph_models import SubGraphNode
 from rbac.models import OrganizationUser
 
 from tables.graph_collab import graph_state_service as _gss_module
@@ -84,13 +83,15 @@ def editor_payload(user) -> dict:
 
 
 def _empty_deleted() -> dict:
-    """All-empty `deleted` accumulator, derived from the registry so a new
-    node/edge type can never silently go missing here."""
+    """All-empty `deleted` accumulator, derived from the collab constants
+    (`_LIST_KEY_TO_DELETE_KEY`) so it always matches what the live state
+    service accepts."""
     return {delete_key: [] for delete_key in _LIST_KEY_TO_DELETE_KEY.values()}
 
 
 def _base_snapshot(**overrides) -> dict:
-    """Minimal valid superset snapshot for flush tests, derived from the registry."""
+    """Minimal valid superset snapshot for flush tests, derived from the
+    collab constants (`_ALL_LIST_KEYS`)."""
     base = {list_key: [] for list_key in _ALL_LIST_KEYS}
     base["save_version"] = 0  # overridden by the service from DB
     base["deleted"] = _empty_deleted()
@@ -416,7 +417,7 @@ def live_state_service():
 def base_snapshot():
     """Factory for a minimal valid bulk-save-shape snapshot.
 
-    Usage: ``base_snapshot(crew_node_list=[...], save_version=graph.save_version)``.
+    Usage: ``base_snapshot(python_node_list=[...], save_version=graph.save_version)``.
     """
     return _base_snapshot
 
@@ -500,24 +501,27 @@ def _create_end_node(graph):
 
 
 @pytest.fixture
-def make_crew_node():
-    """Async factory creating an org-scoped Crew and, optionally, a CrewNode.
+def make_subgraph_node():
+    """Async factory creating an org-scoped target Graph and, optionally, a
+    SubGraphNode on ``graph`` whose ``subgraph`` FK points at it.
 
-    Usage: ``crew, node = await make_crew_node(default_org, graph=test_graph)``.
-    Pass ``graph=None`` (the default) to create just the Crew.
+    Usage: ``subgraph, node = await make_subgraph_node(default_org, graph=test_graph)``.
+    Pass ``graph=None`` (the default) to create just the target Graph.
     """
 
     @sync_to_async
     def _make(
         org,
         graph=None,
-        crew_name: str = "Test Crew",
-        node_name: str = "Crew-Node #1",
-    ) -> tuple[Crew, CrewNode | None]:
-        crew = Crew.objects.create(name=crew_name, org=org)
+        subgraph_name: str = "Test Subgraph",
+        node_name: str = "Subgraph-Node #1",
+    ) -> tuple[Graph, SubGraphNode | None]:
+        subgraph = Graph.objects.create(name=subgraph_name, org=org)
         node = None
         if graph is not None:
-            node = CrewNode.objects.create(graph=graph, node_name=node_name, crew=crew)
-        return crew, node
+            node = SubGraphNode.objects.create(
+                graph=graph, node_name=node_name, subgraph=subgraph
+            )
+        return subgraph, node
 
     return _make

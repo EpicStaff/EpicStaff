@@ -45,12 +45,16 @@ def test_flush_service_singleton_is_correct_type():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_flush_if_dirty_skips_when_clean(
-    live_state_service, base_snapshot, flush_service, monkeypatch
+    graph, live_state_service, base_snapshot, flush_service, monkeypatch
 ):
-    graph_id = 2
-    await live_state_service.seed(graph_id, base_snapshot())
+    # DB-backed on purpose: a clean snapshot still gets the dead-outward-ref
+    # sweep, which loads the graph row.
+    graph_id = graph.id
+    snapshot = base_snapshot(save_version=graph.save_version)
+    await live_state_service.seed(graph_id, snapshot)
     live_state_service._revision[graph_id] = 0
     live_state_service._flushed_revision[graph_id] = 0
 
@@ -72,6 +76,7 @@ async def test_flush_if_dirty_skips_when_clean(
 
     assert outcome.status is FlushStatus.NOTHING_TO_FLUSH
     assert flush_called == [], "flush() must not be called when snapshot is clean"
+    assert await live_state_service.get_snapshot(graph_id) == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -287,12 +292,12 @@ async def test_flush_outcome_safe_to_clear(
 async def test_flush_preserves_concurrently_accumulated_deletes(
     graph, base_snapshot, empty_deleted, flush_service
 ):
-    """After a flush, the accumulator entry that was flushed (crew_node id=10,
+    """After a flush, the accumulator entry that was flushed (subgraph_node id=10,
     which never existed in the DB) is cleared from the snapshot."""
     snap = base_snapshot(
         save_version=graph.save_version,
-        crew_node_list=[],
-        deleted={**empty_deleted(), "crew_node_ids": [10]},
+        subgraph_node_list=[],
+        deleted={**empty_deleted(), "subgraph_node_ids": [10]},
     )
     await graph_state_service.seed(graph.id, snap)
 
@@ -304,7 +309,7 @@ async def test_flush_preserves_concurrently_accumulated_deletes(
 
     snapshot = await graph_state_service.get_snapshot(graph.id)
     assert snapshot is not None
-    assert 10 not in snapshot["deleted"]["crew_node_ids"]
+    assert 10 not in snapshot["deleted"]["subgraph_node_ids"]
 
 
 # ---------------------------------------------------------------------------

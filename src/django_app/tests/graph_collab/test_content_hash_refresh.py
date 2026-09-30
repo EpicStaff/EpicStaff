@@ -38,7 +38,6 @@ def _create_python_node(graph, code: str = "def main(): return 0"):
         node_name="Python-Node #1",
         test_input={},
         use_storage=False,
-        stream_config={},
         input_map={},
     )
     return node
@@ -244,7 +243,6 @@ async def test_apply_id_remap_refreshes_newly_created_node_content_hash(
                 },
                 "test_input": {},
                 "use_storage": False,
-                "stream_config": {},
                 "input_map": {},
                 "output_variable_path": None,
                 "metadata": {},
@@ -359,17 +357,18 @@ async def test_session_created_python_node_gains_content_hash_after_first_flush(
 async def test_refresh_does_not_add_content_hash_for_list_key_serializer_omits(
     graph, base_snapshot, flush_service, editor
 ):
-    """code_agent_node_list's serializer does not expose content_hash — a
-    freshly-flushed entry in that list must not gain a content_hash key,
-    so the live snapshot's shape keeps matching what a DB reseed produces."""
+    """classification_decision_table_node_list's serializer does not expose
+    content_hash — a freshly-flushed entry in that list must not gain a
+    content_hash key, so the live snapshot's shape keeps matching what a DB
+    reseed produces."""
     await graph_state_service.seed(
         graph.id, base_snapshot(save_version=graph.save_version)
     )
 
-    temp_id = "tmp-session-created-code-agent"
+    temp_id = "tmp-session-created-classification-decision-table"
     create_msg = NodeCreatedMessage(
-        node={"temp_id": temp_id, "graph": graph.id},
-        list_key="code_agent_node_list",
+        node={"temp_id": temp_id, "graph": graph.id, "node_name": "CDT-Session"},
+        list_key="classification_decision_table_node_list",
         editor=editor,
     )
     await graph_state_service.apply_op(graph.id, create_msg)
@@ -380,12 +379,13 @@ async def test_refresh_does_not_add_content_hash_for_list_key_serializer_omits(
     )
 
     snapshot = await graph_state_service.get_snapshot(graph.id)
-    entries = snapshot["code_agent_node_list"]
+    entries = snapshot["classification_decision_table_node_list"]
     assert len(entries) == 1
     entry = entries[0]
     assert "temp_id" not in entry
     assert entry["id"] is not None
     assert "content_hash" not in entry, (
-        "code_agent_node_list's serializer does not declare content_hash — "
+        "classification_decision_table_node_list's serializer does not declare "
+        "content_hash — "
         "the refresh step must not fabricate the key for this list."
     )

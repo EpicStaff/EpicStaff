@@ -227,7 +227,7 @@ def test_repeated_correct_hash_updates_do_not_duplicate_rows(
 
 @pytest.mark.django_db
 def test_update_conditional_edge_with_correct_hash_and_code_change_succeeds(
-    auth_client, graph, crew_node
+    auth_client, graph, python_node
 ):
     python_code = PythonCode.objects.create(
         code="def main(): return True",
@@ -238,7 +238,7 @@ def test_update_conditional_edge_with_correct_hash_and_code_change_succeeds(
     conditional_edge = ConditionalEdge.objects.create(
         graph=graph,
         python_code=python_code,
-        source_node_id=crew_node.id,
+        source_node_id=python_node.id,
         input_map={},
     )
     pre_edit_hash = conditional_edge.content_hash
@@ -251,7 +251,7 @@ def test_update_conditional_edge_with_correct_hash_and_code_change_succeeds(
             {
                 "id": conditional_edge.id,
                 "graph": graph.id,
-                "source_node_id": crew_node.id,
+                "source_node_id": python_node.id,
                 "input_map": {},
                 "content_hash": pre_edit_hash,
                 "python_code": {

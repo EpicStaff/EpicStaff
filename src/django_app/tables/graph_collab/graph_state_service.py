@@ -1178,11 +1178,11 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
     missing (e.g. a node created during the session, whose snapshot entry was
     built from the frontend's node_created payload rather than GraphSerializer)
     and overwritten when already present. List keys whose serializer does NOT
-    expose content_hash (e.g. classification_decision_table_node_list,
-    code_agent_node_list) are left untouched, so the live snapshot's shape
-    keeps matching what a reseed from the DB would produce. Nested python_code
-    entries always get the same add-or-update treatment, since PythonCodeSerializer
-    exposes content_hash unconditionally wherever it is nested.
+    expose content_hash (e.g. classification_decision_table_node_list) are
+    left untouched, so the live snapshot's shape keeps matching what a reseed
+    from the DB would produce. Nested python_code entries always get the same
+    add-or-update treatment, since PythonCodeSerializer exposes content_hash
+    unconditionally wherever it is nested.
     """
     from tables.models.base_models import ContentHashMixin
     from tables.models.graph_models import (

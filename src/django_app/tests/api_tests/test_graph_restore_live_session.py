@@ -25,6 +25,7 @@ from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import EditorInfo
 from tables.models import Graph, GraphVersion, PythonNode
 from tests.fixtures import *  # noqa: F401,F403
+from tests.graph_collab.conftest import _base_snapshot
 
 graph_state_service = graph_state_service_module.graph_state_service
 
@@ -137,48 +138,6 @@ def _messages_of_type(calls: list[tuple[int, dict]], message_type: str) -> list[
 # ---------------------------------------------------------------------------
 # Snapshot helpers
 # ---------------------------------------------------------------------------
-
-
-def _base_snapshot(**overrides) -> dict:
-    """Minimal valid superset snapshot (mirrors run_session_flush_test.py)."""
-    empty_deleted = {
-        "edge_ids": [],
-        "conditional_edge_ids": [],
-        "crew_node_ids": [],
-        "python_node_ids": [],
-        "file_extractor_node_ids": [],
-        "audio_transcription_node_ids": [],
-        "start_node_ids": [],
-        "end_node_ids": [],
-        "subgraph_node_ids": [],
-        "decision_table_node_ids": [],
-        "graph_note_ids": [],
-        "webhook_trigger_node_ids": [],
-        "telegram_trigger_node_ids": [],
-        "schedule_trigger_node_ids": [],
-        "code_agent_node_ids": [],
-    }
-    base = {
-        "save_version": 0,
-        "crew_node_list": [],
-        "python_node_list": [],
-        "file_extractor_node_list": [],
-        "audio_transcription_node_list": [],
-        "start_node_list": [],
-        "end_node_list": [],
-        "subgraph_node_list": [],
-        "decision_table_node_list": [],
-        "graph_note_list": [],
-        "webhook_trigger_node_list": [],
-        "telegram_trigger_node_list": [],
-        "schedule_trigger_node_list": [],
-        "code_agent_node_list": [],
-        "edge_list": [],
-        "conditional_edge_list": [],
-        "deleted": empty_deleted,
-    }
-    base.update(overrides)
-    return base
 
 
 def _live_edit_snapshot(graph: Graph) -> dict:
@@ -552,7 +511,7 @@ def test_restore_aborts_on_persistent_flush_failure(
 def test_graph_state_message_without_restore_fields_still_validates():
     from tables.graph_collab.protocol import GraphStateMessage
 
-    message = GraphStateMessage(flow={"crew_node_list": []})
+    message = GraphStateMessage(flow={"start_node_list": []})
 
     assert message.restored_by is None
     assert message.new_save_version is None

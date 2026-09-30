@@ -85,7 +85,7 @@ async def test_node_updated_relayed_to_peer(test_graph, test_user, second_user):
         {
             "type": "node_updated",
             "node": node_payload,
-            "list_key": "code_agent_node_list",
+            "list_key": "agent_node_list",
             "editor": editor_payload(test_user),
         }
     )
@@ -108,8 +108,8 @@ async def test_nodes_deleted_relayed_to_peer(test_graph, test_user, second_user)
         {
             "type": "nodes_deleted",
             "refs": [
-                {"list_key": "crew_node_list", "id": 1},
-                {"list_key": "crew_node_list", "id": 2},
+                {"list_key": "subgraph_node_list", "id": 1},
+                {"list_key": "subgraph_node_list", "id": 2},
             ],
             "editor": editor_payload(test_user),
         }
@@ -121,12 +121,12 @@ async def test_nodes_deleted_relayed_to_peer(test_graph, test_user, second_user)
     # all fields: temp_id defaults to null in the wire representation.
     assert msg["refs"] == [
         {
-            "list_key": "crew_node_list",
+            "list_key": "subgraph_node_list",
             "id": 1,
             "temp_id": None,
         },
         {
-            "list_key": "crew_node_list",
+            "list_key": "subgraph_node_list",
             "id": 2,
             "temp_id": None,
         },
@@ -202,7 +202,7 @@ async def test_malformed_payload_returns_invalid_payload_error(test_graph, test_
     await communicator.send_json_to(
         {
             "type": "node_created",
-            "list_key": "crew_node_list",
+            "list_key": "subgraph_node_list",
             "editor": editor_payload(test_user),
         }
     )

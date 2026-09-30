@@ -9,8 +9,6 @@ from asgiref.sync import sync_to_async
 from tables.graph_collab.flush_service import FlushStatus
 from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.protocol import (
-    EditorInfo,
-    NodeCreatedMessage,
     NodeUpdatedMessage,
 )
 from tests.graph_collab.conftest import PYTHON_CODE_DATA, count_nodes, first_node
@@ -50,7 +48,6 @@ def _create_start_python_edge_graph(graph):
         python_code=python_code,
         test_input={},
         use_storage=False,
-        stream_config={},
         input_map={},
     )
     edge = Edge.objects.create(
@@ -68,7 +65,7 @@ def _create_start_python_edge_graph(graph):
 # ---------------------------------------------------------------------------
 
 
-async def _build_rich_start_entry(graph, make_crew_node) -> dict:
+async def _build_rich_start_entry(graph, make_subgraph_node) -> dict:
     return {
         "temp_id": "aaaabbbb-1111-0000-0000-000000000001",
         "graph": graph.id,
@@ -76,7 +73,7 @@ async def _build_rich_start_entry(graph, make_crew_node) -> dict:
     }
 
 
-async def _build_rich_end_entry(graph, make_crew_node) -> dict:
+async def _build_rich_end_entry(graph, make_subgraph_node) -> dict:
     return {
         "temp_id": "aaaabbbb-2222-0000-0000-000000000002",
         "graph": graph.id,
@@ -84,7 +81,7 @@ async def _build_rich_end_entry(graph, make_crew_node) -> dict:
     }
 
 
-async def _build_rich_webhook_trigger_entry(graph, make_crew_node) -> dict:
+async def _build_rich_webhook_trigger_entry(graph, make_subgraph_node) -> dict:
     return {
         "temp_id": "aaaabbbb-3333-0000-0000-000000000003",
         "graph": graph.id,
@@ -101,7 +98,7 @@ async def _build_rich_webhook_trigger_entry(graph, make_crew_node) -> dict:
     }
 
 
-async def _build_rich_telegram_trigger_entry(graph, make_crew_node) -> dict:
+async def _build_rich_telegram_trigger_entry(graph, make_subgraph_node) -> dict:
     return {
         "temp_id": "aaaabbbb-4444-0000-0000-000000000004",
         "graph": graph.id,
@@ -112,20 +109,20 @@ async def _build_rich_telegram_trigger_entry(graph, make_crew_node) -> dict:
     }
 
 
-async def _build_rich_crew_entry(graph, make_crew_node) -> dict:
-    """Crew's own entry needs a pre-existing row: the case under test is a
-    bulk-save-shape update against an existing crew node's real id, not a
+async def _build_rich_subgraph_entry(graph, make_subgraph_node) -> dict:
+    """Subgraph's own entry needs a pre-existing row: the case under test is a
+    bulk-save-shape update against an existing subgraph node's real id, not a
     brand-new temp_id create."""
-    crew, crew_node = await make_crew_node(graph.org, graph=graph)
+    subgraph, subgraph_node = await make_subgraph_node(graph.org, graph=graph)
     return {
-        "id": crew_node.id,
+        "id": subgraph_node.id,
         "graph": graph.id,
-        "node_name": "Crew-Node #1",
-        "crew_id": crew.id,
+        "node_name": "Subgraph-Node #1",
+        "subgraph": subgraph.id,
     }
 
 
-async def _build_rich_python_entry(graph, make_crew_node) -> dict:
+async def _build_rich_python_entry(graph, make_subgraph_node) -> dict:
     return {
         "temp_id": "ddddeeee-0000-0000-0000-000000000007",
         "graph": graph.id,
@@ -138,7 +135,6 @@ async def _build_rich_python_entry(graph, make_crew_node) -> dict:
         },
         "test_input": {},
         "use_storage": False,
-        "stream_config": {},
         "input_map": {},
         "output_variable_path": None,
     }
@@ -176,8 +172,8 @@ async def _verify_python_code_persisted(graph_id: int) -> None:
             None,
         ),
         (
-            _build_rich_crew_entry,
-            "crew_node_list",
+            _build_rich_subgraph_entry,
+            "subgraph_node_list",
             None,
         ),
         (
@@ -186,14 +182,14 @@ async def _verify_python_code_persisted(graph_id: int) -> None:
             _verify_python_code_persisted,
         ),
     ],
-    ids=["start", "end", "webhook_trigger", "telegram_trigger", "crew", "python"],
+    ids=["start", "end", "webhook_trigger", "telegram_trigger", "subgraph", "python"],
 )
 async def test_flush_bulk_save_shape_entry_persists_single_row(
     graph,
     base_snapshot,
     flush_service,
     editor,
-    make_crew_node,
+    make_subgraph_node,
     build_entry,
     list_key,
     verify_extra,
@@ -205,12 +201,12 @@ async def test_flush_bulk_save_shape_entry_persists_single_row(
         graph.id, base_snapshot(save_version=graph.save_version)
     )
 
-    rich_payload = await build_entry(graph, make_crew_node)
+    rich_payload = await build_entry(graph, make_subgraph_node)
     # NodeUpdatedMessage (not NodeCreatedMessage) is required here: 5 of the 6
-    # rows build temp_id payloads (creates), but the crew row builds a
+    # rows build temp_id payloads (creates), but the subgraph row builds a
     # real-id update against a pre-existing node. This legacy upsert message
     # (changed_fields=None) appends-on-miss for the temp_id creates and
-    # updates-in-place for the crew row's real id; NodeCreatedMessage would
+    # updates-in-place for the subgraph row's real id; NodeCreatedMessage would
     # trip apply_op's stale-id-recreate guard on that real id, since it's not
     # pending deletion.
     msg = NodeUpdatedMessage(node=rich_payload, list_key=list_key, editor=editor)

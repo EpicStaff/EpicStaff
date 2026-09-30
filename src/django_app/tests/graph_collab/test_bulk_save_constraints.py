@@ -5,7 +5,6 @@ and org-scoped FK denial without a request/org_id.
 """
 
 import pytest
-from asgiref.sync import sync_to_async
 
 from tables.exceptions import BulkSaveValidationError
 from tables.graph_collab.flush_service import FlushOutcome, FlushStatus
@@ -19,11 +18,6 @@ from tests.graph_collab.conftest import (
     count_nodes,
     get_node,
 )
-
-
-@sync_to_async
-def _create_other_org() -> Organization:
-    return Organization.objects.create(name="Other Org")
 
 
 # ---------------------------------------------------------------------------
@@ -222,29 +216,31 @@ def test_bulk_save_end_node_id_in_both_update_list_and_deleted_is_rejected(
 #
 # The fix threads an explicit `org_id` (sourced from `graph.org_id`, never from the
 # snapshot/payload) into GraphBulkSaveService.save() and the serializer context.
-# Verifies: (1) a same-org crew_id FK flush now succeeds, (2) a cross-org crew_id
-# FK flush is still rejected, (3) the fail-safe deny holds with no request/org_id.
+# Verifies: (1) a same-org org-scoped FK flush now succeeds, (2) with org_id
+# threaded in, bulk save still accepts a same-org subgraph and rejects a
+# cross-org one, (3) the fail-safe deny holds with no request/org_id.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_flush_same_org_crew_id_succeeds_without_request(
-    graph, base_snapshot, flush_service, make_crew_node
+async def test_flush_same_org_subgraph_succeeds_without_request(
+    graph, base_snapshot, flush_service, make_subgraph_node
 ):
-    """A flush (no request in context) whose crew_node_list references a crew in
-    the SAME org as the graph must now succeed and persist — previously denied
-    because GraphBulkSaveService().save() was called without a request."""
-    crew, _ = await make_crew_node(graph.org)
+    """A flush (no request in context) whose subgraph_node_list references a
+    subgraph in the SAME org as the graph must now succeed and persist —
+    previously denied because GraphBulkSaveService().save() was called without
+    a request."""
+    subgraph, _ = await make_subgraph_node(graph.org)
 
     temp_id = "eeeeffff-0000-0000-0000-000000000001"
     snap = base_snapshot(
         save_version=graph.save_version,
-        crew_node_list=[
+        subgraph_node_list=[
             {
                 "temp_id": temp_id,
                 "graph": graph.id,
-                "crew_id": crew.id,
+                "subgraph": subgraph.id,
             }
         ],
     )
@@ -255,60 +251,91 @@ async def test_flush_same_org_crew_id_succeeds_without_request(
     assert isinstance(outcome, FlushOutcome)
     assert outcome.status is FlushStatus.SAVED, (
         f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). Same-org crew_id FK "
+        f"(failure_reason={outcome.failure_reason!r}). Same-org subgraph FK "
         "should be accepted once org_id is threaded into the flush's bulk save."
     )
-    assert await count_nodes("crew_node_list", graph.id) == 1
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_cross_org_crew_id_is_still_rejected(
-    graph, base_snapshot, flush_service, make_crew_node
-):
-    """A flush whose crew_node_list references a crew belonging to a DIFFERENT
-    org than the graph must still be rejected — threading org_id from
-    graph.org_id must not reopen the cross-org leak that CrewNodeSerializer.
-    validate_crew_id closes."""
-    other_org = await _create_other_org()
-    foreign_crew, _ = await make_crew_node(other_org)
-
-    temp_id = "eeeeffff-0000-0000-0000-000000000002"
-    snap = base_snapshot(
-        save_version=graph.save_version,
-        crew_node_list=[
-            {
-                "temp_id": temp_id,
-                "graph": graph.id,
-                "crew_id": foreign_crew.id,
-            }
-        ],
+    assert await count_nodes("subgraph_node_list", graph.id) == 1
+    persisted = await get_node(
+        "subgraph_node_list", outcome.result.temp_id_map[temp_id]
     )
-    await graph_state_service.seed(graph.id, snap)
+    assert persisted.subgraph_id == subgraph.id
 
-    outcome = await flush_service.flush(graph.id)
 
-    assert outcome.status is FlushStatus.FAILED
-    assert not outcome.saved
-    assert not outcome.safe_to_clear
-    assert await count_nodes("crew_node_list", graph.id) == 0
+def _subgraph_node_payload(graph, subgraph, temp_id: str) -> dict:
+    return {
+        "save_version": graph.save_version,
+        "subgraph_node_list": [
+            {"temp_id": temp_id, "graph": graph.id, "subgraph": subgraph.id}
+        ],
+    }
+
+
+@pytest.mark.django_db
+def test_bulk_save_service_accepts_same_org_subgraph_with_org_id(graph):
+    """Control for the cross-org test below: the identical payload shape with
+    a same-org subgraph is accepted when org_id is threaded in, so the
+    cross-org rejection can only come from the subgraph's org."""
+    from tables.models import Graph
+    from tables.models.graph_models import SubGraphNode
+
+    same_org_subgraph = Graph.objects.create(name="Same Org Subgraph", org=graph.org)
+    temp_id = "eeeeffff-0000-0000-0000-000000000004"
+    serializer = GraphBulkSaveInputSerializer(
+        data=_subgraph_node_payload(graph, same_org_subgraph, temp_id)
+    )
+    assert serializer.is_valid(), serializer.errors
+
+    _, temp_id_map = GraphBulkSaveService().save(
+        graph, serializer.validated_data, org_id=graph.org_id
+    )
+
+    node = SubGraphNode.objects.get(pk=temp_id_map[temp_id])
+    assert node.subgraph_id == same_org_subgraph.id
+
+
+@pytest.mark.django_db
+def test_bulk_save_service_rejects_cross_org_subgraph_with_org_id(graph):
+    """With org_id threaded from graph.org_id (as the flush does), a
+    subgraph belonging to a DIFFERENT org must still be rejected by the
+    serializer's org scoping — threading org_id must not reopen the
+    cross-org leak. Flush-level cross-org handling (the ref is stripped
+    before validation) is covered by
+    test_flush_strips_cross_org_llm_config_and_logs_warning."""
+    from tables.models import Graph
+    from tables.models.graph_models import SubGraphNode
+
+    other_org = Organization.objects.create(name="Other Org")
+    foreign_subgraph = Graph.objects.create(name="Foreign Subgraph", org=other_org)
+    serializer = GraphBulkSaveInputSerializer(
+        data=_subgraph_node_payload(
+            graph, foreign_subgraph, "eeeeffff-0000-0000-0000-000000000005"
+        )
+    )
+    assert serializer.is_valid(), serializer.errors
+
+    with pytest.raises(BulkSaveValidationError) as excinfo:
+        GraphBulkSaveService().save(
+            graph, serializer.validated_data, org_id=graph.org_id
+        )
+
+    assert "subgraph_node_list" in excinfo.value.errors
+    assert not SubGraphNode.objects.filter(graph=graph).exists()
 
 
 @pytest.mark.django_db
 def test_bulk_save_service_denies_without_request_or_org_id(graph):
     """Calling GraphBulkSaveService().save() with neither request nor org_id
-    must still deny org-scoped FK fields (e.g. CrewNode.graph) — the fail-safe
-    from before this fix must remain the default when no context is threaded."""
+    must still deny org-scoped FK fields (e.g. SubGraphNode.graph) — the
+    fail-safe from before this fix must remain the default when no context is
+    threaded."""
     payload = {
         "save_version": graph.save_version,
-        "crew_node_list": [
+        "subgraph_node_list": [
             {
                 "temp_id": "eeeeffff-0000-0000-0000-000000000003",
                 "graph": graph.id,
-                # crew_id omitted deliberately — the `graph` field alone is
-                # enough to trigger the org-scoped deny before crew_id is
-                # even reached.
-                "crew_id": 1,
+                # subgraph omitted deliberately — the `graph` field alone is
+                # enough to trigger the org-scoped deny.
             }
         ],
     }
@@ -318,4 +345,4 @@ def test_bulk_save_service_denies_without_request_or_org_id(graph):
     with pytest.raises(BulkSaveValidationError) as excinfo:
         GraphBulkSaveService().save(graph, serializer.validated_data)
 
-    assert "crew_node_list" in excinfo.value.errors
+    assert "subgraph_node_list" in excinfo.value.errors

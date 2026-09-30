@@ -304,7 +304,7 @@ async def test_apply_id_remap_records_resolved_temp_ids(live_state_service, base
     """
     graph_id = 1
     await live_state_service.seed(
-        graph_id, base_snapshot(crew_node_list=[{"temp_id": "U", "type": "agent"}])
+        graph_id, base_snapshot(subgraph_node_list=[{"temp_id": "U", "subgraph": 7}])
     )
 
     await live_state_service.apply_id_remap(
@@ -312,7 +312,7 @@ async def test_apply_id_remap_records_resolved_temp_ids(live_state_service, base
     )
 
     snapshot = await live_state_service.get_snapshot(graph_id)
-    assert snapshot["crew_node_list"] == [{"id": 42, "type": "agent"}]
+    assert snapshot["subgraph_node_list"] == [{"id": 42, "subgraph": 7}]
     assert await live_state_service.get_resolved_temp_ids(graph_id) == {"U": 42}
 
 
@@ -327,7 +327,7 @@ async def test_apply_op_rewrites_edge_endpoint_for_already_remapped_temp_id(
     """
     graph_id = 1
     await live_state_service.seed(
-        graph_id, base_snapshot(crew_node_list=[{"temp_id": "U", "type": "agent"}])
+        graph_id, base_snapshot(subgraph_node_list=[{"temp_id": "U", "subgraph": 7}])
     )
     await live_state_service.apply_id_remap(
         graph_id, {"U": 42}, new_save_version=2, flushed_deleted={}
@@ -448,7 +448,7 @@ async def test_node_created_with_real_id_is_rejected(
     await live_state_service.seed(1, base_snapshot())
     msg = NodeCreatedMessage(
         node={"id": 42, "node_name": "stale-undo-recreate"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
@@ -458,13 +458,13 @@ async def test_node_created_with_real_id_is_rejected(
     assert result.relay is False
 
     snapshot = await live_state_service.get_snapshot(1)
-    assert snapshot["crew_node_list"] == []
+    assert snapshot["subgraph_node_list"] == []
 
     await live_state_service.seed(
-        2, base_snapshot(crew_node_list=[{"id": 25, "node_name": "n"}])
+        2, base_snapshot(subgraph_node_list=[{"id": 25, "node_name": "n"}])
     )
     delete_msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=25)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=25)],
         editor=editor,
     )
     await live_state_service.apply_op(2, delete_msg)
@@ -472,14 +472,14 @@ async def test_node_created_with_real_id_is_rejected(
         2,
         temp_id_map={},
         new_save_version=2,
-        flushed_deleted={"crew_node_ids": [25]},
+        flushed_deleted={"subgraph_node_ids": [25]},
     )
     snapshot = await live_state_service.get_snapshot(2)
-    assert snapshot["deleted"]["crew_node_ids"] == []
+    assert snapshot["deleted"]["subgraph_node_ids"] == []
 
     recreate_msg = NodeCreatedMessage(
         node={"id": 25, "node_name": "n"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         editor=editor,
     )
     result = await live_state_service.apply_op(2, recreate_msg)
@@ -489,7 +489,7 @@ async def test_node_created_with_real_id_is_rejected(
     assert result.relay is False
 
     snapshot = await live_state_service.get_snapshot(2)
-    assert snapshot["crew_node_list"] == []
+    assert snapshot["subgraph_node_list"] == []
 
 
 @pytest.mark.asyncio
@@ -502,7 +502,7 @@ async def test_legacy_node_updated_with_real_id_is_still_accepted(
     await live_state_service.seed(1, base_snapshot())
     msg = NodeUpdatedMessage(
         node={"id": 42, "node_name": "decision-routing-update"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         editor=editor,
         changed_fields=None,
     )
@@ -511,7 +511,7 @@ async def test_legacy_node_updated_with_real_id_is_still_accepted(
     assert result.status is OpStatus.APPLIED
 
     snapshot = await live_state_service.get_snapshot(1)
-    assert snapshot["crew_node_list"] == [
+    assert snapshot["subgraph_node_list"] == [
         {"id": 42, "node_name": "decision-routing-update"}
     ]
 
@@ -556,22 +556,22 @@ async def test_node_created_with_id_pending_delete_is_accepted_and_unqueued(
     re-sends node_created with the real id. Must be APPLIED, the entry
     restored, and the id removed from the accumulator."""
     await live_state_service.seed(
-        1, base_snapshot(crew_node_list=[{"id": 25, "node_name": "n"}])
+        1, base_snapshot(subgraph_node_list=[{"id": 25, "node_name": "n"}])
     )
     delete_msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=25)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=25)],
         editor=editor,
     )
     delete_result = await live_state_service.apply_op(1, delete_msg)
     assert delete_result.status is OpStatus.APPLIED
 
     snapshot = await live_state_service.get_snapshot(1)
-    assert snapshot["crew_node_list"] == []
-    assert snapshot["deleted"]["crew_node_ids"] == [25]
+    assert snapshot["subgraph_node_list"] == []
+    assert snapshot["deleted"]["subgraph_node_ids"] == [25]
 
     recreate_msg = NodeCreatedMessage(
         node={"id": 25, "node_name": "n"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
@@ -579,8 +579,8 @@ async def test_node_created_with_id_pending_delete_is_accepted_and_unqueued(
     assert result.status is OpStatus.APPLIED
 
     snapshot = await live_state_service.get_snapshot(1)
-    assert snapshot["crew_node_list"] == [{"id": 25, "node_name": "n"}]
-    assert snapshot["deleted"]["crew_node_ids"] == []
+    assert snapshot["subgraph_node_list"] == [{"id": 25, "node_name": "n"}]
+    assert snapshot["deleted"]["subgraph_node_ids"] == []
 
 
 @pytest.mark.asyncio
@@ -590,10 +590,10 @@ async def test_node_created_with_id_not_pending_delete_is_rejected(
     """Same real id as the resurrect case, but the deletion has already been
     flushed — a subsequent create carrying that dead pk is a stale replay."""
     await live_state_service.seed(
-        1, base_snapshot(crew_node_list=[{"id": 25, "node_name": "n"}])
+        1, base_snapshot(subgraph_node_list=[{"id": 25, "node_name": "n"}])
     )
     delete_msg = NodesDeletedMessage(
-        refs=[EntryDeleteRef(list_key="crew_node_list", id=25)],
+        refs=[EntryDeleteRef(list_key="subgraph_node_list", id=25)],
         editor=editor,
     )
     await live_state_service.apply_op(1, delete_msg)
@@ -602,14 +602,14 @@ async def test_node_created_with_id_not_pending_delete_is_rejected(
         1,
         temp_id_map={},
         new_save_version=2,
-        flushed_deleted={"crew_node_ids": [25]},
+        flushed_deleted={"subgraph_node_ids": [25]},
     )
     snapshot = await live_state_service.get_snapshot(1)
-    assert snapshot["deleted"]["crew_node_ids"] == []
+    assert snapshot["deleted"]["subgraph_node_ids"] == []
 
     recreate_msg = NodeCreatedMessage(
         node={"id": 25, "node_name": "n"},
-        list_key="crew_node_list",
+        list_key="subgraph_node_list",
         editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
@@ -619,7 +619,7 @@ async def test_node_created_with_id_not_pending_delete_is_rejected(
     assert result.relay is False
 
     snapshot = await live_state_service.get_snapshot(1)
-    assert snapshot["crew_node_list"] == []
+    assert snapshot["subgraph_node_list"] == []
 
 
 @pytest.mark.asyncio
@@ -712,7 +712,7 @@ def test_build_graph_saved_message_drops_empty_deleted_lists():
         user=None,
         saved_at="2026-01-01T00:00:00+00:00",
         deleted_ids={
-            "crew_node_ids": [],
+            "subgraph_node_ids": [],
             "python_node_ids": [7],
             "edge_ids": [],
             "conditional_edge_ids": [9, 10],

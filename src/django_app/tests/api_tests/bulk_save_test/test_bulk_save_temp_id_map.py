@@ -183,7 +183,7 @@ def test_rest_save_flow_with_temp_id_returns_200(auth_client, graph):
 
 
 @pytest.mark.django_db
-def test_save_temp_id_map_contains_new_edge_mapping(graph, python_node, crew_node):
+def test_save_temp_id_map_contains_new_edge_mapping(graph, start_node, python_node):
     """A newly-created edge with its own temp_id registers that temp_id in the map."""
     edge_temp_id = "aaaabbbb-0000-0000-0000-000000000001"
     payload = {
@@ -192,8 +192,8 @@ def test_save_temp_id_map_contains_new_edge_mapping(graph, python_node, crew_nod
             {
                 "temp_id": edge_temp_id,
                 "graph": graph.id,
-                "start_node_id": python_node.id,
-                "end_node_id": crew_node.id,
+                "start_node_id": start_node.id,
+                "end_node_id": python_node.id,
             },
         ],
     }
@@ -208,12 +208,12 @@ def test_save_temp_id_map_contains_new_edge_mapping(graph, python_node, crew_nod
     real_edge_id = temp_id_map[edge_temp_id]
     assert isinstance(real_edge_id, int)
     assert Edge.objects.filter(
-        id=real_edge_id, graph=graph, start_node_id=python_node.id
+        id=real_edge_id, graph=graph, start_node_id=start_node.id
     ).exists()
 
 
 @pytest.mark.django_db
-def test_save_edge_temp_id_and_endpoint_temp_id_in_same_request(graph, crew_node):
+def test_save_edge_temp_id_and_endpoint_temp_id_in_same_request(graph, python_node):
     """An edge's own temp_id and its endpoint's temp_id both resolve in one flush."""
     node_temp_id = "aaaabbbb-0000-0000-0000-000000000002"
     edge_temp_id = "aaaabbbb-0000-0000-0000-000000000003"
@@ -231,7 +231,7 @@ def test_save_edge_temp_id_and_endpoint_temp_id_in_same_request(graph, crew_node
                 "temp_id": edge_temp_id,
                 "graph": graph.id,
                 "start_temp_id": node_temp_id,
-                "end_node_id": crew_node.id,
+                "end_node_id": python_node.id,
             },
         ],
     }
@@ -244,19 +244,19 @@ def test_save_edge_temp_id_and_endpoint_temp_id_in_same_request(graph, crew_node
 
     assert node_temp_id in temp_id_map
     assert edge_temp_id in temp_id_map
-    new_node = PythonNode.objects.get(graph=graph)
+    new_node = PythonNode.objects.get(pk=temp_id_map[node_temp_id], graph=graph)
     real_edge_id = temp_id_map[edge_temp_id]
     assert Edge.objects.filter(
         id=real_edge_id,
         graph=graph,
         start_node_id=new_node.id,
-        end_node_id=crew_node.id,
+        end_node_id=python_node.id,
     ).exists()
 
 
 @pytest.mark.django_db
 def test_save_second_flush_of_stamped_edge_updates_not_duplicates(
-    graph, python_node, crew_node
+    graph, start_node, python_node
 ):
     """Reproduces the graph_collab regression: once an edge's own temp_id is
     remapped to a real ``id`` (as GraphLiveStateService.apply_id_remap now
@@ -270,8 +270,8 @@ def test_save_second_flush_of_stamped_edge_updates_not_duplicates(
             {
                 "temp_id": edge_temp_id,
                 "graph": graph.id,
-                "start_node_id": python_node.id,
-                "end_node_id": crew_node.id,
+                "start_node_id": start_node.id,
+                "end_node_id": python_node.id,
             },
         ],
     }
@@ -292,8 +292,8 @@ def test_save_second_flush_of_stamped_edge_updates_not_duplicates(
             {
                 "id": real_edge_id,
                 "graph": graph.id,
-                "start_node_id": python_node.id,
-                "end_node_id": crew_node.id,
+                "start_node_id": start_node.id,
+                "end_node_id": python_node.id,
             },
         ],
     }
@@ -307,9 +307,7 @@ def test_save_second_flush_of_stamped_edge_updates_not_duplicates(
 
 
 @pytest.mark.django_db
-def test_save_temp_id_map_contains_new_conditional_edge_mapping(
-    graph, python_code, crew_node
-):
+def test_save_temp_id_map_contains_new_conditional_edge_mapping(graph, python_node):
     """A newly-created conditional edge with its own temp_id registers that
     temp_id in the map."""
     cond_edge_temp_id = "aaaabbbb-0000-0000-0000-000000000005"
@@ -319,7 +317,7 @@ def test_save_temp_id_map_contains_new_conditional_edge_mapping(
             {
                 "temp_id": cond_edge_temp_id,
                 "graph": graph.id,
-                "source_node_id": crew_node.id,
+                "source_node_id": python_node.id,
                 "input_map": {},
                 "python_code": _PYTHON_CODE_DATA,
             },
@@ -336,13 +334,13 @@ def test_save_temp_id_map_contains_new_conditional_edge_mapping(
     real_id = temp_id_map[cond_edge_temp_id]
     assert isinstance(real_id, int)
     assert ConditionalEdge.objects.filter(
-        id=real_id, graph=graph, source_node_id=crew_node.id
+        id=real_id, graph=graph, source_node_id=python_node.id
     ).exists()
 
 
 @pytest.mark.django_db
 def test_save_second_flush_of_stamped_conditional_edge_updates_not_duplicates(
-    graph, crew_node
+    graph, python_node
 ):
     """Same EST-3020 regression, for conditional_edge_list."""
     cond_edge_temp_id = "aaaabbbb-0000-0000-0000-000000000006"
@@ -352,7 +350,7 @@ def test_save_second_flush_of_stamped_conditional_edge_updates_not_duplicates(
             {
                 "temp_id": cond_edge_temp_id,
                 "graph": graph.id,
-                "source_node_id": crew_node.id,
+                "source_node_id": python_node.id,
                 "input_map": {},
                 "python_code": _PYTHON_CODE_DATA,
             },
@@ -373,7 +371,7 @@ def test_save_second_flush_of_stamped_conditional_edge_updates_not_duplicates(
             {
                 "id": real_id,
                 "graph": graph.id,
-                "source_node_id": crew_node.id,
+                "source_node_id": python_node.id,
                 "input_map": {},
                 "python_code": _PYTHON_CODE_DATA,
             },

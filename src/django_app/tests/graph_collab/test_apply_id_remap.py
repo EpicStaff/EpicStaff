@@ -60,8 +60,8 @@ async def test_apply_id_remap_leaves_nodes_with_real_id_untouched(
 ):
     """Nodes that already have a real id and no temp_id must not be touched."""
     snap = base_snapshot(
-        crew_node_list=[
-            {"id": 10, "crew_id": 5, "node_name": "existing"},
+        subgraph_node_list=[
+            {"id": 10, "subgraph": 5, "node_name": "existing"},
         ]
     )
     await live_state_service.seed(1, snap)
@@ -71,7 +71,7 @@ async def test_apply_id_remap_leaves_nodes_with_real_id_untouched(
     )
 
     result = await live_state_service.get_snapshot(1)
-    node = result["crew_node_list"][0]
+    node = result["subgraph_node_list"][0]
     assert node["id"] == 10
     assert "temp_id" not in node
 
@@ -83,13 +83,13 @@ async def test_apply_id_remap_multiple_nodes_across_lists(
     """Remapping works across multiple node type lists in a single call."""
     snap = base_snapshot(
         python_node_list=[{"temp_id": "tmp-py-1", "node_name": "py"}],
-        crew_node_list=[{"temp_id": "tmp-cr-1", "crew_id": 3}],
+        subgraph_node_list=[{"temp_id": "tmp-sg-1", "subgraph": 3}],
     )
     await live_state_service.seed(1, snap)
 
     await live_state_service.apply_id_remap(
         1,
-        {"tmp-py-1": 100, "tmp-cr-1": 200},
+        {"tmp-py-1": 100, "tmp-sg-1": 200},
         new_save_version=3,
         flushed_deleted=empty_deleted(),
     )
@@ -97,8 +97,8 @@ async def test_apply_id_remap_multiple_nodes_across_lists(
     result = await live_state_service.get_snapshot(1)
     assert result["python_node_list"][0]["id"] == 100
     assert "temp_id" not in result["python_node_list"][0]
-    assert result["crew_node_list"][0]["id"] == 200
-    assert "temp_id" not in result["crew_node_list"][0]
+    assert result["subgraph_node_list"][0]["id"] == 200
+    assert "temp_id" not in result["subgraph_node_list"][0]
 
 
 @pytest.mark.asyncio
@@ -445,7 +445,7 @@ async def test_apply_id_remap_combined_node_and_edge(
         python_node_list=[{"temp_id": "tmp-py", "node_name": "new_node"}],
         edge_list=[{"start_temp_id": "tmp-py", "end_node_id": 99}],
         conditional_edge_list=[{"source_temp_id": "tmp-py", "label": "yes"}],
-        deleted={**empty_deleted(), "crew_node_ids": [1]},
+        deleted={**empty_deleted(), "subgraph_node_ids": [1]},
     )
     await live_state_service.seed(1, snap)
 
@@ -453,7 +453,7 @@ async def test_apply_id_remap_combined_node_and_edge(
         1,
         {"tmp-py": 50},
         new_save_version=4,
-        flushed_deleted={**empty_deleted(), "crew_node_ids": [1]},
+        flushed_deleted={**empty_deleted(), "subgraph_node_ids": [1]},
     )
 
     result = await live_state_service.get_snapshot(1)
@@ -472,7 +472,7 @@ async def test_apply_id_remap_combined_node_and_edge(
     assert "source_temp_id" not in cond_edge
 
     assert result["save_version"] == 4
-    assert result["deleted"]["crew_node_ids"] == []
+    assert result["deleted"]["subgraph_node_ids"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -488,23 +488,23 @@ async def test_apply_id_remap_precise_deleted_removes_only_flushed_ids(
     an id accumulated after the flush read-point (a concurrent delete) survives.
 
     Scenario:
-    - Live accumulator has crew_node_ids = [10, 11].
-    - flushed_deleted has crew_node_ids = [10]  (only id=10 was persisted).
+    - Live accumulator has subgraph_node_ids = [10, 11].
+    - flushed_deleted has subgraph_node_ids = [10]  (only id=10 was persisted).
     - After remap: accumulator must have [11] (id=10 removed, id=11 kept).
     """
     snap = base_snapshot(
-        deleted={**empty_deleted(), "crew_node_ids": [10, 11]},
+        deleted={**empty_deleted(), "subgraph_node_ids": [10, 11]},
     )
     await live_state_service.seed(1, snap)
 
-    flushed_deleted = {**empty_deleted(), "crew_node_ids": [10]}
+    flushed_deleted = {**empty_deleted(), "subgraph_node_ids": [10]}
     await live_state_service.apply_id_remap(
         1, {}, new_save_version=2, flushed_deleted=flushed_deleted
     )
 
     result = await live_state_service.get_snapshot(1)
     # id=11 must be preserved; id=10 was flushed and must be removed.
-    assert result["deleted"]["crew_node_ids"] == [11]
+    assert result["deleted"]["subgraph_node_ids"] == [11]
 
 
 @pytest.mark.asyncio
@@ -515,20 +515,20 @@ async def test_apply_id_remap_precise_deleted_multiple_types(
     snap = base_snapshot(
         deleted={
             **empty_deleted(),
-            "crew_node_ids": [1, 2],
+            "subgraph_node_ids": [1, 2],
             "edge_ids": [5, 6],
         },
     )
     await live_state_service.seed(1, snap)
 
-    # Flush persisted crew_node_ids=[1] and edge_ids=[5].
-    flushed_deleted = {**empty_deleted(), "crew_node_ids": [1], "edge_ids": [5]}
+    # Flush persisted subgraph_node_ids=[1] and edge_ids=[5].
+    flushed_deleted = {**empty_deleted(), "subgraph_node_ids": [1], "edge_ids": [5]}
     await live_state_service.apply_id_remap(
         1, {}, new_save_version=2, flushed_deleted=flushed_deleted
     )
 
     result = await live_state_service.get_snapshot(1)
-    assert result["deleted"]["crew_node_ids"] == [2]
+    assert result["deleted"]["subgraph_node_ids"] == [2]
     assert result["deleted"]["edge_ids"] == [6]
 
 
@@ -542,12 +542,12 @@ async def test_apply_id_remap_precise_deleted_multiple_types(
     "list_key,temp_id,real_id,new_save_version,delete_key",
     [
         pytest.param(
-            "crew_node_list",
+            "subgraph_node_list",
             "tmp-1",
             42,
             2,
-            "crew_node_ids",
-            id="crew_node_list",
+            "subgraph_node_ids",
+            id="subgraph_node_list",
         ),
         pytest.param(
             "python_node_list",
