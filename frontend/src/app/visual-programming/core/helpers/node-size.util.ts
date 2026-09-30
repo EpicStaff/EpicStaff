@@ -35,18 +35,18 @@ const CDT_MIN_VISIBLE_ROWS = 3;
 // port offsets).
 export const CDT_MIN_HEIGHT = CDT_HEADER_HEIGHT + CDT_ROW_HEIGHT * CDT_MIN_VISIBLE_ROWS;
 
-// The CDT's input port does NOT sit at the header's vertical center — it renders in its own
-// `.input-port-wrapper` (classification-decision-table-node.component.scss: `top: 16px`,
-// `width/height: 24px`), positioned above the header. So the true centre-y offset from the
-// node's top edge is `top + height / 2`.
-const CDT_INPUT_PORT_WRAPPER_TOP = 16;
+// The CDT's input port renders in its own `.input-port-wrapper`
+// (classification-decision-table-node.component.scss: `top: 18px`, `width/height: 24px`), so its
+// centre-y offset from the node's top edge is `top + height / 2` = 30 — the header's centre, and
+// the same offset as every normal node's port, which keeps all ports on one 20px lattice.
+const CDT_INPUT_PORT_WRAPPER_TOP = 18;
 const CDT_INPUT_PORT_WRAPPER_SIZE = 24;
 export const CDT_INPUT_PORT_CENTER_Y_OFFSET = CDT_INPUT_PORT_WRAPPER_TOP + CDT_INPUT_PORT_WRAPPER_SIZE / 2;
 
 // The plain DT's `.input-port-wrapper` (decision-table-node.component.scss) uses the exact
-// same `top: 16px` / 24x24 geometry as the CDT's, so it renders near the top rather than at
-// the header's vertical center too — same derivation as CDT_INPUT_PORT_CENTER_Y_OFFSET above.
-const DT_INPUT_PORT_WRAPPER_TOP = 16;
+// same `top: 18px` / 24x24 geometry as the CDT's — same derivation as
+// CDT_INPUT_PORT_CENTER_Y_OFFSET above.
+const DT_INPUT_PORT_WRAPPER_TOP = 18;
 const DT_INPUT_PORT_WRAPPER_SIZE = 24;
 export const DT_INPUT_PORT_CENTER_Y_OFFSET = DT_INPUT_PORT_WRAPPER_TOP + DT_INPUT_PORT_WRAPPER_SIZE / 2;
 

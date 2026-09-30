@@ -65,7 +65,7 @@ export function resolveRowIndex(tableNode: RowBasedTableNodeModel, portRole: str
 
 /**
  * The one copy of the row-port-centre formula, taking the table's top y explicitly so callers
- * that only know the node's future centre (e.g. auto-arrange, before positions are assigned)
+ * that only know the node's future top (e.g. a spec checking an arranged position)
  * can compute an offset without a real node model — just its type.
  */
 export function getRowPortCenterYFromTop(
@@ -79,7 +79,7 @@ export function getRowPortCenterYFromTop(
 }
 
 /**
- * Exported so `getPortPosition` (segment-avoidance.helper.ts) computes an output port's
+ * Exported so `getPortPosition` (core/geometry/port-position.ts) computes an output port's
  * true y-position with this same formula, rather than duplicating it.
  */
 export function getRowPortCenterY(tableNode: RowBasedTableNodeModel, rowIndex: number): number {
@@ -87,9 +87,12 @@ export function getRowPortCenterY(tableNode: RowBasedTableNodeModel, rowIndex: n
 }
 
 /**
- * If `draggedNode`'s incoming connection comes from a Decision Table row's output port, and the
- * proposed y places its (centred) input port within `ROW_SNAP_THRESHOLD_PX` of that row's centre,
- * returns the aligned y; otherwise null. Only the y axis is touched — x is the caller's concern.
+ * Snap targets for `draggedNode`'s top edge: one per incoming connection from a Decision Table
+ * (plain or Classification) row — the top that centres the node's input port on that row — plus,
+ * when there are two or more, their mean (so a node fed by e.g. Default + Error can sit between
+ * them; the row pitch puts that midpoint off the 20px grid, so drag alone can't reach it).
+ * Returns the candidate nearest `proposedPosition.y` within `ROW_SNAP_THRESHOLD_PX`, else null.
+ * Only the y axis is touched — x is the caller's concern.
  */
 export function computeRowSnapY(
     draggedNode: NodeModel,
@@ -97,28 +100,27 @@ export function computeRowSnapY(
     allNodes: NodeModel[],
     connections: ConnectionModel[]
 ): number | null {
-    const incomingTableConnection = connections.find((connection) => {
-        if (connection.targetNodeId !== draggedNode.id) return false;
-        const sourceNode = allNodes.find((n) => n.id === connection.sourceNodeId);
-        return sourceNode?.type === NodeType.CLASSIFICATION_TABLE || sourceNode?.type === NodeType.TABLE;
-    });
-    if (!incomingTableConnection) return null;
-
-    const tableNode = allNodes.find((n) => n.id === incomingTableConnection.sourceNodeId);
-    if (!tableNode || (tableNode.type !== NodeType.CLASSIFICATION_TABLE && tableNode.type !== NodeType.TABLE)) {
-        return null;
+    const candidates: number[] = [];
+    for (const connection of connections) {
+        if (connection.targetNodeId !== draggedNode.id) continue;
+        const tableNode = allNodes.find((n) => n.id === connection.sourceNodeId);
+        if (!tableNode || (tableNode.type !== NodeType.CLASSIFICATION_TABLE && tableNode.type !== NodeType.TABLE)) {
+            continue;
+        }
+        const portRole = tableNode.ports?.find((p) => p.id === connection.sourcePortId)?.role;
+        const rowIndex = portRole ? resolveRowIndex(tableNode, portRole) : null;
+        if (rowIndex === null) continue;
+        candidates.push(getRowPortCenterY(tableNode, rowIndex) - draggedNode.size.height / 2);
+    }
+    if (candidates.length >= 2) {
+        candidates.push(candidates.reduce((sum, y) => sum + y, 0) / candidates.length);
     }
 
-    const portRole = tableNode.ports?.find((p) => p.id === incomingTableConnection.sourcePortId)?.role;
-    if (!portRole) return null;
-
-    const rowIndex = resolveRowIndex(tableNode, portRole);
-    if (rowIndex === null) return null;
-
-    const portCenterY = getRowPortCenterY(tableNode, rowIndex);
-    const targetY = portCenterY - draggedNode.size.height / 2;
-
-    if (Math.abs(proposedPosition.y - targetY) > ROW_SNAP_THRESHOLD_PX) return null;
-
-    return targetY;
+    let nearest: number | null = null;
+    for (const candidate of candidates) {
+        const distance = Math.abs(proposedPosition.y - candidate);
+        if (distance > ROW_SNAP_THRESHOLD_PX) continue;
+        if (nearest === null || distance < Math.abs(proposedPosition.y - nearest)) nearest = candidate;
+    }
+    return nearest;
 }

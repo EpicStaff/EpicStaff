@@ -1,9 +1,11 @@
 import { NodeType } from '@shared/models';
 
+import { isBackwardWire } from '../geometry/wire-direction';
 import { ConnectionModel } from '../models/connection.model';
 import { ConditionGroup } from '../models/decision-table.model';
-import { BaseNodeModel } from '../models/node.model';
+import { BaseNodeModel, NodeModel } from '../models/node.model';
 import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
+import { obstacleRect } from '../routing/obstacles';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
@@ -421,9 +423,11 @@ function getConnectionLayout(
     return 'mixed';
 }
 
+// The shared classification (geometry/wire-direction), on the node edges the wire leaves and enters:
+// the port anchors would need getPortPosition, whose imports lead back here.
 function isHorizontalBackward(
-    source: BaseNodeModel,
-    target: BaseNodeModel,
+    source: NodeModel,
+    target: NodeModel,
     sourcePort?: ViewPort,
     targetPort?: ViewPort
 ): boolean {
@@ -431,7 +435,12 @@ function isHorizontalBackward(
 
     const targetEntryX = targetPort?.position === 'right' ? target.position.x + target.size.width : target.position.x;
 
-    return sourceExitX > targetEntryX;
+    return isBackwardWire(
+        { x: sourceExitX, y: 0 },
+        { x: targetEntryX, y: 0 },
+        obstacleRect(source),
+        obstacleRect(target)
+    );
 }
 
 function isVerticalBackward(
@@ -447,7 +456,7 @@ function isVerticalBackward(
     return sourceExitY > targetEntryY;
 }
 
-export function isBackwardConnection(connection: ConnectionModel, nodes: BaseNodeModel[]): boolean {
+export function isBackwardConnection(connection: ConnectionModel, nodes: NodeModel[]): boolean {
     const source = nodes.find((n) => n.id === connection.sourceNodeId);
     const target = nodes.find((n) => n.id === connection.targetNodeId);
     if (!source || !target) return false;
