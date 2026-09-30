@@ -1,3 +1,4 @@
+from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
@@ -64,6 +65,7 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
 
 
 class WebhookTriggerNodeSerializer(
+    AuthorStampingSerializerMixin,
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
     serializers.ModelSerializer,
@@ -82,6 +84,7 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
+            "created_by",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
 
@@ -109,6 +112,7 @@ class TelegramTriggerNodeFieldSerializer(ContentHashWritableMixin, serializers.M
 
 
 class TelegramTriggerNodeSerializer(
+    AuthorStampingSerializerMixin,
     SecretReferenceGuardMixin,
     ContentHashWritableMixin,
     serializers.ModelSerializer,
@@ -136,6 +140,7 @@ class TelegramTriggerNodeSerializer(
             "graph",
             "fields",
             "webhook_trigger",
+            "created_by",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
 
@@ -229,7 +234,7 @@ class _ScheduleConfigInputSerializer(serializers.Serializer):
     end = _ScheduleEndInputSerializer(required=False, allow_null=True)
 
 
-class ScheduleTriggerNodeSerializer(serializers.Serializer):
+class ScheduleTriggerNodeSerializer(AuthorStampingSerializerMixin, serializers.Serializer):
     """Shape/type validation only. Domain rules → ScheduleTriggerValidator.
     Persistence → ScheduleTriggerService.
 
@@ -245,6 +250,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     content_hash = serializers.CharField(required=False, allow_null=True)
     schedule = _ScheduleConfigInputSerializer(required=False, allow_null=True, write_only=True)
     current_runs = serializers.IntegerField(read_only=True)
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
 

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from django.db import transaction
+from rbac.authorship import claim_authorship
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.constants import IMPORT_VERSION
@@ -188,8 +189,9 @@ class GraphVersioningService:
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
         user:
-            The acting user. Permission-gated node references (key-value
-            tables) are re-bound only if this user may use them.
+            The acting user. It authors every recreated node and becomes the
+            graph's author when the graph has none. Permission-gated node
+            references (key-value tables) are re-bound only if this user may use them.
 
         Returns
         -------
@@ -224,6 +226,8 @@ class GraphVersioningService:
         node_mapper = self._manager.apply_snapshot_to_graph(
             graph, prepared.filtered_snapshot, prepared.available_dependencies, user=user
         )
+        if claim_authorship(graph, user):
+            graph.save(update_fields=["created_by"])
 
         warnings.extend(
             self._manager.restore_secret_declarations(

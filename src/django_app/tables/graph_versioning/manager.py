@@ -1,6 +1,8 @@
 from collections import defaultdict
 from copy import deepcopy
 
+from rbac.authorship import resolve_author
+
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
@@ -767,6 +769,7 @@ class GraphVersioningManager:
         """
         Create a brand-new Graph from a filtered snapshot.
         The new graph is independent — no GraphVersion rows, own id/uuid.
+        `user` authors the new graph and every node recreated in it.
         """
         snapshot_copy = deepcopy(filtered_snapshot)
 
@@ -797,7 +800,7 @@ class GraphVersioningManager:
 
         serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
         serializer.is_valid(raise_exception=True)
-        graph = serializer.save(org_id=org_id)
+        graph = serializer.save(org_id=org_id, created_by=resolve_author(user))
 
         start_node = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(
