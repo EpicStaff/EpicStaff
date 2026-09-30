@@ -8,14 +8,35 @@ BATCH_SIZE = 500
 # Frozen copy of tables.models.user.display_name_from_email; do not sync it with the live helper.
 DISPLAY_NAME_MAX_LENGTH = 255
 
-_LOCAL_PART_SEPARATORS = re.compile(r"[._-]")
+_DIGITS = re.compile(r"\d")
+
+# Any character that is not a letter or an apostrophe starts a new word.
+_WORD_SEPARATORS = re.compile(r"[^\w']|_")
+
+# "JohnSmith" / "johnSmith": letters, then one or more capitalized lowercase runs.
+_CAMEL_CASE_WORD = re.compile(r"[A-Za-z][a-z]+(?:[A-Z][a-z]+)+")
+
+_CAMEL_CASE_PART = re.compile(r"[A-Z]?[a-z]+")
+
+_REPEATED_LETTER_RUN = re.compile(r"(.)\1{5,}")
+
+_MAX_REPEATED_LETTERS = 5
 
 
 def display_name_from_email(email):
     local_part = email.rpartition("@")[0] if "@" in email else email
-    untagged = local_part.split("+", 1)[0]
-    pieces = [piece.strip() for piece in _LOCAL_PART_SEPARATORS.split(untagged) if piece.strip()]
-    display_name = " ".join(piece[0].upper() + piece[1:] for piece in pieces)
+    pieces = _WORD_SEPARATORS.split(_DIGITS.sub("", local_part))
+    words = []
+    for piece in filter(None, (piece.strip("'") for piece in pieces)):
+        words.extend(
+            _CAMEL_CASE_PART.findall(piece) if _CAMEL_CASE_WORD.fullmatch(piece) else [piece]
+        )
+    display_name = " ".join(
+        _REPEATED_LETTER_RUN.sub(
+            lambda run: run.group(1) * _MAX_REPEATED_LETTERS, word.lower()
+        ).capitalize()
+        for word in words
+    )
     if not display_name:
         display_name = local_part.strip() or email.strip()
     return display_name[:DISPLAY_NAME_MAX_LENGTH].rstrip()

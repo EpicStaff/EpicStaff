@@ -24,7 +24,7 @@ def _stored_display_names():
 
 @pytest.mark.django_db
 def test_null_display_name_is_derived_from_email():
-    user = _user_with_display_name("john.smith+test@acme.com", None)
+    user = _user_with_display_name("john.smith@acme.com", None)
 
     backfill_migration.backfill_display_name(django_apps, None)
 
@@ -44,13 +44,33 @@ def test_blank_display_name_is_derived_from_email(blank_display_name):
 
 
 @pytest.mark.django_db
-def test_local_part_without_pieces_falls_back_to_raw_local_part():
-    user = _user_with_display_name("+tag@acme.com", None)
+def test_local_part_without_letters_falls_back_to_raw_local_part():
+    user = _user_with_display_name("=2+5@acme.com", None)
 
     backfill_migration.backfill_display_name(django_apps, None)
 
     user.refresh_from_db()
-    assert user.display_name == "+tag"
+    assert user.display_name == "=2+5"
+
+
+@pytest.mark.django_db
+def test_symbols_split_and_casing_is_normalized_in_backfilled_name():
+    user = _user_with_display_name("JOHN!smith+Jr@acme.com", None)
+
+    backfill_migration.backfill_display_name(django_apps, None)
+
+    user.refresh_from_db()
+    assert user.display_name == "John Smith Jr"
+
+
+@pytest.mark.django_db
+def test_digits_are_dropped_from_backfilled_name():
+    user = _user_with_display_name("shark345@gmail.com", None)
+
+    backfill_migration.backfill_display_name(django_apps, None)
+
+    user.refresh_from_db()
+    assert user.display_name == "Shark"
 
 
 @pytest.mark.django_db
@@ -82,7 +102,7 @@ def test_backfill_leaves_updated_at_unchanged():
 @pytest.mark.django_db
 def test_backfill_covers_more_rows_than_one_batch(monkeypatch):
     monkeypatch.setattr(backfill_migration, "BATCH_SIZE", 2)
-    emails = [f"user.number{index}@acme.com" for index in range(5)]
+    emails = [f"user.{letter}@acme.com" for letter in "abcde"]
     for email in emails:
         _user_with_display_name(email, None)
 
@@ -90,7 +110,7 @@ def test_backfill_covers_more_rows_than_one_batch(monkeypatch):
 
     stored = _stored_display_names()
     assert [stored[email] for email in emails] == [
-        f"User Number{index}" for index in range(5)
+        f"User {letter.upper()}" for letter in "abcde"
     ]
 
 
