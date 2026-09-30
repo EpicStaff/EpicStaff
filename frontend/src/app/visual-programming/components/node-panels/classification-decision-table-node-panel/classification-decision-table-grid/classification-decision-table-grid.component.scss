@@ -1,5 +1,6 @@
 $grid-header-height: 40px;
 $grid-header-gap: 1rem;
+$grid-above-btns-height: 44px;
 
 :host {
     display: flex;
@@ -11,9 +12,12 @@ $grid-header-gap: 1rem;
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     flex: 1;
     min-height: 0;
+
+    > app-multi-select {
+        position: absolute;
+    }
 }
 
 .grid-header {
@@ -296,11 +300,13 @@ $grid-header-gap: 1rem;
     width: 100%;
     overflow: visible;
     padding-left: 28px;
+    padding-top: $grid-header-gap;
+    padding-bottom: $grid-header-gap;
     flex: 1;
     min-height: 0;
 
     &.has-above-btns {
-        padding-top: 36px;
+        padding-top: $grid-above-btns-height;
     }
 
     ag-grid-angular {
@@ -520,7 +526,7 @@ $group-gutter-width: 28px;
 
 .col-above-add-btn {
     position: absolute;
-    top: 16px;
+    top: $grid-above-btns-height - 20px;
     width: 16px;
     height: 16px;
     border-radius: 4px;
