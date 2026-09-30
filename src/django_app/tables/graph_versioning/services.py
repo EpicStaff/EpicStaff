@@ -48,7 +48,8 @@ class PreparedVersion:
 
     Attributes:
         converted_snapshot: The stored snapshot upgraded to ``IMPORT_VERSION``, before
-            any filtering. Still carries ``name`` and ``secret_declarations``.
+            any filtering. Still carries ``name``, ``secret_declarations`` and
+            ``node_authorship``.
         filtered_snapshot: ``converted_snapshot`` with missing-dependency FKs nulled and
             unsupported nodes, plus the edges touching them, removed.
         available_dependencies: Dependency ids that still exist, keyed by
@@ -79,6 +80,7 @@ class GraphVersioningService:
         snapshot = self._manager.create_snapshot(graph)
         snapshot["version"] = IMPORT_VERSION
         snapshot["secret_declarations"] = self._manager.collect_secret_declarations(graph=graph)
+        snapshot["node_authorship"] = self._manager.collect_node_authorship(graph=graph)
         dependencies = self._manager.collect_dependencies(graph)
 
         return GraphVersion.objects.create(
@@ -140,7 +142,7 @@ class GraphVersioningService:
         with no warnings can still produce warnings on restore.
 
         Credential-named fields in the graph-level ``metadata`` are nulled, since old
-        snapshots can hold them in plaintext.
+        snapshots can hold them in plaintext. The recorded ``node_authorship`` is omitted.
 
         Key-Value nodes carry the live id of the table a restore by ``user`` would bind, not
         the stored id (see ``GraphVersioningManager.bind_key_value_tables``).
@@ -158,6 +160,7 @@ class GraphVersioningService:
         }
         if "metadata" in snapshot:
             snapshot = {**snapshot, "metadata": _scrub_plaintext_secrets(snapshot["metadata"])}
+        snapshot.pop("node_authorship", None)
         return {
             "snapshot": snapshot,
             "warnings": list(prepared.filter_warnings),
@@ -189,9 +192,11 @@ class GraphVersioningService:
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
         user:
-            The acting user. It authors every recreated node and becomes the
-            graph's author when the graph has none. Permission-gated node
-            references (key-value tables) are re-bound only if this user may use them.
+            The acting user. It authors every recreated node, except that a version
+            recording ``node_authorship`` restores each node's ``created_at`` and keeps a
+            recorded author who is still a member of the graph's organization. It becomes
+            the graph's author when the graph has none, and permission-gated node
+            references (key-value tables) are re-bound only if it may use them.
 
         Returns
         -------
@@ -225,6 +230,12 @@ class GraphVersioningService:
 
         node_mapper = self._manager.apply_snapshot_to_graph(
             graph, prepared.filtered_snapshot, prepared.available_dependencies, user=user
+        )
+        self._manager.restore_node_authorship(
+            graph=graph,
+            recorded_authorship=prepared.converted_snapshot.get("node_authorship"),
+            node_mapper=node_mapper,
+            user=user,
         )
         if claim_authorship(graph, user):
             graph.save(update_fields=["created_by"])

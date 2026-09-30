@@ -377,7 +377,12 @@ def test_preview_restore_and_create_graph_prepare_the_same_result(
 
     assert len(recorded) == 3
     assert recorded[0] == recorded[1] == recorded[2]
-    assert preview["snapshot"] == recorded[0].filtered_snapshot
+    assert "node_authorship" in recorded[0].filtered_snapshot
+    assert preview["snapshot"] == {
+        key: value
+        for key, value in recorded[0].filtered_snapshot.items()
+        if key != "node_authorship"
+    }
     assert preview["warnings"] == list(recorded[0].filter_warnings)
     assert [warning["type"] for warning in preview["warnings"]] == ["fk_nulled"]
 

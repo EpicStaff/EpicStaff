@@ -4,6 +4,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from rbac.identity.api_keys.principals import SystemServicePrincipal
+from rbac.models import OrganizationUser
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
@@ -160,7 +161,7 @@ def test_source_flow_holds_every_graph_authored_node_type(source_flow):
     assert {type(node) for node in _graph_nodes(source_flow)} == graph_authored_models
 
 
-# ---- export and snapshots never carry an author ----
+# ---- export carries no author; a version snapshot only in node_authorship ----
 
 
 @pytest.mark.django_db
@@ -187,11 +188,14 @@ def test_partial_export_carries_no_author_anywhere(source_flow):
 
 
 @pytest.mark.django_db
-def test_version_snapshot_carries_no_author_anywhere(source_flow):
+def test_version_snapshot_records_authors_only_in_node_authorship(source_flow):
     version = GraphVersioningService().save_version(graph=source_flow, name="v1")
+    export_format_part = {
+        key: value for key, value in version.snapshot.items() if key != "node_authorship"
+    }
 
     assert len(version.snapshot["nodes"]) == len(NODE_RELATIONS)
-    assert _keys_named(version.snapshot, AUTHOR_KEY) == []
+    assert _keys_named(export_format_part, AUTHOR_KEY) == []
 
 
 # ---- import authors every new row with the importing user ----
@@ -282,14 +286,36 @@ def test_partial_import_authors_every_new_node_with_importer(
     assert set(new_node_authors.values()) == {admin_acme.id}
 
 
-# ---- versioning authors recreated rows with the acting user ----
+# ---- restore replays recorded node authors; create-from-version uses the actor ----
 
 
 @pytest.mark.django_db
-def test_version_restore_authors_recreated_nodes_with_restoring_user(
-    client_as, admin_acme, acme, source_flow
+def test_version_restore_keeps_recorded_node_author_who_is_still_a_member(
+    client_as, admin_acme, member_only, acme, source_flow
 ):
     version = GraphVersioningService().save_version(graph=source_flow, name="v1")
+    source_flow.refresh_from_db()
+    client = client_as(admin_acme)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+    response = client.post(
+        reverse("graph-versions-restore", args=[version.id]),
+        {"save_version": source_flow.save_version},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    node_authors = _node_authors(source_flow)
+    assert len(node_authors) == len(NODE_RELATIONS)
+    assert set(node_authors.values()) == {member_only.id}
+
+
+@pytest.mark.django_db
+def test_version_restore_authors_nodes_of_a_former_member_with_restoring_user(
+    client_as, admin_acme, member_only, acme, source_flow
+):
+    version = GraphVersioningService().save_version(graph=source_flow, name="v1")
+    OrganizationUser.objects.filter(user=member_only, org=acme).delete()
     source_flow.refresh_from_db()
     client = client_as(admin_acme)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
@@ -368,11 +394,15 @@ UNKNOWN_USER_ID = 987654321
 
 @pytest.fixture(params=["other-user", "unknown-user"])
 def version_with_node_authors(request, source_flow, member_only):
-    """A version of `source_flow` whose stored snapshot nodes name an author."""
+    """A version of `source_flow` whose stored snapshot nodes name an author.
+
+    ``node_authorship`` is dropped, so the node dicts are the only author data left.
+    """
     stored_author_id = member_only.id if request.param == "other-user" else UNKNOWN_USER_ID
     version = GraphVersioningService().save_version(graph=source_flow, name="v1")
     for node_data in version.snapshot["nodes"]:
         node_data[AUTHOR_KEY] = stored_author_id
+    del version.snapshot["node_authorship"]
     version.save(update_fields=["snapshot"])
     return version
 
