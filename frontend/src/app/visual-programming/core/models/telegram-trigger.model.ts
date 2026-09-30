@@ -40,6 +40,21 @@ export interface TelegramTriggerNodeField {
     variable_path: string;
 }
 
+/** `GET telegram-trigger-nodes/{id}/webhook-info/` — what Telegram has registered for the node's bot key. */
+export interface TelegramWebhookInfo {
+    /** The URL Telegram currently delivers to for this bot key; null when nothing is registered. */
+    registered_url: string | null;
+    /** This node's own callback URL; null when the tunnel URL is unavailable or no trigger is set. */
+    expected_url: string | null;
+    /** false when nothing is registered or a different URL is; null only when `expected_url` is unknown. */
+    is_match: boolean | null;
+    pending_update_count: number | null;
+    /** Telegram's last delivery error for this bot key. */
+    last_error_message: string | null;
+    /** ISO-8601. */
+    last_error_date: string | null;
+}
+
 export interface GetTelegramTriggerNodeRequest {
     id: number;
     node_name: string;

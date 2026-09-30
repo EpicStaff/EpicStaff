@@ -69,7 +69,7 @@
                                             icon="x"
                                             size="1rem"
                                         />
-                                        <span>Registration failed</span>
+                                        <span>Tunnel not connected</span>
                                     </div>
                                     <span class="webhook-status__error-message"> Webhook service is not running </span>
                                 }
@@ -80,11 +80,20 @@
                                             icon="check"
                                             size="1rem"
                                         />
-                                        <span>Webhook registered</span>
+                                        <span>Tunnel connected</span>
                                     </div>
                                 }
                             }
                         </div>
+
+                        @if (showsWebhookRegistration) {
+                            <app-telegram-webhook-registration
+                                [nodeId]="node().id"
+                                [backendId]="savedBackendId()"
+                                [botKeySecretId]="savedBotKeySecretId()"
+                                [hasUnsavedConnectionChanges]="hasUnsavedConnectionChanges()"
+                            />
+                        }
                     </div>
 
                     <div class="output-fields-section">

@@ -84,6 +84,7 @@ import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/fl
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
+import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { buildFlowModelFromGraphDto, normalizeFlowPorts } from '../../../../visual-programming/utils/load';
@@ -148,7 +149,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
-    private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
+    /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
+    private readonly savedFlowStateService = inject(SavedFlowStateService);
     protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
@@ -157,7 +159,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
+        return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowStateService.savedFlow());
     });
 
     public isSaving = signal(false);
@@ -404,7 +406,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     // setFlow retriggers ngOnChanges in flow-graph, which runs
                     // _shiftImportedNodes (using _preImportBackendIds set by doPartialImport)
                     // and fitAfterNextFlowChange.
-                    // savedFlowState is intentionally NOT updated — the flow stays dirty.
+                    // The saved baseline is intentionally NOT updated — the flow stays dirty.
                     this.flowService.setFlow(mergedFlow);
 
                     // Run the same warning toasts as applyLoadedGraphState.
@@ -687,7 +689,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.flowService.updateNode({ ...node, data: { ...node.data, isActive: dto.is_active } });
             }
         }
-        this.savedFlowState.set(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
+        this.savedFlowStateService.setSavedFlow(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
         this.sidePanelService.notifyGraphSaved();
         if (showSuccessToast) {
             this.toastService.success('Graph saved successfully');
@@ -745,12 +747,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
                 const savedNode = patchedFlow.nodes.find((n) => n.id === node.id);
                 if (savedNode) {
-                    const prev = this.savedFlowState();
+                    const prev = this.savedFlowStateService.savedFlow();
                     const exists = prev.nodes.some((n) => n.id === node.id);
                     const nextNodes = exists
                         ? prev.nodes.map((n) => (n.id === node.id ? savedNode : n))
                         : [...prev.nodes, savedNode];
-                    this.savedFlowState.set(cloneFlowState({ nodes: nextNodes, connections: prev.connections }));
+                    this.savedFlowStateService.setSavedFlow(
+                        cloneFlowState({ nodes: nextNodes, connections: prev.connections })
+                    );
                 }
 
                 this.toastService.success('Node saved');
@@ -918,7 +922,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 tap((result) => {
                     this.isDeactivating = false;
                     if (result === 'dont-save') {
-                        this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
+                        this.savedFlowStateService.setSavedFlow(cloneFlowState(this.currentFlowState()));
                     }
                 }),
                 map((result) => result === 'save' || result === 'dont-save')
@@ -1035,6 +1039,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.unsavedChangesRegistry.unregister(this);
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
+        this.savedFlowStateService.reset();
     }
 
     /** Starts the purely visual snake easter egg over the open flow; ignored while loading or already playing. */
@@ -1048,13 +1053,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.availableFlowLights.set(flows);
         const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
-        // savedFlowState captures the as-persisted snapshot used for dirty-tracking.
+        // The saved baseline captures the as-persisted snapshot used for dirty-tracking.
         // It is set BEFORE the legacy-name rewrite so that flows with legacy names are
         // immediately marked dirty — the user accepted this behaviour (EST-2826).
-        this.savedFlowState.set(cloneFlowState(normalizedFlow));
+        this.savedFlowStateService.setSavedFlow(cloneFlowState(normalizedFlow));
 
         // Eagerly rewrite legacy "at HH:MM" once-schedule names to "at HH-MM" in the
-        // live canvas state. Because savedFlowState already holds the old names, the
+        // live canvas state. Because the saved baseline already holds the old names, the
         // flow will be marked dirty until the user saves, which is the intended UX.
         const rewrittenFlow: FlowModel = {
             ...normalizedFlow,

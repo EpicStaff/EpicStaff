@@ -8,6 +8,7 @@ import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 import { GetScheduleTriggerNodeRequest } from '../../../visual-programming/core/models/schedule-trigger.model';
+import { TelegramWebhookInfo } from '../../../visual-programming/core/models/telegram-trigger.model';
 import {
     CreateGraphDtoRequest,
     CreateGraphFromVersionResponse,
@@ -167,6 +168,12 @@ export class FlowsApiService {
     getScheduleTriggerNode(id: number): Observable<GetScheduleTriggerNodeRequest> {
         return this.http.get<GetScheduleTriggerNodeRequest>(
             `${this.configService.apiUrl}schedule-trigger-nodes/${id}/`
+        );
+    }
+
+    getTelegramTriggerWebhookInfo(id: number): Observable<TelegramWebhookInfo> {
+        return this.http.get<TelegramWebhookInfo>(
+            `${this.configService.apiUrl}telegram-trigger-nodes/${id}/webhook-info/`
         );
     }
 

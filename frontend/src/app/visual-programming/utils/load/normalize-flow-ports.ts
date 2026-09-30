@@ -7,8 +7,8 @@ import { FlowModel } from '../../core/models/flow.model';
  * Generates ports for any node that has ports === null, and re-generates ports for
  * decision table nodes whose port count is out of sync with their condition groups.
  *
- * This normalization is applied both when loading a flow (so that savedFlowState
- * already reflects the port-filled state) and when FlowGraphComponent receives a
+ * This normalization is applied both when loading a flow (so that the saved baseline in
+ * SavedFlowStateService already reflects the port-filled state) and when FlowGraphComponent receives a
  * new flowState input (so the canvas has the correct ports).
  */
 export function normalizeFlowPorts(flowState: FlowModel): FlowModel {
