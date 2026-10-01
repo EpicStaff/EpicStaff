@@ -100,7 +100,7 @@ import { extractToSubflow } from '../../../../visual-programming/utils/extract/e
 import {
     buildFlowModelFromGraphDto,
     mapGraphDtoToFlowModel,
-    normalizeFlowPorts
+    normalizeFlowPorts,
 } from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
 import {
@@ -581,19 +581,24 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         const subflowName = subGraphNode.data.name || subGraphNode.node_name || `Subflow #${subgraphId}`;
 
-        // Step 2: Show confirmation dialog.
+        // Step 2: Show confirmation dialog with optional "delete subflow" checkbox.
+        let deleteSubflow = false;
         this.confirmationDialogService
-            .confirm({
+            .confirmWithOptions({
                 title: 'Unpack Subflow',
                 message: `Unpack <strong>${subflowName}</strong> into the current graph? The subgraph node will be replaced by its contents.`,
                 confirmText: 'Unpack',
                 cancelText: 'Cancel',
                 type: 'warning',
+                checkbox: { label: 'Delete the subflow after unpacking' },
             })
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 // Only proceed on confirm.
-                filter((result) => result === true),
+                filter((result): result is Exclude<typeof result, 'close'> => result !== 'close' && result.confirmed),
+                tap((result) => {
+                    deleteSubflow = result.checked;
+                }),
                 // Step 3: Fetch the subflow graph from the server.
                 switchMap(() => this.flowApiService.getGraphById(subgraphId, true)),
                 switchMap((graphDto) => {
@@ -608,13 +613,26 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
                     return this.saveFlowState(this.currentFlowState(), false);
                 }),
+                // Step 7: Optionally delete the subflow.
+                switchMap(() => {
+                    if (deleteSubflow) {
+                        return this.flowStorageService.deleteFlow(subgraphId).pipe(
+                            catchError(() => {
+                                this.toastService.error('Unpacked successfully, but failed to delete the subflow');
+                                return EMPTY;
+                            })
+                        );
+                    }
+                    return of(undefined);
+                }),
                 catchError((err: HttpErrorResponse) => {
                     this.toastService.error(`Unpack subflow failed: ${extractHttpErrorMessage(err)}`);
                     return EMPTY;
                 })
             )
             .subscribe(() => {
-                this.toastService.success(`Unpacked "${subflowName}" into the current graph`);
+                const suffix = deleteSubflow ? ' and deleted the subflow' : '';
+                this.toastService.success(`Unpacked "${subflowName}" into the current graph${suffix}`);
             });
     }
 

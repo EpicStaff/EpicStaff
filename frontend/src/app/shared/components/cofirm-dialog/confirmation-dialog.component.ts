@@ -5,8 +5,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { AppIconComponent } from '../app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
+import { CheckboxComponent } from '../checkbox/checkbox.component';
 
-export type DialogResult = 'confirm' | 'cancel' | 'close';
+export interface DialogResult {
+    action: 'confirm' | 'cancel' | 'close';
+    checked?: boolean;
+}
 
 let nextBreakdownListId = 0;
 let nextVerificationInputId = 0;
@@ -42,11 +46,25 @@ export interface ConfirmationDialogData {
     breakdown?: ConfirmationBreakdown;
     /** Phrase the user must type exactly before the confirm button is enabled. */
     verification?: ConfirmationVerification;
+    /** Optional checkbox shown above the action buttons. */
+    checkbox?: ConfirmationCheckbox;
+}
+
+export interface ConfirmationCheckbox {
+    label: string;
+    checked?: boolean;
 }
 
 @Component({
     selector: 'app-confirmation-dialog',
-    imports: [CommonModule, DialogModule, IconButtonComponent, AppSvgIconComponent, AppIconComponent],
+    imports: [
+        CommonModule,
+        DialogModule,
+        IconButtonComponent,
+        AppSvgIconComponent,
+        AppIconComponent,
+        CheckboxComponent,
+    ],
     templateUrl: './confirmation-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./confirmation-dialog.component.scss'],
@@ -54,6 +72,7 @@ export interface ConfirmationDialogData {
 export class ConfirmationDialogComponent {
     protected readonly isBreakdownExpanded = signal(false);
     protected readonly typedPhrase = signal('');
+    protected readonly checkboxChecked: ReturnType<typeof signal<boolean>>;
 
     // `data` must stay above the fields below: they read it in their initializers.
     readonly data = inject<ConfirmationDialogData>(DIALOG_DATA);
@@ -67,6 +86,10 @@ export class ConfirmationDialogComponent {
 
     private readonly dialogRef = inject<DialogRef<DialogResult>>(DialogRef);
 
+    constructor() {
+        this.checkboxChecked = signal(this.data.checkbox?.checked ?? false);
+    }
+
     toggleBreakdown(): void {
         this.isBreakdownExpanded.update((isExpanded) => !isExpanded);
     }
@@ -76,15 +99,15 @@ export class ConfirmationDialogComponent {
     }
 
     onCancel(): void {
-        this.dialogRef.close('cancel');
+        this.dialogRef.close({ action: 'cancel' });
     }
 
     onConfirm(): void {
         if (this.isConfirmBlocked()) return;
-        this.dialogRef.close('confirm');
+        this.dialogRef.close({ action: 'confirm', checked: this.checkboxChecked() });
     }
 
     onClose(): void {
-        this.dialogRef.close('close');
+        this.dialogRef.close({ action: 'close' });
     }
 }

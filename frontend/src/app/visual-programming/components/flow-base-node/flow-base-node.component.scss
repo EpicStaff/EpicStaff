@@ -258,6 +258,10 @@
             .actions {
                 @include mixins.node-action-bar-delete-chip(var(--color-divider-regular), 4px);
                 right: 0;
+
+                &:has(.unpack-button) {
+                    right: 30px;
+                }
             }
         }
 

@@ -6,6 +6,11 @@ import { ConfirmationDialogComponent, ConfirmationDialogData, DialogResult } fro
 
 export type ConfirmationResult = boolean | 'close';
 
+export interface ConfirmationResultWithOptions {
+    confirmed: boolean;
+    checked: boolean;
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -13,19 +18,40 @@ export class ConfirmationDialogService {
     constructor(private dialog: Dialog) {}
 
     confirm(options: ConfirmationDialogData, config?: { width?: string }): Observable<ConfirmationResult> {
+        return this.openDialog(options, config).pipe(
+            map((result) => {
+                if (!result) return 'close';
+                if (result.action === 'confirm') return true;
+                if (result.action === 'cancel') return false;
+                return 'close';
+            })
+        );
+    }
+
+    confirmWithOptions(
+        options: ConfirmationDialogData,
+        config?: { width?: string }
+    ): Observable<ConfirmationResultWithOptions | 'close'> {
+        return this.openDialog(options, config).pipe(
+            map((result) => {
+                if (!result || result.action === 'close') return 'close';
+                return {
+                    confirmed: result.action === 'confirm',
+                    checked: result.checked ?? false,
+                };
+            })
+        );
+    }
+
+    private openDialog(
+        options: ConfirmationDialogData,
+        config?: { width?: string }
+    ): Observable<DialogResult | undefined> {
         const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
             width: config?.width ?? '400px',
             data: options,
         });
-
-        return dialogRef.closed.pipe(
-            map((result) => {
-                if (!result) return 'close';
-                if (result === 'confirm') return true;
-                if (result === 'cancel') return false;
-                return 'close';
-            })
-        );
+        return dialogRef.closed;
     }
 
     confirmDelete(itemName: string): Observable<ConfirmationResult> {
