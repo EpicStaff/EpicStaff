@@ -72,10 +72,10 @@ export interface ConfirmationCheckbox {
 export class ConfirmationDialogComponent {
     protected readonly isBreakdownExpanded = signal(false);
     protected readonly typedPhrase = signal('');
-    protected readonly checkboxChecked: ReturnType<typeof signal<boolean>>;
 
     // `data` must stay above the fields below: they read it in their initializers.
     readonly data = inject<ConfirmationDialogData>(DIALOG_DATA);
+    protected readonly checkboxChecked = signal(this.data.checkbox?.checked ?? false);
     protected readonly breakdownListId = `confirmation-breakdown-list-${nextBreakdownListId++}`;
     protected readonly breakdown = this.data.breakdown?.items.length ? this.data.breakdown : null;
     protected readonly breakdownTotal = (this.breakdown?.items ?? []).reduce((sum, item) => sum + item.count, 0);
@@ -85,10 +85,6 @@ export class ConfirmationDialogComponent {
     );
 
     private readonly dialogRef = inject<DialogRef<DialogResult>>(DialogRef);
-
-    constructor() {
-        this.checkboxChecked = signal(this.data.checkbox?.checked ?? false);
-    }
 
     toggleBreakdown(): void {
         this.isBreakdownExpanded.update((isExpanded) => !isExpanded);

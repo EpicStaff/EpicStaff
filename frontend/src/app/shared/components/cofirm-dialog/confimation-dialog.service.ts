@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 
 import { ConfirmationDialogComponent, ConfirmationDialogData, DialogResult } from './confirmation-dialog.component';
@@ -15,7 +15,7 @@ export interface ConfirmationResultWithOptions {
     providedIn: 'root',
 })
 export class ConfirmationDialogService {
-    constructor(private dialog: Dialog) {}
+    private readonly dialog = inject(Dialog);
 
     confirm(options: ConfirmationDialogData, config?: { width?: string }): Observable<ConfirmationResult> {
         return this.openDialog(options, config).pipe(

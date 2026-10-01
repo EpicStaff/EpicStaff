@@ -152,6 +152,7 @@ export class FlowBaseNodeComponent implements OnInit {
     public onUnpackClick(event: MouseEvent): void {
         event.preventDefault();
         event.stopPropagation();
+        if (this.isBlockedSubgraph) return;
         this.unpackClicked.emit();
     }
 

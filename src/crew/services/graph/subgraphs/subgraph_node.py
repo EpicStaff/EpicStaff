@@ -223,7 +223,7 @@ class SubGraphNode:
         temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
         if self.output_variable_path:
-            if self.output_variable_path.startswith("variables"):
+            if self.output_variable_path == "variables" or self.output_variable_path.startswith("variables."):
                 full_path = self.output_variable_path
             else:
                 full_path = f"variables.{self.output_variable_path}"

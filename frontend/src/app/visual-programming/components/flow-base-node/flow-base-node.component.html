@@ -214,7 +214,7 @@
                                     isBlockedSubgraph ? 'Cannot unpack: referenced flow is missing' : 'Unpack subflow'
                                 "
                                 matTooltipPosition="above"
-                                (click)="isBlockedSubgraph ? $event.stopPropagation() : onUnpackClick($event)"
+                                (click)="onUnpackClick($event)"
                             >
                                 <i class="ti ti-package-off"></i>
                             </div>
