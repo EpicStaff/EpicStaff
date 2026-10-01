@@ -2,7 +2,7 @@ from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
-from rbac.authorship import resolve_author
+from rbac.authorship import record_last_edit, resolve_author
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
@@ -333,11 +333,13 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             if isinstance(path_info, FolderInfo) and not path.endswith("/"):
                 path = path + "/"
 
-            sf, _ = StorageFile.objects.get_or_create(
+            sf, created = StorageFile.objects.get_or_create(
                 org_id=org_id,
                 path=path,
                 defaults={"created_by": resolve_author(request.user)},
             )
+            if created:
+                record_last_edit(sf, request.user)
 
             for graph_id in graph_ids:
                 obj, _ = GraphStorageFile.objects.get_or_create(graph_id=graph_id, storage_file=sf)

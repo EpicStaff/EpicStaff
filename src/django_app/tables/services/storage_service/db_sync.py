@@ -1,7 +1,9 @@
+from collections.abc import Iterable
+
 from django.db import transaction
 from django.db.models import QuerySet, Value
 from django.db.models.functions import Concat, Substr
-from rbac.authorship import resolve_author
+from rbac.authorship import record_last_edits, resolve_author
 from rbac.models import Organization
 from tables.models import StorageFile, User
 
@@ -42,6 +44,12 @@ def _ancestor_paths(path: str) -> list[str]:
     return ancestors
 
 
+def _record_edited(rows: Iterable[StorageFile], user: object | None) -> None:
+    """Record `user` as the last editor of `rows`; without an acting user nothing is recorded."""
+    if user is not None:
+        record_last_edits(rows, user)
+
+
 def _claim_unauthored(rows: QuerySet[StorageFile], author: User | None) -> None:
     """Make `author` the author of the rows in `rows` that have none.
 
@@ -51,13 +59,53 @@ def _claim_unauthored(rows: QuerySet[StorageFile], author: User | None) -> None:
         rows.filter(created_by__isnull=True).update(created_by=author)
 
 
+def _create_missing_rows(org: Organization, rows: list[StorageFile], user: object | None) -> None:
+    """Insert `rows`, leaving paths already tracked untouched; `user` last edits the inserted ones."""
+    # NOTE: the already-tracked paths are read before the insert, so a row that a
+    # concurrent writer inserts between the read and the insert is taken for one inserted
+    # here and recorded as last edited by `user`. Accepted: only the last edit is wrong.
+    tracked_paths = set(
+        StorageFile.objects.filter(org=org, path__in=[row.path for row in rows]).values_list(
+            "path", flat=True
+        )
+    )
+    StorageFile.objects.bulk_create(rows, ignore_conflicts=True)
+    new_paths = [row.path for row in rows if row.path not in tracked_paths]
+    if new_paths:
+        _record_edited(StorageFile.objects.filter(org=org, path__in=new_paths), user)
+
+
+def _create_missing_folders(
+    org: Organization, folder_paths: list[str], author: User | None
+) -> list[StorageFile]:
+    """Create the folder rows of `folder_paths` that do not exist yet and return them."""
+    created_rows = []
+    for folder_path in folder_paths:
+        folder_row, created = StorageFile.objects.get_or_create(
+            org=org,
+            path=folder_path,
+            defaults={
+                "name": _name_of(folder_path),
+                "item_type": "folder",
+                "parent_path": _parent_of(folder_path),
+                "size": None,
+                "s3_modified": None,
+                "created_by": author,
+            },
+        )
+        if created:
+            created_rows.append(folder_row)
+    return created_rows
+
+
 class StorageFileSync:
     """
     Keeps the StorageFile DB table in sync with storage mutations.
     All path arguments are org-relative (no org_X/ prefix).
 
-    `user` is the acting user: rows a call creates are authored by it, and an existing
-    row the call edits is claimed by it when unauthored. System callers pass no user.
+    `user` is the acting user (system callers pass none): rows a call creates are authored
+    and last edited by it, and an existing row the call edits is last edited by it and
+    claimed by it when unauthored.
     """
 
     @staticmethod
@@ -102,19 +150,8 @@ class StorageFileSync:
             if file_row.created_by_id is None:
                 _claim_unauthored(StorageFile.objects.filter(pk=file_row.pk), author)
 
-        for ancestor_path in _ancestor_paths(path):
-            StorageFile.objects.get_or_create(
-                org=org,
-                path=ancestor_path,
-                defaults={
-                    "name": _name_of(ancestor_path),
-                    "item_type": "folder",
-                    "parent_path": _parent_of(ancestor_path),
-                    "size": None,
-                    "s3_modified": None,
-                    "created_by": author,
-                },
-            )
+        created_folders = _create_missing_folders(org, _ancestor_paths(path), author)
+        _record_edited([file_row, *created_folders], user)
 
     @staticmethod
     def on_mkdir(org_id: int, path: str, *, user: object | None = None) -> None:
@@ -122,32 +159,10 @@ class StorageFileSync:
         author = resolve_author(user)
         folder_path = path.rstrip("/") + "/"
 
-        StorageFile.objects.get_or_create(
-            org=org,
-            path=folder_path,
-            defaults={
-                "name": _name_of(folder_path),
-                "item_type": "folder",
-                "parent_path": _parent_of(folder_path),
-                "size": None,
-                "s3_modified": None,
-                "created_by": author,
-            },
+        created_folders = _create_missing_folders(
+            org, [folder_path, *_ancestor_paths(folder_path)], author
         )
-
-        for ancestor_path in _ancestor_paths(folder_path):
-            StorageFile.objects.get_or_create(
-                org=org,
-                path=ancestor_path,
-                defaults={
-                    "name": _name_of(ancestor_path),
-                    "item_type": "folder",
-                    "parent_path": _parent_of(ancestor_path),
-                    "size": None,
-                    "s3_modified": None,
-                    "created_by": author,
-                },
-            )
+        _record_edited(created_folders, user)
 
     @staticmethod
     def on_delete(org_id: int, path: str) -> None:
@@ -161,20 +176,13 @@ class StorageFileSync:
     @staticmethod
     def on_move(org_id: int, src: str, dst: str, *, user: object | None = None) -> None:
         """
-        Sync a move/rename operation.
+        Sync a move/rename to `dst`, the ACTUAL backend destination: a file path, or a
+        folder base path ending in "/".
 
-        dst is the ACTUAL destination path produced by the backend: an exact
-        file path (no trailing "/") for a renamed/moved file, or a folder
-        base path ending in "/" for a moved/renamed folder.
-
-        When dst does not end in "/", first try an exact single-row update.
-        If no row matches (src was a folder, not a file) or dst already ends
-        in "/", fall back to the folder branch: rewrite the path prefix for
-        every row under src, then recompute both parent_path and name for
-        the rows that landed under dst.
-
-        The moved entry's own row is claimed by `user` when unauthored; rows
-        beneath a moved folder keep their authors.
+        A `dst` without "/" first tries a single-row file update; otherwise (src was a
+        folder) every row under `src` gets the `dst` prefix and a recomputed name and
+        parent_path. The moved entry's own row is last edited by `user` and claimed by it
+        when unauthored; rows beneath a moved folder keep their authors and last edits.
         """
         author = resolve_author(user)
         with transaction.atomic():
@@ -187,7 +195,9 @@ class StorageFileSync:
                     parent_path=_parent_of(dst),
                 )
                 if updated:
-                    _claim_unauthored(StorageFile.objects.filter(org_id=org_id, path=dst), author)
+                    moved_file = StorageFile.objects.filter(org_id=org_id, path=dst)
+                    _claim_unauthored(moved_file, author)
+                    _record_edited(moved_file, user)
 
             if updated == 0:
                 src_prefix = src.rstrip("/") + "/"
@@ -208,15 +218,16 @@ class StorageFileSync:
                 _claim_unauthored(
                     StorageFile.objects.filter(org_id=org_id, path=dst_prefix), author
                 )
+                _record_edited([row for row in moved_rows if row.path == dst_prefix], user)
 
     @staticmethod
     def on_copy(org_id: int, actual_dst_paths: list[str], *, user: object | None = None) -> None:
         """
-        Sync a copy operation using the actual destination paths returned by
-        the backend. Paths ending in "/" are folder rows, the rest are file
-        rows. Ancestor folders for every path are created too, so
-        intermediate directories exist in the DB even if the copy created no
-        direct child of them. Rows that already exist are left untouched.
+        Sync a copy from the backend's actual destination paths ("/"-suffixed = folders).
+
+        Every path's ancestor folders are created too, so intermediate directories exist
+        even if the copy created no direct child of them. Rows that already exist are left
+        untouched; the created rows are last edited by `user`.
         """
         org = Organization.objects.get(id=org_id)
         author = resolve_author(user)
@@ -253,7 +264,7 @@ class StorageFileSync:
                 )
             )
 
-        StorageFile.objects.bulk_create(rows, ignore_conflicts=True)
+        _create_missing_rows(org, rows, user)
 
     @staticmethod
     def on_move_cross_org(
@@ -267,8 +278,9 @@ class StorageFileSync:
         """
         Sync a cross-org move using the actual destination path returned by
         the backend: an exact file path, or a folder base path ending in "/".
-        Destination rows are new rows authored by `user`; an existing
-        destination file is claimed by it when unauthored.
+        Destination rows are new rows authored and last edited by `user`; an
+        existing destination file is last edited by it and claimed by it when
+        unauthored.
         """
         dst_org = Organization.objects.get(id=dst_org_id)
         author = resolve_author(user)
@@ -298,17 +310,10 @@ class StorageFileSync:
                     if dest_row.created_by_id is None:
                         _claim_unauthored(StorageFile.objects.filter(pk=dest_row.pk), author)
 
-                for ancestor_path in _ancestor_paths(actual_dst_path):
-                    StorageFile.objects.get_or_create(
-                        org=dst_org,
-                        path=ancestor_path,
-                        defaults={
-                            "name": _name_of(ancestor_path),
-                            "item_type": "folder",
-                            "parent_path": _parent_of(ancestor_path),
-                            "created_by": author,
-                        },
-                    )
+                created_folders = _create_missing_folders(
+                    dst_org, _ancestor_paths(actual_dst_path), author
+                )
+                _record_edited([dest_row, *created_folders], user)
 
                 StorageFile.objects.filter(org_id=src_org_id, path=src_path).delete()
                 return
@@ -338,18 +343,10 @@ class StorageFileSync:
                     )
                 )
 
-            StorageFile.objects.bulk_create(translated_rows, ignore_conflicts=True)
-
-            for ancestor_path in _ancestor_paths(actual_dst_path):
-                StorageFile.objects.get_or_create(
-                    org=dst_org,
-                    path=ancestor_path,
-                    defaults={
-                        "name": _name_of(ancestor_path),
-                        "item_type": "folder",
-                        "parent_path": _parent_of(ancestor_path),
-                        "created_by": author,
-                    },
-                )
+            _create_missing_rows(dst_org, translated_rows, user)
+            created_folders = _create_missing_folders(
+                dst_org, _ancestor_paths(actual_dst_path), author
+            )
+            _record_edited(created_folders, user)
 
             StorageFile.objects.filter(org_id=src_org_id, path__startswith=src_prefix).delete()

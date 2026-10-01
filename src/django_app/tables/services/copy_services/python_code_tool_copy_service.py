@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
-from rbac.authorship import resolve_author
+from rbac.authorship import record_last_edit, resolve_author
 from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
@@ -47,6 +47,8 @@ class PythonCodeToolCopyService(BaseCopyService):
                 org_id=target_org_id,
                 created_by=resolve_author(user),
             )
+            if user is not None:
+                record_last_edit(new_tool, user)
 
         new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id))
         return new_tool

@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models, transaction
 from django.db.models import Avg, Count, Prefetch
 from loguru import logger
-from rbac.authorship import claim_authorship, resolve_author
+from rbac.authorship import claim_authorship, record_last_edit, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
@@ -127,7 +127,8 @@ class CollectionManagementService:
             collection_name: Name for collection (auto-generated if None)
             description: LLM-facing context appended to generated knowledge tool
                 descriptions (defaults to blank)
-            created_by: Acting user recorded as author (no author if not a real user)
+            created_by: Acting user recorded as author and last editor (no author if not
+                a real user)
             collection_origin: Origin of collection (defaults to USER)
             org_id: Owning organization id (required — collection.org is NOT NULL)
 
@@ -141,6 +142,8 @@ class CollectionManagementService:
             collection_origin=collection_origin or SourceCollection.SourceCollectionOrigin.USER,
             org_id=org_id,
         )
+        if created_by is not None:
+            record_last_edit(collection, created_by)
 
         logger.info(
             f"Created collection '{collection.collection_name}' (ID: {collection.collection_id})"
@@ -163,7 +166,8 @@ class CollectionManagementService:
             collection_id: ID of collection to update
             collection_name: New collection name (unchanged if None)
             description: New description (unchanged if None)
-            user: Acting user; becomes the author if the collection has none
+            user: Acting user; becomes the author if the collection has none, and the last
+                editor if the name or description changed
 
         Returns:
             SourceCollection: Updated collection
@@ -172,6 +176,7 @@ class CollectionManagementService:
             CollectionNotFoundException: If collection not found
         """
         collection = CollectionManagementService.get_collection(collection_id)
+        state_before = (collection.collection_name, collection.description)
 
         update_fields = []
 
@@ -188,6 +193,9 @@ class CollectionManagementService:
 
         if update_fields:
             collection.save()
+        changed = (collection.collection_name, collection.description) != state_before
+        if user is not None and changed:
+            record_last_edit(collection, user)
 
         logger.info(f"Updated collection {collection_id} fields: {update_fields or 'none'}")
 
@@ -376,7 +384,7 @@ class CollectionManagementService:
             source_collection_id: ID of collection to copy
             new_collection_name: Name for new collection (auto-generated if None)
             org_id: Owning organization id of the new collection
-            user: Acting user recorded as author of the copy
+            user: Acting user recorded as author and last editor of the copy
 
         Returns:
             SourceCollection: New collection instance
@@ -394,6 +402,8 @@ class CollectionManagementService:
             org_id=org_id,
             created_by=resolve_author(user),
         )
+        if user is not None:
+            record_last_edit(new_collection, user)
 
         # Get source documents with content
         source_documents = DocumentMetadata.objects.filter(

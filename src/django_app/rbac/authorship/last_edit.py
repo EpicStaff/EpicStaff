@@ -57,16 +57,41 @@ def record_last_edits(
     """
     editor = resolve_author(user)
     edited_at = edited_at or timezone.now()
+    _upsert(
+        RecordedLastEdit(instance, editor.pk if editor else None, edited_at)
+        for instance in instances
+    )
+
+
+@dataclass(frozen=True)
+class RecordedLastEdit:
+    """A last edit to write exactly as recorded earlier, e.g. in a graph version."""
+
+    resource: LastEditTrackedModel
+    edited_by_id: int | None
+    edited_at: datetime.datetime
+
+
+def restore_last_edits(recorded: Iterable[RecordedLastEdit]) -> None:
+    """Upsert each resource's recorded editor and time in one statement.
+
+    The caller decides whether a recorded editor may still be shown. Rows that opt out
+    via `records_last_edit()` are skipped.
+    """
+    _upsert(recorded)
+
+
+def _upsert(recorded: Iterable[RecordedLastEdit]) -> None:
     rows: dict[tuple[int, Any], ResourceLastEdit] = {}
-    for instance in instances:
-        if not instance.records_last_edit():
+    for entry in recorded:
+        if not entry.resource.records_last_edit():
             continue
-        content_type = ContentType.objects.get_for_model(instance)
-        rows[(content_type.pk, instance.pk)] = ResourceLastEdit(
+        content_type = ContentType.objects.get_for_model(entry.resource)
+        rows[(content_type.pk, entry.resource.pk)] = ResourceLastEdit(
             content_type=content_type,
-            object_id=instance.pk,
-            edited_by=editor,
-            edited_at=edited_at,
+            object_id=entry.resource.pk,
+            edited_by_id=entry.edited_by_id,
+            edited_at=entry.edited_at,
         )
     if not rows:
         return

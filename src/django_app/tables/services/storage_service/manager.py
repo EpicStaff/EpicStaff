@@ -5,8 +5,9 @@ import tarfile
 import zipfile
 from collections.abc import Iterator
 
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, F, IntegerField, QuerySet, Value, When
 from django.db.models.functions import Lower
+from rbac.authorship import represent_last_edited_at
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -54,6 +55,13 @@ _DOCUMENT_EXTENSIONS = frozenset(
 )
 
 
+def _with_last_edit(rows: QuerySet[StorageFile]) -> QuerySet[StorageFile]:
+    """Annotate each row with its last editor id and edit time, read in the same query."""
+    return rows.annotate(
+        last_editor_id=F("last_edits__edited_by"), last_edit_time=F("last_edits__edited_at")
+    )
+
+
 class StorageManager:
     """
     Org-aware wrapper around AbstractStorageBackend.
@@ -99,7 +107,7 @@ class StorageManager:
     def list_(self, org_id: int, prefix: str = "") -> list[FileListItem]:
         norm = (prefix.rstrip("/") + "/") if prefix else ""
         rows = list(
-            StorageFile.objects.filter(org_id=org_id, parent_path=norm).order_by(
+            _with_last_edit(StorageFile.objects.filter(org_id=org_id, parent_path=norm)).order_by(
                 Case(
                     When(item_type="folder", then=Value(0)),
                     default=Value(1),
@@ -130,6 +138,8 @@ class StorageManager:
                         size=row.size or 0,
                         modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=row.path not in non_empty,
+                        last_edited_by=row.last_editor_id,
+                        last_edited_at=represent_last_edited_at(row.last_edit_time),
                     )
                 )
             else:
@@ -141,6 +151,8 @@ class StorageManager:
                         size=row.size or 0,
                         modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=False,
+                        last_edited_by=row.last_editor_id,
+                        last_edited_at=represent_last_edited_at(row.last_edit_time),
                     )
                 )
 
@@ -226,8 +238,9 @@ class StorageManager:
 
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
+        org_rows = _with_last_edit(StorageFile.objects.filter(org_id=org_id))
         try:
-            row = StorageFile.objects.get(org_id=org_id, path=clean_path)
+            row = org_rows.get(path=clean_path)
             content_type, _ = mimetypes.guess_type(row.name)
             return FileInfo(
                 id=row.id,
@@ -236,18 +249,22 @@ class StorageManager:
                 size=row.size or 0,
                 content_type=content_type or "application/octet-stream",
                 modified=(row.s3_modified or row.created_at).isoformat(),
+                last_edited_by=row.last_editor_id,
+                last_edited_at=represent_last_edited_at(row.last_edit_time),
             )
         except StorageFile.DoesNotExist:
             pass
 
         folder_path = clean_path + "/"
         try:
-            row = StorageFile.objects.get(org_id=org_id, path=folder_path)
+            row = org_rows.get(path=folder_path)
             return FolderInfo(
                 id=row.id,
                 name=row.name,
                 path=row.path,
                 modified=(row.s3_modified or row.created_at).isoformat(),
+                last_edited_by=row.last_editor_id,
+                last_edited_at=represent_last_edited_at(row.last_edit_time),
             )
         except StorageFile.DoesNotExist:
             pass
@@ -375,13 +392,17 @@ class StorageManager:
             "type": "folder",
             "size": 0,
             "modified": None,
+            "last_edited_by": None,
+            "last_edited_at": None,
             "children_map": {},
         }
         nodes_by_path: dict[str, dict] = {norm: root_dict}
         truncated = False
         count = 0
 
-        rows = StorageFile.objects.filter(org_id=org_id, path__startswith=norm).order_by("path")
+        rows = _with_last_edit(
+            StorageFile.objects.filter(org_id=org_id, path__startswith=norm)
+        ).order_by("path")
 
         for row in rows:
             if row.path == norm:
@@ -416,6 +437,8 @@ class StorageManager:
                         "type": "folder",
                         "size": 0,
                         "modified": None,
+                        "last_edited_by": None,
+                        "last_edited_at": None,
                         "children_map": {},
                     }
                     nodes_by_path[cur_path] = node
@@ -446,6 +469,8 @@ class StorageManager:
                     "type": "folder",
                     "size": 0,
                     "modified": row.s3_modified.isoformat() if row.s3_modified else None,
+                    "last_edited_by": row.last_editor_id,
+                    "last_edited_at": represent_last_edited_at(row.last_edit_time),
                     "children_map": {},
                 }
             else:
@@ -456,6 +481,8 @@ class StorageManager:
                     "type": "file",
                     "size": row.size or 0,
                     "modified": row.s3_modified.isoformat() if row.s3_modified else None,
+                    "last_edited_by": row.last_editor_id,
+                    "last_edited_at": represent_last_edited_at(row.last_edit_time),
                     "children_map": None,
                 }
 
@@ -480,6 +507,8 @@ class StorageManager:
                 size=node_dict["size"],
                 modified=node_dict["modified"],
                 children=children,
+                last_edited_by=node_dict["last_edited_by"],
+                last_edited_at=node_dict["last_edited_at"],
             )
 
         return build(root_dict), truncated
@@ -492,15 +521,31 @@ class StorageManager:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """Substring search on filename within an org."""
+        """Substring search on filename within an org, with each result's last edit."""
         qs = StorageFile.objects.filter(org_id=org_id, name__icontains=q, item_type="file")
 
         if path:
             qs = qs.filter(path__startswith=path.rstrip("/") + "/")
 
         total = qs.count()
-        rows = list(qs.order_by("path").values("id", "path", "name")[offset : offset + limit])
-        return rows, total
+        rows = (
+            _with_last_edit(qs)
+            .order_by("path")
+            .values("id", "path", "name", "last_editor_id", "last_edit_time")[
+                offset : offset + limit
+            ]
+        )
+        results = [
+            {
+                "id": row["id"],
+                "path": row["path"],
+                "name": row["name"],
+                "last_edited_by": row["last_editor_id"],
+                "last_edited_at": represent_last_edited_at(row["last_edit_time"]),
+            }
+            for row in rows
+        ]
+        return results, total
 
     # --- Cross-org operations (superadmin-only; enforced at the API layer) ---
 

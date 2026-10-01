@@ -7,6 +7,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from rbac.authorship import record_last_edit
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
@@ -63,6 +64,21 @@ def test_preview_omits_the_recorded_node_authorship(client, graph_with_declared_
     assert "node_authorship" not in response.data["snapshot"]
     stored_snapshot = GraphVersion.objects.get(pk=version_id).snapshot
     assert set(stored_snapshot["node_authorship"]) == {node_id}
+
+
+@pytest.mark.django_db
+def test_preview_omits_the_recorded_node_last_edit(client, graph_with_declared_secret):
+    graph, _ = graph_with_declared_secret
+    node = graph.python_node_list.get()
+    record_last_edit(node, None)
+    version_id = save_version(client=client, graph=graph)
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert "node_last_edit" not in response.data["snapshot"]
+    stored_snapshot = GraphVersion.objects.get(pk=version_id).snapshot
+    assert set(stored_snapshot["node_last_edit"]) == {str(node.id)}
 
 
 @pytest.mark.django_db

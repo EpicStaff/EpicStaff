@@ -1,3 +1,4 @@
+import datetime
 import functools
 
 from django.core.exceptions import FieldDoesNotExist
@@ -114,9 +115,7 @@ class LastEditFieldsSerializerMixin:
 
     def get_last_edited_at(self, instance) -> str | None:
         last_edit = self._last_edit_being_rendered(instance)
-        if last_edit is None:
-            return None
-        return serializers.DateTimeField().to_representation(last_edit.edited_at)
+        return represent_last_edited_at(last_edit.edited_at if last_edit is not None else None)
 
     def _last_edit_being_rendered(self, instance) -> ResourceLastEdit | None:
         # Keyed by the instance itself: a subclass whose to_representation() skips
@@ -126,6 +125,13 @@ class LastEditFieldsSerializerMixin:
             rendered = (instance, next(iter(instance.last_edits.all()), None))
             self._rendered_last_edit = rendered
         return rendered[1]
+
+
+def represent_last_edited_at(edited_at: datetime.datetime | None) -> str | None:
+    """Render `edited_at` the way every API response renders `last_edited_at`."""
+    if edited_at is None:
+        return None
+    return serializers.DateTimeField().to_representation(edited_at)
 
 
 def _has_author_field(model) -> bool:

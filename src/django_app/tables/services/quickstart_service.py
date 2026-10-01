@@ -1,6 +1,6 @@
 from django.db import transaction
 from loguru import logger
-from rbac.authorship import resolve_author
+from rbac.authorship import record_last_edits, resolve_author
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import (
@@ -52,7 +52,7 @@ class QuickstartService(metaclass=SingletonMeta):
         api_key: str | None = None,
         secret: Secret | None = None,
     ) -> dict:
-        """Create a matched set of provider configs backed by a single Secret, authored by `user`.
+        """Create matched provider configs sharing one Secret, authored and last edited by `user`.
 
         Exactly one of `api_key` (cold start — a Secret is created and named after
         the bundle) or `secret` (reuse — nothing is created) is expected; the
@@ -106,6 +106,7 @@ class QuickstartService(metaclass=SingletonMeta):
                     embedding_config=embedding_config,
                     org_id=org_id,
                 )
+                record_last_edits([llm_config, embedding_config], user)
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {

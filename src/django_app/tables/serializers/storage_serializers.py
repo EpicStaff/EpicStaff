@@ -159,7 +159,16 @@ class StorageAddToGraphSerializer(serializers.Serializer):
         return [_normalize_path(path) for path in value]
 
 
-class FileItemSerializer(serializers.Serializer):
+class LastEditResponseFieldsSerializer(serializers.Serializer):
+    last_edited_by = serializers.IntegerField(
+        allow_null=True, help_text="Id of the user who last edited the entry"
+    )
+    last_edited_at = serializers.DateTimeField(
+        allow_null=True, help_text="When the entry was last edited"
+    )
+
+
+class FileItemSerializer(LastEditResponseFieldsSerializer):
     id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     name = serializers.CharField(help_text="File or folder name")
     type = serializers.ChoiceField(
@@ -184,7 +193,7 @@ class StorageListResponseSerializer(serializers.Serializer):
     items = FileItemSerializer(many=True, help_text="Folder contents")
 
 
-class StorageInfoResponseSerializer(serializers.Serializer):
+class StorageInfoResponseSerializer(LastEditResponseFieldsSerializer):
     id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     path = serializers.CharField(help_text="File path")
     name = serializers.CharField(help_text="File name")
@@ -286,7 +295,7 @@ class StorageTreeQuerySerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
-class TreeNodeSerializer(serializers.Serializer):
+class TreeNodeSerializer(LastEditResponseFieldsSerializer):
     id = serializers.IntegerField(allow_null=True)
     name = serializers.CharField()
     path = serializers.CharField()
@@ -317,7 +326,7 @@ class StorageSearchQuerySerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
-class StorageSearchResultSerializer(serializers.Serializer):
+class StorageSearchResultSerializer(LastEditResponseFieldsSerializer):
     id = serializers.IntegerField()
     path = serializers.CharField()
     name = serializers.CharField()

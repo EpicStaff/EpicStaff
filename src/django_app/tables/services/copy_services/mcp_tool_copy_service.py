@@ -1,5 +1,5 @@
 from django.db import transaction
-from rbac.authorship import resolve_author
+from rbac.authorship import record_last_edit, resolve_author
 from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.mcp_models import McpTool
@@ -45,6 +45,8 @@ class McpToolCopyService(BaseCopyService):
                 init_timeout=tool.init_timeout,
                 created_by=resolve_author(user),
             )
+            if user is not None:
+                record_last_edit(new_tool, user)
 
         new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL, org_id=new_tool.org_id))
         return new_tool

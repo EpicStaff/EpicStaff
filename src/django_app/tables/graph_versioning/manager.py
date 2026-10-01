@@ -2,8 +2,10 @@ from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
 
-from rbac.authorship import resolve_author
-from rbac.models import AuthorModel, OrganizationUser
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import Q
+from rbac.authorship import RecordedLastEdit, record_last_edit, resolve_author, restore_last_edits
+from rbac.models import AuthorModel, LastEditTrackedModel, OrganizationUser, ResourceLastEdit
 
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
@@ -390,6 +392,65 @@ class GraphVersioningManager:
             # saves recreated nodes: a later full save() of a stale instance would overwrite it.
             node_model.objects.bulk_update(nodes, ["created_by", "created_at"])
 
+    def collect_node_last_edits(self, *, graph: Graph) -> dict[str, dict]:
+        """Record each node's last editor id and ISO-8601 ``edited_at``, keyed by node id.
+
+        Nodes that were never edited have no entry.
+        """
+        graph_nodes = Q()
+        for node_model in self._last_edit_tracked_node_models():
+            graph_nodes |= Q(
+                content_type=ContentType.objects.get_for_model(node_model),
+                object_id__in=node_model.objects.filter(graph=graph).values("id"),
+            )
+        rows = ResourceLastEdit.objects.filter(graph_nodes).values_list(
+            "object_id", "edited_by_id", "edited_at"
+        )
+        return {
+            str(node_id): {"edited_by": editor_id, "edited_at": edited_at.isoformat()}
+            for node_id, editor_id, edited_at in rows
+        }
+
+    def restore_node_last_edits(
+        self, *, graph: Graph, recorded_last_edits: dict | None, node_mapper: IDMapper
+    ) -> None:
+        """Give each recreated node its recorded last edit.
+
+        A recorded editor who is no longer a member of the graph's organization is
+        dropped and the time kept. Recreated nodes without a recorded entry keep the last
+        edit recorded when they were recreated; nodes that were not recreated are skipped.
+        """
+        if not recorded_last_edits:
+            return
+
+        recorded_by_new_id: dict[int, dict] = {}
+        for old_node_id, entry in recorded_last_edits.items():
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            if new_node_id is not None:
+                recorded_by_new_id[new_node_id] = entry
+        if not recorded_by_new_id:
+            return
+
+        member_ids = self._org_member_ids(
+            org_id=graph.org_id,
+            user_ids={entry["edited_by"] for entry in recorded_by_new_id.values()},
+        )
+        restored: list[RecordedLastEdit] = []
+        for node_model in self._last_edit_tracked_node_models():
+            nodes = node_model.objects.filter(graph=graph, id__in=list(recorded_by_new_id))
+            for node in nodes.only("id"):
+                entry = recorded_by_new_id[node.id]
+                restored.append(
+                    RecordedLastEdit(
+                        resource=node,
+                        edited_by_id=entry["edited_by"]
+                        if entry["edited_by"] in member_ids
+                        else None,
+                        edited_at=datetime.fromisoformat(entry["edited_at"]),
+                    )
+                )
+        restore_last_edits(restored)
+
     @staticmethod
     def _org_member_ids(*, org_id: int, user_ids: set[int | None]) -> set[int]:
         user_ids = {user_id for user_id in user_ids if user_id is not None}
@@ -408,6 +469,16 @@ class GraphVersioningManager:
             for relation_name in NODE_RELATIONS.values()
         )
         return [node_model for node_model in node_models if issubclass(node_model, AuthorModel)]
+
+    @staticmethod
+    def _last_edit_tracked_node_models() -> list[type[LastEditTrackedModel]]:
+        node_models = (
+            Graph._meta.get_field(relation_name).related_model
+            for relation_name in NODE_RELATIONS.values()
+        )
+        return [
+            node_model for node_model in node_models if issubclass(node_model, LastEditTrackedModel)
+        ]
 
     def collect_dependencies(self, graph: Graph) -> dict:
         """
@@ -855,7 +926,8 @@ class GraphVersioningManager:
         """
         Create a brand-new Graph from a filtered snapshot.
         The new graph is independent — no GraphVersion rows, own id/uuid.
-        `user` authors the new graph and every node recreated in it.
+        `user` authors the new graph and every node recreated in it, and is recorded
+        as their last editor.
         """
         snapshot_copy = deepcopy(filtered_snapshot)
 
@@ -903,6 +975,8 @@ class GraphVersioningManager:
             id_mapper,
             user=user,
         )
+        if user is not None:
+            record_last_edit(graph, user)
 
         return graph, node_mapper
 
