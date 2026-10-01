@@ -85,6 +85,29 @@ class BuiltInToolModificationError(CustomAPIExeption):
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"
+    # Telegram's HTTP status when `setWebhook` itself failed with one; a safe int.
+    telegram_http_status: int | None = None
+
+
+class TelegramRegistrationPreconditionError(RegisterTelegramTriggerError):
+    """Raised when a node's configuration makes registration impossible.
+
+    Its detail is always a fixed or validator message, never a secret value,
+    so it is safe to log -- unlike other `RegisterTelegramTriggerError`s.
+    """
+
+
+class TelegramTunnelUnavailableError(CustomAPIExeption):
+    """Raised when an explicit registration cannot get the trigger's tunnel URL.
+
+    The detail is fixed on purpose: the underlying error text is not safe to show.
+    """
+
+    status_code = 503
+    default_detail = (
+        "The webhook tunnel is not available yet. Check the trigger's tunnel and try again."
+    )
+    default_code = "telegram_tunnel_unavailable"
 
 
 class TelegramBotKeyNotConfiguredError(CustomAPIExeption):
@@ -105,13 +128,62 @@ class TelegramWebhookInfoUnavailableError(CustomAPIExeption):
     default_code = "telegram_webhook_info_unavailable"
 
 
+class TelegramBotKeyRejectedError(CustomAPIExeption):
+    """Raised when Telegram answers 401 or 404 for a node's bot key.
+
+    The detail is fixed on purpose: the underlying error text embeds the bot token.
+    """
+
+    status_code = 422
+    default_detail = (
+        "Telegram rejected this bot key. Check the secret selected as the bot key on this node."
+    )
+    default_code = "telegram_bot_key_rejected"
+
+
 class TelegramApiError(Exception):
     """A Telegram Bot API call failed.
 
     The message is built from safe facts only (failure kind, HTTP status,
     Telegram's numeric `error_code`) and never from the underlying exception
     text: the request URL embeds the bot token and the webhook `secret_token`.
+    `http_status` is Telegram's HTTP status when the failure had one.
     """
+
+    def __init__(self, message: str, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+
+
+class TelegramRegistrationBlockedError(CustomAPIExeption):
+    """Raised when a node's configuration makes registering its webhook impossible.
+
+    The response also carries `registration_blocker: {code, message}`, the same
+    object the webhook-info endpoint reports.
+    """
+
+    status_code = 409
+    default_detail = "This node's configuration does not allow registering its webhook."
+    default_code = "telegram_registration_blocked"
+
+    def __init__(self, blocker_code: str, blocker_message: str):
+        super().__init__()
+        self.extra_response_data = {
+            "registration_blocker": {"code": blocker_code, "message": blocker_message}
+        }
+
+
+class TelegramRegistrationFailedError(CustomAPIExeption):
+    """Raised when an explicit webhook registration fails.
+
+    The detail is fixed on purpose: the underlying error can carry the bot token.
+    """
+
+    status_code = 502
+    default_detail = (
+        "Telegram could not register the webhook. Check the panel status and try again."
+    )
+    default_code = "telegram_registration_failed"
 
 
 class PythonCodeToolConfigSerializerError(CustomAPIExeption):

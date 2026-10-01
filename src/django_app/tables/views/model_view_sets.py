@@ -299,6 +299,7 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
 from tables.swagger_schemas.webhook_schemas import (
+    TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST,
     TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET,
     WEBHOOK_TRIGGER_CREATE,
     WEBHOOK_TRIGGER_NODE_CREATE,
@@ -2365,7 +2366,11 @@ class TelegramTriggerNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "webhook_info": Permission.READ}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "webhook_info": Permission.READ,
+        "register_webhook": Permission.UPDATE,
+    }
     org_filter_path = "graph__org_id"
     queryset = TelegramTriggerNode.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
@@ -2381,6 +2386,12 @@ class TelegramTriggerNodeViewSet(
     @action(detail=True, methods=["get"], url_path="webhook-info")
     def webhook_info(self, request, pk=None):
         webhook_status = TelegramTriggerService().get_webhook_status(self.get_object())
+        return Response(TelegramWebhookInfoSerializer(webhook_status).data)
+
+    @extend_schema(**TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST)
+    @action(detail=True, methods=["post"], url_path="register-webhook")
+    def register_webhook(self, request, pk=None):
+        webhook_status = TelegramTriggerService().register_webhook_explicitly(self.get_object())
         return Response(TelegramWebhookInfoSerializer(webhook_status).data)
 
 
