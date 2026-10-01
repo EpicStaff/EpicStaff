@@ -93,6 +93,7 @@ export const MAX_ROWS_BEFORE = 20; // backend MatchScope.rows_before le=20
 export interface AuditFilterState {
     mode: AuditFilterMode;
     query: string;
+    searchText: string;
     matchScope: AuditMatchScopeState;
     kinds: AuditEventKind[];
     statuses: AuditEventStatus[];
@@ -125,6 +126,7 @@ export type AuditFilterNode = AuditFilterLeaf | AuditFilterGroup | AuditFilterNo
 export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     mode: 'builder',
     query: '',
+    searchText: '',
     matchScope: DEFAULT_MATCH_SCOPE,
     kinds: [],
     statuses: [],

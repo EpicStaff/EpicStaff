@@ -335,13 +335,22 @@ def test_compile_never_lets_client_ast_touch_org_id():
     } in clauses  # the bypassed leaf, harmless alongside the real one
 
 
-def test_compile_free_text_uses_wildcard_and_query_string():
+def test_compile_free_text_compiles_contains_on_every_free_text_field():
     node = {"field": "__text__", "op": "contains", "value": "est3285"}
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[0]
     should = compiled_leaf["bool"]["should"]
-    assert any("query_string" in c for c in should)
-    assert any("name" in c.get("wildcard", {}) for c in should)
+    for field in ("name", "node_type", "flow_name", "input", "output", "details"):
+        explicit = _filter_clauses(
+            compile_filters(
+                {"field": field, "op": "contains", "value": "est3285"},
+                org_id=1,
+                retention_days=0,
+            )
+        )[0]
+        assert explicit in should
+    assert len(should) == 6
+    assert {"wildcard": {"input": {"value": "*est3285*", "case_insensitive": True}}} in should
 
 
 def test_compile_flattened_alias_in_op_uses_terms():

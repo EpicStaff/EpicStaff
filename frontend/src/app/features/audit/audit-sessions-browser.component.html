@@ -8,10 +8,14 @@
         [class.audit-browser__toolbar--panel-open]="isFiltersPanelOpen()"
     >
         <input
+            #searchInput
             class="audit-browser__search"
             type="text"
             placeholder="Search every field, every level..."
-            disabled
+            aria-label="Search every field"
+            [value]="appliedSearchText()"
+            (input)="onSearchInput(searchInput.value)"
+            (keydown.enter)="applySearch(searchInput.value)"
         />
         <button
             class="audit-browser__tool-btn"

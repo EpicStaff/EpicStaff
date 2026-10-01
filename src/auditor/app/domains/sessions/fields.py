@@ -49,8 +49,7 @@ DEEP_FILTER_ALIASES: dict[str, str] = {
 WILDCARD_SUBFIELDS: dict[str, str] = {"error": "error.raw"}
 
 FREE_TEXT_FIELDS = FreeTextFields(
-    wildcard_fields=("name", "node_type", "flow_name"),
-    query_string_fields=("input.*", "output.*", "details.*"),
+    fields=("name", "node_type", "flow_name", "input", "output", "details"),
 )
 
 SESSIONS_FIELDS = DictFieldCatalog(

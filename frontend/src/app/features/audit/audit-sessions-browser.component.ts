@@ -12,7 +12,18 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent } from '@shared/components';
-import { catchError, filter, forkJoin, fromEvent, interval, merge, of, Subscription } from 'rxjs';
+import {
+    catchError,
+    debounceTime,
+    filter,
+    forkJoin,
+    fromEvent,
+    interval,
+    merge,
+    of,
+    Subject,
+    Subscription,
+} from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -30,6 +41,7 @@ import { sanitizeToolName } from './utils/sanitize-tool-name.util';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const POLL_INTERVAL_MS = 10_000;
+const SEARCH_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-audit-sessions-browser',
@@ -48,6 +60,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private document = inject(DOCUMENT);
     private searchSubscription: Subscription | null = null;
+    private searchInput = new Subject<string>();
     public readonly timeZoneLabel = buildTimeZoneLabel();
 
     public isLoading = signal<boolean>(false);
@@ -98,6 +111,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
         describeAuditFilter(this.appliedFilter(), { agents: this.agentOptions(), tools: this.toolOptions() })
     );
     public activeFilterCount = computed(() => this.appliedChips().length);
+    protected appliedSearchText = computed(() => this.appliedFilter().searchText);
     public queryError = computed(() => (this.appliedFilter().mode === 'query' ? this.loadErrorMessage() : null));
     public canGoNewer = computed(() => this.cursorStack().length > 1);
     public canGoOlder = computed(() => this.nextCursor() !== null);
@@ -132,6 +146,22 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.loadAgents();
         this.loadTools();
         this.startPolling();
+        this.listenToSearchInput();
+    }
+
+    public onSearchInput(text: string): void {
+        this.searchInput.next(text);
+    }
+
+    public applySearch(text: string): void {
+        if (text.trim() === this.appliedFilter().searchText.trim()) {
+            return;
+        }
+        const searchText = text.trim() === '' ? '' : text;
+        this.appliedFilter.update((state) => ({ ...state, searchText }));
+        this.draftFilter.update((state) => ({ ...state, searchText }));
+        this.cursorStack.set([null]);
+        this.loadSessions();
     }
 
     public stepPageSize(delta: number): void {
@@ -308,6 +338,12 @@ export class AuditSessionsBrowserComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe(() => this.loadSessions(true));
+    }
+
+    private listenToSearchInput(): void {
+        this.searchInput
+            .pipe(debounceTime(SEARCH_DEBOUNCE_MS), takeUntilDestroyed(this.destroyRef))
+            .subscribe((text) => this.applySearch(text));
     }
 
     private canRefreshSilently(): boolean {

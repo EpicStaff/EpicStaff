@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.domains.base import BaseScopeArgs, FieldCatalog, FreeTextFields, ScopingPolicy
+from app.domains.base import BaseScopeArgs, FieldCatalog, ScopingPolicy
 from app.filtering.ast import FREE_TEXT_FIELD, FilterError, FilterNode
 
 _WILDCARD_PATTERN_BUILDERS = {
@@ -37,27 +37,6 @@ def _wildcard_clause(field: str, op: str, value: Any) -> dict:
     if op in _NEGATED_OPS:
         return {"bool": {"must_not": [clause]}}
     return clause
-
-
-def _free_text_clause(term: str, free_text: FreeTextFields) -> dict:
-    should: list[dict] = [
-        {"wildcard": {field: {"value": f"*{term}*", "case_insensitive": True}}}
-        for field in free_text.wildcard_fields
-    ]
-    if free_text.query_string_fields:
-        should.append(
-            {
-                "query_string": {
-                    "query": term,
-                    "fields": list(free_text.query_string_fields),
-                    "default_operator": "AND",
-                    "lenient": True,
-                }
-            }
-        )
-    if not should:
-        raise FilterCompileError("Free-text search is not supported for this audit domain")
-    return {"bool": {"should": should, "minimum_should_match": 1}}
 
 
 def _compile_numeric_runtime_filter(path: str, op: str, value: Any) -> dict:
@@ -219,13 +198,22 @@ class QueryCompiler:
 
     def _compile_leaf(self, field: str, op: str, value: Any) -> dict:
         if field == FREE_TEXT_FIELD:
-            return _free_text_clause(value, self._catalog.free_text_fields())
+            return self._compile_free_text(value)
         resolved = self._catalog.resolve_alias(field)
         if self._catalog.is_flattened_path(resolved):
             return self._compile_flattened_leaf(field, op, value)
         return _compile_structured_leaf(
             field, op, value, wildcard_subfield=self._catalog.wildcard_subfield(field)
         )
+
+    def _compile_free_text(self, term: str) -> dict:
+        should = [
+            self._compile_leaf(field, "contains", term)
+            for field in self._catalog.free_text_fields().fields
+        ]
+        if not should:
+            raise FilterCompileError("Free-text search is not supported for this audit domain")
+        return {"bool": {"should": should, "minimum_should_match": 1}}
 
     def _compile_flattened_leaf(self, field: str, op: str, value: Any) -> dict:
         path = _normalize_flattened_path(self._catalog.resolve_alias(field))

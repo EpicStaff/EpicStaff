@@ -81,3 +81,50 @@ describe('audit query mode', () => {
         expect(chips).toEqual([{ key: 'query', label: 'Query', value: 'name == "Session Start"' }]);
     });
 });
+
+describe('audit free-text search', () => {
+    const textLeaf = (value: string) => ({ field: '__text__', op: 'contains', value });
+
+    it('ANDs the trimmed text leaf with the other builder filters', () => {
+        const { filters } = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, searchText: '  boom ', kinds: ['event'] });
+        expect(filters).toEqual({
+            op: 'and',
+            children: [textLeaf('boom'), { field: 'kind', op: 'in', value: ['event'] }],
+        });
+    });
+
+    it('wraps the query and appends the text clause in query mode', () => {
+        const { query, filters } = compileAuditFilter({
+            ...EMPTY_AUDIT_FILTER,
+            mode: 'query',
+            query: 'status in ["failed"]',
+            searchText: 'boom',
+        });
+        expect(filters).toBeUndefined();
+        expect(query).toBe('(status in ["failed"]) and text: "boom"');
+    });
+
+    it('sends only the text clause when the query is empty', () => {
+        const { query } = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, mode: 'query', query: ' ', searchText: 'boom' });
+        expect(query).toBe('text: "boom"');
+    });
+
+    it('escapes double quotes in the text clause', () => {
+        const { query } = compileAuditFilter({ ...EMPTY_AUDIT_FILTER, mode: 'query', searchText: 'say "hi"' });
+        expect(query).toBe('text: "say \\"hi\\""');
+    });
+
+    it('ignores whitespace-only text in both modes', () => {
+        expect(compileAuditFilter({ ...EMPTY_AUDIT_FILTER, searchText: '   ' }).filters).toBeUndefined();
+        expect(compileAuditFilter({ ...EMPTY_AUDIT_FILTER, mode: 'query', searchText: '   ' }).query).toBeUndefined();
+        expect(describeAuditFilter({ ...EMPTY_AUDIT_FILTER, searchText: '   ' })).toEqual([]);
+    });
+
+    it('shows the search chip in both modes', () => {
+        const chip = { key: 'search', label: 'Search', value: 'boom' };
+        expect(describeAuditFilter({ ...EMPTY_AUDIT_FILTER, searchText: ' boom ' })).toContainEqual(chip);
+        expect(
+            describeAuditFilter({ ...EMPTY_AUDIT_FILTER, mode: 'query', query: 'x == 1', searchText: 'boom' })
+        ).toContainEqual(chip);
+    });
+});

@@ -159,6 +159,11 @@ export function describeAuditFilter(
         chips.push({ key: 'matchScope', label: 'Match scope', value: matchScopeValue });
     }
 
+    const searchText = state.searchText.trim();
+    if (searchText !== '') {
+        chips.push({ key: 'search', label: 'Search', value: searchText });
+    }
+
     if (state.mode === 'query') {
         const query = state.query.trim();
         if (query !== '') {
@@ -306,6 +311,8 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
             return { ...state, tokens: { op: 'gt', value: '' } };
         case 'query':
             return { ...state, mode: 'builder', query: '' };
+        case 'search':
+            return { ...state, searchText: '' };
         default:
             return state;
     }

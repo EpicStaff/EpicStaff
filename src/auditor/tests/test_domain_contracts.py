@@ -245,7 +245,7 @@ class FlatAuditEvent(BaseAuditEvent):
 
 FLAT_FIELDS = DictFieldCatalog(
     known_fields={"action": FieldSpec(SELECT_OPS), "__text__": FieldSpec(frozenset({"contains"}))},
-    free_text=FreeTextFields(wildcard_fields=("action",)),
+    free_text=FreeTextFields(fields=("action",)),
 )
 
 

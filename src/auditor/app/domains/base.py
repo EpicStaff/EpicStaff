@@ -20,12 +20,12 @@ class IndexSpec:
 
 @dataclass(frozen=True)
 class FreeTextFields:
-    """Where a free-text (`__text__`) term is searched: case-insensitive
-    wildcard over `wildcard_fields`, relevance `query_string` over
-    `query_string_fields` (patterns such as `details.*` are allowed)."""
+    """Where a free-text (`__text__`) term is searched: an OR of the
+    `contains` leaf compiled on each of `fields`, exactly as an explicit
+    `{"field": f, "op": "contains"}` filter would be. A flat_object root
+    (`input`, `output`, `details`) is listed by its root name."""
 
-    wildcard_fields: tuple[str, ...] = ()
-    query_string_fields: tuple[str, ...] = ()
+    fields: tuple[str, ...] = ()
 
 
 class FieldCatalog(Protocol):

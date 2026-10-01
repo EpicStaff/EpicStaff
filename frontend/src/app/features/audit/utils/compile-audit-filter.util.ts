@@ -71,15 +71,28 @@ function compileMatchScope(scope: AuditMatchScopeState): AuditMatchScope {
     };
 }
 
+function compileQuery(query: string, searchText: string): string {
+    if (searchText === '') {
+        return query;
+    }
+    const textClause = `text: "${searchText.replaceAll('"', '\\"')}"`;
+    return query === '' ? textClause : `(${query}) and ${textClause}`;
+}
+
 export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     const matchScope = compileMatchScope(state.matchScope);
+    const searchText = state.searchText.trim();
 
     if (state.mode === 'query') {
-        const query = state.query.trim();
+        const query = compileQuery(state.query.trim(), searchText);
         return query === '' ? { matchScope } : { query, matchScope };
     }
 
     const leaves: AuditFilterNode[] = [];
+    if (searchText !== '') {
+        leaves.push({ field: '__text__', op: 'contains', value: searchText });
+    }
+
     if (state.kinds.length > 0) {
         leaves.push({ field: 'kind', op: 'in', value: state.kinds });
     }

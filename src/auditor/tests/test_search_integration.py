@@ -348,6 +348,37 @@ async def test_search_survives_a_document_with_out_of_literal_status(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_free_text_matches_inside_flat_object_roots_and_names(
+    repository, opensearch_client
+):
+    """Free text used to reach input/output/details through a `query_string`
+    on `input.*` etc., which never resolves against a flat_object field, so a
+    value only present in those roots matched nothing."""
+    token = uuid.uuid4().hex[:12]
+    fixtures = [
+        _event(name="in-input", input={"vendor": f"Acme {token} Supplies"}),
+        _event(name="in-output", output={"decision": {"state": f"pending_{token}"}}),
+        _event(name="in-details", details={"note": f"x{token}y"}),
+        _event(name=f"Validate{token}Node"),
+        _event(name="unrelated", input={"vendor": "Other"}),
+    ]
+    await repository.write_batch(fixtures)
+    await opensearch_client.indices.refresh(index="audit_events")
+
+    ast = parse_query(f'text: "{token.upper()}"')
+    query = compile_filters(ast, org_id=ORG_A, retention_days=0)
+    events, _ = await repository.query(query, cursor=None, size=50)
+
+    assert {e.name for e in events} == {
+        "in-input",
+        "in-output",
+        "in-details",
+        f"Validate{token}Node",
+    }
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_client_cannot_widen_org_scope(repository, opensearch_client):
     await repository.write_batch([_event(org_id=ORG_B, name="OrgBOnly")])
     await opensearch_client.indices.refresh(index="audit_events")
