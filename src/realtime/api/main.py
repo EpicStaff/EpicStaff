@@ -296,10 +296,15 @@ async def root(
         backstory=realtime_agent_chat_data.backstory,
     )
 
-    summ_client = OpenaiSummarizationClient(
-        api_key=realtime_agent_chat_data.rt_api_key,
-        base_url=realtime_agent_chat_data.rt_base_url,
-    )
+    try:
+        summ_client = OpenaiSummarizationClient(
+            api_key=realtime_agent_chat_data.rt_api_key,
+            base_url=realtime_agent_chat_data.rt_base_url,
+        )
+    except ValueError as exc:
+        logger.error("Invalid rt_base_url for connection {}: {}", connection_key, exc)
+        await websocket.close(code=1011)
+        return
     service = ConversationService(
         client_websocket=websocket,
         realtime_agent_chat_data=realtime_agent_chat_data,
