@@ -365,7 +365,7 @@ class DocumentManagementService:
             DocumentNotFoundException: If any document not found
         """
         if not document_ids:
-            return {"deleted_count": 0, "document_ids": [], "errors": []}
+            return {"deleted_count": 0, "documents": []}
 
         # Fetch all documents
         documents = DocumentMetadata.objects.filter(document_id__in=document_ids).select_related(

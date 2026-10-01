@@ -277,6 +277,10 @@ class DocumentViewSet(
         document_ids = self._parse_document_ids(request.query_params.get("document_ids", ""))
         if not document_ids:
             raise ValidationError("document_ids query parameter is required")
+        # A document of another org is answered like a missing one, naming neither.
+        owned_document_count = self.get_queryset().filter(document_id__in=document_ids).count()
+        if owned_document_count != len(set(document_ids)):
+            raise NotFound()
 
         try:
             documents = DocumentManagementService.get_documents_with_content(document_ids)
@@ -295,6 +299,7 @@ class DocumentViewSet(
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        self._assert_copy_in_active_org(serializer.validated_data)
 
         try:
             copied_documents, skipped_documents = (
@@ -326,6 +331,16 @@ class DocumentViewSet(
                 {"error": f"An unexpected error occurred: {e!s}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def _assert_copy_in_active_org(self, validated_data: dict) -> None:
+        """Raise NotFound if the target or a source document is outside the active org."""
+        target_in_org = SourceCollection.objects.filter(
+            collection_id=validated_data["collection_id"], org_id=self.get_active_org_id()
+        ).exists()
+        document_ids = validated_data["document_ids"]
+        owned_document_count = self.get_queryset().filter(document_id__in=document_ids).count()
+        if not target_in_org or owned_document_count != len(document_ids):
+            raise NotFound()
 
     @staticmethod
     def _parse_document_ids(raw_value: str) -> list:
