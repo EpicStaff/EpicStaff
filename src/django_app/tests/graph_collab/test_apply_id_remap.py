@@ -2,7 +2,7 @@
 Unit tests for GraphLiveStateService.apply_id_remap.
 
 Redis is replaced with fakeredis.aioredis via the autouse patch_graph_state_redis
-fixture from conftest.py.  No DB needed for these tests.
+fixture from tests/conftest.py.  No DB needed for these tests.
 """
 
 import pytest

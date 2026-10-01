@@ -7,7 +7,6 @@ If flush fails, it will still starts, but it will run the previous
 successfully saved snapshot
 """
 
-import fakeredis.aioredis
 import pytest
 from asgiref.sync import async_to_sync
 from django.urls import reverse
@@ -50,25 +49,6 @@ def session_data(graph: Graph, python_code) -> dict:
     python_node = PythonNode.objects.create(graph=graph, python_code=python_code)
     Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=python_node.id)
     return {"graph_id": graph.pk, "variables": {}}
-
-
-@pytest.fixture
-def fake_async_redis():
-    """Fresh fakeredis async client with decode_responses=True."""
-    return fakeredis.aioredis.FakeRedis(decode_responses=True)
-
-
-@pytest.fixture(autouse=True)
-def patch_graph_state_redis(fake_async_redis, monkeypatch):
-    """Replace the Redis client used by graph_state_service with an in-memory fake,
-    mirroring tests/graph_collab/conftest.py — RunSession now calls flush_service.flush,
-    which reads the live snapshot through graph_state_service.
-    """
-    monkeypatch.setattr(
-        type(graph_state_service_module.graph_state_service),
-        "_redis",
-        property(lambda self: fake_async_redis),
-    )
 
 
 @pytest.mark.django_db(transaction=True)

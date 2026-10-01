@@ -1,11 +1,9 @@
 """Layer 4 tests: GraphVersionViewSet (HTTP API)."""
 
-import fakeredis.aioredis
 import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.graph_collab import graph_state_service as graph_state_service_module
 from tables.models import Graph, GraphVersion
 from tests.fixtures import *  # noqa: F401,F403
 
@@ -28,30 +26,6 @@ def auth_client(api_client, regular_user, default_org):
     api_client.force_authenticate(user=regular_user)
     api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
     return api_client
-
-
-@pytest.fixture
-def fake_async_redis():
-    """Fresh fakeredis async client with decode_responses=True."""
-    return fakeredis.aioredis.FakeRedis(decode_responses=True)
-
-
-@pytest.fixture(autouse=True)
-def patch_graph_state_redis(fake_async_redis, monkeypatch):
-    """Replace the Redis client used by graph_state_service with an in-memory fake.
-
-    GraphVersionViewSet.create/restore now call flush_service.flush and
-    graph_state_service.get_snapshot (EST-3020 Block 5 flush-fidelity + session
-    reset), which read the live collab snapshot through graph_state_service.
-    Mirrors tests/graph_collab/conftest.py and
-    tests/api_tests/run_session_flush_test.py — without this, these tests hit
-    the real Redis client, which is unnecessary and flaky in a test run.
-    """
-    monkeypatch.setattr(
-        type(graph_state_service_module.graph_state_service),
-        "_redis",
-        property(lambda self: fake_async_redis),
-    )
 
 
 @pytest.fixture

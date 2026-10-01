@@ -4,7 +4,6 @@ import unittest.mock
 import fakeredis
 import pytest
 import pytest_asyncio
-import fakeredis.aioredis
 
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
@@ -305,34 +304,6 @@ async def disconnect_leaked_communicators(
             # including pytest-django's table truncation, poisoning every
             # later test.
             pass
-
-
-@pytest.fixture
-def fake_async_redis():
-    """Fresh fakeredis async client with decode_responses=True."""
-    return fakeredis.aioredis.FakeRedis(decode_responses=True)
-
-
-@pytest.fixture(autouse=True)
-def patch_graph_state_redis(fake_async_redis, monkeypatch):
-    """Replace the Redis client used by graph_state_service with an in-memory fake.
-
-    Patching ``_redis`` as a property on the class ensures the singleton's
-    ``async_redis_client`` is never consulted, so tests run without a live Redis
-    server and with full state isolation between tests.
-    """
-    monkeypatch.setattr(
-        type(_gss_module.graph_state_service),
-        "_redis",
-        property(lambda self: fake_async_redis),
-    )
-    _gss_module.graph_state_service._locks.clear()
-    _gss_module.graph_state_service._revision.clear()
-    _gss_module.graph_state_service._flushed_revision.clear()
-    yield
-    _gss_module.graph_state_service._locks.clear()
-    _gss_module.graph_state_service._revision.clear()
-    _gss_module.graph_state_service._flushed_revision.clear()
 
 
 @pytest.fixture

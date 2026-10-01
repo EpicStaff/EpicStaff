@@ -3,14 +3,13 @@ session: co-editors' canvases rebuild via a `graph_state` broadcast, the Redis
 snapshot is reseeded to the restored graph's new ids, and stale locks are
 cleared.
 
-Self-contained: does NOT import or depend on tests/graph_collab/conftest.py.
-Redis is faked the same way as the known-good tests/api_tests/run_session_flush_test.py.
+Does not depend on tests/graph_collab/conftest.py fixtures. graph_state_service's
+Redis is faked by the autouse `patch_graph_state_redis` in tests/conftest.py.
 WebSocket broadcasts are captured by patching GraphEditNotifier._send (the
 single choke-point all HTTP-path broadcasts go through) with a recording
 mock, rather than exercising a real/fake channel layer.
 """
 
-import fakeredis.aioredis
 import pytest
 from asgiref.sync import async_to_sync
 from django.urls import reverse
@@ -64,46 +63,12 @@ def second_user(db):
     )
 
 
-@pytest.fixture
-def fake_async_redis():
-    """Fresh fakeredis async client with decode_responses=True."""
-    return fakeredis.aioredis.FakeRedis(decode_responses=True)
-
-
-@pytest.fixture(autouse=True)
-def patch_graph_state_redis(fake_async_redis, monkeypatch):
-    """Replace the Redis client used by graph_state_service with an in-memory
-    fake, mirroring tests/api_tests/run_session_flush_test.py.
-
-    GraphVersionViewSet.create/restore call flush_service.flush and
-    graph_state_service.get_snapshot/reset_from_db, which all read/write the
-    live collab snapshot through graph_state_service's Redis client.
-    """
-    monkeypatch.setattr(
-        type(graph_state_service),
-        "_redis",
-        property(lambda self: fake_async_redis),
-    )
-
-
 @pytest.fixture(autouse=True)
 def reset_lock_store():
     """Reset the module-level lock store around each test to prevent leakage."""
     lock_service._store.clear()
     yield
     lock_service._store.clear()
-
-
-@pytest.fixture(autouse=True)
-def reset_graph_state_in_memory_counters():
-    """Reset graph_state_service's per-process in-memory maps around each test."""
-    graph_state_service._locks.clear()
-    graph_state_service._revision.clear()
-    graph_state_service._flushed_revision.clear()
-    yield
-    graph_state_service._locks.clear()
-    graph_state_service._revision.clear()
-    graph_state_service._flushed_revision.clear()
 
 
 @pytest.fixture(autouse=True)

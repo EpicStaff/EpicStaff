@@ -293,6 +293,57 @@ def clear_default_models_cache():
 
 
 @pytest.fixture
+def fake_async_redis():
+    """Fresh in-memory async Redis client, the one `patch_graph_state_redis` installs.
+
+    Request it by name to pre-seed or inspect live collab state, or to share it
+    with another patched client (see `patch_redis_service` in
+    tests/graph_collab/conftest.py). `decode_responses=True` matches
+    `RedisService.async_redis_client`.
+    """
+    import fakeredis.aioredis
+
+    return fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+
+@pytest.fixture(autouse=True)
+def patch_graph_state_redis(fake_async_redis, monkeypatch):
+    """Point graph_state_service at `fake_async_redis` and reset its in-memory state.
+
+    Graph save, version create/restore, run-session and the collab consumer all
+    read or write the live collab snapshot through `graph_state_service._redis`.
+    The real client is a cached `redis.asyncio` client bound to the first event
+    loop that used it, so a sync test that reaches it through `async_to_sync`
+    fails with "Event loop is closed". Autouse, so every test that reaches the
+    service gets the fake without asking for it.
+
+    Patches only `GraphLiveStateService._redis`. Every other Redis client
+    (`RedisService`, pub/sub, channel layers) is left alone.
+    """
+    from tables.graph_collab import graph_state_service as graph_state_service_module
+
+    live_state_service = graph_state_service_module.graph_state_service
+    monkeypatch.setattr(
+        type(live_state_service),
+        "_redis",
+        property(lambda self: fake_async_redis),
+    )
+    # The revision counters describe the snapshot in Redis; a fresh fake Redis
+    # with counters left over from an earlier test would report a wrong dirty state.
+    # The per-graph asyncio locks are dropped too, so no test reuses a lock bound
+    # to an earlier test's event loop.
+    _reset_live_state_memory(live_state_service)
+    yield
+    _reset_live_state_memory(live_state_service)
+
+
+def _reset_live_state_memory(live_state_service) -> None:
+    live_state_service._locks.clear()
+    live_state_service._revision.clear()
+    live_state_service._flushed_revision.clear()
+
+
+@pytest.fixture
 def resources_path():
     return Path("./tests/resources/").resolve()
 
