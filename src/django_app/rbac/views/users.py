@@ -112,6 +112,7 @@ class UserAdminViewSet(viewsets.ViewSet):
             actor=request.user,
             email=cleaned["email"],
             password=cleaned["password"],
+            display_name=cleaned["display_name"],
             organization_id=cleaned["organization_id"],
             role_id=cleaned["role_id"],
         )

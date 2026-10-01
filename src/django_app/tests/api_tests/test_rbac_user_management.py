@@ -385,6 +385,104 @@ class TestCreateUser:
         assert resp.data["memberships"] == []
         assert resp.data["is_superadmin"] is False
 
+    def test_create_derives_display_name_from_email(
+        self, authed_client, superadmin, django_user_model
+    ):
+        resp = authed_client(superadmin).post(
+            USERS_LIST,
+            {"email": "anna-maria@x.com", "password": "StrongPass123!"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.data["display_name"] == "Anna Maria"
+        assert (
+            django_user_model.objects.get(email="anna-maria@x.com").display_name
+            == "Anna Maria"
+        )
+
+    def test_create_derives_display_name_when_null(
+        self, authed_client, superadmin, django_user_model
+    ):
+        resp = authed_client(superadmin).post(
+            USERS_LIST,
+            {
+                "email": "anna-maria@x.com",
+                "password": "StrongPass123!",
+                "display_name": None,
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.data["display_name"] == "Anna Maria"
+        assert (
+            django_user_model.objects.get(email="anna-maria@x.com").display_name
+            == "Anna Maria"
+        )
+
+    @pytest.mark.parametrize(
+        ("display_name", "saved"),
+        [("  Jane Doe  ", "Jane Doe"), ("x" * 255, "x" * 255)],
+        ids=["trimmed", "max-length"],
+    )
+    def test_create_saves_display_name_from_body(
+        self, authed_client, superadmin, django_user_model, display_name, saved
+    ):
+        resp = authed_client(superadmin).post(
+            USERS_LIST,
+            {
+                "email": "new@x.com",
+                "password": "StrongPass123!",
+                "display_name": display_name,
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.data["display_name"] == saved
+        assert django_user_model.objects.get(email="new@x.com").display_name == saved
+
+    @pytest.mark.parametrize(
+        ("display_name", "reason"),
+        [
+            ("   ", "Must not be blank. Omit it or use null to derive it from the email."),
+            ("x" * 256, "Must be 255 characters or fewer."),
+            (123, "Must be a string or null."),
+        ],
+        ids=["blank", "too-long", "not-a-string"],
+    )
+    def test_create_rejects_invalid_display_name(
+        self, authed_client, superadmin, django_user_model, display_name, reason
+    ):
+        resp = authed_client(superadmin).post(
+            USERS_LIST,
+            {
+                "email": "new@x.com",
+                "password": "StrongPass123!",
+                "display_name": display_name,
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["errors"] == [
+            {"field": "display_name", "value": display_name, "reason": reason}
+        ]
+        assert not django_user_model.objects.filter(email="new@x.com").exists()
+
+    def test_create_aggregates_display_name_error_with_email_error(
+        self, authed_client, superadmin
+    ):
+        resp = authed_client(superadmin).post(
+            USERS_LIST,
+            {
+                "email": "not-an-email",
+                "password": "StrongPass123!",
+                "display_name": "   ",
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        fields = {error["field"] for error in resp.data["errors"]}
+        assert {"email", "display_name"} <= fields
+
     def test_create_with_org_and_role(
         self, authed_client, superadmin, org_acme, role_member
     ):

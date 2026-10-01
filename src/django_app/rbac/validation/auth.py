@@ -29,11 +29,13 @@ class AuthValidationService(BaseRBACValidator):
         password = data.get("password")
 
         errors: list[FieldError] = []
-        errors.extend(self._validate_email_field(email))
+        errors.extend(self._validate_new_account_email(email))
         errors.extend(self._validate_password_field(password, user_hints={"email": email}))
+        display_name, display_name_errors = self._clean_display_name(data.get("display_name"))
+        errors.extend(display_name_errors)
 
         self._raise_if_any(errors)
-        return {"email": email, "password": password}
+        return {"email": email, "password": password, "display_name": display_name}
 
     def validate_reset_user(self, data: dict) -> dict:
         # Same field contract as first-setup; kept as a distinct method

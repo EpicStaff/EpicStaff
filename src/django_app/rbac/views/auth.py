@@ -176,6 +176,7 @@ class FirstSetupView(APIView):
         result = self._service.setup(
             email=cleaned["email"],
             password=cleaned["password"],
+            display_name=cleaned["display_name"],
         )
         tokens = TokenPair.for_user(result.user)
 
@@ -446,6 +447,7 @@ class ResetUserView(APIView):
         user = self._service.reset(
             email=cleaned["email"],
             password=cleaned["password"],
+            display_name=cleaned["display_name"],
         )
         tokens = TokenPair.for_user(user)
 
