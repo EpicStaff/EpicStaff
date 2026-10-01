@@ -210,12 +210,19 @@ async def startup_event():
     await init_db()
     await knowledge_client.start()
 
-    asyncio.create_task(_run_forever(redis_listener, "redis_listener"))  # noqa: RUF006
+    # The event loop keeps only a weak reference to tasks, so the supervisor task
+    # must be held here or it can be garbage-collected and nothing restarts the listener.
+    app.state.redis_listener_task = asyncio.create_task(
+        _run_forever(redis_listener, "redis_listener")
+    )
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Close the knowledge_new HTTP client on FastAPI shutdown."""
+    """Stop the Redis listener supervisor and close the knowledge_new HTTP client."""
+    redis_listener_task = app.state.redis_listener_task
+    redis_listener_task.cancel()
+    await asyncio.gather(redis_listener_task, return_exceptions=True)
     await knowledge_client.stop()
 
 
