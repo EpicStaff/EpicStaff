@@ -236,31 +236,56 @@ describe('extractToSubflow', () => {
         expect(subGraphNode.input_map).toEqual({ number: 'variables.number' });
     });
 
-    it('excludes internal variables (produced by selected nodes) from the SubGraphNode input_map', () => {
-        const start = makeStartNode('start-1');
+    it('excludes internally-produced variables not in start node initial state', () => {
+        const start = makeStartNode('start-1', {
+            data: { initialState: { number: 0, external: '' } },
+        });
         const nodeA = makeNode('a', NodeType.TASK, {
             position: { x: 100, y: 0 },
             input_map: { num: 'variables.number' },
-            output_variable_path: 'variables.n1_res',
+            output_variable_path: 'variables.result',
         });
         const nodeB = makeNode('b', NodeType.TASK, {
             position: { x: 300, y: 0 },
-            input_map: { res: 'variables.n1_res' },
+            input_map: { res: 'variables.result', ext: 'variables.external' },
         });
-
-        const startToA = makeConnection('start-1', 'a', 'start-start', 'task-in');
-        const aToB = makeConnection('a', 'b', 'task-out', 'task-in');
 
         const parentFlow: FlowModel = {
             nodes: [start, nodeA, nodeB],
-            connections: [startToA, aToB],
+            connections: [makeConnection('start-1', 'a', 'start-start', 'task-in')],
         };
 
         const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10);
 
-        // 'variables.n1_res' is produced by node A (output_variable_path), so it's internal
-        // Only 'variables.number' (external) should appear on the SubGraphNode
-        expect(result.subGraphNodeInputMap).toEqual({ number: 'variables.number' });
+        // 'result' is produced by A and not in start vars — excluded
+        expect(result.subGraphNodeInputMap).toEqual({
+            number: 'variables.number',
+            external: 'variables.external',
+        });
+    });
+
+    it('keeps internally-produced variables that exist in start node initial state', () => {
+        const start = makeStartNode('start-1', {
+            data: { initialState: { counter: 0, input: 'hello' } },
+        });
+        const nodeA = makeNode('a', NodeType.TASK, {
+            position: { x: 100, y: 0 },
+            input_map: { c: 'variables.counter', i: 'variables.input' },
+            output_variable_path: 'variables.counter',
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, nodeA],
+            connections: [makeConnection('start-1', 'a', 'start-start', 'task-in')],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+
+        // 'counter' is produced by A but exists in start vars — kept
+        expect(result.subGraphNodeInputMap).toEqual({
+            counter: 'variables.counter',
+            input: 'variables.input',
+        });
     });
 
     it('deduplicates input_map entries pointing to the same variable', () => {
@@ -285,7 +310,7 @@ describe('extractToSubflow', () => {
         expect(result.subGraphNodeInputMap).toEqual({ shared_var: 'variables.shared_var' });
     });
 
-    it('wires orphan selected nodes (no inbound edges) to the subflow Start', () => {
+    it('does not wire disconnected nodes to the subflow Start', () => {
         const start = makeStartNode('start-1');
         const nodeA = makeNode('a', NodeType.TASK, { position: { x: 100, y: 0 } });
         const nodeB = makeNode('b', NodeType.TASK, { position: { x: 100, y: 100 } });
@@ -301,8 +326,8 @@ describe('extractToSubflow', () => {
         const subflowStart = result.subflowModel.nodes.find((n) => n.type === NodeType.START)!;
         const startConnections = result.subflowModel.connections.filter((c) => c.sourceNodeId === subflowStart.id);
 
-        // Both A and B have no inbound edges at all, so both are entry points
-        expect(startConnections).toHaveLength(2);
+        // Neither A nor B had inbound edges from outside — they should NOT be wired to Start
+        expect(startConnections).toHaveLength(0);
     });
 
     it('positions the SubGraphNode at the centroid of selected nodes', () => {
@@ -380,5 +405,362 @@ describe('extractToSubflow', () => {
         const subGraphNode = result.parentModel.nodes.find((n) => n.type === NodeType.SUBGRAPH) as SubGraphNodeModel;
         expect(subGraphNode.ports).toBeTruthy();
         expect(subGraphNode.ports!.length).toBeGreaterThan(0);
+    });
+
+    it('remaps decision table next_node references to fresh IDs', () => {
+        const start = makeStartNode('start-1');
+        const dtNode = makeNode('dt', NodeType.TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-dt',
+                table: {
+                    default_next_node: 'target-1',
+                    next_error_node: 'target-2',
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: 'target-1',
+                            conditions: [],
+                            expression: null,
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+        const target1 = makeNode('target-1', NodeType.TASK, { position: { x: 300, y: 0 } });
+        const target2 = makeNode('target-2', NodeType.TASK, { position: { x: 300, y: 100 } });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, dtNode, target1, target2],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['dt', 'target-1', 'target-2']), 'sg-1', 10);
+
+        const subflowDt = result.subflowModel.nodes.find((n) => n.type === NodeType.TABLE)!;
+        const table = (
+            subflowDt.data as {
+                table: {
+                    default_next_node: string | null;
+                    next_error_node: string | null;
+                    condition_groups: Array<{ next_node: string | null }>;
+                };
+            }
+        ).table;
+
+        // References should be remapped to fresh IDs (not the originals)
+        expect(table.default_next_node).not.toBe('target-1');
+        expect(table.next_error_node).not.toBe('target-2');
+        expect(table.condition_groups[0].next_node).not.toBe('target-1');
+
+        // They should match the cloned target nodes' IDs
+        const subflowTargets = result.subflowModel.nodes.filter((n) => n.type === NodeType.TASK);
+        const subflowTargetIds = new Set(subflowTargets.map((n) => n.id));
+        expect(subflowTargetIds.has(table.default_next_node!)).toBe(true);
+        expect(subflowTargetIds.has(table.next_error_node!)).toBe(true);
+        expect(subflowTargetIds.has(table.condition_groups[0].next_node!)).toBe(true);
+    });
+
+    it('redirects parent DT next_node refs from extracted nodes to the SubGraphNode', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: 'extracted-node',
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: 'extracted-node',
+                            conditions: [],
+                            expression: null,
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+        const extractedNode = makeNode('extracted-node', NodeType.TASK, { position: { x: 300, y: 0 } });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode, extractedNode],
+            connections: [],
+        };
+
+        // Extract only the target node — CDT stays in parent
+        const result = extractToSubflow(parentFlow, new Set(['extracted-node']), 'sg-1', 10);
+
+        const parentCdt = result.parentModel.nodes.find((n) => n.type === NodeType.CLASSIFICATION_TABLE)!;
+        const table = (
+            parentCdt.data as {
+                table: {
+                    default_next_node: string | null;
+                    condition_groups: Array<{ next_node: string | null }>;
+                };
+            }
+        ).table;
+
+        // References should now point to the SubGraphNode, not the extracted node
+        expect(table.default_next_node).toBe('sg-1');
+        expect(table.condition_groups[0].next_node).toBe('sg-1');
+    });
+
+    it('nulls decision table references to nodes outside the selection', () => {
+        const start = makeStartNode('start-1');
+        const dtNode = makeNode('dt', NodeType.TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-dt',
+                table: {
+                    default_next_node: 'outside-node',
+                    next_error_node: null,
+                    condition_groups: [],
+                },
+            },
+        });
+        const outsideNode = makeNode('outside-node', NodeType.TASK, { position: { x: 300, y: 0 } });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, dtNode, outsideNode],
+            connections: [],
+        };
+
+        // Only extract dt, not outside-node
+        const result = extractToSubflow(parentFlow, new Set(['dt']), 'sg-1', 10);
+
+        const subflowDt = result.subflowModel.nodes.find((n) => n.type === NodeType.TABLE)!;
+        const table = (subflowDt.data as { table: { default_next_node: string | null } }).table;
+
+        // Reference to outside-node should be nulled since it's not in the selection
+        expect(table.default_next_node).toBeNull();
+    });
+
+    it('collects CDT expression/manipulation variable refs into SubGraphNode input_map', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'variables.status == "active" and variables.count > 0',
+                            manipulation: 'variables.result = variables.score + 1',
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        // All external variables from expressions/manipulations should appear
+        expect(result.subGraphNodeInputMap['status']).toBe('variables.status');
+        expect(result.subGraphNodeInputMap['count']).toBe('variables.count');
+        expect(result.subGraphNodeInputMap['result']).toBe('variables.result');
+        expect(result.subGraphNodeInputMap['score']).toBe('variables.score');
+    });
+
+    it('collects CDT field_expressions/field_manipulations keys into SubGraphNode input_map', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: null,
+                            manipulation: null,
+                            group_type: 'simple',
+                            field_expressions: { age: '> 18', name: '"John"' },
+                            field_manipulations: { total: 'total + 1' },
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        expect(result.subGraphNodeInputMap['age']).toBe('variables.age');
+        expect(result.subGraphNodeInputMap['name']).toBe('variables.name');
+        expect(result.subGraphNodeInputMap['total']).toBe('variables.total');
+    });
+
+    it('collects CDT pre/post input_map variables into SubGraphNode input_map', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    pre_input_map: { local_id: 'variables.user_id' },
+                    post_input_map: { local_score: 'variables.final_score' },
+                    condition_groups: [],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        expect(result.subGraphNodeInputMap['user_id']).toBe('variables.user_id');
+        expect(result.subGraphNodeInputMap['final_score']).toBe('variables.final_score');
+    });
+
+    it('reads CDT pre_computation.input_map when legacy pre_input_map is empty', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    pre_computation: {
+                        code: '',
+                        input_map: { local_id: 'variables.user_id' },
+                        output_variable_path: null,
+                    },
+                    post_computation: {
+                        code: '',
+                        input_map: { local_score: 'variables.final_score' },
+                        output_variable_path: null,
+                    },
+                    condition_groups: [],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        expect(result.subGraphNodeInputMap['user_id']).toBe('variables.user_id');
+        expect(result.subGraphNodeInputMap['final_score']).toBe('variables.final_score');
+    });
+
+    it('excludes CDT pre/post computation output_variable_path from SubGraphNode input_map', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    pre_computation: {
+                        code: '',
+                        input_map: {},
+                        output_variable_path: 'variables.pre_result',
+                    },
+                    post_computation: {
+                        code: '',
+                        input_map: {},
+                        output_variable_path: 'variables.post_result',
+                    },
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'variables.pre_result > 0 and variables.post_result > 0 and variables.external',
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        // pre_result and post_result are produced by the CDT's own computations — excluded
+        expect(result.subGraphNodeInputMap['pre_result']).toBeUndefined();
+        expect(result.subGraphNodeInputMap['post_result']).toBeUndefined();
+        // external is not produced internally — included
+        expect(result.subGraphNodeInputMap['external']).toBe('variables.external');
+    });
+
+    it('excludes internal CDT variable refs produced by nodes in the selection', () => {
+        const start = makeStartNode('start-1');
+        const producer = makeNode('producer', NodeType.PYTHON, {
+            position: { x: 100, y: 0 },
+            output_variable_path: 'variables.internal_result',
+        });
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 300, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'variables.internal_result > 0 and variables.external_flag',
+                            manipulation: null,
+                            group_type: 'simple',
+                            field_expressions: { internal_result: '> 0' },
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, producer, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['producer', 'cdt']), 'sg-1', 10);
+
+        // internal_result is produced by 'producer' and not in start vars — excluded
+        expect(result.subGraphNodeInputMap['internal_result']).toBeUndefined();
+        // external_flag is not produced internally — included
+        expect(result.subGraphNodeInputMap['external_flag']).toBe('variables.external_flag');
     });
 });

@@ -40,7 +40,7 @@ export function extractToSubflow(
     const subflowNodes = cloneNodesWithFreshIds(selectedNodes, oldIdToNewId);
     const subflowInternalConnections = remapConnections(internal, oldIdToNewId);
 
-    const entryPointNodeIds = detectEntryPointNodes(effectiveSelection, internal, inbound);
+    const entryPointNodeIds = detectEntryPointNodes(inbound);
     const startNode = createSubflowStartNode(selectedNodes, entryPointNodeIds);
     const startNodePorts = generatePortsForNode(startNode.id, NodeType.START);
     const startNodeWithPorts: NodeModel = { ...startNode, ports: startNodePorts };
@@ -57,14 +57,16 @@ export function extractToSubflow(
         connections: [...subflowInternalConnections, ...startToEntryConnections],
     };
 
-    const subGraphNodeInputMap = buildSubGraphNodeInputMap(selectedNodes);
+    const subGraphNodeInputMap = buildSubGraphNodeInputMap(selectedNodes, unselectedNodes, parentFlow.nodes);
 
     const subGraphNode = createSubGraphNode(subGraphNodeId, subflowGraphId, selectedNodes, subGraphNodeInputMap);
 
     const reconnectedInboundConnections = reconnectInboundEdges(inbound, subGraphNode);
 
+    const updatedUnselectedNodes = redirectParentDecisionTableRefs(unselectedNodes, effectiveSelection, subGraphNodeId);
+
     const parentModel: FlowModel = {
-        nodes: [...unselectedNodes, subGraphNode],
+        nodes: [...updatedUnselectedNodes, subGraphNode],
         connections: [...external, ...reconnectedInboundConnections],
     };
 
@@ -114,6 +116,11 @@ function cloneNodesWithFreshIds(nodes: NodeModel[], oldIdToNewId: Map<string, st
     return nodes.map((node) => {
         const newId = oldIdToNewId.get(node.id)!;
         const clonedData = node.data ? JSON.parse(JSON.stringify(node.data)) : node.data;
+
+        if (isDecisionTableType(node.type) && clonedData) {
+            remapDecisionTableNodeRefs(clonedData, oldIdToNewId);
+        }
+
         const clonedInputMap = node.input_map ? JSON.parse(JSON.stringify(node.input_map)) : {};
         const newPorts = generatePortsForNode(newId, node.type, clonedData);
 
@@ -128,6 +135,72 @@ function cloneNodesWithFreshIds(nodes: NodeModel[], oldIdToNewId: Map<string, st
             size: { ...node.size },
         } as NodeModel;
     });
+}
+
+function isDecisionTableType(type: NodeType): boolean {
+    return type === NodeType.TABLE || type === NodeType.CLASSIFICATION_TABLE;
+}
+
+function remapDecisionTableNodeRefs(data: Record<string, unknown>, oldIdToNewId: Map<string, string>): void {
+    const table = data['table'] as Record<string, unknown> | undefined;
+    if (!table) return;
+
+    table['default_next_node'] = remapNodeRef(table['default_next_node'] as string | null, oldIdToNewId);
+    table['next_error_node'] = remapNodeRef(table['next_error_node'] as string | null, oldIdToNewId);
+
+    const conditionGroups = table['condition_groups'] as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(conditionGroups)) {
+        for (const group of conditionGroups) {
+            group['next_node'] = remapNodeRef(group['next_node'] as string | null, oldIdToNewId);
+        }
+    }
+}
+
+function remapNodeRef(ref: string | null, oldIdToNewId: Map<string, string>): string | null {
+    if (!ref) return null;
+    return oldIdToNewId.get(ref) ?? null;
+}
+
+function redirectParentDecisionTableRefs(
+    unselectedNodes: NodeModel[],
+    extractedIds: Set<string>,
+    subGraphNodeId: string
+): NodeModel[] {
+    return unselectedNodes.map((node) => {
+        if (!isDecisionTableType(node.type) || !node.data) return node;
+
+        const clonedData = JSON.parse(JSON.stringify(node.data));
+        const table = clonedData['table'] as Record<string, unknown> | undefined;
+        if (!table) return node;
+
+        let changed = false;
+
+        changed = redirectRef(table, 'default_next_node', extractedIds, subGraphNodeId) || changed;
+        changed = redirectRef(table, 'next_error_node', extractedIds, subGraphNodeId) || changed;
+
+        const conditionGroups = table['condition_groups'] as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(conditionGroups)) {
+            for (const group of conditionGroups) {
+                changed = redirectRef(group, 'next_node', extractedIds, subGraphNodeId) || changed;
+            }
+        }
+
+        return changed ? { ...node, data: clonedData } : node;
+    });
+}
+
+function redirectRef(
+    obj: Record<string, unknown>,
+    field: string,
+    extractedIds: Set<string>,
+    replacementId: string
+): boolean {
+    const ref = obj[field] as string | null;
+    if (ref && extractedIds.has(ref)) {
+        obj[field] = replacementId;
+        return true;
+    }
+    return false;
 }
 
 function remapConnections(connections: ConnectionModel[], oldIdToNewId: Map<string, string>): ConnectionModel[] {
@@ -164,24 +237,8 @@ function extractPortRole(portId: CustomPortId): string | null {
     return parsed?.portRole ?? null;
 }
 
-function detectEntryPointNodes(
-    selectedIds: Set<string>,
-    internalConnections: ConnectionModel[],
-    inboundConnections: ConnectionModel[]
-): Set<string> {
-    const nodesWithInboundFromOutside = new Set(inboundConnections.map((connection) => connection.targetNodeId));
-
-    const nodesWithInternalInbound = new Set(internalConnections.map((connection) => connection.targetNodeId));
-
-    const entryPoints = new Set<string>();
-
-    for (const nodeId of selectedIds) {
-        if (nodesWithInboundFromOutside.has(nodeId) || !nodesWithInternalInbound.has(nodeId)) {
-            entryPoints.add(nodeId);
-        }
-    }
-
-    return entryPoints;
+function detectEntryPointNodes(inboundConnections: ConnectionModel[]): Set<string> {
+    return new Set(inboundConnections.map((connection) => connection.targetNodeId));
 }
 
 function createSubflowStartNode(selectedNodes: NodeModel[], entryPointNodeIds: Set<string>): NodeModel {
@@ -235,16 +292,7 @@ function createStartToEntryConnections(
 }
 
 const VARIABLES_PREFIX = 'variables.';
-
-function collectInternalVariablePaths(nodes: NodeModel[]): Set<string> {
-    const paths = new Set<string>();
-    for (const node of nodes) {
-        if (node.output_variable_path && typeof node.output_variable_path === 'string') {
-            paths.add(node.output_variable_path);
-        }
-    }
-    return paths;
-}
+const VARIABLES_REGEX = /\bvariables\.([A-Za-z_][A-Za-z0-9_]*)/g;
 
 function extractVariableName(variablePath: string): string | null {
     if (typeof variablePath !== 'string' || !variablePath.startsWith(VARIABLES_PREFIX)) {
@@ -255,21 +303,154 @@ function extractVariableName(variablePath: string): string | null {
     return dotIndex === -1 ? name : name.slice(0, dotIndex);
 }
 
-function buildSubGraphNodeInputMap(selectedNodes: NodeModel[]): Record<string, unknown> {
-    const internalPaths = collectInternalVariablePaths(selectedNodes);
+function extractVariableNamesFromCode(code: string): string[] {
+    const names: string[] = [];
+    let match: RegExpExecArray | null;
+    VARIABLES_REGEX.lastIndex = 0;
+    while ((match = VARIABLES_REGEX.exec(code)) !== null) {
+        names.push(match[1]);
+    }
+    return names;
+}
+
+function addVariable(merged: Record<string, unknown>, variableName: string): void {
+    if (variableName in merged) return;
+    merged[variableName] = `${VARIABLES_PREFIX}${variableName}`;
+}
+
+function collectInputMapVariables(inputMap: Record<string, unknown>, merged: Record<string, unknown>): void {
+    for (const value of Object.values(inputMap)) {
+        if (typeof value !== 'string') continue;
+        const variableName = extractVariableName(value);
+        if (variableName) {
+            merged[variableName] = value;
+        }
+    }
+}
+
+function collectCdtVariables(node: NodeModel, merged: Record<string, unknown>): void {
+    if (!isDecisionTableType(node.type) || !node.data) return;
+
+    const data = node.data as Record<string, unknown>;
+    const table = data['table'] as Record<string, unknown> | undefined;
+    if (!table) return;
+
+    const preComp = table['pre_computation'] as Record<string, unknown> | undefined;
+    const preInputMap = (preComp?.['input_map'] ?? table['pre_input_map']) as Record<string, string> | undefined;
+    if (preInputMap && typeof preInputMap === 'object') {
+        collectInputMapVariables(preInputMap, merged);
+    }
+
+    const postComp = table['post_computation'] as Record<string, unknown> | undefined;
+    const postInputMap = (postComp?.['input_map'] ?? table['post_input_map']) as Record<string, string> | undefined;
+    if (postInputMap && typeof postInputMap === 'object') {
+        collectInputMapVariables(postInputMap, merged);
+    }
+
+    const conditionGroups = table['condition_groups'] as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(conditionGroups)) return;
+
+    for (const group of conditionGroups) {
+        const expression = group['expression'] as string | null;
+        if (expression) {
+            for (const name of extractVariableNamesFromCode(expression)) {
+                addVariable(merged, name);
+            }
+        }
+
+        const manipulation = group['manipulation'] as string | null;
+        if (manipulation) {
+            for (const name of extractVariableNamesFromCode(manipulation)) {
+                addVariable(merged, name);
+            }
+        }
+
+        const fieldExpressions = group['field_expressions'] as Record<string, string> | undefined;
+        if (fieldExpressions && typeof fieldExpressions === 'object') {
+            for (const varName of Object.keys(fieldExpressions)) {
+                addVariable(merged, varName);
+            }
+        }
+
+        const fieldManipulations = group['field_manipulations'] as Record<string, string> | undefined;
+        if (fieldManipulations && typeof fieldManipulations === 'object') {
+            for (const varName of Object.keys(fieldManipulations)) {
+                addVariable(merged, varName);
+            }
+        }
+    }
+}
+
+function collectProducedVariableNames(nodes: NodeModel[]): Set<string> {
+    const names = new Set<string>();
+    for (const node of nodes) {
+        if (node.output_variable_path) {
+            const name = extractVariableName(node.output_variable_path);
+            if (name) names.add(name);
+        }
+
+        if (isDecisionTableType(node.type) && node.data) {
+            const data = node.data as Record<string, unknown>;
+            const table = data['table'] as Record<string, unknown> | undefined;
+            if (table) {
+                const preComp = table['pre_computation'] as Record<string, unknown> | undefined;
+                const preOutputPath = (preComp?.['output_variable_path'] ?? table['pre_output_variable_path']) as
+                    | string
+                    | undefined;
+                if (preOutputPath) {
+                    const name = extractVariableName(preOutputPath);
+                    if (name) names.add(name);
+                }
+
+                const postComp = table['post_computation'] as Record<string, unknown> | undefined;
+                const postOutputPath = (postComp?.['output_variable_path'] ?? table['post_output_variable_path']) as
+                    | string
+                    | undefined;
+                if (postOutputPath) {
+                    const name = extractVariableName(postOutputPath);
+                    if (name) names.add(name);
+                }
+            }
+        }
+    }
+    return names;
+}
+
+function collectStartNodeVariableNames(parentNodes: NodeModel[]): Set<string> {
+    const startNode = parentNodes.find((node) => node.type === NodeType.START);
+    if (!startNode?.data) return new Set();
+    const initialState = (startNode.data as unknown as Record<string, unknown>)['initialState'];
+    if (!initialState || typeof initialState !== 'object') return new Set();
+
+    const variables = (initialState as Record<string, unknown>)['variables'];
+    if (variables && typeof variables === 'object') {
+        return new Set(Object.keys(variables as Record<string, unknown>));
+    }
+
+    return new Set(Object.keys(initialState as Record<string, unknown>));
+}
+
+function buildSubGraphNodeInputMap(
+    selectedNodes: NodeModel[],
+    unselectedNodes: NodeModel[],
+    parentNodes: NodeModel[]
+): Record<string, unknown> {
     const merged: Record<string, unknown> = {};
 
     for (const node of selectedNodes) {
-        if (!node.input_map) continue;
+        if (node.input_map) {
+            collectInputMapVariables(node.input_map, merged);
+        }
+        collectCdtVariables(node, merged);
+    }
 
-        for (const [, value] of Object.entries(node.input_map)) {
-            if (typeof value !== 'string') continue;
-            if (internalPaths.has(value)) continue;
+    const internallyProduced = collectProducedVariableNames(selectedNodes);
+    const externallyProduced = collectProducedVariableNames(unselectedNodes);
+    const startVariables = collectStartNodeVariableNames(parentNodes);
 
-            const variableName = extractVariableName(value);
-            if (!variableName) continue;
-
-            merged[variableName] = value;
+    for (const name of Object.keys(merged)) {
+        if (internallyProduced.has(name) && !startVariables.has(name) && !externallyProduced.has(name)) {
+            delete merged[name];
         }
     }
 
@@ -303,7 +484,7 @@ function createSubGraphNode(
         color: NODE_COLORS[NodeType.SUBGRAPH],
         icon: NODE_ICONS[NodeType.SUBGRAPH],
         input_map: inputMap,
-        output_variable_path: null,
+        output_variable_path: 'variables',
         size: getDefaultNodeSize(NodeType.SUBGRAPH),
     };
 }

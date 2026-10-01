@@ -514,6 +514,91 @@ describe('unpackSubflow', () => {
         expect(internalEdge!.targetNodeId).not.toBe('task-b');
     });
 
+    it('redirects parent DT/CDT next_node refs from SubGraphNode to inlined entry-point node', () => {
+        const parentStart = makeStartNode('parent-start');
+        const cdtNode = makeNode('cdt-1', NodeType.CLASSIFICATION_TABLE, {
+            data: {
+                name: 'CDT',
+                table: {
+                    default_next_node: 'sg-1',
+                    next_error_node: 'sg-1',
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: 'sg-1',
+                            conditions: [],
+                            expression: null,
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+        const subGraphNode = makeSubGraphNode('sg-1');
+        const cdtToSg = makeConnection('cdt-1', 'sg-1', 'classification_table-out', 'subgraph-in');
+
+        const parentFlow: FlowModel = {
+            nodes: [parentStart, cdtNode, subGraphNode],
+            connections: [cdtToSg],
+        };
+
+        const subStart = makeStartNode('sub-start');
+        const taskA = makeNode('task-a', NodeType.TASK, { position: { x: 100, y: 0 } });
+        const startToA = makeConnection('sub-start', 'task-a', 'start-start', 'task-in');
+
+        const subflowModel: FlowModel = {
+            nodes: [subStart, taskA],
+            connections: [startToA],
+        };
+
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+
+        const updatedCdt = result.nodes.find((node) => node.id === 'cdt-1')!;
+        const table = (updatedCdt.data as Record<string, unknown>)['table'] as Record<string, unknown>;
+        const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK)!;
+
+        // All refs that pointed to sg-1 should now point to the inlined entry-point node
+        expect(table['default_next_node']).toBe(inlinedTask.id);
+        expect(table['next_error_node']).toBe(inlinedTask.id);
+        const groups = table['condition_groups'] as Array<Record<string, unknown>>;
+        expect(groups[0]['next_node']).toBe(inlinedTask.id);
+    });
+
+    it('nulls DT refs to SubGraphNode when subflow has no entry points', () => {
+        const parentStart = makeStartNode('parent-start');
+        const dtNode = makeNode('dt-1', NodeType.TABLE, {
+            data: {
+                name: 'DT',
+                table: {
+                    default_next_node: 'sg-1',
+                    next_error_node: null,
+                    condition_groups: [],
+                },
+            },
+        });
+        const subGraphNode = makeSubGraphNode('sg-1');
+
+        const parentFlow: FlowModel = {
+            nodes: [parentStart, dtNode, subGraphNode],
+            connections: [],
+        };
+
+        // Subflow with no Start node → no entry points
+        const taskA = makeNode('task-a', NodeType.TASK, { position: { x: 100, y: 0 } });
+
+        const subflowModel: FlowModel = {
+            nodes: [taskA],
+            connections: [],
+        };
+
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+
+        const updatedDt = result.nodes.find((node) => node.id === 'dt-1')!;
+        const table = (updatedDt.data as Record<string, unknown>)['table'] as Record<string, unknown>;
+        expect(table['default_next_node']).toBeNull();
+    });
+
     it('handles name conflicts with incrementing suffixes', () => {
         const parentStart = makeStartNode('parent-start');
         const existingTask1 = makeNode('existing-1', NodeType.TASK, { node_name: 'Duplicate' });

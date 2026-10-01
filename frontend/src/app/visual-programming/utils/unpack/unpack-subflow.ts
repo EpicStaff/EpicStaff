@@ -57,8 +57,11 @@ export function unpackSubflow(parentFlow: FlowModel, subGraphNodeId: string, sub
         (connection) => !subGraphNodeConnectionIds.has(connection.id)
     );
 
+    const firstNewEntryId = resolveFirstEntryPointId(entryPointNodeIds, oldIdToNewId);
+    const updatedParentNodes = redirectParentDecisionTableRefs(remainingParentNodes, subGraphNodeId, firstNewEntryId);
+
     return {
-        nodes: [...remainingParentNodes, ...copiedNodes],
+        nodes: [...updatedParentNodes, ...copiedNodes],
         connections: [...remainingParentConnections, ...copiedConnections, ...rewiredConnections],
     };
 }
@@ -91,6 +94,11 @@ function cloneNodesWithFreshIds(
     return nodes.map((node) => {
         const newId = oldIdToNewId.get(node.id)!;
         const clonedData = node.data ? JSON.parse(JSON.stringify(node.data)) : node.data;
+
+        if (isDecisionTableType(node.type) && clonedData) {
+            remapDecisionTableNodeRefs(clonedData, oldIdToNewId);
+        }
+
         const clonedInputMap = node.input_map ? JSON.parse(JSON.stringify(node.input_map)) : {};
         const newPorts = generatePortsForNode(newId, node.type, clonedData);
 
@@ -109,6 +117,30 @@ function cloneNodesWithFreshIds(
             size: { ...node.size },
         } as NodeModel;
     });
+}
+
+function isDecisionTableType(type: NodeType): boolean {
+    return type === NodeType.TABLE || type === NodeType.CLASSIFICATION_TABLE;
+}
+
+function remapDecisionTableNodeRefs(data: Record<string, unknown>, oldIdToNewId: Map<string, string>): void {
+    const table = data['table'] as Record<string, unknown> | undefined;
+    if (!table) return;
+
+    table['default_next_node'] = remapNodeRef(table['default_next_node'] as string | null, oldIdToNewId);
+    table['next_error_node'] = remapNodeRef(table['next_error_node'] as string | null, oldIdToNewId);
+
+    const conditionGroups = table['condition_groups'] as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(conditionGroups)) {
+        for (const group of conditionGroups) {
+            group['next_node'] = remapNodeRef(group['next_node'] as string | null, oldIdToNewId);
+        }
+    }
+}
+
+function remapNodeRef(ref: string | null, oldIdToNewId: Map<string, string>): string | null {
+    if (!ref) return null;
+    return oldIdToNewId.get(ref) ?? null;
 }
 
 function extractPortRole(portId: CustomPortId): string | null {
@@ -188,6 +220,56 @@ function rewireInboundEdges(
     }
 
     return rewiredConnections;
+}
+
+function resolveFirstEntryPointId(entryPointNodeIds: Set<string>, oldIdToNewId: Map<string, string>): string | null {
+    for (const originalId of entryPointNodeIds) {
+        const newId = oldIdToNewId.get(originalId);
+        if (newId) return newId;
+    }
+    return null;
+}
+
+function redirectParentDecisionTableRefs(
+    nodes: NodeModel[],
+    subGraphNodeId: string,
+    replacementId: string | null
+): NodeModel[] {
+    return nodes.map((node) => {
+        if (!isDecisionTableType(node.type) || !node.data) return node;
+
+        const clonedData = JSON.parse(JSON.stringify(node.data));
+        const table = clonedData['table'] as Record<string, unknown> | undefined;
+        if (!table) return node;
+
+        let changed = false;
+
+        changed = redirectRef(table, 'default_next_node', subGraphNodeId, replacementId) || changed;
+        changed = redirectRef(table, 'next_error_node', subGraphNodeId, replacementId) || changed;
+
+        const conditionGroups = table['condition_groups'] as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(conditionGroups)) {
+            for (const group of conditionGroups) {
+                changed = redirectRef(group, 'next_node', subGraphNodeId, replacementId) || changed;
+            }
+        }
+
+        return changed ? { ...node, data: clonedData } : node;
+    });
+}
+
+function redirectRef(
+    obj: Record<string, unknown>,
+    field: string,
+    subGraphNodeId: string,
+    replacementId: string | null
+): boolean {
+    const ref = obj[field] as string | null;
+    if (ref === subGraphNodeId) {
+        obj[field] = replacementId;
+        return true;
+    }
+    return false;
 }
 
 function mergeInputMaps(
