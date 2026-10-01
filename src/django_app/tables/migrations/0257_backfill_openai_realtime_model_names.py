@@ -31,7 +31,7 @@ def backwards(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("tables", "0255_key_value_tables"),
+        ("tables", "0256_merge_0251_merge_20260928_1131_0255_key_value_tables"),
     ]
 
     operations = [
