@@ -152,17 +152,21 @@ class VoiceCallService:
                 await message_task
             await rt_agent_client.close()
 
-            if self._end_reason == "max_duration_exceeded":
-                # We broke out of the loop ourselves (Twilio didn't hang up) —
+            if self._end_reason in ("max_duration_exceeded", "error"):
+                # We stopped reading ourselves (Twilio didn't hang up) —
                 # actively close so the call actually ends instead of hanging
-                # open with nobody reading Twilio's media frames.
+                # open with nobody reading Twilio's media frames, and before
+                # the awaited recording save below so the caller isn't left
+                # on a dead line while it uploads.
                 try:
                     await self.twilio_ws.close()
                 except Exception as e:
-                    logger.debug(f"Error closing Twilio WebSocket after max duration: {e}")
+                    logger.debug(f"Error closing Twilio WebSocket after {self._end_reason}: {e}")
 
             duration = time.monotonic() - self._start_time
-            asyncio.create_task(self._save_recordings(duration))  # noqa: RUF006
+            # Awaited, not fired-and-forgotten: the loop holds only a weak reference
+            # to tasks, so an unawaited save could be collected before it finished.
+            await self._save_recordings(duration)
 
     async def _handle_twilio_message(self, data: dict, client: IRealtimeAgentClient) -> None:
         event = data.get("event")

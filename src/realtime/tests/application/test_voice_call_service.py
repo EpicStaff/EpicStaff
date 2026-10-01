@@ -1,6 +1,6 @@
-import asyncio
 import base64
 import json
+import httpx
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from fastapi import WebSocket
@@ -311,10 +311,102 @@ async def test_execute_ends_session_after_max_call_duration(monkeypatch):
     service._save_recordings = AsyncMock()
 
     await service.execute()
-    # execute() fires _save_recordings via asyncio.create_task without
-    # awaiting it — yield control once so the scheduled task actually runs.
-    await asyncio.sleep(0)
 
     assert service._end_reason == "max_duration_exceeded"
     twilio_ws.close.assert_awaited_once()
     service._save_recordings.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_completes_both_recording_uploads_and_end_write_before_returning(
+    monkeypatch,
+):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={})
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "application.voice_call_service.httpx.AsyncClient",
+        lambda **kwargs: real_async_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+
+    async def message_gen():
+        yield json.dumps({"event": "start", "start": {"streamSid": "MZ1"}})
+        yield json.dumps(
+            {"event": "media", "media": {"payload": base64.b64encode(b"\x00").decode()}}
+        )
+
+    twilio_ws = AsyncMock()
+    twilio_ws.iter_text = lambda: message_gen()
+    rt_client = AsyncMock(spec=IRealtimeAgentClient)
+    factory = MagicMock()
+    factory.create = MagicMock(return_value=rt_client)
+    tool_manager_service = MagicMock()
+    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
+
+    service = VoiceCallService(
+        twilio_ws=twilio_ws,
+        realtime_agent_chat_data=_make_chat_data(),
+        instructions="You are a helpful assistant",
+        tool_manager_service=tool_manager_service,
+        connections={},
+        factory=factory,
+        django_api_base_url="http://django_app:8000/api",
+        django_api_key="test-key",
+        initial_message=None,
+        max_call_duration_seconds=10,
+    )
+    await service._handle_provider_event(
+        {"type": "response.audio.delta", "delta": base64.b64encode(b"\x01").decode()}
+    )
+
+    await service.execute()
+
+    posted_paths = [request.url.path for request in requests]
+    assert posted_paths == [
+        "/api/conversation-recordings/",
+        "/api/conversation-recordings/",
+        "/api/realtime-agent-chats/end/",
+    ]
+    end_payload = json.loads(requests[-1].content)
+    assert end_payload["connection_key"] == service.realtime_agent_chat_data.connection_key
+    assert end_payload["end_reason"] == service._end_reason
+
+
+@pytest.mark.asyncio
+async def test_execute_closes_twilio_socket_before_saving_after_internal_error():
+    events: list[str] = []
+
+    async def message_gen():
+        yield "not valid json"
+
+    twilio_ws = AsyncMock()
+    twilio_ws.iter_text = lambda: message_gen()
+    twilio_ws.close = AsyncMock(side_effect=lambda: events.append("close"))
+    rt_client = AsyncMock(spec=IRealtimeAgentClient)
+    factory = MagicMock()
+    factory.create = MagicMock(return_value=rt_client)
+    tool_manager_service = MagicMock()
+    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
+
+    service = VoiceCallService(
+        twilio_ws=twilio_ws,
+        realtime_agent_chat_data=_make_chat_data(),
+        instructions="You are a helpful assistant",
+        tool_manager_service=tool_manager_service,
+        connections={},
+        factory=factory,
+        django_api_base_url="http://django_app:8000/api",
+        django_api_key="test-key",
+        initial_message=None,
+        max_call_duration_seconds=10,
+    )
+    service._save_recordings = AsyncMock(side_effect=lambda duration: events.append("save"))
+
+    await service.execute()
+
+    assert service._end_reason == "error"
+    assert events == ["close", "save"]
