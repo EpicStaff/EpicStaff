@@ -192,6 +192,8 @@ const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
     post_python_code: null,
     post_input_map: {},
     post_output_variable_path: null,
+    pre_use_storage: false,
+    post_use_storage: false,
     prompt_configs: [],
     default_llm_config: null,
     default_next_node_id: ID.end,

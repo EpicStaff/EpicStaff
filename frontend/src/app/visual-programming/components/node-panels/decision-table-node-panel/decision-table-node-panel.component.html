@@ -34,16 +34,15 @@
                         [items]="availableNodeItems()"
                         [readonly]="isReadOnly()"
                     />
-                    <div class="convert-toggle-field">
-                        <label class="convert-toggle-label">
-                            Classification Dec Table
-                            <app-help-tooltip text="Convert this node to a Classification Decision Table" />
-                        </label>
-                        <app-toggle-switch
+                    <div class="convert-cdt-field">
+                        <app-button
+                            type="outline-primary"
+                            [leftIcon]="'refresh'"
                             [disabled]="isReadOnly()"
-                            [checked]="false"
-                            (click)="$event.preventDefault(); convertToCdt()"
-                        ></app-toggle-switch>
+                            (click)="convertToCdt()"
+                        >
+                            Convert to CDT
+                        </app-button>
                     </div>
                 </div>
 
