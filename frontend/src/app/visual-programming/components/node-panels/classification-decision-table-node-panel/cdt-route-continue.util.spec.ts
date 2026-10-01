@@ -3,9 +3,12 @@ import {
     continueFlagAfterRouteCodeEdit,
     continuesAfterMatch,
     hasRouteCode,
-    isContinueIgnored,
     isMissingRouteOrContinue,
+    isRouteCodeIgnored,
+    isRouteContinueConflict,
+    isRoutePortBlockedByContinue,
     normalizeRouteCode,
+    routePortIdForRow,
 } from './cdt-route-continue.util';
 
 function row(overrides: Partial<ConditionGroup>): ConditionGroup {
@@ -68,26 +71,112 @@ describe('cdt-route-continue.util', () => {
         });
     });
 
-    describe('isContinueIgnored (dimmed Continue checkbox)', () => {
-        it('is true when the row has a route code and Continue ticked', () => {
-            expect(isContinueIgnored(row({ route_code: 'approve', continue_flag: true }))).toBe(true);
+    describe('isRouteCodeIgnored (dimmed route code)', () => {
+        it('is true for a route code wired to nothing with Continue ticked', () => {
+            expect(isRouteCodeIgnored(row({ route_code: 'approve', continue_flag: true }), false)).toBe(true);
         });
 
         it('reads the legacy continue key', () => {
-            expect(isContinueIgnored(row({ route_code: 'approve', continue: true }))).toBe(true);
+            expect(isRouteCodeIgnored(row({ route_code: 'approve', continue: true }), false)).toBe(true);
+        });
+
+        it('is false when the route code is wired to a node', () => {
+            expect(isRouteCodeIgnored(row({ route_code: 'approve', continue_flag: true }), true)).toBe(false);
         });
 
         it('is false when Continue is unticked', () => {
-            expect(isContinueIgnored(row({ route_code: 'approve', continue_flag: false }))).toBe(false);
+            expect(isRouteCodeIgnored(row({ route_code: 'approve', continue_flag: false }), false)).toBe(false);
         });
 
         it('is false without a route code, including whitespace only', () => {
-            expect(isContinueIgnored(row({ route_code: '', continue_flag: true }))).toBe(false);
-            expect(isContinueIgnored(row({ route_code: '   ', continue_flag: true }))).toBe(false);
+            expect(isRouteCodeIgnored(row({ route_code: '', continue_flag: true }), false)).toBe(false);
+            expect(isRouteCodeIgnored(row({ route_code: '   ', continue_flag: true }), false)).toBe(false);
         });
 
         it('is false for a missing row', () => {
-            expect(isContinueIgnored(undefined)).toBe(false);
+            expect(isRouteCodeIgnored(undefined, false)).toBe(false);
+        });
+    });
+
+    describe('isRouteContinueConflict (red Route Code cell on saved data)', () => {
+        it('is true for a route code wired to a node with Continue ticked', () => {
+            expect(isRouteContinueConflict(row({ route_code: 'approve', continue_flag: true }), true)).toBe(true);
+        });
+
+        it('reads the legacy continue key', () => {
+            expect(isRouteContinueConflict(row({ route_code: 'approve', continue: true }), true)).toBe(true);
+        });
+
+        it('clears once the connection is removed', () => {
+            expect(isRouteContinueConflict(row({ route_code: 'approve', continue_flag: true }), false)).toBe(false);
+        });
+
+        it('clears once Continue is unticked', () => {
+            expect(isRouteContinueConflict(row({ route_code: 'approve', continue_flag: false }), true)).toBe(false);
+        });
+
+        it('is false without a route code or row', () => {
+            expect(isRouteContinueConflict(row({ route_code: '  ', continue_flag: true }), true)).toBe(false);
+            expect(isRouteContinueConflict(undefined, true)).toBe(false);
+        });
+    });
+
+    describe('routePortIdForRow', () => {
+        it('builds the port id the canvas gives a route code', () => {
+            expect(routePortIdForRow('node1', row({ route_code: 'Needs Review' }))).toBe(
+                'node1_decision-route-needs-review'
+            );
+        });
+
+        it('keeps surrounding whitespace, as the canvas port does, so "A " and "A" are different ports', () => {
+            expect(routePortIdForRow('node1', row({ route_code: 'A ' }))).toBe('node1_decision-route-a-');
+            expect(routePortIdForRow('node1', row({ route_code: 'A' }))).toBe('node1_decision-route-a');
+        });
+
+        it('is null without a route code', () => {
+            expect(routePortIdForRow('node1', row({ route_code: '   ' }))).toBeNull();
+            expect(routePortIdForRow('node1', row({ route_code: null }))).toBeNull();
+            expect(routePortIdForRow('node1', undefined)).toBeNull();
+        });
+    });
+
+    describe('isRoutePortBlockedByContinue (canvas refuses the connection)', () => {
+        const portId = 'node1_decision-route-approve';
+
+        it('blocks the port of a route code whose row has Continue ticked', () => {
+            const rows = [row({ route_code: 'approve', continue_flag: true })];
+            expect(isRoutePortBlockedByContinue(rows, 'node1', portId)).toBe(true);
+        });
+
+        it('blocks a shared port when any row owning it has Continue ticked', () => {
+            const rows = [
+                row({ route_code: 'approve', continue_flag: false }),
+                row({ route_code: 'approve', continue: true }),
+            ];
+            expect(isRoutePortBlockedByContinue(rows, 'node1', portId)).toBe(true);
+        });
+
+        it('leaves the port free when Continue is unticked', () => {
+            const rows = [row({ route_code: 'approve', continue_flag: false })];
+            expect(isRoutePortBlockedByContinue(rows, 'node1', portId)).toBe(false);
+        });
+
+        it('ignores other ports, other nodes and rows without a route code', () => {
+            const rows = [
+                row({ route_code: 'reject', continue_flag: true }),
+                row({ route_code: '', continue_flag: true }),
+            ];
+            expect(isRoutePortBlockedByContinue(rows, 'node1', portId)).toBe(false);
+            expect(
+                isRoutePortBlockedByContinue([row({ route_code: 'approve', continue_flag: true })], 'node2', portId)
+            ).toBe(false);
+            expect(isRoutePortBlockedByContinue(rows, 'node1', 'node1_decision-default')).toBe(false);
+        });
+
+        it('matches a saved route code with trailing whitespace to its own port only', () => {
+            const rows = [row({ route_code: 'approve ', continue_flag: true })];
+            expect(isRoutePortBlockedByContinue(rows, 'node1', 'node1_decision-route-approve-')).toBe(true);
+            expect(isRoutePortBlockedByContinue(rows, 'node1', portId)).toBe(false);
         });
     });
 
