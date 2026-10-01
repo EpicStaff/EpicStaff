@@ -155,13 +155,13 @@ class TestPermissionsApiKey:
         resp = client.get(USERS_LIST)
         assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_system_api_key_acts_as_superadmin(self, issue_api_key):
+    def test_system_api_key_is_rejected_on_users_admin(self, issue_api_key):
         raw, _ = issue_api_key(user=None, name="system-test")
 
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw)
         resp = client.get(USERS_LIST)
-        assert resp.status_code == status.HTTP_200_OK
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
 
 
 # ============================================================================
