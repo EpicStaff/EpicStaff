@@ -109,13 +109,15 @@
 }
 
 .filters-panel__btn {
+    flex: none;
     height: 30px;
-    padding: 0 14px;
+    padding: 0 10px;
     border: 1px solid var(--color-input-border);
     border-radius: 6px;
     background-color: transparent;
     color: var(--color-text-primary);
-    font-size: 13px;
+    font-size: 12px;
+    white-space: nowrap;
     cursor: pointer;
 
     &:hover:not(:disabled) {

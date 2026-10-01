@@ -13,7 +13,7 @@ export const STATUS_OPTIONS: AuditEnumOption[] = [
 
 export const RUN_TYPE_OPTIONS: AuditEnumOption[] = [
     { value: 'manual', label: 'Manual' },
-    { value: 'api', label: 'API' },
+    { value: 'api', label: 'Trigger' },
 ];
 
 export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [

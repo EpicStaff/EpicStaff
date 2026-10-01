@@ -31,8 +31,10 @@ import { CustomToolsService } from '../tools/services/custom-tools/custom-tools.
 import { McpToolsService } from '../tools/services/mcp-tools/mcp-tools.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
+import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditSessionEvent } from './models/audit-session.models';
+import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
 import { buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
@@ -46,7 +48,14 @@ const SEARCH_DEBOUNCE_MS = 400;
 @Component({
     selector: 'app-audit-sessions-browser',
     standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, AuditFiltersPanelComponent, AuditFilterChipsComponent],
+    imports: [
+        CommonModule,
+        AppSvgIconComponent,
+        AuditFiltersPanelComponent,
+        AuditFilterChipsComponent,
+        AuditHighlightComponent,
+        AuditJsonPipe,
+    ],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -112,6 +121,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     );
     public activeFilterCount = computed(() => this.appliedChips().length);
     protected appliedSearchText = computed(() => this.appliedFilter().searchText);
+    protected highlightTerm = computed(() => this.appliedSearchText().trim());
     public queryError = computed(() => (this.appliedFilter().mode === 'query' ? this.loadErrorMessage() : null));
     public canGoNewer = computed(() => this.cursorStack().length > 1);
     public canGoOlder = computed(() => this.nextCursor() !== null);
@@ -119,6 +129,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public counts = computed(() => {
         const events = this.rawEvents();
         return {
+            matches: events.filter((event) => event.filter_matched).length,
+            rows: events.length,
             sessions: events.filter((event) => event.kind === 'session').length,
             nodes: events.filter((event) => event.kind === 'node').length,
             events: events.filter((event) => event.kind === 'event').length,

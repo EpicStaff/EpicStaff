@@ -32,17 +32,17 @@
             class="audit-browser__tool-btn"
             type="button"
             [class.is-active]="areColumnsExpanded()"
-            (click)="setColumnsExpanded(true)"
+            (click)="setColumnsExpanded(!areColumnsExpanded())"
         >
-            Expand All Columns
+            {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
         </button>
         <button
             class="audit-browser__tool-btn"
             type="button"
-            [class.is-active]="!areColumnsExpanded()"
-            (click)="setColumnsExpanded(false)"
+            [disabled]="!hasCollapsibleRows()"
+            (click)="toggleAllRows()"
         >
-            Collapse All Columns
+            {{ areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree' }}
         </button>
         <span class="audit-browser__toolbar-spacer"></span>
         <button
@@ -54,31 +54,16 @@
         </button>
     </div>
 
-    <div class="audit-browser__subbar">
-        <button
-            class="audit-browser__expand-toggle"
-            type="button"
-            [disabled]="!hasCollapsibleRows()"
-            (click)="toggleAllRows()"
-        >
-            <app-svg-icon
-                class="audit-browser__expand-caret"
-                [class.is-collapsed]="!areAllRowsExpanded()"
-                icon="caret-down-filled"
-                size="10px"
-            />
-            {{ areAllRowsExpanded() ? 'Collapse' : 'Expand' }}
-        </button>
-
-        @if (appliedChips().length > 0) {
+    @if (appliedChips().length > 0) {
+        <div class="audit-browser__subbar">
             <app-audit-filter-chips
                 class="audit-browser__chips"
                 [chips]="appliedChips()"
                 (removed)="removeFilter($event)"
                 (cleared)="clearFilters()"
             />
-        }
-    </div>
+        </div>
+    }
 
     @if (isPartial()) {
         <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
@@ -139,6 +124,7 @@
                                 <tr
                                     [class]="'audit-row--' + row.event.kind"
                                     [class.audit-row--matched]="row.event.filter_matched"
+                                    [class.audit-row--context]="!row.event.filter_matched"
                                 >
                                     <td class="audit-table__gutter">
                                         <span class="audit-tree">
@@ -183,9 +169,24 @@
                                         <span class="audit-kind">{{ row.event.kind | titlecase }}</span>
                                     </td>
                                     <td>{{ row.event.session_id }}</td>
-                                    <td>{{ row.event.name }}</td>
-                                    <td>{{ row.event.flow_name }}</td>
-                                    <td>{{ row.event.node_type }}</td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.name"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.flow_name"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.node_type"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
                                     <td>
                                         @if (row.sessionStatus ?? row.event.status; as status) {
                                             <span
@@ -199,10 +200,30 @@
                                     <td class="audit-table__date">
                                         {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
                                     </td>
-                                    <td>{{ row.event.input | json }}</td>
-                                    <td>{{ row.event.output | json }}</td>
-                                    <td>{{ row.event.error }}</td>
-                                    <td>{{ row.event.details | json }}</td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.input | auditJson"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.output | auditJson"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.error ?? ''"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
+                                    <td>
+                                        <app-audit-highlight
+                                            [text]="row.event.details | auditJson"
+                                            [term]="highlightTerm()"
+                                        />
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -264,6 +285,8 @@
                     <span class="audit-summary__key">TIMES IN:</span>
                     <span>{{ timeZoneLabel }}</span>
                     <span class="audit-summary__key">IN VIEW:</span>
+                    <span>{{ counts().matches }} matches · {{ counts().rows }} rows</span>
+                    <span class="audit-summary__sep">|</span>
                     <span>{{ counts().sessions }} sessions</span>
                     <span class="audit-summary__sep">|</span>
                     <span>{{ counts().nodes }} nodes</span>
