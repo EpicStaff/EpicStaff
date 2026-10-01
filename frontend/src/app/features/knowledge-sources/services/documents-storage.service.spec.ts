@@ -220,3 +220,63 @@ describe('DocumentsStorageService.importFromStorage', () => {
         expect(toast.error).toHaveBeenCalledWith('boom');
     });
 });
+
+describe('DocumentsStorageService — imported documents in the document cache', () => {
+    let service: DocumentsStorageService;
+    let documentsApi: { importFromStorage: ReturnType<typeof vi.fn> };
+    let collectionsApi: { getDocumentsByCollectionId: ReturnType<typeof vi.fn> };
+
+    const imported: ImportFromStorageResponse = {
+        message: 'ok',
+        documents: [{ document_id: 9, file_name: 'a.pdf', file_size: 10, file_type: 'pdf', source_collection: 4 }],
+        skipped: [],
+    };
+
+    beforeEach(() => {
+        documentsApi = { importFromStorage: vi.fn(() => of(imported)) };
+        collectionsApi = { getDocumentsByCollectionId: vi.fn(() => of({ documents: [] })) };
+
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: DocumentsApiService, useValue: documentsApi },
+                { provide: CollectionsApiService, useValue: collectionsApi },
+                {
+                    provide: CollectionsStorageService,
+                    useValue: { getFullCollection: vi.fn(() => of(null)), updateDocumentCount: vi.fn() },
+                },
+                { provide: ToastService, useValue: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+            ],
+        });
+        service = TestBed.inject(DocumentsStorageService);
+    });
+
+    function documentIdsOf(collectionId: number): number[] {
+        return service
+            .documents()
+            .filter((document) => document.source_collection === collectionId)
+            .map((document) => document.document_id);
+    }
+
+    it('shows documents imported into a fetched, empty collection (e.g. the open one)', () => {
+        service.getDocumentsByCollectionId(4).subscribe();
+
+        service.importFromStorage(4, [candidate(1)]).subscribe();
+
+        expect(documentIdsOf(4)).toEqual([9]);
+    });
+
+    it('does not start a partial cache for a collection whose documents were never fetched', () => {
+        service.importFromStorage(4, [candidate(1)]).subscribe();
+
+        expect(documentIdsOf(4)).toEqual([]);
+    });
+
+    it('forgets fetched collections on clear', () => {
+        service.getDocumentsByCollectionId(4).subscribe();
+        service.clear();
+
+        service.importFromStorage(4, [candidate(1)]).subscribe();
+
+        expect(documentIdsOf(4)).toEqual([]);
+    });
+});

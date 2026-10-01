@@ -31,6 +31,7 @@ import { ToastService } from '../../../../../../services/notifications';
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
 import { FILE_TYPES } from '../../../../constants/constants';
+import { CollectionDropTargetDirective } from '../../../../directives/collection-drop-target.directive';
 import { CreateCollectionDtoResponse } from '../../../../models/collection.model';
 import { DisplayedListDocument } from '../../../../models/document.model';
 import { CollectionsStorageService } from '../../../../services/collections-storage.service';
@@ -57,6 +58,7 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
         AppSvgIconComponent,
         MatTooltipModule,
         HasPermissionDirective,
+        CollectionDropTargetDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -102,6 +102,14 @@ describe('StorageTreeComponent drag and drop', () => {
         component.onDragStart(fakeDragEvent().event, item);
     }
 
+    it('drops the hover state of the grabbed row, since mouseleave never fires during a native drag', () => {
+        component.hoveredItem.set(nodes['notes']);
+
+        startDrag(nodes['notes']);
+
+        expect(component.hoveredItem()).toBeNull();
+    });
+
     it('resolves a file row to its parent folder: highlights it and moves into it on drop', () => {
         startDrag(nodes['notes']);
 

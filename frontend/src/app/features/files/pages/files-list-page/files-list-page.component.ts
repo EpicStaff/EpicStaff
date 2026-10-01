@@ -1,10 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, linkedSignal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { AppSvgIconComponent, ButtonComponent, TabButtonComponent } from '@shared/components';
-import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { AppSvgIconComponent, ButtonComponent, SpinnerComponent, TabButtonComponent } from '@shared/components';
+import { DragHoverDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
@@ -12,18 +12,36 @@ import { switchMap } from 'rxjs/operators';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
+import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
 import {
     CreateFolderDialogComponent,
     CreateFolderDialogResult,
 } from '../../components/create-folder-dialog/create-folder-dialog.component';
+import { FILES_TAB, FilesTab } from '../../constants/files-tabs';
 import { FilesSearchService } from '../../services/files-search.service';
 import { StorageApiService } from '../../services/storage-api.service';
+import { StorageDragService } from '../../services/storage-drag.service';
+import { StoragePageComponent } from './components/storage-page/storage-page.component';
 
+/** How long a storage drag has to rest on a tab before the tab opens. */
+export const TAB_SPRING_LOAD_DELAY_MS = 500;
+
+interface FilesTabConfig {
+    label: string;
+    link: FilesTab;
+    isPermitted: () => boolean;
+}
+
+/**
+ * Tab shell for `/files`. It renders the tab pages itself instead of through a
+ * `<router-outlet>` (the child routes are component-less and only own URL + guards), so the
+ * Storage page — the source of a storage drag — can stay mounted, visually hidden, while the
+ * user drags onto Knowledge Sources. A router outlet would destroy it and lose the drag.
+ */
 @Component({
     selector: 'app-files-list-page',
     imports: [
-        RouterOutlet,
         RouterLink,
         RouterLinkActive,
         TabButtonComponent,
@@ -31,6 +49,10 @@ import { StorageApiService } from '../../services/storage-api.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        DragHoverDirective,
+        SpinnerComponent,
+        CollectionsListPageComponent,
+        StoragePageComponent,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],
@@ -40,39 +62,58 @@ import { StorageApiService } from '../../services/storage-api.service';
 export class FilesListPageComponent {
     private readonly dialog = inject(Dialog);
     private readonly router = inject(Router);
+    private readonly route = inject(ActivatedRoute);
     private readonly destroyRef = inject(DestroyRef);
     private readonly storageApiService = inject(StorageApiService);
     private readonly collectionsStorageService = inject(CollectionsStorageService);
     private readonly toastService = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
+    protected readonly storageDrag = inject(StorageDragService);
     readonly filesSearchService = inject(FilesSearchService);
 
-    public tabs = [
+    readonly tabs: FilesTabConfig[] = [
         {
             label: 'Knowledge Sources',
-            link: 'knowledge-sources',
+            link: FILES_TAB.KnowledgeSources,
             isPermitted: () => this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read),
         },
         {
             label: 'Storage',
-            link: 'storage',
+            link: FILES_TAB.Storage,
             isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
         },
     ];
 
     readonly searchTerm = this.filesSearchService.searchTerm;
 
-    private readonly currentUrl = toSignal(
+    /** The tab whose (component-less) child route is active; the guards already vetted it. */
+    protected readonly activeTab = toSignal(
         this.router.events.pipe(
-            filter((e) => e instanceof NavigationEnd),
-            map((e) => (e as NavigationEnd).urlAfterRedirects),
-            startWith(this.router.url)
-        )
+            filter((event) => event instanceof NavigationEnd),
+            map(() => this.readActiveTab()),
+            startWith(this.readActiveTab())
+        ),
+        { requireSync: true }
     );
 
-    activeTabBtn = computed(() => {
-        const url = this.currentUrl();
-        if (url?.includes('/storage')) {
+    protected readonly isKnowledgeSourcesActive = computed(() => this.activeTab() === FILES_TAB.KnowledgeSources);
+    protected readonly isStorageActive = computed(() => this.activeTab() === FILES_TAB.Storage);
+
+    /**
+     * The Storage page is rendered while its tab is active, and kept mounted after a tab switch
+     * for as long as a storage drag that started there is live — it holds the drag source row,
+     * whose `dragend` ends the drag. A drag never mounts it: it can only extend a mount.
+     */
+    protected readonly isStorageRendered = linkedSignal<{ isActive: boolean; isDragging: boolean }, boolean>({
+        source: () => ({ isActive: this.isStorageActive(), isDragging: this.storageDrag.isDragging() }),
+        computation: ({ isActive, isDragging }, previous) => isActive || (isDragging && (previous?.value ?? false)),
+    });
+
+    protected readonly tabSpringLoadDelay = TAB_SPRING_LOAD_DELAY_MS;
+
+    readonly activeTabBtn = computed(() => {
+        const activeTab = this.activeTab();
+        if (activeTab === FILES_TAB.Storage) {
             const canCreateFiles = this.permissionService.can(ResourceCode.Files, ActionCode.Create);
             return {
                 label: 'Add files',
@@ -81,7 +122,7 @@ export class FilesListPageComponent {
             };
         }
 
-        if (url?.includes('/knowledge-sources')) {
+        if (activeTab === FILES_TAB.KnowledgeSources) {
             const canCreateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Create);
             const canUpdateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update);
             return {
@@ -93,6 +134,12 @@ export class FilesListPageComponent {
 
         return;
     });
+
+    /** Spring-loaded tab: a storage drag resting on another tab opens it. */
+    onTabDragHover(tab: FilesTabConfig): void {
+        if (!this.storageDrag.isDragging() || !tab.isPermitted() || this.activeTab() === tab.link) return;
+        void this.router.navigate([tab.link], { relativeTo: this.route });
+    }
 
     public onCreateFolderClick(): void {
         const dialogRef = this.dialog.open<CreateFolderDialogResult>(CreateFolderDialogComponent);
@@ -117,6 +164,12 @@ export class FilesListPageComponent {
                 },
                 error: () => this.toastService.error('Failed to create collection'),
             });
+    }
+
+    private readActiveTab(): FilesTab | null {
+        // `routeConfig` (not `snapshot`): the child snapshot is not set yet while this page is being activated.
+        const path = this.route.firstChild?.routeConfig?.path;
+        return this.tabs.find((tab) => tab.link === path)?.link ?? null;
     }
 
     private openCreateCollectionModal(collectionId: number): void {

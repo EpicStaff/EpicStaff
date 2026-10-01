@@ -1,38 +1,38 @@
-import { Component, computed, DestroyRef, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { StorageDragService } from '../../../files/services/storage-drag.service';
+import { CollectionDropTargetDirective } from '../../directives/collection-drop-target.directive';
 import { canImportStorageToKnowledge, isLikelyUnsupportedDocument } from '../../helpers/storage-import.util';
-import { StorageImportCandidate } from '../../models/document.model';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { DocumentsStorageService } from '../../services/documents-storage.service';
 
 /**
- * Native HTML5 drop targets — one per knowledge collection — for storage items being dragged.
- * The import itself runs in the root `DocumentsStorageService`, so it survives this panel.
+ * Lists every knowledge collection as a drop target (`appCollectionDropTarget`) while storage
+ * items are being dragged. Shown over the storage preview; the Knowledge Sources tab has its
+ * own targets for the same drag, so both paths share one drop implementation.
  */
 @Component({
     selector: 'app-collection-drop-panel',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, CollectionDropTargetDirective],
     templateUrl: './collection-drop-panel.component.html',
     styleUrls: ['./collection-drop-panel.component.scss'],
 })
 export class CollectionDropPanelComponent {
-    readonly active = input<boolean>(false);
-    readonly items = input<StorageImportCandidate[]>([]);
-
-    protected readonly hoveredCollectionId = signal<number | null>(null);
     protected readonly loadFailed = signal<boolean>(false);
     protected readonly isVisible = computed(
-        () => this.active() && canImportStorageToKnowledge(this.permissionsService)
+        () => this.storageDrag.isDragging() && canImportStorageToKnowledge(this.permissionsService)
     );
     protected readonly isLoading = computed(() => !this.collectionsStorage.isCollectionsLoaded() && !this.loadFailed());
     protected readonly itemsLabel = computed(() => {
-        const items = this.items();
+        const items = this.storageDrag.draggedItems();
         return items.length === 1 ? `"${items[0].name}"` : `${items.length} items`;
     });
-    protected readonly likelySkippedCount = computed(() => this.items().filter(isLikelyUnsupportedDocument).length);
+    protected readonly likelySkippedCount = computed(
+        () => this.storageDrag.draggedItems().filter(isLikelyUnsupportedDocument).length
+    );
 
     /** Loads collections the first time the panel becomes visible; a failed load is retried next time. */
     private readonly loadCollectionsOnFirstShow = effect(() => {
@@ -42,11 +42,12 @@ export class CollectionDropPanelComponent {
 
     protected readonly collectionsStorage = inject(CollectionsStorageService);
     protected readonly documentsStorage = inject(DocumentsStorageService);
+    private readonly storageDrag = inject(StorageDragService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly destroyRef = inject(DestroyRef);
     private isLoadRequested = false;
 
-    /** Swallows the drag everywhere on the panel except the collection rows. */
+    /** Swallows the drag everywhere on the panel except the collection rows (which claim it first). */
     onPanelDragOver(event: DragEvent): void {
         event.preventDefault();
         event.stopPropagation();
@@ -56,32 +57,6 @@ export class CollectionDropPanelComponent {
     onPanelDrop(event: DragEvent): void {
         event.preventDefault();
         event.stopPropagation();
-    }
-
-    onCollectionDragOver(event: DragEvent, collectionId: number): void {
-        event.preventDefault();
-        event.stopPropagation();
-        const isBusy = this.documentsStorage.isImporting(collectionId);
-        if (event.dataTransfer) event.dataTransfer.dropEffect = isBusy ? 'none' : 'copy';
-        this.hoveredCollectionId.set(isBusy ? null : collectionId);
-    }
-
-    onCollectionDragLeave(event: DragEvent, collectionId: number): void {
-        const row = event.currentTarget as HTMLElement | null;
-        const related = event.relatedTarget as Node | null;
-        if (row && related && row.contains(related)) return;
-        if (this.hoveredCollectionId() === collectionId) {
-            this.hoveredCollectionId.set(null);
-        }
-    }
-
-    onCollectionDrop(event: DragEvent, collectionId: number): void {
-        event.preventDefault();
-        event.stopPropagation();
-        this.hoveredCollectionId.set(null);
-        if (!this.isVisible() || this.documentsStorage.isImporting(collectionId)) return;
-        // Fire and forget: the service owns the request and the toasts.
-        this.documentsStorage.importFromStorage(collectionId, this.items());
     }
 
     private loadCollections(): void {

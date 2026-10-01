@@ -435,6 +435,9 @@ export class StorageTreeComponent {
         event.dataTransfer!.setData('text/plain', items.map((i) => i.path).join('\n'));
         this.draggedItem.set(item);
         this.draggedItems.set(items);
+        // Native DnD suppresses mouseleave, so the row's hover actions would stay "visible" for
+        // the whole drag — even through the hidden, kept-alive Storage page after a tab switch.
+        this.hoveredItem.set(null);
         this.storageDrag.start(item, items);
     }
 

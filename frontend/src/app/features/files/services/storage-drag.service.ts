@@ -12,10 +12,14 @@ const LISTENER_OPTIONS: AddEventListenerOptions = { capture: true };
  * `dragged` is the row the user grabbed; `draggedItems` is the whole drag set
  * (the grabbed row plus the rest of the selection when it was part of it).
  *
- * Safety net: if the dragged row is removed from the DOM mid-drag, some browsers (Firefox)
- * never fire `dragend`. Native DnD suppresses mouse/pointer events while a drag is live, so
- * once the drag has been seen over the page (`dragover`), the first `mousedown`, or a primary
- * `pointermove` with no button held, means it is over and the state is cleared.
+ * The Files page keeps the Storage page (the drag source) mounted across a tab switch while a
+ * drag is live, so the source row normally fires `dragend` and the tree ends the drag.
+ *
+ * Safety net: if the dragged row is removed from the DOM mid-drag anyway (e.g. a tree refresh
+ * re-renders it), some browsers (Firefox) never fire `dragend`. Native DnD suppresses
+ * mouse/pointer events while a drag is live, so once the drag has been seen over the page
+ * (`dragover`), the first `mousedown`, or a primary `pointermove` with no button held, means
+ * it is over and the state is cleared.
  */
 @Injectable({ providedIn: 'root' })
 export class StorageDragService {

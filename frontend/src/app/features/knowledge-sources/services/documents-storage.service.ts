@@ -38,6 +38,8 @@ export class DocumentsStorageService implements StorageService {
     private readonly collectionsApiService = inject(CollectionsApiService);
     private readonly collectionsStorageService = inject(CollectionsStorageService);
     private readonly toastService = inject(ToastService);
+    /** Collections whose full document list was fetched — including empty ones, which leave no trace in the cache. */
+    private readonly fetchedCollectionIds = new Set<number>();
 
     uploadDocuments(
         collectionId: number,
@@ -79,7 +81,10 @@ export class DocumentsStorageService implements StorageService {
                         source_collection: collectionId,
                     }));
                 }),
-                tap((docs) => this.addDocumentsToCache(docs))
+                tap((docs) => {
+                    this.fetchedCollectionIds.add(collectionId);
+                    this.addDocumentsToCache(docs);
+                })
             );
         }
 
@@ -182,6 +187,7 @@ export class DocumentsStorageService implements StorageService {
         return this.collectionsApiService.getDocumentsByCollectionId(collectionId).pipe(
             map(({ documents }) => documents.map((doc) => ({ ...doc, source_collection: collectionId }))),
             tap((docs) => {
+                this.fetchedCollectionIds.add(collectionId);
                 this.documentsSignal.update((current) => [
                     ...current.filter((d) => d.source_collection !== collectionId),
                     ...docs,
@@ -194,6 +200,7 @@ export class DocumentsStorageService implements StorageService {
     clear(): void {
         this.documentsSignal.set([]);
         this.documentsLoaded.set(false);
+        this.fetchedCollectionIds.clear();
     }
 
     private adjustImportCount(collectionId: number, delta: number): void {
@@ -240,9 +247,13 @@ export class DocumentsStorageService implements StorageService {
     /**
      * Only merge when the collection's documents are already cached: a partial cache would make
      * `getDocumentsByCollectionId` return just the imported documents instead of fetching all.
+     * A fetched-but-empty collection counts as cached, so importing into the open, empty
+     * collection shows the new documents right away.
      */
     private mergeImportedDocuments(collectionId: number, documents: CollectionDocument[]): void {
-        const isCollectionCached = this.documentsSignal().some((d) => d.source_collection === collectionId);
+        const isCollectionCached =
+            this.fetchedCollectionIds.has(collectionId) ||
+            this.documentsSignal().some((d) => d.source_collection === collectionId);
         if (!isCollectionCached || documents.length === 0) return;
         this.addDocumentsToCache(documents.map((doc) => ({ ...doc, source_collection: collectionId })));
     }

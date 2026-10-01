@@ -69,6 +69,23 @@
             gap: 0.25rem;
         }
 
+        app-tab-button {
+            border-radius: 4px;
+            transition: background-color 0.15s ease;
+        }
+
+        // A storage drag is live and this tab can be opened by resting on it (spring-loaded tab).
+        .tab-drop-available {
+            display: inline-flex;
+            background-color: color-mix(in srgb, var(--color-ks-hover-row) 50%, transparent);
+        }
+
+        // The drag is over the tab, about to open it. The ring is an inset box-shadow, not an
+        // outline, so it is drawn inside the tab and nothing can clip it.
+        .tab-spring-loading {
+            box-shadow: inset 0 0 0 1px var(--accent-color);
+        }
+
         .tab-sep {
             text-align: center;
             font-size: 1.625rem;
@@ -87,9 +104,35 @@
     }
 
     .body {
+        position: relative;
         flex: 1;
         min-height: 0;
         overflow: hidden;
+
+        .tab-page {
+            display: block;
+            height: 100%;
+        }
+
+        .tab-page__loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        // The Storage page kept mounted behind Knowledge Sources during a storage drag.
+        // Hidden off-layout but still rendered (no display: none), so the drag source row stays
+        // alive. `inert` (template) takes it out of focus, tab order and the accessibility tree.
+        .tab-page--kept-alive {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            visibility: hidden;
+            // A descendant can opt back in with `visibility: visible` (e.g. hover actions whose
+            // mouseleave never fired during the drag); opacity cannot be overridden by children.
+            opacity: 0;
+            pointer-events: none;
+        }
     }
 
     .search-container {

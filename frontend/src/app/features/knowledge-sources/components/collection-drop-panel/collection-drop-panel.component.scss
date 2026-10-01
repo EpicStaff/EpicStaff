@@ -1,3 +1,5 @@
+@use '../../directives/collection-drop-target' as drop-target;
+
 :host {
     display: contents;
 }
@@ -77,21 +79,8 @@
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        border-radius: 4px;
-        border: 1px dashed transparent;
         color: var(--color-text-primary);
-        transition:
-            background-color 0.15s ease,
-            border-color 0.15s ease;
-
-        &--hovered {
-            border-color: var(--accent-color);
-            background-color: var(--color-ghost-btn-active);
-        }
-
-        &--importing {
-            opacity: 0.6;
-        }
+        @include drop-target.collection-drop-target(4px);
     }
 
     &__icon {

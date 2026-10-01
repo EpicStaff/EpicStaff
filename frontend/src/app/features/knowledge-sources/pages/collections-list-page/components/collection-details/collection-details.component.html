@@ -56,7 +56,10 @@
                 [permissionResource]="ResourceCode.KnowledgeSources"
                 class="details__main-wrapper"
             >
-                <div class="details__main-content">
+                <div
+                    class="details__main-content"
+                    [appCollectionDropTarget]="fullCollection()?.collection_id"
+                >
                     <!-- RAGS -->
                     <div class="details__section">
                         <div class="details__section-header">

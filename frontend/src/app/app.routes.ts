@@ -14,6 +14,7 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { FILES_TAB } from './features/files/constants/files-tabs';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -223,23 +224,20 @@ export const routes: Routes = [
                                 ],
                                 children: [],
                             },
+                            // Component-less on purpose: FilesListPageComponent renders the tab pages
+                            // itself (lazily, via @defer) so the Storage page can outlive a tab switch
+                            // during a storage → knowledge drag. These routes own the URL and the guards.
                             {
-                                path: 'knowledge-sources',
-                                loadComponent: () =>
-                                    import('./features/knowledge-sources/pages/collections-list-page/collections-list-page.component').then(
-                                        (m) => m.CollectionsListPageComponent
-                                    ),
+                                path: FILES_TAB.KnowledgeSources,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
+                                children: [],
                             },
                             {
-                                path: 'storage',
-                                loadComponent: () =>
-                                    import('./features/files/pages/files-list-page/components/storage-page/storage-page.component').then(
-                                        (m) => m.StoragePageComponent
-                                    ),
+                                path: FILES_TAB.Storage,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
+                                children: [],
                             },
                         ],
                     },

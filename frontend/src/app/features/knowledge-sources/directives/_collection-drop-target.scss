@@ -1,0 +1,39 @@
+// Visual states for an element carrying `appCollectionDropTarget`, keyed on the host classes
+// the directive sets: `collection-drop-target--armed | --hovered | --busy`.
+//
+// The ring is an inset `::after` (not an outline), so no ancestor `overflow` can clip it and,
+// being positioned and painted last, no child background can cover it. No z-index needed.
+// Armed targets only get the dashed ring; the background "haze" (same as a hovered chat in the
+// chat list) is reserved for the target under the pointer, so it stays the one clear signal.
+@mixin collection-drop-target($radius) {
+    position: relative;
+    border-radius: $radius;
+    transition: background-color 0.15s ease;
+
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: 1px dashed transparent;
+        border-radius: inherit;
+        pointer-events: none;
+        transition: border-color 0.15s ease;
+    }
+
+    &.collection-drop-target--armed::after {
+        border-color: var(--accent-color);
+    }
+
+    &.collection-drop-target--hovered {
+        background-color: var(--color-ks-hover-row);
+
+        &::after {
+            border-style: solid;
+            border-width: 2px;
+        }
+    }
+
+    &.collection-drop-target--busy {
+        opacity: 0.6;
+    }
+}

@@ -9,8 +9,10 @@ import { of, Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { StorageItem } from '../../../files/models/storage.models';
+import { StorageDragService } from '../../../files/services/storage-drag.service';
 import { CollectionStatus, GetCollectionRequest } from '../../models/collection.model';
-import { ImportFromStorageResponse, StorageImportCandidate } from '../../models/document.model';
+import { ImportFromStorageResponse } from '../../models/document.model';
 import { CollectionsApiService } from '../../services/collections-api.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { DocumentsApiService } from '../../services/documents-api.service';
@@ -47,11 +49,23 @@ describe('CollectionDropPanelComponent', () => {
         error: ReturnType<typeof vi.fn>;
     };
 
-    const draggedItems: StorageImportCandidate[] = [
-        { id: 5, name: 'report.pdf', type: 'file', size: 1000 },
-        { id: 6, name: 'raw', type: 'folder' },
-        { id: 7, name: 'tool.exe', type: 'file', size: 1000 },
+    let storageDrag: StorageDragService;
+
+    const draggedItems: StorageItem[] = [
+        { id: 5, name: 'report.pdf', path: 'report.pdf', type: 'file', size: 1000 },
+        { id: 6, name: 'raw', path: 'raw/', type: 'folder' },
+        { id: 7, name: 'tool.exe', path: 'tool.exe', type: 'file', size: 1000 },
     ];
+
+    function startDrag(items: StorageItem[] = draggedItems): void {
+        storageDrag.start(items[0], items);
+        fixture.detectChanges();
+    }
+
+    function endDrag(): void {
+        storageDrag.end();
+        fixture.detectChanges();
+    }
 
     function grant(resource: ResourceCode, action: ActionCode): void {
         granted.add(`${resource}:${action}`);
@@ -73,10 +87,10 @@ describe('CollectionDropPanelComponent', () => {
                 { provide: ToastService, useValue: toast },
             ],
         });
+        storageDrag = TestBed.inject(StorageDragService);
         fixture = TestBed.createComponent(CollectionDropPanelComponent);
-        fixture.componentRef.setInput('items', draggedItems);
-        fixture.componentRef.setInput('active', options.active ?? true);
         fixture.detectChanges();
+        if (options.active ?? true) startDrag();
     }
 
     function host(): HTMLElement {
@@ -110,6 +124,8 @@ describe('CollectionDropPanelComponent', () => {
         toast = { success: vi.fn(), warning: vi.fn(), error: vi.fn() };
     });
 
+    afterEach(() => storageDrag?.end());
+
     it('renders one drop target per collection while a drag is active', () => {
         setUp();
 
@@ -121,12 +137,9 @@ describe('CollectionDropPanelComponent', () => {
         setUp({ active: false });
         expect(collectionsStorage.getCollections).not.toHaveBeenCalled();
 
-        fixture.componentRef.setInput('active', true);
-        fixture.detectChanges();
-        fixture.componentRef.setInput('active', false);
-        fixture.detectChanges();
-        fixture.componentRef.setInput('active', true);
-        fixture.detectChanges();
+        startDrag();
+        endDrag();
+        startDrag();
 
         expect(collectionsStorage.getCollections).toHaveBeenCalledTimes(1);
     });
@@ -141,6 +154,24 @@ describe('CollectionDropPanelComponent', () => {
         setUp({ active: false });
 
         expect(row(1)).toBeNull();
+    });
+
+    it('disappears when the drag ends', () => {
+        setUp();
+
+        endDrag();
+
+        expect(row(1)).toBeNull();
+    });
+
+    it('swallows a drag over the panel background so it is not dropped behind it', () => {
+        setUp();
+        const panel = host().querySelector('.collection-drop-panel') as HTMLElement;
+        const dragOver = new Event('dragover', { bubbles: true, cancelable: true });
+
+        panel.dispatchEvent(dragOver);
+
+        expect(dragOver.defaultPrevented).toBe(true);
     });
 
     it.each([
@@ -181,7 +212,7 @@ describe('CollectionDropPanelComponent', () => {
         drop(1);
         fixture.detectChanges();
 
-        expect(row(1).classList).toContain('collection-drop-panel__row--importing');
+        expect(row(1).classList).toContain('collection-drop-target--busy');
         drop(1);
         expect(documentsApi.importFromStorage).toHaveBeenCalledTimes(1);
     });
@@ -194,14 +225,14 @@ describe('CollectionDropPanelComponent', () => {
         fixture.detectChanges();
 
         expect(dragOver.defaultPrevented).toBe(true);
-        expect(row(1).classList).toContain('collection-drop-panel__row--hovered');
-        expect(row(2).classList).not.toContain('collection-drop-panel__row--hovered');
+        expect(row(1).classList).toContain('collection-drop-target--hovered');
+        expect(row(2).classList).not.toContain('collection-drop-target--hovered');
     });
 
     it('does not call the API when no dragged item has a storage id', () => {
         setUp();
-        fixture.componentRef.setInput('items', [{ id: null, name: 'ghost.txt', type: 'file' }]);
-        fixture.detectChanges();
+        endDrag();
+        startDrag([{ id: null, name: 'ghost.txt', path: 'ghost.txt', type: 'file' }]);
 
         drop(1);
 

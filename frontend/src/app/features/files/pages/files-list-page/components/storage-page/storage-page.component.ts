@@ -17,7 +17,6 @@ import { SidebarWidthService } from '@shared/services';
 import { CollectionDropPanelComponent } from '../../../../../knowledge-sources/components/collection-drop-panel/collection-drop-panel.component';
 import { StorageItem } from '../../../../models/storage.models';
 import { FilesSearchService } from '../../../../services/files-search.service';
-import { StorageDragService } from '../../../../services/storage-drag.service';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../../services/storage-tree-facade.service';
 import { filterStorageItems } from '../../../../utils/storage-file.utils';
 import { StoragePreviewComponent } from './components/storage-preview/storage-preview.component';
@@ -51,7 +50,6 @@ export class StoragePageComponent {
     private readonly sidebarWidthService = inject(SidebarWidthService);
 
     readonly facade = inject(StorageTreeFacade);
-    protected readonly storageDrag = inject(StorageDragService);
 
     private pendingDeepLinkPath: string | null = null;
 

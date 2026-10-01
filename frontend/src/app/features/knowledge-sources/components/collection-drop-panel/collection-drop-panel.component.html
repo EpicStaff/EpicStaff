@@ -29,15 +29,7 @@
                             class="collection-drop-panel__row"
                             role="listitem"
                             [attr.data-collection-id]="collection.collection_id"
-                            [class.collection-drop-panel__row--hovered]="
-                                hoveredCollectionId() === collection.collection_id
-                            "
-                            [class.collection-drop-panel__row--importing]="
-                                documentsStorage.isImporting(collection.collection_id)
-                            "
-                            (dragover)="onCollectionDragOver($event, collection.collection_id)"
-                            (dragleave)="onCollectionDragLeave($event, collection.collection_id)"
-                            (drop)="onCollectionDrop($event, collection.collection_id)"
+                            [appCollectionDropTarget]="collection.collection_id"
                         >
                             <app-svg-icon
                                 class="collection-drop-panel__icon"
