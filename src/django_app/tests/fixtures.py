@@ -49,6 +49,20 @@ def openai_provider() -> Provider:
 
 
 @pytest.fixture
+def openai_realtime_builtin_model(openai_provider: Provider) -> RealtimeModel:
+    """Builtin RealtimeModel row the validate_model_name registry check
+    (EST-3146) looks up for OpenAIRealtimeConfig.model_name == 'gpt-realtime-1.5'.
+
+    Distinct from `openai_realtime_model` below, which belongs to the older,
+    deprecated RealtimeConfig/RealtimeModel system and is unrelated to
+    OpenAIRealtimeConfig.model_name validation.
+    """
+    return RealtimeModel.objects.create(
+        name="gpt-realtime-1.5", provider=openai_provider, is_custom=False
+    )
+
+
+@pytest.fixture
 def gpt_4o_llm(openai_provider: Provider) -> LLMModel:
     openai_provider = LLMModel(name="gpt-4o", llm_provider=openai_provider)
     openai_provider.save()

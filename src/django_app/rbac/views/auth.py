@@ -10,7 +10,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from rbac.access.gates import IsSuperadmin
+from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.exceptions import (
     FirstSetupDisabledError,
     InvalidRefreshTokenError,
@@ -353,6 +353,9 @@ class PasswordResetConfirmView(APIView):
 class AdminPasswordResetView(APIView):
     """Superadmin-only: set any user's password to a value the admin supplies.
 
+    JWT-only: an API key (including the superadmin-equivalent SYSTEM key)
+    must not be able to take over an account by setting its password.
+
     Defense-in-depth: the IsSuperadmin permission class rejects non-superadmin
     callers with the project's standard 403 envelope before the service is
     reached. The in-service `actor.is_superadmin` check inside
@@ -360,7 +363,7 @@ class AdminPasswordResetView(APIView):
     """
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -425,8 +428,14 @@ class CookieTokenRefreshView(APIView):
 
 
 class ResetUserView(APIView):
+    """Superadmin-only: wipe every user and recreate a single superadmin.
+
+    JWT-only: an API key (including the SYSTEM key) must not be able to
+    erase every account on the instance.
+    """
+
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
 
     _service = ResetUserService()
     _validator = AuthValidationService()

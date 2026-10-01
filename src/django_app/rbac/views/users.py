@@ -7,7 +7,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
+from rbac.access.gates import IsSuperadmin, RestrictApiKeyToUserKeyReads
 from rbac.governance.users import UserManagementService
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.schemas.users import (
@@ -68,10 +68,13 @@ class UserAdminViewSet(viewsets.ViewSet):
     _hard_delete_validator = HardDeleteValidationService()
 
     def get_permissions(self):
-        """Permanent deletion is JWT-only; a leaked key must not erase accounts."""
-        if getattr(self, "action", None) == "destroy":
-            return [IsAuthenticated(), IsSuperadmin(), DenyApiKeyAuth()]
-        return super().get_permissions()
+        """Prepend the API-key gate to whatever `permission_classes` resolved to.
+
+        Added here rather than listed in `permission_classes`, so an
+        `@action(permission_classes=...)` cannot drop it.
+        """
+        # Writes are JWT-only; the SYSTEM key is rejected outright.
+        return [RestrictApiKeyToUserKeyReads(), *super().get_permissions()]
 
     @extend_schema(**USERS_LIST_GET)
     def list(self, request):
