@@ -12,6 +12,7 @@ _EL_API_BASE = "https://api.elevenlabs.io/v1"
 _DEFAULT_LLM = "gemini-2.5-flash"
 _HTTP_TIMEOUT = 30.0
 _CACHE_TTL = 3600  # 1 hour
+_AGENT_PAGE_SIZE = 100
 _TTS_MODEL_EN = "eleven_turbo_v2"
 _TTS_MODEL_MULTILINGUAL = "eleven_flash_v2_5"
 _OPENAI_VOICE_NAMES = {
@@ -27,6 +28,16 @@ _OPENAI_VOICE_NAMES = {
     "shimmer",
     "verse",
 }
+
+
+def remote_agent_name(org_id: int, rt_agent_definition_id: int) -> str:
+    """Return the name of the remote ElevenLabs agent owned by one realtime configuration.
+
+    Provisioning PATCHes the agent it finds by name with the session's prompt and
+    tools, so two configurations sharing a name would overwrite each other. The
+    organization and the configuration are both part of the name to rule that out.
+    """
+    return f"EpicStaff-org{org_id}-rtdef{rt_agent_definition_id}"
 
 
 class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
@@ -78,9 +89,18 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
             new_data = create_resp.json()
             return new_data["id"]
 
-    def _cache_key(
+    def _cache_key(self, api_key: str, agent_name: str) -> str:
+        """Return the cache key of one remote agent.
+
+        The key identifies the remote agent, not its content: the agent is a single
+        object that every provisioning overwrites, so a content-keyed entry could
+        outlive the content the agent actually holds (edit, then revert within the TTL).
+        """
+        raw = json.dumps({"api_key": api_key, "agent_name": agent_name}, sort_keys=True)
+        return f"el_agent:{hashlib.md5(raw.encode()).hexdigest()}"
+
+    def _content_hash(
         self,
-        api_key: str,
         instructions: str,
         voice: str,
         rt_tools: list[RealtimeTool],
@@ -91,7 +111,6 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
         raw = json.dumps(
             {
-                "api_key": api_key,
                 "instructions": instructions,
                 "voice": voice,
                 "tools": tools_repr,
@@ -101,18 +120,27 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
             },
             sort_keys=True,
         )
-        return f"el_agent:{hashlib.md5(raw.encode()).hexdigest()}"
+        return hashlib.md5(raw.encode()).hexdigest()
 
-    async def invalidate_cache(
-        self,
-        api_key: str,
-        instructions: str,
-        voice: str,
-        rt_tools: list[RealtimeTool],
-        llm_model: str,
-        language: str | None = None,
-    ) -> None:
-        cache_key = self._cache_key(api_key, instructions, voice, rt_tools, llm_model, language)
+    async def _find_agent_id(
+        self, client: httpx.AsyncClient, headers: dict[str, str], agent_name: str
+    ) -> str | None:
+        """Return the id of the remote agent with exactly this name, across all pages."""
+        params: dict[str, str | int] = {"search": agent_name, "page_size": _AGENT_PAGE_SIZE}
+        while True:
+            resp = await client.get(f"{_EL_API_BASE}/convai/agents", headers=headers, params=params)
+            resp.raise_for_status()
+            page = resp.json()
+            for agent in page.get("agents", []):
+                if agent["name"] == agent_name:
+                    return agent["agent_id"]
+            next_cursor = page.get("next_cursor")
+            if not page.get("has_more") or not next_cursor:
+                return None
+            params = {**params, "cursor": next_cursor}
+
+    async def invalidate_cache(self, api_key: str, agent_name: str) -> None:
+        cache_key = self._cache_key(api_key, agent_name)
         redis = self.redis_service.aioredis_client
         if redis:
             await redis.delete(cache_key)
@@ -121,6 +149,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
     async def get_or_create_agent(
         self,
         api_key: str,
+        agent_name: str,
         instructions: str,
         voice: str,
         rt_tools: list[RealtimeTool],
@@ -129,17 +158,21 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
     ) -> str:
         voice = voice or "21m00Tcm4TlvDq8ikWAM"  # default to Rachel if empty/None
         logger.info(
-            f"EL Provisioner: get_or_create_agent | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
+            f"EL Provisioner: get_or_create_agent | agent_name={agent_name!r} | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
         )
-        cache_key = self._cache_key(api_key, instructions, voice, rt_tools, llm_model, language)
+        cache_key = self._cache_key(api_key, agent_name)
+        content_hash = self._content_hash(instructions, voice, rt_tools, llm_model, language)
         redis = self.redis_service.aioredis_client
         if redis:
             cached = await redis.get(cache_key)
             if cached:
-                logger.info(f"EL Provisioner: cache hit → agent_id={cached}")
-                return cached
+                entry = json.loads(cached)
+                # A hash mismatch means the remote agent was last provisioned with
+                # other content, so it must be re-provisioned rather than served.
+                if entry["content_hash"] == content_hash:
+                    logger.info(f"EL Provisioner: cache hit → agent_id={entry['agent_id']}")
+                    return entry["agent_id"]
 
-        agent_name = "CrewAI-Main-Assistant"
         headers = {"xi-api-key": api_key}
 
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
@@ -148,17 +181,13 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 tid = await self._get_or_create_tool(client, api_key, rt_tool)
                 tool_ids.append(tid)
 
-            agents_resp = await client.get(f"{_EL_API_BASE}/convai/agents", headers=headers)
-            agents_resp.raise_for_status()
-            existing_agents = agents_resp.json().get("agents", [])
-
-            agent = next((a for a in existing_agents if a["name"] == agent_name), None)
+            existing_agent_id = await self._find_agent_id(client, headers, agent_name)
             agent_payload = self._build_agent_payload(
                 agent_name, instructions, voice, rt_tools, tool_ids, llm_model, language
             )
 
-            if agent:
-                agent_id = agent["agent_id"]
+            if existing_agent_id:
+                agent_id = existing_agent_id
                 logger.info(f"EL Provisioner: Found existing agent '{agent_name}'. Updating...")
                 res = await client.patch(
                     f"{_EL_API_BASE}/convai/agents/{agent_id}",
@@ -184,7 +213,8 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 agent_id = res.json()["agent_id"]
 
         if redis:
-            await redis.set(cache_key, agent_id, ex=_CACHE_TTL)
+            entry = json.dumps({"agent_id": agent_id, "content_hash": content_hash})
+            await redis.set(cache_key, entry, ex=_CACHE_TTL)
         return agent_id
 
     def _build_agent_payload(
