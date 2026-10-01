@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 
 UserModel = get_user_model()
 
-backfill_migration = import_module("tables.migrations.0256_backfill_user_display_name")
+backfill_migration = import_module("tables.migrations.0257_backfill_user_display_name")
 
 PASSWORD = "StrongPass123!"
 
