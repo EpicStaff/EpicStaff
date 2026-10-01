@@ -13,6 +13,19 @@ from rbac.exceptions import FormValidationError
 
 REDACTED_PLACEHOLDER = "***"
 
+# RFC 5321 limits: 64 characters before the @, 254 for the whole address.
+EMAIL_LOCAL_PART_MAX_LENGTH = 64
+EMAIL_MAX_LENGTH = 254
+
+# Product rule, stricter than RFC 5322: only symbols common providers allow.
+_EMAIL_LOCAL_PART_CHARACTERS = re.compile(r"[A-Za-z0-9._+-]+")
+
+# Product rule: blocks "---@", "+john@", "__proto__@".
+_EMAIL_LOCAL_PART_EDGES = re.compile(r"[A-Za-z0-9](?:.*[A-Za-z0-9])?")
+
+# ASCII hostname labels ending in a top-level domain of 2+ letters.
+_EMAIL_DOMAIN = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}")
+
 
 @dataclass
 class FieldError:
@@ -83,6 +96,27 @@ class BaseRBACValidator(ABC):
         except DjangoValidationError as exc:
             return [FieldError("email", self._echo("email", value), msg) for msg in exc.messages]
         return []
+
+    def _validate_new_account_email(self, value: Any) -> list[FieldError]:
+        """Validate a new account's email; lookups keep `_validate_email_field` for old accounts."""
+        errors = self._validate_email_field(value)
+        if errors:
+            return errors
+        local_part, _, domain = value.rpartition("@")
+        if len(value) > EMAIL_MAX_LENGTH or len(local_part) > EMAIL_LOCAL_PART_MAX_LENGTH:
+            reason = (
+                f"Must be at most {EMAIL_MAX_LENGTH} characters, "
+                f"with at most {EMAIL_LOCAL_PART_MAX_LENGTH} before the @."
+            )
+        elif not _EMAIL_LOCAL_PART_CHARACTERS.fullmatch(local_part):
+            reason = "Use only letters, digits and . _ - + before the @."
+        elif not _EMAIL_LOCAL_PART_EDGES.fullmatch(local_part):
+            reason = "The part before @ must start and end with a letter or digit."
+        elif not _EMAIL_DOMAIN.fullmatch(domain):
+            reason = "Enter a valid email address."
+        else:
+            return []
+        return [FieldError("email", self._echo("email", value), reason)]
 
     def _validate_password_field(
         self,

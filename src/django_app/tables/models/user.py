@@ -40,8 +40,7 @@ def display_name_from_email(email: str) -> str:
 
     Digits are dropped, any symbol but an apostrophe splits words, camelCase is split, a
     letter repeated more than 5 times is cut to 5 and each word is recased ("JOHN" -> "John").
-    With no letters left, the raw local part is kept ("=2+5"). Migration 0256 holds a frozen
-    copy of this function.
+    With no letters left, the raw local part is kept ("=2+5").
     """
     local_part = email.rpartition("@")[0] if "@" in email else email
     pieces = _WORD_SEPARATORS.split(_DIGITS.sub("", local_part))

@@ -31,7 +31,7 @@ class UserValidationService(BaseRBACValidator):
         role_id = data.get("role_id")
 
         errors: list[FieldError] = []
-        errors.extend(self._validate_email_field(email))
+        errors.extend(self._validate_new_account_email(email))
         errors.extend(self._validate_password_field(password, user_hints={"email": email}))
         display_name, display_name_errors = self._clean_display_name(data.get("display_name"))
         errors.extend(display_name_errors)

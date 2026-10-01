@@ -225,6 +225,12 @@ are shown.
 {"email": "new@example.com", "password": "StrongPass123!", "display_name": "New User", "organization_id": 1, "role_id": 3}
 ```
 
+`email` must pass the new-account email rule (see `auth_endpoints.md` → first
+setup): only letters, digits and `. _ - +` before the `@`, starting and ending
+with a letter or digit, at most 64 characters before the `@` and 254 in total,
+and an ASCII domain whose last label is 2+ letters. `POST /api/admin/memberships/` with
+`email` only looks up an existing account, so it keeps the RFC check.
+
 `display_name` is optional: it's trimmed and must be a non-blank string of at
 most 255 characters; omit it or send `null` to derive it from the email
 (`anna-maria@x.com` → `"Anna Maria"`).
