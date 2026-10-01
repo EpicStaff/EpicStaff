@@ -17,6 +17,7 @@ const ENTITY_NAME_KEY: Record<string, string> = {
     Agent: 'role',
     LLMConfig: 'custom_name',
     RealtimeConfig: 'custom_name',
+    WebhookTrigger: 'path',
 };
 
 const ENTITY_FILE_FIELDS: Record<string, string[]> = {

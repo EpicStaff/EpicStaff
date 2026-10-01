@@ -16,7 +16,7 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.run_python_code_service import RunPythonCodeService
-from src.shared.models import LLMData, PythonCodeData
+from src.shared.models import LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
@@ -330,7 +330,7 @@ def main(**kwargs) -> dict:
 
     async def _run_json_llm(
         self, prompt: str, llm: LLMData, output_schema: dict | str | None = None
-    ) -> tuple[Any, dict[str, int]]:
+    ) -> tuple[Any, TokenUsage]:
         """Call LLM via litellm and parse JSON response."""
         llm_config = llm.config
         litellm.drop_params = True
@@ -376,16 +376,28 @@ def main(**kwargs) -> dict:
             **{**params, "messages": [{"role": "user", "content": prompt}]}
         )
 
-        usage = {
-            "total_tokens": getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
-            "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0)
+        try:
+            cost = litellm.completion_cost(completion_response=resp)
+        except Exception:
+            cost = 0.0  # litellm raises for models without a pricing entry — don't crash CDT
+
+        cached_tokens = 0
+        details = (
+            getattr(resp.usage, "prompt_tokens_details", None) if hasattr(resp, "usage") else None
+        )
+        if details is not None:
+            cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
+        usage = TokenUsage(
+            total_tokens=getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
+            prompt_tokens=getattr(resp.usage, "prompt_tokens", 0) if hasattr(resp, "usage") else 0,
+            completion_tokens=getattr(resp.usage, "completion_tokens", 0)
             if hasattr(resp, "usage")
             else 0,
-            "completion_tokens": getattr(resp.usage, "completion_tokens", 0)
-            if hasattr(resp, "usage")
-            else 0,
-            "successful_requests": 1,
-        }
+            successful_requests=1,
+            cached_prompt_tokens=cached_tokens,
+            total_cost_usd=cost,
+        )
 
         content = resp.choices[0].message.content
         if not isinstance(content, str):
@@ -441,7 +453,7 @@ def main(**kwargs) -> dict:
 
         logger.info(
             f"Prompt '{prompt_id}' completed. "
-            f"Tokens: {usage.get('total_tokens', 0)}, "
+            f"Tokens: {usage.total_tokens}, "
             f"Result type: {type(result).__name__}"
         )
 
@@ -461,7 +473,7 @@ def main(**kwargs) -> dict:
             "raw_response": raw_response,
             "parsed_result": result,
             "result_variable": result_var,
-            "usage": usage,
+            "usage": usage.model_dump(),
         }
 
     def _indent_code(self, code: str) -> str:
@@ -537,6 +549,32 @@ def main(**kwargs) -> dict:
                 self._publish_message(msg)
                 return state
 
+            return state
+
+        def route_to_error_node(state: State, writer: StreamWriter, error: str):
+            """Route to the error node and publish error, then finish.
+
+            The finish closes the CDT message group in the UI, as on the
+            pre-computation error path."""
+            decision_vars = state["system_variables"]["nodes"][self.node_name]
+            decision_vars["result_node"] = self.node_data.next_error_node or END
+            msg = self.custom_session_message_writer.add_error_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                error=error,
+                writer=writer,
+                execution_order=self.execution_order(state),
+            )
+            self._publish_message(msg)
+            msg = self.custom_session_message_writer.add_finish_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                writer=writer,
+                output=decision_vars["result_node"],
+                execution_order=self.execution_order(state),
+                state=state,
+            )
+            self._publish_message(msg)
             return state
 
         async def evaluate_node_function(state: State, writer: StreamWriter):
@@ -693,29 +731,11 @@ def main(**kwargs) -> dict:
                 except ClassificationDecisionTableNodeError as e:
                     error = f"Error in condition '{group.group_name}': {e}"
                     logger.info(f"ERROR {error}")
-                    decision_vars["result_node"] = self.node_data.next_error_node or END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        error=error,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                    )
-                    self._publish_message(msg)
-                    return state
+                    return route_to_error_node(state, writer, error)
                 except Exception as e:
                     error = f"Unexpected error in condition '{group.group_name}': {type(e).__name__}: {e}"
                     logger.info(f"ERROR {error}")
-                    decision_vars["result_node"] = self.node_data.next_error_node or END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        error=error,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                    )
-                    self._publish_message(msg)
-                    return state
+                    return route_to_error_node(state, writer, error)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -726,16 +746,7 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except ClassificationDecisionTableNodeError as e:
                 logger.error(f"Post-computation error: {e}")
-                decision_vars["result_node"] = self.node_data.next_error_node or END
-                msg = self.custom_session_message_writer.add_error_message(
-                    session_id=self.session_id,
-                    node_name=self.node_name,
-                    error=str(e),
-                    writer=writer,
-                    execution_order=self.execution_order(state),
-                )
-                self._publish_message(msg)
-                return state
+                return route_to_error_node(state, writer, str(e))
 
             logger.info(
                 f"Classification table '{self.node_name}' result: "

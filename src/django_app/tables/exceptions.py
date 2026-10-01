@@ -87,6 +87,15 @@ class RegisterTelegramTriggerError(CustomAPIExeption):
     default_detail = "Error occurred while registering Telegram trigger"
 
 
+class TelegramApiError(Exception):
+    """A Telegram Bot API call failed.
+
+    The message is built from safe facts only (failure kind, HTTP status,
+    Telegram's numeric `error_code`) and never from the underlying exception
+    text: the request URL embeds the bot token and the webhook `secret_token`.
+    """
+
+
 class PythonCodeToolConfigSerializerError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeToolConfig.
@@ -437,6 +446,34 @@ class PromptNotFoundError(CustomAPIExeption):
         self.value = value
         super().__init__(
             f"Prompt {value} doesn't exist or belong to another organization.",
+            code=self.default_code,
+        )
+
+
+class SectionIdConflictError(CustomAPIExeption):
+    """Raised when a section id in the payload already belongs to a different CDT node."""
+
+    status_code = 400
+    default_code = "section_id_conflict"
+
+    def __init__(self, value: str):
+        self.value = value
+        super().__init__(
+            f"Section {value} already belongs to another node.",
+            code=self.default_code,
+        )
+
+
+class SectionNotFoundError(CustomAPIExeption):
+    """Raised when a condition group references a section id not present among this node's sections."""
+
+    status_code = 400
+    default_code = "section_not_found"
+
+    def __init__(self, value: str):
+        self.value = value
+        super().__init__(
+            f"Section {value} doesn't exist on this node.",
             code=self.default_code,
         )
 
