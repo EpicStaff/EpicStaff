@@ -16,6 +16,7 @@ import {
     parseManipulation,
     toDisplayExpression,
 } from '../../../../utils/condition-expression.helper';
+import { routePortIdForRow } from '../cdt-route-continue.util';
 import { CDT_TREE_COPY, CDT_TREE_SUBTITLE_MAX_CHARS, CLICKABLE_BY_KIND } from './cdt-decision-tree.constants';
 import {
     CdtDecisionTreeInput,
@@ -410,27 +411,54 @@ function promptDetailBody(promptText: string, resultVariable: string): string {
 function resolveRowTarget(
     row: ConditionGroup,
     input: CdtDecisionTreeInput,
-    canvasRowsByRoute: Map<string, ConditionGroup>
+    canvasRowsByPort: Map<string, ConditionGroup>
 ): CdtTreeTarget {
-    const code = row.route_code?.trim();
-    if (!code) return { state: 'unrouted' };
+    if (!row.route_code?.trim()) return { state: 'unrouted' };
 
-    let targetId = canvasRowsByRoute.get(code)?.next_node ?? row.next_node ?? null;
-
-    if (!targetId) {
-        const portId = `${input.nodeId}_decision-route-${slugifyRouteCode(code)}`;
-        targetId =
-            input.connections.find(
-                (connection) => connection.sourceNodeId === input.nodeId && connection.sourcePortId === portId
-            )?.targetNodeId ?? null;
-    }
-
+    const targetId = resolveRouteTargetId(row, input, canvasRowsByPort);
     return targetId ? { state: 'node', label: resolveNodeLabel(targetId, input.nodes) } : { state: 'no-capture' };
 }
 
-/** Mirrors the port id built by `generatePortsForClassificationDecisionTableNode`. */
-export function slugifyRouteCode(routeCode: string): string {
-    return routeCode.toLowerCase().replace(/\s+/g, '-');
+/** What `resolveRouteTargetId` reads: a slice of `CdtDecisionTreeInput`, so the grid can pass live state. */
+export type CdtRouteTargetSources = Pick<CdtDecisionTreeInput, 'nodeId' | 'canvasRows' | 'connections'>;
+
+/**
+ * The canvas node id a row's route code leads to, or null when it leads nowhere
+ * (no route code, or nothing wired to its output port). Rows are matched by
+ * output port id (`routePortIdForRow`), the key `FlowService` writes `next_node` by.
+ */
+export function resolveRouteTargetId(
+    row: ConditionGroup,
+    sources: CdtRouteTargetSources,
+    canvasRowsByPort: Map<string, ConditionGroup> = indexCanvasRowsByPort(sources.nodeId, sources.canvasRows)
+): string | null {
+    const portId = routePortIdForRow(sources.nodeId, row);
+    if (!portId) return null;
+
+    const targetId = canvasRowsByPort.get(portId)?.next_node ?? row.next_node ?? null;
+    if (targetId) return targetId;
+
+    return (
+        sources.connections.find(
+            (connection) => connection.sourceNodeId === sources.nodeId && connection.sourcePortId === portId
+        )?.targetNodeId ?? null
+    );
+}
+
+/** The output port ids among `rows` that lead to a canvas node; see `resolveRouteTargetId`. */
+export function routePortIdsWithTarget(
+    rows: readonly ConditionGroup[],
+    sources: CdtRouteTargetSources
+): ReadonlySet<string> {
+    const canvasRowsByPort = indexCanvasRowsByPort(sources.nodeId, sources.canvasRows);
+    const portIds = new Set<string>();
+    for (const row of rows) {
+        const portId = routePortIdForRow(sources.nodeId, row);
+        if (portId && !portIds.has(portId) && resolveRouteTargetId(row, sources, canvasRowsByPort)) {
+            portIds.add(portId);
+        }
+    }
+    return portIds;
 }
 
 /**
@@ -501,8 +529,8 @@ export function enabledRowsInOrder(rows: readonly ConditionGroup[]): ConditionGr
 
 /** Each drawn row's routing target, aligned index-for-index with `enabledRowsInOrder`. */
 export function resolveRowTargets(input: CdtDecisionTreeInput): CdtTreeTarget[] {
-    const canvasRowsByRoute = indexCanvasRowsByRoute(input.canvasRows);
-    return enabledRowsInOrder(input.rows).map((row) => resolveRowTarget(row, input, canvasRowsByRoute));
+    const canvasRowsByPort = indexCanvasRowsByPort(input.nodeId, input.canvasRows);
+    return enabledRowsInOrder(input.rows).map((row) => resolveRowTarget(row, input, canvasRowsByPort));
 }
 
 export function sortRowsByOrder(rows: readonly ConditionGroup[]): ConditionGroup[] {
@@ -520,13 +548,13 @@ function countRouteCodes(rows: readonly ConditionGroup[]): Map<string, number> {
     return counts;
 }
 
-function indexCanvasRowsByRoute(rows: readonly ConditionGroup[]): Map<string, ConditionGroup> {
-    const byRoute = new Map<string, ConditionGroup>();
+function indexCanvasRowsByPort(nodeId: string, rows: readonly ConditionGroup[]): Map<string, ConditionGroup> {
+    const byPort = new Map<string, ConditionGroup>();
     for (const row of rows) {
-        const code = row.route_code?.trim();
-        if (code && !byRoute.has(code)) byRoute.set(code, row);
+        const portId = routePortIdForRow(nodeId, row);
+        if (portId && !byPort.has(portId)) byPort.set(portId, row);
     }
-    return byRoute;
+    return byPort;
 }
 
 /** Rows sharing a route code share one port and one target — make that visible. */

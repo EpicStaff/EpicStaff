@@ -20,6 +20,11 @@ export interface ConfirmationDialogData {
      *  cannot actually proceed with (e.g. blocked by a missing permission).
      *  The cancel button then acts as a plain close. */
     hideConfirm?: boolean;
+    /**
+     * `raised`: the lighter `--color-ks-background` surface, a slim rounded caution bar with
+     * secondary text, and a Cancel button in the accent colour. Defaults to `default`.
+     */
+    appearance?: 'default' | 'raised';
 }
 
 @Component({

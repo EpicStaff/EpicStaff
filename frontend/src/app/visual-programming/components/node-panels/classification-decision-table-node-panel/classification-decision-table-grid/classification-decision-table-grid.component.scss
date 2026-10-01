@@ -635,17 +635,16 @@
             border-radius: 6px;
         }
 
-        // Continue ticked on a row that also has a route code: the route wins, so the
-        // tick is dimmed. Only the checkbox is dimmed, not the cell, so the focus
-        // border stays readable. 0.4 matches the grid's disabled buttons.
-        .ag-cell.cell-continue-ignored .ag-checkbox-cell {
-            opacity: 0.4;
+        // Route Code status icon (RouteCodeCellRendererComponent). `app-help-tooltip`
+        // paints its icon in the accent colour, so it is recoloured here: muted like
+        // the dimmed code when the route code is ignored, red like the cell border
+        // when the route code and Continue conflict.
+        .cdt-route-code-cell__status .help-icon-wrapper {
+            color: var(--transparent-white-16);
         }
 
-        // Route Code status icon (RouteCodeCellRendererComponent), shown when Continue
-        // is ignored. `app-help-tooltip` paints its icon in the accent colour.
-        .cdt-route-code-cell__status .help-icon-wrapper {
-            color: var(--color-ks-status-warning);
+        .cdt-route-code-cell__status--conflict .help-icon-wrapper {
+            color: var(--color-error);
         }
 
         .ag-header-cell-resize::after {

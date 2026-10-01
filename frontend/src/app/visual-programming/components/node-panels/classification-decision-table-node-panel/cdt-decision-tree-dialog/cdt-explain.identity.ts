@@ -24,7 +24,8 @@
  */
 
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
-import { enabledRowsInOrder, slugifyRouteCode } from './cdt-decision-tree.builder';
+import { slugifyRouteCode } from '../cdt-route-continue.util';
+import { enabledRowsInOrder } from './cdt-decision-tree.builder';
 import { CdtDecisionTreeInput } from './cdt-decision-tree.model';
 import { CdtExplainBlock } from './cdt-explain.model';
 

@@ -49,12 +49,18 @@ import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { UndoRedoService } from '../../../services/undo-redo.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
+import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
+import { routePortIdsWithTarget } from './cdt-decision-tree-dialog/cdt-decision-tree.builder';
 import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dialog/cdt-decision-tree.model';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { CdtExportImportService } from './cdt-export-import.service';
-import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
+import {
+    CdtEnableContinueRequest,
+    ClassificationDecisionTableGridComponent,
+} from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 
@@ -86,6 +92,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public readonly exportButtonTemplate = viewChild<TemplateRef<unknown>>('exportButtonTpl');
 
     private flowService = inject(FlowService);
+    private undoRedoService = inject(UndoRedoService);
 
     // Extract graph ID once at construction — URL is /flows/:id and doesn't change while panel is open
     private readonly graphIdFromUrl = (() => {
@@ -109,6 +116,21 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
+    /**
+     * Route-code output ports wired to a canvas node, resolved like the decision
+     * tree does: unsaved grid rows plus the canvas node's `next_node` and
+     * connections. Equal sets compare equal so the grid refreshes only when the
+     * answer changes.
+     */
+    protected readonly routePortIdsWithTarget = computed<ReadonlySet<string>>(
+        () =>
+            routePortIdsWithTarget(this.conditionGroups(), {
+                nodeId: this.node().id,
+                canvasRows: this.node().data.table?.condition_groups ?? [],
+                connections: this.flowService.connections(),
+            }),
+        { equal: (previous, next) => previous.size === next.size && [...next].every((portId) => previous.has(portId)) }
+    );
     public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
@@ -468,6 +490,41 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.conditionGroups.set(this.cloneConditionGroups(groups));
         this.cdr.markForCheck();
         this.sidePanelService.triggerAutosave();
+    }
+
+    /**
+     * The user confirmed Continue on a wired route code. Removes the connection on
+     * its port and adopts the grid's rows only once the port is free, so Continue
+     * is never ticked while a connection that would override it survives.
+     */
+    public onEnableContinueRequest(request: CdtEnableContinueRequest): void {
+        if (!this.removeRouteConnections(request.portId)) {
+            this.toastService.error(CDT_ROUTE_CONTINUE_COPY.enableContinueFailed, undefined, 'bottom-right');
+            return;
+        }
+        this.onConditionGroupsChange(request.rows);
+    }
+
+    /**
+     * Removes every connection on `portId` the way deleting it on the canvas does:
+     * an undo snapshot, then `deleteSelections`, which also clears the canvas rows'
+     * `next_node`. True when the port has no connection afterwards, including when
+     * it had none to begin with.
+     */
+    private removeRouteConnections(portId: string): boolean {
+        const nodeId = this.node().id;
+        const connectionsOnPort = (): string[] =>
+            this.flowService
+                .connections()
+                .filter((connection) => connection.sourceNodeId === nodeId && connection.sourcePortId === portId)
+                .map((connection) => connection.id);
+
+        const connectionIds = connectionsOnPort();
+        if (connectionIds.length === 0) return true;
+
+        this.undoRedoService.stateChanged();
+        this.flowService.deleteSelections({ fNodeIds: [], fConnectionIds: connectionIds });
+        return connectionsOnPort().length === 0;
     }
 
     // ── Prompt Library ──
