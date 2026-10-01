@@ -23,7 +23,7 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/auth/introspect/` | System ApiKey | Validate a JWT, return claims |
 | GET | `/api/auth/api-key/validate/` | ApiKey (any) | Metadata about the calling key |
 | POST | `/api/auth/swagger-token/` | public (throttled) | OAuth2 password flow for Swagger |
-| POST | `/api/auth/reset-user/` | Bearer JWT or ApiKey (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
+| POST | `/api/auth/reset-user/` | Bearer JWT (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
 | POST | `/api/auth/password-reset/request/` | public (throttled) | Start password-recovery flow — see [password_recovery.md](password_recovery.md) |
 | POST | `/api/auth/password-reset/confirm/` | public | Consume reset token + set new password |
 | ~~POST~~ | ~~`/api/auth/password-change/`~~ | — | **REMOVED in Story 6** → use two-step `/api/profile/password-change/{request,confirm}/`, see [user_profile.md](user_profile.md) § "Two-step password change" |
@@ -481,10 +481,9 @@ Two entry points, same semantics, different callers.
 
 ### POST `/api/auth/reset-user/` (web, via JWT)
 
-- **Auth:** `IsAuthenticated` + `IsSuperadmin`. Both JWT and ApiKey
-  authentication are accepted (no `DenyApiKeyAuth` here) — the caller just
-  needs `is_superadmin=True`, which a superadmin-owned USER key or the
-  SYSTEM key both satisfy.
+- **Auth:** `IsAuthenticated` + `DenyApiKeyAuth` + `IsSuperadmin` — JWT
+  only. Any API key, including a superadmin-owned USER key and the SYSTEM
+  key, gets `403 permission_denied`.
 - **Behavior** (atomic):
   1. Delete all `User` rows → cascades `OrganizationUser`,
      `PasswordResetToken`, and every `ApiKey` owned by a deleted user

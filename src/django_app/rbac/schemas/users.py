@@ -10,11 +10,16 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
+from rbac.schemas.admin_surface import admin_read_forbidden_403, admin_write_forbidden_403
 from rbac.serializers.delete import UserDeleteReportSerializer
 from rbac.serializers.users import (
     UserCreateRequestSerializer,
     UserResponseSerializer,
 )
+
+_NOT_SUPERADMIN = "Caller is not a superadmin (permission_denied)."
+_READ_FORBIDDEN_403 = admin_read_forbidden_403(_NOT_SUPERADMIN)
+_WRITE_FORBIDDEN_403 = admin_write_forbidden_403(_NOT_SUPERADMIN)
 
 USERS_LIST_GET = {
     "summary": "List user accounts (superadmin)",
@@ -108,7 +113,7 @@ USERS_LIST_GET = {
             )
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: OpenApiResponse(description="Caller is not a superadmin."),
+        403: _READ_FORBIDDEN_403,
     },
 }
 
@@ -119,6 +124,7 @@ USERS_CREATE_POST = {
     "responses": {
         201: UserResponseSerializer,
         400: OpenApiResponse(description="Validation error or duplicate email"),
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(description="Organization or role not found"),
     },
 }
@@ -127,6 +133,7 @@ USERS_GRANT_SUPERADMIN_POST = {
     "summary": "Grant superadmin (superadmin)",
     "responses": {
         200: UserResponseSerializer,
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(description="User not found"),
     },
 }
@@ -136,6 +143,7 @@ USERS_REVOKE_SUPERADMIN_POST = {
     "responses": {
         200: UserResponseSerializer,
         400: OpenApiResponse(description="Cannot revoke last superadmin"),
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(description="User not found"),
     },
 }
@@ -145,6 +153,7 @@ USERS_DEACTIVATE_POST = {
     "responses": {
         200: UserResponseSerializer,
         400: OpenApiResponse(description="Cannot deactivate the last active superadmin"),
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(description="User not found"),
     },
 }
@@ -153,6 +162,7 @@ USERS_REACTIVATE_POST = {
     "summary": "Reactivate a user account (superadmin)",
     "responses": {
         200: UserResponseSerializer,
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(description="User not found"),
     },
 }
@@ -181,6 +191,7 @@ USERS_DESTROY_DELETE = {
                 "or invalid (malformed body or non-string phrase)"
             )
         ),
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(description="User not found"),
     },
 }
