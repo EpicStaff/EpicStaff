@@ -23,7 +23,17 @@ def test_seeding_survives_org_row_colliding_with_realtime_builtin(org):
     upload_models.Command().handle()
 
     provider = Provider.objects.get(name="openai")
-    collision_name = "test-realtime-model"
+    # Must be a name upload_models actually seeds as builtin -- a disconnected
+    # literal (e.g. a hardcoded "test-realtime-model") would never collide
+    # with anything and make this test vacuous. Read it from what the first
+    # `handle()` call above just created, so this doesn't go stale the moment
+    # the real catalog's model names change again.
+    collision_name = (
+        RealtimeModel.objects.filter(provider=provider, is_custom=False, org__isnull=True)
+        .values_list("name", flat=True)
+        .first()
+    )
+    assert collision_name, "upload_models must seed at least one builtin openai realtime model"
     org_row = RealtimeModel.objects.create(
         name=collision_name, provider=provider, org=org, is_custom=True
     )
