@@ -2,13 +2,15 @@
 organization owns.
 
 Sync/async boundary: `OrganizationManagementService.create_organization()`/
-`deactivate_organization()` are plain sync Django service methods running
-inside `@transaction.atomic`. `miniopy_async` (the only storage Admin SDK
-available) is async-only. Per the project's async-I/O convention, the two
-worlds are never interleaved inside one call: each public method here reads
-nothing from the ORM itself, runs the entire storage backend conversation through one
-`asyncio.run()`, and only then performs its own sync ORM write
-(`OrgCredentialStore`/`Secret.objects...`) once the event loop has exited.
+`deactivate_organization()` call in from inside `@transaction.atomic`;
+`delete_organization()` calls in from a `transaction.on_commit()` callback,
+i.e. synchronously but outside any transaction. `miniopy_async` (the only
+storage Admin SDK available) is async-only. Per the project's async-I/O
+convention, the two worlds are never interleaved inside one call: each public
+method here reads nothing from the ORM itself, runs the entire storage
+backend conversation through one `asyncio.run()`, and only then performs its
+own sync ORM write (`OrgCredentialStore`/`Secret.objects...`) once the event
+loop has exited.
 """
 
 import asyncio
@@ -71,21 +73,26 @@ class OrgStorageProvisioningService:
         org_credential_store.save(org=org, access_key=access_key, secret_key=secret_key)
         logger.info("Provisioned org-level storage user for org_id={}", org.id)
 
-    def deprovision_for_organization(self, org: Organization) -> None:
+    def deprovision_for_organization(self, org_id: int) -> None:
         """Remove the org-level storage user (cascades to revoke every active
         service account it minted) and mark the stored `Secret` as revoked.
         Objects already written under `org_<id>/*` are left untouched
-        (retention policy is out of scope -- see plan section 1)."""
-        access_key = _org_access_key(org.id)
+
+        Takes `org_id` rather than an `Organization` instance: a delete-path
+        caller only has the id left once the row itself is gone. In that case
+        `mark_revoked` is a no-op -- `Secret.org` cascades on org delete, so
+        the row is already gone by the time this runs post-commit; only the
+        storage-side removal still matters there."""
+        access_key = _org_access_key(org_id)
         try:
-            asyncio.run(self._deprovision_in_storage(org_id=org.id, access_key=access_key))
+            asyncio.run(self._deprovision_in_storage(org_id=org_id, access_key=access_key))
         except Exception as error:
             raise OrgStorageProvisioningError(
-                f"Failed to deprovision storage user for org_id={org.id}: {error}"
+                f"Failed to deprovision storage user for org_id={org_id}: {error}"
             ) from error
 
-        org_credential_store.mark_revoked(org_id=org.id)
-        logger.info("Deprovisioned org-level storage user for org_id={}", org.id)
+        org_credential_store.mark_revoked(org_id=org_id)
+        logger.info("Deprovisioned org-level storage user for org_id={}", org_id)
 
     async def _provision_in_storage(self, *, org_id: int, access_key: str, secret_key: str) -> None:
         # Each public method here runs its own one-off `asyncio.run()`

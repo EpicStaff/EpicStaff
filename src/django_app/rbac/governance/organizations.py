@@ -160,18 +160,22 @@ class OrganizationManagementService(CrossOrgResourceService):
         # security-relevant action) must not stay active just because MinIO
         # is unreachable. The failure is logged, not silently swallowed, so
         # the leftover MinIO user can be reconciled out of band.
+        self._deprovision_storage(org.id, "during deactivation")
+        return self._get_organization_with_member_count(org.pk)
+
+    @staticmethod
+    def _deprovision_storage(org_id: int, occasion: str) -> None:
         try:
-            org_storage_provisioning_service.deprovision_for_organization(org)
+            org_storage_provisioning_service.deprovision_for_organization(org_id)
         except OrgStorageProvisioningError as error:
             logger.error(
-                "Failed to deprovision MinIO storage for org_id={} during "
-                "deactivation; org.is_active is False regardless -- the "
-                "MinIO user was left in place and needs out-of-band "
+                "Failed to deprovision MinIO storage for org_id={} {}; "
+                "the MinIO user was left in place and needs out-of-band "
                 "reconciliation: {}",
-                org.id,
+                org_id,
+                occasion,
                 error,
             )
-        return self._get_organization_with_member_count(org.pk)
 
     @staticmethod
     def _assert_can_deactivate() -> None:
@@ -249,6 +253,12 @@ class OrganizationManagementService(CrossOrgResourceService):
         """Permanently delete an organization and everything it owns, refusing the default organization and the last remaining active one.
 
         `verification_phrase` must be exactly `delete-<organization name>`, compared against the unlocked read of the organization before external I/O or any lock.
+
+        Also deprovisions the org's MinIO/RustFS storage IAM user, same as
+        `deactivate_organization()` -- queued onto the same post-commit
+        `cleanups` list as the other participants' sweeps, so it runs after
+        the delete has actually committed and is failure-tolerant (a storage
+        error is logged, never rolls back or blocks the delete).
         """
         instance = self._target_org_or_404(org_id)
         self._assert_deletable_org(instance)
@@ -290,6 +300,10 @@ class OrganizationManagementService(CrossOrgResourceService):
         for participant in registered:
             participant_counts.append(participant.count(instance))
             cleanups.append(participant.sweep(instance))
+        # Snapshot the id before `collector.delete()` below: Django's
+        # Collector nulls out the PK on every instance it collected
+        organization_id = instance.pk
+        cleanups.append(lambda: self._deprovision_storage(organization_id, "after deletion"))
         collector = build_collector(instance)
         affected = self._affected_resources(
             summarize(collector), participant_counts, external_counts
