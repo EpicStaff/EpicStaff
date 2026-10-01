@@ -1,10 +1,35 @@
 import { NodeType } from '@shared/models';
 
-import { getClassificationDecisionTableVisualHeight, getDefaultNodeSize } from './node-size.util';
+import {
+    DT_MIN_HEIGHT,
+    getClassificationTableVisualHeight,
+    getDecisionTableVisualHeight,
+    getDefaultNodeSize,
+} from './node-size.util';
 
-describe('getClassificationDecisionTableVisualHeight', () => {
+describe('getDecisionTableVisualHeight', () => {
     it('reserves one placeholder row when there are no condition groups', () => {
-        expect(getClassificationDecisionTableVisualHeight([])).toBe(60 + 46 * 3);
+        expect(getDecisionTableVisualHeight([])).toBe(60 + 60 * 3);
+    });
+
+    it('counts N valid groups as header + row * (N + 2)', () => {
+        const groups = [{ valid: true }, { valid: true }, { valid: true }];
+        expect(getDecisionTableVisualHeight(groups)).toBe(60 + 60 * (3 + 2));
+    });
+
+    it('excludes groups explicitly marked invalid', () => {
+        const groups = [{ valid: true }, { valid: false }, { valid: true }];
+        expect(getDecisionTableVisualHeight(groups)).toBe(60 + 60 * (2 + 2));
+    });
+
+    it('never drops below DT_MIN_HEIGHT', () => {
+        expect(getDecisionTableVisualHeight([])).toBe(DT_MIN_HEIGHT);
+    });
+});
+
+describe('getClassificationTableVisualHeight', () => {
+    it('reserves one placeholder row when there are no condition groups', () => {
+        expect(getClassificationTableVisualHeight([])).toBe(60 + 60 * 3);
     });
 
     it('counts only groups that would actually render a row (valid, dock_visible, has a route_code)', () => {
@@ -16,7 +41,7 @@ describe('getClassificationDecisionTableVisualHeight', () => {
             { valid: true, dock_visible: true, route_code: 'D' },
         ];
 
-        expect(getClassificationDecisionTableVisualHeight(groups)).toBe(60 + 46 * 4);
+        expect(getClassificationTableVisualHeight(groups)).toBe(60 + 60 * 4);
     });
 
     it('grows linearly as more groups are added', () => {
@@ -26,7 +51,7 @@ describe('getClassificationDecisionTableVisualHeight', () => {
             route_code: `route-${i}`,
         }));
 
-        expect(getClassificationDecisionTableVisualHeight(groups)).toBe(60 + 46 * 8);
+        expect(getClassificationTableVisualHeight(groups)).toBe(60 + 60 * 8);
     });
 });
 
