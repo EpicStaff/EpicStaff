@@ -1,3 +1,4 @@
+import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +16,13 @@ class EnvironmentNotFoundError(Exception):
 
 class EnvironmentBlankError(Exception):
     pass
+
+
+def _to_json_object(value: str) -> dict:
+    decoded = json.loads(value)
+    if not isinstance(decoded, dict):
+        raise TypeError(f"Expected a JSON object, got {type(decoded).__name__}: {value!r}")
+    return decoded
 
 
 class Env:
@@ -172,8 +180,27 @@ class Env:
         Returns:
             The list of stripped items, or None when the variable holds the ``none`` value.
         """
-        cast = lambda v: [s.strip() for s in v.strip().split(split)]
+
+        def cast(value: str) -> list:
+            return [item.strip() for item in value.strip().split(split)]
+
         return self.get_value(variable, default, cast)
+
+    def dict(self, variable: str, default: dict | EllipsisType = ...) -> dict | None:
+        """Read an environment variable as a JSON object.
+
+        Args:
+            variable: Name of the environment variable to read.
+            default: Value returned when the variable is missing.
+
+        Returns:
+            The decoded mapping, or None when the variable holds the ``none`` value.
+
+        Raises:
+            ValueError: The raw value is not valid JSON.
+            TypeError: The raw value decodes to something other than an object.
+        """
+        return self.get_value(variable, default, _to_json_object)
 
     def int(self, variable: str, default: int | EllipsisType = ...) -> int | None:
         """Read an environment variable as an int.
@@ -210,7 +237,10 @@ class Env:
             True when the raw value is one of ``BOOLEAN_TRUE_VALUES``; None when the
             variable holds the ``none`` value.
         """
-        cast = lambda v: v.lower() in self.BOOLEAN_TRUE_VALUES
+
+        def cast(value: str) -> bool:
+            return value.lower() in self.BOOLEAN_TRUE_VALUES
+
         return self.get_value(variable, default, cast)
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:

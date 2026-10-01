@@ -19,6 +19,7 @@ import {
     GraphVersionUpdateRequest,
     UpdateGraphDtoRequest,
 } from '../models/graph.model';
+import { PreviewGraphVersionResponse } from '../models/graph-version-preview.model';
 
 @Injectable({
     providedIn: 'root',
@@ -174,6 +175,12 @@ export class FlowsApiService {
             `${this.configService.apiUrl}graph-versions/${versionId}/create-graph/`,
             {},
             { headers: this.httpHeaders }
+        );
+    }
+
+    previewGraphVersion(versionId: number): Observable<PreviewGraphVersionResponse> {
+        return this.http.get<PreviewGraphVersionResponse>(
+            `${this.configService.apiUrl}graph-versions/${versionId}/preview/`
         );
     }
 }

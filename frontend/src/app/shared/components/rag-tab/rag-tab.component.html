@@ -186,18 +186,12 @@
                         @case ('basic') {
                             <div formGroupName="basic">
                                 <div class="form-group">
-                                    @if (readOnly()) {
-                                        <app-suggested-value
-                                            label="Prompt"
-                                            [value]="basicGroup?.get('prompt')?.value"
-                                        />
-                                    } @else {
-                                        <app-textarea
-                                            formControlName="prompt"
-                                            label="Prompt"
-                                            placeholder="Custom general knowledge instruction... Leave empty for default."
-                                        />
-                                    }
+                                    <app-textarea
+                                        [readonly]="readOnly()"
+                                        formControlName="prompt"
+                                        label="Prompt"
+                                        placeholder="Custom general knowledge instruction... Leave empty for default."
+                                    />
                                 </div>
                                 <div class="form-group-container">
                                     <div class="form-group form-group--narrow">
@@ -224,18 +218,12 @@
                         @case ('local') {
                             <div formGroupName="local">
                                 <div class="form-group">
-                                    @if (readOnly()) {
-                                        <app-suggested-value
-                                            label="Prompt"
-                                            [value]="localGroup?.get('prompt')?.value"
-                                        />
-                                    } @else {
-                                        <app-textarea
-                                            formControlName="prompt"
-                                            label="Prompt"
-                                            placeholder="Custom general knowledge instruction... Leave empty for default."
-                                        />
-                                    }
+                                    <app-textarea
+                                        [readonly]="readOnly()"
+                                        formControlName="prompt"
+                                        label="Prompt"
+                                        placeholder="Custom general knowledge instruction... Leave empty for default."
+                                    />
                                 </div>
 
                                 @if (textUnitProportionControl && communityProportionControl) {
@@ -321,36 +309,22 @@
                         @case ('global') {
                             <div formGroupName="global">
                                 <div class="form-group">
-                                    @if (readOnly()) {
-                                        <app-suggested-value
-                                            label="Map Prompt"
-                                            tooltipText="Custom map-stage prompt. Leave empty for default."
-                                            [value]="globalGroup?.get('map_prompt')?.value"
-                                        />
-                                    } @else {
-                                        <app-textarea
-                                            formControlName="map_prompt"
-                                            label="Map Prompt"
-                                            tooltipText="Custom map-stage prompt. Leave empty for default."
-                                            placeholder="Leave empty for default."
-                                        />
-                                    }
+                                    <app-textarea
+                                        [readonly]="readOnly()"
+                                        formControlName="map_prompt"
+                                        label="Map Prompt"
+                                        tooltipText="Custom map-stage prompt. Leave empty for default."
+                                        placeholder="Leave empty for default."
+                                    />
                                 </div>
                                 <div class="form-group">
-                                    @if (readOnly()) {
-                                        <app-suggested-value
-                                            label="Reduce Prompt"
-                                            tooltipText="Custom reduce-stage prompt. Leave empty for default."
-                                            [value]="globalGroup?.get('reduce_prompt')?.value"
-                                        />
-                                    } @else {
-                                        <app-textarea
-                                            formControlName="reduce_prompt"
-                                            label="Reduce Prompt"
-                                            tooltipText="Custom reduce-stage prompt. Leave empty for default."
-                                            placeholder="Leave empty for default."
-                                        />
-                                    }
+                                    <app-textarea
+                                        [readonly]="readOnly()"
+                                        formControlName="reduce_prompt"
+                                        label="Reduce Prompt"
+                                        tooltipText="Custom reduce-stage prompt. Leave empty for default."
+                                        placeholder="Leave empty for default."
+                                    />
                                 </div>
 
                                 <div class="form-group-container">
@@ -377,26 +351,20 @@
                                             class="chevron"
                                             icon="chevron-down"
                                             size="1.1rem"
-                                        /><span>Advanced settings</span>
+                                        />
+                                        <span>Advanced settings</span>
                                     </button>
 
                                     <div class="advanced-settings__content-wrapper">
                                         <div class="advanced-settings__content">
                                             <div class="form-group">
-                                                @if (readOnly()) {
-                                                    <app-suggested-value
-                                                        label="General Knowledge Prompt"
-                                                        tooltipText="Custom general-knowledge prompt. Leave empty for default."
-                                                        [value]="globalGroup?.get('knowledge_prompt')?.value"
-                                                    />
-                                                } @else {
-                                                    <app-textarea
-                                                        formControlName="knowledge_prompt"
-                                                        label="General Knowledge Prompt"
-                                                        tooltipText="Custom general-knowledge prompt. Leave empty for default."
-                                                        placeholder="Leave empty for default."
-                                                    />
-                                                }
+                                                <app-textarea
+                                                    [readonly]="readOnly()"
+                                                    formControlName="knowledge_prompt"
+                                                    label="General Knowledge Prompt"
+                                                    tooltipText="Custom general-knowledge prompt. Leave empty for default."
+                                                    placeholder="Leave empty for default."
+                                                />
                                             </div>
 
                                             <div class="form-group-container">
@@ -549,36 +517,22 @@
                         @case ('drift') {
                             <div formGroupName="drift">
                                 <div class="form-group">
-                                    @if (readOnly()) {
-                                        <app-suggested-value
-                                            label="Local Stage Prompt"
-                                            tooltipText="Custom local-stage prompt for DRIFT. Leave empty for default."
-                                            [value]="driftGroup?.get('prompt')?.value"
-                                        />
-                                    } @else {
-                                        <app-textarea
-                                            formControlName="prompt"
-                                            label="Local Stage Prompt"
-                                            tooltipText="Custom local-stage prompt for DRIFT. Leave empty for default."
-                                            placeholder="Leave empty for default."
-                                        />
-                                    }
+                                    <app-textarea
+                                        [readonly]="readOnly()"
+                                        formControlName="prompt"
+                                        label="Local Stage Prompt"
+                                        tooltipText="Custom local-stage prompt for DRIFT. Leave empty for default."
+                                        placeholder="Leave empty for default."
+                                    />
                                 </div>
                                 <div class="form-group">
-                                    @if (readOnly()) {
-                                        <app-suggested-value
-                                            label="Reduce Prompt"
-                                            tooltipText="Custom reduce-stage prompt for DRIFT. Leave empty for default."
-                                            [value]="driftGroup?.get('reduce_prompt')?.value"
-                                        />
-                                    } @else {
-                                        <app-textarea
-                                            formControlName="reduce_prompt"
-                                            label="Reduce Prompt"
-                                            tooltipText="Custom reduce-stage prompt for DRIFT. Leave empty for default."
-                                            placeholder="Leave empty for default."
-                                        />
-                                    }
+                                    <app-textarea
+                                        [readonly]="readOnly()"
+                                        formControlName="reduce_prompt"
+                                        label="Reduce Prompt"
+                                        tooltipText="Custom reduce-stage prompt for DRIFT. Leave empty for default."
+                                        placeholder="Leave empty for default."
+                                    />
                                 </div>
 
                                 <div class="form-group-container">
@@ -633,7 +587,8 @@
                                             class="chevron"
                                             icon="chevron-down"
                                             size="1.1rem"
-                                        /><span>Advanced settings</span>
+                                        />
+                                        <span>Advanced settings</span>
                                     </button>
 
                                     <div class="advanced-settings__content-wrapper">

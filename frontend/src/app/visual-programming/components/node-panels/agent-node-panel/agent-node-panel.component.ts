@@ -28,8 +28,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, NodeType, ResourceCode } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
@@ -47,6 +46,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { ToastService } from '../../../../services/notifications';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { AgentNodeTaskUi } from '../../../core/models/agent-node.model';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -98,7 +98,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         MarkdownComponent,
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
-        HasPermissionDirective,
+        IfFlowEditableDirective,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -790,7 +790,4 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     private initializeInputMap(form: FormGroup): void {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
-
-    protected readonly ActionCode = ActionCode;
-    protected readonly ResourceCode = ResourceCode;
 }

@@ -339,6 +339,38 @@ def test_org_delete_leaves_other_orgs_untouched(actor, populated_org, _surviving
 
 
 @pytest.mark.django_db
+def test_org_delete_removes_key_value_tables_entries_and_nodes(
+    actor, populated_org, _surviving_org
+):
+    from tables.models import KeyValueNode, KeyValueTable, KeyValueTableEntry
+    from tables.models.graph_models import Graph
+    from tables.models.session_models import Session
+
+    graph = Graph.objects.create(name="key-value-graph", org=populated_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    table = KeyValueTable.objects.create(org=populated_org, name="doomed-table")
+    KeyValueTableEntry.objects.create(
+        table=table, key="customer", value={"tier": "gold"}, updated_by_session=session
+    )
+    node = KeyValueNode.objects.create(graph=graph, node_name="kv", key_value_table=table)
+    keeper_table = KeyValueTable.objects.create(org=_surviving_org, name="keeper-table")
+    keeper_entry = KeyValueTableEntry.objects.create(table=keeper_table, key="kept", value=1)
+
+    service = OrganizationManagementService()
+    preview = service.preview_delete(actor=actor, org_id=populated_org.pk)
+    report = service.delete_organization(
+        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+    )
+
+    assert preview.affected_resources["key_value_tables"] == 1
+    assert report.affected_resources == preview.affected_resources
+    assert not KeyValueTable.objects.filter(pk=table.pk).exists()
+    assert not KeyValueTableEntry.objects.filter(table_id=table.pk).exists()
+    assert not KeyValueNode.all_objects.filter(pk=node.pk).exists()
+    assert KeyValueTableEntry.objects.filter(pk=keeper_entry.pk).exists()
+
+
+@pytest.mark.django_db
 def test_built_in_roles_survive_an_org_delete(actor, populated_org, _surviving_org):
     before = Role.objects.filter(is_built_in=True, org__isnull=True).count()
     OrganizationManagementService().delete_organization(
@@ -719,14 +751,14 @@ def test_org_delete_clears_the_platform_default_config_cache(
 ):
     """Platform defaults pointing at the org's configs are nulled, and the process cache stops serving the dead row."""
     from tables.models.base_models import DefaultBaseModel
-    from tables.models.default_models import DefaultModels
+    from tables.models.crew_models import DefaultAgentConfig
     from tables.models.llm_models import LLMConfig
 
     config = LLMConfig.objects.create(custom_name="doomed-llm", org=populated_org)
-    defaults = DefaultModels.load()
-    defaults.agent_llm_config = config
+    defaults = DefaultAgentConfig.load()
+    defaults.llm_config = config
     defaults.save()
-    assert DefaultModels.load().agent_llm_config_id == config.pk
+    assert DefaultAgentConfig.load().llm_config_id == config.pk
 
     with django_capture_on_commit_callbacks(execute=True):
         OrganizationManagementService().delete_organization(
@@ -734,6 +766,32 @@ def test_org_delete_clears_the_platform_default_config_cache(
         )
 
     assert not LLMConfig.objects.filter(pk=config.pk).exists()
-    assert DefaultModels.objects.get(pk=1).agent_llm_config_id is None
-    assert DefaultModels not in DefaultBaseModel._load_cache
-    assert DefaultModels.load().agent_llm_config_id is None
+    assert DefaultAgentConfig.objects.get(pk=1).llm_config_id is None
+    assert DefaultAgentConfig not in DefaultBaseModel._load_cache
+    assert DefaultAgentConfig.load().llm_config_id is None
+
+
+@pytest.mark.django_db
+def test_org_delete_cascades_the_orgs_default_models_row(
+    actor, populated_org, _surviving_org, django_capture_on_commit_callbacks
+):
+    """The deleted org's DefaultModels row goes with it; another org's row and its configs survive."""
+    from tables.models.default_models import DefaultModels
+    from tables.models.llm_models import LLMConfig
+
+    doomed_config = LLMConfig.objects.create(custom_name="doomed-llm", org=populated_org)
+    doomed_defaults = DefaultModels.load_for_org(populated_org.pk)
+    doomed_defaults.agent_llm_config = doomed_config
+    doomed_defaults.save()
+    surviving_config = LLMConfig.objects.create(custom_name="surviving-llm", org=_surviving_org)
+    surviving_defaults = DefaultModels.load_for_org(_surviving_org.pk)
+    surviving_defaults.agent_llm_config = surviving_config
+    surviving_defaults.save()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+        )
+
+    assert not DefaultModels.objects.filter(pk=doomed_defaults.pk).exists()
+    assert DefaultModels.objects.get(org=_surviving_org).agent_llm_config_id == surviving_config.pk

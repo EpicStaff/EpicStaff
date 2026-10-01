@@ -144,6 +144,7 @@ export class NodePanelShellComponent {
             node &&
             node.type !== 'table' &&
             node.type !== NodeType.SCHEDULE_TRIGGER &&
+            node.type !== NodeType.KEY_VALUE &&
             node.type !== 'classification-decision-table'
         );
     });
@@ -313,7 +314,7 @@ export class NodePanelShellComponent {
     }
 
     private tryAutosave(trigger: number): void {
-        if (trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
+        if (this.flowReadOnly.isReadOnly() || trigger === this.lastHandledAutosaveTrigger || !this.panelInstance) {
             return;
         }
         if (this.isAutosaving) {

@@ -166,6 +166,7 @@
             }
             @if (showDeactivate(row)) {
                 <app-stop-button
+                    variant="pause"
                     tooltip="Deactivate account"
                     (triggered)="onDeactivate(row)"
                 />

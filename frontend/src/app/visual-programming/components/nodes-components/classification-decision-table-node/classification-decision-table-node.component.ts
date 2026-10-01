@@ -7,6 +7,7 @@ import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { splitNodeTitleBadge } from '../../../core/helpers/split-node-title.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
@@ -28,7 +29,10 @@ export class ClassificationDecisionTableNodeComponent {
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
     private readonly destroyRef = inject(DestroyRef);
-    public readonly isReadonly = inject(FlowReadOnlyService).isReadOnly;
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+
+    public readonly headerHeightPx = CDT_HEADER_HEIGHT;
+    public readonly rowHeightPx = CDT_ROW_HEIGHT;
 
     constructor() {
         this.llmConfigStorageService.getAllConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();

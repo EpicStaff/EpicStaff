@@ -39,7 +39,11 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 </div>
             }
             @if (readonly()) {
-                <span class="readonly-value">{{ readonlyDisplayValue }}</span>
+                <span
+                    class="readonly-value"
+                    [class.readonly-value--empty]="isReadonlyEmpty"
+                    >{{ readonlyDisplayValue }}</span
+                >
             } @else {
                 <div class="input-wrapper">
                     <input
@@ -197,6 +201,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     font-size: 0.875rem;
                     word-break: break-word;
                     white-space: pre-wrap;
+
+                    &--empty {
+                        color: var(--color-text-secondary);
+                    }
                 }
             }
         `,
@@ -298,10 +306,13 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
         return !!this.icon && this.icon.trim().includes(' ');
     }
 
-    /**
-     * Value to render in readonly mode. Secret/password fields never leak their raw value —
-     * they show a masked placeholder if any value is present.
-     */
+    get isReadonlyEmpty(): boolean {
+        if (this.isSecret || this.isPassword) {
+            return !this._value;
+        }
+        return !this._value?.length;
+    }
+
     get readonlyDisplayValue(): string {
         if (this.isSecret || this.isPassword) {
             return this._value ? '••••••••' : this.readonlyEmptyPlaceholder();

@@ -100,18 +100,21 @@ class TestTwilioChannelAuthSync:
         assert auth.kind == WebhookTriggerAuthKind.WEBHOOK
         assert auth.secret_id is None
 
-    def test_deleting_the_twilio_channel_removes_the_synced_auth(self, org):
+    def test_deleting_the_twilio_channel_removes_the_synced_auth(
+        self, org, django_capture_on_commit_callbacks
+    ):
         trigger = _make_trigger(org, "twilio-sync-delete-path")
         secret = secret_service.create(text="auth-token-5", org=org, name="tw-secret-5")
         channel = _make_twilio_channel(org, trigger, secret)
         assert WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
-        channel.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            channel.delete()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
     def test_deleting_one_of_two_channels_sharing_a_trigger_keeps_the_auth(
-        self, org
+        self, org, django_capture_on_commit_callbacks
     ):
         """Regression: `webhook_trigger` has `related_name="twilio_channels"`
         (plural) -- more than one `TwilioChannel` can legally point at the
@@ -133,13 +136,14 @@ class TestTwilioChannelAuthSync:
             webhook_trigger=trigger,
         )
 
-        channel_a.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            channel_a.delete()
 
         auth = WebhookTriggerAuth.objects.get(trigger=trigger)
         assert auth.kind == WebhookTriggerAuthKind.TWILIO
 
     def test_deleting_the_last_channel_on_a_shared_trigger_removes_the_auth(
-        self, org
+        self, org, django_capture_on_commit_callbacks
     ):
         trigger = _make_trigger(org, "twilio-sync-shared-delete-last-path")
         secret = secret_service.create(
@@ -156,12 +160,15 @@ class TestTwilioChannelAuthSync:
             webhook_trigger=trigger,
         )
 
-        channel_a.delete()
-        channel_b.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            channel_a.delete()
+            channel_b.delete()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger).exists()
 
-    def test_repointing_a_channel_cleans_up_the_old_triggers_auth(self, org):
+    def test_repointing_a_channel_cleans_up_the_old_triggers_auth(
+        self, org, django_capture_on_commit_callbacks
+    ):
         trigger_a = _make_trigger(org, "twilio-sync-repoint-a")
         trigger_b = _make_trigger(org, "twilio-sync-repoint-b")
         secret = secret_service.create(
@@ -171,14 +178,17 @@ class TestTwilioChannelAuthSync:
         assert WebhookTriggerAuth.objects.filter(trigger=trigger_a).exists()
 
         channel.webhook_trigger = trigger_b
-        channel.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            channel.save()
 
         assert not WebhookTriggerAuth.objects.filter(trigger=trigger_a).exists()
         auth_b = WebhookTriggerAuth.objects.get(trigger=trigger_b)
         assert auth_b.kind == WebhookTriggerAuthKind.TWILIO
         assert auth_b.secret_id == secret.id
 
-    def test_repointing_away_from_a_shared_trigger_keeps_the_old_auth(self, org):
+    def test_repointing_away_from_a_shared_trigger_keeps_the_old_auth(
+        self, org, django_capture_on_commit_callbacks
+    ):
         """The old trigger's auth must survive a repoint if another channel
         still references it."""
         trigger_a = _make_trigger(org, "twilio-sync-repoint-shared-a")
@@ -198,7 +208,8 @@ class TestTwilioChannelAuthSync:
         )
 
         channel_a.webhook_trigger = trigger_b
-        channel_a.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            channel_a.save()
 
         assert WebhookTriggerAuth.objects.filter(
             trigger=trigger_a, kind=WebhookTriggerAuthKind.TWILIO

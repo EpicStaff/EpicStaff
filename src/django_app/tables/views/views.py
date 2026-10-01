@@ -15,7 +15,6 @@ from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
     HasOrgPermission,
-    IsSuperadmin,
 )
 from rbac.access.org_context import OrgContextService
 from rbac.models import ApiKey
@@ -737,7 +736,9 @@ class QuickstartView(APIView):
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
-            is_synced = quickstart_service.is_synced(last_config) if last_config else False
+            is_synced = (
+                quickstart_service.is_synced(last_config, org_id=org_id) if last_config else False
+            )
 
             data = QuickstartStatusSerializer(
                 {
@@ -809,17 +810,26 @@ class QuickstartApplyView(APIView):
     Applies a quickstart config to DefaultModels.
     If config_name is omitted, the most recently created quickstart config is used.
 
-    Writes the global DefaultModels singleton (install-wide defaults shared by
-    every organization), so it is restricted to superadmins.
+    Writes the active organization's DefaultModels row and requires LLM config create and
+    update permissions.
     """
 
-    # TODO: refactor to set default models per org based on user permissions
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    # Checked one by one: a combined IntFlag passes `can()` when either bit is held.
+    rbac_required_actions = (Permission.CREATE, Permission.UPDATE)
     _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        for required_action in self.rbac_required_actions:
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=self.rbac_resource_type,
+                action=required_action,
+            )
         last = quickstart_service.get_last_quickstart(org_id)
         if not last:
             return Response(
@@ -827,8 +837,11 @@ class QuickstartApplyView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        dm = quickstart_service.apply_to_default_models(last["config_name"])
-        return Response(DefaultModelsSerializer(dm).data, status=status.HTTP_200_OK)
+        dm = quickstart_service.apply_to_default_models(last["config_name"], org_id=org_id)
+        return Response(
+            DefaultModelsSerializer(dm, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):

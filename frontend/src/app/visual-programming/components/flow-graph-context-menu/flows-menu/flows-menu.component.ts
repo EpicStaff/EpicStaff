@@ -1,9 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { NodeType } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
-import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 
 @Component({
@@ -56,19 +54,12 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowsMenuComponent {
+    public readonly flows = input.required<GetGraphLightRequest[]>();
     public readonly searchTerm = input('');
-    public readonly currentFlowId = input<number | null>(null);
     public readonly nodeSelected = output<CreateNodeRequest>();
 
-    private readonly flowsApiService = inject(FlowsApiService);
-
-    public readonly flows = toSignal(this.flowsApiService.getGraphsLight(), {
-        initialValue: [] as GetGraphLightRequest[],
-    });
     public readonly filteredFlows = computed(() =>
-        this.flows()
-            .filter((flow) => flow.id !== this.currentFlowId())
-            .filter((flow) => flow.name.toLowerCase().includes(this.searchTerm().toLowerCase()))
+        this.flows().filter((flow) => flow.name.toLowerCase().includes(this.searchTerm().toLowerCase()))
     );
 
     public onFlowClicked(flow: GetGraphLightRequest): void {

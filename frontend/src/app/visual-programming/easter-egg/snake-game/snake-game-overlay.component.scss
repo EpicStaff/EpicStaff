@@ -1,0 +1,136 @@
+// Sits above every flow-graph layer (all below 20) and under the saving lock overlay (1000).
+$overlay-z-index: 500;
+$exit-fade-duration: 250ms;
+$connection-fade-duration: 600ms;
+$pixel-font: 'Courier New', monospace;
+// Set from the component to the rendered grid cell size; the HUD and card scale from it.
+$cell: var(--snake-cell-size, 38px);
+
+:host {
+    position: absolute;
+    z-index: $overlay-z-index;
+    display: block;
+    overflow: hidden;
+    outline: none;
+    cursor: default;
+    user-select: none;
+    font-family: $pixel-font;
+    color: var(--color-text-primary);
+    opacity: 1;
+    transition: opacity $exit-fade-duration ease-out;
+}
+
+:host(.is-exiting) {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.game-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+}
+
+.hud {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: calc(#{$cell} * 0.8);
+    padding: 8px 16px;
+    background: var(--color-background-body);
+    border: 3px solid var(--accent-color);
+    box-shadow: 4px 4px 0 var(--accent-color-active);
+    font-size: clamp(12px, calc(#{$cell} * 0.5), 22px);
+    font-weight: 700;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.game-over-card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: calc(#{$cell} * 9);
+    padding: 24px 40px;
+    background: var(--color-background-body);
+    border: 4px solid var(--accent-color);
+    box-shadow: 8px 8px 0 var(--accent-color-active);
+    text-align: center;
+}
+
+.game-over-title {
+    margin: 0 0 24px;
+    font-size: clamp(24px, calc(#{$cell} * 1.1), 44px);
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--color-ks-status-failed);
+    text-shadow: 4px 4px 0 var(--color-background-body);
+}
+
+.game-over-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 24px;
+    font-size: clamp(14px, calc(#{$cell} * 0.5), 22px);
+    letter-spacing: 2px;
+}
+
+.game-over-stat {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+
+    dt {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    dd {
+        margin: 0;
+        font-weight: 700;
+    }
+}
+
+.game-over-hint {
+    margin: 0;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--color-ks-transparent-text-60);
+    animation: game-over-hint-blink 1s steps(2, start) infinite;
+}
+
+@keyframes game-over-hint-blink {
+    to {
+        visibility: hidden;
+    }
+}
+
+// The overlay toggles these classes on the flow-graph host; the real DOM is only hidden, never removed or changed.
+::ng-deep .snake-game-board-hidden .f-node {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
+::ng-deep .snake-game-board-exploded {
+    .f-connection,
+    .f-minimap-node,
+    .f-minimap-group {
+        opacity: 0 !important;
+        transition: opacity $connection-fade-duration ease-out;
+    }
+}
+
+::ng-deep .snake-game-board-restoring {
+    .f-node,
+    .f-connection,
+    .f-minimap-node,
+    .f-minimap-group {
+        transition: opacity $exit-fade-duration ease-out;
+    }
+}

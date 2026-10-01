@@ -12,6 +12,7 @@ import {
     inject,
     Injector,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -19,6 +20,7 @@ import {
     output,
     signal,
     SimpleChanges,
+    untracked,
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -45,10 +47,12 @@ import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
+import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
+import { FlowNodeVariablesOverlayComponent } from '../components/flow-base-node/flow-node-variables-overlay.component';
 import { FlowExportImportButtonComponent } from '../components/flow-export-import-button/flow-export-import-button.component';
 import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-files-button.component';
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
@@ -61,33 +65,37 @@ import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edi
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
-import { computeAutoArrangePositions } from '../core/helpers/auto-arrange.util';
-import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
+import { getPortPosition } from '../core/geometry/port-position';
+import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
 import {
+    CollisionBounds,
     findNearestFreePosition,
     getCollisionBounds,
+    getExactBounds,
     GRID_CELL_SIZE,
+    hasCollision,
     resolveOverlapsForNode,
     snapPointToGrid,
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
-import {
-    computeSegmentAvoidanceWaypoints,
-    getConnectionIntersectingNodes,
-    getPortPosition,
-    normalizeConnectionWaypoints,
-} from '../core/helpers/segment-avoidance.helper';
+import { computeLayout } from '../core/layout/compute-layout';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
+import { FlowViewport } from '../core/models/flow-viewport.model';
 import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
+import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
+import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
+import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
+import { resolveWireEnds, routeAll } from '../core/routing/route-all';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
+import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
@@ -118,17 +126,16 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     providers: [
         {
             provide: F_CONNECTION_BUILDERS,
-            useFactory: (flowService: FlowService) => ({
-                'backward-arc': new BackwardArcPathBuilder(() => flowService.nodes()),
-            }),
-            deps: [FlowService],
+            useFactory: () => ({ orthogonal: new OrthogonalPathBuilder() }),
         },
+        KeyValueEntryDraftsService,
     ],
     imports: [
         FFlowModule,
         FZoomDirective,
         FormsModule,
         FlowBaseNodeComponent,
+        FlowNodeVariablesOverlayComponent,
         ShortcutListenerDirective,
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
@@ -147,15 +154,20 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() flowState!: FlowModel;
     @Input() currentFlowId: number | null = null;
+    public readonly availableFlows = input<GetGraphLightRequest[]>([]);
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
     @Input() initialNodeExpand: boolean = true;
     @Input() isSaving: boolean = false;
     @Input() hasUnsavedChanges: boolean = false;
+    /** Applied once the canvas loads, instead of fitting the flow to the screen. */
+    @Input() initialViewport: FlowViewport | null = null;
 
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
     readonly openShortcuts = output<DOMRect>();
+    /** Nodes were copied into this editor's clipboard. */
+    readonly copied = output<void>();
     readonly importComplete = output<void>();
     readonly extractToSubflow = output<Set<string>>();
     readonly unpackSubflow = output<string>();
@@ -174,6 +186,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     @ViewChild('arrangeBtnRef') private arrangeBtnRef?: ElementRef<HTMLButtonElement>;
 
+    @ViewChild('ioOverlayLayer', { static: true })
+    private ioOverlayLayerRef?: ElementRef<HTMLDivElement>;
+
+    private nodesContainerEl: Element | null = null;
+    private overlayNodesObserver: MutationObserver | null = null;
+
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
 
     public closeNodesSearch(): void {
@@ -181,6 +199,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
+    private readonly MIN_HORIZONTAL_NODE_GAP = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
     protected readonly CONNECTION_DELETE_BUTTON_POSITION = 0.56;
@@ -238,6 +257,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     readonly canvasMoveTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
         !this.multiSelectActive() && !(event instanceof MouseEvent && event.shiftKey);
 
+    /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
+    readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
+
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
         for (const node of this.flowService.nodes()) {
@@ -253,18 +275,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         for (const conn of connections) {
             if (isBackwardConnection(conn, nodes)) {
-                ids.add(conn.id);
-            }
-        }
-
-        return ids;
-    });
-
-    protected readonly frozenConnectionIds = computed<Set<string>>(() => {
-        const ids = new Set<string>();
-
-        for (const conn of this.flowService.connections()) {
-            if (conn.userAdjustedWaypoints) {
                 ids.add(conn.id);
             }
         }
@@ -300,7 +310,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private _importPositionSnapshot: Map<number, { x: number; y: number }> | null = null;
 
     private readonly destroy$ = new Subject<void>();
-    private readonly previousBackwardConnectionIds = new Set<string>();
+    // Connection id → backward at the last reroute. An id missing here has no classification to flip from.
+    private readonly previousBackwardClassification = new Map<string, boolean>();
     private draggedNodeIds = new Set<string>();
     private draggingElements = new Set<string>();
     private isDragging = false;
@@ -310,6 +321,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly reassignFollowerIds = signal<ReadonlySet<string>>(new Set<string>());
     private reassignGroupIds: string[] = [];
 
+    /** Version preview: read-only (via flowReadOnly), and import/export and files are hidden. */
+    protected readonly isPreview = inject(FLOW_EDITOR_PREVIEW);
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
@@ -324,7 +337,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
-    private lastSeenFullSaveRequest = 0;
+    // Start from the current count so a canvas re-created after an earlier save request
+    // (e.g. when leaving version preview) does not replay it. untracked: this initialiser runs
+    // while the parent template is rendering and must not subscribe that view to the signal.
+    private lastSeenFullSaveRequest = untracked(() => this.sidePanelService.fullSaveRequest());
 
     constructor() {
         effect(() => {
@@ -334,6 +350,73 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.emitSave();
             }
         });
+
+        // `f-canvas` uses selective content projection and drops any element that
+        // doesn't match one of its slots, so the overlay layer is rendered outside
+        // `<f-flow>` and moved in here once the canvas's internal containers exist.
+        afterNextRender(
+            () => {
+                this.moveOverlayLayerIntoCanvas();
+                this.setupOverlayTransformSync();
+            },
+            { injector: this.injector }
+        );
+    }
+
+    private moveOverlayLayerIntoCanvas(): void {
+        const layer = this.ioOverlayLayerRef?.nativeElement;
+        const canvas = this.hostElement.nativeElement.querySelector('f-canvas');
+        const nodesContainer = canvas?.querySelector('.f-nodes-container');
+        if (!layer || !canvas || !nodesContainer) return;
+
+        canvas.insertBefore(layer, nodesContainer);
+        this.nodesContainerEl = nodesContainer;
+    }
+
+    // foblex rewrites a dragged node's inline `transform` continuously; mirroring it onto
+    // the matching overlay (instead of binding the overlay to `node.position`) is the only
+    // way the overlay tracks the node mid-drag rather than jumping on drop.
+    private setupOverlayTransformSync(): void {
+        const nodesContainer = this.nodesContainerEl;
+        if (!nodesContainer) return;
+
+        this.overlayNodesObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes' && mutation.target instanceof HTMLElement) {
+                    this.syncOverlayTransform(mutation.target);
+                } else if (mutation.type === 'childList') {
+                    this.syncAllOverlayTransforms();
+                }
+            }
+        });
+        this.overlayNodesObserver.observe(nodesContainer, {
+            attributes: true,
+            attributeFilter: ['style'],
+            subtree: true,
+            childList: true,
+        });
+
+        this.syncAllOverlayTransforms();
+    }
+
+    private syncOverlayTransform(nodeEl: HTMLElement): void {
+        const layer = this.ioOverlayLayerRef?.nativeElement;
+        const nodeId = nodeEl.getAttribute('data-f-node-id');
+        if (!layer || !nodeId) return;
+
+        const overlayEl = layer.querySelector<HTMLElement>(`[data-overlay-node-id="${nodeId}"]`);
+        if (!overlayEl) return;
+
+        overlayEl.style.transform = nodeEl.style.transform;
+    }
+
+    private syncAllOverlayTransforms(): void {
+        const nodesContainer = this.nodesContainerEl;
+        if (!nodesContainer) return;
+
+        nodesContainer
+            .querySelectorAll<HTMLElement>('[data-f-node-id]')
+            .forEach((nodeEl) => this.syncOverlayTransform(nodeEl));
     }
 
     public ngOnInit(): void {
@@ -369,6 +452,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (this.arrangeAnimationId !== null) {
             cancelAnimationFrame(this.arrangeAnimationId);
         }
+        this.overlayNodesObserver?.disconnect();
         this.destroy$.next();
         this.destroy$.complete();
     }
@@ -377,12 +461,23 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.isLoaded.set(true);
         setTimeout(() => {
             this.rerouteSegmentConnections();
-            this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
-            if (this.flowService.nodes().length === 1) {
-                this.fCanvasComponent.setScale(0.1);
+            if (this.initialViewport) {
+                this.applyViewport(this.initialViewport);
+            } else {
+                this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+                if (this.flowService.nodes().length === 1) {
+                    this.fCanvasComponent.setScale(0.1);
+                }
             }
             this.cd.detectChanges();
         }, 0);
+    }
+
+    /** The current pan and zoom, or null before the canvas exists. */
+    public captureViewport(): FlowViewport | null {
+        const transform = this.fCanvasComponent?.transform;
+        if (!transform) return null;
+        return { position: PointExtensions.sum(transform.position, transform.scaledPosition), scale: transform.scale };
     }
 
     public onFlowMouseDown(event: MouseEvent): void {
@@ -560,6 +655,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         moved.forEach((conn) => this.flowService.removeConnection(conn.id));
         updated.forEach((conn) => this.flowService.addConnection(conn));
+        this.rerouteSegmentConnections();
 
         this.toastService.success(
             updated.length > 1 ? `${updated.length} connections reassigned` : 'Connection reassigned successfully',
@@ -644,36 +740,28 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         this.flowService.addConnection(newConnection);
-
-        const nodes = this.flowService.nodes();
-        const intersects = getConnectionIntersectingNodes(newConnection, nodes);
-
-        const newConnTargetNode = nodes.find((n) => n.id === newConnection.targetNodeId);
-        const newConnTargetPort = newConnTargetNode?.ports?.find((p) => p.id === newConnection.targetPortId);
-        const isTableInTarget =
-            newConnTargetNode?.type === NodeType.TABLE && newConnTargetPort?.id?.includes('table-in');
-
-        if (intersects.length > 0 || isTableInTarget) {
-            const avoidWaypoints = computeSegmentAvoidanceWaypoints(newConnection, nodes);
-            if (avoidWaypoints) {
-                const normalizedWaypoints = this.normalizeWaypointsForConnection(newConnection, avoidWaypoints);
-                this.flowService.updateConnectionWaypoints(newConnection.id, normalizedWaypoints);
-                this.bumpConnectionRenderVersion(newConnection.id);
-            }
-        }
+        this.rerouteSegmentConnections();
     }
 
+    /** Allowed in read-only mode too: copying reads the flow, and the preview hands the copy to the live editor. */
     public onCopy(): void {
         if (this.isDialogOpen()) {
             return;
         }
 
+        const previousClipboard = this.clipboardService.getClipboardData();
         const selections: ICurrentSelection = this.fFlowComponent.getSelection();
         this.clipboardService.copy(selections);
+        if (this.clipboardService.getClipboardData() !== previousClipboard) {
+            this.copied.emit();
+        }
     }
 
     public onPaste(): void {
-        if (this.flowReadOnly.isReadOnly()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -711,7 +799,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onUndo(): void {
-        if (this.flowReadOnly.isReadOnly()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         if (this.isEditingLocked()) {
             return;
         }
@@ -722,7 +813,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onRedo(): void {
-        if (this.flowReadOnly.isReadOnly()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         if (this.isEditingLocked()) {
             return;
         }
@@ -738,7 +832,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDelete(): void {
-        if (this.flowReadOnly.isReadOnly()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         this.hasUnarrangedChanges.set(true);
         if (this.isEditingLocked()) {
             return;
@@ -749,6 +846,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDeleteNode(node: NodeModel): void {
+        if (this.isEditingLocked()) {
+            return;
+        }
         this.hasUnarrangedChanges.set(true);
         this.deleteSelections({
             fNodeIds: [node.id],
@@ -766,7 +866,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         event.preventDefault();
         event.stopPropagation();
 
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -781,25 +881,43 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connection = this.flowService.connections().find((c) => c.id === connectionId);
         if (!connection) return;
 
+        // A candidate insert starts a drag: Foblex keeps moving the point inside this very array, so
+        // it is stored as is (the 'orthogonal' builder draws it normalized meanwhile).
         const existingCount = connection.waypoints?.length ?? 0;
         if (waypoints.length > existingCount) {
             this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
             return;
         }
 
-        const normalizedWaypoints = this.normalizeWaypointsForConnection(connection, waypoints);
-
-        const isSameElements =
-            normalizedWaypoints.length === waypoints.length && normalizedWaypoints.every((p, i) => p === waypoints[i]);
-
+        const nodesById = new Map(this.flowService.nodes().map((node) => [node.id, node]));
+        const ends = resolveWireEnds(connection, nodesById);
+        const normalizedWaypoints = ends
+            ? normalizeOrthogonalWaypoints(
+                  getPortPosition(ends.sourceNode, ends.sourcePort),
+                  waypoints,
+                  getPortPosition(ends.targetNode, ends.targetPort)
+              )
+            : waypoints;
+        // A right-click that removes a bend the orthogonal shape can't do without (normalizing puts it
+        // straight back) resets the wire to automatic routing, as removing the last point does.
+        const isResetToRouter =
+            normalizedWaypoints.length === 0 ||
+            (waypoints.length < existingCount && waypointsEqual(normalizedWaypoints, connection.waypoints ?? []));
         this.flowService.updateConnectionWaypoints(
             connectionId,
-            isSameElements ? waypoints : normalizedWaypoints,
-            normalizedWaypoints.length > 0
+            isResetToRouter ? [] : normalizedWaypoints,
+            !isResetToRouter
         );
+
+        // The other wires make room for the edited one (it now occupies its corridor); a reset wire
+        // is the router's again.
+        this.rerouteSegmentConnections();
     }
 
     public onNodeDroppedFromPanel(event: FCreateNodeEvent): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            return;
+        }
         this.hasUnarrangedChanges.set(true);
         if (!event.data || typeof event.data !== 'object') {
             return;
@@ -839,19 +957,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAddNodeFromContextMenu(event: CreateNodeRequest): void {
-        if (this.flowReadOnly.isReadOnly()) return;
-        this.hasUnarrangedChanges.set(true);
-        this.undoRedoService.stateChanged();
         this.showContextMenu.set(false);
+
+        if (this.flowReadOnly.isReadOnly() || this.isDialogOpen()) {
+            return;
+        }
 
         if (event.type === NodeType.END && this.flowService.hasEndNode()) {
             this.toastService.warning('Only one End node is allowed', 4000, 'bottom-right');
             return;
         }
 
-        if (this.isDialogOpen()) {
-            return;
-        }
+        this.hasUnarrangedChanges.set(true);
+        this.undoRedoService.stateChanged();
 
         const position = this.fFlowComponent.getPositionInFlow(
             PointExtensions.initialize(this.contextMenuPosition().x, this.contextMenuPosition().y)
@@ -888,6 +1006,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         if (node.type === NodeType.NOTE) {
+            if (this.flowReadOnly.isReadOnly()) {
+                return;
+            }
             const noteNode = node as GraphNoteModel;
 
             const dialogRef = this.dialog.open(NoteEditDialogComponent, {
@@ -932,9 +1053,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 data: {
                     initialData: startNodeInitialState,
                 },
+                // This editor's injector: the dialog then sees this editor's read-only state.
+                injector: this.injector,
             });
 
             dialogRef.closed.subscribe((result: unknown) => {
+                if (this.flowReadOnly.isReadOnly()) return;
                 if (result !== null && typeof result === 'object' && result !== undefined) {
                     this.updateStartNodeInitialState(result as Record<string, unknown>);
                 }
@@ -945,6 +1069,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePanelSaved(updatedNode: NodeModel): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            return;
+        }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
@@ -966,6 +1093,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            return;
+        }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
@@ -1011,6 +1141,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public emitSave(): void {
+        if (this.flowReadOnly.isReadOnly()) return;
         if (!this.commitSidePanelToFlow()) return;
         this.save.emit(this.flowService.getFlowState());
     }
@@ -1027,6 +1158,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         };
 
         this.flowService.updateNode(updatedNode);
+        this.rerouteSegmentConnections();
     }
 
     public onDragStarted(event: FDragStartedEvent): void {
@@ -1041,148 +1173,57 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             dragData.fNodeIds.forEach((id: string) => this.draggingElements.add(id));
         }
 
-        this.undoRedoService.stateChanged();
+        // Panning also starts a drag; in read-only nothing can change, so there is no state to record.
+        if (!this.flowReadOnly.isReadOnly()) {
+            this.undoRedoService.stateChanged();
+        }
+
+        // Router waypoints go stale as soon as a node moves: drop them on the dragged nodes' wires so
+        // the 'orthogonal' builder's fallback follows the drag live. Drag end routes them again.
+        const staleConnections = this.flowService
+            .connections()
+            .filter(
+                (conn) =>
+                    !conn.userAdjustedWaypoints &&
+                    !!conn.waypoints?.length &&
+                    (this.draggingElements.has(conn.sourceNodeId) || this.draggingElements.has(conn.targetNodeId))
+            );
+        if (staleConnections.length > 0) {
+            staleConnections.forEach((conn) => this.flowService.updateConnectionWaypoints(conn.id, []));
+            // Foblex redraws from the waypoints input on the next pointer move; it must be [] by then.
+            this.cd.detectChanges();
+        }
     }
 
     private rerouteSegmentConnections(): void {
-        const nodes = this.flowService.nodes();
-        const connections = this.flowService.connections();
         const backwardIds = this.backwardConnectionIds();
 
-        for (const conn of connections) {
-            const wasBackward = this.previousBackwardConnectionIds.has(conn.id);
-            const isBackward = backwardIds.has(conn.id);
-            const changedFromBackwardToForward = wasBackward && !isBackward;
-            const changedFromForwardToBackward = !wasBackward && isBackward;
-            const classificationFlipped = changedFromBackwardToForward || changedFromForwardToBackward;
-            const wasFrozen = this.frozenConnectionIds().has(conn.id);
-
-            if (isBackward) {
-                if (wasFrozen && !classificationFlipped) continue;
-
-                const bwSource = nodes.find((n) => n.id === conn.sourceNodeId);
-                const bwTarget = nodes.find((n) => n.id === conn.targetNodeId);
-                if (!bwSource || !bwTarget) continue;
-
-                const bwSourcePort = bwSource.ports?.find((p) => p.id === conn.sourcePortId);
-                const bwTargetPort = bwTarget.ports?.find((p) => p.id === conn.targetPortId);
-
-                const bwSourcePt = getPortPosition(bwSource, bwSourcePort);
-                const bwTargetPt = getPortPosition(bwTarget, bwTargetPort);
-
-                const arcPts = computeBackwardArcPoints(bwSourcePt, bwTargetPt, undefined, nodes);
-                const newWaypoint = {
-                    x: (arcPts[1].x + arcPts[4].x) / 2,
-                    y: arcPts[2].y,
-                };
-
-                const existing = conn.waypoints?.[0];
-                const changed =
-                    !existing ||
-                    Math.abs(existing.y - newWaypoint.y) > 0.5 ||
-                    Math.abs(existing.x - newWaypoint.x) > 0.5;
-
-                if (changed) {
-                    this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint], wasFrozen ? false : undefined);
-                    this.bumpConnectionRenderVersion(conn.id);
-                }
-
-                continue;
-            }
-
-            if (wasFrozen && !classificationFlipped) continue;
-
-            const MAX_ATTEMPTS = 3;
-            let current = this.flowService.connections().find((c) => c.id === conn.id);
-            if (!current) continue;
-
-            const currentConnection = current;
-            const currentIntersections = getConnectionIntersectingNodes(currentConnection, nodes);
-
-            if (currentIntersections.length === 0) {
-                const rerouteTargetNode = nodes.find((n) => n.id === currentConnection.targetNodeId);
-                const rerouteTargetPort = rerouteTargetNode?.ports?.find(
-                    (p) => p.id === currentConnection.targetPortId
-                );
-                const isTableInConn =
-                    rerouteTargetNode?.type === NodeType.TABLE && rerouteTargetPort?.id?.includes('table-in');
-
-                if (
-                    !changedFromBackwardToForward &&
-                    !isTableInConn &&
-                    (!currentConnection.waypoints || currentConnection.waypoints.length === 0)
-                ) {
-                    continue;
-                }
-
-                const restoreResult = computeSegmentAvoidanceWaypoints(
-                    currentConnection,
-                    nodes,
-                    changedFromBackwardToForward
-                        ? undefined
-                        : currentConnection.waypoints?.length
-                          ? currentConnection.waypoints
-                          : undefined
-                );
-
-                if (restoreResult !== null) {
-                    const normalizedRestore = this.normalizeWaypointsForConnection(currentConnection, restoreResult);
-
-                    if (!waypointsEqual(currentConnection.waypoints ?? [], normalizedRestore)) {
-                        this.flowService.updateConnectionWaypoints(
-                            currentConnection.id,
-                            normalizedRestore,
-                            wasFrozen ? false : undefined
-                        );
-                        this.bumpConnectionRenderVersion(currentConnection.id);
-                    }
-                } else if (changedFromBackwardToForward && (currentConnection.waypoints?.length ?? 0) > 0) {
-                    this.flowService.updateConnectionWaypoints(currentConnection.id, [], wasFrozen ? false : undefined);
-                    this.bumpConnectionRenderVersion(currentConnection.id);
-                }
-
-                continue;
-            }
-
-            let clearedStaleFlipWaypoint = false;
-
-            for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-                const waypoints = computeSegmentAvoidanceWaypoints(
-                    current,
-                    nodes,
-                    changedFromBackwardToForward ? undefined : current.waypoints
-                );
-
-                if (waypoints === null) {
-                    if (
-                        changedFromBackwardToForward &&
-                        !clearedStaleFlipWaypoint &&
-                        (current.waypoints?.length ?? 0) > 0
-                    ) {
-                        this.flowService.updateConnectionWaypoints(current.id, [], wasFrozen ? false : undefined);
-                        this.bumpConnectionRenderVersion(current.id);
-                    }
-                    break;
-                }
-
-                const normalizedWaypoints = this.normalizeWaypointsForConnection(current, waypoints);
-                if (waypointsEqual(current.waypoints ?? [], normalizedWaypoints)) break;
-
-                this.flowService.updateConnectionWaypoints(
-                    current.id,
-                    normalizedWaypoints,
-                    wasFrozen ? false : undefined
-                );
-                this.bumpConnectionRenderVersion(current.id);
-                current = { ...current, waypoints: normalizedWaypoints };
-                clearedStaleFlipWaypoint = true;
+        // A hand-edited wire whose backward/forward classification flipped no longer fits its
+        // points: un-freeze it so the router takes it over below. A wire seen for the first time
+        // (just loaded or added) has not flipped.
+        for (const conn of this.flowService.connections()) {
+            const previousBackward = this.previousBackwardClassification.get(conn.id);
+            const classificationFlipped =
+                previousBackward !== undefined && previousBackward !== backwardIds.has(conn.id);
+            if (conn.userAdjustedWaypoints && classificationFlipped) {
+                this.flowService.updateConnectionWaypoints(conn.id, [], false);
+                this.bumpConnectionRenderVersion(conn.id);
             }
         }
 
-        this.previousBackwardConnectionIds.clear();
+        const connections = this.flowService.connections();
+        const routes = routeAll(this.flowService.nodes(), connections);
+        for (const conn of connections) {
+            const points = routes.get(conn.id);
+            if (points && !waypointsEqual(conn.waypoints ?? [], points)) {
+                this.flowService.updateConnectionWaypoints(conn.id, points);
+                this.bumpConnectionRenderVersion(conn.id);
+            }
+        }
 
-        for (const id of backwardIds) {
-            this.previousBackwardConnectionIds.add(id);
+        this.previousBackwardClassification.clear();
+        for (const conn of connections) {
+            this.previousBackwardClassification.set(conn.id, backwardIds.has(conn.id));
         }
     }
 
@@ -1195,14 +1236,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (!current) continue;
 
             const otherNodes = currentNodes.filter((n) => n.id !== id);
-            const freePos = this.findNearestFreePosition(
-                current.position,
-                this.getCollisionBounds(current),
-                otherNodes
-            );
 
-            if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
-                this.flowService.updateNode({ ...current, position: freePos });
+            // Part 1: exact bounds vertically; horizontally padded by MIN_HORIZONTAL_NODE_GAP so a
+            // connection arrow always has room. Node creation/paste are unaffected — they still
+            // go through getCollisionBounds() elsewhere.
+            const draggedBounds = this.getHorizontallyPaddedBounds(current);
+            let resolvedPosition = findNearestFreePosition(current.position, draggedBounds, otherNodes, getExactBounds);
+
+            // Part 2: magnetic snap to a connected Decision Table (plain or Classification) row.
+            // Only the y axis is ever touched, and only within the snap threshold; a snap that
+            // would reintroduce an overlap is discarded in favor of the resolved drop position.
+            const snappedY = computeRowSnapY(current, resolvedPosition, currentNodes, this.flowService.connections());
+            if (snappedY !== null) {
+                const snappedPosition = { x: resolvedPosition.x, y: snappedY };
+                if (!hasCollision(snappedPosition, draggedBounds, otherNodes, getExactBounds)) {
+                    resolvedPosition = snappedPosition;
+                }
+            }
+
+            if (resolvedPosition.x !== current.position.x || resolvedPosition.y !== current.position.y) {
+                this.flowService.updateNode({ ...current, position: resolvedPosition });
                 autoAlignedNodeIds.add(id);
             }
         }
@@ -1221,6 +1274,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.fFlowComponent?.redraw();
             }
         }, 100);
+    }
+
+    private getHorizontallyPaddedBounds(node: NodeModel): CollisionBounds {
+        const bounds = getExactBounds(node);
+        return {
+            ...bounds,
+            width: bounds.width + 2 * this.MIN_HORIZONTAL_NODE_GAP,
+            offsetX: bounds.offsetX - this.MIN_HORIZONTAL_NODE_GAP,
+        };
     }
 
     public onNodePositionChanged(newPos: IPoint, node: NodeModel): void {
@@ -1264,6 +1326,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.dialog.open(FlowSettingsPanelComponent, {
             width: '480px',
             maxWidth: '90vw',
+            injector: this.injector,
         });
     }
 
@@ -1272,7 +1335,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAutoArrange(): void {
-        if (this._arrangingLock) return;
+        if (this._arrangingLock || this.flowReadOnly.isReadOnly()) return;
         this._arrangingLock = true;
         this.isArranging.set(true);
         if (this.arrangeBtnRef) {
@@ -1290,13 +1353,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         const connections = this.flowService.connections();
-        const newPositions = computeAutoArrangePositions(nodes, connections);
+        const newPositions = computeLayout(nodes, connections);
 
         const alreadyArranged = nodes.every((n) => {
             const target = newPositions.get(n.id);
             return !target || (n.position.x === target.x && n.position.y === target.y);
         });
-        if (alreadyArranged) {
+        // Arranging starts the wires over too: hand-edited points refer to the old node positions.
+        const hasHandEditedWires = connections.some((conn) => conn.userAdjustedWaypoints);
+        if (alreadyArranged && !hasHandEditedWires) {
             this.hasUnarrangedChanges.set(false);
             this._arrangingLock = false;
             this.isArranging.set(false);
@@ -1307,15 +1372,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         const startPositions = new Map(nodes.map((n) => [n.id, { ...n.position }]));
 
-        // Pre-identify non-user-adjusted backward connections for per-frame arc updates.
-        const backwardIds = this.backwardConnectionIds();
-        const backwardConns = connections.filter((c) => backwardIds.has(c.id) && !c.userAdjustedWaypoints);
-
-        // Clear ALL non-user-adjusted waypoints (including backward) so every connection
-        // starts from a clean state. Backward arcs are re-computed each frame below.
+        // Clear ALL waypoints, hand-edited ones included, so every connection draws the builder's
+        // fallback during the animation. The router runs once the nodes have landed.
         for (const conn of connections) {
-            if (conn.waypoints?.length && !conn.userAdjustedWaypoints) {
-                this.flowService.updateConnectionWaypoints(conn.id, []);
+            if (conn.waypoints?.length || conn.userAdjustedWaypoints) {
+                this.flowService.updateConnectionWaypoints(conn.id, [], false);
             }
         }
         // Flush synchronously so nodes and arrows start from the same visual state.
@@ -1344,25 +1405,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     };
                 });
 
-            // Update backward arc waypoints each frame using mid-animation node positions
-            // (no node-avoidance so the arc stays compact and follows nodes smoothly).
-            if (backwardConns.length > 0) {
-                const nodeMap = new Map(updatedNodes.map((n) => [n.id, n]));
-                for (const conn of backwardConns) {
-                    const src = nodeMap.get(conn.sourceNodeId);
-                    const tgt = nodeMap.get(conn.targetNodeId);
-                    if (!src || !tgt) continue;
-                    const srcPort = src.ports?.find((p) => p.id === conn.sourcePortId);
-                    const tgtPort = tgt.ports?.find((p) => p.id === conn.targetPortId);
-                    const srcPt = getPortPosition(src, srcPort);
-                    const tgtPt = getPortPosition(tgt, tgtPort);
-                    const arcPts = computeBackwardArcPoints(srcPt, tgtPt, undefined, []);
-                    this.flowService.updateConnectionWaypoints(conn.id, [
-                        { x: (arcPts[1].x + arcPts[4].x) / 2, y: arcPts[2].y },
-                    ]);
-                }
-            }
-
             this.flowService.updateNodesInBatch(updatedNodes);
             this.cd.detectChanges();
             this.fFlowComponent?.redraw();
@@ -1371,32 +1413,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.arrangeAnimationId = requestAnimationFrame(frame);
             } else {
                 this.arrangeAnimationId = null;
-                // Restore proper segment routing after animation completes
-                this.rerouteSegmentConnections();
                 setTimeout(() => {
                     this.rerouteSegmentConnections();
-                    // Recompute backward arcs without node-avoidance: after a full
-                    // rearrange all nodes have moved so the avoidance logic pushes arcs
-                    // far outside the visible area. A simple fixed-margin arc looks correct.
-                    const finalNodes = this.flowService.nodes();
-                    const finalConnections = this.flowService.connections();
-                    const bwIds = this.backwardConnectionIds();
-                    for (const conn of finalConnections) {
-                        if (!bwIds.has(conn.id) || conn.userAdjustedWaypoints) continue;
-                        const src = finalNodes.find((n) => n.id === conn.sourceNodeId);
-                        const tgt = finalNodes.find((n) => n.id === conn.targetNodeId);
-                        if (!src || !tgt) continue;
-                        const srcPort = src.ports?.find((p) => p.id === conn.sourcePortId);
-                        const tgtPort = tgt.ports?.find((p) => p.id === conn.targetPortId);
-                        const srcPt = getPortPosition(src, srcPort);
-                        const tgtPt = getPortPosition(tgt, tgtPort);
-                        const arcPts = computeBackwardArcPoints(srcPt, tgtPt, undefined, []);
-                        const waypoint = { x: (arcPts[1].x + arcPts[4].x) / 2, y: arcPts[2].y };
-                        this.flowService.updateConnectionWaypoints(conn.id, [waypoint]);
-                        this.bumpConnectionRenderVersion(conn.id);
-                    }
                     this.cd.detectChanges();
                     this.fFlowComponent?.redraw();
+                    // Every node moved: bring the whole arranged flow into view.
+                    this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, true);
                     this.hasUnarrangedChanges.set(false);
                     this._arrangingLock = false;
                     this.isArranging.set(false);
@@ -1423,9 +1445,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             data: {
                 initialData: startNodeInitialState,
             },
+            injector: this.injector,
         });
 
         dialogRef.closed.subscribe((result: unknown) => {
+            if (this.flowReadOnly.isReadOnly()) return;
             if (result !== null && typeof result === 'object' && result !== undefined) {
                 this.updateStartNodeInitialState(result as Record<string, unknown>);
             }
@@ -1695,6 +1719,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             schedule_trigger_node_list: [],
             edge_list: [],
             knowledge_node_list: [],
+            key_value_node_list: [],
         };
 
         for (const node of nodes) {
@@ -1741,6 +1766,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 case NodeType.KNOWLEDGE_RETRIEVER:
                     body.knowledge_node_list.push(id);
                     break;
+                case NodeType.KEY_VALUE:
+                    body.key_value_node_list.push(id);
+                    break;
             }
         }
 
@@ -1769,6 +1797,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private applyIncomingFlowState(flowState: FlowModel): void {
         const normalizedFlowState = normalizeFlowPorts(flowState);
         this.flowService.setFlow(normalizedFlowState);
+        // A loaded flow starts a new history: its saved hand-edited wires must not count as flipped.
+        this.previousBackwardClassification.clear();
         this.rerouteSegmentConnections();
     }
 
@@ -1808,10 +1838,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return this.dialog.openDialogs.length > 0;
     }
 
-    // Editing is locked while a dialog is open OR a full graph save is in flight.
+    // Editing is locked while a dialog is open, a full graph save is in flight, or the editor is read-only.
     // (Saving lock fixes edits made mid-save being discarded when the response is applied.)
     private isEditingLocked(): boolean {
-        return this.isDialogOpen() || this.isSaving;
+        return this.isDialogOpen() || this.isSaving || this.flowReadOnly.isReadOnly();
     }
 
     private updateStartNodeInitialState(newState: Record<string, unknown>): void {
@@ -1840,6 +1870,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         afterNextRender(() => this.nodePanelShell?.expandPanel(), { injector: this.injector });
     }
 
+    // Same as Foblex's own position/scale inputs: the whole offset goes into `position`.
+    private applyViewport(viewport: FlowViewport): void {
+        const transform = this.fCanvasComponent.transform;
+        transform.position = { ...viewport.position };
+        transform.scaledPosition = PointExtensions.initialize();
+        transform.scale = viewport.scale;
+        this.fCanvasComponent.redraw();
+    }
+
     private toFlowPosition(point: IPoint): IPoint {
         return this.fFlowComponent.getPositionInFlow(PointExtensions.initialize(point.x, point.y));
     }
@@ -1861,6 +1900,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             fNodeIds: nodeIdsToDelete,
             fConnectionIds: selections.fConnectionIds,
         });
+        this.rerouteSegmentConnections();
 
         if (selections.fNodeIds.length > 0) {
             this.selectedNodeIds.set([]);
@@ -1900,14 +1940,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private ensureNodeSize(node: NodeModel): NodeModel {
         return normalizeTableNodeSize(node);
-    }
-
-    private getDecisionTableVisualHeight(node: NodeModel): number {
-        return normalizeTableNodeSize(node).size.height;
-    }
-
-    private normalizeWaypointsForConnection(connection: ConnectionModel, waypoints: IPoint[] | undefined): IPoint[] {
-        return normalizeConnectionWaypoints(connection, this.flowService.nodes(), waypoints);
     }
 
     private bumpConnectionRenderVersion(connectionId: string): void {
