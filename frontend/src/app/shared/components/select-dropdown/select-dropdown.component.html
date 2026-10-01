@@ -39,7 +39,10 @@
                     <button
                         type="button"
                         class="select-dropdown__action"
+                        [class.select-dropdown__action--icon-only]="action.iconOnly"
                         [disabled]="action.disabled"
+                        [attr.aria-label]="action.iconOnly ? action.label : null"
+                        [attr.title]="action.iconOnly ? action.label : null"
                         (click)="onHeaderAction()"
                     >
                         @if (action.icon) {
@@ -48,7 +51,7 @@
                                 size="1rem"
                             />
                         }
-                        @if (action.label) {
+                        @if (action.label && !action.iconOnly) {
                             {{ action.label }}
                         }
                     </button>

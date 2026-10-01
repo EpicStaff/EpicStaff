@@ -28,8 +28,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    // Unselected pages read as accent-outlined links; the selected one is filled (see .active).
     background: transparent;
-    color: var(--color-text-primary);
+    color: var(--accent-color);
     border: 1px solid var(--accent-color);
     border-radius: 8px;
     font-size: 0.9rem;

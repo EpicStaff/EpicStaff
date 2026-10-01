@@ -1,5 +1,5 @@
 import { ConnectionModel } from '../models/connection.model';
-import { BaseNodeModel } from '../models/node.model';
+import { NodeModel } from '../models/node.model';
 import { isBackwardConnection } from './helpers';
 
 function node(
@@ -10,13 +10,13 @@ function node(
     height: number,
     portId: string,
     portPosition: string
-): BaseNodeModel {
+): NodeModel {
     return {
         id,
         position: { x, y },
         size: { width, height },
         ports: [{ id: portId, position: portPosition }],
-    } as unknown as BaseNodeModel;
+    } as unknown as NodeModel;
 }
 
 function connection(
@@ -79,6 +79,27 @@ describe('isBackwardConnection', () => {
         expect(isBackwardConnection(conn, [source, forwardTarget])).toBe(false);
     });
 
+    // A stacked pair (x-ranges overlap) wired top to bottom is a
+    // sequential wire through the gap, drawn solid; wired bottom to top it stays backward (dashed).
+    it('is false for a stacked pair whose target sits below the source', () => {
+        const source = node('source', 0, 0, 330, 60, 'source_out-right', 'right');
+        const conn = connection('source', 'source_out-right', 'target', 'target_in-left');
+
+        for (const targetX of [0, 40, -40]) {
+            const target = node('target', targetX, 120, 330, 60, 'target_in-left', 'left');
+
+            expect(isBackwardConnection(conn, [source, target])).toBe(false);
+        }
+    });
+
+    it('is true for a stacked pair whose target sits above the source', () => {
+        const source = node('source', 0, 120, 330, 60, 'source_out-right', 'right');
+        const target = node('target', 0, 0, 330, 60, 'target_in-left', 'left');
+        const conn = connection('source', 'source_out-right', 'target', 'target_in-left');
+
+        expect(isBackwardConnection(conn, [source, target])).toBe(true);
+    });
+
     it('is false when either node is missing', () => {
         const source = node('source', 0, 0, 100, 60, 'source_out-right', 'right');
         const conn = connection('source', 'source_out-right', 'missing-target', 'target_in-left');
@@ -87,10 +108,10 @@ describe('isBackwardConnection', () => {
     });
 
     it('stays true for a horizontally-backward connection regardless of the vertical gap between nodes', () => {
-        const source = node('source', 100, 300, 330, 60, 'source_out-right', 'right');
+        const source = node('source', 600, 300, 330, 60, 'source_out-right', 'right');
         const conn = connection('source', 'source_out-right', 'target', 'target_in-left');
 
-        for (const dy of [5, 25, 40, 60, 120, 200]) {
+        for (const dy of [-200, -5, 5, 25, 40, 60, 120, 200]) {
             const target = node('target', 100, 300 + dy, 330, 60, 'target_in-left', 'left');
 
             expect(isBackwardConnection(conn, [source, target])).toBe(true);

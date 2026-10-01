@@ -1,6 +1,8 @@
-import { Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ImportFlowRequestOptions } from '../../../core/services/import-export.service';
+import { PermissionsService } from '../../../services/auth/permissions.service';
 
 export type ImportFlowSettings = ImportFlowRequestOptions;
 
@@ -14,8 +16,21 @@ const DEFAULT_SETTINGS: ImportFlowSettings = {
 
 @Injectable({ providedIn: 'root' })
 export class ImportFlowSettingsService {
+    private readonly permissionsService = inject(PermissionsService);
     private readonly _settings = signal<ImportFlowSettings>(this.load());
     public readonly settings = this._settings.asReadonly();
+
+    // Replacing overwrites the matched flow in place, so the backend requires flow update permission for it.
+    public readonly canReplaceExisting = computed(() =>
+        this.permissionsService.can(ResourceCode.Flows, ActionCode.Update)
+    );
+
+    // The stored choice can outlive a permission or org change; never send a replace the user may not do.
+    public readonly requestSettings = computed<ImportFlowSettings>(() => ({
+        ...this._settings(),
+        replaceExisting:
+            this._settings().replaceExisting && this._settings().preserveUuids && this.canReplaceExisting(),
+    }));
 
     public update(patch: Partial<ImportFlowSettings>): void {
         const next = { ...this._settings(), ...patch };

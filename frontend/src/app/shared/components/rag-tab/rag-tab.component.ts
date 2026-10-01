@@ -292,6 +292,17 @@ export class RagTabComponent implements OnInit {
         return (this.activeGraphMethodSignal() ?? 'basic') as SuggestKey;
     });
 
+    // In readOnly mode, mirror the useSuggestedParams presentation: every
+    // editable control collapses to <app-suggested-value> so the user sees the
+    // effective values instead of disabled inputs.
+    displayValuesOnly = computed<boolean>(() => this.useSuggestedParams() || this.readOnly());
+
+    selectedSearchTypeLabel = computed<string>(() => {
+        const method = this.searchConfigsFormGroup?.get('search_method')?.value as GraphSearchMethod | null;
+        if (!method) return '';
+        return this.searchTypes().find((t) => t.value === method)?.name ?? String(method);
+    });
+
     textUnitProportionControl!: FormControl;
     communityProportionControl!: FormControl;
     driftLocalTextUnitPropControl!: FormControl;

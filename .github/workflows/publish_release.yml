@@ -76,6 +76,14 @@ jobs:
       - name: Install python deps
         run: pip install ruamel.yaml
 
+      # This uploads a two-file asset (docker-compose.yaml + .env.example), NOT a
+      # standalone install bundle. That compose file still mounts ./nginx/templates
+      # and ./nginx/certs relative to itself, and neither ships here -- it works only
+      # as an overlay on an existing git-cloned checkout (README's "How to verify a
+      # release" flow: pin/verify image digests, not `docker compose up` from this
+      # asset alone). GitHub's own auto-generated "Source code (zip/tar.gz)" on the
+      # same release page is the full, installable checkout -- don't confuse the two
+      # when reasoning about what a downloader gets.
       - name: Prepare release-archives dir
         shell: bash
         run: mkdir -p release-archives

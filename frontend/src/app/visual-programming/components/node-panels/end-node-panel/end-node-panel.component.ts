@@ -20,9 +20,10 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
                         <app-json-editor
                             class="json-editor"
                             [jsonData]="outputMapJson"
+                            [readonly]="isReadOnly()"
+                            [fullHeight]="false"
                             (jsonChange)="onOutputMapChange($event)"
                             (validationChange)="onOutputMapValidChange($event)"
-                            [fullHeight]="false"
                         ></app-json-editor>
                     </div>
                 </div>

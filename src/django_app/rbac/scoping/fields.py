@@ -153,6 +153,9 @@ class OrgScopedUniqueValidator(UniqueValidator):
             )]
         )
 
+    ``lookup`` (inherited from ``UniqueValidator``, default ``"exact"``) is honoured
+    by both checks — pass ``lookup="iexact"`` for case-insensitive names.
+
     If the request (and thus the active org) is absent from the serializer context
     the check is skipped and the DB constraint remains the backstop.
 
@@ -183,17 +186,17 @@ class OrgScopedUniqueValidator(UniqueValidator):
         if request is None:
             return
         org_id = resolve_active_org_id(request)
-        field_name = serializer_field.source_attrs[-1]
+        field_lookup = f"{serializer_field.source_attrs[-1]}__{self.lookup}"
         instance = getattr(serializer_field.parent, "instance", None)
 
-        queryset = self.queryset.filter(org_id=org_id, **{field_name: value})
+        queryset = self.queryset.filter(org_id=org_id, **{field_lookup: value})
         if instance is not None:
             queryset = queryset.exclude(pk=instance.pk)
         if queryset.exists():
             raise serializers.ValidationError(self.message, code="unique")
 
         if self.global_queryset is not None:
-            global_queryset = self.global_queryset.filter(**{field_name: value})
+            global_queryset = self.global_queryset.filter(**{field_lookup: value})
             if instance is not None:
                 global_queryset = global_queryset.exclude(pk=instance.pk)
             if global_queryset.exists():

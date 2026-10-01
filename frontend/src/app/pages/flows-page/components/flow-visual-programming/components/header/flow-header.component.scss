@@ -151,6 +151,24 @@
             }
         }
 
+        // Disabled buttons get no mouse events, so the tooltip lives on this wrapper and
+        // the disabled button lets the pointer through to it.
+        .tooltip-host {
+            display: inline-flex;
+            align-items: stretch;
+            min-width: 0;
+            max-width: 100%;
+            flex: 0 1 auto;
+
+            &:has(> button:disabled) {
+                cursor: not-allowed;
+            }
+
+            > button:disabled {
+                pointer-events: none;
+            }
+        }
+
         .sessions-button {
             background-color: transparent;
             color: var(--accent-color);
@@ -158,6 +176,10 @@
 
             &:hover {
                 background-color: var(--mauve-alpha-10);
+            }
+
+            &:disabled {
+                opacity: 0.4;
             }
         }
 
@@ -171,6 +193,10 @@
             &:hover {
                 background-color: var(--mauve-alpha-10);
             }
+        }
+
+        .get-curl-button:disabled {
+            opacity: 0.4;
         }
 
         .open-chat-button__icon {
@@ -200,8 +226,7 @@
             }
 
             &.disabled {
-                opacity: 0.7;
-                pointer-events: none;
+                opacity: 0.4;
             }
 
             &.save-split-btn--icon-only {
@@ -257,6 +282,10 @@
 
             &:active {
                 background-color: var(--accent-color);
+            }
+
+            &:disabled {
+                opacity: 0.6;
             }
         }
     }

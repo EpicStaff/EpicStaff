@@ -25,6 +25,7 @@ import {
 } from '../../../../features/knowledge-sources/models/collection.model';
 import { CollectionsApiService } from '../../../../features/knowledge-sources/services/collections-api.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
@@ -54,6 +55,7 @@ interface RagChoice {
         RagTabComponent,
         InputsYouCanUseComponent,
         ValidationErrorsComponent,
+        IfFlowEditableDirective,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],

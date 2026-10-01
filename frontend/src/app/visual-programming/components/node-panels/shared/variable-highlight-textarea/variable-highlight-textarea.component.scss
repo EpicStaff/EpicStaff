@@ -1,3 +1,5 @@
+@use './variable-highlight' as highlight;
+
 :host {
     display: block;
     width: 100%;
@@ -59,10 +61,7 @@
     scrollbar-gutter: stable;
 
     ::ng-deep .vht-variable {
-        color: var(--accent-color);
-        background-color: var(--color-ghost-btn-hover);
-        border-radius: 4px;
-        display: inline;
+        @include highlight.variable-token;
     }
 }
 
@@ -73,22 +72,15 @@
     display: block;
     width: 100%;
     min-height: 2.25rem;
-    background: transparent;
-    color: transparent;
-    caret-color: var(--color-ks-text);
     outline: none;
     resize: vertical;
     overflow: auto;
     scrollbar-gutter: stable;
     scroll-padding-block-end: 0.5em;
+    @include highlight.transparent-text;
 
     &::placeholder {
         color: var(--color-ks-transparent-text-60);
-    }
-
-    &::selection {
-        background-color: var(--purple-alpha-30);
-        color: transparent;
     }
 
     &:disabled {

@@ -146,6 +146,8 @@ class LiteLLMClient(BaseLLMClient):
         tool_list = self._build_tools(tools)
         if tool_list:
             kwargs["tools"] = tool_list
+            # Flow Assistant runs its own tool loop; without this flag litellm imports its proxy stack, which needs fastapi.
+            kwargs["_skip_mcp_handler"] = True
 
         return kwargs
 

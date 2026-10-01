@@ -11,17 +11,19 @@
                 <div class="att-cell att-cell--schema">Output Schema</div>
                 <div class="att-cell att-cell--context">Task Context</div>
                 <div class="att-cell att-cell--delete">
-                    <button
-                        type="button"
-                        class="att-clear-all"
-                        title="Clear all tasks"
-                        (click)="clearAll()"
-                    >
-                        <app-svg-icon
-                            icon="trash"
-                            size="14px"
-                        />
-                    </button>
+                    @if (!readonly()) {
+                        <button
+                            type="button"
+                            class="att-clear-all"
+                            title="Clear all tasks"
+                            (click)="clearAll()"
+                        >
+                            <app-svg-icon
+                                icon="trash"
+                                size="14px"
+                            />
+                        </button>
+                    }
                 </div>
             </div>
 
@@ -29,6 +31,7 @@
                 class="att-body"
                 cdkDropList
                 [cdkDropListData]="tasks()"
+                [cdkDropListDisabled]="readonly()"
                 (cdkDropListDropped)="onDrop($event)"
             >
                 @for (task of tasks(); track trackByTempId($index, task); let i = $index) {
@@ -36,27 +39,31 @@
                         class="att-row"
                         [class.att-row--even]="i % 2 === 1"
                         cdkDrag
+                        [cdkDragDisabled]="readonly()"
                     >
                         <div class="att-cell att-cell--index">
-                            <span
-                                class="att-drag-handle"
-                                cdkDragHandle
-                            >
-                                <app-svg-icon
-                                    icon="drag-handle"
-                                    size="14px"
-                                />
-                            </span>
+                            @if (!readonly()) {
+                                <span
+                                    class="att-drag-handle"
+                                    cdkDragHandle
+                                >
+                                    <app-svg-icon
+                                        icon="drag-handle"
+                                        size="14px"
+                                    />
+                                </span>
+                            }
                             <span class="att-row-number">{{ i + 1 }}</span>
                         </div>
 
                         <div class="att-cell att-cell--name">
                             <input
                                 class="att-input"
-                                [class.att-input--invalid]="isNameInvalid(task)"
+                                [class.att-input--invalid]="isNameInvalid(task) && !readonly()"
                                 type="text"
                                 placeholder="Enter name..."
                                 [value]="task.name"
+                                [readonly]="readonly()"
                                 (input)="onNameInput(i, $event)"
                             />
                         </div>
@@ -67,10 +74,11 @@
                         >
                             <app-variable-highlight-textarea
                                 class="att-textarea-highlight"
-                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task)"
+                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task) && !readonly()"
                                 placeholder="Describe what this task should do..."
                                 [value]="task.instructions"
                                 [variables]="variableNames()"
+                                [disabled]="readonly()"
                                 (valueChange)="onInstructionsInput(i, $event)"
                             ></app-variable-highlight-textarea>
                             <app-svg-icon
@@ -88,9 +96,10 @@
                         >
                             <textarea
                                 class="att-textarea att-textarea--schema"
-                                [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId)"
+                                [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId) && !readonly()"
                                 placeholder="Add schema..."
                                 [value]="getSchemaText(task)"
+                                [readonly]="readonly()"
                                 (input)="onSchemaInput(task.tempId, $event)"
                                 (blur)="onSchemaBlur(i, task)"
                             ></textarea>
@@ -105,10 +114,13 @@
 
                         <div
                             class="att-cell att-cell--context"
+                            [class.att-cell--readonly]="readonly()"
                             (click)="openContextPopup(i, $event)"
                         >
                             @if (getResolvedContext(task).length === 0) {
-                                <span class="att-context-placeholder">Add context...</span>
+                                @if (!readonly()) {
+                                    <span class="att-context-placeholder">Add context...</span>
+                                }
                             } @else {
                                 <div class="att-context-chips">
                                     @for (chip of getResolvedContext(task); track chip.tempId) {
@@ -122,17 +134,19 @@
                         </div>
 
                         <div class="att-cell att-cell--delete">
-                            <button
-                                type="button"
-                                class="att-remove-btn"
-                                title="Remove task"
-                                (click)="removeTask(i)"
-                            >
-                                <app-svg-icon
-                                    icon="x"
-                                    size="12px"
-                                />
-                            </button>
+                            @if (!readonly()) {
+                                <button
+                                    type="button"
+                                    class="att-remove-btn"
+                                    title="Remove task"
+                                    (click)="removeTask(i)"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="12px"
+                                    />
+                                </button>
+                            }
                         </div>
                     </div>
                 }
@@ -153,6 +167,7 @@
     [allowFlip]="true"
     checkboxPosition="left"
     [showClearFilter]="true"
+    [readonlyView]="readonly()"
     saveLabel="Save Changes"
     panelWidth="390px"
     searchPlaceholder="Search tasks..."

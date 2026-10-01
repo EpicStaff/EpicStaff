@@ -74,14 +74,19 @@ class StorageManager:
 
     # --- Path helpers ---
 
+    @staticmethod
+    def organization_prefix(org_id: int) -> str:
+        """Return the storage key prefix under which every object of an organization lives."""
+        return f"org_{org_id}/"
+
     def _build_storage_key(self, org_id: int, relative_path: str) -> str:
         """Return the full storage key for a relative path inside an org."""
         safe_path = sanitize_storage_path(relative_path, allow_empty=True, allow_leading_slash=True)
-        return f"org_{org_id}/{safe_path}"
+        return f"{self.organization_prefix(org_id)}{safe_path}"
 
     def _strip_org_prefix(self, org_id: int, storage_key: str) -> str:
         """Convert a full storage key back to a relative path by removing the org prefix."""
-        prefix = f"org_{org_id}/"
+        prefix = self.organization_prefix(org_id)
         if storage_key.startswith(prefix):
             return storage_key[len(prefix) :]
         return storage_key

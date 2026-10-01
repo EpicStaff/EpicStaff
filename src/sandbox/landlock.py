@@ -17,6 +17,11 @@ control is **TCP-only and port-granular**: Landlock net has no notion of IP
 address or hostname -- it cannot express "only connect to host X" -- and it
 does not cover UDP at all, so UDP traffic (including DNS resolution) is
 completely unrestricted by it regardless of what is passed to `apply()`.
+
+With `isolate_signals=True` (Landlock ABI 6+, kernel 6.12+) the process can
+no longer signal, or connect to an abstract UNIX socket of, any process
+outside its own Landlock domain; the supervisor can still signal it. Not
+covered: pathname UNIX sockets, and processes that never called `apply()`.
 """
 
 import ctypes
@@ -87,6 +92,12 @@ _LANDLOCK_ACCESS_NET_CONNECT_TCP = 1 << 1
 
 _MIN_ABI_FOR_NET = 4
 
+# --- LANDLOCK_SCOPE_* bit flags, introduced in ABI 6 ---------------------
+_LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET = 1 << 0
+_LANDLOCK_SCOPE_SIGNAL = 1 << 1
+
+MIN_ABI_FOR_SIGNAL_ISOLATION = 6
+
 _READ_ONLY_ACCESS_FS = _READ_FILE | _READ_DIR
 _READ_EXEC_ACCESS_FS = _READ_FILE | _READ_DIR | _EXECUTE
 _READ_WRITE_ACCESS_FS = (
@@ -117,15 +128,24 @@ class LandlockNetworkUnavailableError(RuntimeError):
     confined."""
 
 
+class LandlockSignalIsolationUnavailableError(RuntimeError):
+    """Raised when signal isolation (signals + abstract UNIX sockets) is requested
+    but the running kernel's Landlock ABI (< 6) cannot enforce it. Callers
+    must not treat this as "no isolation requested" and silently proceed
+    without it -- that would fail open and let the execution signal or connect
+    to every other execution running under the same uid."""
+
+
 class _RulesetAttr(ctypes.Structure):
-    # Both fields must always be declared: the size passed to
-    # landlock_create_ruleset() must match how many of these fields are
-    # actually populated (see apply()), and the kernel validates that size
-    # exactly. A struct that only ever declares handled_access_fs would make
-    # it impossible to opt into the net field at a later ctypes.sizeof() call.
+    # All fields must always be declared, in the kernel's order: the size
+    # passed to landlock_create_ruleset() says how many leading fields the
+    # kernel reads (see apply()), and the kernel validates that size exactly.
+    # A struct that only declared the leading fields would make it impossible
+    # to opt into a later field (net, then scope) at call time.
     _fields_ = [
         ("handled_access_fs", ctypes.c_uint64),
         ("handled_access_net", ctypes.c_uint64),
+        ("scoped", ctypes.c_uint64),
     ]
 
 
@@ -134,6 +154,7 @@ class _RulesetAttr(ctypes.Structure):
 # a struct-size computation crept in a compiler-dependent extra byte.
 _RULESET_ATTR_SIZE_FS_ONLY = 8
 _RULESET_ATTR_SIZE_FS_AND_NET = 16
+_RULESET_ATTR_SIZE_FS_NET_AND_SCOPE = 24
 
 
 class _PathBeneathAttr(ctypes.Structure):
@@ -210,6 +231,7 @@ def apply(
     roexec_paths: Iterable[str],
     *,
     allowed_tcp_ports: tuple[int, ...] | None = None,
+    isolate_signals: bool = False,
 ) -> None:
     """Irreversibly confine this process, and every descendant of it, to the
     given paths. `rw_paths` get full read/write/create/delete access,
@@ -225,6 +247,11 @@ def apply(
     Landlock network control is TCP-only and port-granular: it has no
     IP/hostname dimension and no UDP coverage at all -- DNS and other UDP
     traffic are unrestricted regardless of this parameter.
+
+    `isolate_signals=True` additionally blocks signals and abstract-UNIX-socket
+    connects to any process outside this process's new Landlock domain. On
+    Landlock ABI < 6, raises `LandlockSignalIsolationUnavailableError` rather than
+    failing open.
     """
     abi = abi_version()
     if abi < 1:
@@ -239,12 +266,35 @@ def apply(
             f"(requires ABI {_MIN_ABI_FOR_NET}+, kernel 6.7+); refusing to "
             "silently run without the requested TCP-port confinement."
         )
+    if isolate_signals and abi < MIN_ABI_FOR_SIGNAL_ISOLATION:
+        raise LandlockSignalIsolationUnavailableError(
+            f"Landlock ABI {abi} does not support signal isolation "
+            f"(requires ABI {MIN_ABI_FOR_SIGNAL_ISOLATION}+, kernel 6.12+); refusing to "
+            "silently run without the requested signal/abstract-socket isolation."
+        )
 
+    # The size argument tells the kernel how many leading u64 fields of
+    # _RulesetAttr to read: 8 = fs, 16 = fs + net, 24 = fs + net + scoped.
+    # Send the smallest size that covers what was requested, so older
+    # kernels that don't know a later field never see it.
     access_fs_mask = _access_fs_mask(abi)
-    if handle_net:
+    handled_access_net = (
+        _LANDLOCK_ACCESS_NET_BIND_TCP | _LANDLOCK_ACCESS_NET_CONNECT_TCP if handle_net else 0
+    )
+    if isolate_signals:
+        # The net field sits before scoped, so it must be sent too. 0 there
+        # means "net rights not handled", so signal isolation alone never
+        # starts denying TCP when no port allowlist was asked for.
         ruleset_attr = _RulesetAttr(
             handled_access_fs=access_fs_mask,
-            handled_access_net=(_LANDLOCK_ACCESS_NET_BIND_TCP | _LANDLOCK_ACCESS_NET_CONNECT_TCP),
+            handled_access_net=handled_access_net,
+            scoped=_LANDLOCK_SCOPE_SIGNAL | _LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET,
+        )
+        ruleset_attr_size = _RULESET_ATTR_SIZE_FS_NET_AND_SCOPE
+    elif handle_net:
+        ruleset_attr = _RulesetAttr(
+            handled_access_fs=access_fs_mask,
+            handled_access_net=handled_access_net,
         )
         ruleset_attr_size = _RULESET_ATTR_SIZE_FS_AND_NET
     else:

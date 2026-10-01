@@ -15,7 +15,7 @@ from agents.services.agent_inline_surface_service import AgentInlineSurfaceServi
 from agents.services.inline_surface_service import InlineSurfaceService
 from agents.services.surface_service import SurfaceService
 from tables.models.graph_models import AgentNode, Graph, StorageFile, TaskNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.fixture

@@ -31,6 +31,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from src.shared.models import PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
 from src.crew.utils.singleton_meta import SingletonMeta
 
@@ -629,4 +630,71 @@ async def test_prompt_with_output_schema_calls_llm_and_stores_result(monkeypatch
     assert result["variables"]["extracted_label"] == "positive"
     assert (
         result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "after_prompt"
+    )
+
+
+async def fake_run_code_raises(
+    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+):
+    raise RuntimeError("sandbox unreachable")
+
+
+_FAILING_CODE = PythonCodeData(
+    venv_name="default", code="def main(): pass", entrypoint="main", libraries=[]
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "run_code, expression, node_data_overrides",
+    [
+        (fake_run_code_error, "True", {}),
+        (fake_run_code_raises, "True", {}),
+        (fake_run_code_error, None, {"pre_python_code": _FAILING_CODE}),
+        (fake_run_code_error, None, {"post_python_code": _FAILING_CODE}),
+    ],
+    ids=[
+        "condition-error",
+        "condition-unexpected-error",
+        "pre-computation",
+        "post-computation",
+    ],
+)
+async def test_error_route_emits_finish_after_error(
+    monkeypatch, run_code, expression, node_data_overrides
+):
+    """Every error route closes the CDT run with a finish message, so the UI stops
+    grouping the next node's messages under the CDT."""
+    monkeypatch.setattr(RunPythonCodeService, "run_code", run_code, raising=True)
+
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="row1", expression=expression, continue_flag=False, order=0
+        ),
+    ]
+    node_data = make_node_data(
+        condition_groups=groups, next_error_node="error_node"
+    ).model_copy(update=node_data_overrides)
+    redis_service = MagicMock()
+    subgraph = ClassificationDecisionTableNodeSubgraph(
+        session_id=1,
+        node_data=node_data,
+        graph_builder=StateGraph(State),
+        stop_event=StopEvent(),
+        redis_service=redis_service,
+    ).build()
+
+    result = await subgraph.ainvoke(make_state())
+
+    messages = [
+        published.args[1]["message_data"]
+        for published in redis_service.publish.call_args_list
+        if published.args[0] == "graph:messages"
+    ]
+    message_types = [message["message_type"] for message in messages]
+    assert message_types[0] == "start"
+    assert message_types[-2:] == ["error", "finish"]
+    assert messages[-1]["output"] == "error_node"
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
     )

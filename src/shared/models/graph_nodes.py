@@ -47,6 +47,17 @@ class FileExtractorNodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class KeyValueNodeData(BaseModel):
+    node_name: str
+    key_value_table_id: int | None = None
+    mode: Literal["read", "write", "delete"]
+    entries: list[dict[str, Any]] = Field(default_factory=list)
+    input_map: dict[str, Any]
+    output_variable_path: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AudioTranscriptionNodeData(BaseModel):
     node_name: str
     input_map: dict[str, Any]
@@ -259,6 +270,7 @@ class GraphData(BaseModel):
     python_node_list: list[PythonNodeData] = []
     knowledge_node_list: list[KnowledgeNodeData] = []
     file_extractor_node_list: list[FileExtractorNodeData] = []
+    key_value_node_list: list[KeyValueNodeData] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []
     task_node_list: list[TaskNodeData] = []

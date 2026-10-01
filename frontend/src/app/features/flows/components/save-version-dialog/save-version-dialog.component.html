@@ -28,7 +28,7 @@
                     autocomplete="off"
                 />
                 @if (form.get('name')?.touched) {
-                    @if (form.get('name')?.hasError('required')) {
+                    @if (form.get('name')?.hasError('required') || form.get('name')?.hasError('whitespace')) {
                         <div class="error-message">Version name is required.</div>
                     } @else if (form.get('name')?.hasError('maxlength')) {
                         <div class="error-message">Max length is 255 characters.</div>

@@ -65,6 +65,7 @@
         flex: 1;
         min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
         scrollbar-gutter: stable;
         row-gap: 0.375rem;
     }
@@ -163,6 +164,9 @@
 
         &--readonly {
             cursor: default;
+            background: transparent;
+            border-color: var(--purple-alpha-70);
+            color: var(--text-secondary-60);
         }
 
         &--checkbox-left {

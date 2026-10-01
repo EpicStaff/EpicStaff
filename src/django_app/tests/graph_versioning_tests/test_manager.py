@@ -2,7 +2,7 @@
 
 import pytest
 
-from tables.graph_versioning.constants import _GRAPH_RELATION_NAMES
+from tables.import_export.strategies.graph import GRAPH_CHILD_RELATIONS, GraphStrategy
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
@@ -314,7 +314,7 @@ def test_wipe_graph_children_removes_agent_nodes(manager, graph, agent_definitio
     )
     assert graph.agent_node_list.count() == 1
 
-    manager._wipe_graph_children(graph)
+    GraphStrategy().wipe_graph_children(graph)
 
     assert graph.agent_node_list.count() == 0
 
@@ -334,7 +334,7 @@ def test_wipe_graph_children_deletes_orphan_python_codes(
     PythonNode.objects.create(graph=graph, python_code=code)
 
     with django_capture_on_commit_callbacks(execute=True):
-        manager._wipe_graph_children(graph)
+        GraphStrategy().wipe_graph_children(graph)
 
     assert not PythonCode.objects.filter(id=code.id).exists()
 
@@ -349,7 +349,7 @@ def test_wipe_graph_children_keeps_shared_python_codes(
     node = PythonNode.objects.create(graph=graph, python_code=python_code)
 
     with django_capture_on_commit_callbacks(execute=True):
-        manager._wipe_graph_children(graph)
+        GraphStrategy().wipe_graph_children(graph)
 
     # PythonNode must be gone
     assert not PythonNode.objects.filter(id=node.id).exists()
@@ -364,7 +364,7 @@ def test_wipe_graph_children_deletes_orphan_python_codes_from_cdt_node(
     manager, graph, django_capture_on_commit_callbacks
 ):
     """CDT pre/post python_code columns are the gap the manual cleanup block
-    in _wipe_graph_children missed (it only collected PythonNode /
+    in wipe_graph_children missed (it only collected PythonNode /
     ConditionalEdge / WebhookTriggerNode ids). The generic post_delete signal
     on ClassificationDecisionTableNode must cover both columns instead."""
     from tables.models import ClassificationDecisionTableNode, PythonCode
@@ -379,7 +379,7 @@ def test_wipe_graph_children_deletes_orphan_python_codes_from_cdt_node(
     )
 
     with django_capture_on_commit_callbacks(execute=True):
-        manager._wipe_graph_children(graph)
+        GraphStrategy().wipe_graph_children(graph)
 
     assert not PythonCode.objects.filter(id=pre_code.id).exists()
     assert not PythonCode.objects.filter(id=post_code.id).exists()
@@ -658,7 +658,7 @@ def test_create_graph_from_snapshot_recreates_edge_with_remapped_node_ids(
 
 
 # ---------------------------------------------------------------------------
-# Group H: regression — nodes missing from _GRAPH_RELATION_NAMES
+# Group H: regression — nodes missing from GRAPH_CHILD_RELATIONS
 # ---------------------------------------------------------------------------
 
 
@@ -669,7 +669,7 @@ def test_restore_does_not_raise_integrity_error_for_classification_decision_tabl
     """
     Restore must not raise IntegrityError for ClassificationDecisionTableNode.
 
-    Before the fix, _wipe_graph_children() did not delete
+    Before the fix, wipe_graph_children() did not delete
     classification_decision_table_node_list rows. The subsequent recreate
     would violate unique_graph_node_name_for_classification_dt_node.
     """
@@ -721,7 +721,7 @@ def test_restore_does_not_duplicate_schedule_trigger_node(manager, graph):
     """
     Restore must not accumulate duplicate ScheduleTriggerNode rows.
 
-    Before the fix, _wipe_graph_children() silently skipped
+    Before the fix, wipe_graph_children() silently skipped
     schedule_trigger_node_list, so each restore appended new rows
     without removing the old ones.
     """
@@ -746,7 +746,7 @@ def test_restore_does_not_duplicate_agent_node(manager, graph):
     """
     Restore must not accumulate duplicate AgentNode rows.
 
-    Before the fix, _wipe_graph_children() silently skipped
+    Before the fix, wipe_graph_children() silently skipped
     agent_node_list, so each restore appended a new snapshot copy
     on top of the existing node instead of replacing it.
     """
@@ -767,7 +767,7 @@ def test_restore_does_not_duplicate_task_node(manager, graph):
     """
     Restore must not accumulate duplicate TaskNode rows.
 
-    Before the fix, _wipe_graph_children() silently skipped
+    Before the fix, wipe_graph_children() silently skipped
     task_node_list, so each restore appended a new snapshot copy
     on top of the existing node instead of replacing it.
     """
@@ -784,6 +784,32 @@ def test_restore_does_not_duplicate_task_node(manager, graph):
 
 
 @pytest.mark.django_db
+def test_restore_recreates_key_value_node_with_its_table(manager, graph):
+    from tables.models import KeyValueNode, KeyValueTable
+
+    table = KeyValueTable.objects.create(org=graph.org, name="Customers")
+    node = KeyValueNode.objects.create(
+        graph=graph,
+        node_name="key_value_node",
+        key_value_table=table,
+        mode="write",
+        entries=[{"key": "k", "value": "variables.v"}],
+    )
+    snapshot = manager.create_snapshot(graph)
+    # Edit after the snapshot, so only a real wipe-and-rebuild restores the old state.
+    node.mode = "delete"
+    node.key_value_table = None
+    node.save()
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    restored = graph.key_value_node_list.get()
+    assert restored.key_value_table_id == table.id
+    assert restored.mode == "write"
+    assert restored.entries == [{"key": "k", "value": "variables.v"}]
+
+
+@pytest.mark.django_db
 def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
     """
     Guard against regression: every reverse relation on Graph that
@@ -791,9 +817,9 @@ def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
 
     Derives the expected relation names directly from Graph's reverse
     relations instead of hardcoding them, so a newly added node type
-    that is forgotten in _GRAPH_RELATION_NAMES fails this test.
+    that is forgotten in GRAPH_CHILD_RELATIONS fails this test.
     """
-    # crew_node_list is deliberately excluded from _GRAPH_RELATION_NAMES: the
+    # crew_node_list is deliberately excluded from GRAPH_CHILD_RELATIONS: the
     # CrewNode model is kept only so pre-CrewAI-removal rows still load, and it
     # is neither snapshotted nor recreated on restore.
     DEPRECATED_RELATION_NAMES = {"crew_node_list"}
@@ -812,7 +838,7 @@ def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
     }
 
     missing_from_wipe_list = (
-        expected_relation_names - set(_GRAPH_RELATION_NAMES) - DEPRECATED_RELATION_NAMES
+        expected_relation_names - set(GRAPH_CHILD_RELATIONS) - DEPRECATED_RELATION_NAMES
     )
 
     assert missing_from_wipe_list == set()

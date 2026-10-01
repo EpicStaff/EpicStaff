@@ -12,4 +12,4 @@ to load variables from `.env` file
 
 ## Testing
 ### Send a Test Webhook
-curl -X POST "https://punctiliously-interfraternal-millicent.ngrok-free.dev/webhooks/1/" -H "Content-Type: application/json" -d "{\"event\": \"test\"}"
+curl -X POST "https://your-custom-domain.ngrok.app/webhooks/1/" -H "Content-Type: application/json" -d "{\"event\": \"test\"}"

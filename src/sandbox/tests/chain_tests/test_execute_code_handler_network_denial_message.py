@@ -17,7 +17,7 @@ Layer A — the generated preamble (real subprocess, no real seccomp filter):
 Layer B — wiring in ExecuteCodeHandler.handle():
   SANDBOX_NETWORK_BLOCKED must reach the child's environment as "all" for
   BLOCK_ALL, "storage_only" for ALLOW_PORTS, and be absent otherwise. Same
-  fake-subprocess approach as test_execute_code_handler_network.py.
+  fake-subprocess approach as test_execute_code_handler_isolation.py.
 """
 
 import json

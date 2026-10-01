@@ -13,6 +13,7 @@ LIST_KEY_TO_ENTITY_TYPE: dict[str, EntityType] = {
     "python_node_list": EntityType.PYTHON_NODE,
     "audio_transcription_node_list": EntityType.AUDIO_TRANSCRIPTION_NODE,
     "file_extractor_node_list": EntityType.FILE_EXTRACTOR_NODE,
+    "key_value_node_list": EntityType.KEY_VALUE_NODE,
     "telegram_trigger_node_list": EntityType.TELEGRAM_TRIGGER_NODE,
     "webhook_trigger_node_list": EntityType.WEBHOOK_TRIGGER_NODE,
     "decision_table_node_list": EntityType.DECISION_TABLE_NODE,

@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, untracked } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
@@ -58,6 +58,11 @@ export class FilesListPageComponent {
             link: 'storage',
             isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
         },
+        {
+            label: 'Key-Value Tables',
+            link: 'key-value-tables',
+            isPermitted: () => this.permissionService.can(ResourceCode.KeyValueTables, ActionCode.Read),
+        },
     ];
 
     readonly searchTerm = this.filesSearchService.searchTerm;
@@ -69,6 +74,18 @@ export class FilesListPageComponent {
             startWith(this.router.url)
         )
     );
+
+    // The one search box means something different on each tab, so a term never carries over a tab switch.
+    private readonly activeTabLink = computed(() => {
+        const url = this.currentUrl();
+        return this.tabs.find((tab) => url?.includes(`/${tab.link}`))?.link ?? null;
+    });
+    // Key-Value Tables searches keys in its own grid header, next to "Add entry".
+    readonly showSearch = computed(() => this.activeTabLink() !== 'key-value-tables');
+    readonly clearSearchOnTabChange = effect(() => {
+        this.activeTabLink();
+        untracked(() => this.filesSearchService.clear());
+    });
 
     activeTabBtn = computed(() => {
         const url = this.currentUrl();

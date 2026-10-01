@@ -41,6 +41,8 @@ export interface AppTableColumnDef {
     headerIconActive?: boolean;
     /** If > 0, renders an "(N)" badge next to the header label (e.g. active filter count) */
     headerBadgeCount?: number;
+    /** Current sort of this column, exposed to assistive tech as `aria-sort` on the header cell. Omit when unsorted. */
+    sortDirection?: 'ascending' | 'descending';
     /**
      * Filter selection mode when `filterItems` is set.
      *  - `multi` (default): user can pick multiple values; `filterChange` emits the full array.

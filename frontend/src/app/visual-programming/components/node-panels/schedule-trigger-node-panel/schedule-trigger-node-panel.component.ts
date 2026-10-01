@@ -155,6 +155,13 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         { label: 'After N runs', value: 'after_n_runs' },
     ];
 
+    readonly runModeLabel = computed<string>(
+        () => this.runModeOptions.find((o) => o.value === this.runMode())?.label ?? '—'
+    );
+    readonly endModeLabel = computed<string>(
+        () => this.endModeOptions.find((o) => o.value === this.endMode())?.label ?? '—'
+    );
+
     readonly repeatUnitItems: SelectItem[] = [
         { name: 'Seconds', value: 'seconds' },
         { name: 'Minutes', value: 'minutes' },

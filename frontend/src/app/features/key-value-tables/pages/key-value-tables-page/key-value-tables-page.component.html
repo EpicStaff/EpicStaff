@@ -1,0 +1,27 @@
+<div class="key-value-tables-page">
+    <aside class="key-value-tables-page__sidebar">
+        <app-key-value-table-list
+            [tables]="keyValueTablesStorage.tables()"
+            [selectedId]="selectedTableId()"
+            [canCreate]="canCreate()"
+            [canRename]="canUpdate()"
+            [canDelete]="canDelete()"
+            (createRequested)="onCreate()"
+            (selected)="selectedTableId.set($event.id)"
+            (renameRequested)="onRename($event)"
+            (deleteRequested)="onDelete($event)"
+        />
+    </aside>
+
+    <section class="key-value-tables-page__content">
+        @if (selectedTable(); as table) {
+            <app-key-value-entries-grid
+                [table]="table"
+                [canCreate]="canCreate()"
+                [canUpdate]="canUpdate()"
+                [canDelete]="canDelete()"
+                (changed)="keyValueTablesStorage.triggerRefresh()"
+            />
+        }
+    </section>
+</div>

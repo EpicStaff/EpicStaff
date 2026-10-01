@@ -25,6 +25,7 @@
                                 formControlName="node_name"
                                 placeholder="Enter node name"
                                 [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
                             ></app-custom-input>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
@@ -45,12 +46,14 @@
                                 emptyText="No agents available"
                                 [items]="agentItems()"
                                 [selected]="selectedAgentValue()"
+                                [readonly]="isReadOnly()"
                                 (selectionChange)="onAgentSelectionChange($event)"
                             >
                                 <button
                                     type="button"
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
+                                    [class.dropdown-trigger--readonly]="isReadOnly()"
                                     [class.dropdown-trigger--invalid]="agentInvalid()"
                                 >
                                     <span
@@ -60,6 +63,7 @@
                                         {{ selectedAgentName() || 'Select agent' }}
                                     </span>
                                     <app-svg-icon
+                                        *appIfFlowEditable
                                         icon="chevron-down-filled"
                                         size="8px"
                                     />
@@ -83,6 +87,7 @@
                                     color="white"
                                     [grouped]="true"
                                     [label]="surfaceSummaryLabel()"
+                                    [readonlyView]="isReadOnly()"
                                     searchPlaceholder="Search item..."
                                     emptyText="No surfaces available"
                                     checkboxPosition="left"
@@ -114,10 +119,14 @@
                         </div>
 
                         <div class="input-map">
-                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                            <app-input-map
+                                [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
+                            ></app-input-map>
                         </div>
 
                         <app-inputs-you-can-use
+                            *appIfFlowEditable
                             [names]="inputMapKeys()"
                             (insert)="insertInputToInstructions($event)"
                         />
@@ -128,6 +137,7 @@
                             formControlName="output_variable_path"
                             placeholder="Enter output variable path (leave empty for null)"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
 
                         <div class="field task-section">
@@ -146,11 +156,13 @@
                                 [selectedCell]="isExpanded() ? effectiveRightPane() : null"
                                 [showValidation]="tasksTouched()"
                                 [variableNames]="inputMapKeys()"
+                                [readonly]="isReadOnly()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
                             ></app-agent-tasks-table>
 
                             <button
+                                *appIfFlowEditable
                                 type="button"
                                 class="add-task-btn"
                                 (click)="addTask()"
@@ -196,6 +208,7 @@
                                 [subtitle]="'Output Schema — Task ' + selectedTaskNumber()"
                                 [fullHeight]="true"
                                 [exampleHint]="outputSchemaExampleHint"
+                                [readonly]="isReadOnly()"
                             ></app-json-editor>
                             @if (rightSchemaError()) {
                                 <div class="task-error">{{ rightSchemaError() }}</div>
@@ -215,6 +228,7 @@
                                 </div>
                                 <div class="main-editor-pane__actions">
                                     <app-instructions-view-toggle
+                                        *appIfFlowEditable
                                         [view]="instructionsView()"
                                         (viewChange)="setInstructionsView($event)"
                                     />
@@ -272,6 +286,7 @@
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
@@ -292,6 +307,7 @@
                             emptyText="No agents available"
                             [items]="agentItems()"
                             [selected]="selectedAgentValue()"
+                            [readonly]="isReadOnly()"
                             (selectionChange)="onAgentSelectionChange($event)"
                         >
                             <button
@@ -299,6 +315,7 @@
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
                                 [class.dropdown-trigger--invalid]="agentInvalid()"
+                                [class.dropdown-trigger--readonly]="isReadOnly()"
                             >
                                 <span
                                     class="dropdown-trigger__label"
@@ -307,6 +324,7 @@
                                     {{ selectedAgentName() || 'Select agent' }}
                                 </span>
                                 <app-svg-icon
+                                    *appIfFlowEditable
                                     icon="chevron-down-filled"
                                     size="8px"
                                 />
@@ -333,6 +351,7 @@
                                 searchPlaceholder="Search item..."
                                 emptyText="No surfaces available"
                                 checkboxPosition="left"
+                                [readonlyView]="isReadOnly()"
                                 [items]="surfaceMultiSelectItems()"
                                 [selectedValues]="surfaceSelectedValues()"
                                 (selectionChange)="onSurfacesChange($event)"
@@ -361,10 +380,14 @@
                     </div>
 
                     <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                        <app-input-map
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-input-map>
                     </div>
 
                     <app-inputs-you-can-use
+                        *appIfFlowEditable
                         [names]="inputMapKeys()"
                         (insert)="insertInputToInstructions($event)"
                     />
@@ -375,6 +398,7 @@
                         formControlName="output_variable_path"
                         placeholder="Enter output variable path (leave empty for null)"
                         [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
 
                     <div class="field task-section">
@@ -393,11 +417,13 @@
                             [selectedCell]="isExpanded() ? effectiveRightPane() : null"
                             [showValidation]="tasksTouched()"
                             [variableNames]="inputMapKeys()"
+                            [readonly]="isReadOnly()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
                         ></app-agent-tasks-table>
 
                         <button
+                            *appIfFlowEditable
                             type="button"
                             class="add-task-btn"
                             (click)="addTask()"

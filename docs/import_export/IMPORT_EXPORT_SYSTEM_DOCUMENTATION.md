@@ -61,9 +61,12 @@ creation are organization-scoped:
     rows **or** custom rows in the active org — e.g.
     `Q(is_custom=False) | Q(org_id=org_id)` (models) /
     `Q(built_in=True) | Q(org_id=org_id)` (python tools).
-  - **WebhookTrigger** has no org column; it matches only when a flow in the
-    active org already references its path —
-    `Q(webhook_trigger_nodes__graph__org_id=org_id)`.
+  - **WebhookTrigger** is org-scoped directly — `Q(org_id=org_id)`. `path` is
+    globally unique, so `find_existing` tries the exact path first, then the
+    `<path>-org<org_id>` rename an earlier import may have created. If another
+    org owns the path, `create_entity` stores the trigger under a free variant
+    (`<path>-org<org_id>`, then `-2`, `-3`, …) instead of failing; the owning
+    org's trigger is never reused or modified.
   - **Tags** are global and never scoped (default `Q()`).
 - **Creation (`create_entity`)** stamps the active org, overriding any `org`
   carried in the export file. Org-scoped serializers that have a `(org, name)`

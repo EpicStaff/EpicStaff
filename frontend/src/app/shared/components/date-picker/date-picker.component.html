@@ -12,7 +12,8 @@
         #triggerEl
         [class.date-picker__trigger--open]="isOpen()"
         [class.date-picker__trigger--disabled]="isDisabled()"
-        [class.date-picker__trigger--error]="errorMessage() || inputError()"
+        [class.date-picker__trigger--readonly]="readonly()"
+        [class.date-picker__trigger--error]="(errorMessage() || inputError()) && !readonly()"
         [style.--active-color]="activeColor()"
     >
         <i class="ti ti-calendar date-picker__icon"></i>
@@ -21,31 +22,34 @@
             class="date-picker__input"
             [placeholder]="placeholder()"
             [disabled]="isDisabled()"
+            [readonly]="readonly()"
             [ngModel]="inputValue()"
             (ngModelChange)="onDateInput($event)"
             (click)="$event.stopPropagation()"
             (keydown.enter)="onEnterKey()"
         />
-        <svg
-            class="date-picker__chevron"
-            [class.date-picker__chevron--open]="isOpen()"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            (click)="$event.stopPropagation(); toggleDropdown()"
-        >
-            <path
-                d="M6 9l6 6 6-6"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-            />
-        </svg>
+        @if (!readonly()) {
+            <svg
+                class="date-picker__chevron"
+                [class.date-picker__chevron--open]="isOpen()"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                (click)="$event.stopPropagation(); toggleDropdown()"
+            >
+                <path
+                    d="M6 9l6 6 6-6"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linecap="round"
+                />
+            </svg>
+        }
     </div>
 </div>
 
-@if (errorMessage()) {
+@if (errorMessage() && !readonly()) {
     <div class="date-picker__error">{{ errorMessage() }}</div>
 }
 

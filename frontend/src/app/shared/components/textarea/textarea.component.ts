@@ -35,9 +35,11 @@ export class TextareaComponent implements ControlValueAccessor {
     required = input<boolean>(false);
     invalid = input<boolean>(false);
     disabled = input<boolean>(false);
+    readonly = input<boolean>(false);
 
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
+    isReadonly = this.readonly;
 
     value = signal<string>('');
 
@@ -68,7 +70,7 @@ export class TextareaComponent implements ControlValueAccessor {
     }
 
     handleInput(event: Event): void {
-        if (this.isDisabled()) return;
+        if (this.isDisabled() || this.isReadonly()) return;
         const val = (event.target as HTMLTextAreaElement).value;
         this.value.set(val);
         this.onChange(val);
@@ -79,7 +81,6 @@ export class TextareaComponent implements ControlValueAccessor {
     }
 
     onResizeStart(event: PointerEvent): void {
-        if (this.isDisabled()) return;
         event.preventDefault();
         this.resizing = true;
         this.dragStartY = event.clientY;

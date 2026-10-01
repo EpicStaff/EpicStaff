@@ -54,6 +54,8 @@ class TestGraphRoundTrip:
         original_uuid = graph.uuid
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        # An active flow keeps its uuid unless replaced, so free it the way a delete would.
+        graph.delete()
 
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, settings=ImportSettings(preserve_uuids=True)

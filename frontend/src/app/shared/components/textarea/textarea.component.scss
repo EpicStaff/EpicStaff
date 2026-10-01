@@ -27,6 +27,14 @@
     &.disabled {
         opacity: 0.7;
     }
+
+    &.readonly {
+        opacity: 0.7;
+
+        &:focus-within {
+            border-color: var(--color-divider-subtle);
+        }
+    }
 }
 
 .textarea {

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
@@ -6,10 +8,12 @@ from tables.models.graph_models import WebhookTriggerNode
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
+    RealtimeChannel,
     TwilioChannel,
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
+from tables.services.redis_service import RedisService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
@@ -102,27 +106,41 @@ def webhook_trigger_node_post_delete_handler(sender, instance: WebhookTriggerNod
     _cleanup_orphaned_webhook_node_auth(instance.webhook_trigger_id)
 
 
-def _cleanup_orphaned_auth_if_unclaimed(
-    trigger_id: int | None, kind: str, still_claimed: bool
+def cleanup_orphaned_auth_if_unclaimed(
+    trigger_id: int | None, kind: str, is_claimed: Callable[[], bool]
 ) -> None:
-    if trigger_id is None or still_claimed:
+    """Delete the trigger's `kind` auth after commit unless something claims the trigger.
+
+    Deferred to commit, and the claim re-checked then, so a delete + recreate in one
+    transaction (version restore, import replace) keeps the credentials the
+    recreated node re-attaches to. A rolled-back transaction deletes nothing.
+    """
+    if trigger_id is None:
         return
-    WebhookTriggerAuth.objects.filter(trigger_id=trigger_id, kind=kind).delete()
+
+    def delete_if_unclaimed() -> None:
+        if not is_claimed():
+            WebhookTriggerAuth.objects.filter(trigger_id=trigger_id, kind=kind).delete()
+
+    # robust: a failed cleanup must not turn an already-committed request into a 500.
+    transaction.on_commit(delete_if_unclaimed, robust=True)
 
 
 def _cleanup_orphaned_twilio_auth(trigger_id: int | None) -> None:
-    _cleanup_orphaned_auth_if_unclaimed(
+    cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.TWILIO,
-        still_claimed=TwilioChannel.objects.filter(webhook_trigger_id=trigger_id).exists(),
+        is_claimed=lambda: TwilioChannel.objects.filter(webhook_trigger_id=trigger_id).exists(),
     )
 
 
 def _cleanup_orphaned_webhook_node_auth(trigger_id: int | None) -> None:
-    _cleanup_orphaned_auth_if_unclaimed(
+    cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.WEBHOOK,
-        still_claimed=WebhookTriggerNode.objects.filter(webhook_trigger_id=trigger_id).exists(),
+        is_claimed=lambda: WebhookTriggerNode.objects.filter(
+            webhook_trigger_id=trigger_id
+        ).exists(),
     )
 
 
@@ -170,3 +188,23 @@ def twilio_channel_post_save_handler(sender, instance: TwilioChannel, **_):
 def twilio_channel_post_delete_handler(sender, instance: TwilioChannel, **_):
     trigger_id = instance.webhook_trigger_id
     _cleanup_orphaned_twilio_auth(trigger_id)
+
+
+def _invalidate_realtime_channel_cache(token) -> None:
+    """Publish a cache-invalidation event for `token` so `realtime`'s per-channel config cache stops serving a changed or removed RealtimeChannel."""
+
+    RedisService().publish_channel_invalidation(token)
+
+
+@receiver(post_save, sender=RealtimeChannel)
+def realtime_channel_post_save_handler(sender, instance: RealtimeChannel, **_):
+    """Invalidate the realtime service's cached channel config after every RealtimeChannel save, including cascaded ones."""
+    token = instance.token
+    transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))
+
+
+@receiver(post_delete, sender=RealtimeChannel)
+def realtime_channel_post_delete_handler(sender, instance: RealtimeChannel, **_):
+    """Invalidate the realtime service's cached channel config after every RealtimeChannel delete, including cascaded ones."""
+    token = instance.token
+    transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))

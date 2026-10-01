@@ -19,6 +19,7 @@ _NODE_ENTITY_TYPES = {
     EntityType.PYTHON_NODE,
     EntityType.AUDIO_TRANSCRIPTION_NODE,
     EntityType.FILE_EXTRACTOR_NODE,
+    EntityType.KEY_VALUE_NODE,
     EntityType.TELEGRAM_TRIGGER_NODE,
     EntityType.WEBHOOK_TRIGGER_NODE,
     EntityType.DECISION_TABLE_NODE,
@@ -87,6 +88,7 @@ class PartialImportService:
                 },
                 id_mapper,
                 is_partial=True,
+                user=user,
             )
 
         return id_mapper

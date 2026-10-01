@@ -38,7 +38,9 @@ class CopyActionMixin:
             extra["org_id"] = self.get_active_org_id()
         try:
             with transaction.atomic():
-                new_instance = self.copy_service_class().copy(instance, name=name, **extra)
+                new_instance = self.copy_service_class().copy(
+                    instance, name=name, user=request.user, **extra
+                )
         except IntegrityError:
             logger.warning(
                 "Copy of %s#%s raced on a unique constraint; client should retry.",

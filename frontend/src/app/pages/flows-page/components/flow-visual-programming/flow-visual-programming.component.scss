@@ -21,16 +21,25 @@ app-flow-header {
     overflow: hidden;
     position: relative;
 
-    app-flow-graph {
+    app-flow-graph,
+    app-flow-version-preview,
+    .canvas-placeholder {
         flex: 1;
         min-width: 0;
+    }
+
+    .canvas-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 }
 
 .restore-warning-btn {
     position: absolute;
-    bottom: 3.5rem;
-    left: 2rem;
+    // Stacked above the canvas undo/redo panel (bottom/left 1rem, 38px high), aligned with its left edge.
+    bottom: calc(1rem + 38px + var(--space-sm));
+    left: 1rem;
     z-index: 100;
     display: flex;
     align-items: center;
@@ -81,6 +90,11 @@ app-flow-header {
 
     &.collapsed {
         cursor: default;
+    }
+
+    &.preview-mode {
+        width: 0;
+        pointer-events: none;
     }
 }
 

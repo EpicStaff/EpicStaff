@@ -51,34 +51,44 @@
     </div>
     <app-graph-presence-indicators [editors]="editors" />
     <div class="header-actions">
-        <button
-            class="sessions-button"
-            [appCollapseOnOverflow]="true"
-            collapseOnOverflowTarget=".btn-label"
-            collapseOnOverflowClass="btn--icon-only"
-            collapseOnOverflowRequireSelector="app-svg-icon"
-            matTooltip="Sessions"
+        <span
+            class="tooltip-host"
+            [matTooltip]="isPreviewMode() ? 'Exit preview mode to view sessions' : 'Sessions'"
             matTooltipPosition="below"
-            (click)="onViewSessions()"
         >
-            <app-svg-icon
-                icon="history"
-                size="1.25rem"
-            />
-            <span class="btn-label">Sessions</span>
-        </button>
-        <button
-            class="get-curl-button"
-            [appCollapseOnOverflow]="true"
-            collapseOnOverflowTarget=".btn-label"
-            collapseOnOverflowClass="btn--icon-only"
-            collapseOnOverflowRequireSelector="app-svg-icon"
-            matTooltip="Get CURL"
+            <button
+                class="sessions-button"
+                [appCollapseOnOverflow]="true"
+                collapseOnOverflowTarget=".btn-label"
+                collapseOnOverflowClass="btn--icon-only"
+                collapseOnOverflowRequireSelector="app-svg-icon"
+                [disabled]="isPreviewMode()"
+                (click)="onViewSessions()"
+            >
+                <app-svg-icon
+                    icon="history"
+                    size="1.25rem"
+                />
+                <span class="btn-label">Sessions</span>
+            </button>
+        </span>
+        <span
+            class="tooltip-host"
+            [matTooltip]="isPreviewMode() ? 'Exit preview mode to get the cURL command' : 'Get cURL'"
             matTooltipPosition="below"
-            (click)="onGetCurl()"
         >
-            <span class="btn-label">Get CURL</span>
-        </button>
+            <button
+                class="get-curl-button"
+                [appCollapseOnOverflow]="true"
+                collapseOnOverflowTarget=".btn-label"
+                collapseOnOverflowClass="btn--icon-only"
+                collapseOnOverflowRequireSelector="app-svg-icon"
+                [disabled]="isPreviewMode()"
+                (click)="onGetCurl()"
+            >
+                <span class="btn-label">Get cURL</span>
+            </button>
+        </span>
         @if (isEpicChatEnabled) {
             <button
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
@@ -124,41 +134,49 @@
                 #saveSplitOrigin="cdkOverlayOrigin"
                 cdkOverlayOrigin
                 class="save-split-btn"
-                [class.disabled]="isSaving || isRunning"
+                [class.disabled]="isSaving || isRunning || isPreviewMode()"
                 [appCollapseOnOverflow]="true"
                 collapseOnOverflowTarget=".btn-label"
                 collapseOnOverflowClass="save-split-btn--icon-only"
                 collapseOnOverflowRequireSelector="app-svg-icon"
             >
-                <button
-                    class="save-split-btn__main"
-                    [disabled]="isSaving || isRunning"
-                    matTooltip="Save"
+                <span
+                    class="tooltip-host"
+                    [matTooltip]="isPreviewMode() ? 'Exit preview mode to save' : 'Save'"
                     matTooltipPosition="below"
-                    (click)="onSave()"
                 >
-                    @if (isSaving) {
-                        <app-spinner2 [size]="16"></app-spinner2>
-                    } @else {
+                    <button
+                        class="save-split-btn__main"
+                        [disabled]="isSaving || isRunning || isPreviewMode()"
+                        (click)="onSave()"
+                    >
+                        @if (isSaving) {
+                            <app-spinner2 [size]="16"></app-spinner2>
+                        } @else {
+                            <app-svg-icon
+                                icon="floppy"
+                                size="1.25rem"
+                            />
+                        }
+                        <span class="btn-label">Save</span>
+                    </button>
+                </span>
+                <span
+                    class="tooltip-host"
+                    [matTooltip]="isPreviewMode() ? 'Exit preview mode to save' : 'Save options'"
+                    matTooltipPosition="below"
+                >
+                    <button
+                        class="save-split-btn__chevron"
+                        [disabled]="isSaving || isRunning || isPreviewMode()"
+                        (click)="toggleSaveDropdown($event)"
+                    >
                         <app-svg-icon
-                            icon="floppy"
-                            size="1.25rem"
+                            icon="chevron-down"
+                            size="1rem"
                         />
-                    }
-                    <span class="btn-label">Save</span>
-                </button>
-                <button
-                    class="save-split-btn__chevron"
-                    [disabled]="isSaving || isRunning"
-                    matTooltip="Save options"
-                    matTooltipPosition="below"
-                    (click)="toggleSaveDropdown($event)"
-                >
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="1rem"
-                    />
-                </button>
+                    </button>
+                </span>
             </div>
             <ng-template
                 cdkConnectedOverlay
@@ -183,26 +201,30 @@
                 />
             </ng-template>
         </ng-container>
-        <button
-            class="run-button"
-            [appCollapseOnOverflow]="true"
-            collapseOnOverflowTarget=".btn-label"
-            collapseOnOverflowClass="btn--icon-only"
-            collapseOnOverflowRequireSelector="app-svg-icon"
-            [disabled]="isSaving || isRunning"
-            matTooltip="Run"
+        <span
+            class="tooltip-host"
+            [matTooltip]="isPreviewMode() ? 'Exit preview mode to run the flow' : 'Run'"
             matTooltipPosition="below"
-            (click)="onRun()"
         >
-            @if (isRunning) {
-                <app-spinner2 [size]="16"></app-spinner2>
-            } @else {
-                <app-svg-icon
-                    icon="player-play-filled"
-                    size="1.25rem"
-                />
-            }
-            <span class="btn-label">Run</span>
-        </button>
+            <button
+                class="run-button"
+                [appCollapseOnOverflow]="true"
+                collapseOnOverflowTarget=".btn-label"
+                collapseOnOverflowClass="btn--icon-only"
+                collapseOnOverflowRequireSelector="app-svg-icon"
+                [disabled]="isSaving || isRunning || isPreviewMode()"
+                (click)="onRun()"
+            >
+                @if (isRunning) {
+                    <app-spinner2 [size]="16"></app-spinner2>
+                } @else {
+                    <app-svg-icon
+                        icon="player-play-filled"
+                        size="1.25rem"
+                    />
+                }
+                <span class="btn-label">Run</span>
+            </button>
+        </span>
     </div>
 </div>

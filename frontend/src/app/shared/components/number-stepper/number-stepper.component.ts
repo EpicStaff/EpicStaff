@@ -32,6 +32,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
     size = input<StepperSize>('md');
     control = input<FormControl | null>(null);
     integer = input<boolean>(false);
+    readonly = input<boolean>(false);
 
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -129,6 +130,10 @@ export class NumberStepperComponent implements ControlValueAccessor {
     });
 
     onKeyDown(event: KeyboardEvent) {
+        if (this.readonly()) {
+            event.preventDefault();
+            return;
+        }
         const allowedKeys = [
             'Backspace',
             'Delete',
@@ -172,6 +177,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
     }
 
     onBlur(): void {
+        if (this.readonly()) return;
         if (this.integer()) {
             const minVal = this.min();
             const maxVal = this.max() ?? Number.MAX_SAFE_INTEGER;
@@ -186,6 +192,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
     }
 
     onInputChange(event: Event) {
+        if (this.readonly()) return;
         const target = event.target as HTMLInputElement;
         let newValue: number | null;
         if (target.value === '') {
@@ -211,6 +218,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
     }
 
     onStepDown() {
+        if (this.readonly()) return;
         const current = this.value() ?? this.min() ?? 0;
         const minVal = this.min();
         let newValue = current - this.step();
@@ -221,6 +229,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
     }
 
     onStepUp() {
+        if (this.readonly()) return;
         const current = this.value() ?? this.min() ?? 0;
         const maxVal = this.max();
         let newValue = current + this.step();

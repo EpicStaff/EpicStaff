@@ -1,6 +1,6 @@
 import { Dialog as CdkDialog, DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, input, Output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
@@ -43,6 +43,7 @@ export class FlowHeaderComponent {
     @Input() graph?: GraphDto;
     @Input() isSaving = false;
     @Input() isRunning = false;
+    readonly isPreviewMode = input(false);
     @Input() hasUnsavedChanges = false;
     @Input() editors: EditorInfo[] = [];
     @Output() save = new EventEmitter<void>();

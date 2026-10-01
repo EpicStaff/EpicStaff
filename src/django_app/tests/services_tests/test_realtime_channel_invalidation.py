@@ -1,4 +1,6 @@
-"""Coverage for `RealtimeChannel.save()` / `RealtimeChannel.delete()` --
+"""Coverage for the `post_save`/`post_delete` signal receivers on
+`RealtimeChannel` (`realtime_channel_post_save_handler` /
+`realtime_channel_post_delete_handler` in `webhook_signals.py`) --
 publishing to `realtime_channels:invalidate` so `realtime`'s per-channel
 config cache (`_channel_cache`, TTL 60s) doesn't keep serving a channel
 Django just changed (e.g. `is_enabled` toggled off) or removed entirely."""

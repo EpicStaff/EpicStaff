@@ -25,6 +25,7 @@
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
@@ -32,6 +33,7 @@
                     <app-webhook-trigger-select
                         formControlName="webhook_trigger"
                         [disallowedAuthKinds]="['telegram', 'twilio']"
+                        [readonly]="isReadOnly()"
                         disallowedProviderMessage="This trigger is not supported for Webhook nodes. Use a trigger with webhook auth."
                         (triggerResolved)="onTriggerResolved($event)"
                     ></app-webhook-trigger-select>
@@ -77,6 +79,7 @@
                         formControlName="libraries"
                         placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                         [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
                 </div>
                 @if (isExpanded()) {
@@ -100,6 +103,7 @@
                         class="code-editor-section"
                         [pythonCode]="pythonCode"
                         [secretNames]="secretNames()"
+                        [readOnly]="isReadOnly()"
                         (pythonCodeChange)="onPythonCodeChange($event)"
                         (errorChange)="onCodeErrorChange($event)"
                     ></app-code-editor>

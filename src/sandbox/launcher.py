@@ -21,13 +21,18 @@ argv: [launcher.py, <plan-json>, <venv-python>, <code-path>]
     } | null,
     "network": {"mode": "unrestricted"}
              | {"mode": "block_all"}
-             | {"mode": "allow_ports", "ports": [int, ...]}
+             | {"mode": "allow_ports", "ports": [int, ...]},
+    "isolate_signals": bool,
     }
 
 `jail` is null when the kernel lacks Landlock but network blocking is still
 requested -- the launcher then runs for seccomp alone. The "mode" field makes
 the policy unrepresentable as two conflicting fields (there is no state where
 both a full block and a port allowlist could be set at once).
+
+`isolate_signals` asks the Landlock ruleset to also block signals and
+abstract-UNIX-socket connects to processes outside this execution's domain.
+It rides on the jail's ruleset, so it has no effect when `jail` is null.
 """
 
 import json
@@ -60,6 +65,7 @@ def main() -> None:
                 ro_paths=jail["read_only"],
                 roexec_paths=jail["read_exec"],
                 allowed_tcp_ports=allowed_tcp_ports,
+                isolate_signals=plan["isolate_signals"],
             )
     except landlock.LandlockUnavailableError:
         print(
@@ -70,6 +76,12 @@ def main() -> None:
     except landlock.LandlockNetworkUnavailableError:
         print(
             "Sandbox isolation unavailable: Landlock network restriction could not be applied.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except landlock.LandlockSignalIsolationUnavailableError:
+        print(
+            "Sandbox isolation unavailable: Landlock signal isolation could not be applied.",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -61,8 +61,18 @@
         background-color: var(--white-alpha-7);
     }
 
+    &:focus-visible {
+        outline: none;
+        box-shadow: var(--focus-ring);
+    }
+
     &--selected {
         border-color: var(--accent-color);
+    }
+
+    &--previewed,
+    &--previewed:hover {
+        background-color: var(--color-ghost-btn-active);
     }
 }
 
@@ -91,13 +101,10 @@
     box-sizing: border-box;
 }
 
-.version-edit-textarea {
+.version-edit-input--description {
     border-radius: 4px;
     padding: 0 8px;
-    resize: none;
     height: 28px;
-    line-height: 26px;
-    overflow: hidden;
 }
 
 .version-name {
