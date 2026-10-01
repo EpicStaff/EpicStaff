@@ -2311,17 +2311,6 @@ class WebhookTriggerNodeViewSet(
             return WebhookTriggerNodeReadSerializer
         return WebhookTriggerNodeSerializer
 
-    def create(self, request, *args, **kwargs):
-        logger.info(f"[WebhookTriggerNode] CREATE payload: {request.data}")
-        try:
-            return super().create(request, *args, **kwargs)
-        except DRFValidationError as e:
-            logger.error(f"[WebhookTriggerNode] validation error: {e.detail}")
-            raise
-        except Exception as e:
-            logger.error(f"[WebhookTriggerNode] unexpected error: {e}")
-            raise
-
 
 @extend_schema_view(
     create=extend_schema(**WEBHOOK_TRIGGER_CREATE),

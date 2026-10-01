@@ -5,9 +5,16 @@ from datetime import UTC, datetime
 
 import requests
 from loguru import logger
-from requests.exceptions import ConnectionError, Timeout
+from requests.exceptions import (
+    ConnectionError,
+    HTTPError,
+    JSONDecodeError,
+    RequestException,
+    Timeout,
+)
 from tables.exceptions import (
     RegisterTelegramTriggerError,
+    TelegramApiError,
     TelegramBotKeyNotConfiguredError,
     TelegramWebhookInfoUnavailableError,
 )
@@ -79,6 +86,37 @@ def _retry_on_connection_errors(func):
     return wrapper
 
 
+def _describe_request_failure(error: RequestException) -> str:
+    """Summarise a failed Telegram request without using the exception's text.
+
+    `requests` puts the full request URL -- which embeds the bot token and the
+    `secret_token` query parameter -- into the message of `HTTPError` and of
+    most connection errors, so only the exception type and HTTP status are used.
+    """
+    if isinstance(error, Timeout):
+        return "Telegram API timed out"
+    if isinstance(error, ConnectionError):
+        return "Telegram API is unreachable"
+    if isinstance(error, JSONDecodeError):
+        return "Telegram API returned a response that is not valid JSON"
+    if isinstance(error, HTTPError) and error.response is not None:
+        status_code = error.response.status_code
+        # Telegram answers 401 for an unknown bot token and 404 for a malformed one.
+        if status_code in (401, 404):
+            return f"Telegram rejected the bot API key (HTTP {status_code})"
+        return f"Telegram API returned HTTP {status_code}"
+    return f"Telegram API request failed ({type(error).__name__})"
+
+
+def _describe_rejection(data: object) -> str:
+    # Telegram's free-text `description` is deliberately left out: it is
+    # third-party text we cannot prove never echoes the request back.
+    error_code = data.get("error_code") if isinstance(data, dict) else None
+    if isinstance(error_code, int):
+        return f"Telegram API rejected the request (error_code {error_code})"
+    return "Telegram API rejected the request"
+
+
 class TelegramTriggerService(metaclass=SingletonMeta):
     def __init__(
         self,
@@ -105,7 +143,8 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         Raises:
             requests.RequestException: Network failure, timeout, non-2xx, or a
                 body that is not JSON.
-            ValueError: Telegram answered `ok: false`.
+            TelegramApiError: Telegram answered `ok: false`. Its message never
+                contains the request URL, the bot token or any parameter.
         """
         url = f"https://api.telegram.org/bot{api_key}/{endpoint}"
         response = requests.request(method, url, params=params, timeout=timeout)
@@ -113,17 +152,35 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         response.raise_for_status()
         data = response.json()
 
-        if not data.get("ok"):
-            raise ValueError(f"Telegram API error: {data.get('description')}")
+        if not isinstance(data, dict) or not data.get("ok"):
+            raise TelegramApiError(_describe_rejection(data))
 
         return data
 
     @_retry_on_connection_errors
+    def _send_telegram_request_with_retries(
+        self, method: str, api_key: str, endpoint: str, params: dict | None = None
+    ) -> dict:
+        """`_send_telegram_request`, retried on connection errors and timeouts."""
+        return self._send_telegram_request(method, api_key, endpoint, params=params)
+
     def _call_telegram_api(
         self, method: str, api_key: str, endpoint: str, params: dict | None = None
-    ):
-        """Handle Telegram API calls with retries."""
-        return self._send_telegram_request(method, api_key, endpoint, params=params)
+    ) -> dict:
+        """Call the Telegram Bot API, retrying connection errors and timeouts.
+
+        Raises:
+            TelegramApiError: The call failed. Its message never contains the
+                request URL, the bot token or any request parameter.
+        """
+        try:
+            return self._send_telegram_request_with_retries(method, api_key, endpoint, params)
+        except RequestException as error:
+            failure = _describe_request_failure(error)
+        # Raised outside the `except` block so the `requests` exception, whose
+        # message and `.request.url` carry the bot token, is not kept as
+        # `__context__` for a traceback formatter to print.
+        raise TelegramApiError(failure)
 
     def register_telegram_trigger(
         self, telegram_trigger_instance: TelegramTriggerNode, force: bool = False
@@ -218,27 +275,42 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             )
             return None
 
+        bot_api_key = secret_resolver.resolve(
+            # webhook_trigger is confirmed non-None above (return-early
+            # guard); it carries the same org as the node's graph and is
+            # available here without requiring a saved/loaded graph.
+            secret_id=telegram_trigger_instance.telegram_bot_api_key_secret_id,
+            org_id=webhook_trigger.org_id,
+            context="TelegramTriggerNode.telegram_bot_api_key",
+        )
+        failure = None
         try:
             result = self._call_telegram_api(
                 method="POST",
-                api_key=secret_resolver.resolve(
-                    # webhook_trigger is confirmed non-None above (return-early
-                    # guard); it carries the same org as the node's graph and is
-                    # available here without requiring a saved/loaded graph.
-                    secret_id=telegram_trigger_instance.telegram_bot_api_key_secret_id,
-                    org_id=webhook_trigger.org_id,
-                    context="TelegramTriggerNode.telegram_bot_api_key",
-                ),
+                api_key=bot_api_key,
                 endpoint="setWebhook",
                 params={
                     "url": telegram_webhook_url,
                     "secret_token": secret_token,
                 },
             )
-        except Exception as e:
-            raise RegisterTelegramTriggerError(
-                f"Failed to register Telegram webhook after retries: {e!s}"
-            ) from e
+        except TelegramApiError as error:
+            failure = str(error)
+        except Exception as error:
+            # Anything else escaping the HTTP call may still reference the
+            # request, so only its type is reported.
+            failure = f"unexpected {type(error).__name__}"
+            # Only a breadcrumb, no exc_info: the traceback would print the
+            # bot token held in this frame's and the request's locals.
+            logger.error(
+                "[TelegramTrigger] Registration for node {}: unexpected {}",
+                telegram_trigger_instance.pk,
+                type(error).__name__,
+            )
+        if failure is not None:
+            # Raised outside the `except` block for the same reason as in
+            # `_call_telegram_api`: no exception chain back to the request.
+            raise RegisterTelegramTriggerError(f"Failed to register Telegram webhook: {failure}")
 
         trigger_auth.registered_webhook_url = telegram_webhook_url
         trigger_auth.registered_bot_api_key_secret_id = (
@@ -317,7 +389,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 endpoint="getWebhookInfo",
                 timeout=WEBHOOK_INFO_CONNECT_READ_TIMEOUT_SECONDS,
             )["result"]
-        except (requests.RequestException, ValueError) as error:
+        except (requests.RequestException, TelegramApiError) as error:
             # Never log `error` itself: its message carries the bot-token URL.
             response = getattr(error, "response", None)
             logger.warning(

@@ -105,6 +105,15 @@ class TelegramWebhookInfoUnavailableError(CustomAPIExeption):
     default_code = "telegram_webhook_info_unavailable"
 
 
+class TelegramApiError(Exception):
+    """A Telegram Bot API call failed.
+
+    The message is built from safe facts only (failure kind, HTTP status,
+    Telegram's numeric `error_code`) and never from the underlying exception
+    text: the request URL embeds the bot token and the webhook `secret_token`.
+    """
+
+
 class PythonCodeToolConfigSerializerError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeToolConfig.
