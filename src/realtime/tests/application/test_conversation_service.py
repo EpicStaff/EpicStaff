@@ -1,6 +1,8 @@
+import asyncio
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from src.shared.models import RealtimeAgentChatData
 from domain.models.chat_mode import ChatMode
 from domain.ports.i_summarization_client import ISummarizationClient
@@ -10,6 +12,7 @@ from domain.services.summarize_buffer import ChatSummarizedBufferClient
 from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from infrastructure.providers.factory import RealtimeAgentClientFactory
+from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
 
 
 def _make_chat_data(rt_provider: str = "openai") -> RealtimeAgentChatData:
@@ -150,6 +153,65 @@ def test_initialize_buffer_custom_token_limits(service):
 # ---------------------------------------------------------------------------
 # _maybe_create_transcription_client
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# execute — a failing process_message never leaks exception text to the client
+# ---------------------------------------------------------------------------
+
+
+async def _run_until_disconnect(service) -> None:
+    """Drive execute() through one client message that the provider fails to process."""
+
+    async def provider_loop():
+        await asyncio.Event().wait()
+
+    rt_agent_client = AsyncMock()
+    rt_agent_client.handle_messages = provider_loop
+    rt_agent_client.process_message = AsyncMock(
+        side_effect=RuntimeError(f"upstream rejected api_key={SECRET_SENTINEL}")
+    )
+    service.factory.create.return_value = rt_agent_client
+    service.transcription_client_factory.create.return_value = None
+    service.client_websocket.scope = {"subprotocols": []}
+    service.client_websocket.receive_json = AsyncMock(
+        side_effect=[{"type": "conversation.item.create"}, WebSocketDisconnect()]
+    )
+
+    await service.execute()
+
+
+def _error_payloads(service) -> list[dict]:
+    return [
+        call.args[0]
+        for call in service.client_websocket.send_json.await_args_list
+        if call.args[0].get("type") == "error"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_process_message_failure_sends_fixed_error_without_exception_text(service):
+    await _run_until_disconnect(service)
+
+    error_payloads = _error_payloads(service)
+    assert len(error_payloads) == 1
+    assert error_payloads[0]["message"].startswith("Failed to process the message")
+    assert PUBLIC_ERROR_REFERENCE.search(error_payloads[0]["message"])
+    for call in service.client_websocket.send_json.await_args_list:
+        assert SECRET_SENTINEL not in str(call.args[0])
+
+
+@pytest.mark.asyncio
+async def test_process_message_failure_logs_detail_under_the_sent_correlation_id(
+    service, captured_log_messages
+):
+    await _run_until_disconnect(service)
+
+    message = _error_payloads(service)[0]["message"]
+    correlation_id = PUBLIC_ERROR_REFERENCE.search(message).group(1)
+    matching_logs = [log for log in captured_log_messages if correlation_id in log]
+    assert len(matching_logs) == 1
+    assert SECRET_SENTINEL in matching_logs[0]
 
 
 def test_maybe_create_transcription_delegates_to_factory(service, mock_tool_manager):

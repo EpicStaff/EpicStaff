@@ -10,6 +10,11 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from starlette.websockets import WebSocketDisconnect
+from utils.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
@@ -273,10 +278,13 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 tool_name=tool_name,
                 call_arguments=tool_arguments,
             )
-            await self.send_function_result(call_id, tool_result)
         except Exception as e:
-            logger.error(f"Tool execution failed: {e!s}")
-            await self.send_function_result(call_id, f"Error: {e!s}")
+            correlation_id = new_error_correlation_id()
+            logger.exception(f"Tool execution failed [correlation_id={correlation_id}]: {e!s}")
+            tool_result = build_public_error_message(
+                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+            )
+        await self.send_function_result(call_id, tool_result)
 
     async def request_response(self, data: dict | None = None) -> None:
         """ElevenLabs operates in auto-response mode — no-op."""
