@@ -3,6 +3,7 @@
 }
 
 .telegram-registration {
+    position: relative;
     width: 100%;
     padding: 0.5rem 0.75rem;
     background-color: var(--color-input-background);
@@ -76,13 +77,23 @@
         min-width: 0;
     }
 
-    &__match {
+    // Read by screen readers only: the live-region summary, and labels the layout shows without.
+    &__announcement,
+    &__visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    &__register-row {
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
-    }
-
-    &__match-icon {
-        color: var(--success-color);
     }
 }

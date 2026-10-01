@@ -177,6 +177,14 @@ export class FlowsApiService {
         );
     }
 
+    /** Points the bot key's Telegram webhook at this node; answers with the fresh webhook-info. */
+    registerTelegramTriggerWebhook(id: number): Observable<TelegramWebhookInfo> {
+        return this.http.post<TelegramWebhookInfo>(
+            `${this.configService.apiUrl}telegram-trigger-nodes/${id}/register-webhook/`,
+            {}
+        );
+    }
+
     createGraphFromVersion(versionId: number): Observable<CreateGraphFromVersionResponse> {
         return this.http.post<CreateGraphFromVersionResponse>(
             `${this.configService.apiUrl}graph-versions/${versionId}/create-graph/`,

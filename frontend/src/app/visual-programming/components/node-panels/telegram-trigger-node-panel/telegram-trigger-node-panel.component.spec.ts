@@ -1,5 +1,6 @@
-import { Signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { Component, input, NO_ERRORS_SCHEMA, Signal, signal, WritableSignal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { NodeType } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { of } from 'rxjs';
@@ -7,6 +8,7 @@ import { of } from 'rxjs';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { TelegramTriggerNodePanelComponent } from './telegram-trigger-node-panel.component';
 
@@ -188,5 +190,71 @@ describe('TelegramTriggerNodePanelComponent', () => {
         const { panel } = open(telegramNode({}, { backendId: null }));
 
         expect(panel['showsWebhookRegistration']).toBe(false);
+    });
+});
+
+/** Stands in for the registration check so the real panel template can be rendered cheaply. */
+@Component({ selector: 'app-telegram-webhook-registration', template: '' })
+class TelegramWebhookRegistrationStubComponent {
+    readonly nodeId = input<string>();
+    readonly backendId = input<number | null>(null);
+    readonly botKeySecretId = input<number | null>(null);
+    readonly hasUnsavedConnectionChanges = input<boolean>(false);
+    readonly readonly = input<boolean>(false);
+}
+
+describe('TelegramTriggerNodePanelComponent template', () => {
+    // Real panel template; every other child is left unrendered by NO_ERRORS_SCHEMA.
+    function renderWithReadOnly(
+        isReadOnly: WritableSignal<boolean>
+    ): ComponentFixture<TelegramTriggerNodePanelComponent> {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                {
+                    provide: FlowReadOnlyService,
+                    useValue: { isPreview: false, isReadOnly, notifyBlocked: vi.fn() },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { getSecrets: () => of([]), secrets: () => [], maskTail: (tail: string) => tail },
+                },
+            ],
+        });
+        TestBed.overrideComponent(TelegramTriggerNodePanelComponent, {
+            set: { imports: [TelegramWebhookRegistrationStubComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        const node = telegramNode();
+        TestBed.inject(SavedFlowStateService).setSavedFlow({ nodes: [node], connections: [] });
+        const fixture = TestBed.createComponent(TelegramTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    function registrationReadonly(fixture: ComponentFixture<TelegramTriggerNodePanelComponent>): boolean | undefined {
+        return fixture.debugElement
+            .query(By.directive(TelegramWebhookRegistrationStubComponent))
+            ?.injector.get(TelegramWebhookRegistrationStubComponent)
+            .readonly();
+    }
+
+    it('passes FlowReadOnlyService.isReadOnly() to the registration check as readonly', () => {
+        const isReadOnly = signal(false);
+        const fixture = renderWithReadOnly(isReadOnly);
+        expect(registrationReadonly(fixture)).toBe(false);
+
+        isReadOnly.set(true);
+        fixture.detectChanges();
+
+        expect(registrationReadonly(fixture)).toBe(true);
+        fixture.destroy();
+    });
+
+    it('starts read-only when the user cannot change the flow', () => {
+        const fixture = renderWithReadOnly(signal(true));
+
+        expect(registrationReadonly(fixture)).toBe(true);
+        fixture.destroy();
     });
 });

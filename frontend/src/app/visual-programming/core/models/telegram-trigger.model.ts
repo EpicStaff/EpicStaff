@@ -53,6 +53,28 @@ export interface TelegramWebhookInfo {
     last_error_message: string | null;
     /** ISO-8601. */
     last_error_date: string | null;
+    /** Why this node's webhook cannot be registered; null when registration can run. */
+    registration_blocker: TelegramRegistrationBlocker | null;
+}
+
+/**
+ * Codes the webhook-info and register-webhook endpoints report. The backend's `no_bot_key` blocker
+ * never appears here: a missing bot key is answered with a 400 `telegram_bot_key_not_configured`.
+ */
+export type TelegramRegistrationBlockerCode =
+    | 'no_webhook_trigger'
+    | 'no_tunnel_provider'
+    | 'localhost_provider'
+    | 'auth_kind_conflict'
+    | 'no_telegram_secret'
+    | 'invalid_telegram_secret'
+    | 'unresolvable_telegram_secret';
+
+export interface TelegramRegistrationBlocker {
+    /** A newer backend may send a code this UI does not know yet, so it is not narrowed to the union. */
+    code: TelegramRegistrationBlockerCode | (string & Record<never, never>);
+    /** Human-readable, never contains a secret. Shown only for codes the UI has no copy for. */
+    message: string;
 }
 
 export interface GetTelegramTriggerNodeRequest {
