@@ -5,6 +5,7 @@ patch for agents and tools), so each test provisions through the real provisione
 then reads the remote agents back.
 """
 
+import asyncio
 import functools
 import json
 from types import SimpleNamespace
@@ -32,11 +33,19 @@ class FakeElevenLabs:
         self.agents: dict[str, dict] = {}
         self.tools: dict[str, dict] = {}
         self.page_size = 2
+        self.fail_agent_patch = False
+        self.repeat_cursor = False
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        # Yield to the loop so concurrent provisioning calls really interleave.
+        await asyncio.sleep(0)
         path = request.url.path.removeprefix("/v1/convai")
         body = json.loads(request.content) if request.content else None
         if path == "/agents" and request.method == "GET":
+            if self.repeat_cursor:
+                return httpx.Response(
+                    200, json={"agents": [], "has_more": True, "next_cursor": "same"}
+                )
             # Paginated like the real API; `search` is deliberately ignored so the
             # provisioner has to follow the cursor to find an agent on a later page.
             listing = [{"agent_id": i, "name": a["name"]} for i, a in self.agents.items()]
@@ -56,6 +65,8 @@ class FakeElevenLabs:
             self.agents[agent_id] = body
             return httpx.Response(200, json={"agent_id": agent_id})
         if path.startswith("/agents/") and request.method == "PATCH":
+            if self.fail_agent_patch:
+                return httpx.Response(422, json={"detail": "invalid"})
             self.agents[path.removeprefix("/agents/")] = body
             return httpx.Response(200, json={})
         if path == "/tools" and request.method == "GET":
@@ -213,6 +224,59 @@ async def test_existing_agent_beyond_the_first_page_is_updated_not_duplicated(
         and agent["conversation_config"]["agent"]["prompt"]["prompt"] == "c5 edited"
         for agent in fake_api.agents.values()
     )
+
+
+async def test_failed_update_is_not_cached_as_if_the_agent_held_the_new_content(
+    provisioner, fake_api
+):
+    agent_id = await _provision(provisioner, org_id=1, config_id=10, instructions="v1", tools=[])
+    fake_api.fail_agent_patch = True
+
+    served = await _provision(provisioner, org_id=1, config_id=10, instructions="v2", tools=[])
+    fake_api.fail_agent_patch = False
+    retried = await _provision(provisioner, org_id=1, config_id=10, instructions="v2", tools=[])
+
+    assert served == agent_id
+    assert retried == agent_id
+    assert fake_api.prompt_of(agent_id) == "v2"
+
+
+async def test_concurrent_first_sessions_of_one_configuration_create_one_agent(
+    provisioner, fake_api
+):
+    agent_ids = await asyncio.gather(
+        *(
+            _provision(provisioner, org_id=1, config_id=10, instructions="same", tools=[])
+            for _ in range(3)
+        )
+    )
+
+    assert len(set(agent_ids)) == 1
+    assert len(fake_api.agents) == 1
+
+
+async def test_a_listing_whose_cursor_never_advances_raises_instead_of_looping(
+    provisioner, fake_api
+):
+    fake_api.repeat_cursor = True
+
+    with pytest.raises(RuntimeError, match="pagination is not advancing"):
+        await _provision(provisioner, org_id=1, config_id=10, instructions="x", tools=[])
+
+
+async def test_editing_only_a_tool_description_reprovisions_the_agent(provisioner, fake_api):
+    tool = _tool("read_docs")
+    tool.description = "old description"
+    agent_id = await _provision(
+        provisioner, org_id=1, config_id=10, instructions="same", tools=[tool]
+    )
+    edited = _tool("read_docs")
+    edited.description = "new description"
+
+    await _provision(provisioner, org_id=1, config_id=10, instructions="same", tools=[edited])
+
+    sent_tools = fake_api.agents[agent_id]["conversation_config"]["agent"]["prompt"]["tools"]
+    assert sent_tools[0]["description"] == "new description"
 
 
 async def test_invalidate_cache_removes_the_entry_get_or_create_wrote(provisioner, fake_api):

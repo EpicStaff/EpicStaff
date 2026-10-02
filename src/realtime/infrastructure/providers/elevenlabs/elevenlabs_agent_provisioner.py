@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 
@@ -43,6 +44,7 @@ def remote_agent_name(org_id: int, rt_agent_definition_id: int) -> str:
 class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
+        self._provision_locks: dict[str, asyncio.Lock] = {}
 
     async def _get_or_create_tool(
         self, client: httpx.AsyncClient, api_key: str, rt_tool: RealtimeTool
@@ -107,7 +109,10 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         llm_model: str,
         language: str | None = None,
     ) -> str:
-        tools_repr = sorted(f"{t.name}:{t.parameters.model_dump_json()}" for t in rt_tools)
+        # Everything `_build_agent_payload` sends must be in the hash, descriptions included.
+        tools_repr = sorted(
+            f"{t.name}:{t.description}:{t.parameters.model_dump_json()}" for t in rt_tools
+        )
         tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
         raw = json.dumps(
             {
@@ -127,6 +132,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
     ) -> str | None:
         """Return the id of the remote agent with exactly this name, across all pages."""
         params: dict[str, str | int] = {"search": agent_name, "page_size": _AGENT_PAGE_SIZE}
+        seen_cursors: set[str] = set()
         while True:
             resp = await client.get(f"{_EL_API_BASE}/convai/agents", headers=headers, params=params)
             resp.raise_for_status()
@@ -137,6 +143,12 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
             next_cursor = page.get("next_cursor")
             if not page.get("has_more") or not next_cursor:
                 return None
+            if next_cursor in seen_cursors:
+                # Returning None would make the caller create a duplicate agent.
+                raise RuntimeError(
+                    f"ElevenLabs agent listing repeated cursor {next_cursor!r}; pagination is not advancing"
+                )
+            seen_cursors.add(next_cursor)
             params = {**params, "cursor": next_cursor}
 
     async def invalidate_cache(self, api_key: str, agent_name: str) -> None:
@@ -162,17 +174,61 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         )
         cache_key = self._cache_key(api_key, agent_name)
         content_hash = self._content_hash(instructions, voice, rt_tools, llm_model, language)
-        redis = self.redis_service.aioredis_client
-        if redis:
-            cached = await redis.get(cache_key)
-            if cached:
-                entry = json.loads(cached)
-                # A hash mismatch means the remote agent was last provisioned with
-                # other content, so it must be re-provisioned rather than served.
-                if entry["content_hash"] == content_hash:
-                    logger.info(f"EL Provisioner: cache hit → agent_id={entry['agent_id']}")
-                    return entry["agent_id"]
 
+        cached_agent_id = await self._cached_agent_id(cache_key, content_hash)
+        if cached_agent_id:
+            return cached_agent_id
+
+        # One provisioning per remote agent at a time (within this process): concurrent
+        # misses would otherwise create duplicate agents, or leave the cache describing
+        # older content than the agent actually holds.
+        async with self._provision_locks.setdefault(cache_key, asyncio.Lock()):
+            cached_agent_id = await self._cached_agent_id(cache_key, content_hash)
+            if cached_agent_id:
+                return cached_agent_id
+
+            agent_id, in_sync = await self._provision_agent(
+                api_key, agent_name, instructions, voice, rt_tools, llm_model, language
+            )
+            redis = self.redis_service.aioredis_client
+            # Only an agent that holds this content may be cached under its hash.
+            if redis and in_sync:
+                entry = json.dumps({"agent_id": agent_id, "content_hash": content_hash})
+                await redis.set(cache_key, entry, ex=_CACHE_TTL)
+            return agent_id
+
+    async def _cached_agent_id(self, cache_key: str, content_hash: str) -> str | None:
+        redis = self.redis_service.aioredis_client
+        if not redis:
+            return None
+        cached = await redis.get(cache_key)
+        if not cached:
+            return None
+        entry = json.loads(cached)
+        # A hash mismatch means the remote agent was last provisioned with other
+        # content, so it must be re-provisioned rather than served.
+        if entry["content_hash"] != content_hash:
+            return None
+        logger.info(f"EL Provisioner: cache hit → agent_id={entry['agent_id']}")
+        return entry["agent_id"]
+
+    async def _provision_agent(
+        self,
+        api_key: str,
+        agent_name: str,
+        instructions: str,
+        voice: str,
+        rt_tools: list[RealtimeTool],
+        llm_model: str,
+        language: str | None,
+    ) -> tuple[str, bool]:
+        """Create or update the remote agent.
+
+        Returns:
+            The agent id, and whether the remote agent now holds this content. It is
+            False when updating an existing agent failed and it is served as-is.
+        """
+        in_sync = True
         headers = {"xi-api-key": api_key}
 
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
@@ -195,6 +251,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                     json=agent_payload,
                 )
                 if not res.is_success:
+                    in_sync = False
                     logger.warning(
                         f"EL Provisioner: PATCH agent failed ({res.status_code}): {res.text} — using existing agent as-is"
                     )
@@ -212,10 +269,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 res.raise_for_status()
                 agent_id = res.json()["agent_id"]
 
-        if redis:
-            entry = json.dumps({"agent_id": agent_id, "content_hash": content_hash})
-            await redis.set(cache_key, entry, ex=_CACHE_TTL)
-        return agent_id
+        return agent_id, in_sync
 
     def _build_agent_payload(
         self,
