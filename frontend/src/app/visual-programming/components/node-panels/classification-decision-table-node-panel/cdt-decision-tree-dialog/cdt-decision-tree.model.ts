@@ -104,6 +104,12 @@ export interface CdtDecisionTreeInput {
      * these only to turn config ids into the labels the prompt reads.
      */
     readonly llmConfigOptions: readonly CdtTreeLlmOption[];
+    /**
+     * The editor's read-only state when the dialog opened (no Flows:Update, or a
+     * version preview). Stored explanations still show; generating one is not
+     * offered, since generating writes to the node and saves it.
+     */
+    readonly readOnly: boolean;
 }
 
 // ---------------------------------------------------------------------------

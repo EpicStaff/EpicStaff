@@ -32,39 +32,41 @@
         <!--
             A split control: two buttons rather than one with a menu, so the common
             action stays one click and `aria-haspopup` sits only on the half that
-            opens something.
+            opens something. Not rendered in a read-only editor.
         -->
-        <div class="cdt-tree-detail__explain-group">
-            <button
-                class="cdt-tree-detail__explain"
-                type="button"
-                [disabled]="!explainAvailable() || explanationLoading()"
-                [attr.aria-busy]="explanationLoading()"
-                (click)="explainRequested.emit()"
-            >
-                <app-svg-icon
-                    icon="sparkles"
-                    size="12px"
-                />
-                {{ copy.explainStep }}
-            </button>
+        @if (explainOffered()) {
+            <div class="cdt-tree-detail__explain-group">
+                <button
+                    class="cdt-tree-detail__explain"
+                    type="button"
+                    [disabled]="!explainAvailable() || explanationLoading()"
+                    [attr.aria-busy]="explanationLoading()"
+                    (click)="explainRequested.emit()"
+                >
+                    <app-svg-icon
+                        icon="sparkles"
+                        size="12px"
+                    />
+                    {{ copy.explainStep }}
+                </button>
 
-            <span class="cdt-tree-detail__explain-divider"></span>
+                <span class="cdt-tree-detail__explain-divider"></span>
 
-            <button
-                class="cdt-tree-detail__explain-menu"
-                type="button"
-                aria-haspopup="menu"
-                [attr.aria-label]="copy.explainMenuLabel"
-                [attr.aria-expanded]="explainMenuOpen()"
-                (click)="onMenuClick($event)"
-            >
-                <app-svg-icon
-                    icon="chevron-down"
-                    size="0.8rem"
-                />
-            </button>
-        </div>
+                <button
+                    class="cdt-tree-detail__explain-menu"
+                    type="button"
+                    aria-haspopup="menu"
+                    [attr.aria-label]="copy.explainMenuLabel"
+                    [attr.aria-expanded]="explainMenuOpen()"
+                    (click)="onMenuClick($event)"
+                >
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.8rem"
+                    />
+                </button>
+            </div>
+        }
 
         <button
             class="cdt-tree-detail__close"

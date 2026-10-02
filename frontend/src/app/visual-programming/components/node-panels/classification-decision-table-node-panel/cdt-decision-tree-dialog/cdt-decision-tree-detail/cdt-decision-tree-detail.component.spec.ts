@@ -74,6 +74,7 @@ describe('CdtDecisionTreeDetailComponent scroll reset', () => {
     beforeEach(async () => {
         fixture = TestBed.createComponent(CdtDecisionTreeDetailComponent);
         fixture.componentRef.setInput('block', block('row-0:decision'));
+        fixture.componentRef.setInput('explainOffered', true);
         fixture.detectChanges();
         await fixture.whenStable();
 
@@ -131,6 +132,7 @@ describe('CdtDecisionTreeDetailComponent code block geometry', () => {
 
         fixture = TestBed.createComponent(CdtDecisionTreeDetailComponent);
         fixture.componentRef.setInput('block', block('row-0:decision'));
+        fixture.componentRef.setInput('explainOffered', true);
         fixture.detectChanges();
         await fixture.whenStable();
 
@@ -210,5 +212,32 @@ describe('CdtDecisionTreeDetailComponent code block geometry', () => {
 
         expect(removeEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
         expect(FakeResizeObserver.instances[0].disconnected).toBe(true);
+    });
+});
+
+describe('CdtDecisionTreeDetailComponent explain control', () => {
+    function render(explainOffered: boolean): HTMLElement {
+        const fixture = TestBed.createComponent(CdtDecisionTreeDetailComponent);
+        fixture.componentRef.setInput('block', block('row-0:decision'));
+        fixture.componentRef.setInput('explainOffered', explainOffered);
+        fixture.componentRef.setInput('explanation', {
+            status: 'ready',
+            text: 'Stored text',
+            generatedBy: 'model',
+            fingerprint: 'fingerprint',
+        });
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    it('shows Explain when the editor may change the flow', () => {
+        expect(render(true).querySelector('.cdt-tree-detail__explain-group')).not.toBeNull();
+    });
+
+    it('hides Explain in a read-only editor but still shows the stored explanation', () => {
+        const element = render(false);
+
+        expect(element.querySelector('.cdt-tree-detail__explain-group')).toBeNull();
+        expect(element.querySelector('.cdt-tree-detail__explanation')?.textContent).toContain('Stored text');
     });
 });

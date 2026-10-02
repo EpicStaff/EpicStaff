@@ -5,6 +5,7 @@ import { CdtExplanation } from '../core/models/classification-decision-table.mod
 import { ClassificationDecisionTableNodeModel } from '../core/models/node.model';
 import { CdtExplanationCacheService } from './cdt-explanation-cache.service';
 import { FlowService } from './flow.service';
+import { FlowReadOnlyService } from './flow-readonly.service';
 import { SidePanelService } from './side-panel.service';
 
 /**
@@ -39,11 +40,19 @@ export interface CdtExplanationScopeOptions {
  * The save carries the whole table, unsaved grid edits included, because bulk save
  * diffs by node. A save that never lands leaves the canvas dirty, and the
  * write-through to `CdtExplanationCacheService` keeps the text through a reload.
+ *
+ * A read-only editor (no Flows:Update, or a version preview) only reads: `set` is a
+ * no-op there, so nothing reaches the node, the cache or a save. The dialog hides its
+ * Explain actions in that case; this is the backstop. A preview also skips the cache:
+ * that holds the live editor's text, and the preview shows only what the version stored.
+ *
+ * Listed in FLOW_EDITOR_STATE_PROVIDERS because it reads the editor through FlowService.
  */
 @Injectable({ providedIn: 'root' })
 export class CdtExplanationStoreService {
     private readonly flowService = inject(FlowService);
     private readonly sidePanelService = inject(SidePanelService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly cache = inject(CdtExplanationCacheService);
 
     public forNode(options: CdtExplanationScopeOptions): CdtExplanationScope {
@@ -51,8 +60,10 @@ export class CdtExplanationStoreService {
 
         return {
             get: (stepKey) =>
-                this.findNode(options.nodeId)?.explanations?.[stepKey] ?? this.cache.get(cacheKey(stepKey)),
+                this.findNode(options.nodeId)?.explanations?.[stepKey] ??
+                (this.flowReadOnly.isPreview ? null : this.cache.get(cacheKey(stepKey))),
             set: (stepKey, value) => {
+                if (this.flowReadOnly.isReadOnly()) return;
                 this.cache.set(cacheKey(stepKey), value);
                 this.writeToNode(options, stepKey, value);
             },

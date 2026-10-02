@@ -6,6 +6,7 @@ import {
     computed,
     effect,
     inject,
+    Injector,
     input,
     signal,
     TemplateRef,
@@ -206,6 +207,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
+    private readonly injector = inject(Injector);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
 
@@ -836,11 +838,15 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
      *
      * Generating an explanation inside it does, by design: the dialog writes to the
      * node's metadata through `CdtExplanationStoreService`, bypassing this panel's
-     * form, and the next save carries it.
+     * form, and the next save carries it. A read-only editor gets the tree and its
+     * stored explanations, but no way to generate one.
      */
     public openDecisionTree(): void {
         this.dialog.open(CdtDecisionTreeDialogComponent, {
             data: this.buildDecisionTreeInput(),
+            // The panel's injector, not the root one: inside a version preview the
+            // dialog has to reach that editor's FlowService and explanation store.
+            injector: this.injector,
             // The tree is the point of this dialog, so it takes the screen: a wide
             // table needs the width, and the vertical chain of rules needs the
             // height. `maxWidth` has to be set explicitly — the CDK's own default
@@ -882,6 +888,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodes: [...this.flowService.nodes()],
             defaultLlmConfig: this.form.value.default_llm_config || null,
             llmConfigOptions: this.llmConfigOptions(),
+            readOnly: this.isReadOnly(),
         };
     }
 

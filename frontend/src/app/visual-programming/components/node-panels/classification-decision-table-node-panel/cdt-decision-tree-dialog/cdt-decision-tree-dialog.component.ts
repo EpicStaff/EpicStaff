@@ -150,6 +150,12 @@ export class CdtDecisionTreeDialogComponent {
     protected readonly legend = CDT_TREE_LEGEND;
     protected readonly copy = CDT_TREE_COPY;
 
+    /**
+     * Whether Explain is offered at all. Generating writes to the node and saves it,
+     * so a read-only editor gets the stored explanations and nothing to press.
+     */
+    protected readonly canExplain = !this.data.readOnly;
+
     /** The same icons the canvas blocks carry, so a legend entry is its block. */
     protected readonly iconByShape = ICON_BY_SHAPE;
 
@@ -598,6 +604,8 @@ export class CdtDecisionTreeDialogComponent {
      * options and the overlay live here.
      */
     protected openExplainMenu(anchor: HTMLElement, scope: 'step' | 'all'): void {
+        if (!this.canExplain) return;
+
         if (this.explainMenuCtrl.isOpen()) {
             const wasSameAnchor = this.explainMenuAnchor === anchor;
             this.explainMenuCtrl.close();
@@ -643,6 +651,8 @@ export class CdtDecisionTreeDialogComponent {
      * is inside a modal, and the sentence belongs where the user just clicked.
      */
     protected explainSelectedBlock(): void {
+        if (!this.canExplain) return;
+
         const blockId = this.selectedBlockId();
         if (!blockId) return;
 
@@ -685,7 +695,7 @@ export class CdtDecisionTreeDialogComponent {
      * text that is already current.
      */
     protected explainAll(): void {
-        if (this.explainAllRunning()) return;
+        if (!this.canExplain || this.explainAllRunning()) return;
 
         this.explainAllNotice.set(null);
         this.explainAllFailed.set(0);

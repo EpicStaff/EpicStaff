@@ -61,6 +61,13 @@ export class CdtDecisionTreeDetailComponent {
     public readonly explanation = input<CdtExplanationState | null>(null);
 
     /**
+     * Whether the Explain control is shown at all. False in a read-only editor,
+     * which can read stored explanations but not generate them. Required, so no
+     * caller gets the control by default.
+     */
+    public readonly explainOffered = input.required<boolean>();
+
+    /**
      * Whether this block can be explained at all. False for the one clickable
      * block that has nothing to send — a prompt step whose config went missing.
      */

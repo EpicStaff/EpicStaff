@@ -800,12 +800,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
      * `silent` is for saves the user did not ask for — no toast either way. A failed
      * one leaves `savedFlowState` untouched, so the canvas stays dirty and the
      * unsaved-changes chip reports it; a toast per attempt would fire on every
-     * explanation.
+     * explanation. A read-only editor saves nothing; only a requested save says why.
      */
     private saveNodeToBackend(node: NodeModel, options?: { silent?: boolean }): Observable<void> {
         if (!this.graph?.id) return EMPTY;
         const graphId = this.graph.id;
         const silent = options?.silent ?? false;
+        if (this.flowReadOnly.isReadOnly()) {
+            if (!silent) this.flowReadOnly.notifyBlocked();
+            return EMPTY;
+        }
 
         this.flowService.updateNode(node);
 

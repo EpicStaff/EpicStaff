@@ -138,55 +138,60 @@
                         </span>
                     }
 
-                    <!-- The same split control as the detail window's. -->
-                    <div class="cdt-tree__explain-all">
-                        <button
-                            class="cdt-tree__explain-all-run"
-                            type="button"
-                            [attr.aria-label]="copy.explainAll"
-                            [disabled]="explainAllRunning()"
-                            [attr.aria-busy]="explainAllRunning()"
-                            (click)="explainAll()"
-                        >
-                            <app-svg-icon
-                                icon="sparkles"
-                                size="12px"
-                            />
-                            <span class="cdt-tree__explain-all-label">
-                                @if (explainAllRunning()) {
-                                    {{ copy.explainAllBusy(explainAllDone(), explainAllTotal()) }}
-                                } @else {
-                                    {{ copy.explainAll }}
-                                }
-                            </span>
-                        </button>
+                    <!--
+                        The same split control as the detail window's. Hidden, like
+                        every other editing control, when the editor is read-only.
+                    -->
+                    @if (canExplain) {
+                        <div class="cdt-tree__explain-all">
+                            <button
+                                class="cdt-tree__explain-all-run"
+                                type="button"
+                                [attr.aria-label]="copy.explainAll"
+                                [disabled]="explainAllRunning()"
+                                [attr.aria-busy]="explainAllRunning()"
+                                (click)="explainAll()"
+                            >
+                                <app-svg-icon
+                                    icon="sparkles"
+                                    size="12px"
+                                />
+                                <span class="cdt-tree__explain-all-label">
+                                    @if (explainAllRunning()) {
+                                        {{ copy.explainAllBusy(explainAllDone(), explainAllTotal()) }}
+                                    } @else {
+                                        {{ copy.explainAll }}
+                                    }
+                                </span>
+                            </button>
 
-                        <span class="cdt-tree__explain-all-divider"></span>
+                            <span class="cdt-tree__explain-all-divider"></span>
 
-                        <button
-                            #explainAllChevron
-                            class="cdt-tree__explain-all-menu"
-                            type="button"
-                            aria-haspopup="menu"
-                            [attr.aria-label]="copy.explainMenuLabel"
-                            [attr.aria-expanded]="isExplainMenuOpen() && explainMenuScope() === 'all'"
-                            (click)="openExplainMenu(explainAllChevron, 'all')"
-                        >
-                            <app-svg-icon
-                                icon="chevron-down"
-                                size="0.75rem"
-                            />
-                        </button>
-                    </div>
+                            <button
+                                #explainAllChevron
+                                class="cdt-tree__explain-all-menu"
+                                type="button"
+                                aria-haspopup="menu"
+                                [attr.aria-label]="copy.explainMenuLabel"
+                                [attr.aria-expanded]="isExplainMenuOpen() && explainMenuScope() === 'all'"
+                                (click)="openExplainMenu(explainAllChevron, 'all')"
+                            >
+                                <app-svg-icon
+                                    icon="chevron-down"
+                                    size="0.75rem"
+                                />
+                            </button>
+                        </div>
 
-                    @if (explainAllRunning()) {
-                        <button
-                            class="cdt-tree__explain-all-stop"
-                            type="button"
-                            (click)="stopExplainAll()"
-                        >
-                            {{ copy.explainAllStop }}
-                        </button>
+                        @if (explainAllRunning()) {
+                            <button
+                                class="cdt-tree__explain-all-stop"
+                                type="button"
+                                (click)="stopExplainAll()"
+                            >
+                                {{ copy.explainAllStop }}
+                            </button>
+                        }
                     }
                 </div>
             </div>
@@ -304,6 +309,7 @@
                 animate.leave="cdt-tree-detail-leave"
                 [block]="block"
                 [explanation]="selectedExplanation()"
+                [explainOffered]="canExplain"
                 [explainAvailable]="canExplainSelected()"
                 [explainMenuOpen]="isExplainMenuOpen()"
                 [outdated]="selectedOutdated()"
