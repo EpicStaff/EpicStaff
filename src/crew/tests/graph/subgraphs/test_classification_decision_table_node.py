@@ -103,12 +103,25 @@ def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
 # ---------------------------------------------------------------------------
 
 
+# Mirrors the module globals the sandbox's wrap_code sets up around user code
+# (get_secret is left out: epicstaff_secrets only exists in the sandbox venv).
+_SANDBOX_MODULE_PRELUDE = """
+import errno
+import os
+import socket
+import sys
+import json
+from dotdict import DotDict, DotObject, DotList
+"""
+
+
 async def fake_run_code(
     self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
 ):
     ns: dict = {}
-    exec(python_code_data.code, ns)  # noqa: S102
-    ret = ns[python_code_data.entrypoint](**inputs)
+    exec(_SANDBOX_MODULE_PRELUDE + python_code_data.code, ns)  # noqa: S102
+    # wrap_code calls the entrypoint with DotDict-wrapped kwargs.
+    ret = ns[python_code_data.entrypoint](**DotDict(inputs))
     return {
         "returncode": 0,
         "result_data": json.dumps(ret),
@@ -697,4 +710,350 @@ async def test_error_route_emits_finish_after_error(
     assert messages[-1]["output"] == "error_node"
     assert (
         result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batched condition evaluation
+# ---------------------------------------------------------------------------
+
+
+def record_run_code(monkeypatch) -> list[dict]:
+    """Patch run_code with fake_run_code and return the inputs of every call."""
+    calls: list[dict] = []
+
+    async def recording_run_code(
+        self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    ):
+        calls.append(inputs)
+        return await fake_run_code(self, python_code_data, inputs, stop_event)
+
+    monkeypatch.setattr(RunPythonCodeService, "run_code", recording_run_code, raising=True)
+    return calls
+
+
+def expression_batch_calls(calls: list[dict]) -> list[dict]:
+    return [inputs for inputs in calls if "expressions" in inputs]
+
+
+def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
+    redis_service = MagicMock()
+    subgraph = ClassificationDecisionTableNodeSubgraph(
+        session_id=1,
+        node_data=node_data,
+        graph_builder=StateGraph(State),
+        stop_event=StopEvent(),
+        redis_service=redis_service,
+    ).build()
+    return subgraph, redis_service
+
+
+def published_messages(redis_service: MagicMock) -> list[dict]:
+    return [
+        published.args[1]["message_data"]
+        for published in redis_service.publish.call_args_list
+        if published.args[0] == "graph:messages"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_non_matching_rows_before_match_share_one_sandbox_call(monkeypatch):
+    calls = record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name=f"miss{index}",
+            expression="count > 100",
+            next_node="wrong",
+            order=index,
+        )
+        for index in range(3)
+    ] + [
+        ClassificationConditionGroupData(
+            group_name="hit", expression="count == 7", next_node="node_hit", order=3
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups)
+    )
+
+    result = await subgraph.ainvoke(make_state({"count": 7}))
+
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_hit"
+    assert len(calls) == 1
+    assert len(calls[0]["expressions"]) == 4
+    condition_results = [
+        (message["group_name"], message["result"])
+        for message in published_messages(redis_service)
+        if message["message_type"] == "condition_group"
+    ]
+    assert condition_results == [
+        ("miss0", False),
+        ("miss1", False),
+        ("miss2", False),
+        ("hit", True),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_broken_expressions_after_the_match_are_never_evaluated(monkeypatch):
+    calls = record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="hit", expression="True", next_node="node_A", order=0
+        ),
+        ClassificationConditionGroupData(
+            group_name="syntax_error", expression="this is (( not python", order=1
+        ),
+        ClassificationConditionGroupData(
+            group_name="name_error", expression="undefined_name == 1", order=2
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_A"
+    assert len(calls) == 1
+    message_types = [
+        message["message_type"] for message in published_messages(redis_service)
+    ]
+    assert "error" not in message_types
+    assert message_types.count("condition_group") == 1
+
+
+@pytest.mark.asyncio
+async def test_broken_expression_before_match_routes_to_error_after_earlier_rows(
+    monkeypatch,
+):
+    record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="miss", expression="False", next_node="wrong", order=0
+        ),
+        ClassificationConditionGroupData(
+            group_name="broken",
+            expression="undefined_name > 1",
+            next_node="wrong",
+            order=1,
+        ),
+        ClassificationConditionGroupData(
+            group_name="would_hit", expression="True", next_node="wrong", order=2
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    )
+    messages = published_messages(redis_service)
+    assert [message["message_type"] for message in messages] == [
+        "start",
+        "condition_group",
+        "error",
+        "finish",
+    ]
+    assert messages[1]["group_name"] == "miss"
+    assert messages[1]["result"] is False
+    error_details = messages[2]["details"]
+    assert error_details.startswith(
+        "Error in condition 'broken': Expression execution failed:"
+    )
+    assert "NameError" in error_details
+
+
+@pytest.mark.asyncio
+async def test_non_boolean_expression_routes_to_error(monkeypatch):
+    record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="not_bool", expression="42", next_node="wrong", order=0
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    )
+    error_message = next(
+        message
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    )
+    assert "Expression must return a boolean value" in error_message["details"]
+
+
+@pytest.mark.asyncio
+async def test_continue_row_manipulation_is_seen_by_the_next_batch(monkeypatch):
+    calls = record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="advance",
+            expression='stage == "first"',
+            manipulation='variables.stage = "second"',
+            continue_flag=True,
+            order=0,
+        ),
+        ClassificationConditionGroupData(
+            group_name="still_first",
+            expression='stage == "first"',
+            next_node="wrong",
+            order=1,
+        ),
+        ClassificationConditionGroupData(
+            group_name="now_second",
+            expression='stage == "second"',
+            next_node="node_B",
+            order=2,
+        ),
+    ]
+    subgraph, _ = build_subgraph_with_redis(make_node_data(condition_groups=groups))
+
+    result = await subgraph.ainvoke(make_state({"stage": "first"}))
+
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_B"
+    assert result["variables"]["stage"] == "second"
+    batches = expression_batch_calls(calls)
+    assert [len(batch["expressions"]) for batch in batches] == [3, 2]
+    assert [batch["variables"]["stage"] for batch in batches] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_row_without_expression_matches_without_a_sandbox_call(monkeypatch):
+    calls = record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="miss", expression="False", next_node="wrong", order=0
+        ),
+        ClassificationConditionGroupData(
+            group_name="catch_all", next_node="node_C", order=1
+        ),
+    ]
+    subgraph, _ = build_subgraph_with_redis(make_node_data(condition_groups=groups))
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_C"
+    assert [batch["expressions"] for batch in calls] == [["(False)"]]
+
+
+@pytest.mark.asyncio
+async def test_expression_can_use_sandbox_module_globals(monkeypatch):
+    record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="json_row",
+            expression='json.loads(payload)["kind"] == "order" and DotDict is not None',
+            next_node="node_order",
+            order=0,
+        ),
+    ]
+    subgraph, _ = build_subgraph_with_redis(make_node_data(condition_groups=groups))
+
+    result = await subgraph.ainvoke(make_state({"payload": '{"kind": "order"}'}))
+
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_order"
+    )
+
+
+@pytest.mark.asyncio
+async def test_mutation_in_one_row_does_not_leak_into_the_next_row(monkeypatch):
+    calls = record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="mutates",
+            expression="bool(items.append(1))",
+            next_node="wrong",
+            order=0,
+        ),
+        ClassificationConditionGroupData(
+            group_name="sees_original",
+            expression="len(items) == 0",
+            next_node="node_clean",
+            order=1,
+        ),
+    ]
+    subgraph, _ = build_subgraph_with_redis(make_node_data(condition_groups=groups))
+
+    result = await subgraph.ainvoke(make_state({"items": []}))
+
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "node_clean"
+    )
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
+    record_run_code(monkeypatch)
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="miss", expression="False", next_node="wrong", order=0
+        ),
+        ClassificationConditionGroupData(
+            group_name="exits", expression="exit(3)", next_node="wrong", order=1
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    )
+    error_message = next(
+        message
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    )
+    assert error_message["details"].startswith(
+        "Error in condition 'exits': Expression execution failed: SystemExit"
+    )
+
+
+@pytest.mark.asyncio
+async def test_batch_run_failure_names_the_row_range(monkeypatch):
+    monkeypatch.setattr(
+        RunPythonCodeService, "run_code", fake_run_code_error, raising=True
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="first", expression="False", next_node="wrong", order=0
+        ),
+        ClassificationConditionGroupData(
+            group_name="second", expression="False", next_node="wrong", order=1
+        ),
+        ClassificationConditionGroupData(
+            group_name="last", expression="True", next_node="wrong", order=2
+        ),
+    ]
+    subgraph, redis_service = build_subgraph_with_redis(
+        make_node_data(condition_groups=groups, next_error_node="error_node")
+    )
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert (
+        result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
+    )
+    error_message = next(
+        message
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    )
+    assert error_message["details"] == (
+        "Error evaluating conditions from 'first' to 'last': "
+        "Expression execution failed: boom"
     )

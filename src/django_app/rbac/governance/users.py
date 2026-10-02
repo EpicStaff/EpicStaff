@@ -118,10 +118,13 @@ class UserManagementService(CrossOrgResourceService):
         password,
         organization_id=None,
         role_id=None,
+        *,
+        display_name=None,
     ):
         """Creates a User. If `organization_id` is provided, also creates
         an OrganizationUser row in the same transaction.
 
+          - display_name None → the user manager derives it from the email.
           - role_id ignored when organization_id is None.
           - role_id defaults to built-in Member when organization_id is
             given without an explicit role_id (D9).
@@ -144,7 +147,9 @@ class UserManagementService(CrossOrgResourceService):
             role = None
 
         try:
-            user = UserModel.objects.create_user(email=email, password=password)
+            user = UserModel.objects.create_user(
+                email=email, password=password, display_name=display_name
+            )
         except IntegrityError as exc:
             raise EmailAlreadyExistsError() from exc
 
