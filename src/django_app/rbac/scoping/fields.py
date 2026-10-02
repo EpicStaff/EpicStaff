@@ -169,6 +169,7 @@ class OrgScopedUniqueValidator(UniqueValidator):
     """
 
     requires_context = True
+    org_lookup = "org_id"
 
     def __init__(
         self,
@@ -189,7 +190,7 @@ class OrgScopedUniqueValidator(UniqueValidator):
         field_lookup = f"{serializer_field.source_attrs[-1]}__{self.lookup}"
         instance = getattr(serializer_field.parent, "instance", None)
 
-        queryset = self.queryset.filter(org_id=org_id, **{field_lookup: value})
+        queryset = self.queryset.filter(**{self.org_lookup: org_id, field_lookup: value})
         if instance is not None:
             queryset = queryset.exclude(pk=instance.pk)
         if queryset.exists():
@@ -203,6 +204,13 @@ class OrgScopedUniqueValidator(UniqueValidator):
                 raise serializers.ValidationError(
                     self.global_message or self.message, code="unique"
                 )
+
+
+class OrganizationScopedUniqueValidator(OrgScopedUniqueValidator):
+    """``OrgScopedUniqueValidator`` for ``agents`` app models, whose org FK is named
+    ``organization`` rather than ``org``."""
+
+    org_lookup = "organization_id"
 
 
 class OrgScopedUniqueTogetherValidator:

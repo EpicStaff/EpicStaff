@@ -29,7 +29,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cla_version import parse_version_from_text, version_tuple  # noqa: E402
+from cla_version import parse_version_from_text, version_tuple
 
 CLA_PATH = "CLA.md"
 
@@ -168,7 +168,7 @@ def main() -> int:
 
     base_version = parse_version_from_text(base_text, source=f"{base_sha}:{CLA_PATH}")
 
-    with open(CLA_PATH, "r", encoding="utf-8") as cla_file:
+    with open(CLA_PATH, encoding="utf-8") as cla_file:
         head_first_line = cla_file.readline()
 
     head_version = parse_version_from_text(head_first_line, source=CLA_PATH)

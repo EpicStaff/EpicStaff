@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # Re-exported so existing callers keep importing these from cla_common. They
 # live in cla_version.py because the version guard has to read CLA.md without
 # pulling in requests / the Google client libraries.
-from cla_version import (  # noqa: E402,F401
+from cla_version import (  # noqa: F401
     _VERSION_RE,
     cla_sha256,
     parse_cla_version,

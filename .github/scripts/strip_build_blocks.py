@@ -23,7 +23,7 @@ def main() -> int:
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.width = 4096
 
-    with open(src, "r", encoding="utf-8") as f:
+    with open(src, encoding="utf-8") as f:
         data = yaml.load(f)
 
     services = (data.get("services") or {}) if isinstance(data, dict) else {}

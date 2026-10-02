@@ -3,13 +3,6 @@ from __future__ import annotations
 import secrets
 
 from loguru import logger
-from shared.models.agent_service import (
-    AgentRequest,
-    AgentTaskSpec,
-    LoopResult,
-    TaskRunSummary,
-    TokenUsage,
-)
 
 from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
@@ -23,6 +16,13 @@ from app.runners.task_execution import (
     _default_max_iter,
     _schema_max_retries,
     run_task_through_loop,
+)
+from shared.models.agent_service import (
+    AgentRequest,
+    AgentTaskSpec,
+    LoopResult,
+    TaskRunSummary,
+    TokenUsage,
 )
 
 

@@ -43,7 +43,7 @@ def parse_version_from_text(text: str, source: str = "CLA.md") -> str:
 
 def parse_cla_version(path: str = "CLA.md") -> str:
     """Extract the CLA version (e.g. "1.0.0") from the CLA.md heading."""
-    with open(path, "r", encoding="utf-8") as cla_file:
+    with open(path, encoding="utf-8") as cla_file:
         first_line = cla_file.readline()
 
     return parse_version_from_text(first_line, source=path)

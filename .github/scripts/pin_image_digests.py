@@ -36,7 +36,7 @@ def main() -> int:
 
     digest_map_path, src, dst = sys.argv[1], sys.argv[2], sys.argv[3]
 
-    with open(digest_map_path, "r", encoding="utf-8") as f:
+    with open(digest_map_path, encoding="utf-8") as f:
         digest_map: dict[str, str] = json.load(f)
 
     yaml = YAML()
@@ -44,7 +44,7 @@ def main() -> int:
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.width = 4096
 
-    with open(src, "r", encoding="utf-8") as f:
+    with open(src, encoding="utf-8") as f:
         data = yaml.load(f)
 
     services = (data.get("services") or {}) if isinstance(data, dict) else {}
