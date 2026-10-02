@@ -4,6 +4,18 @@ import django.db.models.manager
 from django.db import migrations, models
 
 
+def align_section_soft_delete_columns(apps, schema_editor):
+    # ClassificationConditionGroupSection had no consistency check before this
+    # migration, so its flag and timestamp may disagree. The flag wins: it is what
+    # every query reads. A binned row without a timestamp gets "now", which starts
+    # its recycle-bin retention from this migration.
+    table = schema_editor.quote_name(
+        apps.get_model("tables", "ClassificationConditionGroupSection")._meta.db_table
+    )
+    schema_editor.execute(f"UPDATE {table} SET soft_deleted_at = NULL WHERE active AND soft_deleted_at IS NOT NULL")
+    schema_editor.execute(f"UPDATE {table} SET soft_deleted_at = now() WHERE NOT active AND soft_deleted_at IS NULL")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -594,6 +606,7 @@ class Migration(migrations.Migration):
                 ('all_objects', django.db.models.manager.Manager()),
             ],
         ),
+        migrations.RunPython(align_section_soft_delete_columns, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name='classificationconditiongroupsection',
             constraint=models.CheckConstraint(condition=models.Q(models.Q(('active', True), ('soft_deleted_at__isnull', True)), models.Q(('active', False), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_classificationconditiongroupsection_soft_delete_consistency'),

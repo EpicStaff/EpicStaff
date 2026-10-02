@@ -8,7 +8,7 @@ APP_LABEL = "tables"
 
 def _soft_delete_tables(apps):
     for model in apps.get_app_config(APP_LABEL).get_models():
-        field_names = {field.name for field in model._meta.get_fields()}
+        field_names = {field.name for field in model._meta.local_fields}
         if {"active", "is_soft_deleted"} <= field_names:
             yield model._meta.db_table
 

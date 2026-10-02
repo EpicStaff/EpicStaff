@@ -2,6 +2,9 @@
 returns active rows, `deleted_objects` binned rows, and `all_objects` (the base
 manager) every row."""
 
+import json
+from unittest.mock import patch
+
 import pytest
 from django.apps import apps
 from django.db import IntegrityError, models, transaction
@@ -62,10 +65,39 @@ class TestManagers:
     def test_new_rows_are_active_through_the_db_default(self, graph):
         assert Graph.objects.filter(pk=graph.pk).values_list("active", flat=True).get() is True
 
-    def test_schedule_is_active_is_independent_of_active(self, graph):
-        node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron", is_active=False)
 
-        assert ScheduleTriggerNode.objects.filter(pk=node.pk).exists()
+@pytest.mark.django_db
+class TestScheduleSignalCombinesBothFlags:
+    """`ScheduleTriggerNode.is_active` (schedule on/off) and `active` (not binned)
+    are separate fields; the Manager must only run a schedule that is both."""
+
+    @staticmethod
+    def _published_is_active(mock_redis_service) -> bool:
+        channel_and_message = mock_redis_service.return_value.redis_client.publish.call_args.args
+        return json.loads(channel_and_message[1])["data"]["node"]["is_active"]
+
+    def test_live_node_with_schedule_on_publishes_true(self, graph, django_capture_on_commit_callbacks):
+        with (
+            patch("tables.signals.schedule_signals.RedisService") as mock_redis_service,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            ScheduleTriggerNode.objects.create(graph=graph, node_name="cron", is_active=True)
+
+        assert self._published_is_active(mock_redis_service) is True
+
+    def test_binned_node_publishes_false_even_with_schedule_on(self, graph, django_capture_on_commit_callbacks):
+        node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron", is_active=True)
+        node.active = False
+        node.soft_deleted_at = timezone.now()
+
+        with (
+            patch("tables.signals.schedule_signals.RedisService") as mock_redis_service,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            node.save(update_fields=["active", "soft_deleted_at"])
+
+        assert ScheduleTriggerNode.all_objects.get(pk=node.pk).is_active is True
+        assert self._published_is_active(mock_redis_service) is False
 
 
 @pytest.mark.django_db
@@ -92,7 +124,7 @@ class TestConstraints:
 
 @pytest.mark.django_db
 class TestSubflowQuery:
-    """graph_models.py:38-43 is raw SQL; it must use the new column."""
+    """`GraphManager.get_transitive_subflows` is raw SQL; it must use the new column."""
 
     def test_transitive_subflows_skip_binned_nodes_and_flows(self, graph, default_org):
         live_subflow = Graph.objects.create(org=default_org, name="Live sub")
