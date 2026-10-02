@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import httpx
@@ -410,3 +411,116 @@ async def test_execute_closes_twilio_socket_before_saving_after_internal_error()
 
     assert service._end_reason == "error"
     assert events == ["close", "save"]
+
+
+def _make_service_with_message_handler(handle_messages, message_handler_started):
+    # The stream must not end before the message task has started: a task
+    # cancelled before its first step never runs its body at all.
+    async def no_frames_once_messages_flow():
+        await message_handler_started.wait()
+        return
+        yield
+
+    twilio_ws = AsyncMock()
+    twilio_ws.iter_text = lambda: no_frames_once_messages_flow()
+    rt_client = AsyncMock(spec=IRealtimeAgentClient)
+    rt_client.handle_messages = handle_messages
+    factory = MagicMock()
+    factory.create = MagicMock(return_value=rt_client)
+    tool_manager_service = MagicMock()
+    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
+
+    service = VoiceCallService(
+        twilio_ws=twilio_ws,
+        realtime_agent_chat_data=_make_chat_data(),
+        instructions="You are a helpful assistant",
+        tool_manager_service=tool_manager_service,
+        connections={},
+        factory=factory,
+        django_api_base_url="http://django_app:8000/api",
+        django_api_key="test-key",
+        initial_message=None,
+        max_call_duration_seconds=10,
+    )
+    service._save_recordings = AsyncMock()
+    return service, rt_client
+
+
+@pytest.mark.asyncio
+async def test_cancelling_execute_while_stopping_the_message_task_is_not_swallowed():
+    started = asyncio.Event()
+    stopping = asyncio.Event()
+
+    async def slow_to_stop():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopping.set()
+            # execute() is awaiting this task, so cancelling execute() forwards
+            # the cancel here and interrupts this wait.
+            await asyncio.Event().wait()
+            raise
+
+    service, rt_client = _make_service_with_message_handler(slow_to_stop, started)
+
+    execute_task = asyncio.create_task(service.execute())
+    async with asyncio.timeout(5):
+        await stopping.wait()
+    execute_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        async with asyncio.timeout(5):
+            await execute_task
+    # Cancellation still lets the call be torn down and its recording saved.
+    rt_client.close.assert_awaited_once()
+    service._save_recordings.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_execute_is_not_lost_when_the_message_task_swallows_cancellation():
+    started = asyncio.Event()
+    stopping = asyncio.Event()
+
+    # Mirrors providers whose handle_messages catches CancelledError and returns
+    # normally, so awaiting the message task never raises.
+    async def swallows_cancellation():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopping.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                return
+
+    service, rt_client = _make_service_with_message_handler(swallows_cancellation, started)
+
+    execute_task = asyncio.create_task(service.execute())
+    async with asyncio.timeout(5):
+        await stopping.wait()
+    execute_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        async with asyncio.timeout(5):
+            await execute_task
+    rt_client.close.assert_awaited_once()
+    service._save_recordings.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_still_tears_down_and_saves_when_the_message_task_crashes():
+    started = asyncio.Event()
+
+    async def crashes():
+        started.set()
+        raise RuntimeError("re-provisioning failed")
+
+    service, rt_client = _make_service_with_message_handler(crashes, started)
+
+    async with asyncio.timeout(5):
+        await service.execute()
+
+    rt_client.close.assert_awaited_once()
+    service._save_recordings.assert_awaited_once()
