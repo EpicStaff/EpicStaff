@@ -2,7 +2,7 @@
 
 ## Architecture and System-Level Reference for Developers
 
-This document covers the EpicStaff soft-delete mechanism: the `SOFT_DELETE` feature flag, the `SoftDeleteFields`/`SoftDeleteMixin` model mixins, the `ActiveManager`/`all_objects` manager pair, and the `DeleteService` cascade engine.
+This document covers the EpicStaff soft-delete mechanism: the `SOFT_DELETE` feature flag, the `SoftDeleteFields`/`SoftDeleteMixin` model mixins, the `objects`/`deleted_objects`/`all_objects` managers, and the `DeleteService` cascade engine.
 
 ---
 
@@ -24,7 +24,7 @@ This document covers the EpicStaff soft-delete mechanism: the `SOFT_DELETE` feat
 
 ## 1. System Overview
 
-Deleting a `Graph`, `GraphVersion`, `SourceCollection`, or `PythonCodeTool` does not necessarily remove rows from the database. When `SOFT_DELETE` is enabled, `.delete()` on one of these roots marks the row (and every soft-delete-capable row it cascades into) as `is_soft_deleted=True` instead of issuing a real `DELETE`. This lets deleted flows/collections/tools be recovered, audited, or referenced by historical data (e.g. session snapshots) without the referential-integrity headaches of undoing a hard delete.
+Deleting a `Graph`, `GraphVersion`, `SourceCollection`, or `PythonCodeTool` does not necessarily remove rows from the database. When `SOFT_DELETE` is enabled, `.delete()` on one of these roots marks the row (and every soft-delete-capable row it cascades into) as `active=False` instead of issuing a real `DELETE`. This lets deleted flows/collections/tools be recovered, audited, or referenced by historical data (e.g. session snapshots) without the referential-integrity headaches of undoing a hard delete.
 
 When `SOFT_DELETE` is disabled, `.delete()` on the same roots performs a genuine hard delete, and the database's own `on_delete` behavior (real `CASCADE`, `SET_NULL`, etc.) takes over exactly as it would without this feature.
 
@@ -52,20 +52,21 @@ Both live in `src/django_app/tables/models/base_models.py`.
 
 ```python
 class SoftDeleteFields(models.Model):
-    is_soft_deleted = models.BooleanField(default=False, db_default=False)
+    active = models.BooleanField(default=True, db_default=True)
     soft_deleted_at = models.DateTimeField(null=True, blank=True)
 
     objects = ActiveManager()
+    deleted_objects = DeletedManager()
     all_objects = models.Manager()
 
     class Meta:
         abstract = True
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [...]  # is_soft_deleted/soft_deleted_at consistency, see §8
+        constraints = [...]  # active/soft_deleted_at consistency, see §8
 ```
 
-This is the **fields-only** mixin: it adds the two tracking columns and the two managers, but does **not** override `delete()`. A model that only inherits `SoftDeleteFields` (not `SoftDeleteMixin`) always performs a normal, unconditional Django hard delete when `.delete()` is called directly on an instance — regardless of `SOFT_DELETE`. It only ever gets soft-deleted when it's reached as a *dependent* of a `SoftDeleteMixin` root's cascade (see §6): `DeleteService` explicitly flips its flags and writes them, bypassing the (nonexistent) `delete()` override.
+This is the **fields-only** mixin: it adds the two tracking columns and the managers, but does **not** override `delete()`. A model that only inherits `SoftDeleteFields` (not `SoftDeleteMixin`) always performs a normal, unconditional Django hard delete when `.delete()` is called directly on an instance — regardless of `SOFT_DELETE`. It only ever gets soft-deleted when it's reached as a *dependent* of a `SoftDeleteMixin` root's cascade (see §6): `DeleteService` explicitly flips its flags and writes them, bypassing the (nonexistent) `delete()` override.
 
 Use `SoftDeleteFields` for every node/child model that should participate in a soft-delete cascade but is never deleted directly by application code (nodes, edges, condition groups, surface attachments, etc. — essentially every non-root model in the graph/agent/knowledge domain).
 
@@ -80,6 +81,7 @@ class SoftDeleteMixin(SoftDeleteFields):
 
     def soft_delete(self, using=None):
         from tables.services.soft_delete import DeleteService
+
         return DeleteService.delete(self, using=using)
 
     def hard_delete(self, using=None, keep_parents=False):
@@ -90,7 +92,8 @@ This is the **entry-point** mixin: `.delete()` on an instance branches on `SOFT_
 
 ## 4. Managers
 
-- **`objects` (`ActiveManager`)** — the default manager on every `SoftDeleteFields`/`SoftDeleteMixin` model. Filters `is_soft_deleted=False, soft_deleted_at__isnull=True`. Every "normal" query (`Model.objects.filter(...)`, REST API querysets, admin list views) only sees active rows through this manager.
+- **`objects` (`ActiveManager`)** — the default manager on every `SoftDeleteFields`/`SoftDeleteMixin` model. Filters `active=True`. Every "normal" query (`Model.objects.filter(...)`, REST API querysets, admin list views, reverse accessors) only sees active rows through this manager.
+- **`deleted_objects` (`DeletedManager`)** — filters `active=False`: the rows in the recycle bin.
 - **`all_objects` (plain `models.Manager`)** — unfiltered, sees every row including soft-deleted ones. Used when code genuinely needs to reach a soft-deleted row: e.g. freeing up a UUID held by a soft-deleted `Graph` during import (`tables/import_export/strategies/graph.py`), or `DeleteService`'s own batched cascade writes (see §7 for why it's also the model's `base_manager`).
 
 ## 5. The 4 Soft-Delete Roots
@@ -124,7 +127,7 @@ Priority order per reverse relation (evaluated once per relation, not once per r
 
 An explicit `PROTECT`/`RESTRICT`/`SET_NULL`/`SET_DEFAULT`/`SET(...)` on the FK is always a stronger, deliberate signal than "this model happens to support soft deletion", and wins over rule 6. SoftDeleteFields only overrides the default hard-delete/`CASCADE` behavior.
 
-**Batching:** all rows reached through a single reverse relation that resolve to rule 6 are soft-deleted with one `UPDATE ... WHERE pk IN (...)` instead of one `.save()` per row. Recursion into each row's own descendants (further reverse relations + M2M) still happens per-object, exactly as before batching was introduced — only the terminal `is_soft_deleted`/`soft_deleted_at` write is batched. Cycle-safety (a `visited` set keyed by `(model_class, pk)`) is unchanged.
+**Batching:** all rows reached through a single reverse relation that resolve to rule 6 are soft-deleted with one `UPDATE ... WHERE pk IN (...)` instead of one `.save()` per row. Recursion into each row's own descendants (further reverse relations + M2M) still happens per-object, exactly as before batching was introduced — only the terminal `active`/`soft_deleted_at` write is batched. Cycle-safety (a `visited` set keyed by `(model_class, pk)`) is unchanged.
 
 **Hidden relations (`related_name="+"`):** `_get_reverse_relations` only sees non-hidden relations. A handful of `related_name="+"` fields exist in the schema deliberately (e.g. `SessionTrigger`'s snapshot FKs, which must survive node/graph deletion; `OrgScopedModel.created_by`, an audit trail) — see the docstring on `_get_reverse_relations` for the full audited list. Adding a new `related_name="+"` field whose target should participate in a cascade requires giving it a real `related_name`, or explicitly extending this method — don't assume hiding it is always safe.
 
@@ -154,18 +157,18 @@ Models with only a single abstract mixin still declare this explicitly for consi
 ```python
 models.CheckConstraint(
     check=(
-        models.Q(is_soft_deleted=False, soft_deleted_at__isnull=True)
-        | models.Q(is_soft_deleted=True, soft_deleted_at__isnull=False)
+        models.Q(active=True, soft_deleted_at__isnull=True)
+        | models.Q(active=False, soft_deleted_at__isnull=False)
     ),
     name="%(app_label)s_%(class)s_soft_delete_consistency",
 )
 ```
 
-This rejects any row where `is_soft_deleted` and `soft_deleted_at` disagree (e.g. a stray `.update(is_soft_deleted=True)` that forgets to also set `soft_deleted_at`), including writes that bypass `DeleteService` entirely.
+This rejects any row where `active` and `soft_deleted_at` disagree (e.g. a stray `.update(active=False)` that forgets to also set `soft_deleted_at`), including writes that bypass `DeleteService` entirely.
 
 ## 9. Key Files
 
-- `src/django_app/tables/models/base_models.py` — `SoftDeleteFields`, `SoftDeleteMixin`, `ActiveManager`.
+- `src/django_app/tables/models/base_models.py` — `SoftDeleteFields`, `SoftDeleteMixin`, `ActiveManager`, `DeletedManager`.
 - `src/django_app/tables/services/soft_delete.py` — `DeleteService`, `_DeleteContext` (the cascade engine).
 - `src/django_app/django_app/settings.py` — `SOFT_DELETE` flag definition.
 - `src/django_app/tables/models/graph_models.py` — `Graph`, `GraphVersion` roots + the majority of `SoftDeleteFields` node/edge models.

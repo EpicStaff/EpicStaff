@@ -241,7 +241,7 @@ class GraphImportSerializer(serializers.ModelSerializer):
             "save_version",
             "created_by",
             # Deletion goes through DeleteService, never through a crafted import file.
-            "is_soft_deleted",
+            "active",
             "soft_deleted_at",
         ]
 

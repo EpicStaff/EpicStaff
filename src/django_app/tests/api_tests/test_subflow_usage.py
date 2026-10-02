@@ -107,7 +107,7 @@ class TestSubflowUsage:
         SubGraphNode.all_objects.create(
             graph=parent_graph_a,
             subgraph=target_graph,
-            is_soft_deleted=True,
+            active=False,
             soft_deleted_at=timezone.now(),
         )
         client = client_as(admin_acme)

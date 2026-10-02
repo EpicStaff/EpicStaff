@@ -145,7 +145,7 @@ def test_table_not_referenced_by_graph_is_404(system_client, running_session, de
 @pytest.mark.django_db
 def test_soft_deleted_node_grants_no_access(system_client, running_session, table):
     KeyValueNode.objects.filter(graph=running_session.graph).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
     response = system_client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
     assert response.status_code == 404

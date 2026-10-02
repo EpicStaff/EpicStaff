@@ -129,15 +129,15 @@ class _DeleteContext:
             self._hard_delete(obj)
 
     def _soft_delete(self, obj: SoftDeleteFields):
-        if obj.is_soft_deleted:
+        if not obj.active:
             return
 
-        obj.is_soft_deleted = True
+        obj.active = False
         obj.soft_deleted_at = timezone.now()
 
         obj.save(
             update_fields=[
-                "is_soft_deleted",
+                "active",
                 "soft_deleted_at",
             ],
             using=self.using,
@@ -285,7 +285,7 @@ class _DeleteContext:
         write goes out), and the visited-set guard is still applied per
         object, before it is touched at all, exactly as delete() does
         for the non-batched path. Only the terminal
-        is_soft_deleted/soft_deleted_at write is batched.
+        active/soft_deleted_at write is batched.
 
         Children are grouped by their actual class before the write:
         a single reverse relation is expected to yield children of one
@@ -311,7 +311,7 @@ class _DeleteContext:
             self._process_reverse_relations(child)
             self._process_m2m_relations(child)
 
-            if child.is_soft_deleted:
+            if not child.active:
                 continue
 
             pks_to_soft_delete_by_model[type(child)].append(child.pk)
@@ -322,9 +322,9 @@ class _DeleteContext:
             # which manager ends up being the model's default.
             model_class.all_objects.using(self.using).filter(
                 pk__in=pks_to_soft_delete,
-                is_soft_deleted=False,
+                active=True,
             ).update(
-                is_soft_deleted=True,
+                active=False,
                 soft_deleted_at=timezone.now(),
             )
 

@@ -235,9 +235,9 @@ class KeyValueTableService:
         Only live nodes of flows that are not soft-deleted count: deleting the table unlinks
         soft-deleted ones too, but nobody sees them.
         """
-        return KeyValueNode.objects.filter(
-            key_value_table=table, graph__is_soft_deleted=False
-        ).aggregate(node_count=Count("pk"), flow_count=Count("graph_id", distinct=True))
+        return KeyValueNode.objects.filter(key_value_table=table, graph__active=True).aggregate(
+            node_count=Count("pk"), flow_count=Count("graph_id", distinct=True)
+        )
 
     def session_can_access(self, session: Session, table: KeyValueTable) -> bool:
         """Access is granted by saved configuration, never by the runtime caller.

@@ -394,7 +394,7 @@ class TestCollectionSoftDelete:
 
     def test_delete_collection_default_soft_deletes(self, auth_client):
         """SOFT_DELETE=True (default): DELETE hides the collection from `objects`
-        but keeps it in `all_objects` with `is_soft_deleted=True` and
+        but keeps it in `all_objects` with `active=False` and
         `soft_deleted_at` set."""
         collection = self._create_collection(auth_client, "Soft Delete Me")
         collection_id = collection["collection_id"]
@@ -411,7 +411,7 @@ class TestCollectionSoftDelete:
         assert not SourceCollection.objects.filter(collection_id=collection_id).exists()
         assert SourceCollection.all_objects.filter(collection_id=collection_id).exists()
         deleted = SourceCollection.all_objects.get(collection_id=collection_id)
-        assert deleted.is_soft_deleted is True
+        assert deleted.active is False
         assert deleted.soft_deleted_at is not None
 
     @override_settings(SOFT_DELETE=False)
@@ -530,7 +530,7 @@ class TestCollectionBulkDeleteSoftDelete:
                 collection_id=collection_id
             ).exists()
             deleted = SourceCollection.all_objects.get(collection_id=collection_id)
-            assert deleted.is_soft_deleted is True
+            assert deleted.active is False
             assert deleted.soft_deleted_at is not None
 
         assert DocumentContent.objects.filter(id=content.id).exists()

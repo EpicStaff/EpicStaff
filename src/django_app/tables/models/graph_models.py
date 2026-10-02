@@ -35,12 +35,12 @@ class GraphManager(ActiveManager):
                 WITH RECURSIVE subgraph_tree AS (
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
-                    WHERE sn.graph_id = %s AND sn.is_soft_deleted = false
+                    WHERE sn.graph_id = %s AND sn.active = true
                     UNION
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
                     INNER JOIN subgraph_tree st ON sn.graph_id = st.subgraph_id
-                    WHERE sn.is_soft_deleted = false
+                    WHERE sn.active = true
                 )
                 SELECT subgraph_id FROM subgraph_tree
                 """,
@@ -97,7 +97,7 @@ class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_graph_name_per_org",
             ),
         ]
@@ -862,6 +862,11 @@ class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
         related_name="sections",
     )
     name = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
