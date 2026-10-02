@@ -282,3 +282,12 @@ pyrightconfig.json
 
 # Manager Logs
 src/manager/logs/*
+
+# Stress benchmark runs
+stress/runs/
+
+# Flow-specific load data (messages, conversations): copied to the server by hand, never committed
+stress/chat/
+
+# Stress benchmark checkpoint logs (bind-mounted into services)
+src/bench_logs/
