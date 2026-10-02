@@ -9,6 +9,7 @@ import asyncio
 import functools
 import hashlib
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -20,6 +21,7 @@ from infrastructure.providers.elevenlabs import elevenlabs_agent_provisioner as 
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
     remote_agent_name,
+    remote_tool_prefix,
 )
 from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import (
     ElevenLabsRealtimeAgentClient,
@@ -27,6 +29,12 @@ from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import
 from utils.singleton_meta import SingletonMeta
 
 pytestmark = pytest.mark.asyncio
+
+# The tool name rule ElevenLabs is believed to enforce; a live POST /convai/tools with a
+# 77-character name was rejected with 422.
+_VALID_REMOTE_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+# The tool name of the live session that hit the 422: 54 characters.
+_LONG_TOOL_NAME = "YesNoTool" * 6
 
 
 class FakeElevenLabs:
@@ -87,10 +95,14 @@ class FakeElevenLabs:
                 },
             )
         if path == "/tools" and request.method == "POST":
+            if not _VALID_REMOTE_TOOL_NAME.match(body["tool_config"]["name"]):
+                return httpx.Response(422, json={"detail": "invalid tool name"})
             tool_id = f"tool_{len(self.tools) + 1}"
             self.tools[tool_id] = body
             return httpx.Response(200, json={"id": tool_id})
         if path.startswith("/tools/") and request.method == "PATCH":
+            if not _VALID_REMOTE_TOOL_NAME.match(body["tool_config"]["name"]):
+                return httpx.Response(422, json={"detail": "invalid tool name"})
             self.tools[path.removeprefix("/tools/")] = body
             return httpx.Response(200, json={})
         return httpx.Response(404)
@@ -161,6 +173,7 @@ async def _provision(provisioner, *, org_id, config_id, instructions, tools) -> 
     return await provisioner.get_or_create_agent(
         api_key="key",
         agent_name=remote_agent_name(org_id, config_id),
+        tool_prefix=remote_tool_prefix(org_id, config_id),
         instructions=instructions,
         voice="21m00Tcm4TlvDq8ikWAM",
         rt_tools=tools,
@@ -359,9 +372,111 @@ async def test_an_agent_cached_before_tool_records_were_per_agent_is_reprovision
 
     assert agent_id == "agent_old"
     [record] = fake_api.tool_records_of(agent_id)
-    assert record["name"] == f"{name}__lookup"
+    assert record["name"] == "o1r10__lookup"
     assert record["description"] == "Looks up orders"
     assert fake_api.tools["tool_shared"]["tool_config"]["description"] == "someone else's"
+
+
+async def test_an_agent_cached_while_pointing_at_agent_name_prefixed_tool_records_is_reprovisioned(
+    provisioner, fake_api
+):
+    name = remote_agent_name(1, 10)
+    tool = _described_tool("lookup", "Looks up orders", "order_id")
+    long_prefixed_name = f"{name}__lookup"
+    # The remote state while tool records were prefixed with the full agent name.
+    fake_api.tools["tool_long"] = {
+        "tool_config": {"type": "client", "name": long_prefixed_name, "description": "old"}
+    }
+    fake_api.agents["agent_old"] = {
+        "name": name,
+        "conversation_config": {
+            "agent": {
+                "prompt": {
+                    "prompt": "same",
+                    "tools": [{"type": "client", "tool_id": "tool_long", "name": "lookup"}],
+                }
+            }
+        },
+    }
+    # The cache entry exactly as the provisioner wrote it with agent-name-prefixed records.
+    old_hash_source = json.dumps(
+        {
+            "instructions": "same",
+            "voice": "21m00Tcm4TlvDq8ikWAM",
+            "tools": [
+                f"{long_prefixed_name}:{tool.name}:{tool.description}:{tool.parameters.model_dump_json()}"
+            ],
+            "llm": "gemini-2.5-flash",
+            "tts_model": "eleven_turbo_v2",
+            "language": None,
+        },
+        sort_keys=True,
+    )
+    redis = provisioner.redis_service.aioredis_client
+    redis.values[provisioner._cache_key("key", name)] = json.dumps(
+        {
+            "agent_id": "agent_old",
+            "content_hash": hashlib.md5(old_hash_source.encode()).hexdigest(),
+        }
+    )
+
+    agent_id = await _provision(
+        provisioner, org_id=1, config_id=10, instructions="same", tools=[tool]
+    )
+
+    assert agent_id == "agent_old"
+    [record] = fake_api.tool_records_of(agent_id)
+    assert record["name"] == "o1r10__lookup"
+    assert record["description"] == "Looks up orders"
+
+
+async def test_a_54_character_tool_name_yields_a_remote_tool_record_name_elevenlabs_accepts(
+    provisioner, fake_api
+):
+    assert len(_LONG_TOOL_NAME) == 54
+
+    agent_id = await _provision(
+        provisioner,
+        org_id=2,
+        config_id=2,
+        instructions="x",
+        tools=[_tool(_LONG_TOOL_NAME)],
+    )
+
+    [record] = fake_api.tool_records_of(agent_id)
+    assert record["name"] == f"o2r2__{_LONG_TOOL_NAME}"
+    assert len(record["name"]) <= 64
+    assert fake_api.tool_names_of(agent_id) == [_LONG_TOOL_NAME]
+
+
+async def test_the_fake_api_rejects_the_agent_name_prefixed_tool_name_elevenlabs_rejected_live(
+    provisioner, fake_api
+):
+    # Pins the fake to the live failure, so the test above would catch a regression.
+    with pytest.raises(httpx.HTTPStatusError) as error:
+        await provisioner.get_or_create_agent(
+            api_key="key",
+            agent_name=remote_agent_name(2, 2),
+            tool_prefix=f"{remote_agent_name(2, 2)}__",
+            instructions="x",
+            voice="21m00Tcm4TlvDq8ikWAM",
+            rt_tools=[_tool(_LONG_TOOL_NAME)],
+            llm_model="gemini-2.5-flash",
+        )
+
+    assert error.value.response.status_code == 422
+    assert fake_api.tools == {}
+    assert fake_api.agents == {}
+
+
+async def test_tool_prefixes_of_different_configurations_never_collide():
+    prefixes = {
+        remote_tool_prefix(org_id, config_id)
+        for org_id, config_id in [(1, 23), (12, 3), (123, 1), (1, 231)]
+    }
+
+    assert len(prefixes) == 4
+    assert remote_tool_prefix(2, 2) == "o2r2__"
 
 
 async def test_editing_only_a_tool_description_reprovisions_the_agent(provisioner, fake_api):
@@ -419,10 +534,10 @@ async def test_same_named_tools_of_two_configurations_get_separate_remote_tool_r
     assert len(fake_api.tools) == 2
     [first_record] = fake_api.tool_records_of(first)
     [second_record] = fake_api.tool_records_of(second)
-    assert first_record["name"] == "EpicStaff-org1-rtdef10__lookup"
+    assert first_record["name"] == "o1r10__lookup"
     assert first_record["description"] == "Looks up orders"
     assert first_record["parameters"]["required"] == ["order_id"]
-    assert second_record["name"] == "EpicStaff-org1-rtdef11__lookup"
+    assert second_record["name"] == "o1r11__lookup"
     assert second_record["description"] == "Looks up customers"
     assert second_record["parameters"]["required"] == ["customer_email"]
 
@@ -509,3 +624,17 @@ async def test_client_name_comes_from_its_organization_and_configuration():
     )
 
     assert client.agent_name == remote_agent_name(3, 9)
+    assert client.tool_prefix == remote_tool_prefix(3, 9)
+
+
+async def test_client_without_a_configuration_id_has_no_tool_prefix():
+    client = ElevenLabsRealtimeAgentClient(
+        api_key="key",
+        connection_key="conn",
+        agent_provisioner=MagicMock(),
+        org_id=1,
+        rt_agent_definition_id=None,
+    )
+
+    with pytest.raises(ValueError, match="rt_agent_definition_id"):
+        client.tool_prefix

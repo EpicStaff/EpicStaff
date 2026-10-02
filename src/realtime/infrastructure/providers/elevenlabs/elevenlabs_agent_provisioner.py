@@ -47,24 +47,38 @@ def _local_tool_name(rt_tool: RealtimeTool) -> str:
     return rt_tool.name.replace(" ", "_")
 
 
-def remote_tool_name(agent_name: str, rt_tool: RealtimeTool) -> str:
-    """Return the name of the remote ElevenLabs tool record owned by one remote agent.
+def remote_tool_prefix(org_id: int, rt_agent_definition_id: int) -> str:
+    """Return the prefix of every remote ElevenLabs tool record owned by one realtime configuration.
 
     Tool records live account-wide and provisioning PATCHes the record it finds by
-    name, so agents sharing a tool name would overwrite each other's tool schema.
-    The agent name is part of the tool name to rule that out.
+    name, so configurations sharing a tool name would overwrite each other's tool
+    schema; the organization and the configuration are part of the prefix to rule
+    that out. It is deliberately much shorter than `remote_agent_name`: ElevenLabs
+    rejects (422) tool names longer than its limit, and the prefix eats into it.
     """
-    return f"{agent_name}{_TOOL_NAME_SEPARATOR}{_local_tool_name(rt_tool)}"
+    return f"o{org_id}r{rt_agent_definition_id}{_TOOL_NAME_SEPARATOR}"
 
 
-def local_tool_name(agent_name: str, reported_tool_name: str) -> str:
+def remote_tool_name(tool_prefix: str, rt_tool: RealtimeTool) -> str:
+    """Return the name of the remote ElevenLabs tool record for `rt_tool`.
+
+    Args:
+        tool_prefix: The owning configuration's `remote_tool_prefix`.
+    """
+    return f"{tool_prefix}{_local_tool_name(rt_tool)}"
+
+
+def local_tool_name(tool_prefix: str, reported_tool_name: str) -> str:
     """Return the session-local tool name for a tool name reported by ElevenLabs.
 
     The agent payload names each tool by its local name while the tool record it
-    points at carries the agent-prefixed name; either may come back in a
+    points at carries the prefixed name; either may come back in a
     `client_tool_call`, so the prefix is stripped when present.
+
+    Args:
+        tool_prefix: The owning configuration's `remote_tool_prefix`.
     """
-    return reported_tool_name.removeprefix(f"{agent_name}{_TOOL_NAME_SEPARATOR}")
+    return reported_tool_name.removeprefix(tool_prefix)
 
 
 class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
@@ -120,11 +134,11 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         self,
         client: httpx.AsyncClient,
         api_key: str,
-        agent_name: str,
+        tool_prefix: str,
         rt_tool: RealtimeTool,
     ) -> str:
         headers = {"xi-api-key": api_key}
-        search_name = remote_tool_name(agent_name, rt_tool)
+        search_name = remote_tool_name(tool_prefix, rt_tool)
         existing_tool_id = await self._find_tool_id(client, headers, search_name)
 
         payload = {
@@ -168,7 +182,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
 
     def _content_hash(
         self,
-        agent_name: str,
+        tool_prefix: str,
         instructions: str,
         voice: str,
         rt_tools: list[RealtimeTool],
@@ -179,7 +193,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         # and so must the names of the tool records the agent points at: an agent cached
         # while pointing at differently named records must not be served.
         tools_repr = sorted(
-            f"{remote_tool_name(agent_name, t)}:{t.name}:{t.description}:{t.parameters.model_dump_json()}"
+            f"{remote_tool_name(tool_prefix, t)}:{t.name}:{t.description}:{t.parameters.model_dump_json()}"
             for t in rt_tools
         )
         tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
@@ -216,19 +230,26 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         self,
         api_key: str,
         agent_name: str,
+        tool_prefix: str,
         instructions: str,
         voice: str,
         rt_tools: list[RealtimeTool],
         llm_model: str,
         language: str | None = None,
     ) -> str:
+        """Return the id of the remote agent `agent_name`, provisioned with this content.
+
+        Args:
+            agent_name: The configuration's `remote_agent_name`.
+            tool_prefix: The same configuration's `remote_tool_prefix`; names its tool records.
+        """
         voice = voice or "21m00Tcm4TlvDq8ikWAM"  # default to Rachel if empty/None
         logger.info(
             f"EL Provisioner: get_or_create_agent | agent_name={agent_name!r} | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
         )
         cache_key = self._cache_key(api_key, agent_name)
         content_hash = self._content_hash(
-            agent_name, instructions, voice, rt_tools, llm_model, language
+            tool_prefix, instructions, voice, rt_tools, llm_model, language
         )
 
         cached_agent_id = await self._cached_agent_id(cache_key, content_hash)
@@ -244,7 +265,14 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 return cached_agent_id
 
             agent_id, in_sync = await self._provision_agent(
-                api_key, agent_name, instructions, voice, rt_tools, llm_model, language
+                api_key,
+                agent_name,
+                tool_prefix,
+                instructions,
+                voice,
+                rt_tools,
+                llm_model,
+                language,
             )
             redis = self.redis_service.aioredis_client
             # Only an agent that holds this content may be cached under its hash.
@@ -272,6 +300,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         self,
         api_key: str,
         agent_name: str,
+        tool_prefix: str,
         instructions: str,
         voice: str,
         rt_tools: list[RealtimeTool],
@@ -290,7 +319,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             tool_ids = []
             for rt_tool in rt_tools:
-                tid = await self._get_or_create_tool(client, api_key, agent_name, rt_tool)
+                tid = await self._get_or_create_tool(client, api_key, tool_prefix, rt_tool)
                 tool_ids.append(tid)
 
             existing_agent_id = await self._find_agent_id(client, headers, agent_name)

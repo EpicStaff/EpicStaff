@@ -20,6 +20,7 @@ from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgen
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
     remote_agent_name,
+    remote_tool_prefix,
 )
 from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_client_event_handler import (
     ElevenLabsClientEventHandler,
@@ -99,11 +100,19 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
     @property
     def agent_name(self) -> str:
         """Remote agent name unique to this organization and realtime configuration."""
+        return remote_agent_name(*self._remote_identity())
+
+    @property
+    def tool_prefix(self) -> str:
+        """Prefix of the remote tool records unique to this organization and realtime configuration."""
+        return remote_tool_prefix(*self._remote_identity())
+
+    def _remote_identity(self) -> tuple[int, int]:
         if self.org_id is None or self.rt_agent_definition_id is None:
             raise ValueError(
                 "ElevenLabs agent provisioning needs both org_id and rt_agent_definition_id"
             )
-        return remote_agent_name(self.org_id, self.rt_agent_definition_id)
+        return self.org_id, self.rt_agent_definition_id
 
     async def connect(self) -> None:
         if not self.agent_id:
@@ -111,6 +120,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
             self.agent_id = await self.agent_provisioner.get_or_create_agent(
                 api_key=self.api_key,
                 agent_name=self.agent_name,
+                tool_prefix=self.tool_prefix,
                 instructions=self.instructions,
                 voice=self.voice,
                 rt_tools=self.rt_tools,
@@ -146,6 +156,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 self.agent_id = await self.agent_provisioner.get_or_create_agent(
                     api_key=self.api_key,
                     agent_name=self.agent_name,
+                    tool_prefix=self.tool_prefix,
                     instructions=self.instructions,
                     voice=self.voice,
                     rt_tools=self.rt_tools,

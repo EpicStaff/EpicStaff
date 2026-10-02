@@ -28,7 +28,7 @@ from utils.singleton_meta import SingletonMeta
 def client():
     c = MagicMock()
     c.connection_key = "conn_key"
-    c.agent_name = "EpicStaff-org1-rtdef2"
+    c.tool_prefix = "o1r2__"
     c.is_twilio = False
     c._down_resample_state = None
     c.send_client = AsyncMock()
@@ -258,8 +258,8 @@ async def test_tool_call_reaches_the_local_executor_under_either_tool_name(
     executor = RecordingToolExecutor("lookup")
     tool_manager_service.connection_tool_executors["conn_1"] = [executor]
     local_tool = RealtimeTool(name="lookup", parameters=ToolParameters(properties={}))
-    remote_name = remote_tool_name(real_client.agent_name, local_tool)
-    assert remote_name == "EpicStaff-org1-rtdef10__lookup"
+    remote_name = remote_tool_name(real_client.tool_prefix, local_tool)
+    assert remote_name == "o1r10__lookup"
     reported_name = remote_name if prefixed else "lookup"
     data = {
         "type": "client_tool_call",
@@ -283,19 +283,38 @@ async def test_tool_call_reaches_the_local_executor_under_either_tool_name(
 
 
 @pytest.mark.asyncio
-async def test_tool_call_prefixed_with_another_agents_name_is_not_stripped(handler, client):
+async def test_tool_call_prefixed_for_another_configuration_is_not_stripped(handler, client):
     data = {
         "type": "client_tool_call",
         "client_tool_call": {
             "tool_call_id": "tc1",
-            "tool_name": "EpicStaff-org1-rtdef3__lookup",
+            "tool_name": "o1r3__lookup",
             "parameters": {},
         },
     }
 
     await handler._handle_client_tool_call(data)
 
-    client.call_tool.assert_awaited_once_with("tc1", "EpicStaff-org1-rtdef3__lookup", {})
+    client.call_tool.assert_awaited_once_with("tc1", "o1r3__lookup", {})
+
+
+@pytest.mark.asyncio
+async def test_tool_call_with_the_short_prefix_and_a_long_tool_name_routes_to_the_local_name(
+    handler, client
+):
+    long_tool_name = "YesNoTool" * 6
+    data = {
+        "type": "client_tool_call",
+        "client_tool_call": {
+            "tool_call_id": "tc1",
+            "tool_name": f"o1r2__{long_tool_name}",
+            "parameters": {"answer": "yes"},
+        },
+    }
+
+    await handler._handle_client_tool_call(data)
+
+    client.call_tool.assert_awaited_once_with("tc1", long_tool_name, {"answer": "yes"})
 
 
 # ---------------------------------------------------------------------------

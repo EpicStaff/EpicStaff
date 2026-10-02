@@ -302,7 +302,7 @@ class ElevenLabsServerEventHandler:
     async def _handle_client_tool_call(self, data: dict[str, Any]) -> None:
         tool_call = data.get("client_tool_call", {})
         tool_call_id = tool_call.get("tool_call_id", "")
-        tool_name = local_tool_name(self.client.agent_name, tool_call.get("tool_name", ""))
+        tool_name = local_tool_name(self.client.tool_prefix, tool_call.get("tool_name", ""))
         parameters = tool_call.get("parameters", {})
 
         await self._ensure_response_exists()
