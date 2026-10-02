@@ -1,8 +1,9 @@
 """Decide what part of a realtime event is allowed to reach the database.
 
-Session items are a conversation record, not a recording: raw audio frames are
-never stored, because they carry the end user's (and the model's) voice and
-arrive at tens per second.
+Session items are a conversation record, not a recording: by default raw audio
+frames are not stored, because they carry the end user's (and the model's) voice,
+arrive at tens per second, and the table has no retention. The sink skips this
+module entirely when `config.PERSIST_RAW_AUDIO` is on (see `core/config.py`).
 """
 
 import re

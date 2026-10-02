@@ -1,4 +1,5 @@
-"""Audio must never reach `realtime_session_item`, whichever handler saves it.
+"""Audio does not reach `realtime_session_item`, whichever handler saves it, unless
+`PERSIST_RAW_AUDIO` is turned on.
 
 The sink (`save_realtime_session_item_to_db`) is the single path all six event
 handlers take, so these tests drive the real sink and read back what it stores.
@@ -10,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from google.genai import types
 
+from core import config as core_config
 from infrastructure.persistence.database import save_realtime_session_item_to_db
 from infrastructure.persistence.event_redaction import AUDIO_REDACTED
 
@@ -17,8 +19,12 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def stored_items():
-    """Patch the DB session and collect every row the sink adds."""
+def stored_items(monkeypatch):
+    """Patch the DB session and collect every row the sink adds.
+
+    Pins the default (redaction on) so results never depend on a local `.env`.
+    """
+    monkeypatch.setattr(core_config, "PERSIST_RAW_AUDIO", False)
     stored: list = []
     session = AsyncMock()
     session.add = MagicMock(side_effect=stored.append)
@@ -46,6 +52,29 @@ async def test_audio_frame_events_are_not_stored(stored_items, audio_frame):
     assert await _save(audio_frame) is None
 
     assert stored_items == []
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        # Browser chat (OpenAI client microphone frame) and provider output frames,
+        # which Twilio calls also produce.
+        {"type": "input_audio_buffer.append", "audio": "QUJD"},
+        {"type": "response.audio.delta", "delta": "QUJD", "item_id": "i"},
+        {"type": "audio", "audio_event": {"audio_base_64": "QUJD"}},
+        {"type": "conversation.item.create", "item": {"content": [{"audio": "QUJD"}]}},
+        {"type": "gemini_event", "raw": "Blob(data=b'abc', mime_type='audio/pcm')"},
+    ],
+)
+async def test_raw_audio_is_stored_verbatim_when_persisting_audio_is_enabled(
+    stored_items, monkeypatch, event
+):
+    monkeypatch.setattr(core_config, "PERSIST_RAW_AUDIO", True)
+
+    await _save(event)
+
+    (row,) = stored_items
+    assert row.data == event
 
 
 async def test_user_audio_message_keeps_its_transcript_but_loses_the_audio(stored_items):

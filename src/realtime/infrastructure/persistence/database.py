@@ -27,13 +27,15 @@ async def save_realtime_session_item_to_db(
     (a real authenticated user started them) and left `None` for Twilio voice
     calls, which have no end-user identity to attribute to.
 
-    Every event passes through `redact_event_for_storage` here, so audio never
-    reaches the table regardless of which handler calls this. Audio-only events
-    are not stored and the function returns None.
+    Unless `config.PERSIST_RAW_AUDIO` is on, every event passes through
+    `redact_event_for_storage` here, so audio does not reach the table regardless
+    of which handler calls this. Audio-only events are then not stored and the
+    function returns None.
     """
-    data = redact_event_for_storage(data)
-    if data is None:
-        return None
+    if not config.PERSIST_RAW_AUDIO:
+        data = redact_event_for_storage(data)
+        if data is None:
+            return None
 
     async with SessionLocal() as db_session:
         try:
