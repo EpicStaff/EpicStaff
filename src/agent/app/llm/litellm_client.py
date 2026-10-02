@@ -21,6 +21,7 @@ from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.llm.retry import RetryPolicy
 from app.llm.router_pool import RouterPool, get_router_pool
 from app.logging_utils import redact
+from shared.bench import bench_correlation_id, bench_mark
 
 _STRIPPED_MODEL_CONFIG_KEYS = frozenset(
     {"model", "api_key", "base_url", "api_version", "max_retry_limit", "max_rpm"}
@@ -192,53 +193,63 @@ class LiteLLMClient(LLMClient):
             lambda: _tool_count,
             lambda: redact(extra_kwargs),
         )
-        response_stream = await retry.aretry(_call)
+        bench_correlation = bench_correlation_id.get()
+        bench_mark(None, "llm_start", correlation_id=bench_correlation, model=_model)
+        bench_usage: dict = {}
+        try:
+            response_stream = await retry.aretry(_call)
 
-        tc_map: dict[int, dict] = {}
+            tc_map: dict[int, dict] = {}
 
-        async for chunk in response_stream:
-            usage = getattr(chunk, "usage", None)
+            async for chunk in response_stream:
+                usage = getattr(chunk, "usage", None)
 
-            if usage:
-                usage_data = _usage_dict(usage)
-                usage_data["total_cost_usd"] = _usage_cost_usd(model_config["model"], usage_data)
-                logger.debug("litellm usage={}", usage_data)
-                yield LLMChunk(usage=usage_data)
+                if usage:
+                    usage_data = _usage_dict(usage)
+                    bench_usage.update(usage_data)
+                    usage_data["total_cost_usd"] = _usage_cost_usd(model_config["model"], usage_data)
+                    logger.debug("litellm usage={}", usage_data)
+                    yield LLMChunk(usage=usage_data)
 
-            choices = chunk.choices or []
+                choices = chunk.choices or []
 
-            if not choices:
-                continue
+                if not choices:
+                    continue
 
-            choice = choices[0]
-            delta = choice.delta
-            finish = choice.finish_reason
+                choice = choices[0]
+                delta = choice.delta
+                finish = choice.finish_reason
 
-            if delta.content:
-                yield LLMChunk(delta_text=delta.content)
+                if delta.content:
+                    yield LLMChunk(delta_text=delta.content)
 
-            for tc in delta.tool_calls or []:
-                idx = tc.index
+                for tc in delta.tool_calls or []:
+                    idx = tc.index
 
-                if idx not in tc_map:
-                    tool_id = tc.id
+                    if idx not in tc_map:
+                        tool_id = tc.id
 
-                    if tool_id is None:
-                        # Provider sent no id on the first fragment — synthesize one.
-                        tool_id = f"call_{uuid.uuid4().hex[:8]}"
+                        if tool_id is None:
+                            # Provider sent no id on the first fragment — synthesize one.
+                            tool_id = f"call_{uuid.uuid4().hex[:8]}"
 
-                    tc_map[idx] = {"id": tool_id, "name": tc.function.name}
+                        tc_map[idx] = {"id": tool_id, "name": tc.function.name}
 
-                seeded = tc_map[idx]
+                    seeded = tc_map[idx]
 
-                yield LLMChunk(
-                    tool_call_fragment=ToolCallFragment(
-                        id=tc.id or seeded["id"],
-                        name=tc.function.name or seeded["name"] or "",
-                        arguments_delta=tc.function.arguments or "",
+                    yield LLMChunk(
+                        tool_call_fragment=ToolCallFragment(
+                            id=tc.id or seeded["id"],
+                            name=tc.function.name or seeded["name"] or "",
+                            arguments_delta=tc.function.arguments or "",
+                        )
                     )
-                )
 
-            if finish:
-                logger.debug("litellm finish_reason={}", finish)
-                yield LLMChunk(finish_reason=finish)
+                if finish:
+                    logger.debug("litellm finish_reason={}", finish)
+                    yield LLMChunk(finish_reason=finish)
+        finally:
+            # Spans retries + full stream consumption: the real LLM wall time.
+            bench_mark(
+                None, "llm_end", correlation_id=bench_correlation, model=_model, **bench_usage
+            )

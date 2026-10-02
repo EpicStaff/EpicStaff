@@ -5,6 +5,7 @@ from langgraph.types import StreamWriter
 from models.state import State
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
+from src.shared.bench import bench_mark
 from utils import map_variables_to_input, set_output_variables
 
 
@@ -150,6 +151,12 @@ class BaseNode(ABC):
             Exception: If there was an exception during the execution of the node.
         """
         execution_order = 0
+        bench_mark(
+            self.session_id,
+            "node_start",
+            node_type=type(self).__name__,
+            node_name=self.node_name,
+        )
         try:
             sysvars = state.get("system_variables") or {}
             execution_order = sysvars.get("execution_order", 0)
@@ -183,10 +190,24 @@ class BaseNode(ABC):
                 execution_order=execution_order,
                 state=state,
             )
+            bench_mark(
+                self.session_id,
+                "node_end",
+                node_type=type(self).__name__,
+                node_name=self.node_name,
+                ok=True,
+            )
 
             return state
 
         except Exception as e:
+            bench_mark(
+                self.session_id,
+                "node_end",
+                node_type=type(self).__name__,
+                node_name=self.node_name,
+                ok=False,
+            )
             self.add_error_message(writer=writer, error=e, execution_order=execution_order)
             raise
 
