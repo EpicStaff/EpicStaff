@@ -376,24 +376,39 @@ def build_summary(config, fired, events, memory, turns=None):
 
     sample_times = sorted(set(memory_ts))
     active_by_ts = {ts: active_at(ts) for ts in sample_times}
+    # Python rarely returns freed memory to the OS, so cooldown samples (0 active, memory still high)
+    # would drag the slope down: fit only up to the moment the last session ended.
+    session_end_ts = [marks["session_end"]["ts"] for marks in checkpoints.values() if "session_end" in marks]
+    activity_end = max([load_end, *session_end_ts])
+    peak_active = max([step["peak_active_sessions"] for step in step_summaries], default=0)
+    sessions_completed = sum(step["completed"] for step in step_summaries)
     containers = {}
     rows_by_container = defaultdict(list)
     for row in memory:
         rows_by_container[row["container"]].append(row)
     for container, rows in sorted(rows_by_container.items()):
+        rows.sort(key=lambda row: row["ts"])  # the cooldown "last minute" window relies on time order
         baseline = mean_or_none([row["mem_mb"] for row in rows if row["ts"] < load_start])
-        cooldown = [row for row in rows if row["ts"] >= load_end]
+        cooldown = [row for row in rows if row["ts"] >= activity_end]
         last_minute = [row["mem_mb"] for row in cooldown if row["ts"] >= cooldown[-1]["ts"] - MINUTE_S] \
             if cooldown else []
-        fit = fit_line([active_by_ts[row["ts"]] for row in rows], [row["mem_mb"] for row in rows])
-        leak_reference = baseline if baseline is not None else fit["intercept_mb"]
+        fit_rows = [row for row in rows if row["ts"] <= activity_end]
+        fit = fit_line([active_by_ts[row["ts"]] for row in fit_rows], [row["mem_mb"] for row in fit_rows])
+        reference = baseline if baseline is not None else fit["intercept_mb"]
+        peak = max(row["mem_mb"] for row in rows)
+        leak = round(statistics.fmean(last_minute) - reference, 1) if last_minute else None
         containers[container] = {
             **fit,
             "baseline_sample_mb": baseline,
-            "peak_mb": round(max(row["mem_mb"] for row in rows), 1),
+            "peak_mb": round(peak, 1),
             "peak_cpu_pct": round(max(row["cpu_pct"] for row in rows), 1),
+            # Upper bound per concurrent session: everything the burst added, split over the busiest moment.
+            "mb_per_active_at_peak": round((peak - reference) / peak_active, 2) if peak_active else None,
             "cooldown_last_minute_mb": mean_or_none(last_minute),
-            "leak_mb": round(statistics.fmean(last_minute) - leak_reference, 1) if last_minute else None,
+            "leak_mb": leak,
+            # What stays after sessions are gone (allocator retention or real leak), normalised per 100 sessions.
+            "retained_mb_per_100_sessions": round(leak / sessions_completed * 100, 2)
+            if leak is not None and sessions_completed else None,
         }
 
     sustained_rates = [step["step_rate"] for step in step_summaries if step["sustained"]]
@@ -403,6 +418,8 @@ def build_summary(config, fired, events, memory, turns=None):
         "events_unattributed": unattributed,
         "steps": step_summaries,
         "conversation": summarize_conversation(turns, config) if turns else None,
+        "peak_active_sessions": peak_active,
+        "sessions_completed": sessions_completed,
         "containers": containers,
         "concurrency_timeline": [[round(ts - load_start, 1), active_by_ts[ts]] for ts in sample_times],
         "verdict": {
@@ -424,10 +441,14 @@ def print_table(summary):
               f"{step['tokens_per_session']['p50']:>8} {str(step['sustained']):>9}")
     if not summary["steps"]:
         print("  no data (fired.jsonl empty)")
-    print(f"\n{'container':<28} {'MB/session':>10} {'base MB':>8} {'R2':>6} {'peak MB':>8} {'peak CPU%':>9} {'leak MB':>8}")
+    print(f"\n{'container':<28} {'MB/session':>10} {'R2':>6} {'MB/active@peak':>14} {'base MB':>8} "
+          f"{'peak MB':>8} {'peak CPU%':>9} {'leak MB':>8} {'kept/100':>8}")
     for name, container in summary["containers"].items():
-        print(f"{name:<28} {container['mb_per_session']:>10} {container['intercept_mb']:>8} {container['r2']:>6} "
-              f"{container['peak_mb']:>8} {container['peak_cpu_pct']:>9} {str(container['leak_mb']):>8}")
+        print(f"{name:<28} {container['mb_per_session']:>10} {container['r2']:>6} "
+              f"{str(container['mb_per_active_at_peak']):>14} {str(container['baseline_sample_mb']):>8} "
+              f"{container['peak_mb']:>8} {container['peak_cpu_pct']:>9} {str(container['leak_mb']):>8} "
+              f"{str(container['retained_mb_per_100_sessions']):>8}")
+    print(f"peak active sessions: {summary.get('peak_active_sessions')}, completed: {summary.get('sessions_completed')}")
     if not summary["containers"]:
         print("  no data (memory.csv empty)")
     conversation = summary.get("conversation")
@@ -491,6 +512,8 @@ def self_test():
     # active: t=990 -> 0, t=1005 -> 1 (session 1), t=1008 -> 2 (sessions 1, 2), t=1600 -> 0
     memory = [{"ts": ts, "container": "crew", "mem_mb": 100 + 10 * active, "cpu_pct": 5.0}
               for ts, active in ((990, 0), (1005, 1), (1008, 2), (1600, 0))]
+    # cooldown, 0 active but memory not yet returned to the OS: must not drag the slope down
+    memory.append({"ts": 1500, "container": "crew", "mem_mb": 150, "cpu_pct": 1.0})
     config = {"load_start_ts": 1000, "load_end_ts": 1320}
 
     summary = build_summary(config, fired, events, memory)
@@ -506,6 +529,9 @@ def self_test():
     crew = summary["containers"]["crew"]
     assert (crew["mb_per_session"], crew["intercept_mb"], crew["r2"]) == (10, 100, 1), crew
     assert crew["baseline_sample_mb"] == 100 and crew["leak_mb"] == 0, crew
+    assert crew["peak_mb"] == 150 and summary["peak_active_sessions"] > 0, crew
+    assert crew["mb_per_active_at_peak"] == round(50 / summary["peak_active_sessions"], 2), crew
+    assert crew["retained_mb_per_100_sessions"] == 0 and summary["sessions_completed"] == 119, summary
     assert slow["agent_queue_wait_s"]["p50"] == 0.2 and slow["tokens_per_session"]["p50"] == 100, slow
     assert summary["mode"] == "fixed_rate" and summary["conversation"] is None
     empty = build_summary({}, [], [], [])

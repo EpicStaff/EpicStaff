@@ -1,29 +1,43 @@
 #!/usr/bin/env bash
 # Stress benchmark runner (see stress/README.md). Run from anywhere on the server host.
 #
-#   bash stress/run.sh prepare                    once per deploy: bench log files + permissions
-#   bash stress/run.sh single <graph-id> [args]   one message per session at fixed rates (bench.py)
-#   bash stress/run.sh chat   <graph-id> [args]   multi-turn conversations (conversation.py)
-#   bash stress/run.sh all    <graph-id>          single, then chat
+#   bash stress/run.sh prepare                                once per deploy: bench log files + permissions
+#   bash stress/run.sh memory <label> <graph-id> <rate> [args]  clean RAM-per-session run of one flow
+#   bash stress/run.sh single <graph-id> [args]               fixed rates 10,25,50/min (bench.py)
+#   bash stress/run.sh chat   <graph-id> [args]               multi-turn conversations (conversation.py)
 #
-# [args] are passed through and override the defaults below, e.g. a dry run:
-#   bash stress/run.sh single 42 --rates 2 --step-minutes 2 --cooldown-minutes 1
+# [args] are passed through and override the defaults, e.g.
+#   bash stress/run.sh memory flow17-simple 17 250
+#   bash stress/run.sh memory flow16-chat 16 50 --cooldown-minutes 15 --variables-file stress/chat/big_message.json
 # Needs DJANGO_API_KEY in the environment. Every run is analyzed as soon as it ends.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 LOGS=src/bench_logs
-BIG_MESSAGE=stress/chat/big_message.json
 CONVERSATION=stress/chat/conversation.json
+COMPOSE=(docker compose -f src/docker-compose.yaml)
+MEMORY_DEFAULTS=(--step-minutes 2 --cooldown-minutes 5 --warmup)
 SINGLE_DEFAULTS=(--rates 10,25,50 --step-minutes 5 --cooldown-minutes 5)
 CHAT_DEFAULTS=(--users 20 --users-per-minute 10 --cooldown-minutes 5)
 
-usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 need_key() {
   [ -n "${DJANGO_API_KEY:-}" ] || { echo "DJANGO_API_KEY is not set: export DJANGO_API_KEY='<org API key>'"; exit 1; }
 }
 need_graph() { [[ "${1:-}" =~ ^[0-9]+$ ]] || usage; }
 analyze_latest() { python3 stress/analyze.py "$(ls -td stress/runs/*/ | head -1)"; }
+
+# Restart the measured services so every flow starts from the same memory baseline
+# (Python rarely gives freed RAM back, so the previous run would inflate the next one).
+restart_services() {
+  "${COMPOSE[@]}" restart django_app crew agent sandbox
+  local container; container=$("${COMPOSE[@]}" ps -q django_app)
+  for _ in $(seq 100); do
+    [ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy ] && return
+    sleep 3
+  done
+  echo "django_app not healthy after 5 min: ${COMPOSE[*]} logs django_app"; exit 1
+}
 
 case "${1:-}" in
   prepare)
@@ -34,15 +48,18 @@ case "${1:-}" in
     fi
     echo "ok: $LOGS is writable by every service (agent runs as uid 1000, the rest as root)"
     ;;
+  memory)
+    need_key
+    label=${2:-}; graph=${3:-}; rate=${4:-}
+    [[ "$label" =~ ^[A-Za-z0-9._-]+$ && "$rate" =~ ^[0-9]+([.][0-9]+)?$ ]] || usage
+    need_graph "$graph"; shift 4
+    restart_services
+    python3 stress/bench.py --graph-id "$graph" --rates "$rate" --label "$label" "${MEMORY_DEFAULTS[@]}" "$@"
+    analyze_latest
+    ;;
   single)
     need_key; need_graph "${2:-}"; graph=$2; shift 2
-    variables=()
-    if [ -f "$BIG_MESSAGE" ]; then
-      variables=(--variables-file "$BIG_MESSAGE")
-    else
-      echo "note: $BIG_MESSAGE not found, sessions use the start node's default context"
-    fi
-    python3 stress/bench.py --graph-id "$graph" "${variables[@]}" "${SINGLE_DEFAULTS[@]}" "$@"
+    python3 stress/bench.py --graph-id "$graph" "${SINGLE_DEFAULTS[@]}" "$@"
     analyze_latest
     ;;
   chat)
@@ -50,11 +67,6 @@ case "${1:-}" in
     [ -f "$CONVERSATION" ] || { echo "missing $CONVERSATION: copy stress/chat/ to the server (it is not in git)"; exit 1; }
     python3 stress/conversation.py --graph-id "$graph" "${CHAT_DEFAULTS[@]}" "$@"
     analyze_latest
-    ;;
-  all)
-    need_graph "${2:-}"
-    bash "$0" single "$2"
-    bash "$0" chat "$2"
     ;;
   *)
     usage

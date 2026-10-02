@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_INTERVAL_S = 2.0
 REQUEST_TIMEOUT_S = 30
 DRAIN_TIMEOUT_S = 60
+WARMUP_TIMEOUT_S = 300
 MAX_WORKERS = 256  # far above rate * timeout, so a slow API never delays the next send
 SIZE_TO_MB = {
     "b": 1 / 1024**2,
@@ -64,11 +65,18 @@ def add_common_args(parser):
     parser.add_argument("--api-key", default=os.environ.get("DJANGO_API_KEY"))
     parser.add_argument("--bench-logs", type=Path, default=REPO_ROOT / "src" / "bench_logs")
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "stress" / "runs")
+    parser.add_argument("--label", default="", help="appended to the run folder name, e.g. flow17-simple")
+    parser.add_argument("--warmup", action="store_true",
+                        help="run one unlogged session and wait for it to finish before measuring")
+    parser.add_argument("--baseline-seconds", type=float, default=20,
+                        help="memory sampling with no load before the first session")
 
 
 def check_common_args(parser, args):
     if not args.api_key:
         parser.error("--api-key or env DJANGO_API_KEY is required")
+    if args.label and not re.fullmatch(r"[A-Za-z0-9._-]+", args.label):
+        parser.error("--label may only contain letters, digits, '.', '_' and '-'")
 
 
 # ---------------------------------------------------------------- config.json
@@ -255,6 +263,46 @@ def run_load(args, executor, fired_log, futures, run_dir):
             time.sleep(remaining_s)
 
 
+def warm_up(args):
+    """One session outside the measurement, so lazy imports and first-run caches are not counted as load.
+
+    Retries the start for a minute (crew may still be subscribing after a restart), then waits for the
+    session to leave pending/run. Exits when the flow cannot run at all: measuring a broken flow is pointless.
+    """
+    base_url = args.api.rstrip("/")
+    headers = {"X-Api-Key": args.api_key, "Content-Type": "application/json"}
+    payload = {"graph_id": args.graph_id, **({"variables": args.variables} if args.variables else {})}
+    session_id, last_error = None, None
+    for _ in range(12):
+        request = urllib.request.Request(base_url + "/api/run-session/", data=json.dumps(payload).encode(),
+                                         headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
+                session_id = json.loads(response.read() or b"{}").get("session_id")
+            break
+        except Exception as error:
+            last_error = error
+            time.sleep(5)
+    if session_id is None:
+        sys.exit(f"[warmup] could not start a session for graph {args.graph_id}: {last_error}")
+    deadline = time.monotonic() + WARMUP_TIMEOUT_S
+    status = None
+    while time.monotonic() < deadline:
+        time.sleep(2)
+        request = urllib.request.Request(f"{base_url}/api/sessions/{session_id}/?detailed=false", headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
+                status = json.loads(response.read()).get("status")
+        except Exception as error:
+            print(f"[warmup] status poll failed: {error}", file=sys.stderr)
+            continue
+        if status not in ("pending", "run"):
+            break
+    print(f"[warmup] session {session_id} -> {status}")
+    if status in ("pending", "run"):
+        print(f"[warmup] still {status} after {WARMUP_TIMEOUT_S} s, measuring anyway", file=sys.stderr)
+
+
 # ---------------------------------------------------------------- exit
 
 
@@ -280,7 +328,10 @@ def main():
 
 def run_benchmark(args, load):
     """Run dir + memory sampler around `load(args, executor, fired_log, futures, run_dir)`, then cooldown and collect."""
-    run_dir = args.out / datetime.now().strftime("%Y%m%d-%H%M%S")
+    if args.warmup:
+        warm_up(args)
+    run_name = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"-{args.label}" if args.label else "")
+    run_dir = args.out / run_name
     run_dir.mkdir(parents=True)
     config = build_config(args)
     write_config(run_dir, config)
@@ -295,9 +346,10 @@ def run_benchmark(args, load):
     sampler = threading.Thread(target=run_sampler, args=(memory_writer, memory_file, stop_sampler), daemon=True)
 
     try:
-        print("[sampler] baseline sample")
+        print(f"[sampler] baseline: {args.baseline_seconds:g} s with no load")
         sample_memory(memory_writer, memory_file)
         sampler.start()
+        time.sleep(args.baseline_seconds)
         config["load_start_ts"] = time.time()
         load(args, executor, fired_log, futures, run_dir)
         config["load_end_ts"] = time.time()

@@ -14,13 +14,17 @@ Design: `docs/superpowers/specs/2026-10-02-stress-test-benchmark-design.md` (loc
 
 ## Run
 
-    bash stress/run.sh prepare                    # once per deploy (sudo if docker created src/bench_logs)
-    bash stress/run.sh single <graph-id>          # 10, 25, 50 sessions/min, 5 min each, 5 min cooldown
-    bash stress/run.sh chat   <graph-id>          # 20 users, 10 new users/min, every user plays all turns
-    bash stress/run.sh all    <graph-id>          # single, then chat
+    bash stress/run.sh prepare                             # once per deploy (sudo if docker created src/bench_logs)
+    bash stress/run.sh memory <label> <graph-id> <rate>    # RAM per session: restart, warm-up, 20 s baseline,
+                                                           #   <rate>/min for 2 min, 5 min cooldown
+    bash stress/run.sh single <graph-id>                   # 10, 25, 50 sessions/min, 5 min each, 5 min cooldown
+    bash stress/run.sh chat   <graph-id>                   # 20 users, 10 new users/min, every user plays all turns
 
-Extra arguments override the defaults. Dry run first:
+Extra arguments override the defaults; `--variables-file stress/chat/big_message.json` sends the big
+message (never sent unless asked). Examples and a dry run:
 
+    bash stress/run.sh memory flow17-simple 17 250
+    bash stress/run.sh memory flow16-chat 16 50 --cooldown-minutes 15 --variables-file stress/chat/big_message.json
     bash stress/run.sh single <graph-id> --rates 2 --step-minutes 2 --cooldown-minutes 1
     bash stress/run.sh chat   <graph-id> --users 2 --cooldown-minutes 1
 
@@ -39,6 +43,8 @@ Each run lands in `stress/runs/<YYYYmmdd-HHMMSS>/`:
 
 Key fields per step: `queue_wait_s` (waiting for a crew slot, cap `CREW_MAX_CONCURRENT_SESSIONS`),
 `agent_queue_wait_s` (waiting for the agent service to pick the request up), `run_time_s`,
-`llm_time_share`, `tokens_per_session`, `failed_reasons`; per container: `mb_per_session`, `r2`,
-`peak_mb`, `leak_mb`. Fixed-rate runs get `verdict.max_sustained_rate`; chat runs get `conversation`
+`llm_time_share`, `tokens_per_session`, `failed_reasons`; per container: `mb_per_session` + `r2`
+(slope of RAM vs active sessions, fitted only while sessions run), `mb_per_active_at_peak` ((peak - baseline)
+/ peak active sessions, the robust number for short sessions), `retained_mb_per_100_sessions` (RAM still held
+after the cooldown), `peak_mb`. Fixed-rate runs get `verdict.max_sustained_rate`; chat runs get `conversation`
 (users finished, where they stopped, turn time vs history length) instead.
