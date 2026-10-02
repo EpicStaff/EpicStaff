@@ -31,7 +31,12 @@ export function unpackSubflow(parentFlow: FlowModel, subGraphNodeId: string, sub
 
     const oldIdToNewId = buildIdMap(filteredSubflowNodes);
 
-    const copiedNodes = cloneNodesWithFreshIds(filteredSubflowNodes, oldIdToNewId, existingNames);
+    const copiedNodes = cloneNodesWithFreshIds(
+        filteredSubflowNodes,
+        oldIdToNewId,
+        existingNames,
+        subGraphNode.position
+    );
 
     const copiedConnections = remapInternalConnections(subflowModel.connections, oldIdToNewId);
 
@@ -86,11 +91,25 @@ function resolveUniqueName(baseName: string, existingNames: Set<string>): string
     return `${baseName} (${suffix})`;
 }
 
+function computeCentroid(nodes: NodeModel[]): { x: number; y: number } {
+    if (nodes.length === 0) {
+        return { x: 0, y: 0 };
+    }
+    const sumX = nodes.reduce((sum, node) => sum + node.position.x, 0);
+    const sumY = nodes.reduce((sum, node) => sum + node.position.y, 0);
+    return { x: sumX / nodes.length, y: sumY / nodes.length };
+}
+
 function cloneNodesWithFreshIds(
     nodes: NodeModel[],
     oldIdToNewId: Map<string, string>,
-    existingNames: Set<string>
+    existingNames: Set<string>,
+    targetPosition: { x: number; y: number }
 ): NodeModel[] {
+    const centroid = computeCentroid(nodes);
+    const offsetX = targetPosition.x - centroid.x;
+    const offsetY = targetPosition.y - centroid.y;
+
     return nodes.map((node) => {
         const newId = oldIdToNewId.get(node.id)!;
         const clonedData = node.data ? JSON.parse(JSON.stringify(node.data)) : node.data;
@@ -113,7 +132,7 @@ function cloneNodesWithFreshIds(
             data: clonedData,
             input_map: clonedInputMap,
             ports: newPorts,
-            position: { ...node.position },
+            position: { x: node.position.x + offsetX, y: node.position.y + offsetY },
             size: { ...node.size },
         } as NodeModel;
     });

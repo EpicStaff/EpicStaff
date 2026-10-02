@@ -293,6 +293,101 @@ function createStartToEntryConnections(
 
 const VARIABLES_PREFIX = 'variables.';
 const VARIABLES_REGEX = /\bvariables\.([A-Za-z_][A-Za-z0-9_]*)/g;
+const BARE_IDENTIFIER_REGEX = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
+
+/**
+ * Python keywords, builtins, and CDT wrapper-injected names that should never
+ * be treated as flow variable references when scanning bare identifiers.
+ */
+const PYTHON_EXCLUDED_IDENTIFIERS = new Set([
+    // Python keywords
+    'and',
+    'as',
+    'assert',
+    'async',
+    'await',
+    'break',
+    'class',
+    'continue',
+    'def',
+    'del',
+    'elif',
+    'else',
+    'except',
+    'finally',
+    'for',
+    'from',
+    'global',
+    'if',
+    'import',
+    'in',
+    'is',
+    'lambda',
+    'nonlocal',
+    'not',
+    'or',
+    'pass',
+    'raise',
+    'return',
+    'try',
+    'while',
+    'with',
+    'yield',
+    // Python builtins
+    'True',
+    'False',
+    'None',
+    'print',
+    'len',
+    'str',
+    'int',
+    'float',
+    'bool',
+    'list',
+    'dict',
+    'tuple',
+    'set',
+    'type',
+    'range',
+    'enumerate',
+    'zip',
+    'map',
+    'filter',
+    'sorted',
+    'reversed',
+    'min',
+    'max',
+    'sum',
+    'abs',
+    'round',
+    'any',
+    'all',
+    'isinstance',
+    'issubclass',
+    'hasattr',
+    'getattr',
+    'setattr',
+    'delattr',
+    'callable',
+    'repr',
+    'format',
+    'id',
+    'hash',
+    'input',
+    'open',
+    'super',
+    'object',
+    'property',
+    'staticmethod',
+    'classmethod',
+    // CDT wrapper-injected names
+    'variables',
+    'result',
+    '_raw',
+    '_to_ns',
+    'kwargs',
+    'main',
+]);
 
 function extractVariableName(variablePath: string): string | null {
     if (typeof variablePath !== 'string' || !variablePath.startsWith(VARIABLES_PREFIX)) {
@@ -304,13 +399,28 @@ function extractVariableName(variablePath: string): string | null {
 }
 
 function extractVariableNamesFromCode(code: string): string[] {
-    const names: string[] = [];
+    const seen = new Set<string>();
+
+    // Pass 1: explicit `variables.name` references (always reliable)
     let match: RegExpExecArray | null;
     VARIABLES_REGEX.lastIndex = 0;
     while ((match = VARIABLES_REGEX.exec(code)) !== null) {
-        names.push(match[1]);
+        seen.add(match[1]);
     }
-    return names;
+
+    // Pass 2: bare identifiers — catches CDT expressions like `triage_result`
+    // that the backend resolves without the `variables.` prefix.
+    // False positives are harmless (unused input_map entries are ignored at runtime);
+    // false negatives (missing a variable) would break the subflow.
+    BARE_IDENTIFIER_REGEX.lastIndex = 0;
+    while ((match = BARE_IDENTIFIER_REGEX.exec(code)) !== null) {
+        const identifier = match[1];
+        if (!PYTHON_EXCLUDED_IDENTIFIERS.has(identifier)) {
+            seen.add(identifier);
+        }
+    }
+
+    return Array.from(seen);
 }
 
 function addVariable(merged: Record<string, unknown>, variableName: string): void {

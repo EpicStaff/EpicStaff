@@ -764,6 +764,78 @@ describe('extractToSubflow', () => {
         expect(result.subGraphNodeInputMap['external_flag']).toBe('variables.external_flag');
     });
 
+    it('detects bare variable names in CDT expressions', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: "'category' in triage_result",
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        // bare identifier `triage_result` should be detected and included
+        expect(result.subGraphNodeInputMap['triage_result']).toBe('variables.triage_result');
+    });
+
+    it('does not include Python keywords/builtins from CDT expressions', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'len(items) > 0 and True',
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        // `items` is a plausible variable — should be collected
+        expect(result.subGraphNodeInputMap['items']).toBe('variables.items');
+        // Python keywords and builtins must NOT appear
+        expect(result.subGraphNodeInputMap['len']).toBeUndefined();
+        expect(result.subGraphNodeInputMap['True']).toBeUndefined();
+        expect(result.subGraphNodeInputMap['and']).toBeUndefined();
+    });
+
     it('preserves all inputs when multiple entries reference sub-paths of the same variable', () => {
         const start = makeStartNode('start-1');
         const nodeA = makeNode('a', NodeType.TASK, {

@@ -599,6 +599,102 @@ describe('unpackSubflow', () => {
         expect(table['default_next_node']).toBeNull();
     });
 
+    it('offsets unpacked node positions to center around the SubGraphNode location', () => {
+        const parentStart = makeStartNode('parent-start');
+        const subGraphNode = makeSubGraphNode('sg-1', { position: { x: 800, y: 500 } });
+        const startToSg = makeConnection('parent-start', 'sg-1', 'start-start', 'subgraph-in');
+
+        const parentFlow: FlowModel = {
+            nodes: [parentStart, subGraphNode],
+            connections: [startToSg],
+        };
+
+        const subStart = makeStartNode('sub-start');
+        const taskA = makeNode('task-a', NodeType.TASK, { position: { x: 100, y: 0 } });
+        const taskB = makeNode('task-b', NodeType.TASK, { position: { x: 300, y: 0 } });
+        const startToA = makeConnection('sub-start', 'task-a', 'start-start', 'task-in');
+        const aToB = makeConnection('task-a', 'task-b', 'task-out', 'task-in');
+
+        const subflowModel: FlowModel = {
+            nodes: [subStart, taskA, taskB],
+            connections: [startToA, aToB],
+        };
+
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+
+        const inlinedNodes = result.nodes.filter((node) => node.type === NodeType.TASK);
+        expect(inlinedNodes).toHaveLength(2);
+
+        // Centroid of internal nodes: ((100+300)/2, (0+0)/2) = (200, 0)
+        // Offset: (800 - 200, 500 - 0) = (600, 500)
+        // taskA: (100+600, 0+500) = (700, 500)
+        // taskB: (300+600, 0+500) = (900, 500)
+        const positions = inlinedNodes.map((node) => node.position).sort((a, b) => a.x - b.x);
+        expect(positions[0]).toEqual({ x: 700, y: 500 });
+        expect(positions[1]).toEqual({ x: 900, y: 500 });
+    });
+
+    it('preserves relative layout of unpacked nodes', () => {
+        const parentStart = makeStartNode('parent-start');
+        const subGraphNode = makeSubGraphNode('sg-1', { position: { x: 400, y: 300 } });
+
+        const parentFlow: FlowModel = {
+            nodes: [parentStart, subGraphNode],
+            connections: [],
+        };
+
+        const subStart = makeStartNode('sub-start');
+        const taskA = makeNode('task-a', NodeType.TASK, { position: { x: 0, y: 0 } });
+        const taskB = makeNode('task-b', NodeType.TASK, { position: { x: 200, y: 100 } });
+        const taskC = makeNode('task-c', NodeType.PYTHON, { position: { x: 100, y: 200 } });
+
+        const subflowModel: FlowModel = {
+            nodes: [subStart, taskA, taskB, taskC],
+            connections: [],
+        };
+
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+
+        const inlinedNodes = result.nodes.filter(
+            (node) => node.type === NodeType.TASK || node.type === NodeType.PYTHON
+        );
+        expect(inlinedNodes).toHaveLength(3);
+
+        // Relative distances between nodes should be preserved
+        const positions = inlinedNodes.map((node) => node.position).sort((a, b) => a.x - b.x);
+        // Original deltas: A->B = (200, 100), A->C = (100, 200)
+        expect(positions[1].x - positions[0].x).toBe(100); // A->C x delta
+        expect(positions[1].y - positions[0].y).toBe(200); // A->C y delta
+        expect(positions[2].x - positions[0].x).toBe(200); // A->B x delta
+        expect(positions[2].y - positions[0].y).toBe(100); // A->B y delta
+    });
+
+    it('places a single unpacked node exactly at the SubGraphNode position', () => {
+        const parentStart = makeStartNode('parent-start');
+        const subGraphNode = makeSubGraphNode('sg-1', { position: { x: 500, y: 250 } });
+        const startToSg = makeConnection('parent-start', 'sg-1', 'start-start', 'subgraph-in');
+
+        const parentFlow: FlowModel = {
+            nodes: [parentStart, subGraphNode],
+            connections: [startToSg],
+        };
+
+        const subStart = makeStartNode('sub-start');
+        const taskA = makeNode('task-a', NodeType.TASK, { position: { x: 100, y: 50 } });
+        const startToA = makeConnection('sub-start', 'task-a', 'start-start', 'task-in');
+
+        const subflowModel: FlowModel = {
+            nodes: [subStart, taskA],
+            connections: [startToA],
+        };
+
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+
+        const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK)!;
+        // Single node centroid = its own position, so it lands exactly at SubGraphNode position
+        expect(inlinedTask.position).toEqual({ x: 500, y: 250 });
+    });
+
     it('handles name conflicts with incrementing suffixes', () => {
         const parentStart = makeStartNode('parent-start');
         const existingTask1 = makeNode('existing-1', NodeType.TASK, { node_name: 'Duplicate' });

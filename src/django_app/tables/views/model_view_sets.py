@@ -689,6 +689,7 @@ class GraphViewSet(
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
         "delete_by_uuid": Permission.DELETE,
+        "subflow_usage": Permission.READ,
     }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
@@ -948,6 +949,17 @@ class GraphViewSet(
         )
 
         return Response(GraphSerializer(refreshed).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="subflow-usage")
+    def subflow_usage(self, request, pk=None):
+        """Return the IDs of flows that reference this flow as a subgraph node."""
+        graph = self.get_object()
+        parent_flow_ids = list(
+            SubGraphNode.objects.filter(subgraph=graph, graph__org_id=self.get_active_org_id())
+            .values_list("graph_id", flat=True)
+            .distinct()
+        )
+        return Response({"parent_flow_ids": parent_flow_ids})
 
     @extend_schema(**GRAPH_DELETE_BY_UUID_DELETE)
     @action(
