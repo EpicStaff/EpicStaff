@@ -836,6 +836,111 @@ describe('extractToSubflow', () => {
         expect(result.subGraphNodeInputMap['and']).toBeUndefined();
     });
 
+    it('does not extract dotted property names as separate variables', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'trigger_payload.order_id == "abc"',
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        // Only the root identifier should appear, not the property after the dot
+        expect(result.subGraphNodeInputMap['trigger_payload']).toBe('variables.trigger_payload');
+        expect(result.subGraphNodeInputMap['order_id']).toBeUndefined();
+    });
+
+    it('does not extract deeply nested dotted property names as separate variables', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'trigger_payload.items.name == "widget"',
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        expect(result.subGraphNodeInputMap['trigger_payload']).toBe('variables.trigger_payload');
+        expect(result.subGraphNodeInputMap['items']).toBeUndefined();
+        expect(result.subGraphNodeInputMap['name']).toBeUndefined();
+    });
+
+    it('extracts both root identifiers from mixed dotted and bare references', () => {
+        const start = makeStartNode('start-1');
+        const cdtNode = makeNode('cdt', NodeType.CLASSIFICATION_TABLE, {
+            position: { x: 100, y: 0 },
+            data: {
+                name: 'test-cdt',
+                table: {
+                    default_next_node: null,
+                    next_error_node: null,
+                    condition_groups: [
+                        {
+                            group_name: 'g1',
+                            next_node: null,
+                            conditions: [],
+                            expression: 'trigger_payload.order_id and status',
+                            manipulation: null,
+                            group_type: 'simple',
+                        },
+                    ],
+                },
+            },
+        });
+
+        const parentFlow: FlowModel = {
+            nodes: [start, cdtNode],
+            connections: [],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+
+        expect(result.subGraphNodeInputMap['trigger_payload']).toBe('variables.trigger_payload');
+        expect(result.subGraphNodeInputMap['status']).toBe('variables.status');
+        expect(result.subGraphNodeInputMap['order_id']).toBeUndefined();
+    });
+
     it('preserves all inputs when multiple entries reference sub-paths of the same variable', () => {
         const start = makeStartNode('start-1');
         const nodeA = makeNode('a', NodeType.TASK, {
