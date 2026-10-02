@@ -140,12 +140,19 @@ class CrewSessionMessage(BaseSessionMessage):
 
 class ActiveManager(models.Manager):
     """
-    Manager for models that using SoftDeleteFields.
-    Filters the active records
+    `objects` on every SoftDeleteFields model: the rows not in the
+    recycle bin.
     """
 
     def get_queryset(self):
-        return super().get_queryset().filter(is_soft_deleted=False, soft_deleted_at__isnull=True)
+        return super().get_queryset().filter(active=True)
+
+
+class DeletedManager(models.Manager):
+    """`deleted_objects` on every SoftDeleteFields model: the rows in the recycle bin."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(active=False)
 
 
 class EnabledToggleManager(models.Manager):
@@ -164,13 +171,13 @@ class EnabledToggleFields(models.Model):
     and back on at will.
 
     Deliberately separate from SoftDeleteFields: a soft-deleted row is
-    meant to disappear from normal CRUD by default (SoftDeleteFields'
-    `objects` is the filtered manager, `all_objects` the escape hatch).
-    An `is_enabled=False` row here is the opposite -- it MUST stay
-    visible/manageable through ordinary CRUD (list/retrieve/update) so
-    an operator can find and re-enable it. Only inbound lookup/routing
-    paths that must treat "disabled" exactly like "doesn't exist"
-    should use `enabled_objects`.
+    in the recycle bin and disappears from normal CRUD by default
+    (SoftDeleteFields' `objects` is the filtered manager, `all_objects`
+    the escape hatch). An `is_enabled=False` row here is the opposite --
+    it MUST stay visible/manageable through ordinary CRUD
+    (list/retrieve/update) so an operator can find and re-enable it.
+    Only inbound lookup/routing paths that must treat "disabled" exactly
+    like "doesn't exist" should use `enabled_objects`.
 
     `objects` therefore stays the plain, unfiltered default manager
     here (opposite of SoftDeleteFields' convention) -- do not swap the
@@ -189,7 +196,7 @@ class EnabledToggleFields(models.Model):
 
 def soft_delete_consistency_constraint() -> models.CheckConstraint:
     """
-    Reject any row where is_soft_deleted/soft_deleted_at disagree.
+    Reject any row where active/soft_deleted_at disagree.
 
     Django does not merge Meta options (constraints included) from more
     than one abstract base class onto a concrete model that has its own
@@ -199,8 +206,8 @@ def soft_delete_consistency_constraint() -> models.CheckConstraint:
     """
     return models.CheckConstraint(
         check=(
-            models.Q(is_soft_deleted=False, soft_deleted_at__isnull=True)
-            | models.Q(is_soft_deleted=True, soft_deleted_at__isnull=False)
+            models.Q(active=True, soft_deleted_at__isnull=True)
+            | models.Q(active=False, soft_deleted_at__isnull=False)
         ),
         name="%(app_label)s_%(class)s_soft_delete_consistency",
     )
@@ -211,12 +218,22 @@ class SoftDeleteFields(models.Model):
     Only the fields required for soft deletion. No delete() override —
     a direct .delete() on a model that only has this mixin (no SoftDeleteMixin)
     performs a normal, unconditional Django hard delete.
+
+    Managers: `objects` (the default) returns the rows not in the recycle
+    bin, `deleted_objects` the binned ones, and `all_objects` every row.
+    `all_objects` is also the base manager, so Django's Collector and
+    forward FK access still reach binned rows.
     """
 
-    is_soft_deleted = models.BooleanField(default=False, db_default=False)
+    active = models.BooleanField(default=True, db_default=True)
     soft_deleted_at = models.DateTimeField(null=True, blank=True)
+    # One id per DeleteService.delete() call, shared by every row that call binned,
+    # so a restore brings back exactly that delete. Null on live rows and on rows
+    # binned before the column existed.
+    soft_delete_batch = models.UUIDField(null=True, blank=True, db_index=True)
 
     objects = ActiveManager()
+    deleted_objects = DeletedManager()
     all_objects = models.Manager()
 
     class Meta:

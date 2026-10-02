@@ -59,7 +59,7 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 
     _resync_tunnel_registration(id_)
 
-    if getattr(instance, "is_soft_deleted", False):
+    if not instance.active:
         _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)
         logger.info(f"TelegramTriggerNode {id_} is soft-deleted, skipping registration")
         return

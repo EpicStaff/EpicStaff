@@ -11,7 +11,7 @@ Covers, per root and per mechanism rule:
 - Forward-FK targets (`PythonCode`, `DocumentContent`, `GraphRagIndexConfig`)
   are never visited by the reverse-relation walker.
 - `ScheduleTriggerNode.is_active` (business field) is untouched by the cascade,
-  distinct from `is_soft_deleted` (cascade field) on the same model.
+  distinct from `active` (soft-delete field) on the same model.
 - The PROTECT/RESTRICT/DO_NOTHING guards in `_DeleteContext._process_related_object`.
 """
 
@@ -44,6 +44,7 @@ from tables.models import (
     TaskNode,
     WebhookTriggerNode,
 )
+from tables.models import Edge
 from tables.models.base_models import SoftDeleteFields
 from tables.models.session_models import SessionTrigger
 from tables.models.webhook_models import (
@@ -97,10 +98,10 @@ class TestFullCascadePerRoot:
         attached_collection.refresh_from_db()
 
         for obj in (graph, task_node, inline_surface, inline_surface_knowledge):
-            assert obj.is_soft_deleted is True
+            assert obj.active is False
             assert obj.soft_deleted_at is not None
 
-        assert attached_collection.is_soft_deleted is False
+        assert attached_collection.active is True
         assert attached_collection.soft_deleted_at is None
 
     def test_source_collection_cascades_through_document_and_graph_rag(
@@ -134,7 +135,7 @@ class TestFullCascadePerRoot:
         graph_rag_document.refresh_from_db()
 
         for obj in (collection, document, base_rag_type, graph_rag, graph_rag_document):
-            assert obj.is_soft_deleted is True
+            assert obj.active is False
             assert obj.soft_deleted_at is not None
 
         # DocumentContent is a forward-FK target of DocumentMetadata — never visited.
@@ -149,9 +150,9 @@ class TestFullCascadePerRoot:
         python_code_tool.refresh_from_db()
         python_code_tool_config.refresh_from_db()
 
-        assert python_code_tool.is_soft_deleted is True
+        assert python_code_tool.active is False
         assert python_code_tool.soft_deleted_at is not None
-        assert python_code_tool_config.is_soft_deleted is True
+        assert python_code_tool_config.active is False
         assert python_code_tool_config.soft_deleted_at is not None
 
     def test_graph_cascades_through_knowledge_node(self, graph):
@@ -167,7 +168,7 @@ class TestFullCascadePerRoot:
         graph.delete()
 
         knowledge_node.refresh_from_db()
-        assert knowledge_node.is_soft_deleted is True
+        assert knowledge_node.active is False
         assert knowledge_node.soft_deleted_at is not None
         assert KnowledgeNode.all_objects.filter(pk=knowledge_node.pk).exists()
 
@@ -181,7 +182,7 @@ class TestFullCascadePerRoot:
         version.delete()
 
         version.refresh_from_db()
-        assert version.is_soft_deleted is True
+        assert version.active is False
         assert version.soft_deleted_at is not None
 
 
@@ -271,7 +272,7 @@ class TestForwardFkExclusions:
         graph.delete()
 
         python_node.refresh_from_db()
-        assert python_node.is_soft_deleted is True
+        assert python_node.active is False
 
         code.refresh_from_db()
         assert not isinstance(code, SoftDeleteFields)
@@ -295,7 +296,7 @@ class TestForwardFkExclusions:
         collection.delete()
 
         document.refresh_from_db()
-        assert document.is_soft_deleted is True
+        assert document.active is False
 
         content.refresh_from_db()
         assert not isinstance(content, SoftDeleteFields)
@@ -318,7 +319,7 @@ class TestForwardFkExclusions:
         collection.delete()
 
         graph_rag.refresh_from_db()
-        assert graph_rag.is_soft_deleted is True
+        assert graph_rag.active is False
 
         index_config.refresh_from_db()
         assert not isinstance(index_config, SoftDeleteFields)
@@ -329,7 +330,7 @@ class TestForwardFkExclusions:
 class TestScheduleTriggerNodeIsActiveUntouched:
     """Item 6: `ScheduleTriggerNode.is_active` is its own business field
     (enabled/disabled). It must not collide with the cascade's
-    `is_soft_deleted` field on the same model."""
+    `active` field on the same model."""
 
     def test_is_active_business_field_survives_cascade(self, graph):
         node = ScheduleTriggerNode.objects.create(
@@ -340,7 +341,7 @@ class TestScheduleTriggerNodeIsActiveUntouched:
 
         node.refresh_from_db()
         assert node.is_active is True
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
 
@@ -377,7 +378,7 @@ class TestHiddenReverseRelationSetNull:
         graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
         trigger.refresh_from_db()
@@ -420,7 +421,7 @@ class TestHiddenReverseRelationSetNull:
         graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
         trigger.refresh_from_db()
@@ -438,7 +439,7 @@ class TestHiddenReverseRelationSetNull:
         # keyed off `trigger`, not off the node, so it is unaffected by the
         # node's soft-delete and remains fully active.
         node_auth.refresh_from_db()
-        assert node_auth.is_soft_deleted is False
+        assert node_auth.active is True
         assert node_auth.soft_deleted_at is None
         assert WebhookTriggerAuth.objects.filter(pk=node_auth.pk).exists()
         assert node_auth.trigger_id == webhook_trigger.pk
@@ -515,7 +516,7 @@ class TestProtectRestrictDoNothingGuards:
             DeleteService.delete(graph)
 
         graph.refresh_from_db()
-        assert graph.is_soft_deleted is False
+        assert graph.active is True
         assert graph.soft_deleted_at is None
 
 
@@ -547,7 +548,7 @@ class TestPostSaveListenerModelsBypassBatching:
             graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
         assert redis_client_mock.publish.called
@@ -577,7 +578,7 @@ class TestPostSaveListenerModelsBypassBatching:
         graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
 
@@ -612,3 +613,66 @@ class TestBatchedCascadeQueryCountDoesNotGrowWithChildCount:
         assert len(many) == len(few), "\n".join(
             query["sql"] for query in many.captured_queries
         )
+
+
+@pytest.mark.django_db
+class TestSoftDeleteBatch:
+    """One DeleteService.delete() call stamps one batch id and one timestamp on
+    every row it bins, so restore can bring back exactly that delete."""
+
+    def test_root_and_every_child_share_one_batch_and_timestamp(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task")
+        edge = Edge.objects.create(graph=graph)
+        # A post_save listener sends this model through the per-row path,
+        # while the task node and edge go through the batched UPDATE.
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+
+        batch = DeleteService.delete(graph)
+
+        rows = [
+            Graph.all_objects.get(pk=graph.pk),
+            TaskNode.all_objects.get(pk=task_node.pk),
+            Edge.all_objects.get(pk=edge.pk),
+            ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk),
+        ]
+        assert batch is not None
+        assert {row.soft_delete_batch for row in rows} == {batch}
+        assert len({row.soft_deleted_at for row in rows}) == 1
+
+    def test_separate_deletes_get_separate_batches(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task")
+
+        node_batch = DeleteService.delete(task_node)
+        graph_batch = DeleteService.delete(graph)
+
+        assert node_batch != graph_batch
+        assert TaskNode.all_objects.get(pk=task_node.pk).soft_delete_batch == node_batch
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == graph_batch
+
+    def test_soft_delete_returns_the_batch(self, graph):
+        batch = graph.soft_delete()
+
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == batch
+
+    def test_a_row_binned_on_its_own_keeps_its_batch_when_its_parent_is_deleted(self, graph):
+        # ScheduleTriggerNode goes through the per-row path (post_save listener).
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+        node_batch = DeleteService.delete(schedule_node)
+
+        graph_batch = DeleteService.delete(graph)
+
+        assert node_batch != graph_batch
+        assert ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk).soft_delete_batch == node_batch
+
+    def test_deleting_an_already_binned_root_changes_nothing(self, graph):
+        # A second request (a double-click) loaded the flow before the first one binned it.
+        stale_graph = Graph.objects.get(pk=graph.pk)
+        first_batch = DeleteService.delete(graph)
+        first_deleted_at = Graph.all_objects.get(pk=graph.pk).soft_deleted_at
+
+        second_batch = DeleteService.delete(stale_graph)
+
+        binned_graph = Graph.all_objects.get(pk=graph.pk)
+        assert second_batch is None
+        assert binned_graph.soft_delete_batch == first_batch
+        assert binned_graph.soft_deleted_at == first_deleted_at

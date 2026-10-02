@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -65,10 +66,31 @@ class DeleteService:
         cls,
         obj: models.Model,
         using: str | None = None,
-    ):
+    ) -> uuid.UUID | None:
+        """Delete `obj` and its dependents.
+
+        Returns:
+            The batch id stamped on every row this call soft-deleted, or None
+            when `obj` was already in the recycle bin and nothing changed.
+        """
         with transaction.atomic(using=using):
+            # Lock the root and read its flag from the database, not from the
+            # caller's copy: two requests deleting the same item at once would
+            # otherwise give the root the second batch and its children the first.
+            if isinstance(obj, SoftDeleteFields):
+                stored_active = (
+                    type(obj)
+                    .all_objects.using(using)
+                    .select_for_update()
+                    .filter(pk=obj.pk)
+                    .values_list("active", flat=True)
+                    .first()
+                )
+                if stored_active is False:
+                    return None
             context = _DeleteContext(using=using)
             context.delete(obj)
+            return context.batch
 
 
 class _DeleteContext:
@@ -98,6 +120,10 @@ class _DeleteContext:
     def __init__(self, using: str | None = None):
         self.using = using
         self.visited: set[tuple[type[models.Model], Any]] = set()
+        # One batch id and one timestamp for the whole call, so every row it
+        # bins can be found and restored together.
+        self.batch = uuid.uuid4()
+        self.deleted_at = timezone.now()
 
     # ==========================================================
     # Main entry point
@@ -129,16 +155,18 @@ class _DeleteContext:
             self._hard_delete(obj)
 
     def _soft_delete(self, obj: SoftDeleteFields):
-        if obj.is_soft_deleted:
+        if not obj.active:
             return
 
-        obj.is_soft_deleted = True
-        obj.soft_deleted_at = timezone.now()
+        obj.active = False
+        obj.soft_deleted_at = self.deleted_at
+        obj.soft_delete_batch = self.batch
 
         obj.save(
             update_fields=[
-                "is_soft_deleted",
+                "active",
                 "soft_deleted_at",
+                "soft_delete_batch",
             ],
             using=self.using,
         )
@@ -285,7 +313,7 @@ class _DeleteContext:
         write goes out), and the visited-set guard is still applied per
         object, before it is touched at all, exactly as delete() does
         for the non-batched path. Only the terminal
-        is_soft_deleted/soft_deleted_at write is batched.
+        active/soft_deleted_at write is batched.
 
         Children are grouped by their actual class before the write:
         a single reverse relation is expected to yield children of one
@@ -311,7 +339,7 @@ class _DeleteContext:
             self._process_reverse_relations(child)
             self._process_m2m_relations(child)
 
-            if child.is_soft_deleted:
+            if not child.active:
                 continue
 
             pks_to_soft_delete_by_model[type(child)].append(child.pk)
@@ -322,10 +350,11 @@ class _DeleteContext:
             # which manager ends up being the model's default.
             model_class.all_objects.using(self.using).filter(
                 pk__in=pks_to_soft_delete,
-                is_soft_deleted=False,
+                active=True,
             ).update(
-                is_soft_deleted=True,
-                soft_deleted_at=timezone.now(),
+                active=False,
+                soft_deleted_at=self.deleted_at,
+                soft_delete_batch=self.batch,
             )
 
     # ==========================================================

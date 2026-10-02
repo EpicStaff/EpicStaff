@@ -118,7 +118,7 @@ def test_member_can_read_but_not_create_or_delete(member_client, table_a):
 
 def _soft_deleted_node(graph, table, node_name: str) -> KeyValueNode:
     node = KeyValueNode.objects.create(graph=graph, node_name=node_name, key_value_table=table)
-    node.is_soft_deleted = True
+    node.active = False
     node.soft_deleted_at = timezone.now()
     node.save()
     return node
@@ -141,7 +141,7 @@ def table_in_use(org_a, table_a):
         "other_table": KeyValueNode.objects.create(graph=billing, node_name="x", key_value_table=other_table),
     }
     old.soft_delete()
-    assert KeyValueNode.all_objects.get(id=nodes["old"].id).is_soft_deleted
+    assert not KeyValueNode.all_objects.get(id=nodes["old"].id).active
     return nodes
 
 

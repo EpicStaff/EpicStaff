@@ -144,7 +144,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 .filter(uuid=imported_uuid, org_id=org_id)
                 .first()
             )
-            holder_is_active = uuid_holder is not None and not uuid_holder.is_soft_deleted
+            holder_is_active = uuid_holder is not None and uuid_holder.active
             if uuid_holder is None and Graph.all_objects.filter(uuid=imported_uuid).exists():
                 logger.warning(
                     "Graph uuid {} is held by a flow in another organization; "

@@ -41,7 +41,7 @@ class PythonCodeTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin, models.Mod
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_pythoncodetool_name_per_org",
             ),
         ]
