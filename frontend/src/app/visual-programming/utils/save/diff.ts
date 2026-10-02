@@ -24,6 +24,7 @@ import {
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
+import { toStoredCdtExplanations } from '../cdt-explanations';
 import { hasPersistedWaypoints, waypointsChanged } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
@@ -380,7 +381,9 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
                 name: s.name,
                 color: normalizeCdtSectionColor(s.metadata?.color),
             })),
-        metadata: toNodeMetadata(node),
+        // Mirrors `payload.ts`. Without it a node whose only change is a new
+        // explanation never reaches `toUpdate`.
+        metadata: { ...toNodeMetadata(node), explanations: toStoredCdtExplanations(node.explanations) },
     };
 }
 

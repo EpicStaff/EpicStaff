@@ -60,3 +60,18 @@ export interface PromptConfig {
     variable_mappings: Record<string, string>;
     output_schema_invalid?: boolean;
 }
+
+/**
+ * One generated explanation of a decision-tree step. Lives in the node's
+ * `metadata.explanations`, so it travels with the graph rather than with the
+ * browser that generated it.
+ */
+export interface CdtExplanation {
+    readonly text: string;
+    /** The step's fingerprint when this text was generated. Differs → outdated. */
+    readonly fingerprint: string;
+    readonly generatedBy: string;
+}
+
+/** Keyed by step identity — see `buildExplainStepKeys` for why the key is what it is. */
+export type CdtExplanations = Readonly<Record<string, CdtExplanation>>;

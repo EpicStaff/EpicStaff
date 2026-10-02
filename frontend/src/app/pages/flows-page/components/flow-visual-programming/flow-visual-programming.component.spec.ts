@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, forwardRef, inject, input, output, signal } from '@angular/core';
+import { Component, forwardRef, inject, input, output, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
@@ -26,11 +26,16 @@ import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
+import { GraphNoteModel } from '../../../../visual-programming/core/models/node.model';
 import { FLOW_EDITOR_STATE_PROVIDERS } from '../../../../visual-programming/core/providers/flow-editor-state.providers';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
+import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
+import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { FlowVisualProgrammingComponent } from './flow-visual-programming.component';
 
+/** Past the page's private 1.5 s autosave debounce. */
+const NODE_AUTOSAVE_WAIT_MS = 2000;
 const CAPTURED_VIEWPORT: FlowViewport = { position: { x: 120, y: -40 }, scale: 0.75 };
 const VERSION_A: GraphVersionDto = { id: 11, graph_id: 1, name: 'Version A', description: '', created_at: '' };
 const VERSION_B: GraphVersionDto = { id: 12, graph_id: 1, name: 'Version B', description: '', created_at: '' };
@@ -155,9 +160,12 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
     let unsavedChangesDialog: { confirm: ReturnType<typeof vi.fn>; confirmUnsavedChanges: ReturnType<typeof vi.fn> };
     let toast: Record<string, ReturnType<typeof vi.fn>>;
     let paramMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+    /** A signal, so FlowReadOnlyService's computed re-reads it when a test revokes Flows:Update. */
+    let canUpdateFlows: WritableSignal<boolean>;
 
     beforeEach(() => {
         FlowGraphStubComponent.instances = [];
+        canUpdateFlows = signal(true);
         flowsApi = {
             getGraphById: vi.fn().mockReturnValue(of(graphDto())),
             getGraphsLight: vi.fn().mockReturnValue(of([])),
@@ -192,7 +200,7 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
                 { provide: UnsavedChangesDialogService, useValue: unsavedChangesDialog },
                 { provide: CreateGraphWarningsService, useValue: { readPending: () => [] } },
                 { provide: RunSessionSSEService, useValue: { stopStream: vi.fn() } },
-                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
+                { provide: PermissionsService, useValue: { can: () => canUpdateFlows(), canAny: () => true } },
                 { provide: LlmConfigStorageService, useValue: { getAllConfigs: () => of([]) } },
                 { provide: AgentDefinitionsApiService, useValue: { refreshDefinitions: () => of([]) } },
                 { provide: UnsavedChangesRegistry, useValue: { register: vi.fn(), unregister: vi.fn() } },
@@ -493,5 +501,63 @@ describe('FlowVisualProgrammingComponent — version preview', () => {
         expect(unsavedChangesDialog.confirm).toHaveBeenCalledWith(
             expect.objectContaining({ dontSaveText: 'Continue' })
         );
+    });
+
+    // Nested here for the shared TestBed setup; nothing below involves a preview.
+    describe('single-node save', () => {
+        const READ_ONLY_MESSAGE = 'You have read-only access to this flow.';
+        let sidePanelService: SidePanelService;
+        let note: GraphNoteModel;
+
+        beforeEach(() => {
+            sidePanelService = TestBed.inject(SidePanelService);
+            note = mapGraphNoteToModel(RESTORED_GRAPH.graph_note_list![0]);
+            flowService.setFlow({ nodes: [note], connections: [] });
+        });
+
+        afterEach(() => vi.useRealTimers());
+
+        it('saves the node when the editor may change the flow', () => {
+            sidePanelService.requestSaveNode(note);
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            expect(sidePanelService.savingNodeId()).toBeNull();
+            expect(toast['success']).toHaveBeenCalledWith('Node saved');
+        });
+
+        it('sends nothing for a requested save in a read-only editor, says why and clears the saving state', () => {
+            canUpdateFlows.set(false);
+            const updateNode = vi.spyOn(flowService, 'updateNode');
+
+            sidePanelService.requestSaveNode(note);
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(updateNode).not.toHaveBeenCalled();
+            expect(sidePanelService.savingNodeId()).toBeNull();
+            expect(toast['info']).toHaveBeenCalledWith(READ_ONLY_MESSAGE);
+        });
+
+        it('drops an autosave in a read-only editor without a message', () => {
+            vi.useFakeTimers();
+            canUpdateFlows.set(false);
+            const updateNode = vi.spyOn(flowService, 'updateNode');
+
+            sidePanelService.requestNodeAutosave(note);
+            vi.advanceTimersByTime(NODE_AUTOSAVE_WAIT_MS);
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(updateNode).not.toHaveBeenCalled();
+            expect(toast['info']).not.toHaveBeenCalledWith(READ_ONLY_MESSAGE);
+        });
+
+        it('still autosaves when the editor may change the flow', () => {
+            vi.useFakeTimers();
+
+            sidePanelService.requestNodeAutosave(note);
+            vi.advanceTimersByTime(NODE_AUTOSAVE_WAIT_MS);
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            expect(toast['success']).not.toHaveBeenCalled();
+        });
     });
 });

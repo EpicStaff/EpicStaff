@@ -1,6 +1,7 @@
 <div
     class="dialog-container"
     [ngClass]="data.type || 'info'"
+    [class.raised]="data.appearance === 'raised'"
 >
     <div
         class="dialog-header"
