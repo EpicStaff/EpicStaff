@@ -110,11 +110,15 @@ TOOLS = [
 ]
 
 
-# The Groq cases below read native structured-output support from litellm's bundled model
-# catalog; a litellm upgrade that changes these models' capabilities flips them.
-def test_groq_model_without_native_schema_and_tools_sends_schema_in_prompt_only():
+GROQ_MODELS = ["groq/llama-3.1-8b-instant", "groq/openai/gpt-oss-120b"]
+
+
+# Groq rejects response_format together with tools whether or not the model has native
+# structured outputs, so both kinds of model must get the schema through the prompt.
+@pytest.mark.parametrize("model_name", GROQ_MODELS)
+def test_groq_with_schema_and_tools_sends_schema_in_prompt_only(model_name):
     client = LiteLLMClient(
-        make_llm_config("groq", "groq/llama-3.1-8b-instant"),
+        make_llm_config("groq", model_name),
         api_key=None,
         output_schema=OUTPUT_SCHEMA,
     )
@@ -127,32 +131,21 @@ def test_groq_model_without_native_schema_and_tools_sends_schema_in_prompt_only(
     assert kwargs["tools"][0]["function"]["name"] == "get_flow_overview"
 
 
-def test_groq_model_with_native_schema_sends_json_schema():
+@pytest.mark.parametrize("model_name", GROQ_MODELS)
+def test_groq_with_schema_and_no_tools_sends_json_schema(model_name):
     client = LiteLLMClient(
-        make_llm_config("groq", "groq/openai/gpt-oss-120b"),
-        api_key=None,
-        output_schema=OUTPUT_SCHEMA,
-    )
-
-    kwargs = client._build_kwargs(MESSAGES, TOOLS)
-
-    assert kwargs["response_format"] == {
-        "type": "json_schema",
-        "json_schema": OUTPUT_SCHEMA,
-    }
-    assert kwargs["messages"] == MESSAGES
-
-
-def test_groq_model_without_native_schema_and_no_tools_sends_json_schema():
-    client = LiteLLMClient(
-        make_llm_config("groq", "groq/llama-3.1-8b-instant"),
+        make_llm_config("groq", model_name),
         api_key=None,
         output_schema=OUTPUT_SCHEMA,
     )
 
     kwargs = client._build_kwargs(MESSAGES, [])
 
-    assert kwargs["response_format"]["type"] == "json_schema"
+    assert kwargs["response_format"] == {
+        "type": "json_schema",
+        "json_schema": OUTPUT_SCHEMA,
+    }
+    assert kwargs["messages"] == MESSAGES
 
 
 @pytest.mark.parametrize(

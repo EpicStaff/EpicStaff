@@ -21,9 +21,10 @@ from .base import (
 # ("This response_format type is unavailable now") and only accept json_object.
 JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 
-# litellm emulates json_schema with a hidden tool call for these providers' models that lack
-# native structured outputs, and refuses that emulation when the request carries its own tools.
-TOOL_EMULATED_SCHEMA_PROVIDERS = {"groq"}
+# These providers reject any response_format in a request that also carries tools: Groq
+# answers "json mode cannot be combined with tool/function calling" for models with native
+# structured outputs, and litellm refuses its tool-call emulation for the others.
+NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
 
 # Provider rows whose name is not a litellm provider, mapped to the litellm provider their
 # stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
@@ -170,13 +171,7 @@ class LiteLLMClient(BaseLLMClient):
                 # json_object mode carries no schema, so the model only learns the
                 # expected shape from the prompt.
                 kwargs["messages"] = self._with_schema_instruction(messages)
-            elif (
-                provider_name in TOOL_EMULATED_SCHEMA_PROVIDERS
-                and tools
-                and not litellm.supports_response_schema(
-                    model=self._model, custom_llm_provider=provider_name
-                )
-            ):
+            elif provider_name in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
                 # No response_format: the schema reaches the model only through the prompt,
                 # and the reply is parsed leniently by the caller.
                 kwargs["messages"] = self._with_schema_instruction(messages)
