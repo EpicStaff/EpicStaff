@@ -325,7 +325,11 @@ class TestReplaceInPlace:
     def test_file_cannot_soft_delete_the_replaced_flow(self, client_as, admin_acme, acme):
         holder, export_data = _flow_edited_after_export(acme)
         export_data[EntityType.GRAPH][0].update(
-            {"active": False, "soft_deleted_at": "2026-01-01T00:00:00Z"}
+            {
+                "active": False,
+                "soft_deleted_at": "2026-01-01T00:00:00Z",
+                "soft_delete_batch": "11111111-1111-1111-1111-111111111111",
+            }
         )
 
         response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
@@ -334,6 +338,7 @@ class TestReplaceInPlace:
         holder.refresh_from_db()
         assert holder.active
         assert holder.soft_deleted_at is None
+        assert holder.soft_delete_batch is None
         assert holder.description == "from file"
 
     def test_replace_keeps_the_original_author(self, client_as, admin_acme, member_only, acme):

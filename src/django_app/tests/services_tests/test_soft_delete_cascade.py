@@ -44,6 +44,7 @@ from tables.models import (
     TaskNode,
     WebhookTriggerNode,
 )
+from tables.models import Edge
 from tables.models.base_models import SoftDeleteFields
 from tables.models.session_models import SessionTrigger
 from tables.models.webhook_models import (
@@ -612,3 +613,66 @@ class TestBatchedCascadeQueryCountDoesNotGrowWithChildCount:
         assert len(many) == len(few), "\n".join(
             query["sql"] for query in many.captured_queries
         )
+
+
+@pytest.mark.django_db
+class TestSoftDeleteBatch:
+    """One DeleteService.delete() call stamps one batch id and one timestamp on
+    every row it bins, so restore can bring back exactly that delete."""
+
+    def test_root_and_every_child_share_one_batch_and_timestamp(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task")
+        edge = Edge.objects.create(graph=graph)
+        # A post_save listener sends this model through the per-row path,
+        # while the task node and edge go through the batched UPDATE.
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+
+        batch = DeleteService.delete(graph)
+
+        rows = [
+            Graph.all_objects.get(pk=graph.pk),
+            TaskNode.all_objects.get(pk=task_node.pk),
+            Edge.all_objects.get(pk=edge.pk),
+            ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk),
+        ]
+        assert batch is not None
+        assert {row.soft_delete_batch for row in rows} == {batch}
+        assert len({row.soft_deleted_at for row in rows}) == 1
+
+    def test_separate_deletes_get_separate_batches(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task")
+
+        node_batch = DeleteService.delete(task_node)
+        graph_batch = DeleteService.delete(graph)
+
+        assert node_batch != graph_batch
+        assert TaskNode.all_objects.get(pk=task_node.pk).soft_delete_batch == node_batch
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == graph_batch
+
+    def test_soft_delete_returns_the_batch(self, graph):
+        batch = graph.soft_delete()
+
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == batch
+
+    def test_a_row_binned_on_its_own_keeps_its_batch_when_its_parent_is_deleted(self, graph):
+        # ScheduleTriggerNode goes through the per-row path (post_save listener).
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+        node_batch = DeleteService.delete(schedule_node)
+
+        graph_batch = DeleteService.delete(graph)
+
+        assert node_batch != graph_batch
+        assert ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk).soft_delete_batch == node_batch
+
+    def test_deleting_an_already_binned_root_changes_nothing(self, graph):
+        # A second request (a double-click) loaded the flow before the first one binned it.
+        stale_graph = Graph.objects.get(pk=graph.pk)
+        first_batch = DeleteService.delete(graph)
+        first_deleted_at = Graph.all_objects.get(pk=graph.pk).soft_deleted_at
+
+        second_batch = DeleteService.delete(stale_graph)
+
+        binned_graph = Graph.all_objects.get(pk=graph.pk)
+        assert second_batch is None
+        assert binned_graph.soft_delete_batch == first_batch
+        assert binned_graph.soft_deleted_at == first_deleted_at

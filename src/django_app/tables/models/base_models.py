@@ -227,6 +227,10 @@ class SoftDeleteFields(models.Model):
 
     active = models.BooleanField(default=True, db_default=True)
     soft_deleted_at = models.DateTimeField(null=True, blank=True)
+    # One id per DeleteService.delete() call, shared by every row that call binned,
+    # so a restore brings back exactly that delete. Null on live rows and on rows
+    # binned before the column existed.
+    soft_delete_batch = models.UUIDField(null=True, blank=True, db_index=True)
 
     objects = ActiveManager()
     deleted_objects = DeletedManager()

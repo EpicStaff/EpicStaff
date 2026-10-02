@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -65,10 +66,31 @@ class DeleteService:
         cls,
         obj: models.Model,
         using: str | None = None,
-    ):
+    ) -> uuid.UUID | None:
+        """Delete `obj` and its dependents.
+
+        Returns:
+            The batch id stamped on every row this call soft-deleted, or None
+            when `obj` was already in the recycle bin and nothing changed.
+        """
         with transaction.atomic(using=using):
+            # Lock the root and read its flag from the database, not from the
+            # caller's copy: two requests deleting the same item at once would
+            # otherwise give the root the second batch and its children the first.
+            if isinstance(obj, SoftDeleteFields):
+                stored_active = (
+                    type(obj)
+                    .all_objects.using(using)
+                    .select_for_update()
+                    .filter(pk=obj.pk)
+                    .values_list("active", flat=True)
+                    .first()
+                )
+                if stored_active is False:
+                    return None
             context = _DeleteContext(using=using)
             context.delete(obj)
+            return context.batch
 
 
 class _DeleteContext:
@@ -98,6 +120,10 @@ class _DeleteContext:
     def __init__(self, using: str | None = None):
         self.using = using
         self.visited: set[tuple[type[models.Model], Any]] = set()
+        # One batch id and one timestamp for the whole call, so every row it
+        # bins can be found and restored together.
+        self.batch = uuid.uuid4()
+        self.deleted_at = timezone.now()
 
     # ==========================================================
     # Main entry point
@@ -133,12 +159,14 @@ class _DeleteContext:
             return
 
         obj.active = False
-        obj.soft_deleted_at = timezone.now()
+        obj.soft_deleted_at = self.deleted_at
+        obj.soft_delete_batch = self.batch
 
         obj.save(
             update_fields=[
                 "active",
                 "soft_deleted_at",
+                "soft_delete_batch",
             ],
             using=self.using,
         )
@@ -325,7 +353,8 @@ class _DeleteContext:
                 active=True,
             ).update(
                 active=False,
-                soft_deleted_at=timezone.now(),
+                soft_deleted_at=self.deleted_at,
+                soft_delete_batch=self.batch,
             )
 
     # ==========================================================
