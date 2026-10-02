@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 from abc import abstractmethod
 from enum import Enum
 from typing import Self
@@ -71,11 +72,16 @@ class Process(models.TextChoices):
 
 
 class DefaultBaseModel(models.Model):
-    """
-    Singleton base model for models that intended to be defaults
-    """
+    """Singleton base model for models intended to be platform-wide defaults."""
 
     _load_cache: dict = {}
+    _CACHE_TTL_SECONDS = 60
+    # A SET_NULL FK into this singleton (e.g. an org's LLMConfig being hard-
+    # deleted) updates the DB with a raw UPDATE that save()'s cache-pop never
+    # sees. Other processes bound their staleness to this TTL instead of
+    # serving a dangling FK forever -- the same 60s tolerance this codebase
+    # already accepts for `realtime`'s channel-lookup cache (see
+    # RedisService.publish_channel_invalidation in redis_service.py).
 
     class Meta:
         abstract = True
@@ -88,10 +94,14 @@ class DefaultBaseModel(models.Model):
 
     @classmethod
     def load(cls):
-        if cls not in DefaultBaseModel._load_cache:
-            obj, _ = cls.objects.get_or_create(pk=1)
-            DefaultBaseModel._load_cache[cls] = obj
-        return DefaultBaseModel._load_cache[cls]
+        cached = DefaultBaseModel._load_cache.get(cls)
+        if cached is not None:
+            obj, cached_at = cached
+            if time.monotonic() - cached_at < cls._CACHE_TTL_SECONDS:
+                return obj
+        obj, _ = cls.objects.get_or_create(pk=1)
+        DefaultBaseModel._load_cache[cls] = (obj, time.monotonic())
+        return obj
 
 
 class MessageType(Enum):

@@ -34,6 +34,8 @@ USER_SETTABLE_AUTH_KINDS = (
 
 AUTH_SECRET_MIN_LENGTH = 32
 
+WEBHOOK_TRIGGER_PATH_MAX_LENGTH = WebhookTrigger._meta.get_field("path").max_length
+
 
 def validate_path_uniqueness(path: str, exclude_pk: int | None = None) -> None:
     qs = WebhookTrigger.objects.filter(path=path)
@@ -41,6 +43,56 @@ def validate_path_uniqueness(path: str, exclude_pk: int | None = None) -> None:
         qs = qs.exclude(pk=exclude_pk)
     if qs.exists():
         raise ValidationError("A WebhookTrigger with this path already exists.")
+
+
+def organization_suffixed_path(path: str, org_id: int) -> str:
+    """Return the path a trigger gets when `path` is taken and `org_id` imports it.
+
+    This is the first rename `find_available_path` tries, so an import can
+    recognise a trigger the same organization received on an earlier import.
+    """
+    return _append_path_suffix(path, _organization_suffix(org_id))
+
+
+def find_available_path(path: str, org_id: int) -> str:
+    """Return `path` if no trigger holds it, otherwise a free variant of it.
+
+    `WebhookTrigger.path` is globally unique, so a path taken by any
+    organization cannot be reused. The variant appends `-org<org_id>` for the
+    organization that will own the trigger, then `-org<org_id>-<counter>` while
+    that is taken too. The suffix names only the owning organization, never
+    the one holding the original path. The original part is truncated, never
+    the suffix, so the result fits `max_length`.
+
+    The existence checks and the later insert are not atomic: a concurrent
+    import that takes the same path first makes the insert fail with an
+    `IntegrityError` from the unique constraint. That race is not handled here.
+    """
+    if not WebhookTrigger.objects.filter(path=path).exists():
+        return path
+
+    organization_suffix = _organization_suffix(org_id)
+    candidate = organization_suffixed_path(path, org_id)
+    counter = 2
+    while WebhookTrigger.objects.filter(path=candidate).exists():
+        candidate = _append_path_suffix(path, f"{organization_suffix}-{counter}")
+        counter += 1
+
+    logger.info(
+        "Webhook trigger path '{}' is taken; using '{}' for org {}.",
+        path,
+        candidate,
+        org_id,
+    )
+    return candidate
+
+
+def _organization_suffix(org_id: int) -> str:
+    return f"-org{org_id}"
+
+
+def _append_path_suffix(path: str, suffix: str) -> str:
+    return f"{path[: WEBHOOK_TRIGGER_PATH_MAX_LENGTH - len(suffix)]}{suffix}"
 
 
 class WebhookTriggerService(metaclass=SingletonMeta):

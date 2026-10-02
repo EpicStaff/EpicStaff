@@ -535,16 +535,16 @@ class TestPostSaveListenerModelsBypassBatching:
     still triggers the signal."""
 
     def test_schedule_trigger_node_post_save_signal_fires_on_cascaded_soft_delete(
-        self, graph, redis_client_mock
+        self, graph, redis_client_mock, django_capture_on_commit_callbacks
     ):
+        # The "create" publish from objects.create() is queued for a commit that
+        # never comes; only the cascade's own publish runs inside the capture below.
         node = ScheduleTriggerNode.objects.create(
             graph=graph, node_name="trigger_node", is_active=True
         )
-        # Drop the "create" publish call triggered by objects.create() above,
-        # so only the cascade's own publish call is asserted below.
-        redis_client_mock.publish.reset_mock()
 
-        graph.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            graph.delete()
 
         node.refresh_from_db()
         assert node.is_soft_deleted is True

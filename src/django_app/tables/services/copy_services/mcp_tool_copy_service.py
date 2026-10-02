@@ -12,7 +12,13 @@ class McpToolCopyService(BaseCopyService):
     Duplicates all scalar fields and the tool-scope labels M2M.
     """
 
-    def copy(self, tool: McpTool, name: str | None = None, org_id: int | None = None) -> McpTool:
+    def copy(
+        self,
+        tool: McpTool,
+        name: str | None = None,
+        org_id: int | None = None,
+        user=None,
+    ) -> McpTool:
         target_org_id = org_id if org_id is not None else tool.org_id
         base_name = name if name else tool.name
 

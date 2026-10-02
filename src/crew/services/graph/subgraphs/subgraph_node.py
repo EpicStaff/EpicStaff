@@ -80,6 +80,7 @@ class SubGraphNode:
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
             agent_task_service=self.session_graph_builder.agent_task_service,
+            key_value_client=self.session_graph_builder.key_value_client,
             stop_event=self.stop_event,
         )
 
@@ -217,9 +218,9 @@ class SubGraphNode:
 
     def _process_subgraph_result(self, state, subgraph_input, result) -> dict:
         """Process subgraph result and update parent state."""
-        subgraph_output = result["variables"].model_dump()
+        subgraph_output = result["variables"].deep_dump()
 
-        temp_state = {"variables": DotDict(state["variables"].model_dump())}
+        temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
         if self.output_variable_path == "variables":
             temp_state["variables"] = DotDict(subgraph_output)
@@ -232,7 +233,7 @@ class SubGraphNode:
             set_output_variables(temp_state, full_path, subgraph_output)
 
         state_history_item = self._create_state_history_item(
-            subgraph_input, subgraph_output, dict(temp_state["variables"])
+            subgraph_input, subgraph_output, temp_state["variables"].deep_dump()
         )
 
         counts = dict(state.get("execution_counts", {}))

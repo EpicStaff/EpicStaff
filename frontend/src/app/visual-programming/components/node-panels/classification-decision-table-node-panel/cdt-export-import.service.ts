@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 
+import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { normalizeRouteCode } from './cdt-route-continue.util';
@@ -32,17 +33,26 @@ export interface CdtExportPromptConfig {
     variable_mappings: Record<string, string>;
 }
 
+export interface CdtExportSection {
+    id: string;
+    name: string;
+    color: string;
+}
+
 export interface CdtExportData {
     node_name: string;
     pre_python_code: CdtExportPythonCode;
     pre_input_map: Record<string, string>;
     pre_output_variable_path: string | null;
+    pre_use_storage: boolean;
     post_python_code: CdtExportPythonCode;
     post_input_map: Record<string, string>;
     post_output_variable_path: string | null;
+    post_use_storage: boolean;
     default_llm_config: number | null;
     condition_groups: CdtExportConditionGroup[];
     prompt_configs: CdtExportPromptConfig[];
+    sections: CdtExportSection[];
 }
 
 export type CdtParseResult = { data: CdtExportData } | { errors: string[] };
@@ -70,6 +80,8 @@ const PROMPT_CONFIG_COLUMNS = [
     'variable_mappings',
 ] as const;
 
+const SECTION_COLUMNS = ['id', 'name', 'color'] as const;
+
 @Injectable({ providedIn: 'root' })
 export class CdtExportImportService {
     public exportToJson(data: CdtExportData): string {
@@ -84,10 +96,12 @@ export class CdtExportImportService {
             this.csvRow(['pre_output_variable_path', data.pre_output_variable_path ?? '']),
             this.csvRow(['pre_python_code_code', data.pre_python_code?.code ?? '']),
             this.csvRow(['pre_python_code_libraries', JSON.stringify(data.pre_python_code?.libraries ?? [])]),
+            this.csvRow(['pre_use_storage', String(data.pre_use_storage ?? false)]),
             this.csvRow(['post_input_map', JSON.stringify(data.post_input_map ?? {})]),
             this.csvRow(['post_output_variable_path', data.post_output_variable_path ?? '']),
             this.csvRow(['post_python_code_code', data.post_python_code?.code ?? '']),
             this.csvRow(['post_python_code_libraries', JSON.stringify(data.post_python_code?.libraries ?? [])]),
+            this.csvRow(['post_use_storage', String(data.post_use_storage ?? false)]),
             this.csvRow(['default_llm_config', data.default_llm_config == null ? '' : String(data.default_llm_config)]),
         ].join('\n');
 
@@ -126,7 +140,13 @@ export class CdtExportImportService {
             ),
         ].join('\n');
 
-        return [metadata, conditionGroups, promptConfigs].join('\n\n');
+        const sections = [
+            '#sections',
+            this.csvRow([...SECTION_COLUMNS]),
+            ...data.sections.map((section) => this.csvRow([section.id ?? '', section.name ?? '', section.color ?? ''])),
+        ].join('\n');
+
+        return [metadata, conditionGroups, promptConfigs, sections].join('\n\n');
     }
 
     public downloadFile(content: string, filename: string, mimeType: string): void {
@@ -186,6 +206,15 @@ export class CdtExportImportService {
             );
         }
 
+        const rawSections = obj['sections'];
+        const sections: CdtExportSection[] = [];
+        if (Array.isArray(rawSections)) {
+            rawSections.forEach((s) => {
+                const normalized = this.normalizeSection((s ?? {}) as Record<string, unknown>);
+                if (normalized.id) sections.push(normalized);
+            });
+        }
+
         if (errors.length > 0) {
             return { errors };
         }
@@ -202,15 +231,18 @@ export class CdtExportImportService {
                 },
                 pre_input_map: this.asStringRecord(obj['pre_input_map']),
                 pre_output_variable_path: this.asNullableString(obj['pre_output_variable_path']),
+                pre_use_storage: this.asBoolean(obj['pre_use_storage']),
                 post_python_code: {
                     code: this.asString(postCode['code']),
                     libraries: this.asStringArray(postCode['libraries']),
                 },
                 post_input_map: this.asStringRecord(obj['post_input_map']),
                 post_output_variable_path: this.asNullableString(obj['post_output_variable_path']),
+                post_use_storage: this.asBoolean(obj['post_use_storage']),
                 default_llm_config: this.asNullableNumber(obj['default_llm_config']),
                 condition_groups: conditionGroups,
                 prompt_configs: promptConfigs,
+                sections,
             },
         };
     }
@@ -223,12 +255,15 @@ export class CdtExportImportService {
                 pre_python_code: { code: '', libraries: [] },
                 pre_input_map: {},
                 pre_output_variable_path: null,
+                pre_use_storage: false,
                 post_python_code: { code: '', libraries: [] },
                 post_input_map: {},
                 post_output_variable_path: null,
+                post_use_storage: false,
                 default_llm_config: null,
                 condition_groups: [],
                 prompt_configs: [],
+                sections: [],
             };
         }
 
@@ -252,6 +287,9 @@ export class CdtExportImportService {
                 promptIdToKey.set(id, key);
             }
         });
+
+        const rawSections = Array.isArray(node['sections']) ? (node['sections'] as Record<string, unknown>[]) : [];
+        const sections: CdtExportSection[] = rawSections.map((s) => this.normalizeSection(s)).filter((s) => !!s.id);
 
         const rawConditionGroups = Array.isArray(node['condition_groups'])
             ? (node['condition_groups'] as Record<string, unknown>[])
@@ -285,6 +323,7 @@ export class CdtExportImportService {
             },
             pre_input_map: this.asStringRecord(node['pre_input_map']),
             pre_output_variable_path: this.asNullableString(node['pre_output_variable_path']),
+            pre_use_storage: this.asBoolean(node['pre_use_storage']),
             post_python_code: {
                 code: this.asString(rawPostCode['code']),
                 libraries: this.asString(rawPostCode['libraries'])
@@ -293,9 +332,11 @@ export class CdtExportImportService {
             },
             post_input_map: this.asStringRecord(node['post_input_map']),
             post_output_variable_path: this.asNullableString(node['post_output_variable_path']),
+            post_use_storage: this.asBoolean(node['post_use_storage']),
             default_llm_config: this.asNullableNumber(node['default_llm_config']),
             condition_groups: conditionGroups,
             prompt_configs: promptConfigs,
+            sections,
         };
     }
 
@@ -305,22 +346,27 @@ export class CdtExportImportService {
         preLibraries: string[];
         preInputMap: Record<string, string>;
         preOutputVariablePath: string | null;
+        preUseStorage: boolean;
         postCode: string;
         postLibraries: string[];
         postInputMap: Record<string, string>;
         postOutputVariablePath: string | null;
+        postUseStorage: boolean;
         defaultLlmConfig: number | null;
         conditionGroups: ConditionGroup[];
         prompts: Record<string, PromptConfig>;
+        sections?: CdtSection[];
     }): CdtExportData {
         return {
             node_name: input.nodeName ?? '',
             pre_python_code: { code: input.preCode ?? '', libraries: input.preLibraries ?? [] },
             pre_input_map: input.preInputMap ?? {},
             pre_output_variable_path: input.preOutputVariablePath ?? null,
+            pre_use_storage: input.preUseStorage ?? false,
             post_python_code: { code: input.postCode ?? '', libraries: input.postLibraries ?? [] },
             post_input_map: input.postInputMap ?? {},
             post_output_variable_path: input.postOutputVariablePath ?? null,
+            post_use_storage: input.postUseStorage ?? false,
             default_llm_config: input.defaultLlmConfig ?? null,
             condition_groups: (input.conditionGroups ?? []).map((group, index) => ({
                 group_name: group.group_name ?? '',
@@ -342,6 +388,11 @@ export class CdtExportImportService {
                 output_schema: config.output_schema ?? null,
                 result_variable: config.result_variable ?? '',
                 variable_mappings: config.variable_mappings ?? {},
+            })),
+            sections: (input.sections ?? []).map((section) => ({
+                id: section.id,
+                name: section.name,
+                color: normalizeCdtSectionColor(section.metadata?.color),
             })),
         };
     }
@@ -378,6 +429,16 @@ export class CdtExportImportService {
             };
         });
         return record;
+    }
+
+    public toSections(data: CdtExportData): CdtSection[] {
+        return (data.sections ?? [])
+            .filter((section) => !!section.id)
+            .map((section) => ({
+                id: section.id,
+                name: section.name ?? '',
+                metadata: { color: normalizeCdtSectionColor(section.color) },
+            }));
     }
 
     private csvRow(cells: string[]): string {
@@ -419,6 +480,16 @@ export class CdtExportImportService {
         };
     }
 
+    private normalizeSection(section: Record<string, unknown>): CdtExportSection {
+        const metadata = (section['metadata'] ?? {}) as Record<string, unknown>;
+        const color = typeof section['color'] === 'string' ? section['color'] : metadata['color'];
+        return {
+            id: this.asString(section['id']),
+            name: this.asString(section['name']),
+            color: normalizeCdtSectionColor(typeof color === 'string' ? color : null),
+        };
+    }
+
     private asString(value: unknown): string {
         return typeof value === 'string' ? value : '';
     }
@@ -435,6 +506,12 @@ export class CdtExportImportService {
      */
     private asRouteCode(value: unknown): string | null {
         return normalizeRouteCode(value) || null;
+    }
+
+    private asBoolean(value: unknown): boolean {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+        return false;
     }
 
     private asNullableNumber(value: unknown): number | null {

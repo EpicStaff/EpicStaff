@@ -18,6 +18,23 @@
             border-color: var(--crimson-500) !important;
         }
 
+        &--readonly {
+            background: transparent;
+            border-color: transparent;
+            overflow: visible;
+
+            &:focus-within {
+                border-color: transparent;
+            }
+
+            .number-stepper__input {
+                padding-left: 0;
+                padding-right: 0;
+                text-align: left;
+                cursor: default;
+            }
+        }
+
         // Size variants
         &--sm {
             height: 2rem;
@@ -99,6 +116,10 @@
         &:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+
+        &:read-only {
+            cursor: default;
         }
 
         // Size variants for input

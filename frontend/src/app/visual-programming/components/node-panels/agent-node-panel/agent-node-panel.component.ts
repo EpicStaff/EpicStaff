@@ -46,6 +46,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { ToastService } from '../../../../services/notifications';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { AgentNodeTaskUi } from '../../../core/models/agent-node.model';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -97,6 +98,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         MarkdownComponent,
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
+        IfFlowEditableDirective,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],

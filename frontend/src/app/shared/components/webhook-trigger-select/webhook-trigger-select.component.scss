@@ -29,7 +29,7 @@
         transition: border-color 0.2s ease;
         min-width: 0;
 
-        &:hover:not(:disabled) {
+        &:hover:not(:disabled):not(.wts__trigger--readonly) {
             border-color: var(--purple-primary);
         }
 
@@ -39,6 +39,14 @@
 
         &--placeholder {
             color: var(--color-input-text-placeholder);
+        }
+
+        &--readonly {
+            cursor: default;
+            background-color: transparent;
+            border-color: transparent;
+            padding-left: 0;
+            padding-right: 0;
         }
 
         &:disabled {

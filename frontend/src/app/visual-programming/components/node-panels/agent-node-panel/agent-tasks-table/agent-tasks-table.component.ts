@@ -40,6 +40,7 @@ export class AgentTasksTableComponent {
     public readonly variableNames = input<string[]>([]);
 
     public readonly showValidation = input<boolean>(false);
+    public readonly readonly = input<boolean>(false);
     public readonly tasksChange = output<AgentNodeTaskUi[]>();
     public readonly cellSelect = output<{ taskIndex: number; field: 'instructions' | 'schema' }>();
 
@@ -81,11 +82,13 @@ export class AgentTasksTableComponent {
     }
 
     onNameInput(index: number, event: Event): void {
+        if (this.readonly()) return;
         const value = (event.target as HTMLInputElement).value;
         this.updateTask(index, { name: value });
     }
 
     onInstructionsInput(index: number, value: string): void {
+        if (this.readonly()) return;
         this.updateTask(index, { instructions: value });
     }
 
@@ -96,11 +99,13 @@ export class AgentTasksTableComponent {
     }
 
     onSchemaInput(tempId: string, event: Event): void {
+        if (this.readonly()) return;
         const value = (event.target as HTMLTextAreaElement).value;
         this.schemaDrafts.update((drafts) => ({ ...drafts, [tempId]: value }));
     }
 
     onSchemaBlur(index: number, task: AgentNodeTaskUi): void {
+        if (this.readonly()) return;
         const draft = this.schemaDrafts()[task.tempId];
         if (draft === undefined) return;
 
@@ -163,6 +168,7 @@ export class AgentTasksTableComponent {
     }
 
     removeTask(index: number): void {
+        if (this.readonly()) return;
         const removed = this.tasks()[index];
         const remaining = this.tasks().filter((_, i) => i !== index);
         const cleaned = remaining.map((t) => ({
@@ -173,10 +179,12 @@ export class AgentTasksTableComponent {
     }
 
     clearAll(): void {
+        if (this.readonly()) return;
         this.emit([]);
     }
 
     onDrop(event: CdkDragDrop<AgentNodeTaskUi[]>): void {
+        if (this.readonly()) return;
         if (event.previousIndex === event.currentIndex) return;
 
         const reordered = [...this.tasks()];
@@ -208,6 +216,7 @@ export class AgentTasksTableComponent {
 
     openContextPopup(rowIndex: number, event: MouseEvent): void {
         event.stopPropagation();
+        if (this.readonly()) return;
         this.contextPopupRowIndex.set(rowIndex);
 
         const cell = event.currentTarget as HTMLElement;
@@ -229,6 +238,7 @@ export class AgentTasksTableComponent {
     }
 
     onContextSelectionChange(values: unknown[]): void {
+        if (this.readonly()) return;
         const rowIndex = this.contextPopupRowIndex();
         if (rowIndex === null) return;
         const tasks = this.tasks();

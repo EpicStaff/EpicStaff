@@ -1,5 +1,6 @@
 import { NodeType } from '@shared/models';
 
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -11,6 +12,7 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
@@ -287,6 +289,18 @@ function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unkn
     };
 }
 
+function toKeyValueComparable(node: KeyValueNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        key_value_table: node.data?.key_value_table ?? null,
+        mode: node.data?.mode ?? 'read',
+        entries: node.data?.entries ?? [],
+        metadata: toNodeMetadata(node),
+    };
+}
+
 interface CdtConditionGroupUi {
     group_name: string;
     order?: number;
@@ -349,14 +363,24 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path:
             tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
+        pre_use_storage: tableData?.pre_use_storage ?? false,
         post_computation_code: postCode,
         post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
         post_output_variable_path:
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
+        post_use_storage: tableData?.post_use_storage ?? false,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
         pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
         post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
+        sections: ((tableData?.sections || []) as CdtSection[])
+            .slice()
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map((s) => ({
+                id: s.id,
+                name: s.name,
+                color: normalizeCdtSectionColor(s.metadata?.color),
+            })),
         // Mirrors `payload.ts`. Without it a node whose only change is a new
         // explanation never reaches `toUpdate`.
         metadata: { ...toNodeMetadata(node), explanations: toStoredCdtExplanations(node.explanations) },
@@ -444,6 +468,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<KnowledgeRetrieverNodeModel>(previous.nodes, NodeType.KNOWLEDGE_RETRIEVER),
             nodesByType<KnowledgeRetrieverNodeModel>(current.nodes, NodeType.KNOWLEDGE_RETRIEVER),
             toKnowledgeRetrieverComparable
+        ),
+        keyValueNodes: diffNodesByBackendId(
+            nodesByType<KeyValueNodeModel>(previous.nodes, NodeType.KEY_VALUE),
+            nodesByType<KeyValueNodeModel>(current.nodes, NodeType.KEY_VALUE),
+            toKeyValueComparable
         ),
     };
 }

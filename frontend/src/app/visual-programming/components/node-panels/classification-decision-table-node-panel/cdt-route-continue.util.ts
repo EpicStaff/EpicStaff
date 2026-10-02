@@ -1,3 +1,4 @@
+import { slugifyPortName } from '../../../core/helpers/helpers';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 
 /**
@@ -60,9 +61,9 @@ export function isRouteContinueConflict(row: ConditionGroup | null | undefined, 
     return hasRouteCode(row) && continuesAfterMatch(row) && routeHasTarget;
 }
 
-/** Mirrors the port id built by `generatePortsForClassificationDecisionTableNode`. */
+/** Mirrors the port id built by `generatePortsForClassificationDecisionTableNode` (`slugifyPortName`). */
 export function slugifyRouteCode(routeCode: string): string {
-    return routeCode.toLowerCase().replace(/\s+/g, '-');
+    return slugifyPortName(routeCode);
 }
 
 /**

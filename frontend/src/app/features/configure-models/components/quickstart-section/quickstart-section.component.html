@@ -46,13 +46,15 @@
                     >
                         Reset
                     </app-button>
-                    <app-button
-                        type="primary"
-                        (click)="onQuickStart()"
-                        [disabled]="quickStartForm.invalid || isSaving()"
-                    >
-                        Activate
-                    </app-button>
+                    @if (canApplyQuickstart()) {
+                        <app-button
+                            type="primary"
+                            (click)="onQuickStart()"
+                            [disabled]="quickStartForm.invalid || isSaving()"
+                        >
+                            Activate
+                        </app-button>
+                    }
                 </div>
             </form>
         </div>
@@ -138,9 +140,11 @@
                     </p>
 
                     <div class="quickstart-section__card-actions">
-                        <app-button (click)="activeCard.action()">
-                            {{ activeCard.actionText }}
-                        </app-button>
+                        @if (canRunActiveCardAction()) {
+                            <app-button (click)="activeCard.action()">
+                                {{ activeCard.actionText }}
+                            </app-button>
+                        }
                     </div>
                 </div>
             }

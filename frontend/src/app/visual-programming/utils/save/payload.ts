@@ -1,4 +1,5 @@
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
@@ -211,6 +212,7 @@ function buildCdtNodePayload(
                   },
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
+        pre_use_storage: tableData.pre_use_storage ?? false,
         post_python_code:
             postCodeValue.trim() === '' && !postSecretIds.length
                 ? null
@@ -223,6 +225,7 @@ function buildCdtNodePayload(
                   },
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
+        post_use_storage: tableData.post_use_storage ?? false,
         prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
                 ({
@@ -240,6 +243,11 @@ function buildCdtNodePayload(
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
         ...(errorRef.tempId != null ? { next_error_node_temp_id: errorRef.tempId } : {}),
         condition_groups: conditionGroups,
+        sections: ((tableData.sections ?? []) as CdtSection[]).map((s) => ({
+            id: s.id,
+            name: s.name,
+            metadata: { color: normalizeCdtSectionColor(s.metadata?.color) },
+        })),
         // Built in the same order as `toCdtComparable`, so what the diff compared is
         // what the server receives.
         metadata: { ...toNodeMetadata(node), explanations: toStoredCdtExplanations(node.explanations) },
@@ -349,6 +357,7 @@ export function buildBulkSavePayload(
         knowledge_node_ids: nodeDiff.knowledgeRetrieverNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
+        key_value_node_ids: nodeDiff.keyValueNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         edge_ids: connectionDiff.toDelete.map((c) => c.data?.id).filter((id): id is number => id != null),
     };
 
@@ -479,6 +488,16 @@ export function buildBulkSavePayload(
             query: n.data?.query ?? '',
             search_method: n.data?.search_method ?? null,
             search_configs: n.data?.search_configs ?? null,
+            metadata: toNodeMetadata(n),
+        })),
+        key_value_node_list: nodeItems(nodeDiff.keyValueNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            input_map: n.input_map || {},
+            output_variable_path: null,
+            key_value_table: n.data?.key_value_table ?? null,
+            mode: n.data?.mode ?? 'read',
+            entries: n.data?.entries ?? [],
             metadata: toNodeMetadata(n),
         })),
         edge_list: [...edgeList, ...edgeUpdateList],
