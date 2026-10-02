@@ -763,4 +763,67 @@ describe('extractToSubflow', () => {
         // external_flag is not produced internally — included
         expect(result.subGraphNodeInputMap['external_flag']).toBe('variables.external_flag');
     });
+
+    it('preserves all inputs when multiple entries reference sub-paths of the same variable', () => {
+        const start = makeStartNode('start-1');
+        const nodeA = makeNode('a', NodeType.TASK, {
+            position: { x: 100, y: 0 },
+            input_map: {
+                order_id: 'variables.trigger_payload.order_id',
+                customer_name: 'variables.trigger_payload.customer_name',
+                total: 'variables.trigger_payload.total',
+                currency: 'variables.trigger_payload.currency',
+            },
+        });
+
+        const startToA = makeConnection('start-1', 'a', 'start-start', 'task-in');
+
+        const parentFlow: FlowModel = {
+            nodes: [start, nodeA],
+            connections: [startToA],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+
+        // All four entries collapse to one top-level variable entry
+        expect(result.subGraphNodeInputMap).toEqual({
+            trigger_payload: 'variables.trigger_payload',
+        });
+
+        const subGraphNode = result.parentModel.nodes.find((n) => n.type === NodeType.SUBGRAPH) as SubGraphNodeModel;
+        expect(subGraphNode.input_map).toEqual({
+            trigger_payload: 'variables.trigger_payload',
+        });
+    });
+
+    it('preserves inputs from different top-level variables with sub-paths', () => {
+        const start = makeStartNode('start-1');
+        const nodeA = makeNode('a', NodeType.TASK, {
+            position: { x: 100, y: 0 },
+            input_map: {
+                x: 'variables.foo.bar',
+                y: 'variables.baz',
+            },
+        });
+
+        const startToA = makeConnection('start-1', 'a', 'start-start', 'task-in');
+
+        const parentFlow: FlowModel = {
+            nodes: [start, nodeA],
+            connections: [startToA],
+        };
+
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+
+        expect(result.subGraphNodeInputMap).toEqual({
+            foo: 'variables.foo',
+            baz: 'variables.baz',
+        });
+
+        const subGraphNode = result.parentModel.nodes.find((n) => n.type === NodeType.SUBGRAPH) as SubGraphNodeModel;
+        expect(subGraphNode.input_map).toEqual({
+            foo: 'variables.foo',
+            baz: 'variables.baz',
+        });
+    });
 });

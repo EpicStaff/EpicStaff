@@ -323,7 +323,7 @@ function collectInputMapVariables(inputMap: Record<string, unknown>, merged: Rec
         if (typeof value !== 'string') continue;
         const variableName = extractVariableName(value);
         if (variableName) {
-            merged[variableName] = value;
+            addVariable(merged, variableName);
         }
     }
 }
