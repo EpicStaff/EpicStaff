@@ -1,3 +1,5 @@
+import functools
+
 from django.conf import settings
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.s3_backend import S3StorageBackend
@@ -22,6 +24,7 @@ def get_storage_manager() -> "StorageManager":  # noqa: F821
     return _storage_manager
 
 
+@functools.cache
 def get_storage_backend(organization_prefix: str = "org_1/") -> AbstractStorageBackend:
     """Return the S3-compatible storage backend scoped to the given organization prefix."""
     return S3StorageBackend(
@@ -30,4 +33,5 @@ def get_storage_backend(organization_prefix: str = "org_1/") -> AbstractStorageB
         secret_key=settings.STORAGE_SECRET_KEY,
         bucket_name=settings.STORAGE_BUCKET_NAME,
         organization_prefix=organization_prefix,
+        part_size=settings.UPLOAD_PART_SIZE,
     )
