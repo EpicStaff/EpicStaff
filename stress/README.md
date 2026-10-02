@@ -8,6 +8,7 @@ Design: `docs/superpowers/specs/2026-10-02-stress-test-benchmark-design.md` (loc
 - Stack up from this branch: compose bind-mounts `src/bench_logs` into django, crew, agent, sandbox.
 - `python3` (3.12, standard library only) and `docker stats` access (`docker` group).
 - `export DJANGO_API_KEY='<org API key>'` in the shell. Never write it into a file.
+- `export BENCH_ORG_ID=<id>` if the key's organization is not 1 (status reads need `X-Organization-Id`).
 - Flow-specific data in `stress/chat/` (gitignored, copy it to the server by hand):
   - `big_message.json`: `{"context": {...}}` sent as run-session `variables` (deep-merged over the start node).
   - `conversation.json`: `{"turns": ["Hi", "...", ...]}` played by every user, one session per message.
@@ -15,8 +16,9 @@ Design: `docs/superpowers/specs/2026-10-02-stress-test-benchmark-design.md` (loc
 ## Run
 
     bash stress/run.sh prepare                             # once per deploy (sudo if docker created src/bench_logs)
-    bash stress/run.sh memory <label> <graph-id> <rate>    # RAM per session: restart, warm-up, 20 s baseline,
-                                                           #   <rate>/min for 2 min, 5 min cooldown
+    bash stress/run.sh memory <label> <graph-id> <rate>    # RAM per session: warm-up, 20 s baseline,
+                                                           #   <rate>/min for 2 min, 5 min cooldown.
+                                                           #   Restart django_app crew agent sandbox first.
     bash stress/run.sh single <graph-id>                   # 10, 25, 50 sessions/min, 5 min each, 5 min cooldown
     bash stress/run.sh chat   <graph-id>                   # 20 users, 10 new users/min, every user plays all turns
 

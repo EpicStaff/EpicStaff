@@ -52,7 +52,7 @@ def parse_args():
 
 def get_session(args, session_id, detailed):
     url = f"{args.api.rstrip('/')}/api/sessions/{session_id}/" + ("" if detailed else "?detailed=false")
-    request = urllib.request.Request(url, headers={"X-Api-Key": args.api_key})
+    request = urllib.request.Request(url, headers=bench.api_headers(args))
     with urllib.request.urlopen(request, timeout=bench.REQUEST_TIMEOUT_S) as response:
         return json.loads(response.read())
 

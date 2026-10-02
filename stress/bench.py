@@ -63,6 +63,8 @@ def parse_args():
 
 def add_common_args(parser):
     parser.add_argument("--api-key", default=os.environ.get("DJANGO_API_KEY"))
+    parser.add_argument("--org-id", default=os.environ.get("BENCH_ORG_ID", "1"),
+                        help="X-Organization-Id for org-scoped reads such as session status (default 1)")
     parser.add_argument("--bench-logs", type=Path, default=REPO_ROOT / "src" / "bench_logs")
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "stress" / "runs")
     parser.add_argument("--label", default="", help="appended to the run folder name, e.g. flow17-simple")
@@ -204,6 +206,11 @@ class FiredLog:
         self._file.close()
 
 
+def api_headers(args):
+    """Org-scoped endpoints (e.g. GET /api/sessions/<id>/) answer 400 without X-Organization-Id."""
+    return {"X-Api-Key": args.api_key, "X-Organization-Id": str(args.org_id), "Content-Type": "application/json"}
+
+
 def fire(run_index, step_rate, args, fired_log, variables=None, **extra):
     """POST run-session once, log it to fired.jsonl and return the record. `variables` defaults to args.variables."""
     record = {
@@ -224,7 +231,7 @@ def fire(run_index, step_rate, args, fired_log, variables=None, **extra):
     request = urllib.request.Request(
         args.api.rstrip("/") + "/api/run-session/",
         data=json.dumps(payload).encode(),
-        headers={"X-Api-Key": args.api_key, "Content-Type": "application/json"},
+        headers=api_headers(args),
         method="POST",
     )
     started = time.monotonic()
@@ -270,7 +277,7 @@ def warm_up(args):
     session to leave pending/run. Exits when the flow cannot run at all: measuring a broken flow is pointless.
     """
     base_url = args.api.rstrip("/")
-    headers = {"X-Api-Key": args.api_key, "Content-Type": "application/json"}
+    headers = api_headers(args)
     payload = {"graph_id": args.graph_id, **({"variables": args.variables} if args.variables else {})}
     session_id, last_error = None, None
     for _ in range(12):
@@ -293,6 +300,12 @@ def warm_up(args):
         try:
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
                 status = json.loads(response.read()).get("status")
+        except urllib.error.HTTPError as error:
+            if 400 <= error.code < 500:  # wrong key / org id: retrying cannot fix it
+                sys.exit(f"[warmup] status poll HTTP {error.code}: {error.read(300).decode('utf-8', 'replace')}"
+                         f" (check --org-id / BENCH_ORG_ID, now {args.org_id})")
+            print(f"[warmup] status poll failed: {error}", file=sys.stderr)
+            continue
         except Exception as error:
             print(f"[warmup] status poll failed: {error}", file=sys.stderr)
             continue
