@@ -1,5 +1,5 @@
-from typing import Optional
 from loguru import logger
+
 from app.providers.tunnels.base import AbstractTunnelProvider
 
 
@@ -8,7 +8,7 @@ class LocalhostTunnel(AbstractTunnelProvider):
         self,
         port: int,
         host: str = "localhost",
-        domain: Optional[str] = None,
+        domain: str | None = None,
     ):
         super().__init__(port, domain=domain)
         self._host = host

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
+import { FetchErrorStateComponent } from '@shared/components';
 
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../../services/agents-page-store.service';
@@ -11,7 +12,7 @@ import {
 
 @Component({
     selector: 'app-surfaces-section',
-    imports: [TreeNodeComponent],
+    imports: [TreeNodeComponent, FetchErrorStateComponent],
     templateUrl: './surfaces-section.component.html',
     styleUrls: ['./surfaces-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

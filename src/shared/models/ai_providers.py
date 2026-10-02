@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-from typing import Literal, Optional
-from pydantic import ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LLMConfigData(BaseModel):
@@ -53,7 +53,7 @@ class EmbedderData(BaseModel):
 class WebhookTriggerAuthData(BaseModel):
     kind: Literal["webhook", "telegram"]
     header_name: str
-    secret: Optional[str] = None
+    secret: str | None = None
 
 
 class BaseTunnelConfigData(BaseModel):
@@ -104,4 +104,3 @@ class WebhookConfigData(BaseModel):
     ngrok_configs: list[NgrokConfigData] = []
     localhost_configs: list[LocalhostConfigData] = []
     # other configs
-    ...

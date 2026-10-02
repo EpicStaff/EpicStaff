@@ -1,11 +1,11 @@
 import { inject, Injectable } from '@angular/core';
-
 import {
     CreateOpenAIRealtimeConfigRequest,
     OpenAIRealtimeConfig,
     UpdateOpenAIRealtimeConfigRequest,
-} from '../../../../shared/models/realtime-voice/openai-realtime-config.model';
-import { OpenAIRealtimeConfigService } from '../../../../shared/services/realtime-llms/openai-realtime-config.service';
+} from '@shared/models';
+import { OpenAIRealtimeConfigService } from '@shared/services';
+
 import { BaseRealtimeConfigStorageService } from './base-realtime-config-storage.service';
 
 @Injectable({ providedIn: 'root' })

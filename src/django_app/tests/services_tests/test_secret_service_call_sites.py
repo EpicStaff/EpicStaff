@@ -11,7 +11,7 @@ import pytest
 
 from tables.models import EmbeddingConfig, LLMConfig, Provider, RealtimeConfig
 from tables.models.graph_models import Graph, TelegramTriggerNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.quickstart_service import QuickstartService
 from tables.services.secrets import secret_encryption
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -131,8 +131,10 @@ class TestTelegramRegistrationReadsSecret:
             NgrokWebhookConfig,
             ProviderType,
             WebhookTrigger,
+            WebhookTriggerAuthKind,
         )
         from tables.services.secrets import secret_service
+        from tables.services.webhook_trigger_service import WebhookTriggerService
 
         graph = Graph.objects.create(name="telegram-with-secret", org=org)
         webhook_trigger = WebhookTrigger.objects.create(
@@ -146,6 +148,19 @@ class TestTelegramRegistrationReadsSecret:
             auth_token_secret=secret_service.create(
                 text="ngrok-token-test", org=org, name="ngrok-telegram-test-secret"
             ),
+        )
+        # register_telegram_trigger requires a user-configured
+        # WebhookTriggerAuth (kind=telegram) -- the secret behind the
+        # `X-Telegram-Bot-Api-Secret-Token` header -- distinct from the bot
+        # API key asserted on below.
+        WebhookTriggerService().set_trigger_auth_secret(
+            webhook_trigger,
+            secret=secret_service.create(
+                text="telegram-secret-token-xxxxxxxxxx",
+                org=org,
+                name="telegram-secret-path-secret",
+            ),
+            kind=WebhookTriggerAuthKind.TELEGRAM,
         )
         node = TelegramTriggerNode.objects.create(
             graph=graph,

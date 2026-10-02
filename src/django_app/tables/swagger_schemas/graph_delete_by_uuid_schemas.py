@@ -1,17 +1,17 @@
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-GRAPH_DELETE_BY_UUID_DELETE = dict(
-    summary="Delete a graph by its UUID",
-    description=(
+GRAPH_DELETE_BY_UUID_DELETE = {
+    "summary": "Delete a graph by its UUID",
+    "description": (
         "Deletes a single `Graph` looked up by its `uuid` field (as opposed to "
         "the numeric `pk` used by the standard destroy route), scoped to the "
         "active org. Routes through the model's normal `delete()` (soft-delete "
         "aware when `SOFT_DELETE` is enabled)."
     ),
-    responses={
+    "responses": {
         204: OpenApiResponse(description="Graph deleted."),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -43,4 +43,4 @@ GRAPH_DELETE_BY_UUID_DELETE = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}

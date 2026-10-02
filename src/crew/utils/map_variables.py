@@ -1,5 +1,6 @@
-from dotdict import DotDict
 import re
+
+from dotdict import DotDict
 from loguru import logger
 
 
@@ -89,11 +90,9 @@ def map_variables_to_input(
                 default_value = int(default_value)
 
         # Normal variable path handling
-        keys: list["str"] = pattern.findall(input_key)
+        keys: list[str] = pattern.findall(input_key)
         if keys[0] != "variables":
-            raise ValueError(
-                f"`{input_key}` does not contain name `variables` for {output_key}"
-            )
+            raise ValueError(f"`{input_key}` does not contain name `variables` for {output_key}")
         keys = keys[1:]
 
         value = variables
@@ -119,8 +118,6 @@ def map_variables_to_input(
                         )
                         value = None
                         break
-                except Exception as e:
-                    raise Exception(e)
 
         if hasattr(value, "model_dump"):
             value = value.model_dump()

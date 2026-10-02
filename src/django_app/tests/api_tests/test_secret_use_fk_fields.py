@@ -3,7 +3,8 @@
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import EmbeddingConfig, LLMConfig, Organization
+from rbac.models import Organization
+from tables.models import EmbeddingConfig, LLMConfig
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import Graph, TelegramTriggerNode
 from tables.models.llm_models import (
@@ -21,8 +22,8 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.models.webhook_models import RealtimeChannel, TwilioChannel
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.services.secrets import secret_service
 
 

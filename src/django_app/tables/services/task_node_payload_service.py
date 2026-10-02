@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from tables.models.graph_models import TaskNode
-from tables.services.base_node_payload_service import BaseNodePayloadService
 from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import CombinedSurfaceData, TaskNodeData
+from tables.models.graph_models import TaskNode
+from tables.services.base_node_payload_service import BaseNodePayloadService
 
 
 class TaskNodePayloadService(BaseNodePayloadService):
@@ -28,18 +28,14 @@ class TaskNodePayloadService(BaseNodePayloadService):
 
         return TaskNodeData(
             node_name=node_name,
-            agent_definition=self._build_agent_definition_data(
-                task_node.agent_definition
-            ),
+            agent_definition=self._build_agent_definition_data(task_node.agent_definition),
             instructions=task_node.instructions,
             input_map=task_node.input_map or {},
             output_variable_path=task_node.output_variable_path,
             output_schema=task_node.output_schema or {},
             remember_output=task_node.remember_output,
             surface=combined_surface,
-            tools=self._build_tool_pool(
-                combined_surface, graph_id, session_id, s3_files
-            ),
+            tools=self._build_tool_pool(combined_surface, graph_id, session_id, s3_files),
             collections=self._build_collection_pool(combined_surface),
             s3_files=s3_files,
         )

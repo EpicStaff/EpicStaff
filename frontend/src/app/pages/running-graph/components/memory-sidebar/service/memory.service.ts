@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../../../core/models/api-request.model';
-import { ConfigService } from '../../../../../services/config/config.service';
+import { ConfigService } from '../../../../../services/config';
 import { Memory } from '../models/memory.model';
 
 @Injectable({

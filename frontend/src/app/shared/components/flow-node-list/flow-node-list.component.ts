@@ -9,9 +9,8 @@ import {
     signal,
     TemplateRef,
 } from '@angular/core';
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
-import { NODE_COLORS, NODE_ICONS } from '../../../visual-programming/core/enums/node-config';
-import { NodeType } from '../../../visual-programming/core/enums/node-type';
 import { SearchComponent } from '../search/search.component';
 import { SelectComponent, SelectItem } from '../select/select.component';
 

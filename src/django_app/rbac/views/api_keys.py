@@ -1,0 +1,69 @@
+from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from rbac.access.gates import DenyApiKeyAuth
+from rbac.identity.api_keys.service import ApiKeyService
+from rbac.identity.authentication import (
+    ApiKeyAuthentication,
+    JwtAuthentication,
+)
+from rbac.schemas.api_keys import (
+    PROFILE_API_KEY_DELETE,
+    PROFILE_API_KEY_REVOKE_POST,
+    PROFILE_API_KEYS_GET,
+    PROFILE_API_KEYS_POST,
+)
+from rbac.serializers.api_keys import ApiKeySerializer
+from rbac.validation.api_key import ApiKeyValidationService
+
+
+class ProfileApiKeysView(APIView):
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+
+    _service = ApiKeyService()
+    _validator = ApiKeyValidationService()
+
+    @extend_schema(**PROFILE_API_KEYS_GET)
+    def get(self, request):
+        keys = self._service.list_keys(request.user)
+        return Response(ApiKeySerializer(keys, many=True).data)
+
+    @extend_schema(**PROFILE_API_KEYS_POST)
+    def post(self, request):
+        cleaned = self._validator.validate_create(request.data)
+        issued = self._service.create_key(
+            user=request.user,
+            name=cleaned["name"],
+            expires_in_days=cleaned["expires_in_days"],
+        )
+        payload = ApiKeySerializer(issued.api_key).data
+        payload["api_key"] = issued.raw_key
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class ProfileApiKeyDetailView(APIView):
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+
+    _service = ApiKeyService()
+
+    @extend_schema(**PROFILE_API_KEY_DELETE)
+    def delete(self, request, key_id):
+        self._service.delete_key(user=request.user, key_id=key_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProfileApiKeyRevokeView(APIView):
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+
+    _service = ApiKeyService()
+
+    @extend_schema(**PROFILE_API_KEY_REVOKE_POST)
+    def post(self, request, key_id):
+        key = self._service.revoke_key(user=request.user, key_id=key_id)
+        return Response(ApiKeySerializer(key).data)

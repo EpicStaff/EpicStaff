@@ -4,7 +4,6 @@ import time
 import requests
 from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
-
 from tables.exceptions import RegisterTelegramTriggerError
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import (
@@ -22,10 +21,7 @@ from tables.validators.telegram_secret_token_validator import (
 )
 from utils.singleton_meta import SingletonMeta
 
-
-TELEGRAM_WEBHOOK_HEADER = WebhookTriggerAuth.HEADER_NAMES[
-    WebhookTriggerAuthKind.TELEGRAM
-]
+TELEGRAM_WEBHOOK_HEADER = WebhookTriggerAuth.HEADER_NAMES[WebhookTriggerAuthKind.TELEGRAM]
 
 
 def _retry_on_connection_errors(func):
@@ -53,13 +49,11 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         webhook_trigger_service: WebhookTriggerService,
     ):
         self.webhook_trigger_service = webhook_trigger_service
-        self.session_manager_service = (
-            session_manager_service or SessionManagerService()
-        )
+        self.session_manager_service = session_manager_service or SessionManagerService()
 
     @_retry_on_connection_errors
     def _call_telegram_api(
-        self, method: str, api_key: str, endpoint: str, params: dict = None
+        self, method: str, api_key: str, endpoint: str, params: dict | None = None
     ):
         """Handle Telegram API calls with retries."""
         url = f"https://api.telegram.org/bot{api_key}/{endpoint}"
@@ -111,15 +105,13 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 "Use ngrok or a publicly accessible provider."
             )
         try:
-            webhook_tunnel_url = (
-                self.webhook_trigger_service.wait_for_tunnel_url_for_trigger(
-                    webhook_trigger
-                )
+            webhook_tunnel_url = self.webhook_trigger_service.wait_for_tunnel_url_for_trigger(
+                webhook_trigger
             )
         except Exception as e:
             raise RegisterTelegramTriggerError(
-                f"Failed to fetch tunnel URL: {str(e)}", status_code=503
-            )
+                f"Failed to fetch tunnel URL: {e!s}", status_code=503
+            ) from e
 
         if not webhook_tunnel_url:
             raise RegisterTelegramTriggerError(
@@ -130,10 +122,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         telegram_webhook_url = f"{webhook_tunnel_url}/webhooks/{webhook_trigger.path}/"
 
         trigger_auth: WebhookTriggerAuth | None = getattr(webhook_trigger, "auth", None)
-        if (
-            trigger_auth is not None
-            and trigger_auth.kind != WebhookTriggerAuthKind.TELEGRAM
-        ):
+        if trigger_auth is not None and trigger_auth.kind != WebhookTriggerAuthKind.TELEGRAM:
             raise RegisterTelegramTriggerError(
                 "This webhook trigger's auth is already configured for a "
                 "different kind (e.g. a user-set webhook-trigger secret) and "
@@ -155,7 +144,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         try:
             validate_telegram_secret_token(secret_token)
         except ValueError as e:
-            raise RegisterTelegramTriggerError(str(e), status_code=400)
+            raise RegisterTelegramTriggerError(str(e), status_code=400) from e
 
         already_registered = (
             not force
@@ -190,8 +179,8 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             )
         except Exception as e:
             raise RegisterTelegramTriggerError(
-                f"Failed to register Telegram webhook after retries: {str(e)}"
-            )
+                f"Failed to register Telegram webhook after retries: {e!s}"
+            ) from e
 
         trigger_auth.registered_webhook_url = telegram_webhook_url
         trigger_auth.registered_bot_api_key_secret_id = (
@@ -222,9 +211,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         payload: dict,
         config_id: str | None = None,
     ) -> None:
-        filters = self.webhook_trigger_service.get_trigger_filters(
-            path=path, config_id=config_id
-        )
+        filters = self.webhook_trigger_service.get_trigger_filters(path=path, config_id=config_id)
         if filters is None:
             return
 

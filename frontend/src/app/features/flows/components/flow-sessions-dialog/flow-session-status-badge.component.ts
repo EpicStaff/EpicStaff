@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-
-import { GraphSessionStatus } from '../../services/flows-sessions.service';
+import { GraphSessionStatus } from '@shared/models';
 
 @Component({
     selector: 'app-flow-session-status-badge',

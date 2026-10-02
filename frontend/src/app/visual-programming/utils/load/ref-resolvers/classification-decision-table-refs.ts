@@ -1,4 +1,4 @@
-import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../core/models/classification-decision-table-node.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 
 /**

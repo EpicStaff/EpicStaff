@@ -1,4 +1,4 @@
-import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
+import { WebhookTriggerModel } from '../webhook-trigger/webhook-trigger.model';
 
 export interface TwilioChannel {
     channel: number;

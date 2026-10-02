@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, output } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '@shared/components';
 
 export type FlowsFilterMenuAction = 'sort_asc' | 'sort_desc' | 'include_exclude' | 'custom_filter';
 

@@ -14,7 +14,7 @@ from tables.models.knowledge_models.collection_models import (
     SourceCollection,
 )
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.rag_assignment_service import RagAssignmentService
 from tables.services.secrets import secret_service
 

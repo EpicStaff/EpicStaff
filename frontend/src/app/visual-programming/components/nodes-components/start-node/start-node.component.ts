@@ -1,6 +1,6 @@
 import { Component, Input } from '@angular/core';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StartNodeModel } from '../../../core/models/node.model';
 
 @Component({

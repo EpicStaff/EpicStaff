@@ -8,14 +8,10 @@ publish a payload containing a 'warnings' key.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import MagicMock
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
-from shared.redis_streams import StreamEnvelope
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -29,17 +25,45 @@ def _make_emitter() -> tuple[RedisStreamBatchEmitter, list[dict]]:
 
     client = MagicMock()
 
-    async def capture_publish(stream: str, fields: dict) -> None:
+    async def capture_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
         published.append(fields)
 
     client.publish = capture_publish
 
     emitter = RedisStreamBatchEmitter(
         client=client,
-        result_stream="agent.results",
+        result_stream_prefix="agent.results",
         correlation_id="test-corr",
+        result_stream_ttl_s=3600,
     )
     return emitter, published
+
+
+def _make_recording_client() -> tuple[MagicMock, list[dict]]:
+    """Return (client, publish_calls) where publish_calls records the stream,
+    maxlen and ttl_s of every client.publish call."""
+    publish_calls: list[dict] = []
+    client = MagicMock()
+
+    async def record_publish(
+        stream: str,
+        fields: dict,
+        maxlen: int | None = 1_000_000,
+        approximate: bool = True,
+        ttl_s: int | None = None,
+    ) -> None:
+        publish_calls.append(
+            {"stream": stream, "fields": fields, "maxlen": maxlen, "ttl_s": ttl_s}
+        )
+
+    client.publish = record_publish
+    return client, publish_calls
 
 
 def _decode_payload(fields: dict) -> dict:
@@ -260,3 +284,41 @@ async def test_on_final_structured_output_is_none_without_schema():
 
     payload = _decode_payload(published[0])
     assert payload["structured_output"] is None
+
+
+# ---------------------------------------------------------------------------
+# Per-run result stream + TTL
+# ---------------------------------------------------------------------------
+
+
+async def test_on_final_publishes_to_per_run_stream_with_ttl():
+    client, publish_calls = _make_recording_client()
+    emitter = RedisStreamBatchEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="run-a",
+        result_stream_ttl_s=3600,
+    )
+
+    await emitter.on_final(_make_loop_result())
+
+    assert len(publish_calls) == 1
+    assert publish_calls[0]["stream"] == "agent.results:run-a"
+    assert publish_calls[0]["ttl_s"] == 3600
+    assert publish_calls[0]["maxlen"] is None
+
+
+async def test_on_error_publishes_to_per_run_stream_with_ttl():
+    client, publish_calls = _make_recording_client()
+    emitter = RedisStreamBatchEmitter(
+        client=client,
+        result_stream_prefix="agent.results",
+        correlation_id="run-a",
+        result_stream_ttl_s=3600,
+    )
+
+    await emitter.on_error(RuntimeError("boom"))
+
+    assert len(publish_calls) == 1
+    assert publish_calls[0]["stream"] == "agent.results:run-a"
+    assert publish_calls[0]["ttl_s"] == 3600

@@ -8,6 +8,7 @@
         (contextmenu)="onContextMenu($event)"
         (click)="onFlowClick($event)"
         (pointerdown)="onFlowPointerDown($event)"
+        (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
         fDraggable
         [fMultiSelectTrigger]="multiSelectTrigger"
@@ -147,6 +148,8 @@
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
+                    [fReassignableStart]="true"
+                    [fReassignDisabled]="reassignSuppressedConnectionIds().has(connection.id)"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
@@ -240,85 +243,88 @@
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
 
-    <div class="top-left-actions">
-        <div class="top-left-actions__column">
-            <button
-                class="domain-button"
-                matTooltip="Configure domain"
-                matTooltipPosition="right"
-                (click)="onDomainClick()"
-            >
-                Domain
-            </button>
+    <div class="canvas-toolbar-row">
+        <div class="top-left-actions">
+            <div class="top-left-actions__column">
+                <button
+                    class="domain-button"
+                    matTooltip="Configure domain"
+                    matTooltipPosition="right"
+                    (click)="onDomainClick()"
+                >
+                    Domain
+                </button>
 
-            <app-flow-shortcuts-button
-                icon="multi-select"
-                label="S"
-                iconSize="14px"
-                [textEnd]="true"
-                [active]="multiSelectActive()"
-                matTooltip="Multi-select"
-                matTooltipPosition="right"
-                (clicked)="onToggleMultiSelect()"
-            ></app-flow-shortcuts-button>
+                <app-flow-shortcuts-button
+                    icon="multi-select"
+                    label="S"
+                    iconSize="14px"
+                    [textEnd]="true"
+                    [active]="multiSelectActive()"
+                    matTooltip="Multi-select"
+                    matTooltipPosition="right"
+                    (clicked)="onToggleMultiSelect()"
+                ></app-flow-shortcuts-button>
 
-            <div
-                #shortcutsAnchor
-                #shortcutsButton
-                appShortcutListener
-                (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
-            >
-                <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)"> </app-flow-shortcuts-button>
+                <div
+                    #shortcutsAnchor
+                    #shortcutsButton
+                    appShortcutListener
+                    (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
+                >
+                    <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
+                    </app-flow-shortcuts-button>
+                </div>
             </div>
+
+            <app-nodes-search
+                [nodes]="flowService.nodes()"
+                (nodeSelected)="onZoomInNode($event)"
+                (nodeDoubleClicked)="onNodeDoubleClickAndZoom($event)"
+            ></app-nodes-search>
         </div>
 
-        <app-nodes-search
-            [nodes]="flowService.nodes()"
-            (nodeSelected)="onZoomInNode($event)"
-            (nodeDoubleClicked)="onNodeDoubleClickAndZoom($event)"
-        ></app-nodes-search>
-    </div>
-
-    <div class="top-right-controls">
-        <div class="top-right-actions">
-            <app-flow-export-import-button
-                [selectedCount]="selectedNodeCount()"
-                [allSelectedAreCdt]="allSelectedAreCdt()"
-                (exportSelectedJson)="onExportSelectedAsJson()"
-                (exportSelectedCsv)="onExportSelectedAsCsv()"
-                (exportJson)="onExportAllAsJson()"
-                (import)="onImportNodes()"
-            ></app-flow-export-import-button>
-            @if (currentFlowId) {
-                <app-flow-files-button
-                    *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
-                    [flowId]="currentFlowId"
-                    [flowName]="flowName"
-                ></app-flow-files-button>
-            }
-            <button
-                #arrangeBtnRef
-                class="arrange-btn"
-                title="Auto arrange"
-                matTooltip="Auto arrange"
-                matTooltipPosition="below"
-                [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
-                (click)="onAutoArrange()"
-            >
-                <app-svg-icon
-                    icon="auto-arrange"
-                    size="38px"
-                ></app-svg-icon>
-            </button>
-            <button
-                class="arrange-btn settings-icon-btn"
-                (click)="openSettings()"
-                title="Flow Settings"
-                matTooltip="Flow settings"
-                matTooltipPosition="below"
-            >
-                <i class="ti ti-settings"></i>
-            </button>
+        <div class="top-right-controls">
+            <div class="top-right-actions">
+                <app-flow-export-import-button
+                    [selectedCount]="selectedNodeCount()"
+                    [allSelectedAreCdt]="allSelectedAreCdt()"
+                    (exportSelectedJson)="onExportSelectedAsJson()"
+                    (exportSelectedCsv)="onExportSelectedAsCsv()"
+                    (exportJson)="onExportAllAsJson()"
+                    (import)="onImportNodes()"
+                ></app-flow-export-import-button>
+                @if (currentFlowId) {
+                    <app-flow-files-button
+                        *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
+                        [flowId]="currentFlowId"
+                        [flowName]="flowName"
+                    ></app-flow-files-button>
+                }
+                <button
+                    #arrangeBtnRef
+                    class="arrange-btn"
+                    title="Auto arrange"
+                    matTooltip="Auto arrange"
+                    matTooltipPosition="below"
+                    [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                    (click)="onAutoArrange()"
+                >
+                    <app-svg-icon
+                        icon="auto-arrange"
+                        size="38px"
+                    ></app-svg-icon>
+                </button>
+                <button
+                    class="arrange-btn settings-icon-btn"
+                    (click)="openSettings()"
+                    title="Flow Settings"
+                    matTooltip="Flow settings"
+                    matTooltipPosition="below"
+                >
+                    <i class="ti ti-settings"></i>
+                </button>
+            </div>
         </div>
     </div>
     <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>

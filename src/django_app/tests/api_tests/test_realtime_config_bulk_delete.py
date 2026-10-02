@@ -11,10 +11,10 @@ import pytest
 
 from agents.models import AgentDefinition
 from tables.models import Agent
-from tables.models.rbac_models import (
+from rbac.models import (
     Organization,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models.enums import Permission, ResourceType
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,

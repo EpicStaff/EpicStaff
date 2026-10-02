@@ -5,6 +5,7 @@ import {
     Component,
     computed,
     DestroyRef,
+    EventEmitter,
     inject,
     Input,
     OnChanges,
@@ -15,7 +16,6 @@ import {
     SimpleChanges,
     ViewContainerRef,
 } from '@angular/core';
-import { EventEmitter } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     AbstractControl,
@@ -27,14 +27,13 @@ import {
     ReactiveFormsModule,
 } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, HelpTooltipComponent, ToggleSwitchComponent } from '@shared/components';
+import { GraphSessionStatus } from '@shared/models';
 import { filter, Subscription } from 'rxjs';
 import { distinctUntilChanged, finalize } from 'rxjs/operators';
 
-import { GraphSessionService, GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
+import { GraphSessionService } from '../../../features/flows/services/flows-sessions.service';
 import { RunSessionSSEService } from '../../../pages/running-graph/services/graph-session-sse.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
@@ -242,7 +241,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .input-map-header label {
                 font-size: var(--text-body-size);
                 font-weight: var(--text-body-weight);
-                color: var(--color-text-primary);
+                color: var(--color-text-secondary);
                 margin: 0;
             }
 
@@ -305,7 +304,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: 0.5rem 0.75rem;
                 background-color: var(--color-input-background);
                 border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
+                border-radius: 4px;
                 color: #fff;
                 font-size: 0.875rem;
                 outline: none;
@@ -923,9 +922,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     onValueFocus(rowIndex: number, event: FocusEvent): void {
         const inputEl = event.target as HTMLInputElement;
-        if ((inputEl.value ?? '').startsWith(this.variablesPrefix)) {
-            this.openPickerForInput(rowIndex, inputEl);
-        }
+        const value = inputEl.value ?? '';
+        if (!value.startsWith(this.variablesPrefix)) return;
+        if (this.isExactVariableMatch(rowIndex, value.slice(this.variablesPrefix.length))) return;
+        this.openPickerForInput(rowIndex, inputEl);
     }
 
     onValueInput(rowIndex: number, event: Event): void {
@@ -933,13 +933,35 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const value = inputEl.value ?? '';
 
         if (value.startsWith(this.variablesPrefix)) {
+            const query = value.slice(this.variablesPrefix.length);
+            if (this.isExactVariableMatch(rowIndex, query)) {
+                this.closePicker();
+                return;
+            }
             if (!(this.overlayRef && this.activeRowIndex === rowIndex)) {
                 this.openPickerForInput(rowIndex, inputEl);
             }
-            this.autocompleteInstance?.setFilter(value.slice(this.variablesPrefix.length));
+            this.autocompleteInstance?.setFilter(query);
         } else if (this.overlayRef && this.activeRowIndex === rowIndex) {
             this.closePicker();
         }
+    }
+
+    private usedVariablePaths(excludeRowIndex: number): Set<string> {
+        const used = new Set<string>();
+        this.pairs.controls.forEach((ctrl, idx) => {
+            if (idx === excludeRowIndex) return;
+            const value = ((ctrl.value.value as string) ?? '').trim();
+            if (value) used.add(value);
+        });
+        return used;
+    }
+
+    private isExactVariableMatch(rowIndex: number, query: string): boolean {
+        const trimmed = query.trim();
+        if (!trimmed) return false;
+        const usedPaths = this.usedVariablePaths(rowIndex);
+        return this.pickerItems().some((item) => !usedPaths.has(item.fullPath) && item.label === trimmed);
     }
 
     private openPickerForInput(rowIndex: number, anchorEl: HTMLInputElement): void {
@@ -971,7 +993,8 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const componentRef = this.overlayRef.attach(portal);
         this.autocompleteInstance = componentRef.instance;
         this.autocompleteInstance.autofocusSearch = false;
-        this.autocompleteInstance.setItems(this.pickerItems());
+        const usedPaths = this.usedVariablePaths(rowIndex);
+        this.autocompleteInstance.setItems(this.pickerItems().filter((item) => !usedPaths.has(item.fullPath)));
 
         const currentValue = anchorEl.value ?? '';
         if (currentValue.startsWith(this.variablesPrefix)) {

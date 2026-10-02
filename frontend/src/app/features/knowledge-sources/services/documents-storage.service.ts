@@ -3,7 +3,7 @@ import { StorageService } from '@shared/services';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, finalize, map, tap } from 'rxjs/operators';
 
-import { ToastService } from '../../../services/notifications/toast.service';
+import { ToastService } from '../../../services/notifications';
 import {
     CollectionDocument,
     CopyDocumentsResponse,

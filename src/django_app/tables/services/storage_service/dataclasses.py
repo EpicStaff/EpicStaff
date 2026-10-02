@@ -92,9 +92,7 @@ class TreeNode:
     type: Literal["file", "folder"]
     size: int
     modified: str | None
-    children: (
-        list["TreeNode"] | None
-    )  # None for files, list for folders (possibly empty)
+    children: list[TreeNode] | None  # None for files, list for folders (possibly empty)
 
     def to_dict(self) -> dict:
         return {
@@ -105,8 +103,6 @@ class TreeNode:
             "size": self.size,
             "modified": self.modified,
             "children": (
-                [child.to_dict() for child in self.children]
-                if self.children is not None
-                else None
+                [child.to_dict() for child in self.children] if self.children is not None else None
             ),
         }

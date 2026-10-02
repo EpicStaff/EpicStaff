@@ -9,6 +9,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FetchErrorStateComponent } from '@shared/components';
 
 import { StorageItem } from '../../../../../../files/models/storage.models';
 import { StorageTreeComponent } from '../../../../../../files/pages/files-list-page/components/storage-page/components/storage-tree/storage-tree.component';
@@ -16,7 +17,7 @@ import { StorageTreeFacade } from '../../../../../../files/services/storage-tree
 
 @Component({
     selector: 'app-storage-section',
-    imports: [StorageTreeComponent],
+    imports: [StorageTreeComponent, FetchErrorStateComponent],
     templateUrl: './storage-section.component.html',
     styleUrls: ['./storage-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

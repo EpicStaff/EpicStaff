@@ -3,11 +3,11 @@ import mimetypes
 import os
 import tarfile
 import zipfile
-from typing import Iterator
+from collections.abc import Iterator
 
 from django.db.models import Case, IntegerField, Value, When
 from django.db.models.functions import Lower
-
+from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
     ArchiveUploadResult,
@@ -21,9 +21,6 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.path_utils import sanitize_storage_path
-
-from tables.models import OrganizationUser, StorageFile
-
 
 _DOCUMENT_EXTENSIONS = frozenset(
     {
@@ -79,9 +76,7 @@ class StorageManager:
 
     def _build_storage_key(self, org_id: int, relative_path: str) -> str:
         """Return the full storage key for a relative path inside an org."""
-        safe_path = sanitize_storage_path(
-            relative_path, allow_empty=True, allow_leading_slash=True
-        )
+        safe_path = sanitize_storage_path(relative_path, allow_empty=True, allow_leading_slash=True)
         return f"org_{org_id}/{safe_path}"
 
     def _strip_org_prefix(self, org_id: int, storage_key: str) -> str:
@@ -111,9 +106,9 @@ class StorageManager:
 
         if folder_paths:
             non_empty = set(
-                StorageFile.objects.filter(
-                    org_id=org_id, parent_path__in=folder_paths
-                ).values_list("parent_path", flat=True)
+                StorageFile.objects.filter(org_id=org_id, parent_path__in=folder_paths).values_list(
+                    "parent_path", flat=True
+                )
             )
 
         items = []
@@ -125,9 +120,7 @@ class StorageManager:
                         name=row.name,
                         type="folder",
                         size=row.size or 0,
-                        modified=row.s3_modified.isoformat()
-                        if row.s3_modified
-                        else None,
+                        modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=row.path not in non_empty,
                     )
                 )
@@ -138,9 +131,7 @@ class StorageManager:
                         name=row.name,
                         type="file",
                         size=row.size or 0,
-                        modified=row.s3_modified.isoformat()
-                        if row.s3_modified
-                        else None,
+                        modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=False,
                     )
                 )
@@ -148,9 +139,7 @@ class StorageManager:
         return items
 
     def upload(self, org_id: int, path: str, file_object) -> UploadResult:
-        result = self._backend.upload(
-            self._build_storage_key(org_id, path), file_object
-        )
+        result = self._backend.upload(self._build_storage_key(org_id, path), file_object)
         relative_path = self._strip_org_prefix(org_id, result.path)
         StorageFileSync.on_upload(org_id, relative_path, size=result.size)
         return UploadResult(path=relative_path, size=result.size)
@@ -237,9 +226,7 @@ class StorageManager:
     def exists(self, org_id: int, path: str) -> bool:
         return self._backend.exists(self._build_storage_key(org_id, path))
 
-    def download_zip(
-        self, org_id: int, paths: list[str]
-    ) -> tuple[str, Iterator[bytes]]:
+    def download_zip(self, org_id: int, paths: list[str]) -> tuple[str, Iterator[bytes]]:
         """
         Resolve the zip filename and archive entries eagerly (DB-first), then
         return the resolved filename alongside a generator that streams the
@@ -274,9 +261,7 @@ class StorageManager:
                 )
                 for file_row in file_rows:
                     arcname = (
-                        file_row.path[len(row.path) :]
-                        if single_path
-                        else file_row.path.lstrip("/")
+                        file_row.path[len(row.path) :] if single_path else file_row.path.lstrip("/")
                     )
                     entries.append((file_row.path, arcname))
             else:
@@ -286,16 +271,12 @@ class StorageManager:
         zip_filename = f"{resolved_row.name}.zip" if single_path else "download.zip"
         return zip_filename, self._stream_zip(org_id, entries)
 
-    def _stream_zip(
-        self, org_id: int, entries: list[tuple[str, str]]
-    ) -> Iterator[bytes]:
+    def _stream_zip(self, org_id: int, entries: list[tuple[str, str]]) -> Iterator[bytes]:
         """Build a zip archive in memory from resolved (storage_path, arcname) entries."""
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             for storage_path, arcname in entries:
-                file_bytes = self._backend.download(
-                    self._build_storage_key(org_id, storage_path)
-                )
+                file_bytes = self._backend.download(self._build_storage_key(org_id, storage_path))
                 archive.writestr(arcname, file_bytes)
         buffer.seek(0)
         yield buffer.read()
@@ -338,12 +319,8 @@ class StorageManager:
 
             return ArchiveUploadResult(type="archive", extracted=extracted)
 
-        destination = (
-            f"{path.rstrip('/')}/{file_object.name}" if path else file_object.name
-        )
-        result = self._backend.upload(
-            self._build_storage_key(org_id, destination), file_object
-        )
+        destination = f"{path.rstrip('/')}/{file_object.name}" if path else file_object.name
+        result = self._backend.upload(self._build_storage_key(org_id, destination), file_object)
         relative_path = self._strip_org_prefix(org_id, result.path)
         StorageFileSync.on_upload(org_id, relative_path, size=result.size)
         return FileUploadResult(type="file", path=relative_path, size=result.size)
@@ -371,9 +348,7 @@ class StorageManager:
         truncated = False
         count = 0
 
-        rows = StorageFile.objects.filter(
-            org_id=org_id, path__startswith=norm
-        ).order_by("path")
+        rows = StorageFile.objects.filter(org_id=org_id, path__startswith=norm).order_by("path")
 
         for row in rows:
             if row.path == norm:
@@ -437,9 +412,7 @@ class StorageManager:
                     "path": leaf_path,
                     "type": "folder",
                     "size": 0,
-                    "modified": row.s3_modified.isoformat()
-                    if row.s3_modified
-                    else None,
+                    "modified": row.s3_modified.isoformat() if row.s3_modified else None,
                     "children_map": {},
                 }
             else:
@@ -449,9 +422,7 @@ class StorageManager:
                     "path": leaf_path,
                     "type": "file",
                     "size": row.size or 0,
-                    "modified": row.s3_modified.isoformat()
-                    if row.s3_modified
-                    else None,
+                    "modified": row.s3_modified.isoformat() if row.s3_modified else None,
                     "children_map": None,
                 }
 
@@ -489,17 +460,13 @@ class StorageManager:
         offset: int = 0,
     ) -> tuple[list[dict], int]:
         """Substring search on filename within an org."""
-        qs = StorageFile.objects.filter(
-            org_id=org_id, name__icontains=q, item_type="file"
-        )
+        qs = StorageFile.objects.filter(org_id=org_id, name__icontains=q, item_type="file")
 
         if path:
             qs = qs.filter(path__startswith=path.rstrip("/") + "/")
 
         total = qs.count()
-        rows = list(
-            qs.order_by("path").values("id", "path", "name")[offset : offset + limit]
-        )
+        rows = list(qs.order_by("path").values("id", "path", "name")[offset : offset + limit])
         return rows, total
 
     # --- Cross-org operations (superadmin-only; enforced at the API layer) ---
@@ -540,6 +507,4 @@ class StorageManager:
             self._build_storage_key(dst_org_id, dst_path),
         )
         actual_dst_path = self._strip_org_prefix(dst_org_id, actual_key)
-        StorageFileSync.on_move_cross_org(
-            src_org_id, src_path, dst_org_id, actual_dst_path
-        )
+        StorageFileSync.on_move_cross_org(src_org_id, src_path, dst_org_id, actual_dst_path)

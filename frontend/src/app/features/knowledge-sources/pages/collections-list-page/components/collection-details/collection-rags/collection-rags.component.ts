@@ -2,7 +2,10 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../../services/notifications';
@@ -21,7 +24,7 @@ import { RagDeleteRegistryService } from '../../../../../services/rag-delete-reg
     selector: 'app-collection-details-rags',
     templateUrl: 'collection-rags.component.html',
     styleUrls: ['./collection-rags.component.scss'],
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionRagsComponent {
@@ -97,4 +100,7 @@ export class CollectionRagsComponent {
             )
             .subscribe();
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

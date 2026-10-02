@@ -11,9 +11,9 @@ from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls, StopPolicy
 
 __all__ = [
+    "AgentContext",
     "AgentLoop",
     "DefaultAgentLoop",
-    "AgentContext",
-    "StopPolicy",
     "MaxIterAndNoToolCalls",
+    "StopPolicy",
 ]

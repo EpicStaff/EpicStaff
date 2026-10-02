@@ -143,6 +143,42 @@
         }
     </ng-template>
 
+    <!-- ACTIONS -->
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        <div
+            class="actions-cell"
+            (click)="$event.stopPropagation()"
+        >
+            @if (!isEditHidden(row)) {
+                <app-edit-button
+                    tooltip="Edit user"
+                    (triggered)="onEditUser(row)"
+                />
+            }
+            @if (showReactivate(row)) {
+                <app-activate-button
+                    tooltip="Reactivate account"
+                    (triggered)="onReactivate(row)"
+                />
+            }
+            @if (showDeactivate(row)) {
+                <app-stop-button
+                    tooltip="Deactivate account"
+                    (triggered)="onDeactivate(row)"
+                />
+            }
+            @if (showRemove(row)) {
+                <app-delete-button
+                    tooltip="Remove from your organizations"
+                    (triggered)="onRemoveFromMyOrgs(row)"
+                />
+            }
+        </div>
+    </ng-template>
+
     <div tableEmpty>
         @if (isLoading()) {
             <app-loading-spinner size="sm" />

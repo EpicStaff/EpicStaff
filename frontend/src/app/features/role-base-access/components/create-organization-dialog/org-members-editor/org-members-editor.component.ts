@@ -21,8 +21,7 @@ import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { RolesService } from '../../../services/admin/roles.service';
-import { adminUsersToAggregated, aggregateMembershipsByUser } from '../../../utils/aggregate-users.util';
-import { rbacErrorMessage } from '../../../utils/rbac-error-messages.util';
+import { adminUsersToAggregated, aggregateMembershipsByUser, rbacErrorMessage } from '../../../utils';
 import { UserAvatarComponent } from '../../user-avatar/user-avatar.component';
 
 interface MembershipSnapshot {

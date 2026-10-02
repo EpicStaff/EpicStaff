@@ -5,8 +5,8 @@ from django.db import models
 from django.db.models import PositiveIntegerField
 from pgvector.django import VectorField
 
-from ..crew_models import Agent
 from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
+from ..crew_models import Agent
 from ..embedding_models import EmbeddingConfig
 from .collection_models import BaseRagType, DocumentMetadata
 
@@ -77,18 +77,14 @@ class NaiveRag(SoftDeleteFields, models.Model):
         self.outdated_reasons.clear()
 
     def update_rag_status(self) -> bool:
-        config_statuses = set(
-            self.naive_rag_configs.values_list("status", flat=True).distinct()
-        )
+        config_statuses = set(self.naive_rag_configs.values_list("status", flat=True).distinct())
         config_status_enum = NaiveRagDocumentConfig.NaiveRagDocumentStatus
 
         if config_status_enum.OUTDATED in config_statuses or self.outdated_reasons:
             new_status = self.NaiveRagStatus.OUTDATED
         elif config_status_enum.PROCESSING in config_statuses:
             new_status = self.NaiveRagStatus.PROCESSING
-        elif config_statuses.issuperset(
-            [config_status_enum.COMPLETED, config_status_enum.FAILED]
-        ):
+        elif config_statuses.issuperset([config_status_enum.COMPLETED, config_status_enum.FAILED]):
             new_status = self.NaiveRagStatus.PARTIAL
         elif config_status_enum.COMPLETED in config_statuses:
             new_status = self.NaiveRagStatus.COMPLETED
@@ -245,9 +241,7 @@ class NaiveRagChunk(SoftDeleteFields, models.Model):
     )
 
     text = models.TextField()
-    chunk_index = models.PositiveIntegerField(
-        help_text="Order of this chunk in the document"
-    )
+    chunk_index = models.PositiveIntegerField(help_text="Order of this chunk in the document")
 
     token_count = models.PositiveIntegerField(null=True, blank=True)
     overlap_start_index = models.PositiveIntegerField(null=True, blank=True)
@@ -283,9 +277,7 @@ class NaiveRagEmbedding(SoftDeleteFields, models.Model):
     Vector embeddings for NaiveRAG chunks.
     """
 
-    embedding_id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False
-    )
+    embedding_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     naive_rag_document_config = models.ForeignKey(
         NaiveRagDocumentConfig,
@@ -341,9 +333,7 @@ class AgentNaiveRag(SoftDeleteFields, models.Model):
         unique=True,  # TEMPORARY: Remove to allow multiple NaiveRags per Agent
         related_name="agent_naive_rags",
     )
-    naive_rag = models.ForeignKey(
-        NaiveRag, on_delete=models.CASCADE, related_name="agent_links"
-    )
+    naive_rag = models.ForeignKey(NaiveRag, on_delete=models.CASCADE, related_name="agent_links")
 
     @classmethod
     def check(cls, **kwargs):
@@ -417,9 +407,7 @@ class NaiveRagPreviewChunk(SoftDeleteFields, models.Model):
     )
 
     text = models.TextField()
-    chunk_index = models.PositiveIntegerField(
-        help_text="Order of this chunk in the document"
-    )
+    chunk_index = models.PositiveIntegerField(help_text="Order of this chunk in the document")
 
     token_count = models.PositiveIntegerField(null=True, blank=True)
     overlap_start_index = models.PositiveIntegerField(null=True, blank=True)

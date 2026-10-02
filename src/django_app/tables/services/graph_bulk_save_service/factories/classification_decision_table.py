@@ -4,8 +4,8 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.services.graph_bulk_save_service.data_types import NodeRef, ParsedNodeRef
 from tables.services.graph_bulk_save_service.factories.base import NodeSaveableFactory
 from tables.services.graph_bulk_save_service.saveables import (
-    _ClassificationDecisionTableNodeRefsSaveable,
     ClassificationDecisionTableNodeSaveable,
+    _ClassificationDecisionTableNodeRefsSaveable,
 )
 
 
@@ -23,9 +23,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
         node_routing_refs: dict[str, NodeRef | None] = {}
 
         for id_field, temp_field in self._NODE_ROUTING_PAIRS:
-            parsed = self._parse_optional_routing_ref(
-                data, id_field, temp_field, payload_temp_ids
-            )
+            parsed = self._parse_optional_routing_ref(data, id_field, temp_field, payload_temp_ids)
             if parsed.error:
                 routing_errors.append(parsed.error)
             else:
@@ -35,9 +33,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
                 elif parsed.ref is None:
                     data.setdefault(id_field, None)
 
-        routing_errors.extend(
-            validate_classification_condition_group_names(condition_groups_data)
-        )
+        routing_errors.extend(validate_classification_condition_group_names(condition_groups_data))
 
         group_routing_refs: list[NodeRef | None] = []
 

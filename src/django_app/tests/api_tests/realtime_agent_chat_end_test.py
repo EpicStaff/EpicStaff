@@ -2,7 +2,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
     RealtimeAgent,

@@ -1,4 +1,5 @@
-import { ConfirmationDialogData } from '../../../shared/components/cofirm-dialog/confirmation-dialog.component';
+import { ConfirmationDialogData } from '@shared/components';
+
 import { AgentDefinition } from '../models/agent-definition.model';
 import { Surface } from '../models/surface.model';
 

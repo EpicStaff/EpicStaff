@@ -1,0 +1,12 @@
+<button
+    type="button"
+    class="duplicate-btn"
+    [disabled]="disabled()"
+    [matTooltip]="tooltip()"
+    (click)="triggered.emit()"
+>
+    <app-svg-icon
+        icon="duplicate"
+        size="12.08px"
+    />
+</button>

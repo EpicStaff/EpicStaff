@@ -57,7 +57,3 @@ package = false
 
 [tool.uv.sources]
 dotdict = { path = "../shared/dotdict" }
-
-[tool.ruff]
-select = ["F","E"]
-ignore = ["E402","E501"]

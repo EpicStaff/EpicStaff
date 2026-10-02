@@ -9,7 +9,7 @@ import {
 import { map, Observable, of, shareReplay, switchMap } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 
 export interface ApiGetResponse<T> {
     count: number;

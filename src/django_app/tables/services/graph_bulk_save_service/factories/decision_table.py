@@ -1,8 +1,8 @@
 from tables.services.graph_bulk_save_service.data_types import NodeRef, ParsedNodeRef
 from tables.services.graph_bulk_save_service.factories.base import NodeSaveableFactory
 from tables.services.graph_bulk_save_service.saveables import (
-    _DecisionTableNodeRefsSaveable,
     DecisionTableNodeSaveable,
+    _DecisionTableNodeRefsSaveable,
 )
 
 
@@ -41,9 +41,7 @@ class DecisionTableNodeSaveableFactory(NodeSaveableFactory):
         node_routing_refs: dict[str, NodeRef | None] = {}
 
         for id_field, temp_field in self._NODE_ROUTING_PAIRS:
-            parsed = self._parse_optional_routing_ref(
-                data, id_field, temp_field, payload_temp_ids
-            )
+            parsed = self._parse_optional_routing_ref(data, id_field, temp_field, payload_temp_ids)
             if parsed.error:
                 routing_errors.append(parsed.error)
             else:

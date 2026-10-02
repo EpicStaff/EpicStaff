@@ -43,3 +43,12 @@ async def test_handle_event_forwards_org_id_to_db_write(mock_db, handler, client
     assert kwargs.get("connection_key") == "test_conn"
     assert kwargs.get("org_id") == 44
     assert kwargs.get("user_id") == 88
+
+
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+async def test_conversation_item_truncate_is_forwarded_not_dropped(mock_db, handler, client):
+    data = {"type": "conversation.item.truncate", "item_id": "item_1", "content_index": 0}
+    await handler.handle_event(data)
+
+    client.send_server.assert_awaited_once_with(data)

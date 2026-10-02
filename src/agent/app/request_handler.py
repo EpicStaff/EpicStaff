@@ -39,14 +39,16 @@ class RequestHandler:
         loader: DataLoader,
         factory: RunnerFactory,
         redis_client: RedisStreamClient,
-        result_stream: str,
+        result_stream_prefix: str,
+        result_stream_ttl_s: int,
         request_stream: str,
         consumer_group: str,
     ) -> None:
         self._loader = loader
         self._factory = factory
         self._redis_client = redis_client
-        self._result_stream = result_stream
+        self._result_stream_prefix = result_stream_prefix
+        self._result_stream_ttl_s = result_stream_ttl_s
         self._request_stream = request_stream
         self._consumer_group = consumer_group
 
@@ -83,7 +85,10 @@ class RequestHandler:
         try:
             request = await self._loader.load(envelope)
             runner, emitter = self._factory.build(
-                request, self._redis_client, self._result_stream
+                request,
+                self._redis_client,
+                self._result_stream_prefix,
+                self._result_stream_ttl_s,
             )
 
         except Exception as error:
@@ -92,7 +97,10 @@ class RequestHandler:
                 correlation_id,
             )
             fallback_emitter = RedisStreamBatchEmitter(
-                self._redis_client, self._result_stream, correlation_id
+                self._redis_client,
+                self._result_stream_prefix,
+                correlation_id,
+                self._result_stream_ttl_s,
             )
             await fallback_emitter.on_error(error)
 
@@ -101,6 +109,4 @@ class RequestHandler:
 
         finally:
             await self._redis_client.ack(stream, self._consumer_group, message_id)
-            logger.debug(
-                "acked message_id={} correlation_id={}", message_id, correlation_id
-            )
+            logger.debug("acked message_id={} correlation_id={}", message_id, correlation_id)

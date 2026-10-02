@@ -1,6 +1,7 @@
-import { GetDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import { NodeType } from '../../../core/enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { ConnectionModel } from '../../../core/models/connection.model';
+import { GetDecisionTableNodeRequest } from '../../../core/models/decision-table-node.model';
 import { DecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { createFlowConnection } from '../../connection.factory';

@@ -2,7 +2,7 @@
 
 from django.db import migrations, models
 
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models.enums import BuiltInRole
 
 # Permission.READ | Permission.DELETE — view a key's record and retire it.
 API_KEYS_READ_DELETE = 10

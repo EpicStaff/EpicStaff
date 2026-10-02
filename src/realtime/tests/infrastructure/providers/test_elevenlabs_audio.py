@@ -79,8 +79,8 @@ def test_ulaw_to_pcm16k_doubles_sample_count(el_client):
     """8 kHz → 16 kHz resampling should roughly double the byte count."""
     ulaw = _silence_ulaw(160)          # 160 samples at 8kHz = 20ms
     result = el_client._ulaw_to_pcm16k(ulaw)
-    # Each sample is 2 bytes (int16); expect ~2× byte count after resampling
-    expected_bytes = 160 * 2 * 2      # 160 samples × 2 bytes × 2× upsample
+    # Each sample is 2 bytes (int16); expect ~2x byte count after resampling
+    expected_bytes = 160 * 2 * 2      # 160 samples x 2 bytes x 2x upsample
     assert abs(len(result) - expected_bytes) <= 8  # small rounding tolerance
 
 
@@ -150,7 +150,7 @@ def test_pcm16k_to_pcm24k_is_valid_base64(server_handler):
 
 
 def test_pcm16k_to_pcm24k_upsamples_to_1_5x(server_handler):
-    """16kHz → 24kHz: output should have 1.5× the number of samples."""
+    """16kHz → 24kHz: output should have 1.5x the number of samples."""
     n_in = 100
     b64_in = _b64_silence_pcm16(n_in)
     result_bytes = base64.b64decode(server_handler._pcm16k_to_pcm24k(b64_in))

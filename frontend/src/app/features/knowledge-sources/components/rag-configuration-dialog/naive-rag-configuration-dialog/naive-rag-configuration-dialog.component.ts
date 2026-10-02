@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
 import { filter, switchMap } from 'rxjs/operators';
 
@@ -14,7 +16,7 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
     selector: 'app-naive-rag-configuration-dialog',
     templateUrl: './naive-rag-configuration-dialog.component.html',
     styleUrls: ['../rag-configuration-dialog.component.scss'],
-    imports: [NaiveRagConfigurationComponent, ButtonComponent],
+    imports: [NaiveRagConfigurationComponent, ButtonComponent, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent {
@@ -102,4 +104,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
                 },
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

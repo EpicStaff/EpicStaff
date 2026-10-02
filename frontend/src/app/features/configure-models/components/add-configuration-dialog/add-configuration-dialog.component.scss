@@ -74,7 +74,7 @@
         align-items: center;
         gap: 0.375rem;
         font-size: 0.9375rem;
-        color: var(--color-text-primary);
+        color: var(--color-text-secondary);
         margin-bottom: 0.75rem;
     }
 
@@ -82,7 +82,7 @@
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 0;
-        border-radius: 6px;
+        border-radius: 4px;
         overflow: hidden;
     }
 

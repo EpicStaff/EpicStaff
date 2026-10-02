@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 import asyncio
 import io
 from typing import TYPE_CHECKING
 
-from ..errors import StorageOperationError
 from ..error_handler import handle_error
+from ..errors import StorageOperationError
 from .abstract import AbstractStorage
 
 if TYPE_CHECKING:
@@ -18,10 +19,8 @@ def _check_dependency():
     if minio is None:
         try:
             import minio
-        except ImportError:
-            raise ImportError(
-                "minio package is not installed. Use `pip install minio`."
-            )
+        except ImportError as e:
+            raise ImportError("minio package is not installed. Use `pip install minio`.") from e
 
 
 class MinioStorage(AbstractStorage):

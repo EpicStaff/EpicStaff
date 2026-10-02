@@ -72,7 +72,7 @@
                             <div class="field__label-row">
                                 <label class="field__label">Surface (Group of Permissions)</label>
                                 <app-help-tooltip
-                                    text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks."
+                                    text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks. A collection may only appear in one surface per node."
                                     position="right"
                                     size="18px"
                                 />
@@ -116,6 +116,11 @@
                         <div class="input-map">
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
+
+                        <app-inputs-you-can-use
+                            [names]="inputMapKeys()"
+                            (insert)="insertInputToInstructions($event)"
+                        />
 
                         <app-custom-input
                             label="Output Variable Path"
@@ -245,6 +250,7 @@
                                     ></markdown>
                                 } @else {
                                     <app-variable-highlight-textarea
+                                        #rightInstructionsTextarea
                                         class="main-editor-pane__textarea"
                                         placeholder="Enter task instructions..."
                                         [value]="rightInstructionsValue()"
@@ -313,7 +319,7 @@
                         <div class="field__label-row">
                             <label class="field__label">Surface (Group of Permissions)</label>
                             <app-help-tooltip
-                                text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks."
+                                text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks. A collection may only appear in one surface per node."
                                 position="right"
                                 size="18px"
                             />
@@ -357,6 +363,11 @@
                     <div class="input-map">
                         <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
+
+                    <app-inputs-you-can-use
+                        [names]="inputMapKeys()"
+                        (insert)="insertInputToInstructions($event)"
+                    />
 
                     <app-custom-input
                         label="Output Variable Path"

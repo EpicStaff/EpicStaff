@@ -1,15 +1,14 @@
 from rest_framework import serializers
-
 from tables.constants.knowledge_constants import (
-    MIN_CHUNK_SIZE,
+    MAX_CHUNK_OVERLAP,
     MAX_CHUNK_SIZE,
     MIN_CHUNK_OVERLAP,
-    MAX_CHUNK_OVERLAP,
+    MIN_CHUNK_SIZE,
 )
 from tables.models.knowledge_models import (
     NaiveRag,
-    NaiveRagDocumentConfig,
     NaiveRagChunk,
+    NaiveRagDocumentConfig,
     NaiveRagPreviewChunk,
     NaiveRagSearchConfig,
 )
@@ -51,9 +50,7 @@ class NaiveRagCreateUpdateSerializer(serializers.Serializer):
     Serializer for creating/updating NaiveRag.
     """
 
-    embedder_id = serializers.IntegerField(
-        required=True, help_text="ID of the embedder to use"
-    )
+    embedder_id = serializers.IntegerField(required=True, help_text="ID of the embedder to use")
 
     def validate_embedder_id(self, value):
         """Validate embedder_id is positive."""
@@ -67,9 +64,7 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
     Serializer for displaying document configuration.
     """
 
-    document_id = serializers.IntegerField(
-        source="document.document_id", read_only=True
-    )
+    document_id = serializers.IntegerField(source="document.document_id", read_only=True)
     file_name = serializers.CharField(source="document.file_name", read_only=True)
 
     class Meta:
@@ -100,9 +95,7 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
     Used in bulk update responses to show which configs failed and why.
     """
 
-    document_id = serializers.IntegerField(
-        source="document.document_id", read_only=True
-    )
+    document_id = serializers.IntegerField(source="document.document_id", read_only=True)
     file_name = serializers.CharField(source="document.file_name", read_only=True)
     errors = serializers.SerializerMethodField()
 
@@ -176,16 +169,12 @@ class DocumentConfigUpdateSerializer(serializers.Serializer):
         choices=NaiveRagDocumentConfig.ChunkStrategy.choices,
         help_text="New chunking strategy",
     )
-    additional_params = serializers.JSONField(
-        required=False, help_text="New additional parameters"
-    )
+    additional_params = serializers.JSONField(required=False, help_text="New additional parameters")
 
     def validate(self, attrs):
         """Ensure at least one field is provided."""
         if not attrs:
-            raise serializers.ValidationError(
-                "At least one field must be provided for update"
-            )
+            raise serializers.ValidationError("At least one field must be provided for update")
         return attrs
 
 
@@ -344,9 +333,7 @@ class ChunkingResponseSerializer(serializers.Serializer):
     status = serializers.CharField()  # "completed", "failed", "cancelled", "timeout"
     chunk_count = serializers.IntegerField(allow_null=True)
     message = serializers.CharField(allow_null=True, allow_blank=True)
-    elapsed_time = serializers.FloatField(
-        allow_null=True, help_text="Chunking duration in seconds"
-    )
+    elapsed_time = serializers.FloatField(allow_null=True, help_text="Chunking duration in seconds")
 
 
 class ChunkPreviewResponseSerializer(serializers.Serializer):
@@ -482,9 +469,7 @@ class PreviewChunksByIdsResponseSerializer(serializers.Serializer):
 
 
 class ChunkingConfigSerializer(serializers.Serializer):
-    chunk_strategy = serializers.ChoiceField(
-        choices=NaiveRagDocumentConfig.ChunkStrategy.choices
-    )
+    chunk_strategy = serializers.ChoiceField(choices=NaiveRagDocumentConfig.ChunkStrategy.choices)
     chunk_size = serializers.IntegerField(
         min_value=MIN_CHUNK_SIZE,
         max_value=MAX_CHUNK_SIZE,

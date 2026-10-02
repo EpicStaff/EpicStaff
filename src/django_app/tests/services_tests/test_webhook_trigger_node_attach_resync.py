@@ -21,7 +21,11 @@ import pytest
 
 from tables.models.graph_models import Graph, WebhookTriggerNode
 from tables.models.python_models import PythonCode
-from tables.models.webhook_models import NgrokWebhookConfig, ProviderType, WebhookTrigger
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    ProviderType,
+    WebhookTrigger,
+)
 from tables.services.secrets import secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
@@ -34,7 +38,7 @@ class TestWebhookTriggerNodeAttachResyncsTunnelRegistration:
         )
 
     def test_attaching_webhook_trigger_node_triggers_register_webhooks(
-        self, default_org, monkeypatch
+        self, default_org, monkeypatch, django_capture_on_commit_callbacks
     ):
         trigger = WebhookTrigger.objects.create(
             path="wh-attach-resync-path",
@@ -57,17 +61,21 @@ class TestWebhookTriggerNodeAttachResyncsTunnelRegistration:
         )
 
         graph = Graph.objects.create(name="g-wh-attach-resync", org=default_org)
-        WebhookTriggerNode.objects.create(
-            node_name="wh-attach-resync-node",
-            graph=graph,
-            webhook_trigger=trigger,
-            python_code=self._make_python_code(),
-        )
+        # webhook_signals' post_save handler defers the resync via
+        # transaction.on_commit -- capture and run those callbacks, since the
+        # default test transaction never actually commits.
+        with django_capture_on_commit_callbacks(execute=True):
+            WebhookTriggerNode.objects.create(
+                node_name="wh-attach-resync-node",
+                graph=graph,
+                webhook_trigger=trigger,
+                python_code=self._make_python_code(),
+            )
 
         assert calls == ["register_webhooks"]
 
     def test_detaching_webhook_trigger_node_resyncs_tunnel_registration(
-        self, default_org, monkeypatch
+        self, default_org, monkeypatch, django_capture_on_commit_callbacks
     ):
         trigger = WebhookTrigger.objects.create(
             path="wh-detach-resync-path",
@@ -96,6 +104,7 @@ class TestWebhookTriggerNodeAttachResyncsTunnelRegistration:
             lambda self: calls.append("register_webhooks") or True,
         )
 
-        node.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            node.delete()
 
         assert calls == ["register_webhooks"]

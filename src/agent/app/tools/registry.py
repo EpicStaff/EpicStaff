@@ -8,10 +8,9 @@ resolution; ``AgentLoop`` reads the specs via ``tool_specs`` (passed to
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
-
 from shared.models.agent_service import ToolResult
 
 

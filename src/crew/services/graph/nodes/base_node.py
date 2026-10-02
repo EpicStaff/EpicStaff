@@ -1,12 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Any, Literal
-from langgraph.types import StreamWriter
-from services.graph.events import StopEvent
-from services.graph.custom_message_writer import CustomSessionMessageWriter
-from models.state import State
 
-from utils import map_variables_to_input
-from utils import set_output_variables
+from langgraph.types import StreamWriter
+from models.state import State
+from services.graph.custom_message_writer import CustomSessionMessageWriter
+from services.graph.events import StopEvent
+from utils import map_variables_to_input, set_output_variables
 
 
 class BaseNode(ABC):
@@ -51,9 +50,7 @@ class BaseNode(ABC):
         """
         return state.get("execution_counts", {}).get(name, 0)
 
-    def add_start_message(
-        self, writer: StreamWriter, input_: Any, execution_order: int
-    ):
+    def add_start_message(self, writer: StreamWriter, input_: Any, execution_order: int):
         """
         Add a start message to the graph.
 
@@ -103,9 +100,7 @@ class BaseNode(ABC):
             **kwargs,
         )
 
-    def add_error_message(
-        self, writer: StreamWriter, error: Exception, execution_order: int
-    ):
+    def add_error_message(self, writer: StreamWriter, error: Exception, execution_order: int):
         """
         Add an error message to the graph.
 
@@ -161,9 +156,7 @@ class BaseNode(ABC):
             sysvars["execution_order"] = execution_order + 1
             state["system_variables"] = sysvars
             input_ = self.get_input(state=state)
-            self.add_start_message(
-                writer=writer, input_=input_, execution_order=execution_order
-            )
+            self.add_start_message(writer=writer, input_=input_, execution_order=execution_order)
             output = await self.execute(
                 state=state,
                 writer=writer,
@@ -194,10 +187,8 @@ class BaseNode(ABC):
             return state
 
         except Exception as e:
-            self.add_error_message(
-                writer=writer, error=e, execution_order=execution_order
-            )
-            raise e
+            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
+            raise
 
     def get_input(self, state: State):
         """

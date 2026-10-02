@@ -202,7 +202,11 @@
                     type="primary"
                     mod="small"
                     (click)="runChunking()"
-                    [disabled]="disabled"
+                    [matTooltip]="
+                        canRunChunking() ? 'Run chunking process' : 'You dont have permission to run chunking'
+                    "
+                    matTooltipPosition="above"
+                    [disabled]="disabled || !canRunChunking()"
                 >
                     {{ btnText }}
                 </app-button>

@@ -1,6 +1,4 @@
-import { GetPythonCodeRequest } from '../../../features/tools/models/python-code.model';
-import { ArgsSchema } from '../../../features/tools/models/python-code-tool.model';
-
+import { ArgsSchema, GetPythonCodeRequest } from '@shared/models';
 export interface PythonCodeToolCard {
     id: number;
     python_code: GetPythonCodeRequest;

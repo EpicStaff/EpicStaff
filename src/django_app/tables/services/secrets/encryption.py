@@ -7,7 +7,6 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from django.conf import settings
-
 from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretTooLargeError,
@@ -38,9 +37,9 @@ class SecretEncryption:
 
     @cached_property
     def _fernet(self) -> Fernet:
-        derived = HKDF(
-            algorithm=hashes.SHA256(), length=32, salt=None, info=_HKDF_INFO
-        ).derive(settings.SECRET_KEY.encode())
+        derived = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=_HKDF_INFO).derive(
+            settings.SECRET_KEY.encode()
+        )
         return Fernet(base64.urlsafe_b64encode(derived))
 
     def encrypt(self, *, text: str) -> SealedValue:
@@ -48,8 +47,7 @@ class SecretEncryption:
         if len(text_bytes) > MAX_TEXT_BYTES:
             raise SecretTooLargeError(
                 detail=(
-                    f"Secret value is {len(text_bytes)} bytes; the maximum is "
-                    f"{MAX_TEXT_BYTES}."
+                    f"Secret value is {len(text_bytes)} bytes; the maximum is {MAX_TEXT_BYTES}."
                 )
             )
         encryptedtext = self._fernet.encrypt(text_bytes).decode()

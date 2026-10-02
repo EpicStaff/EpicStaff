@@ -65,6 +65,7 @@
                         <span class="storage-details-dialog__chip">
                             {{ flow.name }}
                             <button
+                                *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
                                 class="storage-details-dialog__chip-remove"
                                 type="button"
                                 aria-label="Remove from flow"

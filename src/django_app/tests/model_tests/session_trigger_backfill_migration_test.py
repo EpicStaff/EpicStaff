@@ -9,7 +9,7 @@ from tables.models.graph_models import (
     ScheduleTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.rbac_models import OrganizationUser
+from rbac.models import OrganizationUser
 from tables.models.python_models import PythonCode
 from tables.models.session_models import Session, SessionTrigger
 from tables.models.webhook_models import WebhookTrigger

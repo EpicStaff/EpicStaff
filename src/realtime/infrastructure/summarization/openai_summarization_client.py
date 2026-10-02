@@ -1,8 +1,6 @@
-from loguru import logger
-
-from openai import AsyncOpenAI
-
 from domain.ports.i_summarization_client import ISummarizationClient
+from loguru import logger
+from openai import AsyncOpenAI
 from utils.openai_endpoints import derive_chat_http_url
 
 
@@ -39,9 +37,7 @@ class OpenaiSummarizationClient(ISummarizationClient):
 
     async def summarize_buffer(self, to_summarize: str) -> str:
         if not to_summarize:
-            logger.error(
-                "Couldn't summarize the buffer. Parameter 'to_summarize' cannot be empty"
-            )
+            logger.error("Couldn't summarize the buffer. Parameter 'to_summarize' cannot be empty")
             return ""
 
         logger.debug(f"Received text (buffer) to summarize:\n\n{to_summarize}\n")
@@ -64,9 +60,7 @@ class OpenaiSummarizationClient(ISummarizationClient):
 
     async def summarize_chunks(self, to_summarize: str):
         if not to_summarize:
-            logger.error(
-                "Couldn't summarize the chunks. Parameter 'to_summarize' cannot be empty"
-            )
+            logger.error("Couldn't summarize the chunks. Parameter 'to_summarize' cannot be empty")
             return ""
 
         logger.debug(f"Received text (chunks) to summarize:\n\n{to_summarize}\n")

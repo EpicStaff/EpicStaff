@@ -18,20 +18,10 @@ from tables.graph_versioning.manager import GraphVersioningManager
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.id_mapper import IDMapper
-from tables.models import (
-    ClassificationDecisionTableNode,
-    ConditionalEdge,
-    Graph,
-    Organization,
-    PythonCode,
-    PythonNode,
-    Secret,
-    StartNode,
-    TelegramTriggerNode,
-    WebhookTriggerNode,
-)
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization
+from tables.models import ClassificationDecisionTableNode, ConditionalEdge, Graph, PythonCode, PythonNode, Secret, StartNode, TelegramTriggerNode, WebhookTriggerNode
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.services.secrets import secret_service
 from tables.services.secrets.declaration_validator import SecretDeclarationValidator
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES

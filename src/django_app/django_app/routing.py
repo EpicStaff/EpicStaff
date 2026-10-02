@@ -1,5 +1,4 @@
 from django.urls import re_path
-
 from tables.graph_collab.consumers import GraphEditConsumer
 
 websocket_urlpatterns = [

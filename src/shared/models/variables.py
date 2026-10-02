@@ -1,26 +1,25 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Any, Literal, Annotated, Union, Optional
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 __all__ = [
-    "VariableTypeInput",
-    "VariableType",
-    "StringVariable",
-    "NumberVariable",
-    "BooleanVariable",
-    "ObjectVariable",
-    "ArrayVariable",
-    "Variable",
-    "variable_adapter",
-    "StringNestedVariable",
-    "NumberNestedVariable",
-    "BooleanNestedVariable",
-    "ObjectNestedVariable",
     "ArrayNestedVariable",
+    "ArrayVariable",
+    "BooleanNestedVariable",
+    "BooleanVariable",
     "NestedVariable",
+    "NumberNestedVariable",
+    "NumberVariable",
+    "ObjectNestedVariable",
+    "ObjectVariable",
+    "StringNestedVariable",
+    "StringVariable",
+    "Variable",
+    "VariableType",
+    "VariableTypeInput",
+    "variable_adapter",
 ]
 
 from ..dotdict import DotDict, DotList
@@ -43,7 +42,7 @@ class VariableType(StrEnum):
 
 class BaseNestedVariable(BaseModel, ABC):
     type: VariableType
-    description: Optional[str] = None
+    description: str | None = None
     default_value: Any = None
 
     model_config = ConfigDict(frozen=True)
@@ -111,14 +110,12 @@ class ArrayNestedVariable(BaseNestedVariable):
 
 
 NestedVariable = Annotated[
-    Union[
-        AnyNestedVariable,
-        StringNestedVariable,
-        NumberNestedVariable,
-        BooleanNestedVariable,
-        ObjectNestedVariable,
-        ArrayNestedVariable,
-    ],
+    AnyNestedVariable
+    | StringNestedVariable
+    | NumberNestedVariable
+    | BooleanNestedVariable
+    | ObjectNestedVariable
+    | ArrayNestedVariable,
     Field(discriminator="type"),
 ]
 
@@ -156,14 +153,12 @@ class ArrayVariable(BaseVariable, ArrayNestedVariable):
 
 
 Variable = Annotated[
-    Union[
-        AnyVariable,
-        StringVariable,
-        NumberVariable,
-        BooleanVariable,
-        ObjectVariable,
-        ArrayVariable,
-    ],
+    AnyVariable
+    | StringVariable
+    | NumberVariable
+    | BooleanVariable
+    | ObjectVariable
+    | ArrayVariable,
     Field(discriminator="type"),
 ]
 variable_adapter = TypeAdapter(Variable)

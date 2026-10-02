@@ -2,6 +2,8 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal, untracked } from '@angular/core';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AppSvgIconComponent, ButtonRoundComponent, ValidationErrorsComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { DisplayedListDocument } from '../../../../../models/document.model';
@@ -10,7 +12,14 @@ import { DisplayedListDocument } from '../../../../../models/document.model';
     selector: 'app-collection-details-info',
     templateUrl: './collection-info.component.html',
     styleUrls: ['./collection-info.component.scss'],
-    imports: [DatePipe, ReactiveFormsModule, AppSvgIconComponent, ButtonRoundComponent, ValidationErrorsComponent],
+    imports: [
+        DatePipe,
+        ReactiveFormsModule,
+        AppSvgIconComponent,
+        ButtonRoundComponent,
+        ValidationErrorsComponent,
+        HasPermissionDirective,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionInfoComponent {
@@ -99,4 +108,7 @@ export class CollectionInfoComponent {
         if (value === (this.collection().description ?? '')) return;
         this.descriptionSave.emit(value);
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

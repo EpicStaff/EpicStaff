@@ -87,10 +87,13 @@
     }
 
     &__badge {
+        display: inline-flex;
         flex-shrink: 0;
+        align-items: center;
+        height: 28px;
+        padding: 0 8px;
         font-size: 0.6875rem;
         font-weight: 500;
-        padding: 2px 8px;
         border-radius: 999px;
         text-transform: uppercase;
         letter-spacing: 0.04em;

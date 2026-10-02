@@ -10,11 +10,26 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ValidationErrorsComponent } from '@shared/components';
+import {
+    CustomInputComponent,
+    DatePickerComponent,
+    HelpTooltipComponent,
+    NumberStepperComponent,
+    RadioButtonComponent,
+    RoundButtonComponent,
+    SelectComponent,
+    SelectItem,
+    TimePickerComponent,
+    TimezoneSelectorComponent,
+    ToggleSwitchComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
+import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
+import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import {
     GetScheduleTriggerNodeRequest,
     ScheduleEndType,
@@ -22,19 +37,7 @@ import {
     ScheduleRunMode,
     ScheduleTriggerNodeData,
     WeekdayCode,
-} from '../../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
-import { DatePickerComponent } from '../../../../shared/components/date-picker/date-picker.component';
-import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { NumberStepperComponent } from '../../../../shared/components/number-stepper/number-stepper.component';
-import { RadioButtonComponent } from '../../../../shared/components/radio-button/radio-button.component';
-import { RoundButtonComponent } from '../../../../shared/components/round-button/round-button.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { TimePickerComponent } from '../../../../shared/components/time-picker/time-picker.component';
-import { TimezoneSelectorComponent } from '../../../../shared/components/timezone-selector/timezone-selector.component';
-import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
-import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+} from '../../../core/models/schedule-trigger.model';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 

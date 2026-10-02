@@ -2,8 +2,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import SourceCollection
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- fixtures ----

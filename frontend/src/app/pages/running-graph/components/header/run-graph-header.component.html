@@ -64,7 +64,9 @@
             <span class="session-meta-divider">/</span>
             <span class="session-meta-item">
                 <span class="session-meta-item__label">CREATED AT:</span>
-                <span class="session-meta-item__value">{{ currentSession?.created_at | date: 'medium' }}</span>
+                <span class="session-meta-item__value">{{
+                    currentSession?.created_at | date: DATE_TIME_FORMAT_24H
+                }}</span>
             </span>
             <span class="session-meta-divider">/</span>
             <span class="session-meta-item">
@@ -79,7 +81,10 @@
         </div>
         <div class="session-meta-row__right">
             @if (canStop) {
-                <app-stop-session-button (stopClick)="stopSession.emit()" />
+                <app-stop-button
+                    tooltip="Stop session"
+                    (triggered)="stopSession.emit()"
+                />
             }
             @if (sessions.length > 0) {
                 <app-session-id-switcher

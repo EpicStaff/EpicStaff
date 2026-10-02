@@ -1,11 +1,11 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { GetPythonCodeToolRequest } from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.model';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../../../models/tool-config.model';
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';

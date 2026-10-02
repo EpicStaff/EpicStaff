@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
-import { JsonViewerComponent } from '@shared/components';
+import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({

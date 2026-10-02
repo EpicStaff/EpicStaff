@@ -11,7 +11,7 @@ from rest_framework import serializers
 from tables.constants.upload_limits import UploadLimits, default_upload_limits
 
 
-class _ArchiveTooLarge(ValueError):
+class _ArchiveTooLarge(ValueError):  # noqa: N818
     """Internal signal that a bounded decompression hit its cap."""
 
 
@@ -132,7 +132,7 @@ class FileValidator:
         elif raw.startswith(b"BZh"):
             stream = bz2.BZ2File(compressed)
         elif raw.startswith(b"\xfd7zXZ\x00"):
-            stream = lzma.LZMAFile(compressed)
+            stream = lzma.LZMAFile(compressed)  # noqa: SIM115
         else:
             return raw
 
@@ -189,8 +189,7 @@ class FileValidator:
 
         if entries > self._limits.max_archive_entries:
             return (
-                f"contains {entries} entries, over the limit of "
-                f"{self._limits.max_archive_entries}"
+                f"contains {entries} entries, over the limit of {self._limits.max_archive_entries}"
             )
 
         if uncompressed > self._limits.max_archive_uncompressed_bytes:
@@ -219,9 +218,7 @@ class FileValidator:
             # Block unsupported archive formats first
             if self.is_unsupported_archive(f.name):
                 ext = os.path.splitext(f.name)[1].lower()
-                detail_lines.append(
-                    f"'{ext}' archives are not supported. Use ZIP or TAR instead."
-                )
+                detail_lines.append(f"'{ext}' archives are not supported. Use ZIP or TAR instead.")
                 continue
 
             # Block executable file extensions
@@ -241,8 +238,7 @@ class FileValidator:
             archive_blocked = self.scan_archive_for_executables(f)
             if archive_blocked:
                 detail_lines.append(
-                    f"Archive '{f.name}' contains executable files: "
-                    + ", ".join(archive_blocked)
+                    f"Archive '{f.name}' contains executable files: " + ", ".join(archive_blocked)
                 )
                 continue
 
@@ -258,8 +254,6 @@ class FileValidator:
             )
 
         if detail_lines:
-            raise serializers.ValidationError(
-                "Upload rejected. " + "; ".join(detail_lines)
-            )
+            raise serializers.ValidationError("Upload rejected. " + "; ".join(detail_lines))
 
         return files

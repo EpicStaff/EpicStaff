@@ -1,21 +1,19 @@
-from typing import Optional
-
-from tables.models import DecisionTableNode
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.decision_table_node import (
-    DecisionTableNodeImportSerializer,
-    ConditionGroupImportSerializer,
-    ConditionImportSerializer,
-)
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.decision_table_node import (
+    ConditionGroupImportSerializer,
+    ConditionImportSerializer,
+    DecisionTableNodeImportSerializer,
+)
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import DecisionTableNode
 
 
 class DecisionTableNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.DECISION_TABLE_NODE
     serializer_class = DecisionTableNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[DecisionTableNode]:
+    def get_instance(self, entity_id: int) -> DecisionTableNode | None:
         return DecisionTableNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: DecisionTableNode) -> dict:
@@ -27,9 +25,7 @@ class DecisionTableNodeStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: DecisionTableNode) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(
-        self, data: dict, id_mapper: IDMapper, **kwargs
-    ) -> DecisionTableNode:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> DecisionTableNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
         condition_groups_data = data.pop("condition_groups", [])
 

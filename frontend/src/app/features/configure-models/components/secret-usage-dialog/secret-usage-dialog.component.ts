@@ -6,6 +6,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import {
+    AppIconComponent,
     AppSvgIconComponent,
     ButtonComponent,
     EmbeddingModelConfigDialogComponent,
@@ -16,7 +17,7 @@ import {
     TranscriptionModelConfigDialogComponent,
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
-import { SecretUsageResourceType } from '@shared/models';
+import { NodeType, SecretUsageResourceType } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -32,9 +33,7 @@ import { McpToolDialogComponent } from '../../../../features/tools/components/mc
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../../../features/tools/services/mcp-tools/mcp-tools.service';
 import { ToastService } from '../../../../services/notifications';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import {
     SecretUsageFlowItem,
     SecretUsageFlowNode,

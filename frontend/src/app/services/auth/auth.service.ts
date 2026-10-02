@@ -34,15 +34,15 @@ export class AuthService {
     private readonly currentUserService = inject(ProfileService);
     private readonly appStorage = inject(AppStorageService);
 
-    private readonly accessKey = 'auth.access';
-
     private refreshInProgress$: Observable<string | null> | null = null;
     private statusCache$: Observable<FirstSetupStatus> | null = null;
 
     // ID of the organization created during initial superadmin setup
     defaultOrgId = signal<number | null>(null);
 
-    private readonly accessTokenSignal = signal<string | null>(this.getCookie(this.accessKey));
+    // Access token lives ONLY in memory. The refresh token lives ONLY in a
+    // backend-managed HttpOnly cookie and is not accessible from JS.
+    private readonly accessTokenSignal = signal<string | null>(null);
     public readonly accessToken = this.accessTokenSignal.asReadonly();
 
     private get baseUrl(): string {
@@ -69,16 +69,20 @@ export class AuthService {
                 tap((resp) => {
                     this.defaultOrgId.set(resp.organization.id);
                     this.statusCache$ = null;
+                    this.accessTokenSignal.set(resp.access);
                 })
             );
     }
 
-    login(email: string, password: string, rememberMe: boolean = false): Observable<boolean> {
-        this.deleteLegacyRefreshCookie();
+    login(email: string, password: string, rememberMe: boolean): Observable<boolean> {
         return this.http
-            .post<AccessToken>(`${this.baseUrl}login/`, { email, password }, { withCredentials: true })
+            .post<AccessToken>(
+                `${this.baseUrl}login/`,
+                { email, password, remember_me: rememberMe },
+                { withCredentials: true }
+            )
             .pipe(
-                tap((tokens) => this.storeAccessToken(tokens.access, rememberMe)),
+                tap((tokens) => this.accessTokenSignal.set(tokens.access)),
                 map(() => true)
             );
     }
@@ -113,19 +117,15 @@ export class AuthService {
             return this.refreshInProgress$;
         }
 
-        this.deleteLegacyRefreshCookie();
         const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
 
         this.refreshInProgress$ = this.http
             .post<AccessToken>(`${this.baseUrl}refresh/`, {}, { context, withCredentials: true })
             .pipe(
-                tap((resp) => {
-                    this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));
-                    this.accessTokenSignal.set(resp.access);
-                }),
+                tap((resp) => this.accessTokenSignal.set(resp.access)),
                 map((resp) => resp.access),
                 catchError((err) => {
-                    this.removeTokenAndNavToLogin();
+                    this.accessTokenSignal.set(null);
                     return throwError(() => err);
                 }),
                 finalize(() => {
@@ -137,9 +137,20 @@ export class AuthService {
         return this.refreshInProgress$;
     }
 
+    /**
+     * Called once at application startup. Tries to restore authentication from the HttpOnly refresh cookie.
+     */
+    restoreSession(): Observable<void> {
+        return this.refreshToken().pipe(
+            catchError(() => {
+                this.accessTokenSignal.set(null);
+                return of(null);
+            }),
+            map(() => void 0)
+        );
+    }
+
     removeTokenAndNavToLogin(): void {
-        this.deleteCookie(this.accessKey);
-        this.deleteLegacyRefreshCookie();
         this.accessTokenSignal.set(null);
         void this.router.navigate(['/login']);
     }
@@ -154,52 +165,11 @@ export class AuthService {
     }
 
     getAccessToken(): string | null {
-        return this.getCookie(this.accessKey);
+        return this.accessTokenSignal();
     }
 
-    storeAccessToken(accessToken: string, persist: boolean = true): void {
-        const accessExpiry = persist ? this.getTokenExpiry(accessToken) : undefined;
-        this.setCookie(this.accessKey, accessToken, accessExpiry);
+    storeAccessToken(accessToken: string): void {
         this.accessTokenSignal.set(accessToken);
-    }
-
-    private setCookie(name: string, value: string, expires?: Date): void {
-        const expStr = expires ? `; expires=${expires.toUTCString()}` : '';
-        document.cookie = `${name}=${encodeURIComponent(value)}${expStr}; path=/; SameSite=Lax`;
-    }
-
-    private getCookie(name: string): string | null {
-        const match = document.cookie.split('; ').find((row) => row.startsWith(`${name}=`));
-        return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : null;
-    }
-
-    private deleteCookie(name: string): void {
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
-    }
-
-    /**
-     * Removes the legacy non-httpOnly `auth.refresh` cookie that older frontend versions wrote.
-     * The httpOnly cookie set by the backend is not accessible from JS and stays untouched.
-     */
-    private deleteLegacyRefreshCookie(): void {
-        const name = 'auth.refresh';
-        const paths = ['/', location.pathname];
-        const host = location.hostname;
-        const domains = ['', host, `.${host}`];
-        const expired = 'Thu, 01 Jan 1970 00:00:00 UTC';
-        for (const p of paths) {
-            for (const d of domains) {
-                const pathAttr = `; path=${p}`;
-                const domainAttr = d ? `; domain=${d}` : '';
-                document.cookie = `${name}=; expires=${expired}${pathAttr}${domainAttr}; SameSite=Lax`;
-            }
-        }
-    }
-
-    private getTokenExpiry(token: string): Date | undefined {
-        const payload = this.getTokenPayload(token);
-        if (!payload?.exp) return undefined;
-        return new Date(payload.exp * 1000);
     }
 
     private getTokenPayload(token: string): TokenDecoded | null {

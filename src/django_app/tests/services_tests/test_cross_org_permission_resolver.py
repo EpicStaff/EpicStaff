@@ -1,11 +1,17 @@
 import pytest
 
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
-from tables.services.rbac.cross_org_permission_resolver import (
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.access.effective import EffectivePermissions
+from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
+
+# tests/conftest.py has an autouse `heal_builtin_roles` fixture that queries the
+# Role table before every db test. Without this marker, pytest-django never
+# swaps the connection to the test database for tests that only pull db access
+# in transitively through another fixture, so that query hits a blocked connection.
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture

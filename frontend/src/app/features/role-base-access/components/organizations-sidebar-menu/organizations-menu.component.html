@@ -1,0 +1,43 @@
+<div class="org-menu-panel">
+    <div class="section-label">Organizations</div>
+
+    <ul class="org-list">
+        @for (org of organizations(); track org.organization.id) {
+            <li
+                class="org-row"
+                [class.active]="activeOrgService.activeOrgId() === org.organization.id"
+                [class.disabled]="switching()"
+                (click)="onOrgClick(org.organization.id)"
+            >
+                <app-org-avatar [name]="org.organization.name" />
+                <div class="org-info">
+                    <div class="org-name">{{ org.organization.name }}</div>
+                    <div class="org-role">{{ org.role.name }}</div>
+                </div>
+            </li>
+        }
+    </ul>
+
+    @if (canVisitWorkspace()) {
+        <button
+            class="workspace-row"
+            [class.active]="isWorkspaceRoute()"
+            (click)="onWorkspaceClick()"
+        >
+            <app-svg-icon
+                size="14px"
+                icon="workspace"
+                class="workspace-icon"
+            />
+            <div class="workspace-info">
+                <div class="workspace-title">Workspace</div>
+                <div class="workspace-subtitle">Members, roles and permissions</div>
+            </div>
+            <app-svg-icon
+                size="16px"
+                icon="chevron-right"
+                class="chevron-icon"
+            />
+        </button>
+    }
+</div>

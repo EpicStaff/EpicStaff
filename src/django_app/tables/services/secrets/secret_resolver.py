@@ -1,7 +1,6 @@
 import re
 
 from pydantic import BaseModel
-
 from tables.models import Secret
 from tables.services.secrets.encryption import secret_encryption
 from tables.services.secrets.exceptions import (
@@ -28,16 +27,10 @@ class SecretResolver:
 
     def _fetch(self, *, secret_id: int, org_id: int, context: str) -> Secret:
         """Load a Secret scoped to `org_id`, or raise."""
-        secret = (
-            Secret.objects.filter(pk=secret_id, org_id=org_id)
-            .only("name", "value")
-            .first()
-        )
+        secret = Secret.objects.filter(pk=secret_id, org_id=org_id).only("name", "value").first()
         if secret is None:
             raise SecretResolutionError(
-                detail=self._message(
-                    context=context, secret_id=secret_id, reason="row not found"
-                )
+                detail=self._message(context=context, secret_id=secret_id, reason="row not found")
             )
         return secret
 
@@ -51,9 +44,7 @@ class SecretResolver:
                 )
             ) from exc
 
-    def resolve(
-        self, *, secret_id: int | None, org_id: int, context: str = ""
-    ) -> str | None:
+    def resolve(self, *, secret_id: int | None, org_id: int, context: str = "") -> str | None:
         if secret_id is None:
             return None
 
@@ -83,18 +74,14 @@ class SecretResolver:
                 continue
         return resolved
 
-    def resolve_named(
-        self, *, names: list[str], org_id: int, context: str = ""
-    ) -> dict[str, str]:
+    def resolve_named(self, *, names: list[str], org_id: int, context: str = "") -> dict[str, str]:
         """Resolve requested secret names into {name: plaintext} for one org."""
         if not names:
             return {}
 
         rows = {
             secret.name: secret
-            for secret in Secret.objects.filter(org_id=org_id, name__in=names).only(
-                "name", "value"
-            )
+            for secret in Secret.objects.filter(org_id=org_id, name__in=names).only("name", "value")
         }
         return {
             name: self._decrypt(secret=rows[name], context=context)
@@ -126,9 +113,7 @@ class SecretResolver:
                 continue
 
             if field_name in _HEADER_FIELDS:
-                self._fill_header_markers(
-                    model=model, field_name=field_name, org_id=org_id
-                )
+                self._fill_header_markers(model=model, field_name=field_name, org_id=org_id)
                 continue
 
             if not field_name.endswith(_SECRET_ID_SUFFIX):
@@ -178,9 +163,7 @@ class SecretResolver:
             ),
         )
 
-    def _fill_header_markers(
-        self, *, model: BaseModel, field_name: str, org_id: int
-    ) -> None:
+    def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
         """Replace `epicstaff_secret(<name>)` markers in a header dict with plaintext."""
         headers = getattr(model, field_name)
         if not headers:
@@ -194,9 +177,7 @@ class SecretResolver:
             return
 
         context = f"{type(model).__name__}.{field_name}"
-        resolved = self.resolve_named(
-            names=sorted(names), org_id=org_id, context=context
-        )
+        resolved = self.resolve_named(names=sorted(names), org_id=org_id, context=context)
 
         missing = names - resolved.keys()
         if missing:

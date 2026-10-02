@@ -30,8 +30,8 @@ class FakeManager:
         self.created = 0
         self.revoked = []
 
-    def build_policy(self, allowed_bucket, allowed_folders):
-        self.build_policy_calls.append((allowed_bucket, allowed_folders))
+    def build_policy(self, allowed_bucket, org_prefix, allowed_paths):
+        self.build_policy_calls.append((allowed_bucket, org_prefix, allowed_paths))
         return {"Version": "2012-10-17", "Statement": []}
 
     async def create(self, policy):
@@ -85,9 +85,7 @@ async def test_use_storage_true_happy_path(tmp_path, monkeypatch):
     assert manager.revoked == ["scoped-ak"]
 
     assert len(manager.build_policy_calls) == 1
-    called_bucket, called_folders = manager.build_policy_calls[0]
-    assert called_bucket == "epicstaff"
-    assert called_folders == {"org_1/flowA"}
+    assert manager.build_policy_calls[0] == ("epicstaff", "org_1", ["flowA"])
 
 
 @pytest.mark.asyncio

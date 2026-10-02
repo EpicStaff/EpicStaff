@@ -15,9 +15,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from django.db import models
-
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
+from rbac.models.enums import Permission, ResourceType
 
 SAMPLE_LIMIT = 5
 
@@ -132,9 +131,7 @@ class BucketCollector:
     def __init__(self, resource_type: str, *, visible: bool) -> None:
         self.resource_type = resource_type
         self.visible = visible
-        self._refs: defaultdict[int, dict[tuple[str, int], UsageRef]] = defaultdict(
-            dict
-        )
+        self._refs: defaultdict[int, dict[tuple[str, int], UsageRef]] = defaultdict(dict)
 
     @classmethod
     def for_resource(
@@ -152,9 +149,7 @@ class BucketCollector:
             visible=effective.can(resource_type.value, Permission.READ),
         )
 
-    def add(
-        self, entity_id: int, ref_id: int, ref_name: str | None, *, kind: str
-    ) -> None:
+    def add(self, entity_id: int, ref_id: int, ref_name: str | None, *, kind: str) -> None:
         """Record one reference, ignoring it if this parent is already known."""
         self._refs[entity_id].setdefault(
             (kind, ref_id),
@@ -166,9 +161,7 @@ class BucketCollector:
             ),
         )
 
-    def add_rows(
-        self, rows: Iterable[tuple[int, int, str | None]], *, kind: str
-    ) -> None:
+    def add_rows(self, rows: Iterable[tuple[int, int, str | None]], *, kind: str) -> None:
         """Record `(entity_id, ref_id, ref_name)` triples of one `kind`."""
         for entity_id, ref_id, ref_name in rows:
             self.add(entity_id, ref_id, ref_name, kind=kind)
@@ -176,9 +169,7 @@ class BucketCollector:
     def bucket_for(self, entity_id: int) -> UsageBucket:
         # Sorted because the source queries have no ORDER BY: without it the
         # capped sample could differ between a preview and a refresh.
-        refs = sorted(
-            self._refs.get(entity_id, {}).values(), key=lambda ref: (ref.kind, ref.id)
-        )
+        refs = sorted(self._refs.get(entity_id, {}).values(), key=lambda ref: (ref.kind, ref.id))
         return UsageBucket(
             resource_type=self.resource_type,
             total_count=len(refs),

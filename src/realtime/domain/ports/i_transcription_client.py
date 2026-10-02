@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class ITranscriptionClient(ABC):
@@ -10,7 +9,7 @@ class ITranscriptionClient(ABC):
     async def handle_messages(self) -> None: ...
 
     @abstractmethod
-    async def process_message(self, message: dict) -> Optional[dict]: ...
+    async def process_message(self, message: dict) -> dict | None: ...
 
     @abstractmethod
     async def close(self) -> None: ...

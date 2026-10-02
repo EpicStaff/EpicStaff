@@ -13,20 +13,20 @@ import {
     viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    UNSAVED_CHANGES_RESULT,
+    UnsavedChangesDialogService,
+} from '@shared/components';
+import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
-import {
-    UNSAVED_CHANGES_RESULT,
-    UnsavedChangesDialogService,
-} from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
-import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';

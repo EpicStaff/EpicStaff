@@ -7,7 +7,7 @@ from unittest import mock
 
 import pytest
 
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.models.webhook_models import RealtimeChannel
 
 

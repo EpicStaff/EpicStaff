@@ -1,13 +1,12 @@
 from typing import Any
 
 from langgraph.types import StreamWriter
-
 from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
 from services.graph.nodes.agent_output_variable import agent_output_variable_value
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
+from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
 from services.graph.remembered_outputs import (
     RememberedOutputsStore,
@@ -42,22 +41,14 @@ class TaskNode(BaseNode):
     def get_output_variable_value(self, output: Any) -> Any:
         return agent_output_variable_value(output)
 
-    async def execute(
-        self, state: State, writer: StreamWriter, execution_order: int, input_: Any
-    ):
+    async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         agent_definition = self.task_node_data.agent_definition
         if agent_definition is None:
-            raise ValueError(
-                f"TaskNode '{self.node_name}' requires an agent_definition"
-            )
+            raise ValueError(f"TaskNode '{self.node_name}' requires an agent_definition")
         if agent_definition.llm is None:
-            raise ValueError(
-                f"TaskNode '{self.node_name}' requires agent_definition.llm"
-            )
+            raise ValueError(f"TaskNode '{self.node_name}' requires agent_definition.llm")
 
-        rendered_instructions = render_instructions(
-            self.task_node_data.instructions, input_
-        )
+        rendered_instructions = render_instructions(self.task_node_data.instructions, input_)
         remembered = await self.remembered_outputs_store.fetch_all(self.session_id)
         preamble = format_remembered_outputs_preamble(remembered)
         task_node_data = self.task_node_data.model_copy(
@@ -79,9 +70,7 @@ class TaskNode(BaseNode):
 
         final_text = result.get("final_text")
         if self.task_node_data.remember_output and final_text:
-            await self.remembered_outputs_store.store(
-                self.session_id, self.node_name, final_text
-            )
+            await self.remembered_outputs_store.store(self.session_id, self.node_name, final_text)
 
         return {
             "message": final_text,

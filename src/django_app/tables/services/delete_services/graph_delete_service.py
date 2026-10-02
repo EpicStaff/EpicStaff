@@ -1,7 +1,8 @@
 from collections.abc import Iterable
 
+from rbac.access.effective import EffectivePermissions
+from rbac.models.enums import ResourceType
 from tables.models import Graph, SubGraphNode
-from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.delete_services.base_delete_service import BaseDeleteService
 from tables.services.delete_services.usage import (
     BucketCollector,
@@ -9,7 +10,6 @@ from tables.services.delete_services.usage import (
     UsageReport,
     build_reports,
 )
-from tables.services.rbac.effective_permissions import EffectivePermissions
 
 
 class GraphDeleteService(BaseDeleteService):
@@ -36,9 +36,7 @@ class GraphDeleteService(BaseDeleteService):
         return build_reports(ids, [flows])
 
     @staticmethod
-    def _embedding_flow_rows(
-        ids: list[int], org_id: int
-    ) -> Iterable[tuple[int, int, str | None]]:
+    def _embedding_flow_rows(ids: list[int], org_id: int) -> Iterable[tuple[int, int, str | None]]:
         """`(graph_id, parent_flow_id, parent_flow_name)` per embedding node.
 
         One parent flow embedding the same subgraph through two SubGraphNodes
@@ -46,6 +44,6 @@ class GraphDeleteService(BaseDeleteService):
         """
         if not ids:
             return []
-        return SubGraphNode.objects.filter(
-            subgraph_id__in=ids, graph__org_id=org_id
-        ).values_list("subgraph_id", "graph_id", "graph__name")
+        return SubGraphNode.objects.filter(subgraph_id__in=ids, graph__org_id=org_id).values_list(
+            "subgraph_id", "graph_id", "graph__name"
+        )

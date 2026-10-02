@@ -12,32 +12,30 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { FormsModule } from '@angular/forms';
+import { FormArray, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { ResourceCode } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+    AppSvgIconComponent,
+    ColumnResizeDividerComponent,
+    ConfirmationDialogService,
+    createColumnWidthState,
+    CustomInputComponent,
+    HelpTooltipComponent,
+    LlmModelSelectorComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
+import { NodeType, ResourceCode } from '@shared/models';
+import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import {
-    ActionDropdownButtonComponent,
-    ActionDropdownItem,
-} from '../../../../shared/components/action-dropdown-button/action-dropdown-button.component';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
-import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
+import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import {
     ClassificationDecisionTableData,

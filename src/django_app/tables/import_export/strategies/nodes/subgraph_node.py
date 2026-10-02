@@ -1,17 +1,15 @@
-from typing import Optional
-
-from tables.models import SubGraphNode
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.subgraph_node import SubgraphNodeImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.subgraph_node import SubgraphNodeImportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import SubGraphNode
 
 
 class SubgraphNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.SUBGRAPH_NODE
     serializer_class = SubgraphNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[SubGraphNode]:
+    def get_instance(self, entity_id: int) -> SubGraphNode | None:
         return SubGraphNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: SubGraphNode) -> dict:
@@ -28,9 +26,7 @@ class SubgraphNodeStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> SubGraphNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
-        subgraph_id = id_mapper.get_or_none(
-            EntityType.GRAPH, data.pop("subgraph", None)
-        )
+        subgraph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("subgraph", None))
         serializer = self.serializer_class(
             data={**data, "graph": graph_id, "subgraph": subgraph_id}
         )

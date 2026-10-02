@@ -12,8 +12,8 @@ from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool, PythonCodeToolConfig
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 @pytest.fixture

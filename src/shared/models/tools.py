@@ -1,7 +1,8 @@
-from pydantic import BaseModel
-from typing import Any, Literal, Optional
-from pydantic import ConfigDict, Field, model_validator
-from .ai_providers import LLMData, EmbedderData
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .ai_providers import EmbedderData, LLMData
 
 
 class ToolConfigData(BaseModel):
@@ -29,16 +30,16 @@ class McpToolData(BaseModel):
     """URL of the remote MCP server (SSE). Required."""
     tool_name: str
 
-    timeout: Optional[float] = 30
+    timeout: float | None = 30
     """Request timeout in seconds. Recommended to set."""
 
-    auth: Optional[str] = None
+    auth: str | None = None
     """Authorization token or OAuth string, if the server requires it."""
 
-    auth_secret_id: Optional[int] = Field(default=None, exclude=True)
+    auth_secret_id: int | None = Field(default=None, exclude=True)
     """In-memory carrier for SecretResolver; excluded from every dump."""
 
-    init_timeout: Optional[float] = 10
+    init_timeout: float | None = 10
     """Timeout for session initialization. Optional, default is 10 seconds."""
 
     model_config = ConfigDict(
@@ -125,23 +126,19 @@ class BaseToolData(BaseModel):
             prefix, id = unique_name.split(":")
             assert prefix != ""
             assert id != ""
-        except ValueError:
+        except ValueError as e:
             raise ValueError(
                 "Invalid unique_name. Unique name should be splited by `:`. \nFor example: python-code-tool:1"
-            )
+            ) from e
         if prefix in {
             "python-code-tool",
             "python-code-tool-config",
         }:
             values["data"] = (
-                data
-                if isinstance(data, PythonCodeToolData)
-                else PythonCodeToolData(**data)
+                data if isinstance(data, PythonCodeToolData) else PythonCodeToolData(**data)
             )
         elif prefix == "mcp-tool":
-            values["data"] = (
-                data if isinstance(data, McpToolData) else McpToolData(**data)
-            )
+            values["data"] = data if isinstance(data, McpToolData) else McpToolData(**data)
         else:
             raise ValueError(f"Unknown tool prefix: {prefix}")
 

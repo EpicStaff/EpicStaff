@@ -1,7 +1,6 @@
-from loguru import logger
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
-
+from loguru import logger
 from tables.models.session_models import Session
 from tables.services.session_manager_service import SessionManagerService
 
@@ -21,6 +20,4 @@ def session_pre_delete_handler(sender, instance, **kwargs):
         logger.info(f"Successfully executed stop_session for Session ID: {session_id}")
 
     except Exception as e:
-        logger.error(
-            f"Error stopping session {session_id} during deletion: {e}", exc_info=True
-        )
+        logger.error(f"Error stopping session {session_id} during deletion: {e}", exc_info=True)

@@ -12,21 +12,17 @@ Responsibilities:
 
 import json
 from collections import Counter
+from collections.abc import AsyncIterator
 from datetime import timedelta
-from typing import AsyncIterator
 
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
-
-from utils.logger import logger
-
 from tables.exceptions import (
-    LLMConfigMissingError,
     LLMConfigInvalidError,
-    ToolExecutionError,
+    LLMConfigMissingError,
 )
 from tables.models.flow_assistant_models import (
     FlowAssistant,
@@ -44,8 +40,9 @@ from tables.services.llm_clients import (
     get_llm_client,
 )
 from tables.services.secrets import secret_resolver
+from utils.logger import logger
+
 from . import partial_json as _partial_json
-from .tools import _TOOL_CALLABLES, TOOL_SPECS
 from .constants import _MAX_TOOL_ITERATIONS, _REASONING_EMPTY_HINT
 from .helpers import (
     _clear_cancel_flag,
@@ -58,7 +55,7 @@ from .helpers import (
 )
 from .node_registry import FLOW_ASSISTANT_NODE_TYPES
 from .system_prompt import SystemPromptInputs, build_system_prompt
-
+from .tools import _TOOL_CALLABLES, TOOL_SPECS
 
 # ── Service ───────────────────────────────────────────────────────────────────
 
@@ -105,9 +102,7 @@ class FlowAssistantService:
         # rows instead of a second query per related manager.
         node_tuples: list[tuple[str, int, str]] = []
         for spec in node_specs:
-            for node in spec.model.objects.filter(graph_id=graph.pk).only(
-                *spec.only_fields()
-            ):
+            for node in spec.model.objects.filter(graph_id=graph.pk).only(*spec.only_fields()):
                 node_tuples.append((spec.label, node.pk, spec.display_name(node)))
         node_tuples.sort(key=lambda t: (t[0], t[1]))
 
@@ -118,20 +113,16 @@ class FlowAssistantService:
             if counts_by_label[spec.label]
         }
 
-        node_summary_lines = [
-            f"  - {label}: {count}" for label, count in node_counts.items()
-        ]
-        node_summary = (
-            "\n".join(node_summary_lines) if node_summary_lines else "  (none)"
-        )
+        node_summary_lines = [f"  - {label}: {count}" for label, count in node_counts.items()]
+        node_summary = "\n".join(node_summary_lines) if node_summary_lines else "  (none)"
         subflow_summary = "\n".join(subflows) if subflows else "  (none)"
         description = graph.description or "(no description provided)"
 
-        _MAX_NODES_IN_PROMPT = 30
+        max_nodes_in_prompt = 30
         if not node_tuples:
             nodes_section = "Nodes in this flow:\n  (none)"
         else:
-            visible = node_tuples[:_MAX_NODES_IN_PROMPT]
+            visible = node_tuples[:max_nodes_in_prompt]
             remainder = len(node_tuples) - len(visible)
             lines = [
                 f'  - id={node_id} type={node_type} name="{name}"'
@@ -198,9 +189,7 @@ class FlowAssistantService:
         )
         return conversation
 
-    def apply_title_if_missing(
-        self, conversation: FlowAssistantConversation, message: str
-    ) -> None:
+    def apply_title_if_missing(self, conversation: FlowAssistantConversation, message: str) -> None:
         """Set conversation.title from the first user message if not yet set.
 
         Writes to DB only when a title is actually assigned.
@@ -220,9 +209,7 @@ class FlowAssistantService:
         last_message_at in a single atomic block. Returns the created row.
         """
         with transaction.atomic():
-            next_idx_result = conversation.message_rows.aggregate(
-                m=Max("message_index")
-            )
+            next_idx_result = conversation.message_rows.aggregate(m=Max("message_index"))
             next_idx = next_idx_result["m"]
             next_idx = 0 if next_idx is None else next_idx + 1
             row = FlowAssistantMessage.objects.create(
@@ -284,9 +271,7 @@ class FlowAssistantService:
         # Build a local working copy from FlowAssistantMessage rows.
         # The user message is already present as a row (written by SendMessageView
         # before the SSE ticket was issued).
-        working_messages: list[dict] = await sync_to_async(_load_message_dicts)(
-            conversation.pk
-        )
+        working_messages: list[dict] = await sync_to_async(_load_message_dicts)(conversation.pk)
 
         assistant_content_parts: list[str] = []
 
@@ -351,14 +336,8 @@ class FlowAssistantService:
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
                         partial["ef_tables"] = structured_payload.get("ef_tables") or []
-                        partial["action_message"] = (
-                            structured_payload.get("action_message") or []
-                        )
-                    if (
-                        partial_content
-                        or partial.get("ef_tables")
-                        or partial.get("action_message")
-                    ):
+                        partial["action_message"] = structured_payload.get("action_message") or []
+                    if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
                     await _persist_messages(conversation.pk, working_messages)
                     persisted_already = True
@@ -392,9 +371,7 @@ class FlowAssistantService:
                         current_content.append(event.content)
                         if is_final_turn:
                             json_buffer += event.content
-                            current_message = _partial_json.extract_message_field(
-                                json_buffer
-                            )
+                            current_message = _partial_json.extract_message_field(json_buffer)
                             if len(current_message) > last_emitted_message_len:
                                 delta = current_message[last_emitted_message_len:]
                                 last_emitted_message_len = len(current_message)
@@ -422,14 +399,8 @@ class FlowAssistantService:
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
                         partial["ef_tables"] = structured_payload.get("ef_tables") or []
-                        partial["action_message"] = (
-                            structured_payload.get("action_message") or []
-                        )
-                    if (
-                        partial_content
-                        or partial.get("ef_tables")
-                        or partial.get("action_message")
-                    ):
+                        partial["action_message"] = structured_payload.get("action_message") or []
+                    if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
                     await _persist_messages(conversation.pk, working_messages)
                     persisted_already = True
@@ -474,17 +445,11 @@ class FlowAssistantService:
                     tool_callable = _TOOL_CALLABLES.get(tool_name)
 
                     if tool_callable is None:
-                        tool_result_content = json.dumps(
-                            {"error": f"Unknown tool '{tool_name}'"}
-                        )
+                        tool_result_content = json.dumps({"error": f"Unknown tool '{tool_name}'"})
                     else:
                         try:
-                            raw_result = await sync_to_async(tool_callable)(
-                                graph_id, **tool_args
-                            )
-                            tool_result_content = json.dumps(
-                                raw_result, cls=DjangoJSONEncoder
-                            )
+                            raw_result = await sync_to_async(tool_callable)(graph_id, **tool_args)
+                            tool_result_content = json.dumps(raw_result, cls=DjangoJSONEncoder)
                         except Exception as exc:
                             logger.warning(
                                 "Tool {} raised {}: {}",
@@ -608,14 +573,8 @@ class FlowAssistantService:
                     structured_payload = _partial_json.try_parse_full(json_buffer)
                     if structured_payload is not None:
                         partial["ef_tables"] = structured_payload.get("ef_tables") or []
-                        partial["action_message"] = (
-                            structured_payload.get("action_message") or []
-                        )
-                    if (
-                        partial_content
-                        or partial.get("ef_tables")
-                        or partial.get("action_message")
-                    ):
+                        partial["action_message"] = structured_payload.get("action_message") or []
+                    if partial_content or partial.get("ef_tables") or partial.get("action_message"):
                         working_messages.append(partial)
                 try:
                     await _persist_messages(conversation.pk, working_messages)

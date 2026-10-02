@@ -2,8 +2,8 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { ConfigService } from '../../../../../services/config/config.service';
-import { CreateLLMNodeRequest } from '../models/llm-node.model';
+import { ConfigService } from '../../../../../services/config';
+import { CreateLLMNodeRequest } from '../../../../../visual-programming/core/models/llm-node.model';
 
 @Injectable({
     providedIn: 'root',

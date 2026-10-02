@@ -2,12 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ConfirmationDialogService } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
 import { EMPTY, forkJoin, Subject } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
-import { ToastService } from '../../../services/notifications/toast.service';
-import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog';
+import { ToastService } from '../../../services/notifications';
 import {
     AddToFlowDialogComponent,
     AddToFlowDialogData,
@@ -45,6 +45,7 @@ export class StorageTreeFacade {
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
+    readonly error = signal<string | null>(null);
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
     readonly selectedItems = signal<StorageItem[]>([]);
@@ -113,6 +114,7 @@ export class StorageTreeFacade {
 
     loadTree(): void {
         this.isLoading.set(true);
+        this.error.set(null);
         this.storageApiService
             .list('')
             .pipe(
@@ -124,7 +126,7 @@ export class StorageTreeFacade {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
                     this.afterTreeLoad?.();
                 },
-                error: () => this.toastService.error('Failed to load storage files'),
+                error: () => this.error.set('Failed to load storage files'),
             });
     }
 

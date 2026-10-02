@@ -1,0 +1,67 @@
+from rbac.exceptions import (
+    InactiveUserError,
+    InvalidRoleAssignmentError,
+    SuperadminNotAssignableError,
+)
+from rbac.models import Role
+from rbac.models.enums import BuiltInRole
+
+
+class UserManagementGuards:
+    """Pure invariant checks for Story 5.
+
+    Static methods so they can be called without instance state. Each
+    method is intended to run inside a service-level `transaction.atomic()`
+    *after* the contested row has been `select_for_update()`-locked. The
+    row lock + same-transaction count is what makes the checks race-safe;
+    these methods themselves do not acquire locks.
+    """
+
+    @staticmethod
+    def role_is_assignable(role: Role, org_id: int) -> bool:
+        """Whether `role` is a structurally valid membership target in `org_id`.
+
+        Refuses two kinds of role:
+
+        - The global Superadmin role (`is_built_in=True, name='Superadmin'`)
+          — superadmin is a User flag granted via grant-superadmin, never
+          an org-membership role. Note it carries no RolePermission rows, so
+          the escalation ceiling alone would consider it assignable; this is
+          the only thing that excludes it.
+        - A custom role whose `org_id` is not None and != the target org.
+
+        Exposed as a predicate as well as an assertion because the assignable
+        roles filter on `GET /api/admin/roles/` needs the same rule as a
+        boolean, and restating it there would let the two drift.
+        """
+        if role.is_built_in and role.name == BuiltInRole.SUPERADMIN:
+            return False
+        return role.org_id is None or role.org_id == org_id
+
+    @staticmethod
+    def assert_role_is_assignable(role: Role, org_id: int) -> None:
+        """Assertion form of `role_is_assignable`.
+
+        Raises:
+            InvalidRoleAssignmentError (400): not a valid membership target.
+        """
+        if not UserManagementGuards.role_is_assignable(role, org_id):
+            raise InvalidRoleAssignmentError()
+
+    @staticmethod
+    def assert_user_is_assignable_member(target) -> None:
+        """Refuses accounts that cannot hold a membership: a superadmin (the
+        row would grant nothing they do not already have) and a deactivated
+        account (it cannot sign in to use one). Superadmin is checked first —
+        it is the structural reason, and reactivating would not change it."""
+        if target.is_superadmin:
+            raise SuperadminNotAssignableError()
+        if not target.is_active:
+            raise InactiveUserError()
+
+    @staticmethod
+    def assert_membership_holder_is_assignable(membership) -> None:
+        """Refuses a role change on a membership held by a superadmin. Takes
+        the membership so the check reads off the row the caller locked."""
+        if membership.user.is_superadmin:
+            raise SuperadminNotAssignableError()

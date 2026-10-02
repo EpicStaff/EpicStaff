@@ -1,11 +1,11 @@
 import { inject, Injectable } from '@angular/core';
-
 import {
     CreateElevenLabsRealtimeConfigRequest,
     ElevenLabsRealtimeConfig,
     UpdateElevenLabsRealtimeConfigRequest,
-} from '../../../../shared/models/realtime-voice/elevenlabs-realtime-config.model';
-import { ElevenLabsRealtimeConfigService } from '../../../../shared/services/realtime-llms/elevenlabs-realtime-config.service';
+} from '@shared/models';
+import { ElevenLabsRealtimeConfigService } from '@shared/services';
+
 import { BaseRealtimeConfigStorageService } from './base-realtime-config-storage.service';
 
 @Injectable({ providedIn: 'root' })

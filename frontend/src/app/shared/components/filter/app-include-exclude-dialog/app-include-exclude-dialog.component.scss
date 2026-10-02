@@ -30,7 +30,7 @@
     gap: 0.5rem;
     background: var(--color-input-background);
     padding: 0.25rem;
-    border-radius: 8px;
+    border-radius: 4px;
     margin-bottom: 10px;
 
     .tab-btn {
@@ -42,7 +42,7 @@
         padding: 0.55rem 0.75rem;
         background: transparent;
         border: none;
-        border-radius: 6px;
+        border-radius: 4px;
         color: var(--color-text-secondary);
         font-size: 0.875rem;
         cursor: pointer;
@@ -84,7 +84,7 @@
     padding: 0.6rem 0.75rem;
     background: var(--color-input-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--color-text-primary);
     font-size: 0.875rem;
     margin-bottom: 0.75rem;
@@ -140,7 +140,7 @@
     padding: 0.5rem 1rem;
     background: var(--color-input-background);
     border: 1px solid var(--fog-alpha-16);
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
     font-size: 0.875rem;
     transition: border-color 0.15s;

@@ -14,10 +14,10 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.rbac_models import (
+from rbac.models import (
     Organization,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models.enums import Permission, ResourceType
 from tests.api_tests.bulk_delete_helpers import custom_role_client, org_admin_client
 
 

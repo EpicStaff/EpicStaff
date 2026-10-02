@@ -122,9 +122,9 @@
     <footer class="dialog-footer">
         <app-button
             type="outline-primary"
-            (click)="selectAll()"
+            (click)="toggleSelectAll()"
         >
-            Select All
+            {{ isAllSelected() ? 'Exclude All' : 'Select All' }}
         </app-button>
         <div class="footer-right">
             <app-button

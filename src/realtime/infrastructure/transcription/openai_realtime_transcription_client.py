@@ -1,7 +1,12 @@
-from loguru import logger
-import websockets
 import json
-from typing import Optional, Dict, Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+import websockets
+from domain.ports.i_transcription_client import ITranscriptionClient
+from domain.services.chat_buffer import ChatSummarizedBuffer
+from loguru import logger
+from utils.openai_endpoints import derive_realtime_ws_url
 
 from infrastructure.transcription.event_handlers.transcription_client_event_handler import (
     TranscriptionClientEventHandler,
@@ -10,17 +15,13 @@ from infrastructure.transcription.event_handlers.transcription_server_event_hand
     TranscriptionServerEventHandler,
 )
 
-from domain.ports.i_transcription_client import ITranscriptionClient
-from domain.services.chat_buffer import ChatSummarizedBuffer
-from utils.openai_endpoints import derive_realtime_ws_url
-
 
 class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
     def __init__(
         self,
         api_key: str,
         connection_key: str,
-        on_server_event: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_server_event: Callable[[dict], Awaitable[None]] | None = None,
         model: str = "whisper-1",
         language: str | None = None,
         voice_recognition_prompt: str | None = None,
@@ -66,7 +67,7 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
             await self.on_server_event(data)
 
     async def update_session(self) -> None:
-        transcription: Dict[str, Any] = {"model": self.model}
+        transcription: dict[str, Any] = {"model": self.model}
         if self.language is not None:
             transcription["language"] = self.language
         if self.voice_recognition_prompt is not None:
@@ -97,9 +98,7 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
 
         await self.send_server(data)
 
-    async def process_message(
-        self, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    async def process_message(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Process incoming message from the frontend WebSocket."""
         return await self.client_event_handler.handle_event(data=message)
 

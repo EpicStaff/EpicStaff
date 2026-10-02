@@ -471,7 +471,11 @@ def test_create_graph_from_snapshot_returns_graph_and_idmapper(
     snapshot = manager.create_snapshot(graph)
 
     result = manager.create_graph_from_snapshot(
-        snapshot, available_deps={}, version_name="v1"
+        snapshot,
+        available_deps={},
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
     )
 
     assert isinstance(result, tuple)
@@ -486,7 +490,11 @@ def test_create_graph_from_snapshot_creates_new_graph_row(manager, graph, defaul
     snapshot = manager.create_snapshot(graph)
 
     new_graph, _ = manager.create_graph_from_snapshot(
-        snapshot, available_deps={}, version_name="v1"
+        snapshot,
+        available_deps={},
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
     )
 
     assert Graph.objects.filter(id=new_graph.id).exists()
@@ -494,30 +502,41 @@ def test_create_graph_from_snapshot_creates_new_graph_row(manager, graph, defaul
 
 
 @pytest.mark.django_db
-def test_create_graph_from_snapshot_uses_version_name_as_graph_name(
+def test_create_graph_from_snapshot_builds_name_from_graph_name_and_version_name(
     manager, graph, default_org
 ):
+    """The new graph's name records its provenance: "{graph_name} from
+    {version_name}", not the bare version_name."""
     snapshot = manager.create_snapshot(graph)
 
     new_graph, _ = manager.create_graph_from_snapshot(
-        snapshot, available_deps={}, version_name="My Version"
+        snapshot,
+        available_deps={},
+        graph_name=graph.name,
+        version_name="My Version",
+        org_id=default_org.id,
     )
 
-    assert new_graph.name == "My Version"
+    assert new_graph.name == f"{graph.name} from My Version"
 
 
 @pytest.mark.django_db
 def test_create_graph_from_snapshot_deduplicates_name_when_taken(
     manager, graph, default_org
 ):
-    Graph.objects.create(name="My Version")
+    expected_base_name = f"{graph.name} from My Version"
+    Graph.objects.create(name=expected_base_name, org=default_org)
     snapshot = manager.create_snapshot(graph)
 
     new_graph, _ = manager.create_graph_from_snapshot(
-        snapshot, available_deps={}, version_name="My Version"
+        snapshot,
+        available_deps={},
+        graph_name=graph.name,
+        version_name="My Version",
+        org_id=default_org.id,
     )
 
-    assert new_graph.name == "My Version (2)"
+    assert new_graph.name == f"{expected_base_name} #2"
 
 
 @pytest.mark.django_db
@@ -528,7 +547,13 @@ def test_create_graph_from_snapshot_does_not_mutate_input_snapshot(
     original_id = snapshot.get("id")
     original_nodes_len = len(snapshot.get("nodes", []))
 
-    manager.create_graph_from_snapshot(snapshot, available_deps={}, version_name="v1")
+    manager.create_graph_from_snapshot(
+        snapshot,
+        available_deps={},
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
+    )
 
     assert snapshot.get("id") == original_id
     assert len(snapshot.get("nodes", [])) == original_nodes_len
@@ -541,7 +566,11 @@ def test_create_graph_from_snapshot_links_to_default_organization(
     snapshot = manager.create_snapshot(graph)
 
     new_graph, _ = manager.create_graph_from_snapshot(
-        snapshot, available_deps={}, version_name="v1"
+        snapshot,
+        available_deps={},
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
     )
 
     assert GraphOrganization.objects.filter(graph=new_graph).exists()
@@ -559,7 +588,11 @@ def test_create_graph_from_snapshot_recreates_agent_node(
     available_deps = {EntityType.AGENT_DEFINITION.value: [agent_definition.id]}
 
     new_graph, _ = manager.create_graph_from_snapshot(
-        snapshot, available_deps=available_deps, version_name="v1"
+        snapshot,
+        available_deps=available_deps,
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
     )
 
     assert new_graph.agent_node_list.count() == 1
@@ -582,7 +615,11 @@ def test_create_graph_from_snapshot_node_mapper_maps_old_to_new_node_id(
     old_node_id = agent_node_entry["id"]
 
     new_graph, node_mapper = manager.create_graph_from_snapshot(
-        snapshot, available_deps=available_deps, version_name="v1"
+        snapshot,
+        available_deps=available_deps,
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
     )
 
     new_agent_node = new_graph.agent_node_list.first()
@@ -606,7 +643,11 @@ def test_create_graph_from_snapshot_recreates_edge_with_remapped_node_ids(
     available_deps = {EntityType.AGENT_DEFINITION.value: [agent_definition.id]}
 
     new_graph, _ = manager.create_graph_from_snapshot(
-        snapshot, available_deps=available_deps, version_name="v1"
+        snapshot,
+        available_deps=available_deps,
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
     )
 
     assert new_graph.edge_list.count() == 1
@@ -645,7 +686,9 @@ def test_restore_does_not_raise_integrity_error_for_classification_decision_tabl
 
     assert graph.classification_decision_table_node_list.count() == 1
     restored = graph.classification_decision_table_node_list.first()
-    assert restored.node_name == "classifier_node"
+    # Restore renumbers named nodes (mirrors the frontend's node numbering),
+    # so the recreated node picks up the next free "#N" suffix.
+    assert restored.node_name == "classifier_node #1"
 
 
 @pytest.mark.django_db
@@ -1148,7 +1191,6 @@ def test_restore_warns_and_drops_agent_node_inline_python_tool_when_deleted(
         description="Surviving PythonCodeTool",
         variables=[],
         python_code=python_code,
-        favorite=False,
         built_in=False,
     )
     agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")

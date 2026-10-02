@@ -1,6 +1,6 @@
 import sys
-from loguru import logger
 
+from loguru import logger
 
 MAX_LOG_LENGTH = 350
 
@@ -13,6 +13,4 @@ def truncate_filter(record):
 
 
 logger.remove()
-logger.add(
-    sys.stdout, format="{time} {level} {message}", level="INFO", filter=truncate_filter
-)
+logger.add(sys.stdout, format="{time} {level} {message}", level="INFO", filter=truncate_filter)

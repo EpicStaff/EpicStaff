@@ -12,23 +12,25 @@
             </div>
             <div class="header-actions">
                 @if (activeTabBtn(); as btn) {
-                    <app-button
-                        *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
-                        type="primary"
-                        class="btn-primary create-btn"
-                        [leftIcon]="'plus'"
-                        (click)="btn.action()"
-                    >
-                        {{ btn.label }}
-                    </app-button>
+                    @if (btn.permitted) {
+                        <app-button
+                            type="primary"
+                            class="btn-primary create-btn"
+                            [leftIcon]="'plus'"
+                            (click)="btn.action()"
+                        >
+                            {{ btn.label }}
+                        </app-button>
+                    }
                 }
             </div>
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link) {
+                @for (tab of tabs; track tab.link; let last = $last) {
                     @if (tab.isPermitted()) {
                         <app-tab-button
+                            mod="sm"
                             routerLink="{{ tab.link }}"
                             routerLinkActive="active"
                             #rla="routerLinkActive"
@@ -36,6 +38,9 @@
                         >
                             {{ tab.label }}
                         </app-tab-button>
+                        @if (!last) {
+                            <span class="tab-sep">/</span>
+                        }
                     }
                 }
             </div>

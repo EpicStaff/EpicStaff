@@ -12,7 +12,6 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
 )
 
-
 RULE_COLUMNS = [
     "#",
     "Rule Name",
@@ -70,9 +69,7 @@ def rule_row(
 
 def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.StringIO:
     groups = list(
-        node.condition_groups.select_related("prompt__llm_config__model").order_by(
-            "order"
-        )
+        node.condition_groups.select_related("prompt__llm_config__model").order_by("order")
     )
     node_names: dict[int, str] = {}
 
@@ -84,12 +81,8 @@ def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.Str
     writer.writerow(["Default AI Model", _llm_config_label(node.default_llm_config)])
     writer.writerow(["Pre-processing Script", _yes_no(node.pre_python_code_id)])
     writer.writerow(["Post-processing Script", _yes_no(node.post_python_code_id)])
-    writer.writerow(
-        ["Default Next Step", _node_label(node.default_next_node_id, node_names)]
-    )
-    writer.writerow(
-        ["On Error Go To", _node_label(node.next_error_node_id, node_names)]
-    )
+    writer.writerow(["Default Next Step", _node_label(node.default_next_node_id, node_names)])
+    writer.writerow(["On Error Go To", _node_label(node.next_error_node_id, node_names)])
     writer.writerow(["Number of Rules", len(groups)])
     writer.writerow([])
 

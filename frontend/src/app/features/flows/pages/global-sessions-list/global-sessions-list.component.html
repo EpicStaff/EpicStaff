@@ -140,7 +140,10 @@
                     </div>
                     <div class="preview-header-actions">
                         @if (canStopSession(session.status)) {
-                            <app-stop-session-button (stopClick)="onStopSession(session.id)" />
+                            <app-stop-button
+                                tooltip="Stop session"
+                                (triggered)="onStopSession(session.id)"
+                            />
                         }
                         <div class="preview-header-right">
                             <span class="preview-session-id-badge">#{{ session.id }}</span>

@@ -3,9 +3,9 @@ from rest_framework import serializers
 from tables.models import Graph, KnowledgeNode
 from tables.models.knowledge_models import (
     KnowledgeNodeGraphRagBasicSearchConfig,
-    KnowledgeNodeGraphRagLocalSearchConfig,
-    KnowledgeNodeGraphRagGlobalSearchConfig,
     KnowledgeNodeGraphRagDriftSearchConfig,
+    KnowledgeNodeGraphRagGlobalSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
     KnowledgeNodeNaiveRagSearchConfig,
 )
 
@@ -42,15 +42,11 @@ class _GraphDriftSearchConfigImportSerializer(serializers.ModelSerializer):
 
 class KnowledgeNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
-    graph = serializers.PrimaryKeyRelatedField(
-        queryset=Graph.objects.all(), write_only=True
-    )
+    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     naive_search_config = _NaiveSearchConfigImportSerializer(read_only=True)
     graph_basic_search_config = _GraphBasicSearchConfigImportSerializer(read_only=True)
     graph_local_search_config = _GraphLocalSearchConfigImportSerializer(read_only=True)
-    graph_global_search_config = _GraphGlobalSearchConfigImportSerializer(
-        read_only=True
-    )
+    graph_global_search_config = _GraphGlobalSearchConfigImportSerializer(read_only=True)
     graph_drift_search_config = _GraphDriftSearchConfigImportSerializer(read_only=True)
 
     class Meta:

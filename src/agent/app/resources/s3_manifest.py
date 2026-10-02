@@ -78,38 +78,30 @@ def _render_legend(specs: list[S3FileSpec]) -> list[str]:
 
     if folder_operations:
         lines.append("Folders:")
-        lines.extend(
-            _render_legend_bullets(folder_operations, _FOLDER_OPERATION_DESCRIPTIONS)
-        )
+        lines.extend(_render_legend_bullets(folder_operations, _FOLDER_OPERATION_DESCRIPTIONS))
 
     if file_operations:
         if folder_operations:
             lines.append("")
 
         lines.append("Files:")
-        lines.extend(
-            _render_legend_bullets(file_operations, _FILE_OPERATION_DESCRIPTIONS)
-        )
+        lines.extend(_render_legend_bullets(file_operations, _FILE_OPERATION_DESCRIPTIONS))
 
     lines.append("")
     lines.append(
-        (
-            "Each path above lists exactly what you may and may not do with "
-            "it. Treat that per-path list as authoritative — do not "
-            "generalise a restriction on one path to another path, or from "
-            "one operation to another. If an operation is listed as allowed "
-            "for a path, perform it with your tools when asked; do not "
-            "refuse it or ask for confirmation first."
-        )
+        "Each path above lists exactly what you may and may not do with "
+        "it. Treat that per-path list as authoritative — do not "
+        "generalise a restriction on one path to another path, or from "
+        "one operation to another. If an operation is listed as allowed "
+        "for a path, perform it with your tools when asked; do not "
+        "refuse it or ask for confirmation first."
     )
     lines.append("")
 
     return lines
 
 
-def _render_legend_bullets(
-    operations_present: set[str], descriptions: dict[str, str]
-) -> list[str]:
+def _render_legend_bullets(operations_present: set[str], descriptions: dict[str, str]) -> list[str]:
     return [
         f"- {descriptions[operation]}"
         for operation in ("list", "view", "edit", "delete")

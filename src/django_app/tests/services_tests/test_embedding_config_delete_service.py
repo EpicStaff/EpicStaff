@@ -9,11 +9,11 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.rbac_models import Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization
+from rbac.models.enums import Permission, ResourceType
 from tables.services.delete_services import EmbeddingConfigDeleteService
 from tables.services.delete_services.usage import RefKind
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 
 
 @pytest.fixture

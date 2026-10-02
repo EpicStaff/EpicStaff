@@ -10,7 +10,7 @@ def ask(prompt: str, required: bool = True) -> str:
 
 
 if __name__ == "__main__":
-    print("Scrape Element From Website Tool – Test\n")
+    print("Scrape Element From Website Tool - Test\n")
 
     website_url = ask("Enter website URL: ")
     css_element = ask("Enter CSS selector to scrape: ")

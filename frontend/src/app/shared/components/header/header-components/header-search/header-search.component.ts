@@ -54,7 +54,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 height: 36px;
                 transition: all 0.2s ease;
                 background-color: rgba(255, 255, 255, 0.04);
-                border-radius: 6px;
+                border-radius: 4px;
 
                 &.projects-page-search-has-content {
                     svg {

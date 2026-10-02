@@ -1,9 +1,11 @@
-import { KeyValuePipe } from '@angular/common';
+import { KeyValuePipe, NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     computed,
     effect,
+    ElementRef,
+    HostListener,
     inject,
     input,
     model,
@@ -20,8 +22,11 @@ import {
     SelectItem,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { HasPermissionDirective } from '@shared/directives';
 import { MATERIAL_FORMS } from '@shared/material-forms';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
 import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
 import { RunNaiveRagDocumentChunkingRequest } from '../../../models/naive-rag-document.model';
@@ -42,6 +47,8 @@ import { DocumentStatusFilter, TableDocument } from './configuration-table.inter
         MultiSelectComponent,
         KeyValuePipe,
         MATERIAL_FORMS,
+        HasPermissionDirective,
+        NgClass,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -53,13 +60,14 @@ export class ConfigurationTableComponent {
 
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private collectionsStorage = inject(CollectionsStorageService);
+    private permissionService = inject(PermissionsService);
+    private hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
 
     searchTerm = input<string>('');
     showBulkRow = input<boolean>(false);
     statusFilter = input<DocumentStatusFilter>('all');
     ragId = input.required<number>();
     documents = this.documentsStorageService.documents;
-    pendingDocIds = this.documentsStorageService.pendingDocIds;
     processingConfigIds = this.collectionsStorage.processingConfigIds;
     selectedRagDocId = model<number | null>(null);
 
@@ -72,6 +80,10 @@ export class ConfigurationTableComponent {
     // markRagAsProcessing() in the same tick a document can first become 'processing'.
     private ragIsProcessing = computed(
         () => this.collectionsStorage.getRagStatus(this.ragId(), 'naive') === 'processing'
+    );
+
+    canUpdateKnowledges = computed<boolean>(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update)
     );
 
     docsCheckChange = output<number[]>();
@@ -131,12 +143,29 @@ export class ConfigurationTableComponent {
         this.onDocFieldChange(document, 'chunk_strategy', value);
     }
 
-    revert(documentId: number): void {
-        this.documentsStorageService.clearPending([documentId]);
+    @HostListener('document:keydown', ['$event'])
+    onGlobalKeyDown(event: KeyboardEvent): void {
+        const isUndoCombo =
+            (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.code === 'KeyZ';
+        if (!isUndoCombo || this.isOutsideEditScope(event.target)) return;
+
+        const documentId = this.documentsStorageService.undoLastPending();
+        if (documentId === null) return;
+
+        event.preventDefault();
+        this.focusTuneButton(documentId);
     }
 
-    hasPending(documentId: number): boolean {
-        return this.pendingDocIds().has(documentId);
+    private isOutsideEditScope(target: EventTarget | null): boolean {
+        const el = target as HTMLElement | null;
+        if (!el?.matches('input,textarea,select,[contenteditable="true"]')) return false;
+        return !el.closest('[data-document-id], app-edit-file-parameters-dialog');
+    }
+
+    focusTuneButton(documentId: number): void {
+        this.hostEl.nativeElement
+            .querySelector<HTMLElement>(`[data-document-id="${documentId}"] .table__col-btn button`)
+            ?.focus();
     }
 
     onFileTypeFilterChange(value: unknown[]): void {
@@ -228,4 +257,6 @@ export class ConfigurationTableComponent {
     }
 
     // ================= FILTER LOGIC END =================
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

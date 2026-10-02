@@ -1,0 +1,14 @@
+<button
+    type="button"
+    class="delete-btn"
+    [class.delete-btn--default]="variant() === 'default'"
+    [disabled]="disabled()"
+    [matTooltip]="tooltip()"
+    (click)="triggered.emit()"
+>
+    <app-svg-icon
+        icon="trash"
+        width="10px"
+        height="12px"
+    />
+</button>

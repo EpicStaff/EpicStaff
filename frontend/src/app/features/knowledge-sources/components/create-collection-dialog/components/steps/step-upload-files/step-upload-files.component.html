@@ -26,7 +26,10 @@
         </div>
     </div>
 
-    <div class="dialog__form-field">
+    <div
+        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+        class="dialog__form-field"
+    >
         <div class="dialog__form-label">
             <label for="collection-description">Guidance for Agents</label>
             <app-help-tooltip
@@ -59,7 +62,7 @@
                     Selected Files: <span class="dialog__content-title--count">(0)</span>
                 </h6>
                 <app-file-uploader
-                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
                     (filesUploaded)="onFilesUpload($event)"
                 />
             </div>

@@ -3,8 +3,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { WebhookTriggerModel } from '@shared/models';
 
-import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { ButtonComponent } from '../buttons';
 import { WebhookTriggerFieldComponent } from '../webhook-trigger-field/webhook-trigger-field.component';

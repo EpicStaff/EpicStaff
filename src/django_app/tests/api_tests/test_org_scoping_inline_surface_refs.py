@@ -26,8 +26,8 @@ from tables.models.graph_models import AgentNode, Graph, StorageFile, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 @pytest.fixture

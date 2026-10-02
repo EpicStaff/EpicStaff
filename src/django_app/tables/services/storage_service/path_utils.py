@@ -37,11 +37,7 @@ def sanitize_storage_path(
             return ""
         raise ValueError("Path must not be empty")
 
-    if (
-        posixpath.isabs(normalized)
-        or normalized == ".."
-        or normalized.startswith("../")
-    ):
+    if posixpath.isabs(normalized) or normalized == ".." or normalized.startswith("../"):
         raise ValueError(f"Path escapes the target folder: {path!r}")
 
     return normalized

@@ -1,4 +1,5 @@
 from typing import Any, Literal, TypedDict
+
 from dotdict import DotDict
 
 
@@ -15,7 +16,7 @@ class StateHistoryItem(TypedDict):
 
 
 class State(TypedDict):
-    state_history: list["StateHistoryItem"] = []
+    state_history: list["StateHistoryItem"]
     variables: DotDict
     system_variables: Any
     execution_counts: dict

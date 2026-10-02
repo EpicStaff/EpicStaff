@@ -1,16 +1,16 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+
 from tables.serializers.default_config_serializers import (
     DefaultModelsSerializer,
 )
 from tables.serializers.quickstart_serializers import QuickstartSerializer
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-
-DEFAULT_MODELS_GET = dict(
-    summary="Get default models",
-    description="Returns the current default models configuration.",
-    responses={
+DEFAULT_MODELS_GET = {
+    "summary": "Get default models",
+    "description": "Returns the current default models configuration.",
+    "responses": {
         200: DefaultModelsSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -25,12 +25,12 @@ DEFAULT_MODELS_GET = dict(
             ],
         ),
     },
-)
+}
 
-DEFAULT_MODELS_PUT = dict(
-    summary="Update default models",
-    description="Updates the default models configuration with the provided values.",
-    responses={
+DEFAULT_MODELS_PUT = {
+    "summary": "Update default models",
+    "description": "Updates the default models configuration with the provided values.",
+    "responses": {
         200: DefaultModelsSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -56,12 +56,12 @@ DEFAULT_MODELS_PUT = dict(
             ],
         ),
     },
-)
+}
 
-QUICKSTART_GET = dict(
-    summary="Get quickstart status",
-    description="Returns the list of supported LLM providers, the last applied quickstart configuration, and whether the current setup is synced.",
-    responses={
+QUICKSTART_GET = {
+    "summary": "Get quickstart status",
+    "description": "Returns the list of supported LLM providers, the last applied quickstart configuration, and whether the current setup is synced.",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="List of supported providers",
@@ -90,17 +90,17 @@ QUICKSTART_GET = dict(
             ],
         ),
     },
-)
+}
 
-QUICKSTART_POST = dict(
-    summary="Initiate quickstart",
-    description=(
+QUICKSTART_POST = {
+    "summary": "Initiate quickstart",
+    "description": (
         "Initiates the quickstart process for a specified provider, creating default "
         "configurations and resources as needed. Supply exactly one of `api_key` "
         "(cold start) or `api_key_secret_id` (reuse an existing Secret)."
     ),
-    request=QuickstartSerializer,
-    responses={
+    "request": QuickstartSerializer,
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Quickstart initiated successfully",
@@ -135,12 +135,12 @@ QUICKSTART_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-QUICKSTART_APPLY_POST = dict(
-    summary="Apply quickstart configuration",
-    description="Applies the quickstart configuration to the system, activating any new settings or resources created during the quickstart process.",
-    responses={
+QUICKSTART_APPLY_POST = {
+    "summary": "Apply quickstart configuration",
+    "description": "Applies the quickstart configuration to the system, activating any new settings or resources created during the quickstart process.",
+    "responses": {
         200: DefaultModelsSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -149,12 +149,10 @@ QUICKSTART_APPLY_POST = dict(
             examples=[
                 OpenApiExample(
                     "No quickstart config",
-                    value={
-                        "detail": "No quickstart config found. Run POST /quickstart/ first."
-                    },
+                    value={"detail": "No quickstart config found. Run POST /quickstart/ first."},
                     response_only=True,
                 ),
             ],
         ),
     },
-)
+}

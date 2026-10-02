@@ -1,4 +1,5 @@
-from tables.models.rbac_models.rbac_enums import ResourceType
+from rbac.access.effective import EffectivePermissions
+from rbac.models.enums import ResourceType
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
@@ -13,7 +14,6 @@ from tables.services.delete_services.usage import (
     UsageReport,
     build_reports,
 )
-from tables.services.rbac.effective_permissions import EffectivePermissions
 
 
 class _ProviderRealtimeConfigDeleteService(BaseDeleteService):

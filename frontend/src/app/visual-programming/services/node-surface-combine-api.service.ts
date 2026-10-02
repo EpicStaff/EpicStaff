@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { CombinedSurface } from '../../features/agent-definitions/models/surface.model';
-import { ConfigService } from '../../services/config/config.service';
+import { ConfigService } from '../../services/config';
 
 @Injectable({ providedIn: 'root' })
 export class NodeSurfaceCombineApiService {

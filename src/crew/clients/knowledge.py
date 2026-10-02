@@ -1,7 +1,6 @@
-from typing import Literal
+from typing import Literal, Self
 
 import httpx
-
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import FoundChunk, SearchConfig
 
@@ -19,7 +18,7 @@ class KnowledgeClient:
     def __init__(self, host: str = HOST):
         self._client = httpx.Client(base_url=host)
 
-    def __enter__(self) -> "KnowledgeClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info) -> None:

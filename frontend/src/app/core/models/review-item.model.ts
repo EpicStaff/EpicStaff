@@ -1,6 +1,6 @@
+import { NodeType } from '@shared/models';
 import { Observable } from 'rxjs';
 
-import { NodeType } from '../../visual-programming/core/enums/node-type';
 import { ImportResult } from './import-result.model';
 
 export interface RawFlowNode {

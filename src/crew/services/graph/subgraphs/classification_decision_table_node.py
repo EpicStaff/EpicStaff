@@ -1,27 +1,26 @@
-from dataclasses import asdict
 import json
 import re
 import uuid
+from dataclasses import asdict
 from typing import Any
-from loguru import logger
+
 import litellm
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StreamWriter
+from loguru import logger
 from src.crew.models.graph_models import (
     GraphMessage,
 )
+from src.crew.models.state import State
+from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
+from src.crew.services.graph.events import StopEvent
+from src.crew.services.run_python_code_service import RunPythonCodeService
 from src.shared.models import LLMData, PythonCodeData
 from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
-from src.crew.models.state import State
-from langgraph.types import StreamWriter
-from src.crew.services.run_python_code_service import RunPythonCodeService
-
-from langgraph.graph import StateGraph
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.graph import START, END
 
 
 def extract_first_json_object(text: str) -> Any:
@@ -92,9 +91,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "message_data": graph_message.message_data
                 if isinstance(graph_message.message_data, dict)
                 else {
-                    "message_type": getattr(
-                        graph_message.message_data, "message_type", "unknown"
-                    )
+                    "message_type": getattr(graph_message.message_data, "message_type", "unknown")
                 },
                 "timestamp": graph_message.timestamp,
             }
@@ -146,9 +143,7 @@ class ClassificationDecisionTableNodeSubgraph:
                     value = value[token]
         return value
 
-    def _resolve_input_map(
-        self, input_map: dict[str, str] | None, state: State
-    ) -> dict:
+    def _resolve_input_map(self, input_map: dict[str, str] | None, state: State) -> dict:
         """Resolve input_map path expressions against state, returning a flat dict of values."""
         if not input_map:
             return {}
@@ -166,9 +161,7 @@ class ClassificationDecisionTableNodeSubgraph:
             try:
                 resolved[local_name] = self._resolve_path(path_expr, resolve_ctx)
             except Exception as e:
-                logger.warning(
-                    f"Input map resolve failed for '{local_name}' = '{path_expr}': {e}"
-                )
+                logger.warning(f"Input map resolve failed for '{local_name}' = '{path_expr}': {e}")
                 resolved[local_name] = None
 
         return resolved
@@ -384,9 +377,7 @@ def main(**kwargs) -> dict:
         )
 
         usage = {
-            "total_tokens": getattr(resp.usage, "total_tokens", 0)
-            if hasattr(resp, "usage")
-            else 0,
+            "total_tokens": getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
             "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0)
             if hasattr(resp, "usage")
             else 0,
@@ -414,9 +405,7 @@ def main(**kwargs) -> dict:
         Returns dict with prompt_text, raw_response, parsed_result, result_variable, usage."""
         prompt_config: PromptConfigData | None = self.node_data.prompts.get(prompt_id)
         if prompt_config is None:
-            logger.warning(
-                f"Prompt ID '{prompt_id}' not found in prompt library, skipping."
-            )
+            logger.warning(f"Prompt ID '{prompt_id}' not found in prompt library, skipping.")
             return {}
 
         llm_data = prompt_config.llm_data
@@ -441,9 +430,7 @@ def main(**kwargs) -> dict:
                 output_schema=prompt_config.output_schema,
             )
         except Exception as e:
-            error_msg = (
-                f"ERROR Prompt '{prompt_id}' LLM call failed: {type(e).__name__}: {e}"
-            )
+            error_msg = f"ERROR Prompt '{prompt_id}' LLM call failed: {type(e).__name__}: {e}"
             logger.info(error_msg)
             raise ClassificationDecisionTableNodeError(
                 f"LLM call failed for prompt '{prompt_id}': {type(e).__name__}: {e}"
@@ -467,9 +454,7 @@ def main(**kwargs) -> dict:
             for state_var, result_field in prompt_config.variable_mappings.items():
                 if result_field in result:
                     state["variables"].update({state_var: result[result_field]})
-                    logger.info(
-                        f"Mapped result.{result_field} -> variables.{state_var}"
-                    )
+                    logger.info(f"Mapped result.{result_field} -> variables.{state_var}")
 
         return {
             "prompt_text": rendered_prompt,
@@ -495,9 +480,7 @@ def main(**kwargs) -> dict:
 
         # Sort condition groups by order, excluding disabled (dock_visible=False) groups
         enabled_groups = [g for g in self.node_data.condition_groups if g.dock_visible]
-        skipped = [
-            g.group_name for g in self.node_data.condition_groups if not g.dock_visible
-        ]
+        skipped = [g.group_name for g in self.node_data.condition_groups if not g.dock_visible]
         if skipped:
             logger.info(
                 f"Skipping disabled condition groups in '{self.node_data.node_name}': {skipped}"
@@ -523,12 +506,8 @@ def main(**kwargs) -> dict:
             if state["system_variables"]["nodes"].get(self.node_name) is None:
                 state["system_variables"]["nodes"][self.node_name] = update_variables
             else:
-                state["system_variables"]["nodes"][self.node_name].update(
-                    update_variables
-                )
-            state["system_variables"]["nodes"][self.node_name]["execution_order"] = (
-                order
-            )
+                state["system_variables"]["nodes"][self.node_name].update(update_variables)
+            state["system_variables"]["nodes"][self.node_name]["execution_order"] = order
 
             input_vars = state["variables"].model_dump()
             msg = self.custom_session_message_writer.add_start_message(
@@ -604,9 +583,9 @@ def main(**kwargs) -> dict:
                         for field_name, field_expr in group.field_expressions.items():
                             if field_expr and field_expr.strip():
                                 expr = field_expr.strip()
-                                if expr.startswith(
-                                    _operator_prefixes
-                                ) or expr.startswith(("in ", "not ", "is ")):
+                                if expr.startswith(_operator_prefixes) or expr.startswith(
+                                    ("in ", "not ", "is ")
+                                ):
                                     expr = f"{field_name} {expr}"
                                 elif not any(
                                     op in expr
@@ -638,16 +617,14 @@ def main(**kwargs) -> dict:
                             state=state,
                         )
 
-                    msg = (
-                        self.custom_session_message_writer.add_condition_group_message(
-                            session_id=self.session_id,
-                            node_name=self.node_name,
-                            group_name=group.group_name,
-                            result=expression_result,
-                            writer=writer,
-                            execution_order=self.execution_order(state),
-                            expression=group.expression,
-                        )
+                    msg = self.custom_session_message_writer.add_condition_group_message(
+                        session_id=self.session_id,
+                        node_name=self.node_name,
+                        group_name=group.group_name,
+                        result=expression_result,
+                        writer=writer,
+                        execution_order=self.execution_order(state),
+                        expression=group.expression,
                     )
                     self._publish_message(msg)
 
@@ -659,9 +636,7 @@ def main(**kwargs) -> dict:
 
                     # Step 2: Execute prompt (if prompt_id is set)
                     if group.prompt_id:
-                        prompt_result = await self._execute_prompt(
-                            group.prompt_id, state
-                        )
+                        prompt_result = await self._execute_prompt(group.prompt_id, state)
                         if prompt_result:
                             msg = self.custom_session_message_writer.add_classification_prompt_message(
                                 session_id=self.session_id,
@@ -672,9 +647,7 @@ def main(**kwargs) -> dict:
                                 prompt_text=prompt_result.get("prompt_text", ""),
                                 raw_response=prompt_result.get("raw_response", ""),
                                 parsed_result=prompt_result.get("parsed_result"),
-                                result_variable=prompt_result.get(
-                                    "result_variable", ""
-                                ),
+                                result_variable=prompt_result.get("result_variable", ""),
                                 usage=prompt_result.get("usage", {}),
                             )
                             self._publish_message(msg)
@@ -690,19 +663,13 @@ def main(**kwargs) -> dict:
                                 manip_parts.append(f"{target} = {var_expr.strip()}")
                     if group.manipulation:
                         manip_parts.append(group.manipulation)
-                    combined_manipulation = (
-                        "\n".join(manip_parts) if manip_parts else None
-                    )
+                    combined_manipulation = "\n".join(manip_parts) if manip_parts else None
 
                     if combined_manipulation:
                         vars_before = state["variables"].model_dump()
                         await self._execute_manipulation(combined_manipulation, state)
                         vars_after = state["variables"].model_dump()
-                        changed = {
-                            k: v
-                            for k, v in vars_after.items()
-                            if vars_before.get(k) != v
-                        }
+                        changed = {k: v for k, v in vars_after.items() if vars_before.get(k) != v}
                         msg = self.custom_session_message_writer.add_condition_group_manipulation_message(
                             session_id=self.session_id,
                             node_name=self.node_name,

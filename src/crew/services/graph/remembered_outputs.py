@@ -14,9 +14,7 @@ class RememberedOutputsStore:
     flows overwrites the value but keeps the position).
     """
 
-    def __init__(
-        self, redis_service: RedisService, ttl_s: int = settings.REMEMBERED_OUTPUTS_TTL
-    ):
+    def __init__(self, redis_service: RedisService, ttl_s: int = settings.REMEMBERED_OUTPUTS_TTL):
         self._redis_service = redis_service
         self._ttl_s = int(ttl_s)
 

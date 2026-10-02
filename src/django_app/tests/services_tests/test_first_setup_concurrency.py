@@ -5,9 +5,9 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection
 
-from tables.models.rbac_models import OrganizationUser
-from tables.services.rbac.first_setup_service import FirstSetupService
-from tables.services.rbac.rbac_exceptions import SetupAlreadyCompletedError
+from rbac.models import OrganizationUser
+from rbac.identity.first_setup import FirstSetupService
+from rbac.exceptions import SetupAlreadyCompletedError
 
 
 # `transaction=True` truncates every table at teardown, including the built-in

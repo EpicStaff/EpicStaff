@@ -1,14 +1,15 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-INIT_REALTIME_POST = dict(
-    summary="Initialize a realtime agent session",
-    description=(
+INIT_REALTIME_POST = {
+    "summary": "Initialize a realtime agent session",
+    "description": (
         "Initializes a realtime agent session for a `RealtimeAgentDefinition` "
         "(pass `agent_definition_id`)."
     ),
-    responses={
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Realtime agent created successfully",
@@ -33,4 +34,4 @@ INIT_REALTIME_POST = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}

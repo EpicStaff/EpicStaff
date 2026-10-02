@@ -1,10 +1,9 @@
+from collections.abc import Iterable
 from functools import cache
-from typing import Iterable
 
 from django.db import models, transaction
 from django.db.models import Exists, OuterRef, Q
 from loguru import logger
-
 from tables.models.python_models import PythonCode
 
 
@@ -63,9 +62,7 @@ class PythonCodeCleanupService:
                 .order_by("id")
                 .values_list("id", flat=True)
             )
-            deleted, _ = (
-                PythonCode.objects.filter(id__in=locked_ids).exclude(owners).delete()
-            )
+            deleted, _ = PythonCode.objects.filter(id__in=locked_ids).exclude(owners).delete()
 
         if deleted:
             logger.debug("Deleted {deleted} orphaned PythonCode rows", deleted=deleted)

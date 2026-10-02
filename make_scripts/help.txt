@@ -2,79 +2,29 @@
 ================================================================
  Available commands
 ================================================================
+ Run from the repo root. Each target uses the service's own
+ src/<service>/.venv and puts the repo root on PYTHONPATH.
+ The Docker stack is run with `docker compose` directly from src/.
 
- ENVIRONMENT
+ UV DEPENDENCY MANAGEMENT
 ----------------------------------------------------------------
- make up
-   Start all services (single docker-compose.yaml + src/.env).
-   Creates src/.env from src/.env.example on first run.
+ make uv-sync svc=<service>
+   Create/refresh src/<service>/.venv from its uv.lock
+   (same flags as the Docker builders).
+   Example: make uv-sync svc=django_app
 
- make down
-   Stop all services.
+ make uv-lock
+   Regenerate uv.lock for every backend service in src/.
+   Run after editing any service's pyproject.toml dependencies.
 
- make build
-   Build images without starting containers.
-
- make rebuild
-   Rebuild ALL services from scratch (no cache) and start.
-   Use when dependencies or Dockerfiles changed.
-
- make rebuild-s s=<service>
-   Rebuild and restart a single service (uses cache).
-   Example: make rebuild-s s=crew
-
- make restart s=<service>
-   Restart a single service.
-   Example: make restart s=manager
-
- make logs
-   Tail logs for all services.
-
- make logs-s s=<service>
-   Tail logs for a single service.
-   Example: make logs-s s=django_app
-
- make init
-   Create external volumes and networks. Run automatically by
-   up / build / rebuild, so rarely needed directly.
-
- BRANCH SWITCHING  (fast builds via image cache)
-----------------------------------------------------------------
- make switch b=<branch>
-   Full one-command environment switch. Does everything in order:
-     1. Saves current Docker images tagged with current branch name
-     2. Backs up current DB volume to a .tar file
-     3. Runs: git checkout <branch>
-     4. Loads cached Docker images for the new branch (if any)
-     5. Restores DB volume for the new branch (if backup exists)
-   After this: run  make up  (build uses cache).
-   Example: make switch b=feature/EST-1234
-
- make stash-tags
-   Tags each local Docker image with the current branch name.
-   Example: crew  ->  crew:feature-EST-1234
-   Run this BEFORE switching branches manually (git checkout).
-   Safe to run multiple times - skips images not built yet.
-
- make apply-tags
-   Loads cached images for the current branch and retags them
-   back to their default names so Docker can use them as cache.
-   Example: crew:feature-EST-1234  ->  crew
-   Run this AFTER switching branches manually (git checkout).
-   If no cached images exist for this branch, build starts fresh.
-
- make backup
-   Saves the current DB volume to make_scripts/backups/<branch>.tar
-   Run this before switching branches to preserve your test data.
-
- make apply-backup
-   Restores the DB volume from make_scripts/backups/<branch>.tar.
-   If no backup file exists for this branch, nothing is restored.
+ make uv-lock-<service>
+   Regenerate the lock for one service only.
+   Example: make uv-lock-crew
 
  LOCAL DJANGO DEVELOPMENT
 ----------------------------------------------------------------
  make django-tests ARGS=<pytest-args>
-   Run pytest against the Django app locally (uses local .venv).
+   Run pytest against the Django app locally. Needs Postgres.
    Example: make django-tests
    Example: make django-tests ARGS="tests/api_tests/quickstart_test.py -v"
    Example: make django-tests ARGS="tests/api_tests/quickstart_test.py::test_post_quickstart_success -v"
@@ -90,31 +40,11 @@
    Run any manage.py command locally.
    Example: make django-manage CMD=shell
 
- UTILITIES
+ SERVICE TESTS
 ----------------------------------------------------------------
- make clean
-   Stop all services and DELETE volumes. WARNING: wipes DB data.
-
- make docker-generate-certs domain=<domain>
-   Generate self-signed SSL certificates for local Nginx.
-
- make uv-lock
-   Regenerate uv.lock for every backend service in src/.
-   Run after editing any service's pyproject.toml dependencies.
-
- make uv-lock-<service>
-   Regenerate the lock for one service only.
-   Example: make uv-lock-crew
-
-================================================================
- TYPICAL WORKFLOW
-----------------------------------------------------------------
- Switch to another branch (one command):
-   make switch b=<branch>
-   make up
-
- Already ran git checkout manually:
-   make apply-tags
-   make apply-backup
-   make up
+ make <service>-tests ARGS=<pytest-args>
+   Run pytest for any other uv service in src/ (crew, agent,
+   sandbox, knowledge_new, realtime, webhook, ...).
+   Example: make crew-tests
+   Example: make agent-tests ARGS="-k my_test"
 ================================================================

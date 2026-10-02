@@ -8,7 +8,7 @@ from tables.models.llm_models import (
     RealtimeModel,
     RealtimeTranscriptionModel,
 )
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 
 
 @pytest.fixture

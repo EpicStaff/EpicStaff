@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import jsonschema
+from shared.models.agent_service import TokenUsage
 
 from app.exceptions import InvalidOutputSchemaError
-from shared.models.agent_service import TokenUsage
 
 
 @dataclass(frozen=True)

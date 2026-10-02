@@ -1,15 +1,14 @@
 import asyncio
 from typing import Any
 
-from loguru import logger
 from langgraph.types import StreamWriter
-
+from loguru import logger
 from models.state import State
+from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
-from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import RagSearchConfig
 
 
@@ -70,9 +69,7 @@ class KnowledgeNode(BaseNode):
         try:
             result = self.query_template.format_map(_Fillable(input_))
         except (ValueError, IndexError) as e:
-            logger.warning(
-                f"Knowledge node '{self.node_name}' query template not formattable: {e}"
-            )
+            logger.warning(f"Knowledge node '{self.node_name}' query template not formattable: {e}")
             return self.query_template
         if missing:
             logger.warning(
@@ -92,9 +89,7 @@ class KnowledgeNode(BaseNode):
                 "set a query or map an input that resolves to non-empty text."
             )
 
-        rag_search_config = (
-            self.rag_search_config.model_dump() if self.rag_search_config else {}
-        )
+        rag_search_config = self.rag_search_config.model_dump() if self.rag_search_config else {}
         try:
             results = await asyncio.to_thread(
                 self.knowledge_search_service.search_knowledges,

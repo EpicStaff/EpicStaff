@@ -46,6 +46,11 @@
                 [selectedDocumentId]="selectedDocumentId()"
             >
                 <app-button
+                    [disabled]="!canRunChunking()"
+                    [matTooltip]="
+                        canRunChunking() ? 'Run chunking process' : 'You dont have permission to run chunking'
+                    "
+                    matTooltipPosition="above"
                     class="dialog__chunk-preview-button"
                     type="outline-primary"
                     (click)="onShowChunks()"

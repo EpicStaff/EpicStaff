@@ -1,9 +1,8 @@
 from django.db import models
-
+from rbac.access.effective import EffectivePermissions
 from tables.models import GraphVersion
 from tables.services.delete_services.base_delete_service import BaseDeleteService
 from tables.services.delete_services.usage import UsageReport, build_reports
-from tables.services.rbac.effective_permissions import EffectivePermissions
 
 
 class GraphVersionDeleteService(BaseDeleteService):

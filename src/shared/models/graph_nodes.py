@@ -6,9 +6,8 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from .agent_service import CollectionSpec, S3FileSpec
 from .ai_providers import LLMData
 from .knowledge import RagSearchConfig
-from .tools import PythonCodeData
 from .surfaces import CombinedSurfaceData
-from .tools import BaseToolData
+from .tools import BaseToolData, PythonCodeData
 
 
 class PythonNodeData(BaseModel):
@@ -235,9 +234,7 @@ class ScheduleTriggerNodeData(BaseModel):
     run_mode: Literal["once", "repeat"] | None = None
     start_date_time: str | None = None
     every: int | None = None
-    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = (
-        None
-    )
+    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = None
     weekdays: list[str] = []
     end_type: Literal["never", "on_date", "after_n_runs"] | None = None
     end_date_time: str | None = None
@@ -269,9 +266,7 @@ class GraphData(BaseModel):
     edge_list: list[EdgeData] = []
     conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []
-    classification_decision_table_node_list: list[
-        ClassificationDecisionTableNodeData
-    ] = []
+    classification_decision_table_node_list: list[ClassificationDecisionTableNodeData] = []
     entrypoint: str
     end_node: EndNodeData | None
     telegram_trigger_node_data_list: list[TelegramTriggerNodeData] = []
@@ -299,9 +294,7 @@ class ScheduleTriggerNodePayload(BaseModel):
     run_mode: Literal["once", "repeat"] | None = None
     start_date_time: datetime | None = None
     every: int | None = None
-    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = (
-        None
-    )
+    unit: Literal["seconds", "minutes", "hours", "days", "weeks", "months"] | None = None
     weekdays: list[str] | None = None
     end_type: Literal["never", "on_date", "after_n_runs"] | None = None
     end_date_time: datetime | None = None

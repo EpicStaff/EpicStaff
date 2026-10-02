@@ -1,7 +1,8 @@
+from rbac.access.effective import EffectivePermissions
+from rbac.models.enums import ResourceType
 from tables.models import Crew, EmbeddingConfig
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.delete_services.base_delete_service import BaseDeleteService
 from tables.services.delete_services.usage import (
     BucketCollector,
@@ -9,7 +10,6 @@ from tables.services.delete_services.usage import (
     UsageReport,
     build_reports,
 )
-from tables.services.rbac.effective_permissions import EffectivePermissions
 
 # Both RAG kinds reach their SourceCollection and embedder by the same paths.
 _RAG_MODELS = (GraphRag, NaiveRag)
@@ -39,15 +39,13 @@ class EmbeddingConfigDeleteService(BaseDeleteService):
     ) -> dict[int, UsageReport]:
         """Crews and collections referencing each config."""
         crews = BucketCollector.for_resource(ResourceType.PROJECTS, effective)
-        collections = BucketCollector.for_resource(
-            ResourceType.KNOWLEDGE_SOURCES, effective
-        )
+        collections = BucketCollector.for_resource(ResourceType.KNOWLEDGE_SOURCES, effective)
 
         if ids:
             crews.add_rows(
-                Crew.objects.filter(
-                    org_id=org_id, embedding_config_id__in=ids
-                ).values_list("embedding_config_id", "id", "name"),
+                Crew.objects.filter(org_id=org_id, embedding_config_id__in=ids).values_list(
+                    "embedding_config_id", "id", "name"
+                ),
                 kind=RefKind.CREW,
             )
             for rag_model in _RAG_MODELS:

@@ -1,14 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ValidationErrorsComponent } from '@shared/components';
+import {
+    CustomInputComponent,
+    GoToButtonComponent,
+    HelpTooltipComponent,
+    SelectComponent,
+    SelectItem,
+    ValidationErrorsComponent,
+} from '@shared/components';
 
 import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { GoToButtonComponent } from '../../../../shared/components/go-to-button/go-to-button.component';
-import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-// import { flowUrl } from '../../../../shared/utils/flow-links';
+// import { flowUrl } from '@shared/utils';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';

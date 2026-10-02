@@ -9,6 +9,7 @@ accounting / stop-triggering logic that lives in run_session() itself.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -224,6 +225,34 @@ async def test_budget_is_per_session_not_shared(service, monkeypatch):
         _session_data(session_a_id, token_budget=100), stop_event_a2
     )
     assert not stop_event_a2.is_set()
+
+
+@pytest.mark.asyncio
+async def test_handle_stop_session_skips_status_publish_when_not_in_pool(service):
+    session_id = 999
+    data = json.dumps({"session_id": session_id})
+
+    await service._handle_stop_session(data)
+
+    service.redis_service.aupdate_session_status.assert_not_called()
+    assert session_id not in service.session_graph_pool
+
+
+@pytest.mark.asyncio
+async def test_handle_stop_session_publishes_status_when_in_pool(service):
+    session_id = 998
+    fake_entry = Mock()
+    fake_entry.stop_event = Mock()
+    service.session_graph_pool[session_id] = fake_entry
+
+    data = json.dumps({"session_id": session_id})
+    await service._handle_stop_session(data)
+
+    service.redis_service.aupdate_session_status.assert_called_once_with(
+        session_id=session_id, status="stop"
+    )
+    fake_entry.stop_event.set.assert_called_once()
+    assert session_id not in service.session_graph_pool
 
 
 @pytest.mark.asyncio

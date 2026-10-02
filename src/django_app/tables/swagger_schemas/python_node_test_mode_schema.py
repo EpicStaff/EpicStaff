@@ -1,16 +1,14 @@
 from drf_spectacular.utils import OpenApiResponse, inline_serializer
 from rest_framework import serializers
 
-LAST_TEST_INPUT_SWAGGER = dict(
-    summary="Get Last Test Input for Python Node",
-    responses={
+LAST_TEST_INPUT_SWAGGER = {
+    "summary": "Get Last Test Input for Python Node",
+    "responses": {
         200: OpenApiResponse(
             response=inline_serializer(
                 name="PythonNodeLastTestInputResponse",
                 fields={
-                    "detail": serializers.CharField(
-                        help_text="Human-readable status message."
-                    ),
+                    "detail": serializers.CharField(help_text="Human-readable status message."),
                     "input": serializers.JSONField(
                         allow_null=True,
                         help_text=(
@@ -24,4 +22,4 @@ LAST_TEST_INPUT_SWAGGER = dict(
         ),
         404: OpenApiResponse(description="PythonNode not found"),
     },
-)
+}

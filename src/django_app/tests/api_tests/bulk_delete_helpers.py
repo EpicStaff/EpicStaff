@@ -7,8 +7,8 @@ setup, which was copied verbatim into every module, lives here.
 
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole
 
 
 def org_admin_client(django_user_model, org, email):

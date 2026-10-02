@@ -1,6 +1,6 @@
 import base64
 import time
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 from google.genai import types
@@ -35,12 +35,12 @@ class GeminiClientEventHandler:
             "session.update": self._handle_noop,
         }
 
-    async def handle_event(self, data: Dict[str, Any]) -> None:
+    async def handle_event(self, data: dict[str, Any]) -> None:
         event_type = data.get("type", "")
         handler = self.event_map.get(event_type, self._handle_unknown)
         await handler(data)
 
-    async def _handle_audio_append(self, data: Dict[str, Any]) -> None:
+    async def _handle_audio_append(self, data: dict[str, Any]) -> None:
         audio_b64 = data.get("audio", "")
         if not audio_b64:
             return
@@ -71,10 +71,10 @@ class GeminiClientEventHandler:
         except Exception as e:
             logger.error(f"Gemini client handler: failed to process audio chunk: {e}")
 
-    async def _handle_audio_commit(self, data: Dict[str, Any]) -> None:
+    async def _handle_audio_commit(self, data: dict[str, Any]) -> None:
         pass  # Server VAD mode: Gemini detects speech end automatically
 
-    async def _handle_conversation_item_create(self, data: Dict[str, Any]) -> None:
+    async def _handle_conversation_item_create(self, data: dict[str, Any]) -> None:
         """Frontend text-chat path (typed messages, not spoken audio): OpenAI's
         wire format nests the text under item.content[].text. Gemini has no
         equivalent passive "create item" call -- send_client_content with
@@ -95,14 +95,12 @@ class GeminiClientEventHandler:
         await self.client.server_event_handler.emit_user_text_item(text)
         await self.client.send_conversation_item_to_server(text)
 
-    async def _handle_response_cancel(self, data: Dict[str, Any]) -> None:
+    async def _handle_response_cancel(self, data: dict[str, Any]) -> None:
         """Browser signals user interrupted — reset state and stop browser audio playback."""
         await self.client.server_event_handler.handle_client_cancel()
 
-    async def _handle_noop(self, data: Dict[str, Any]) -> None:
+    async def _handle_noop(self, data: dict[str, Any]) -> None:
         pass
 
-    async def _handle_unknown(self, data: Dict[str, Any]) -> None:
-        logger.debug(
-            f"Gemini client handler: unhandled event type '{data.get('type')}'"
-        )
+    async def _handle_unknown(self, data: dict[str, Any]) -> None:
+        logger.debug(f"Gemini client handler: unhandled event type '{data.get('type')}'")

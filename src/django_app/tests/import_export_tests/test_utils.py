@@ -16,22 +16,23 @@ class TestEnsureUniqueIdentifier:
 
     def test_simple_collision(self):
         result = ensure_unique_identifier("MyAgent", ["MyAgent"])
-        assert result == "MyAgent (2)"
+        assert result == "MyAgent #2"
 
     def test_numbered_collision(self):
-        result = ensure_unique_identifier("MyAgent", ["MyAgent", "MyAgent (2)"])
-        assert result == "MyAgent (3)"
+        result = ensure_unique_identifier("MyAgent", ["MyAgent", "MyAgent #2"])
+        assert result == "MyAgent #3"
 
-    def test_strips_existing_number_if_base_free(self):
-        """When 'MyAgent (5)' collides but 'MyAgent' is free, return 'MyAgent'."""
-        result = ensure_unique_identifier("MyAgent (5)", ["MyAgent (5)"])
-        assert result == "MyAgent"
+    def test_numbered_name_does_not_collapse_to_free_base(self):
+        """Even though 'MyAgent' is free, a numbered collision like 'MyAgent #5'
+        never collapses back to the plain base name -- it still gets numbered."""
+        result = ensure_unique_identifier("MyAgent #5", ["MyAgent #5"])
+        assert result == "MyAgent #2"
 
     def test_gap_filling(self):
         result = ensure_unique_identifier(
-            "MyAgent", ["MyAgent", "MyAgent (2)", "MyAgent (4)"]
+            "MyAgent", ["MyAgent", "MyAgent #2", "MyAgent #4"]
         )
-        assert result == "MyAgent (3)"
+        assert result == "MyAgent #3"
 
     def test_empty_existing_names(self):
         result = ensure_unique_identifier("MyAgent", [])

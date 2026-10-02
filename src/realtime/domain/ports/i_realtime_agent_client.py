@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 
 class IRealtimeAgentClient(ABC):
@@ -39,7 +39,7 @@ class IRealtimeAgentClient(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def process_message(self, message: dict) -> Optional[dict]:
+    async def process_message(self, message: dict) -> dict | None:
         """
         Translate a frontend WebSocket message into the provider's wire
         format and send it.  Returns an optional immediate response to
@@ -82,9 +82,7 @@ class IRealtimeAgentClient(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def call_tool(
-        self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]
-    ) -> None:
+    async def call_tool(self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]) -> None:
         """Execute a tool and send the result back to the provider."""
         ...
 
@@ -102,7 +100,7 @@ class IRealtimeAgentClient(ABC):
 
     @property
     @abstractmethod
-    def stream_sid(self) -> Optional[str]: ...
+    def stream_sid(self) -> str | None: ...
 
     @stream_sid.setter
     @abstractmethod

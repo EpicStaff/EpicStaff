@@ -1,6 +1,5 @@
 import { computed, inject, Injectable, Signal } from '@angular/core';
-import { GetLlmConfigRequest } from '@shared/models';
-import { LLMProvider, ModelTypes } from '@shared/models';
+import { GetLlmConfigRequest, LLMProvider, ModelTypes } from '@shared/models';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 

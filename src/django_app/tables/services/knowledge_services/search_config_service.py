@@ -11,16 +11,13 @@ OUT: one ready settings object per search method (naive, or graph basic /
      fit the budget. It can also say which graph method fits best.
 """
 
+import itertools
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, get_args
+from typing import get_args
 
 from pydantic import BaseModel
-
-from src.shared.models.search_config_suggestion import (
-    SuggestedCollectionMetrics,
-    GraphSearchMethod,
-)
 from src.shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagDriftSearchParams,
@@ -28,9 +25,12 @@ from src.shared.models.knowledge import (
     GraphRagLocalSearchParams,
     NaiveRagSearchConfig,
 )
+from src.shared.models.search_config_suggestion import (
+    GraphSearchMethod,
+    SuggestedCollectionMetrics,
+)
 from tables.constants.knowledge_constants import MAX_TOKEN_FIELD_VALUE
 from tables.utils.litellm_model_info import resolve_context_window
-
 
 SAFE_FRACTION = 0.8
 
@@ -65,12 +65,12 @@ def _lerp_buckets(
         # always matches and overwrites this. Kept only as a safety net against
         # an UnboundLocalError if anchors were ever malformed (unsorted/empty).
         result = xs[-1][1]
-        for (x0, y0), (x1, y1) in zip(xs, xs[1:]):
+        for (x0, y0), (x1, y1) in itertools.pairwise(xs):
             if x0 <= v <= x1:
                 result = y0 + (y1 - y0) * (v - x0) / (x1 - x0)
                 break
     if round_to_int:
-        return int(round(result))
+        return round(result)
     return round(result, round_decimals)
 
 
@@ -208,7 +208,7 @@ def calc_drift_n_depth(total_documents: int) -> int:
 
 
 def safe_budget(target_ctx: int, is_trusted: bool = True) -> int:
-    """Token budget = ctx × SAFE_FRACTION. Untrusted ctx (user override or
+    """Token budget = ctx x SAFE_FRACTION. Untrusted ctx (user override or
     fallback, not litellm) is capped at MAX_TOKEN_FIELD_VALUE so a mistyped
     override can't push suggestions to absurd values.
     """
@@ -291,8 +291,7 @@ def validate_graph_token_fields(graph_config: dict, cap: int) -> dict:
         for field_name, value in params.items():
             if field_name in TOKEN_CAP_FIELDS and value is not None and value > cap:
                 errors.setdefault(method_key, {})[field_name] = (
-                    f"Ensure this value is less than or equal to {cap} "
-                    f"(model context window)."
+                    f"Ensure this value is less than or equal to {cap} (model context window)."
                 )
     return errors
 
@@ -339,8 +338,8 @@ def default_data_tokens(
     ctx_share: float,
     corpus_share: float,
 ) -> int:
-    """Per-method default for a token field: max of ctx_share × budget and
-    corpus_share × corpus_tokens, floored at 1000 and capped at budget. The max
+    """Per-method default for a token field: max of ctx_share x budget and
+    corpus_share x corpus_tokens, floored at 1000 and capped at budget. The max
     keeps small corpora from starving and large ones from exceeding the LLM ceiling.
     """
     corpus_tokens = int(metrics.total_chunks * max(metrics.avg_chunk_size, 0.0))
@@ -373,9 +372,7 @@ def _resolved_props(
     to sum <= 1.0. Shared by local and drift builders (they differ only in key names).
     """
     text_unit = _pick(custom, text_key, calc_text_unit_prop(metrics.avg_chunk_size))
-    community = _pick(
-        custom, community_key, calc_community_prop(metrics.total_documents)
-    )
+    community = _pick(custom, community_key, calc_community_prop(metrics.total_documents))
     return _rebalance_props(text_unit, community)
 
 
@@ -427,9 +424,7 @@ def build_graph_local_params(
     chunks = metrics.total_chunks
     top_k = calc_top_k(chunks)
 
-    text_unit, community = _resolved_props(
-        custom, metrics, "text_unit_prop", "community_prop"
-    )
+    text_unit, community = _resolved_props(custom, metrics, "text_unit_prop", "community_prop")
 
     default_budget = resolve_effective_budget(ctx, is_trusted, custom)
     token_fields, clamped = clamp_token_fields(
@@ -480,15 +475,11 @@ def build_graph_global_params(
     )
     return (
         GraphRagGlobalSearchParams(
-            dynamic_community_selection=_pick(
-                custom, "dynamic_community_selection", docs > 50
-            ),
+            dynamic_community_selection=_pick(custom, "dynamic_community_selection", docs > 50),
             map_prompt=_pick(custom, "map_prompt", None),
             reduce_prompt=_pick(custom, "reduce_prompt", None),
             knowledge_prompt=_pick(custom, "knowledge_prompt", None),
-            map_max_length=_pick(
-                custom, "map_max_length", calc_global_map_max_length(chunks)
-            ),
+            map_max_length=_pick(custom, "map_max_length", calc_global_map_max_length(chunks)),
             reduce_max_length=_pick(
                 custom, "reduce_max_length", calc_global_reduce_max_length(chunks)
             ),
@@ -497,12 +488,8 @@ def build_graph_global_params(
                 "dynamic_search_threshold",
                 calc_global_dynamic_search_threshold(docs),
             ),
-            dynamic_search_keep_parent=_pick(
-                custom, "dynamic_search_keep_parent", docs > 100
-            ),
-            dynamic_search_use_summary=_pick(
-                custom, "dynamic_search_use_summary", docs > 100
-            ),
+            dynamic_search_keep_parent=_pick(custom, "dynamic_search_keep_parent", docs > 100),
+            dynamic_search_use_summary=_pick(custom, "dynamic_search_use_summary", docs > 100),
             dynamic_search_max_level=_pick(
                 custom,
                 "dynamic_search_max_level",
@@ -547,9 +534,7 @@ def build_graph_drift_params(
             "local_search_llm_max_gen_tokens": _pick(
                 custom, "local_search_llm_max_gen_tokens", None
             ),
-            "reduce_max_completion_tokens": _pick(
-                custom, "reduce_max_completion_tokens", None
-            ),
+            "reduce_max_completion_tokens": _pick(custom, "reduce_max_completion_tokens", None),
             "local_search_llm_max_gen_completion_tokens": _pick(
                 custom, "local_search_llm_max_gen_completion_tokens", None
             ),
@@ -562,14 +547,10 @@ def build_graph_drift_params(
             prompt=_pick(custom, "prompt", None),
             reduce_prompt=_pick(custom, "reduce_prompt", None),
             concurrency=_pick(custom, "concurrency", calc_drift_concurrency(chunks)),
-            drift_k_followups=_pick(
-                custom, "drift_k_followups", calc_drift_k_followups(chunks)
-            ),
+            drift_k_followups=_pick(custom, "drift_k_followups", calc_drift_k_followups(chunks)),
             primer_folds=_pick(custom, "primer_folds", calc_drift_primer_folds(docs)),
             n_depth=_pick(custom, "n_depth", calc_drift_n_depth(docs)),
-            community_level=_pick(
-                custom, "community_level", calc_community_level(docs)
-            ),
+            community_level=_pick(custom, "community_level", calc_community_level(docs)),
             local_search_text_unit_prop=text_unit,
             local_search_community_prop=community,
             local_search_top_k_mapped_entities=_pick(
@@ -617,18 +598,16 @@ Everything else (view dispatch, validation) updates automatically.
 GRAPH_SEARCH_METHOD_REGISTRY: list[SearchMethodStrategy] = [
     SearchMethodStrategy("basic", build_graph_basic_params, GraphRagBasicSearchParams),
     SearchMethodStrategy("local", build_graph_local_params, GraphRagLocalSearchParams),
-    SearchMethodStrategy(
-        "global", build_graph_global_params, GraphRagGlobalSearchParams
-    ),
+    SearchMethodStrategy("global", build_graph_global_params, GraphRagGlobalSearchParams),
     SearchMethodStrategy("drift", build_graph_drift_params, GraphRagDriftSearchParams),
 ]
 
 # Fail fast at import time if the registry and the canonical `GraphSearchMethod`
 # Literal (the API contract) ever drift apart — e.g., a method added to one but
 # not the other.
-assert {s.method_name for s in GRAPH_SEARCH_METHOD_REGISTRY} == set(
-    get_args(GraphSearchMethod)
-), "GRAPH_SEARCH_METHOD_REGISTRY is out of sync with GraphSearchMethod Literal"
+assert {s.method_name for s in GRAPH_SEARCH_METHOD_REGISTRY} == set(get_args(GraphSearchMethod)), (
+    "GRAPH_SEARCH_METHOD_REGISTRY is out of sync with GraphSearchMethod Literal"
+)
 
 
 def get_graph_strategy(method_name: str) -> SearchMethodStrategy:
@@ -683,6 +662,4 @@ def recommend_graph_search_method(metrics: SuggestedCollectionMetrics) -> str:
         if applicability.predicate(metrics):
             return applicability.method_name
     # Unreachable: the last entry is a catch-all. Guard for tampering.
-    raise RuntimeError(
-        "GRAPH_METHOD_RECOMMENDATION_ORDER must end with a catch-all entry."
-    )
+    raise RuntimeError("GRAPH_METHOD_RECOMMENDATION_ORDER must end with a catch-all entry.")

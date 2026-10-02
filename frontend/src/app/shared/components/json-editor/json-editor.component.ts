@@ -18,7 +18,7 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 
 import { ToastService } from '../../../services/notifications';
-import { ResizableDirective } from '../../../user-settings-page/tools/custom-tool-editor/directives/resizable.directive';
+import { ResizableDirective } from '../../directives/resizable.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 export interface JsonError {

@@ -1,5 +1,6 @@
+import { NodeType } from '@shared/models';
+
 import { DecisionTableNodeModel, LLMNodeModel, NodeModel, SubGraphNodeModel } from '../models/node.model';
-import { NodeType } from './node-type';
 
 /** Strips any auto-generated counter suffix, e.g. "Python-Node (#2)" or "Python-Node #2" → "Python-Node" */
 function stripCounter(name: string | null | undefined): string {

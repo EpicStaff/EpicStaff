@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from tables.services.secrets.parse_code import GET_SECRET_FUNC, parse_secret_names
 from tables.services.secrets.exceptions import UndeclaredSecretError
+from tables.services.secrets.parse_code import GET_SECRET_FUNC, parse_secret_names
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
 
 
@@ -76,9 +76,7 @@ def _node_name(*, row, site) -> str:
     return getattr(row, site.name_field) or f"{site.model.__name__} #{row.pk}"
 
 
-def assert_tool_secrets_declared(
-    *, tool_name: str, code: str, declared: set[str]
-) -> None:
+def assert_tool_secrets_declared(*, tool_name: str, code: str, declared: set[str]) -> None:
     """Gate a custom tool's code against its declaration, by name."""
     parsed = parse_secret_names(code=code)
     undeclared = parsed - declared

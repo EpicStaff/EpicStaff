@@ -103,6 +103,9 @@ def _search_with_python(
     matches: List[FileMatch] = []
 
     for file_path in candidate_files:
+        if not RouteTool.is_path_has_permission(file_path):
+            continue
+
         try:
             raw = file_path.read_bytes()
         except OSError:

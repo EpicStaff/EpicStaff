@@ -41,7 +41,7 @@ class StreamTokenRepository(metaclass=SingletonMeta):
         max_tokens: int = DEFAULT_MAX_STREAM_TOKENS,
     ):
         # token -> (bound_key, expires_at)
-        self._store: "OrderedDict[str, tuple[str | None, float]]" = OrderedDict()
+        self._store: OrderedDict[str, tuple[str | None, float]] = OrderedDict()
         self.ttl_seconds = ttl_seconds
         self.max_tokens = max_tokens
 

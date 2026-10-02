@@ -1,12 +1,12 @@
-from typing import Any, Optional
+from typing import Any
 
 from django.db.models import Q
 
-from tables.models import WebhookTrigger
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.webhook import WebhookTriggerImportSerializer
-from tables.import_export.id_mapper import IDMapper
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.webhook import WebhookTriggerImportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import WebhookTrigger
 
 
 class WebhookTriggerStrategy(EntityImportExportStrategy):
@@ -39,8 +39,8 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
         return serializer.save(org_id=org_id)
 
     def find_existing(
-        self, data: dict, id_mapper: IDMapper, org_id: int = None
-    ) -> Optional[Any]:
+        self, data: dict, id_mapper: IDMapper, org_id: int | None = None
+    ) -> Any | None:
         webhook_path = data.get("path")
         existing_webhook = (
             WebhookTrigger.objects.filter(path=webhook_path)

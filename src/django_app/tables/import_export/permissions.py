@@ -5,9 +5,9 @@ from the map are not permission-gated on import (e.g. SESSION is not importable)
 Tags map to their parent resource; provider models map to LLM_CONFIGS.
 """
 
-from tables.import_export.enums import EntityType
-from tables.models.rbac_models.rbac_enums import ResourceType
+from rbac.models.enums import ResourceType
 
+from tables.import_export.enums import EntityType
 
 ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.AGENT: ResourceType.AGENTS,
@@ -16,7 +16,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.CREW_TAG: ResourceType.PROJECTS,
     EntityType.GRAPH: ResourceType.FLOWS,
     EntityType.GRAPH_TAG: ResourceType.FLOWS,
-    EntityType.WEBHOOK_TRIGGER: ResourceType.FLOWS,
+    EntityType.WEBHOOK_TRIGGER: ResourceType.WEBHOOKS,
     EntityType.LABEL: ResourceType.FLOWS,
     EntityType.LLM_CONFIG: ResourceType.LLM_CONFIGS,
     EntityType.EMBEDDING_CONFIG: ResourceType.LLM_CONFIGS,

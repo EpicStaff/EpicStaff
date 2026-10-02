@@ -14,22 +14,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import litellm
 import pytest
-
+from app.llm.client import LLMChunk
 from app.llm.litellm_client import LiteLLMClient
 from app.llm.retry import RetryPolicy
 from app.llm.router_pool import RouterPool
-from app.llm.client import LLMChunk, ToolCallFragment
 from app.tools.registry import ToolSpec
-
 
 # ---------------------------------------------------------------------------
 # Chunk builders
 # ---------------------------------------------------------------------------
 
 
-def _tc(
-    index: int, tc_id: str | None, name: str | None, arguments: str
-) -> SimpleNamespace:
+def _tc(index: int, tc_id: str | None, name: str | None, arguments: str) -> SimpleNamespace:
     return SimpleNamespace(
         index=index,
         id=tc_id,
@@ -70,9 +66,7 @@ def make_router(chunks: list) -> MagicMock:
     return router
 
 
-async def collect(
-    client: LiteLLMClient, messages, tools, model_config, **kw
-) -> list[LLMChunk]:
+async def collect(client: LiteLLMClient, messages, tools, model_config, **kw) -> list[LLMChunk]:
     chunks = []
     async for chunk in client.chat(messages, tools, model_config, stream=True, **kw):
         chunks.append(chunk)
@@ -165,14 +159,10 @@ async def test_parallel_tool_calls_routed_by_index():
 
     tc_fragments = [c for c in result if c.tool_call_fragment]
     a_fragments = [
-        f.tool_call_fragment
-        for f in tc_fragments
-        if f.tool_call_fragment.id == "call_a1"
+        f.tool_call_fragment for f in tc_fragments if f.tool_call_fragment.id == "call_a1"
     ]
     b_fragments = [
-        f.tool_call_fragment
-        for f in tc_fragments
-        if f.tool_call_fragment.id == "call_b1"
+        f.tool_call_fragment for f in tc_fragments if f.tool_call_fragment.id == "call_b1"
     ]
 
     assert len(a_fragments) == 2
@@ -284,9 +274,7 @@ async def test_retryable_error_retried_successfully(monkeypatch):
     async def flaky_acompletion(**kwargs):
         call_count[0] += 1
         if call_count[0] == 1:
-            raise litellm.RateLimitError(
-                "throttled", llm_provider="openai", model="gpt-4o"
-            )
+            raise litellm.RateLimitError("throttled", llm_provider="openai", model="gpt-4o")
         return _aiter(success_chunks)
 
     router = MagicMock()
@@ -314,9 +302,7 @@ async def test_non_retryable_error_raises_immediately(monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
     async def bad_acompletion(**kwargs):
-        raise litellm.AuthenticationError(
-            "bad key", llm_provider="openai", model="gpt-4o"
-        )
+        raise litellm.AuthenticationError("bad key", llm_provider="openai", model="gpt-4o")
 
     router = MagicMock()
     router.model_list = [{"model_name": "synth-model-001"}]
@@ -375,9 +361,7 @@ async def test_runtime_config_max_rpm_passed_to_pool():
         captured_rpm.append(rpm)
         router = MagicMock()
         router.model_list = [{"model_name": "synth-model-001"}]
-        router.acompletion = AsyncMock(
-            return_value=_aiter([_chunk(finish_reason="stop")])
-        )
+        router.acompletion = AsyncMock(return_value=_aiter([_chunk(finish_reason="stop")]))
         return router
 
     pool = MagicMock(spec=RouterPool)
@@ -404,9 +388,7 @@ async def test_usage_chunk_yielded():
     """Chunk with usage attribute emits a LLMChunk(usage=...)."""
     chunks_in = [
         _chunk(content="hi"),
-        _chunk(
-            finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}
-        ),
+        _chunk(finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}),
     ]
     router = make_router(chunks_in)
     pool = make_pool_with_router(router)
@@ -602,9 +584,7 @@ async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
     the stream still completes."""
     chunks_in = [
         _chunk(content="hi"),
-        _chunk(
-            finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}
-        ),
+        _chunk(finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}),
     ]
     router = make_router(chunks_in)
     pool = make_pool_with_router(router)

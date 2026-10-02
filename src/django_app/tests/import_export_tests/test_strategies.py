@@ -1,16 +1,8 @@
 import pytest
 from copy import deepcopy
 
-from tables.models import (
-    AgentNode,
-    Graph,
-    LLMConfig,
-    McpTool,
-    PythonCodeTool,
-    PythonCode,
-    Organization,
-    WebhookTrigger,
-)
+from rbac.models import Organization
+from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -344,7 +336,7 @@ class TestGraphStrategy:
         new_graph = strategy.create_entity(graph_data, mapper, org_id=default_org.id)
 
         assert Graph.objects.count() == graph_count_before + 1
-        assert new_graph.name == "graph1 (2)"
+        assert new_graph.name == "graph1 #2"
         # The source graph's legacy CrewNode is skipped, not recreated.
         assert new_graph.crew_node_list.count() == 0
 
@@ -430,7 +422,7 @@ class TestLLMConfigStrategy:
         new_config = strategy.create_entity(config_data, mapper, org_id=default_org.id)
 
         assert LLMConfig.objects.count() == config_count_before + 1
-        assert new_config.custom_name == "MyGPT-4o (2)"
+        assert new_config.custom_name == "MyGPT-4o #2"
 
     @pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
     def test_find_existing(
@@ -498,6 +490,7 @@ class TestTelegramTriggerNodeStrategy:
         new_trigger = WebhookTrigger.objects.create(path="new-webhook", org=default_org)
 
         mapper = IDMapper()
+        mapper.map(EntityType.GRAPH, graph.id, graph.id, was_created=False)
         mapper.map(EntityType.WEBHOOK_TRIGGER, old_trigger.id, new_trigger.id)
 
         strategy = _get_strategy(EntityType.TELEGRAM_TRIGGER_NODE)
@@ -522,9 +515,13 @@ class TestTelegramTriggerNodeStrategy:
             "fields": [],
         }
 
-        node = strategy.create_entity(data, IDMapper())
+        mapper = IDMapper()
+        mapper.map(EntityType.GRAPH, graph.id, graph.id, was_created=False)
+        node = strategy.create_entity(data, mapper)
 
         assert node.webhook_trigger_id is None
+
+
 # ---- provider model strategies: per-org name uniquification ----
 
 

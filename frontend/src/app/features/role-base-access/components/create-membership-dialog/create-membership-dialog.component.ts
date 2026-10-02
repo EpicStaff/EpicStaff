@@ -20,7 +20,7 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { AggregatedUser } from '../../models/aggregated-user.model';
 import { MembershipsService } from '../../services/admin/memberships.service';
-import { rbacErrorMessage } from '../../utils/rbac-error-messages.util';
+import { rbacErrorMessage } from '../../utils';
 import {
     OrgAssignment,
     StepAssignToOrgComponent,

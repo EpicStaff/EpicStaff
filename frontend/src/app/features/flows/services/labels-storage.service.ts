@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
+import { BaseLabelsStore } from '@shared/services';
 
-import { BaseLabelsStore } from '../../../shared/services/base-labels-store.service';
 import { LabelsApiService } from './labels-api.service';
 
 // Re-export so historical imports of LabelTreeNode from this file keep working.

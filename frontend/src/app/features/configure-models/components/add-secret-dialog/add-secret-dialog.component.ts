@@ -4,15 +4,16 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    CustomInputComponent,
+    TextareaComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
 import { Secret } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
-
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 
 @Component({
     selector: 'app-add-secret-dialog',

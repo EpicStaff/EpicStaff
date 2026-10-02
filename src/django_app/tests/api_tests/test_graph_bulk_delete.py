@@ -13,10 +13,10 @@ from django.test.utils import CaptureQueriesContext
 
 from tables.models import Graph
 from tables.models.graph_models import SubGraphNode
-from tables.models.rbac_models import (
+from rbac.models import (
     Organization,
 )
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models.enums import Permission, ResourceType
 from tests.api_tests.bulk_delete_helpers import custom_role_client, org_admin_client
 
 

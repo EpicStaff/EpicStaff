@@ -1,5 +1,5 @@
 import base64
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -26,12 +26,12 @@ class ElevenLabsClientEventHandler:
             "session.update": self._handle_noop,
         }
 
-    async def handle_event(self, data: Dict[str, Any]) -> None:
+    async def handle_event(self, data: dict[str, Any]) -> None:
         event_type = data.get("type", "")
         handler = self.event_map.get(event_type, self._handle_unknown)
         await handler(data)
 
-    async def _handle_audio_append(self, data: Dict[str, Any]) -> None:
+    async def _handle_audio_append(self, data: dict[str, Any]) -> None:
         audio_b64 = data.get("audio", "")
         if not audio_b64:
             return
@@ -49,11 +49,9 @@ class ElevenLabsClientEventHandler:
 
             await self.client.send_server({"user_audio_chunk": resampled_b64})
         except Exception as e:
-            logger.error(
-                f"ElevenLabs client handler: failed to process audio chunk: {e}"
-            )
+            logger.error(f"ElevenLabs client handler: failed to process audio chunk: {e}")
 
-    async def _handle_conversation_item_create(self, data: Dict[str, Any]) -> None:
+    async def _handle_conversation_item_create(self, data: dict[str, Any]) -> None:
         """Frontend text-chat path (typed messages, not spoken audio). ElevenLabs'
         Conversational AI WebSocket protocol accepts injected text via a
         {"type": "user_message", "text": ...} frame -- see
@@ -73,10 +71,8 @@ class ElevenLabsClientEventHandler:
         await self.client.server_event_handler.emit_user_text_item(text)
         await self.client.send_conversation_item_to_server(text)
 
-    async def _handle_noop(self, data: Dict[str, Any]) -> None:
+    async def _handle_noop(self, data: dict[str, Any]) -> None:
         pass
 
-    async def _handle_unknown(self, data: Dict[str, Any]) -> None:
-        logger.debug(
-            f"ElevenLabs client handler: unhandled event type '{data.get('type')}'"
-        )
+    async def _handle_unknown(self, data: dict[str, Any]) -> None:
+        logger.debug(f"ElevenLabs client handler: unhandled event type '{data.get('type')}'")

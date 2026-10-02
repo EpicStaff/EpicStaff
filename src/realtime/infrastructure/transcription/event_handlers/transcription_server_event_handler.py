@@ -1,9 +1,11 @@
-from typing import Callable, Dict, Any, Coroutine
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any
 
-from loguru import logger
-from infrastructure.persistence.database import save_realtime_session_item_to_db
 from domain.services.chat_buffer import ChatSummarizedBuffer
+from loguru import logger
+
+from infrastructure.persistence.database import save_realtime_session_item_to_db
 
 
 class TranscriptionServerEventHandler:
@@ -16,7 +18,7 @@ class TranscriptionServerEventHandler:
         )
 
         self.client: OpenaiRealtimeTranscriptionClient = client
-        self.event_map: Dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
+        self.event_map: dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
             "response": self.default_handler,
             "response.created": self.default_handler,
             "session.created": self.transcription_session_created_handler,
@@ -24,7 +26,6 @@ class TranscriptionServerEventHandler:
             "error": self.handle_error,
             "conversation.item.added": self.default_handler,
             "conversation.item.done": self.default_handler,
-
             "conversation.item.created": self.default_handler,
             "rate_limits.updated": self.default_handler,
             "input_audio_buffer.speech_started": self.default_handler,
@@ -37,7 +38,7 @@ class TranscriptionServerEventHandler:
             "conversation.item.input_audio_transcription.failed": self.default_handler,
         }
 
-    async def handle_event(self, data: Dict[str, Any]):
+    async def handle_event(self, data: dict[str, Any]):
         """Handle incoming event by calling the appropriate method."""
         event_type = data.get("type", "")
         handler = self.event_map.get(event_type, self.unknown_event_handler)
@@ -49,23 +50,23 @@ class TranscriptionServerEventHandler:
             user_id=self.client.user_id,
         )
 
-    async def default_handler(self, data: Dict[str, Any]) -> None:
+    async def default_handler(self, data: dict[str, Any]) -> None:
         await self.client.send_client(data)
 
-    async def unknown_event_handler(self, data: Dict[str, Any]) -> None:
+    async def unknown_event_handler(self, data: dict[str, Any]) -> None:
         """Default handler for unknown events."""
         logger.warning(f"Unknown event type received: {json.dumps(data, indent=2)}")
 
         await self.default_handler(data)
 
-    async def handle_error(self, data: Dict[str, Any]) -> None:
+    async def handle_error(self, data: dict[str, Any]) -> None:
         logger.error(f"Error received: {data}")
         await self.default_handler(data)
 
-    async def handle_function_call_delta(self, data: Dict[str, Any]) -> None:
+    async def handle_function_call_delta(self, data: dict[str, Any]) -> None:
         pass
 
-    async def handle_function_call_done(self, data: Dict[str, Any]) -> None:
+    async def handle_function_call_done(self, data: dict[str, Any]) -> None:
         await self.client.call_tool(
             call_id=data["call_id"],
             tool_name=data["name"],
@@ -80,8 +81,6 @@ class TranscriptionServerEventHandler:
         transcript_data = data["transcript"]
         logger.debug(f"Transcript data in handler {transcript_data}")
         self.transcription_buffer.append(transcript_data)
-        logger.debug(
-            f"self.transcription_buffer {self.transcription_buffer.get_buffer()}"
-        )
+        logger.debug(f"self.transcription_buffer {self.transcription_buffer.get_buffer()}")
 
         await self.default_handler(data)

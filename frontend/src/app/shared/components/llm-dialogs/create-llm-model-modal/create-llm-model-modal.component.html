@@ -22,7 +22,6 @@
         <div class="create-model__field">
             <app-tooltip
                 [required]="true"
-                [tooltipText]="'Provider'"
                 [label]="'Provider'"
             />
             <div class="create-model__provider">
@@ -37,7 +36,6 @@
         <div class="create-model__field">
             <app-custom-input
                 placeholder="Enter model name"
-                tooltipText="Model name"
                 label="Model Name"
                 [required]="true"
                 formControlName="name"
@@ -48,7 +46,7 @@
         <div class="create-model__field">
             <app-custom-input
                 label="Base URL"
-                tooltipText="Base URL"
+                tooltipText="Custom API endpoint for this provider. Leave empty to use the default."
                 placeholder="e.g. https://api.openai.com/v1"
                 formControlName="baseUrl"
             />
@@ -58,7 +56,7 @@
         <div class="create-model__field">
             <app-custom-input
                 label="Deployment"
-                tooltipText="Deployment"
+                tooltipText="The deployment name for this model, used by providers such as Azure OpenAI that deploy models under a custom name."
                 placeholder="Enter deployment name"
                 formControlName="deploymentId"
             />
@@ -67,7 +65,7 @@
         <div class="create-model__field">
             <app-custom-input
                 label="API Version"
-                tooltipText="API Version"
+                tooltipText="The provider's API version to target, in YYYY-MM-DD format (required for Azure OpenAI)."
                 placeholder="e.g. 2024-10-21"
                 formControlName="apiVersion"
             />
@@ -76,7 +74,6 @@
         <div class="create-model__field create-model__field--inline">
             <app-toggle-switch
                 label="Visible"
-                tooltipText="Visible"
                 formControlName="isVisible"
             />
         </div>

@@ -1,14 +1,11 @@
 import json
 from os import getenv
 
-from .message import Message
 from .brokers import AbstractBroker
+from .message import Message
 from .storages import AbstractStorage
 
-
-DEFAULT_PAYLOAD_SIZE_THRESHOLD = int(
-    getenv("DEFAULT_PAYLOAD_SIZE_THRESHOLD", 1024**2)
-)  # 1MB
+DEFAULT_PAYLOAD_SIZE_THRESHOLD = int(getenv("DEFAULT_PAYLOAD_SIZE_THRESHOLD", 1024**2))  # 1MB
 
 
 class Producer:

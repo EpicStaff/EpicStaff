@@ -1,8 +1,7 @@
-from loguru import logger
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
-
 from django.conf import settings
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
+from loguru import logger
 from src.shared.models import (
     ScheduleTriggerNodeDeletePayload,
     ScheduleTriggerNodePayload,
@@ -18,9 +17,7 @@ def _publish(message: ScheduleTriggerNodeUpdateMessage) -> None:
 
 
 @receiver(post_save, sender=ScheduleTriggerNode)
-def schedule_trigger_post_save_handler(
-    sender, instance: ScheduleTriggerNode, created, **kwargs
-):
+def schedule_trigger_post_save_handler(sender, instance: ScheduleTriggerNode, created, **kwargs):
     """Publish a create/update event to the Manager on every node save."""
     node_id = instance.pk
     action = "create" if created else "update"
@@ -29,8 +26,7 @@ def schedule_trigger_post_save_handler(
     try:
         node_payload = ScheduleTriggerNodePayload.model_validate(instance).model_copy(
             update={
-                "is_active": instance.is_active
-                and not getattr(instance, "is_soft_deleted", False)
+                "is_active": instance.is_active and not getattr(instance, "is_soft_deleted", False)
             }
         )
         message = ScheduleTriggerNodeUpdateMessage(
@@ -42,15 +38,11 @@ def schedule_trigger_post_save_handler(
         _publish(message)
         logger.info(f"[ScheduleSignal] Published '{action}' for node ID: {node_id}")
     except Exception:
-        logger.exception(
-            f"[ScheduleSignal] Error publishing save event for node {node_id}"
-        )
+        logger.exception(f"[ScheduleSignal] Error publishing save event for node {node_id}")
 
 
 @receiver(post_delete, sender=ScheduleTriggerNode)
-def schedule_trigger_post_delete_handler(
-    sender, instance: ScheduleTriggerNode, **kwargs
-):
+def schedule_trigger_post_delete_handler(sender, instance: ScheduleTriggerNode, **kwargs):
     """Publish a delete event to the Manager on every node delete."""
     node_id = instance.pk
     logger.info(f"[ScheduleSignal] post_delete triggered for node ID: {node_id}")
@@ -65,6 +57,4 @@ def schedule_trigger_post_delete_handler(
         _publish(message)
         logger.info(f"[ScheduleSignal] Published 'delete' for node ID: {node_id}")
     except Exception:
-        logger.exception(
-            f"[ScheduleSignal] Error publishing delete event for node {node_id}"
-        )
+        logger.exception(f"[ScheduleSignal] Error publishing delete event for node {node_id}")

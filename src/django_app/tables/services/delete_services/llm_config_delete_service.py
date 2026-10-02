@@ -1,9 +1,10 @@
 from agents.models import AgentDefinition
+from rbac.access.effective import EffectivePermissions
+from rbac.models.enums import ResourceType
 from tables.models import Agent, ClassificationDecisionTablePrompt, Crew, LLMConfig
 from tables.models.flow_assistant_models import FlowAssistant
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.models.knowledge_models.graphrag_models import GraphRag
-from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.delete_services.base_delete_service import BaseDeleteService
 from tables.services.delete_services.usage import (
     BucketCollector,
@@ -11,7 +12,6 @@ from tables.services.delete_services.usage import (
     UsageReport,
     build_reports,
 )
-from tables.services.rbac.effective_permissions import EffectivePermissions
 
 _AGENT_FIELDS = ("llm_config_id", "fcm_llm_config_id")
 _CREW_FIELDS = (
@@ -54,9 +54,7 @@ class LLMConfigDeleteService(BaseDeleteService):
         agents = BucketCollector.for_resource(ResourceType.AGENTS, effective)
         crews = BucketCollector.for_resource(ResourceType.PROJECTS, effective)
         flows = BucketCollector.for_resource(ResourceType.FLOWS, effective)
-        collections = BucketCollector.for_resource(
-            ResourceType.KNOWLEDGE_SOURCES, effective
-        )
+        collections = BucketCollector.for_resource(ResourceType.KNOWLEDGE_SOURCES, effective)
 
         if ids:
             self._collect_agents(agents, ids, org_id)
@@ -71,9 +69,9 @@ class LLMConfigDeleteService(BaseDeleteService):
         """Legacy `tables.Agent` and `AgentDefinition`, each via two FK fields."""
         for field in _AGENT_FIELDS:
             bucket.add_rows(
-                Agent.objects.filter(
-                    org_id=org_id, **{f"{field}__in": ids}
-                ).values_list(field, "id", "role"),
+                Agent.objects.filter(org_id=org_id, **{f"{field}__in": ids}).values_list(
+                    field, "id", "role"
+                ),
                 kind=RefKind.AGENT,
             )
             bucket.add_rows(
@@ -125,18 +123,14 @@ class LLMConfigDeleteService(BaseDeleteService):
         )
 
     @staticmethod
-    def _collect_collections(
-        bucket: BucketCollector, ids: list[int], org_id: int
-    ) -> None:
+    def _collect_collections(bucket: BucketCollector, ids: list[int], org_id: int) -> None:
         """The containing SourceCollection of each GraphRag using the config.
 
         The collection, not the internal GraphRag row, is the unit a caller
         recognises and holds permissions on.
         """
         bucket.add_rows(
-            GraphRag.objects.filter(
-                base_rag_type__source_collection__org_id=org_id, llm_id__in=ids
-            )
+            GraphRag.objects.filter(base_rag_type__source_collection__org_id=org_id, llm_id__in=ids)
             .values_list(
                 "llm_id",
                 "base_rag_type__source_collection__collection_id",

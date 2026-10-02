@@ -1,7 +1,5 @@
 from django.core.exceptions import ValidationError
-
 from src.shared.models import (
-    LocalhostConfigData,
     ArgsSchema,
     AudioTranscriptionNodeData,
     BaseToolData,
@@ -16,18 +14,19 @@ from src.shared.models import (
     EmbedderData,
     EndNodeData,
     FileExtractorNodeData,
-    RagSearchConfig,
     GraphRagSearchConfig,
     KnowledgeNodeData,
-    NaiveRagSearchConfig,
     LLMConfigData,
     LLMData,
+    LocalhostConfigData,
     McpToolData,
+    NaiveRagSearchConfig,
     NgrokConfigData,
+    PromptConfigData,
     PythonCodeData,
     PythonCodeToolData,
     PythonNodeData,
-    PromptConfigData,
+    RagSearchConfig,
     RealtimeAgentChatData,
     ScheduleTriggerNodeData,
     SubGraphNodeData,
@@ -37,13 +36,12 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
-
 from tables.models import PythonCode, PythonCodeTool
+from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
     AudioTranscriptionNode,
-    Condition,
-    ClassificationConditionGroup,
     ClassificationDecisionTableNode,
+    Condition,
     ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
@@ -63,10 +61,10 @@ from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
-    RealtimeAgentChat,
-    OpenAIRealtimeConfig,
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
+    OpenAIRealtimeConfig,
+    RealtimeAgentChat,
 )
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
@@ -74,6 +72,8 @@ from tables.models.webhook_models import (
     WebhookTrigger,
     WebhookTriggerAuth,
 )
+from tables.services.rag_assignment_service import SearchConfigService
+from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from utils.graph_utils import (
@@ -81,10 +81,6 @@ from utils.graph_utils import (
     NodeNameResolver,
 )
 from utils.singleton_meta import SingletonMeta
-from tables.services.rag_assignment_service import SearchConfigService
-from tables.services.rag_registry import resolve_rag_in_collection
-
-from tables.models.embedding_models import EmbeddingConfig
 
 
 class ConverterService(metaclass=SingletonMeta):
@@ -117,7 +113,7 @@ class ConverterService(metaclass=SingletonMeta):
         if not rag_specific_config:
             return None
 
-        rag_config_map = {
+        {
             "naive": lambda config: NaiveRagSearchConfig(rag_type="naive", **config),
             "graph": lambda config: GraphRagSearchConfig(rag_type="graph", **config),
         }
@@ -147,9 +143,7 @@ class ConverterService(metaclass=SingletonMeta):
             else None
         )
         all_search_configs = SearchConfigService.get_node_search_configs(knowledge_node)
-        rag_search_config = self.build_rag_search_config(
-            rag_type_id, all_search_configs
-        )
+        rag_search_config = self.build_rag_search_config(rag_type_id, all_search_configs)
         embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
         llm_api_key_secret_id = self._node_rag_llm_secret_id(knowledge_node)
         return KnowledgeNodeData(
@@ -200,9 +194,7 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
-        org_id = (
-            Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
-        )
+        org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
         if org_id is not None:
             return f"org_{org_id}"
         return None
@@ -216,9 +208,7 @@ class ConverterService(metaclass=SingletonMeta):
         source of truth for the `X-Organization-Id` header injected into
         sandbox callback tools -- never derive it from agent/tool config input.
         """
-        return (
-            Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
-        )
+        return Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
 
     def convert_tool_to_base_tool_pydantic(
         self,
@@ -443,9 +433,9 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(
-            python_configuration, dict
-        ), "Error reading python tool configuration. How did you even pass validation?"
+        assert isinstance(python_configuration, dict), (
+            "Error reading python tool configuration. How did you even pass validation?"
+        )
 
         storage_allowed_paths = None
         storage_org_prefix = None
@@ -655,15 +645,11 @@ class ConverterService(metaclass=SingletonMeta):
 
         pre_python_code_data = None
         if node.pre_python_code is not None:
-            pre_python_code_data = self.convert_python_code_to_pydantic(
-                node.pre_python_code
-            )
+            pre_python_code_data = self.convert_python_code_to_pydantic(node.pre_python_code)
 
         post_python_code_data = None
         if node.post_python_code is not None:
-            post_python_code_data = self.convert_python_code_to_pydantic(
-                node.post_python_code
-            )
+            post_python_code_data = self.convert_python_code_to_pydantic(node.post_python_code)
 
         return ClassificationDecisionTableNodeData(
             node_name=resolver(node.id),

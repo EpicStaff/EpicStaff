@@ -1,3 +1,4 @@
+import settings
 from bootstrap.di import get_dependencies
 from bootstrap.lifespans import get_lifespans
 from litestar import Litestar
@@ -11,7 +12,6 @@ from litestar.openapi.plugins import (
 from presentation.rest.controllers.maintenances import MaintenanceController
 from presentation.rest.controllers.rag import RagController
 from presentation.rest.error_handlers import get_error_handlers
-import settings
 
 app = Litestar(
     debug=settings.DEBUG,

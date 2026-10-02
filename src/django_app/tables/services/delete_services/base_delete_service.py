@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 
 from django.db import models, transaction
 from django.db.models.deletion import ProtectedError, RestrictedError
+from rbac.access.effective import EffectivePermissions
 from rest_framework.exceptions import NotFound, PermissionDenied
-
 from tables.models.base_models import SoftDeleteMixin
 from tables.services.delete_services.usage import (
     BulkDeleteResult,
@@ -11,7 +11,6 @@ from tables.services.delete_services.usage import (
     SkipReason,
     UsageReport,
 )
-from tables.services.rbac.effective_permissions import EffectivePermissions
 
 
 class BaseDeleteService(ABC):
@@ -134,9 +133,7 @@ class BaseDeleteService(ABC):
             usage=usage,
         )
 
-    def _resolve(
-        self, ids: list[int], org_id: int, *, lock: bool
-    ) -> list[models.Model]:
+    def _resolve(self, ids: list[int], org_id: int, *, lock: bool) -> list[models.Model]:
         """The requested rows this org may delete, in request order."""
         queryset = self.get_deletable_queryset(org_id).filter(pk__in=ids)
         if lock:
@@ -168,17 +165,13 @@ class BaseDeleteService(ABC):
 
         for obj in found:
             if usage[obj.pk].blocked:
-                skipped.append(
-                    SkipEntry(id=obj.pk, reason=SkipReason.IN_USE_RESTRICTED)
-                )
+                skipped.append(SkipEntry(id=obj.pk, reason=SkipReason.IN_USE_RESTRICTED))
             else:
                 deletable.append(obj)
 
         return deletable, skipped
 
-    def _delete_rows(
-        self, instances: list[models.Model]
-    ) -> tuple[list[int], list[SkipEntry]]:
+    def _delete_rows(self, instances: list[models.Model]) -> tuple[list[int], list[SkipEntry]]:
         """Remove rows that passed every check.
 
         Soft-delete roots MUST go row by row: SoftDeleteMixin overrides

@@ -127,7 +127,7 @@ def abi_version() -> int:
         ctypes.c_size_t(0),
         ctypes.c_uint32(_LANDLOCK_CREATE_RULESET_VERSION),
     )
-    return result if result > 0 else 0
+    return max(0, result)
 
 
 def _add_rule(ruleset_fd: int, path: str, access_fs: int) -> None:
@@ -169,8 +169,7 @@ def apply(
     abi = abi_version()
     if abi < 1:
         raise LandlockUnavailableError(
-            "Landlock is not supported by this kernel; cannot sandbox the "
-            "execution."
+            "Landlock is not supported by this kernel; cannot sandbox the execution."
         )
 
     access_fs_mask = _access_fs_mask(abi)

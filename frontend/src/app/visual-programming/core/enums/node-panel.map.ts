@@ -1,4 +1,5 @@
 import { Type } from '@angular/core';
+import { NodeType } from '@shared/models';
 
 import { AgentNodePanelComponent } from '../../components/node-panels/agent-node-panel/agent-node-panel.component';
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
@@ -16,7 +17,6 @@ import { TelegramTriggerNodePanelComponent } from '../../components/node-panels/
 import { WebhookTriggerNodePanelComponent } from '../../components/node-panels/webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { NodeModel } from '../models/node.model';
 import { NodePanel } from '../models/node-panel.interface';
-import { NodeType } from './node-type';
 
 const asNodePanelComponent = <T extends NodeModel>(component: Type<NodePanel<T>>): Type<NodePanel<NodeModel>> =>
     component as unknown as Type<NodePanel<NodeModel>>;

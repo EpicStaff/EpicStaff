@@ -8,8 +8,8 @@ import pytest
 
 from agents.models import AgentDefinition
 from tables.models import Agent
-from tables.models.rbac_models import Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization
+from rbac.models.enums import Permission, ResourceType
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
@@ -27,7 +27,7 @@ from tables.services.delete_services.realtime_config_delete_service import (
     _ProviderRealtimeConfigDeleteService,
 )
 from tables.services.delete_services.usage import RefKind, SkipEntry, SkipReason
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 
 PROVIDERS = [
     pytest.param(

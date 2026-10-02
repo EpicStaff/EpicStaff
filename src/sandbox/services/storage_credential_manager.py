@@ -1,10 +1,9 @@
 import json
 import posixpath
 import tempfile
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from datetime import timedelta, datetime, timezone
 
-from loguru import logger
 from miniopy_async import MinioAdmin as MinioAdminClient
 from miniopy_async.credentials import StaticProvider
 
@@ -36,9 +35,7 @@ class StorageCredentialManager:
 
     async def create(self, policy: dict[str, Any]) -> tuple[str, str]:
         """Create a user in minio and return generated credentials"""
-        expiration = (datetime.now(timezone.utc) + self._expiration).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        expiration = (datetime.now(UTC) + self._expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
         with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
             json.dump(policy, policy_file)
             policy_file.flush()
@@ -122,7 +119,7 @@ class StorageCredentialManager:
 
     @staticmethod
     def _assert_within_org(normalized: str, org_prefix: str) -> str:
-        bare = normalized[:-2] if normalized.endswith("/*") else normalized
+        bare = normalized.removesuffix("/*")
         if bare != org_prefix and not bare.startswith(f"{org_prefix}/"):
             raise CredentialManagerError(
                 f"Path escapes organization scope '{org_prefix}': '{normalized}'"

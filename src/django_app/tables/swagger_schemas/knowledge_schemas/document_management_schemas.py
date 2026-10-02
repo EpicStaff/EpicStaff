@@ -6,10 +6,10 @@ from tables.serializers.knowledge_serializers import (
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-DOCUMENTS_LIST_GET = dict(
-    summary="List all documents or filter by collection ID",
-    description="List all documents or filter by collection ID",
-    responses={
+DOCUMENTS_LIST_GET = {
+    "summary": "List all documents or filter by collection ID",
+    "description": "List all documents or filter by collection ID",
+    "responses": {
         200: DocumentListSerializer(many=True),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -37,12 +37,12 @@ DOCUMENTS_LIST_GET = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_RETRIEVE_GET = dict(
-    summary="Retrieve a single document by ID",
-    description="Retrieve a single document by ID",
-    responses={
+DOCUMENTS_RETRIEVE_GET = {
+    "summary": "Retrieve a single document by ID",
+    "description": "Retrieve a single document by ID",
+    "responses": {
         200: DocumentDetailSerializer(),
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
@@ -58,12 +58,12 @@ DOCUMENTS_RETRIEVE_GET = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_DESTROY_DELETE = dict(
-    summary="Delete a single document",
-    description="Delete a single document",
-    responses={
+DOCUMENTS_DESTROY_DELETE = {
+    "summary": "Delete a single document",
+    "description": "Delete a single document",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Document deleted successfully.",
@@ -106,12 +106,12 @@ DOCUMENTS_DESTROY_DELETE = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_UPLOAD_POST = dict(
-    summary="Upload one or multiple files to a collection",
-    description="Upload one or multiple files to a collection",
-    responses={
+DOCUMENTS_UPLOAD_POST = {
+    "summary": "Upload one or multiple files to a collection",
+    "description": "Upload one or multiple files to a collection",
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents uploaded successfully.",
@@ -180,12 +180,12 @@ DOCUMENTS_UPLOAD_POST = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_BULK_DELETE_POST = dict(
-    summary="Delete multiple documents at once",
-    description="Delete multiple documents at once",
-    responses={
+DOCUMENTS_BULK_DELETE_POST = {
+    "summary": "Delete multiple documents at once",
+    "description": "Delete multiple documents at once",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents deleted successfully.",
@@ -242,15 +242,15 @@ DOCUMENTS_BULK_DELETE_POST = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_DOWNLOAD_GET = dict(
-    summary="Download one or multiple documents",
-    description=(
+DOCUMENTS_DOWNLOAD_GET = {
+    "summary": "Download one or multiple documents",
+    "description": (
         "Download documents by ID. A single document is returned as a file; "
         "multiple documents are bundled into a zip archive."
     ),
-    parameters=[
+    "parameters": [
         OpenApiParameter(
             name="document_ids",
             type=OpenApiTypes.STR,
@@ -259,7 +259,7 @@ DOCUMENTS_DOWNLOAD_GET = dict(
             description="Comma-separated list of document IDs (e.g. `1,2,3`).",
         )
     ],
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.BINARY,
             description="File or zip archive attachment.",
@@ -290,17 +290,17 @@ DOCUMENTS_DOWNLOAD_GET = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_PREVIEW_GET = dict(
-    summary="Preview a single document inline",
-    description=(
+DOCUMENTS_PREVIEW_GET = {
+    "summary": "Preview a single document inline",
+    "description": (
         "Return the raw binary content of a single document for inline preview "
         "(`Content-Disposition: inline`). The browser can render supported formats "
         "(pdf, txt, md, json, html, csv) in place; docx has no native preview and "
         "is downloaded instead. Use the download endpoint to force a file download."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.BINARY,
             description="Raw file content served inline.",
@@ -319,17 +319,17 @@ DOCUMENTS_PREVIEW_GET = dict(
             ],
         ),
     },
-)
+}
 
-DOCUMENTS_COPY_POST = dict(
-    summary="Copy documents into a target collection",
-    description=(
+DOCUMENTS_COPY_POST = {
+    "summary": "Copy documents into a target collection",
+    "description": (
         "Copy documents into a target collection by ID. Binary content is shared "
         "(not duplicated): new document records point to the same stored content. "
         "Documents whose content is already present in the target collection are "
         "skipped and returned under `skipped`."
     ),
-    responses={
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents copied successfully.",
@@ -409,12 +409,12 @@ DOCUMENTS_COPY_POST = dict(
             ],
         ),
     },
-)
+}
 
-COLLECTION_DOCUMENTS_LIST_GET = dict(
-    summary="List all documents or filter by collection ID",
-    description="List all documents or filter by collection ID.\n\nURL: GET /source-collection/{id}/documents",
-    responses={
+COLLECTION_DOCUMENTS_LIST_GET = {
+    "summary": "List all documents or filter by collection ID",
+    "description": "List all documents or filter by collection ID.\n\nURL: GET /source-collection/{id}/documents",
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Documents listed successfully.",
@@ -471,4 +471,4 @@ COLLECTION_DOCUMENTS_LIST_GET = dict(
             ],
         ),
     },
-)
+}

@@ -13,7 +13,6 @@ the real handler to prove the two are actually wired together.
 
 import asyncio
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,27 +27,13 @@ import dynamic_venv_executor_chain as chain_mod
 from dynamic_venv_executor_chain import CreateVenvHandler, ExecuteCodeHandler
 from secret_scrubber import MASK
 
+from conftest import copy_shared_libs_into_jail, make_execute_context
+
 SECRET_VALUE = "sk-live-must-not-touch-disk-7a21"
 TEST_VENV_BASE_PATH = Path("/tmp/epicstaff-test-venvs")
 # In the container these are installed into the venv; running the generated
 # source directly here needs them on PYTHONPATH instead.
 SHARED_PATH = Path(__file__).resolve().parents[3] / "shared"
-
-
-def _context(**overrides):
-    context = {
-        "code": "def main(**kwargs):\n    return 1",
-        "result_file_path": Path("/tmp/epicstaff-test/output.txt"),
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "exec-1",
-        "storage_allowed_paths": None,
-        "storage_org_prefix": None,
-        "secrets": {},
-    }
-    context.update(overrides)
-    return context
 
 
 class TestGeneratedSourceStaysClean:
@@ -125,48 +110,47 @@ class TestGeneratedSourceStaysClean:
             assert json.loads(result_path.read_text()) == SECRET_VALUE
 
 
-def _execute(*, code: str, secrets: dict[str, str]):
+def _execute(*, base_dir: Path, code: str, secrets: dict[str, str]):
     """Run `code` through the real ExecuteCodeHandler and return its CodeResultData.
 
     A real subprocess rather than a stub: the point of these tests is that the
     scrubber sits between the child's pipes and everything downstream, and only an
     actual execution exercises that seam.
     """
-    with tempfile.TemporaryDirectory() as tmp:
-        home_path = Path(tmp) / "home"
-        home_path.mkdir()
-        context = {
-            "python_executable": sys.executable,
-            "temp_code_path": str(Path(tmp) / "code.py"),
-            "result_file_path": Path(tmp) / "output.txt",
-            "home_path": str(home_path),
-            "code": code,
-            "entrypoint": "main",
-            "func_kwargs": {},
-            "global_kwargs": {},
-            "execution_id": "exec-1",
-            "storage_allowed_paths": None,
-            "storage_org_prefix": None,
-            "secrets": secrets,
-        }
-        return asyncio.run(ExecuteCodeHandler().handle(context))
+    context = make_execute_context(
+        base_dir,
+        python_executable=sys.executable,
+        code=code,
+        execution_id="exec-1",
+        secrets=secrets,
+    )
+    return asyncio.run(ExecuteCodeHandler().handle(context))
 
 
 class TestOutputStaysClean:
     @pytest.fixture(autouse=True)
-    def shared_libs_on_path(self, monkeypatch):
+    def shared_libs_on_path(self, tmp_path, monkeypatch):
         """epicstaff_secrets reaches the child through PYTHONPATH added to the
-        curated env returned by build_base_env. In the container the library is
-        installed into the venv; on host we deliver it via PYTHONPATH instead."""
+        curated env returned by build_base_env. In the container the library
+        is installed into the venv, and venv_path sits in jail.py's
+        read_exec, so the real chain is self-contained inside the Landlock
+        jail. This test drives the handler without a venv, so PYTHONPATH
+        must point somewhere the jail actually allows reading -- src/shared
+        is outside every allowlist entry and gets denied -- so this copies
+        the library into exec_dir (inside jail.read_write) instead. See
+        copy_shared_libs_into_jail's docstring for the full rationale.
+        """
+        shared_libs_path = copy_shared_libs_into_jail(tmp_path)
         real_build_base_env = chain_mod.build_base_env
         monkeypatch.setattr(
             chain_mod,
             "build_base_env",
-            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(SHARED_PATH)},
+            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(shared_libs_path)},
         )
 
-    def test_a_printed_secret_is_masked_in_stdout(self):
+    def test_a_printed_secret_is_masked_in_stdout(self, tmp_path):
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
             secrets={"K": SECRET_VALUE},
         )
@@ -174,11 +158,12 @@ class TestOutputStaysClean:
         assert SECRET_VALUE not in result.stdout
         assert MASK in result.stdout
 
-    def test_a_secret_in_an_exception_message_is_masked_in_stderr(self):
+    def test_a_secret_in_an_exception_message_is_masked_in_stderr(self, tmp_path):
         """The likeliest accidental leak. wrap_code's except block prints str(e) to
         stderr verbatim, so any library error echoing an auth header lands here
         without the author writing a single print."""
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    raise ValueError(get_secret("K"))',
             secrets={"K": SECRET_VALUE},
         )
@@ -186,10 +171,11 @@ class TestOutputStaysClean:
         assert SECRET_VALUE not in result.stderr
         assert MASK in result.stderr
 
-    def test_a_returned_secret_is_masked_in_result_data(self):
+    def test_a_returned_secret_is_masked_in_result_data(self, tmp_path):
         """result_data is json.dumps of the return value, and it reaches the SSE
         stream and the REST endpoint, so it needs the same treatment as the pipes."""
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    return {"token": get_secret("K")}',
             secrets={"K": SECRET_VALUE},
         )
@@ -198,20 +184,22 @@ class TestOutputStaysClean:
         assert SECRET_VALUE not in result.result_data
         assert MASK in result.result_data
 
-    def test_masking_does_not_change_the_return_code(self):
+    def test_masking_does_not_change_the_return_code(self, tmp_path):
         """Masking is silent by design: a flow that logs a secret today keeps
         working, it just stops publishing the value."""
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
             secrets={"K": SECRET_VALUE},
         )
 
         assert result.returncode == 0
 
-    def test_output_is_untouched_when_the_node_declares_no_secrets(self):
+    def test_output_is_untouched_when_the_node_declares_no_secrets(self, tmp_path):
         """The no-regression case: with nothing to scrub, every stream is
         byte-identical to what the child wrote."""
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    print("plain output")\n    return {"a": 1}',
             secrets={},
         )
@@ -231,20 +219,30 @@ class TestMaskSecretSwitchEndToEnd:
     """
 
     @pytest.fixture(autouse=True)
-    def shared_libs_on_path(self, monkeypatch):
+    def shared_libs_on_path(self, tmp_path, monkeypatch):
         """Deliver epicstaff_secrets to the child via PYTHONPATH added to the
-        curated env returned by build_base_env."""
+        curated env returned by build_base_env. In the container the library
+        is installed into the venv, and venv_path sits in jail.py's
+        read_exec, so the real chain is self-contained inside the Landlock
+        jail. This test drives the handler without a venv, so PYTHONPATH
+        must point somewhere the jail actually allows reading -- src/shared
+        is outside every allowlist entry and gets denied -- so this copies
+        the library into exec_dir (inside jail.read_write) instead. See
+        copy_shared_libs_into_jail's docstring for the full rationale.
+        """
+        shared_libs_path = copy_shared_libs_into_jail(tmp_path)
         real_build_base_env = chain_mod.build_base_env
         monkeypatch.setattr(
             chain_mod,
             "build_base_env",
-            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(SHARED_PATH)},
+            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(shared_libs_path)},
         )
 
-    def test_masking_on_redacts_every_stream(self, monkeypatch):
+    def test_masking_on_redacts_every_stream(self, tmp_path, monkeypatch):
         monkeypatch.setattr(settings, "MASK_SECRET", True)
 
         result = _execute(
+            base_dir=tmp_path,
             code=(
                 "def main(**kwargs):\n"
                 '    print(get_secret("K"))\n'
@@ -258,12 +256,15 @@ class TestMaskSecretSwitchEndToEnd:
         assert SECRET_VALUE not in result.result_data
         assert MASK in result.stdout
 
-    def test_masking_off_lets_plaintext_through_every_stream(self, monkeypatch):
+    def test_masking_off_lets_plaintext_through_every_stream(
+        self, tmp_path, monkeypatch
+    ):
         """The documented debugging mode: the value the child printed and returned
         arrives verbatim."""
         monkeypatch.setattr(settings, "MASK_SECRET", False)
 
         result = _execute(
+            base_dir=tmp_path,
             code=(
                 "def main(**kwargs):\n"
                 '    print(get_secret("K"))\n'
@@ -277,10 +278,11 @@ class TestMaskSecretSwitchEndToEnd:
         assert SECRET_VALUE in result.result_data
         assert MASK not in result.stdout
 
-    def test_masking_off_does_not_change_the_return_code(self, monkeypatch):
+    def test_masking_off_does_not_change_the_return_code(self, tmp_path, monkeypatch):
         monkeypatch.setattr(settings, "MASK_SECRET", False)
 
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    raise RuntimeError(get_secret("K"))',
             secrets={"K": SECRET_VALUE},
         )
@@ -288,11 +290,12 @@ class TestMaskSecretSwitchEndToEnd:
         assert result.returncode != 0
         assert SECRET_VALUE in result.stderr
 
-    def test_an_unset_variable_still_redacts(self, monkeypatch):
+    def test_an_unset_variable_still_redacts(self, tmp_path, monkeypatch):
         """The default reaching all the way through the handler, not just scrub()."""
         monkeypatch.setattr(settings, "MASK_SECRET", True)
 
         result = _execute(
+            base_dir=tmp_path,
             code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
             secrets={"K": SECRET_VALUE},
         )

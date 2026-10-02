@@ -155,13 +155,15 @@ export class NaiveRagDocumentsStorageService implements StorageService {
         this.reconcileChunkStatus(documentId);
     }
 
-    public clearPending(documentIds: number[]): void {
-        if (!documentIds.length) return;
-        this.catalog.uncheckAndClearErrors(documentIds);
-        this.pendingEdits.dropPending(documentIds);
-        for (const id of documentIds) {
-            this.reconcileChunkStatus(id);
+    public undoLastPending(): number | null {
+        const documentId = this.pendingEdits.undoLast();
+        if (documentId === null) return null;
+
+        if (!this.pendingEdits.has(documentId)) {
+            this.catalog.uncheckAndClearErrors([documentId]);
         }
+        this.reconcileChunkStatus(documentId);
+        return documentId;
     }
 
     public bulkPartialUpdate(ragId: number, docIds: number[]): Observable<BulkUpdateNaiveRagDocumentsResponse> {

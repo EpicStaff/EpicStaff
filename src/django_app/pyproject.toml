@@ -49,6 +49,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "daphne==4.2.1",
+    "django-stubs>=6.1.1",
+    "djangorestframework-stubs>=3.18.1",
     "fakeredis==2.32.0",
     "pytest-asyncio==1.2.0",
     "pytest-django==4.11.1",
@@ -75,6 +78,3 @@ package = false
 DJANGO_SETTINGS_MODULE = "tests.settings"
 pythonpath = [".", "../.."]
 
-[tool.ruff]
-select = ["E"]
-ignore = ["E402","E501"]

@@ -9,9 +9,9 @@ import pytest
 from django.test import override_settings
 
 from tables.models import Graph, GraphVersion
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.delete_services import GraphVersionDeleteService
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 
 
 @pytest.fixture

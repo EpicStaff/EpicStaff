@@ -1,28 +1,30 @@
-from typing import Dict
-import json
 import asyncio
-from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+import json
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from xml.sax.saxutils import quoteattr
+
 import httpx
-from loguru import logger
+from application.conversation_service import ConversationService
+from application.tool_manager_service import ToolManagerService
+from application.voice_call_service import VoiceCallService
+from core import config
 from fastapi import (
+    Depends,
     FastAPI,
+    HTTPException,
+    Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
-    Response,
-    Request,
-    HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from src.shared.models import RealtimeAgentChatData
-from application.conversation_service import ConversationService
-from application.voice_call_service import VoiceCallService
-from application.tool_manager_service import ToolManagerService
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
 from infrastructure.messaging.redis_service import RedisService
 from infrastructure.persistence.connection_repository import ConnectionRepository
+from infrastructure.persistence.database import engine, get_db
+from infrastructure.persistence.db_models import Base
 from infrastructure.persistence.stream_token_repository import StreamTokenRepository
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
@@ -34,18 +36,13 @@ from infrastructure.summarization.openai_summarization_client import (
 from infrastructure.transcription.transcription_client_factory import (
     TranscriptionClientFactory,
 )
-from utils.instructions_concatenator import generate_instruction
-from core import config
-from utils.auth import introspect_token
-from utils.twilio_signature import validate_twilio_signature
-from src.shared.knowledge.client import KnowledgeClient
-
-
-from infrastructure.persistence.database import get_db, engine
-from infrastructure.persistence.db_models import Base
-from fastapi import Depends
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from src.shared.knowledge.client import KnowledgeClient
+from src.shared.models import RealtimeAgentChatData
+from utils.auth import introspect_token
+from utils.instructions_concatenator import generate_instruction
+from utils.twilio_signature import validate_twilio_signature
 
 app = FastAPI()
 redis_service = RedisService(
@@ -58,9 +55,7 @@ tool_manager_service = ToolManagerService(
     knowledge_client=knowledge_client,
 )
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
-factory = RealtimeAgentClientFactory(
-    elevenlabs_agent_provisioner=elevenlabs_agent_provisioner
-)
+factory = RealtimeAgentClientFactory(elevenlabs_agent_provisioner=elevenlabs_agent_provisioner)
 transcription_client_factory = TranscriptionClientFactory()
 
 
@@ -74,12 +69,8 @@ app.add_middleware(
 )
 
 
-connection_repository = ConnectionRepository(
-    ttl_seconds=config.CONNECTION_KEY_TTL_SECONDS
-)
-stream_token_repository = StreamTokenRepository(
-    ttl_seconds=config.STREAM_TOKEN_TTL_SECONDS
-)
+connection_repository = ConnectionRepository(ttl_seconds=config.CONNECTION_KEY_TTL_SECONDS)
+stream_token_repository = StreamTokenRepository(ttl_seconds=config.STREAM_TOKEN_TTL_SECONDS)
 
 # ---------------------------------------------------------------------------
 # Per-channel config cache  (keyed by channel token, TTL=60s)
@@ -123,9 +114,7 @@ async def get_channel_config(channel_token: str) -> dict:
                 )
                 return data
             else:
-                logger.warning(
-                    f"[channel_config] request failed: status={r.status_code}"
-                )
+                logger.warning(f"[channel_config] request failed: status={r.status_code}")
     except Exception as e:
         logger.exception(f"[channel_config] exception fetching config: {e}")
     return {}
@@ -136,9 +125,7 @@ async def _run_forever(coro_fn, name: str, restart_delay: float = 2.0):
     while True:
         try:
             await coro_fn()
-            logger.warning(
-                f"{name} exited unexpectedly, restarting in {restart_delay}s"
-            )
+            logger.warning(f"{name} exited unexpectedly, restarting in {restart_delay}s")
         except Exception as e:
             logger.error(f"{name} crashed: {e}, restarting in {restart_delay}s")
         await asyncio.sleep(restart_delay)
@@ -223,7 +210,7 @@ async def startup_event():
     await init_db()
     await knowledge_client.start()
 
-    asyncio.create_task(_run_forever(redis_listener, "redis_listener"))
+    asyncio.create_task(_run_forever(redis_listener, "redis_listener"))  # noqa: RUF006
 
 
 @app.on_event("shutdown")
@@ -233,7 +220,7 @@ async def shutdown_event():
 
 
 # Store active connections and their handlers
-connections: Dict[WebSocket, tuple] = {}
+connections: dict[WebSocket, tuple] = {}
 
 
 @app.websocket("/realtime/")
@@ -264,8 +251,8 @@ async def root(
         logger.error("Invalid connection_key. Connection refused!")
         await websocket.close(code=1008)
         return
-    realtime_agent_chat_data: RealtimeAgentChatData = (
-        connection_repository.get_connection(connection_key=connection_key)
+    realtime_agent_chat_data: RealtimeAgentChatData = connection_repository.get_connection(
+        connection_key=connection_key
     )
 
     if realtime_agent_chat_data is None:
@@ -428,14 +415,10 @@ async def _twilio_voice_webhook(
         valid = validate_twilio_signature(url, form_data, signature, auth_token)
         logger.info(f"[voice_webhook] signature valid={valid}")
         if not valid:
-            logger.warning(
-                f"[voice_webhook] invalid signature from {request.client.host}"
-            )
+            logger.warning(f"[voice_webhook] invalid signature from {request.client.host}")
             raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     else:
-        logger.warning(
-            "[voice_webhook] no auth_token — rejecting request (fail closed)"
-        )
+        logger.warning("[voice_webhook] no auth_token — rejecting request (fail closed)")
         raise HTTPException(status_code=503, detail="Twilio auth not configured")
 
     if not voice_stream_url:
@@ -497,9 +480,7 @@ async def _voice_stream_handler(
     fallback source.
     """
     await twilio_ws.accept()
-    logger.info(
-        "Twilio MediaStream WebSocket accepted (stream_token not yet validated)"
-    )
+    logger.info("Twilio MediaStream WebSocket accepted (stream_token not yet validated)")
 
     # Read the first Twilio message(s): `connected` (optional) then `start`,
     # which carries `customParameters` — see docstring above for why this is
@@ -512,9 +493,7 @@ async def _voice_stream_handler(
             raw = await asyncio.wait_for(twilio_ws.receive_text(), timeout=5.0)
             first_msg = json.loads(raw)
         if first_msg.get("event") == "start":
-            logger.info(
-                f"Twilio stream started: agent_definition_id={agent_definition_id}"
-            )
+            logger.info(f"Twilio stream started: agent_definition_id={agent_definition_id}")
     except Exception as e:
         logger.warning(f"Could not read Twilio start event: {e}")
         first_msg = None
@@ -523,14 +502,10 @@ async def _voice_stream_handler(
     param_token = custom_params.get("stream_token")
     effective_stream_token = param_token or stream_token
     token_source = (
-        "start.customParameters"
-        if param_token
-        else ("query_param" if stream_token else "none")
+        "start.customParameters" if param_token else ("query_param" if stream_token else "none")
     )
 
-    if not stream_token_repository.consume(
-        effective_stream_token, bound_key=stream_bound_key
-    ):
+    if not stream_token_repository.consume(effective_stream_token, bound_key=stream_bound_key):
         # `token_present` distinguishes "no token arrived by either channel"
         # from "we had a token but it didn't validate" (expired/reused/wrong
         # bound_key, or the in-memory StreamTokenRepository singleton lost
@@ -648,9 +623,7 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     ngrok_cfg = webhook_trigger.get("ngrok_config") or {}
     live_url = webhook_trigger.get("live_url") or ""
     ngrok_domain = ngrok_cfg.get("domain") or ""
-    logger.info(
-        f"[voice] twilio_cfg keys={list(twilio_cfg.keys())} ngrok_domain={ngrok_domain}"
-    )
+    logger.info(f"[voice] twilio_cfg keys={list(twilio_cfg.keys())} ngrok_domain={ngrok_domain}")
 
     if ngrok_domain:
         # Bare domain — the correct source for the Media Stream WS URL.

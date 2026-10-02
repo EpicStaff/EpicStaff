@@ -10,10 +10,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '@shared/components';
 import { GetLlmConfigRequest } from '@shared/models';
+import { LlmConfigStorageService } from '@shared/services';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { LlmConfigStorageService } from '../../../../shared/services/llms/llm-config-storage.service';
 import { FlowAssistantService } from '../../flow-assistant.service';
 
 @Component({

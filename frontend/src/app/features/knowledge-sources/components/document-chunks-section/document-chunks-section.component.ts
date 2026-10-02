@@ -10,10 +10,13 @@ import {
     OnDestroy,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, SpinnerComponent } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Subject } from 'rxjs';
 import { switchMap, takeUntil } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { ChunkSearchService } from '../../services/chunk-search.service';
@@ -33,6 +36,7 @@ import { ChunkSearchBarComponent, ChunkSearchParams } from './chunk-search-bar/c
         ChunkSearchBarComponent,
         SpinnerComponent,
         NgTemplateOutlet,
+        MatTooltip,
     ],
 })
 export class DocumentChunksSectionComponent implements OnDestroy {
@@ -41,6 +45,7 @@ export class DocumentChunksSectionComponent implements OnDestroy {
     private deepLinkService = inject(ChunkDeepLinkService);
     private destroyRef = inject(DestroyRef);
     private toast = inject(ToastService);
+    private permissionService = inject(PermissionsService);
 
     naiveRagId = input.required<number>();
     collectionId = input.required<number>();
@@ -55,6 +60,10 @@ export class DocumentChunksSectionComponent implements OnDestroy {
         if (!id) return;
         return this.chunksStorageService.documentStates().get(id);
     });
+
+    canRunChunking = computed<boolean>(() =>
+        this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update)
+    );
 
     constructor() {
         effect(() => {

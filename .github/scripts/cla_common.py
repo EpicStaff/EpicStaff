@@ -6,11 +6,10 @@ Google Drive Shared Drive folder (one subfolder per CLA version, e.g. ``v1.0.0``
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import os
-import re
+import sys
 from typing import Any
 
 import requests
@@ -18,37 +17,23 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload, MediaIoBaseDownload
 
+sys.path.insert(0, os.path.dirname(__file__))
+
+# Re-exported so existing callers keep importing these from cla_common. They
+# live in cla_version.py because the version guard has to read CLA.md without
+# pulling in requests / the Google client libraries.
+from cla_version import (  # noqa: E402,F401
+    _VERSION_RE,
+    cla_sha256,
+    parse_cla_version,
+    parse_version_from_text,
+    version_tuple,
+)
+
 GH = "https://api.github.com"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 DEFAULT_ALLOWLIST = "dependabot[bot]"
-
-_VERSION_RE = re.compile(r"VERSION\s+(\d+\.\d+\.\d+)")
-
-
-def parse_cla_version(path: str = "CLA.md") -> str:
-    """Extract the CLA version (e.g. "1.0.0") from the CLA.md heading."""
-    with open(path, "r", encoding="utf-8") as cla_file:
-        first_line = cla_file.readline()
-
-    match = _VERSION_RE.search(first_line)
-    if not match:
-        raise ValueError(
-            f"Could not find CLA version in first line of {path!r}: {first_line!r}"
-        )
-
-    return match.group(1)
-
-
-def cla_sha256(path: str = "CLA.md") -> str:
-    """Return the sha256 hex digest of CLA.md with line endings normalized to \\n."""
-    with open(path, "rb") as cla_file:
-        raw_bytes = cla_file.read()
-
-    text = raw_bytes.decode("utf-8")
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def drive_service():

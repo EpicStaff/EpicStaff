@@ -1,9 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 import { MarkdownComponent } from 'ngx-markdown';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({

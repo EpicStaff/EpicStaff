@@ -1,8 +1,8 @@
-from types import TracebackType
-from typing import Type
-from loguru import logger
 import sys
 import traceback
+from types import TracebackType
+
+from loguru import logger
 
 logger.remove()
 logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")
@@ -10,14 +10,12 @@ logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")
 
 
 def log_exception(
-    exc_type: Type[BaseException],
+    exc_type: type[BaseException],
     exc_value: BaseException,
     exc_traceback: TracebackType,
 ):
     # todo: send error to redis
-    formatted_traceback = "".join(
-        traceback.format_exception(exc_type, exc_value, exc_traceback)
-    )
+    formatted_traceback = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
 
     logger.exception(
         f"Uncaught exception\n{formatted_traceback}",

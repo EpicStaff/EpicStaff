@@ -13,15 +13,14 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
+import { AppSvgIconComponent, GoToButtonComponent } from '@shared/components';
+import { NodeType } from '@shared/models';
+import { LlmConfigStorageService } from '@shared/services';
+import { flowUrl } from '@shared/utils';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
-import { LlmConfigStorageService } from '../../../shared/services/llms/llm-config-storage.service';
-import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
-import { NodeType } from '../../core/enums/node-type';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,

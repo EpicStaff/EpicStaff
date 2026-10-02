@@ -63,12 +63,18 @@
                             <span class="details__section-title">RAG types</span>
 
                             <div class="details__section-actions">
-                                <app-svg-icon
-                                    icon="plus"
-                                    class="details__action details__action--medium"
-                                    size="1rem"
-                                    (click)="openCreateCollectionModal()"
-                                />
+                                <!--Creating RAG requires both Create and Update permissions-->
+                                <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
+                                    <app-svg-icon
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                                        icon="plus"
+                                        class="details__action details__action--medium"
+                                        size="1rem"
+                                        matTooltip="Create or update RAG"
+                                        matTooltipPosition="above"
+                                        (click)="openCreateCollectionModal()"
+                                    />
+                                </ng-container>
                             </div>
                         </div>
 
@@ -91,20 +97,26 @@
 
                                 <div class="details__section-actions">
                                     <app-svg-icon
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
                                         icon="download"
                                         class="details__action details__action--medium"
                                         size="0.875rem"
+                                        matTooltip="Download all files"
+                                        matTooltipPosition="above"
                                         (click)="downloadAllFiles()"
                                     />
                                     <app-svg-icon
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
                                         icon="files-filled"
                                         class="details__action details__action--medium"
                                         size="0.75rem"
+                                        matTooltip="Copy files to other collection"
+                                        matTooltipPosition="above"
                                         (click)="openCopyFilesDialog()"
                                     />
 
                                     <label
-                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
                                         matTooltip="Add file"
                                         matTooltipPosition="above"
                                         (click)="fileInput.click()"

@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
-    env.read_env(env_file=BASE_DIR / '../.env')
+    env.read_env(env_file=BASE_DIR / "../.env")
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
@@ -29,6 +29,7 @@ CREWAI_OUTPUT_CHANNEL = env.str("CREWAI_OUTPUT_CHANNEL")
 STOP_SESSION_CHANNEL = env.str("STOP_SESSION_CHANNEL")
 
 AGENT_REQUEST_STREAM = env.str("AGENT_REQUEST_STREAM")
+# Prefix, not a stream: each run reads "<prefix>:<correlation_id>".
 AGENT_RESULT_STREAM = env.str("AGENT_RESULT_STREAM")
 AGENT_RESULT_TIMEOUT = env.time("AGENT_RESULT_TIMEOUT")
 

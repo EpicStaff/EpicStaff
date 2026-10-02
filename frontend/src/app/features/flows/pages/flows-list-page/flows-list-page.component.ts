@@ -17,8 +17,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { AppSvgIconComponent, ButtonComponent, SearchComponent, TabButtonComponent } from '@shared/components';
-import { LabelSidebarComponent } from '@shared/components';
 import {
     AppCustomFilterDialogComponent,
     AppCustomFilterDialogData,
@@ -26,15 +24,20 @@ import {
     AppIncludeExcludeDialogComponent,
     AppIncludeExcludeDialogData,
     AppIncludeExcludeDialogResult,
+    AppSvgIconComponent,
+    ButtonComponent,
     IncludeExcludeTab,
+    LabelSidebarComponent,
+    SearchComponent,
+    TabButtonComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
-import { LabelTreeNode } from '@shared/models';
+import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
     AppStorageService,
     EmbeddingConfigStorageService,
     EmbeddingModelsStorageService,
+    LABELS_STORE,
     LlmConfigStorageService,
     LlmModelsStorageService,
     LlmProvidersStorageService,
@@ -44,7 +47,6 @@ import {
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from '@shared/services';
-import { LABELS_STORE } from '@shared/services';
 import {
     buildPreviewImportResult,
     enrichImportResult,
@@ -62,8 +64,7 @@ import {
     ImportReviewDialogCloseResult,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { ToastService } from '../../../../services/notifications';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
 import {
     FlowsFilterMenuAction,

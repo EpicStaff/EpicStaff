@@ -11,7 +11,6 @@ from django.db.models.deletion import (
 )
 from django.db.models.signals import post_save
 from django.utils import timezone
-
 from tables.models.base_models import SoftDeleteFields
 
 
@@ -217,9 +216,7 @@ class _DeleteContext:
         relation,
     ):
         if relation.hidden:
-            queryset = relation.related_model._default_manager.filter(
-                **{relation.field.name: obj}
-            )
+            queryset = relation.related_model._default_manager.filter(**{relation.field.name: obj})
 
             if relation.one_to_one:
                 return list(queryset[:1])
@@ -298,9 +295,7 @@ class _DeleteContext:
         produces one correct UPDATE per model instead of silently
         mixing unrelated PKs into a single query against one class.
         """
-        pks_to_soft_delete_by_model: dict[type[models.Model], list[Any]] = defaultdict(
-            list
-        )
+        pks_to_soft_delete_by_model: dict[type[models.Model], list[Any]] = defaultdict(list)
 
         for child in children:
             key = self._get_key(child)
@@ -501,7 +496,7 @@ class _DeleteContext:
         if deconstruct is None:
             return False
 
-        path, args, kwargs = deconstruct()
+        path, _args, _kwargs = deconstruct()
 
         return path == "django.db.models.SET"
 

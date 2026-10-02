@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { SpinnerComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { FullRealtimeConfigService } from '@shared/services';
 import { finalize, forkJoin, Subject, takeUntil } from 'rxjs';
 
 import { AgentDefinitionsApiService } from '../../features/agent-definitions/services/agent-definitions-api.service';
 import { RealtimeAgentDefinitionsApiService } from '../../features/agent-definitions/services/realtime-agent-definitions-api.service';
-import { SpinnerComponent } from '../../shared/components/spinner/spinner.component';
 import { ChatsContentComponent } from './components/chats-content/chats-content.component';
 import { ChatsSidebarComponent } from './components/chats-sidebar/chats-sidebar.component';
 import { ChatAgent, sameChatAgent } from './models/chat-agent.model';

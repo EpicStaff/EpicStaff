@@ -98,7 +98,7 @@ def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
 
 
 # ---------------------------------------------------------------------------
-# Sandbox fake – executes generated code in-process
+# Sandbox fake - executes generated code in-process
 # ---------------------------------------------------------------------------
 
 

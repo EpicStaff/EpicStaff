@@ -5,7 +5,7 @@ import { map, Observable } from 'rxjs';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
-import { ConfigService } from '../../../services/config/config.service';
+import { ConfigService } from '../../../services/config';
 import {
     CombinedSurface,
     CreateSurfaceRequest,

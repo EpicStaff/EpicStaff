@@ -4,7 +4,8 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 
-from tables.models import Graph, GraphStorageFile, Organization, StorageFile
+from rbac.models import Organization
+from tables.models import Graph, GraphStorageFile, StorageFile
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
@@ -523,7 +524,7 @@ class TestSandboxMutationFeedsListing:
     """
 
     def test_on_upload_then_list_returns_file(self, auth_client):
-        from tables.models import Organization
+        from rbac.models import Organization
         from tables.services.storage_service.db_sync import StorageFileSync
         from tables.services.storage_service.manager import StorageManager
         from tests.storage_tests.in_memory_backend import InMemoryStorageBackend

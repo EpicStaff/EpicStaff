@@ -14,16 +14,17 @@ import {
     viewChildren,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { LABELS_STORE } from '@shared/services';
-
-import { ImportExportService } from '../../../../../../core/services/import-export.service';
-import { ToastService } from '../../../../../../services/notifications/toast.service';
 import {
     ConfirmationDialogService,
     ConfirmationResult,
-} from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
-import { DragScrollDirective } from '../../../../../../shared/directives/drag-scroll.directive';
+    FetchErrorStateComponent,
+    LoadingSpinnerComponent,
+} from '@shared/components';
+import { DragScrollDirective } from '@shared/directives';
+import { LABELS_STORE } from '@shared/services';
+
+import { ImportExportService } from '../../../../../../core/services/import-export.service';
+import { ToastService } from '../../../../../../services/notifications';
 import { FlowCardAction, FlowCardComponent } from '../../../../components/flow-card/flow-card.component';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
@@ -38,7 +39,14 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './my-flows.component.html',
     styleUrls: ['./my-flows.component.scss'],
-    imports: [FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink, DragScrollDirective],
+    imports: [
+        FlowCardComponent,
+        LoadingSpinnerComponent,
+        DialogModule,
+        RouterLink,
+        DragScrollDirective,
+        FetchErrorStateComponent,
+    ],
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);

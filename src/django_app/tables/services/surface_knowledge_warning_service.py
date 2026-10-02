@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from agents.services.node_surface_service import NodeSurfaceService
+from src.shared.models import CombinedSurfaceData, CombinedSurfaceKnowledgeData
 from tables.models.graph_models import AgentNode, BaseNode, Graph, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
-from src.shared.models import CombinedSurfaceData, CombinedSurfaceKnowledgeData
 
 _SURFACE_PREFETCH_FIELDS = (
     "surface_list__python_tools",

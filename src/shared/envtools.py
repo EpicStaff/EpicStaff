@@ -1,16 +1,19 @@
 import os
+from collections.abc import Callable
 from pathlib import Path
 from types import EllipsisType
-from typing import Any, Callable
+from typing import Any
+
 from . import humanize
 
-__all__ = [
-    "EnvironmentNotFoundError",
-    "Env",
-]
+__all__ = ["Env", "EnvironmentBlankError", "EnvironmentNotFoundError"]
 
 
 class EnvironmentNotFoundError(Exception):
+    pass
+
+
+class EnvironmentBlankError(Exception):
     pass
 
 
@@ -43,7 +46,7 @@ class Env:
                 continue
 
             variable = variable.strip()
-            value = value.strip(" \"\'")
+            value = value.strip(" \"'")
 
             if override or variable not in self._envs:
                 self._envs[variable] = value
@@ -51,7 +54,7 @@ class Env:
     def get_value(
         self,
         variable: str,
-        default: Any | None | EllipsisType = ...,
+        default: Any | EllipsisType | None = ...,
         cast: Callable[[Any], Any] = lambda v: v,
     ) -> Any | None:
         """Look up an environment variable and cast its value.
@@ -221,3 +224,27 @@ class Env:
             The string value, or None when the variable holds the ``none`` value.
         """
         return self.get_value(variable, default, str)
+
+    def secret(self, variable: str) -> str:
+        """Read a required secret environment variable.
+
+        Unlike ``str``, this never accepts a default: secrets must always be set
+        explicitly. The raw value is stripped of surrounding whitespace and
+        rejected if that leaves it empty, so a blank or whitespace-only secret
+        fails startup the same way an absent one does.
+
+        Args:
+            variable: Name of the environment variable to read.
+
+        Returns:
+            The stripped string value.
+
+        Raises:
+            EnvironmentNotFoundError: The variable is absent from the environment.
+            EnvironmentBlankError: The variable is present but empty or
+                whitespace-only after stripping.
+        """
+        value = (self.str(variable) or "").strip()
+        if not value:
+            raise EnvironmentBlankError(f"Environment variable {variable} must not be blank.")
+        return value

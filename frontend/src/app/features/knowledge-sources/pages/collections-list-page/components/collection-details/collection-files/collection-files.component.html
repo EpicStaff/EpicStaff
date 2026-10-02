@@ -15,7 +15,11 @@
                     size="0.75rem"
                 />
 
-                <span class="files__name">
+                <span
+                    class="files__name"
+                    [matTooltip]="item.file_name"
+                    matTooltipPosition="above"
+                >
                     {{ item.file_name }}
                 </span>
                 <div [class.files__file-error]="!item.isValidSize || !item.isValidType">
@@ -38,19 +42,26 @@
                     <app-list-actions>
                         @if (item.document_id) {
                             <app-svg-icon
+                                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Read]"
                                 icon="eye"
                                 size="0.875rem"
                                 class="files__close-action"
+                                matTooltip="Preview file"
+                                matTooltipPosition="above"
                                 (click)="previewRequested.emit(item.document_id)"
                             />
                             <app-svg-icon
+                                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
                                 icon="download"
                                 size="0.875rem"
                                 class="files__close-action"
+                                matTooltip="Download file"
+                                matTooltipPosition="above"
                                 (click)="onDownload(item.document_id)"
                             />
                         }
                         <app-svg-icon
+                            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
                             icon="x"
                             size="1rem"
                             class="files__close-action"

@@ -1,4 +1,5 @@
-import { NodeType } from '../enums/node-type';
+import { NodeType } from '@shared/models';
+
 import { NodeModel } from './node.model';
 
 export interface CreateNodeRequest {

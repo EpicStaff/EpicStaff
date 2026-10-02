@@ -6,16 +6,8 @@ import pytest
 
 from tests.fixtures import *  # noqa: F401,F403
 
-from tables.models import (
-    Organization,
-    Graph,
-    AgentNode,
-    AgentNodeTask,
-    TaskNode,
-    McpTool,
-    StorageFile,
-    SourceCollection,
-)
+from rbac.models import Organization
+from tables.models import Graph, AgentNode, AgentNodeTask, TaskNode, McpTool, StorageFile, SourceCollection
 from agents.models import (
     AgentDefinition,
     Surface,

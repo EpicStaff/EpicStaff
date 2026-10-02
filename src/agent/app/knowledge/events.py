@@ -13,9 +13,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from shared.models.knowledge_new import FoundChunk
-
 from shared.knowledge.target import KnowledgeSearchTarget
+from shared.models.knowledge_new import FoundChunk
 
 
 class KnowledgeEventSink(Protocol):

@@ -3,13 +3,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.rbac_models import (
-    Organization,
-    OrganizationUser,
-    Role,
-    RolePermission,
-)
-from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole, Permission
 
 
 # ---- shared fixtures ----
@@ -176,7 +171,7 @@ def test_memberships_list_superadmin_allowed(auth_client, superadmin_user):
 @pytest.mark.django_db
 def test_is_superadmin_or_org_admin_class_removed():
     """Asserts the deprecated class is gone. Regression guard."""
-    from tables.services.rbac import permissions as permission_module
+    from rbac.access import gates as permission_module
 
     assert not hasattr(permission_module, "IsSuperadminOrOrgAdmin")
 
@@ -228,8 +223,8 @@ def test_admin_role_detail_non_int_pk_returns_404(auth_client, org_admin_user):
 
 @pytest.mark.django_db
 def test_built_in_role_immutable_guard_raises(role_org_admin):
-    from tables.services.rbac.role_management_service import RoleManagementService
-    from tables.services.rbac.rbac_exceptions import BuiltInRoleImmutableError
+    from rbac.governance.roles import RoleManagementService
+    from rbac.exceptions import BuiltInRoleImmutableError
 
     service = RoleManagementService()
     with pytest.raises(BuiltInRoleImmutableError) as exc_info:

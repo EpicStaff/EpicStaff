@@ -21,7 +21,7 @@ import { AggregatedUser } from '../../models/aggregated-user.model';
 import { AdminUserService } from '../../services/admin/admin-user.service';
 import { MembershipsService } from '../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
-import { rbacErrorMessage } from '../../utils/rbac-error-messages.util';
+import { rbacErrorMessage } from '../../utils';
 import { OrgAssignment, StepAssignToOrgComponent } from './steps/assign-to-org/step-assign-to-org.component';
 import { StepUserDetailsComponent } from './steps/user-details/step-user-details.component';
 

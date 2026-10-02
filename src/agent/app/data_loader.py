@@ -14,11 +14,11 @@ import json
 
 import redis.asyncio as aioredis
 from loguru import logger
+from shared.models.agent_service import AgentRequest
+from shared.redis_streams import StreamEnvelope
 
 from app.exceptions import DataLoadError
 from app.logging_utils import redacted_dump
-from shared.models.agent_service import AgentRequest
-from shared.redis_streams import StreamEnvelope
 
 
 class DataLoader:
@@ -82,9 +82,7 @@ class DataLoader:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as error:
-            raise DataLoadError(
-                f"Invalid JSON at Redis key '{request_key}': {error}"
-            ) from error
+            raise DataLoadError(f"Invalid JSON at Redis key '{request_key}': {error}") from error
 
         try:
             request = AgentRequest(

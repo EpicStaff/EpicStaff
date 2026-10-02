@@ -4,6 +4,18 @@ from shared.envtools import Env
 
 BASE_DIR = Path(__file__).resolve().parent
 
+
+def whole_seconds_at_least_one(variable: str, seconds: float | None) -> int:
+    """Validate a duration used as a Redis EXPIRE, which only takes whole seconds.
+
+    ``None`` would crash on ``int()`` and anything under one second truncates
+    to ``EXPIRE key 0``, which deletes the key immediately.
+    """
+    if seconds is None or seconds < 1:
+        raise ValueError(f"{variable} must be a duration of at least 1s, got {seconds!r}")
+    return int(seconds)
+
+
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(BASE_DIR / "../.env")
@@ -16,7 +28,11 @@ REDIS_USER = env.str("REDIS_USER")
 REDIS_PASSWORD = env.str("REDIS_PASSWORD")
 
 AGENT_REQUEST_STREAM = env.str("AGENT_REQUEST_STREAM")
+# Prefix, not a stream: each run publishes to "<prefix>:<correlation_id>".
 AGENT_RESULT_STREAM = env.str("AGENT_RESULT_STREAM")
+AGENT_RESULT_STREAM_TTL = whole_seconds_at_least_one(
+    "AGENT_RESULT_STREAM_TTL", env.time("AGENT_RESULT_STREAM_TTL")
+)
 AGENT_CONSUMER_GROUP = env.str("AGENT_CONSUMER_GROUP")
 
 AGENT_DEFAULT_MAX_RETRIES = env.int("AGENT_DEFAULT_MAX_RETRIES")

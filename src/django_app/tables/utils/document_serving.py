@@ -3,9 +3,8 @@ import mimetypes
 import zipfile
 
 from django.http import HttpResponse
-
-from tables.models import DocumentMetadata
 from tables.constants.knowledge_constants import PREVIEW_CONTENT_TYPES
+from tables.models import DocumentMetadata
 
 
 def document_bytes(document: DocumentMetadata) -> bytes:
@@ -30,9 +29,7 @@ def file_response(
 
 def build_file_response(document: DocumentMetadata) -> HttpResponse:
     """Build an attachment response for a single document."""
-    content_type = (
-        mimetypes.guess_type(document.file_name)[0] or "application/octet-stream"
-    )
+    content_type = mimetypes.guess_type(document.file_name)[0] or "application/octet-stream"
     return file_response(document_bytes(document), content_type, document.file_name)
 
 
@@ -43,14 +40,10 @@ def build_preview_response(document: DocumentMetadata) -> HttpResponse:
         or mimetypes.guess_type(document.file_name)[0]
         or "application/octet-stream"
     )
-    return file_response(
-        document_bytes(document), content_type, document.file_name, "inline"
-    )
+    return file_response(document_bytes(document), content_type, document.file_name, "inline")
 
 
-def build_archive_response(
-    documents: list, archive_name: str = "documents.zip"
-) -> HttpResponse:
+def build_archive_response(documents: list, archive_name: str = "documents.zip") -> HttpResponse:
     """Bundle multiple documents into a zip attachment, deduplicating file names."""
     buffer = io.BytesIO()
     used_names: dict[str, int] = {}

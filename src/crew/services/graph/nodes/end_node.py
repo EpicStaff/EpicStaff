@@ -2,7 +2,7 @@ from langgraph.types import StreamWriter
 from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
+from services.graph.nodes.base_node import BaseNode
 from utils import map_variables_to_input
 
 

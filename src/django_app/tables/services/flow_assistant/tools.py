@@ -16,27 +16,24 @@ import json
 import re
 from collections import Counter
 
+from agents.services.node_surface_service import NodeSurfaceService
 from django.db.models import Count, F
 from django.utils.dateparse import parse_datetime
-
-from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import CombinedSurfaceData
-
-from tables.services.llm_clients import ToolSpec
-
 from tables.models.base_models import BaseGlobalNode
-from tables.models.mcp_models import McpTool
-from tables.models.session_models import Session
-from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.graph_models import (
-    ClassificationDecisionTableNode,
     ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
     ConditionGroup,
     DecisionTableNode,
     Edge,
     GraphSessionMessage,
     SubGraphNode,
 )
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.session_models import Session
+from tables.services.llm_clients import ToolSpec
 
 from .node_registry import (
     FLOW_ASSISTANT_NODE_TYPES,
@@ -198,20 +195,15 @@ def get_flow_overview(graph_id: int) -> dict:
     # same rows below instead of re-reading every table a second time.
     raw_nodes: list[tuple[str, int, str]] = []
     for spec in node_specs:
-        for node in spec.model.objects.filter(graph_id=graph_id).only(
-            *spec.only_fields()
-        ):
+        for node in spec.model.objects.filter(graph_id=graph_id).only(*spec.only_fields()):
             raw_nodes.append((spec.label, node.pk, spec.display_name(node)))
     raw_nodes.sort(key=lambda t: (t[0], t[1]))
 
     counts_by_label = Counter(node_type for node_type, _, _ in raw_nodes)
-    node_count_by_type = {
-        spec.label: counts_by_label[spec.label] for spec in node_specs
-    }
+    node_count_by_type = {spec.label: counts_by_label[spec.label] for spec in node_specs}
 
     nodes: list[dict] = [
-        {"id": node_id, "type": node_type, "name": name}
-        for node_type, node_id, name in raw_nodes
+        {"id": node_id, "type": node_type, "name": name} for node_type, node_id, name in raw_nodes
     ]
 
     # ConditionalEdge is an edge, not a node (see NodeTypeSpec.is_edge) — fold
@@ -226,9 +218,7 @@ def get_flow_overview(graph_id: int) -> dict:
             "name": sn.subgraph.name,
             "description": sn.subgraph.description,
         }
-        for sn in SubGraphNode.objects.filter(graph_id=graph_id).select_related(
-            "subgraph"
-        )
+        for sn in SubGraphNode.objects.filter(graph_id=graph_id).select_related("subgraph")
         if sn.subgraph
     ]
 
@@ -328,11 +318,7 @@ def get_subflow(graph_id: int, subgraph_node_id: str) -> dict:
         return {"error": f"Invalid subgraph_node_id '{subgraph_node_id}'."}
 
     # Strict: SubGraphNode PK in this graph.
-    sn = (
-        SubGraphNode.objects.select_related("subgraph")
-        .filter(pk=pk, graph_id=graph_id)
-        .first()
-    )
+    sn = SubGraphNode.objects.select_related("subgraph").filter(pk=pk, graph_id=graph_id).first()
 
     # Fallback: maybe the LLM passed the target subgraph's Graph PK.
     if sn is None:
@@ -447,25 +433,17 @@ def get_session_stats(
     if since is not None:
         since_dt = parse_datetime(since)
         if since_dt is None:
-            return {
-                "error": f"Invalid since: expected ISO 8601 timestamp, got '{since}'"
-            }
+            return {"error": f"Invalid since: expected ISO 8601 timestamp, got '{since}'"}
 
     if until is not None:
         until_dt = parse_datetime(until)
         if until_dt is None:
-            return {
-                "error": f"Invalid until: expected ISO 8601 timestamp, got '{until}'"
-            }
+            return {"error": f"Invalid until: expected ISO 8601 timestamp, got '{until}'"}
 
     if status is not None:
         allowed_statuses = Session.SessionStatus.values
         if status not in allowed_statuses:
-            return {
-                "error": (
-                    f"Invalid status '{status}'. " f"Allowed values: {allowed_statuses}"
-                )
-            }
+            return {"error": (f"Invalid status '{status}'. Allowed values: {allowed_statuses}")}
 
     qs = Session.objects.filter(graph_id=graph_id)
     if since_dt is not None:
@@ -503,7 +481,7 @@ def get_recent_sessions(
     succeed?", "how often do I get called?", or "when was city X processed?".
 
     Args:
-        limit: Number of sessions to return (1–25, default 5).
+        limit: Number of sessions to return (1-25, default 5).
         since: ISO 8601 timestamp (inclusive). Filters sessions created at or after
             this time. e.g. "2026-05-15T00:00:00Z".
         until: ISO 8601 timestamp (exclusive). Filters sessions created before this time.
@@ -522,16 +500,12 @@ def get_recent_sessions(
     if since is not None:
         since_dt = parse_datetime(since)
         if since_dt is None:
-            return {
-                "error": f"Invalid since: expected ISO 8601 timestamp, got '{since}'"
-            }
+            return {"error": f"Invalid since: expected ISO 8601 timestamp, got '{since}'"}
 
     if until is not None:
         until_dt = parse_datetime(until)
         if until_dt is None:
-            return {
-                "error": f"Invalid until: expected ISO 8601 timestamp, got '{until}'"
-            }
+            return {"error": f"Invalid until: expected ISO 8601 timestamp, got '{until}'"}
 
     limit = max(1, min(25, int(limit)))
     qs = Session.objects.filter(graph_id=graph_id)
@@ -557,21 +531,15 @@ def get_recent_sessions(
     result = []
     for session in sessions:
         if session.finished_at and session.created_at:
-            duration_seconds = int(
-                (session.finished_at - session.created_at).total_seconds()
-            )
+            duration_seconds = int((session.finished_at - session.created_at).total_seconds())
         else:
             duration_seconds = None
 
         row: dict = {
             "id": session.pk,
             "status": session.status,
-            "created_at": session.created_at.isoformat()
-            if session.created_at
-            else None,
-            "finished_at": session.finished_at.isoformat()
-            if session.finished_at
-            else None,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "finished_at": session.finished_at.isoformat() if session.finished_at else None,
             "duration_seconds": duration_seconds,
             "has_error": session.status in _error_statuses,
             "entrypoint": session.entrypoint,
@@ -584,9 +552,7 @@ def get_recent_sessions(
             # (e.g. a session that ended abnormally before the publish completed).
             runtime_variables = (session.status_data or {}).get("variables")
             row["full_variables"] = (
-                runtime_variables
-                if runtime_variables is not None
-                else session.variables
+                runtime_variables if runtime_variables is not None else session.variables
             )
 
         result.append(row)
@@ -710,7 +676,7 @@ def get_session_messages(
     Useful for explaining HOW a specific run reached its output, or why it
     failed.
 
-    Returns the MOST RECENT `limit` entries (1–200, default 50) — not the
+    Returns the MOST RECENT `limit` entries (1-200, default 50) — not the
     first `limit` — so a failure at the end of a long run is never truncated
     away.
 
@@ -783,9 +749,7 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
         return {"error": "Session not found or belongs to a different flow."}
 
     if session.finished_at and session.created_at:
-        duration_seconds = int(
-            (session.finished_at - session.created_at).total_seconds()
-        )
+        duration_seconds = int((session.finished_at - session.created_at).total_seconds())
     else:
         duration_seconds = None
 
@@ -824,9 +788,7 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
     # the crew publishes session-end status. Fall back to Session.variables when that
     # key is absent (abnormal termination before publish completed).
     runtime_variables = (session.status_data or {}).get("variables")
-    final_variables = (
-        runtime_variables if runtime_variables is not None else session.variables
-    )
+    final_variables = runtime_variables if runtime_variables is not None else session.variables
 
     return {
         "session_id": session.pk,
@@ -869,9 +831,7 @@ def load_skill(name: str) -> dict:
 
     body = load_skill_body(name)
     if body is None:
-        return {
-            "error": f"Unknown skill '{name}'. Call list_skills to see available skills."
-        }
+        return {"error": f"Unknown skill '{name}'. Call list_skills to see available skills."}
     return {"name": name, "content": body}
 
 
@@ -979,14 +939,10 @@ def _resolve_surfaces_tools_and_knowledge(node) -> tuple[list[dict], list[dict]]
     only includes mode == "allow") — a denied tool is not callable by this
     node, so listing it would misrepresent what the LLM can do.
     """
-    combined_surface = CombinedSurfaceData(
-        **NodeSurfaceService.build_combined_surface(node)
-    )
+    combined_surface = CombinedSurfaceData(**NodeSurfaceService.build_combined_surface(node))
 
     allowed_python_tool_ids = [
-        entry.python_tool
-        for entry in combined_surface.python_tools
-        if entry.mode == "allow"
+        entry.python_tool for entry in combined_surface.python_tools if entry.mode == "allow"
     ]
     allowed_mcp_tool_ids = [
         entry.mcp_tool for entry in combined_surface.mcp_tools if entry.mode == "allow"
@@ -994,9 +950,9 @@ def _resolve_surfaces_tools_and_knowledge(node) -> tuple[list[dict], list[dict]]
 
     tools: list[dict] = [
         {"name": name, "type": "python"}
-        for name in PythonCodeTool.objects.filter(
-            pk__in=allowed_python_tool_ids
-        ).values_list("name", flat=True)
+        for name in PythonCodeTool.objects.filter(pk__in=allowed_python_tool_ids).values_list(
+            "name", flat=True
+        )
     ]
     tools.extend(
         {"name": name, "type": "mcp"}
@@ -1043,9 +999,7 @@ def _resolve_agent_or_task_enrichment(node_type: str, node) -> dict:
     (node.surface_list + node.inline_surface, allow/deny precedence applied)
     instead of approximating it.
     """
-    agent_definition = _resolve_agent_definition(
-        getattr(node, "agent_definition_id", None)
-    )
+    agent_definition = _resolve_agent_definition(getattr(node, "agent_definition_id", None))
 
     tools, knowledge_sources = _resolve_surfaces_tools_and_knowledge(node)
 
@@ -1064,9 +1018,7 @@ def _resolve_python_code_summary(python_code_id: int | None) -> dict | None:
     if python_code_id is None:
         return None
     try:
-        pc = PythonCode.objects.only("code", "entrypoint", "libraries").get(
-            pk=python_code_id
-        )
+        pc = PythonCode.objects.only("code", "entrypoint", "libraries").get(pk=python_code_id)
     except PythonCode.DoesNotExist:
         return None
     return {
@@ -1084,7 +1036,7 @@ def build_node_index(graph_id: int) -> dict[int, dict]:
 
     Issues exactly one query per node table (15), fetching only the columns
     needed.  This replaces the previous per-edge try/except loop across all
-    node tables, which produced O(edges × tables) queries.
+    node tables, which produced O(edges x tables) queries.
 
     ConditionalEdge is deliberately included here even though it's an edge,
     not a node (NodeTypeSpec.is_edge) — the index is also used to resolve
@@ -1097,9 +1049,7 @@ def build_node_index(graph_id: int) -> dict[int, dict]:
     """
     index: dict[int, dict] = {}
     for spec in FLOW_ASSISTANT_NODE_TYPES:
-        for node in spec.model.objects.filter(graph_id=graph_id).only(
-            *spec.only_fields()
-        ):
+        for node in spec.model.objects.filter(graph_id=graph_id).only(*spec.only_fields()):
             index[node.pk] = {
                 "type": spec.label,
                 "name": spec.display_name(node),
@@ -1385,7 +1335,7 @@ TOOL_SPECS: list[ToolSpec] = [
             "properties": {
                 "limit": {
                     "type": "integer",
-                    "description": "Number of recent sessions to return (1–25, default 5).",
+                    "description": "Number of recent sessions to return (1-25, default 5).",
                     "default": 5,
                 },
                 "since": {
@@ -1459,7 +1409,7 @@ TOOL_SPECS: list[ToolSpec] = [
             "table branch results, classification prompts, and errors. Use after "
             "get_recent_sessions identifies the target session_id, when the user asks "
             "how a specific run arrived at its answer or why it failed. "
-            "Returns the MOST RECENT entries up to limit (1–200, default 50) so a "
+            "Returns the MOST RECENT entries up to limit (1-200, default 50) so a "
             "trailing error is never truncated away. Bodies are size-bounded: string "
             "fields are truncated per-field and the whole response is capped by an "
             "overall budget (see extras.body_dropped_for_response_budget). The full "
@@ -1475,7 +1425,7 @@ TOOL_SPECS: list[ToolSpec] = [
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max trace entries to return (1–200, default 50).",
+                    "description": "Max trace entries to return (1-200, default 50).",
                     "default": 50,
                 },
             },
@@ -1492,9 +1442,7 @@ TOOL_SPECS: list[ToolSpec] = [
 _TOOL_CALLABLES: dict[str, callable] = {
     "get_flow_overview": lambda graph_id, **_: get_flow_overview(graph_id),
     "get_node": lambda graph_id, node_id, **_: get_node(graph_id, node_id),
-    "get_subflow": lambda graph_id, subgraph_node_id, **_: get_subflow(
-        graph_id, subgraph_node_id
-    ),
+    "get_subflow": lambda graph_id, subgraph_node_id, **_: get_subflow(graph_id, subgraph_node_id),
     "get_edges_from": lambda graph_id, node_id, **_: get_edges_from(graph_id, node_id),
     "get_edges_to": lambda graph_id, node_id, **_: get_edges_to(graph_id, node_id),
     "list_node_types": lambda graph_id, **_: list_node_types(graph_id),
@@ -1505,13 +1453,7 @@ _TOOL_CALLABLES: dict[str, callable] = {
     "get_session_stats": lambda graph_id, since=None, until=None, status=None, **_: (
         get_session_stats(graph_id, since=since, until=until, status=status)
     ),
-    "get_recent_sessions": lambda graph_id,
-    limit=5,
-    since=None,
-    until=None,
-    where=None,
-    include_full_variables=False,
-    **_: (
+    "get_recent_sessions": lambda graph_id, limit=5, since=None, until=None, where=None, include_full_variables=False, **_: (
         get_recent_sessions(
             graph_id,
             limit=int(limit),
@@ -1524,7 +1466,7 @@ _TOOL_CALLABLES: dict[str, callable] = {
     "get_session_detail": lambda graph_id, session_id, **_: get_session_detail(
         graph_id, int(session_id)
     ),
-    "get_session_messages": lambda graph_id, session_id, limit=50, **_: (
-        get_session_messages(graph_id, int(session_id), limit=int(limit))
+    "get_session_messages": lambda graph_id, session_id, limit=50, **_: get_session_messages(
+        graph_id, int(session_id), limit=int(limit)
     ),
 }

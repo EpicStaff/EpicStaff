@@ -1,7 +1,6 @@
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { NODE_COLORS, NODE_ICONS } from '../../core/enums/node-config';
-import { NodeType } from '../../core/enums/node-type';
 import { getDefaultNodeSize } from '../../core/helpers/node-size.util';
 import { StartNodeModel } from '../../core/models/node.model';
 

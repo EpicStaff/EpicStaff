@@ -1,9 +1,9 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-SECRET_USAGE_GET = dict(
-    summary="Secret usage",
-    description=(
+SECRET_USAGE_GET = {
+    "summary": "Secret usage",
+    "description": (
         "Every resource in the active organization that references this secret. "
         "A category is present only when it has items, so an unused secret returns "
         "an empty list. Flow entries group their secret-using nodes; `node_type` "
@@ -17,7 +17,7 @@ SECRET_USAGE_GET = dict(
         "caller cannot see reports `readable_total: 0` with a non-zero "
         "`hidden_total`."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="Usage grouped by category",
@@ -42,16 +42,12 @@ SECRET_USAGE_GET = dict(
                                             },
                                             {
                                                 "name": "classify_tier",
-                                                "node_type": (
-                                                    "classification-decision-table"
-                                                ),
+                                                "node_type": ("classification-decision-table"),
                                                 "code_field": "post_python_code",
                                             },
                                             {
                                                 "name": "classify_tier",
-                                                "node_type": (
-                                                    "classification-decision-table"
-                                                ),
+                                                "node_type": ("classification-decision-table"),
                                                 "code_field": "pre_python_code",
                                             },
                                             {
@@ -76,15 +72,11 @@ SECRET_USAGE_GET = dict(
                             },
                             {
                                 "key": "tools",
-                                "items": [
-                                    {"name": "Stripe refund", "type": "mcp_tool"}
-                                ],
+                                "items": [{"name": "Stripe refund", "type": "mcp_tool"}],
                             },
                             {
                                 "key": "llm_configs",
-                                "items": [
-                                    {"name": "gpt-4o prod", "type": "llm_config"}
-                                ],
+                                "items": [{"name": "gpt-4o prod", "type": "llm_config"}],
                             },
                         ],
                     },
@@ -118,4 +110,4 @@ SECRET_USAGE_GET = dict(
             ),
         ),
     },
-)
+}

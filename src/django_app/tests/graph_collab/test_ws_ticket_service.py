@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 
 from tables.graph_collab.ws_auth import TicketAuthMiddleware
-from tables.services.rbac.ticket_service import TicketService
+from rbac.identity.tickets import TicketService
 
 
 def make_ws_service():

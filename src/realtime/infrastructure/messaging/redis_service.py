@@ -1,10 +1,10 @@
 import json
+
 import redis.asyncio as aioredis
+from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from loguru import logger
 from redis.client import PubSub
 from utils.singleton_meta import SingletonMeta
-
-from domain.ports.i_redis_messaging_service import IRedisMessagingService
 
 
 class RedisService(IRedisMessagingService, metaclass=SingletonMeta):

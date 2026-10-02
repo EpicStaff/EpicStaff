@@ -53,13 +53,13 @@
             [sections]="shortcutSections"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
-        @if (isPanelOpen() || !isPanelOpen()) {
-            <div
-                class="drag-handle"
-                [class.dragging]="isDragging"
-                [class.collapsed]="isPanelCollapsed()"
-                (mousedown)="onDragStart($event)"
-            >
+        <div
+            class="drag-handle"
+            [class.dragging]="isDragging"
+            [class.collapsed]="isPanelCollapsed()"
+            (mousedown)="onDragStart($event)"
+        >
+            @if (!isVersionHistoryOpen()) {
                 <button
                     class="collapse-toggle"
                     (mousedown)="$event.stopPropagation()"
@@ -74,16 +74,25 @@
                         ></app-svg-icon>
                     </span>
                 </button>
-            </div>
-            @if (!isPanelCollapsed()) {
-                <app-flow-messages-panel
-                    [style.width.px]="panelWidthPx"
-                    [graphId]="graph.id"
-                    [sessionId]="currentSessionId"
-                    (close)="closeMessagesPanel()"
-                    (sessionSelected)="onSessionSelected($event)"
-                ></app-flow-messages-panel>
             }
+        </div>
+        @if (!isPanelCollapsed()) {
+            <app-flow-messages-panel
+                [style.width.px]="panelWidthPx"
+                [graphId]="graph.id"
+                [sessionId]="currentSessionId"
+                (close)="closeMessagesPanel()"
+                (sessionSelected)="onSessionSelected($event)"
+            ></app-flow-messages-panel>
+        }
+        @if (isVersionHistoryOpen()) {
+            <app-version-history-panel
+                [graphId]="graph.id"
+                [graphSaveVersion]="versionHistoryGraphSaveVersion()"
+                [hasUnsavedChanges]="hasUnsavedChanges()"
+                (closed)="onVersionHistoryClosed()"
+                (restoreRequested)="onVersionRestoreRequested($event)"
+            ></app-version-history-panel>
         }
         @if (isSaving()) {
             <div

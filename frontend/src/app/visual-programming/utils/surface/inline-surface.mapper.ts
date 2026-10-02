@@ -1,5 +1,5 @@
 import { Surface } from '../../../features/agent-definitions/models/surface.model';
-import { InlineSurface } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
+import { InlineSurface } from '../../core/models/task-node.model';
 
 /**
  * Bridges the node-local ("Local surface") `InlineSurface` object stored on Task/Agent

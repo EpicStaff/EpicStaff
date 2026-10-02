@@ -18,7 +18,7 @@ import pytest
 from agents.exceptions import SurfaceValidationError
 from agents.models import AgentDefinition, Surface
 from tables.models.graph_models import Graph, TaskNode
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from agents.validators.surface_validator import SurfaceValidator
 
 

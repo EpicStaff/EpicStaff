@@ -1,9 +1,8 @@
+import settings
 from src.shared.communication import Consumer, Producer
 from src.shared.communication.brokers import RedisPubSubBroker
-from src.shared.communication.storages import RedisStorage
 from src.shared.communication.dns import build_dns
-
-import settings
+from src.shared.communication.storages import RedisStorage
 
 _broker = RedisPubSubBroker(
     build_dns(

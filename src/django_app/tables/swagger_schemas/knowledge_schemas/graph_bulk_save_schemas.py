@@ -1,13 +1,11 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, inline_serializer
 from rest_framework import serializers as drf_serializers
 
-_id_list_field = drf_serializers.ListField(
-    child=drf_serializers.IntegerField(), required=False
-)
+_id_list_field = drf_serializers.ListField(child=drf_serializers.IntegerField(), required=False)
 
-SAVE_FLOW_SWAGGER = dict(
-    summary="Bulk save all flow nodes and edges",
-    description=(
+SAVE_FLOW_SWAGGER = {
+    "summary": "Bulk save all flow nodes and edges",
+    "description": (
         "Atomically upserts and deletes all nodes/edges for a flow in one request.\n\n"
         "- Entity with `id` → update.\n"
         "- Entity without `id` → create.\n"
@@ -16,7 +14,7 @@ SAVE_FLOW_SWAGGER = dict(
         "All entities are validated first. If any fail, the entire request is rejected "
         "and no DB writes happen."
     ),
-    request=inline_serializer(
+    "request": inline_serializer(
         name="SaveFlowRequest",
         fields={
             "python_node_list": drf_serializers.ListField(
@@ -83,7 +81,7 @@ SAVE_FLOW_SWAGGER = dict(
             ),
         },
     ),
-    examples=[
+    "examples": [
         OpenApiExample(
             name="Typical bulk save",
             value={
@@ -180,11 +178,9 @@ SAVE_FLOW_SWAGGER = dict(
             request_only=True,
         )
     ],
-    responses={
+    "responses": {
         200: OpenApiResponse(description="Full updated graph state after save."),
-        400: OpenApiResponse(
-            description="Validation errors — no DB changes were made."
-        ),
+        400: OpenApiResponse(description="Validation errors — no DB changes were made."),
         404: OpenApiResponse(description="Graph not found."),
     },
-)
+}

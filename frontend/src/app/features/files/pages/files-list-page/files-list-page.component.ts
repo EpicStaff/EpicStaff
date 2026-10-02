@@ -3,17 +3,14 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { HasPermissionDirective } from '@shared/directives';
+import { AppSvgIconComponent, ButtonComponent, TabButtonComponent } from '@shared/components';
+import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { ToastService } from '../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
 import {
@@ -34,7 +31,6 @@ import { StorageApiService } from '../../services/storage-api.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
-        HasPermissionDirective,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],
@@ -77,15 +73,20 @@ export class FilesListPageComponent {
     activeTabBtn = computed(() => {
         const url = this.currentUrl();
         if (url?.includes('/storage')) {
+            const canCreateFiles = this.permissionService.can(ResourceCode.Files, ActionCode.Create);
             return {
                 label: 'Add files',
+                permitted: canCreateFiles,
                 action: () => this.onCreateFolderClick(),
             };
         }
 
         if (url?.includes('/knowledge-sources')) {
+            const canCreateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Create);
+            const canUpdateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update);
             return {
                 label: 'Add collection',
+                permitted: canCreateCollection && canUpdateCollection,
                 action: () => this.onCreateCollectionClick(),
             };
         }

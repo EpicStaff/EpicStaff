@@ -1,6 +1,9 @@
 <div class="configure">
     <div class="files-section">
-        <div class="files-header">
+        <div
+            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+            class="files-header"
+        >
             <div class="header-title">
                 Index Mode
                 <app-help-tooltip
@@ -14,22 +17,6 @@
                 [options]="indexModeOptions"
             />
         </div>
-
-        <!--        <div class="files-header">-->
-        <!--            <div class="header-title">-->
-        <!--                Convert to Format-->
-        <!--                <app-help-tooltip-->
-        <!--                    class="tooltip-icon"-->
-        <!--                    text="Select format"-->
-        <!--                    position="right"-->
-        <!--                />-->
-        <!--            </div>-->
-        <!--            <app-radio-button-->
-        <!--                [(value)]="selectedFormat"-->
-        <!--                [options]="formatOptions"-->
-        <!--                [disabled]="true"-->
-        <!--            />-->
-        <!--        </div>-->
 
         @if (hasNonTxtDocuments()) {
             <div class="non-txt-warning">

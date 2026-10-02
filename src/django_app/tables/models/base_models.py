@@ -2,7 +2,6 @@ import hashlib
 import json
 from abc import abstractmethod
 from enum import Enum
-
 from typing import Self
 
 from django.apps import apps
@@ -26,7 +25,6 @@ class AbstractDefaultFillableModel(models.Model):
         """
         Subclasses should return the model that holds the default values.
         """
-        pass
 
     def get_default_fields(self) -> list[str]:
         default_model = self.get_default_model()
@@ -86,7 +84,7 @@ class DefaultBaseModel(models.Model):
         self.pk = 1
         # Invalidate cache on save
         DefaultBaseModel._load_cache.pop(self.__class__, None)
-        super(DefaultBaseModel, self).save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
     @classmethod
     def load(cls):
@@ -137,11 +135,7 @@ class ActiveManager(models.Manager):
     """
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .filter(is_soft_deleted=False, soft_deleted_at__isnull=True)
-        )
+        return super().get_queryset().filter(is_soft_deleted=False, soft_deleted_at__isnull=True)
 
 
 class EnabledToggleManager(models.Manager):

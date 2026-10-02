@@ -5,8 +5,8 @@ from tables.models import Agent, LLMConfig, Provider
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
 from tables.services.quickstart_service import QuickstartService
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 # ---- fixtures (mirror tests/api_tests/test_org_scoping_core.py) ----

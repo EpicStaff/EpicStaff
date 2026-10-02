@@ -1,0 +1,10 @@
+<button
+    type="button"
+    class="stop-btn"
+    [disabled]="disabled()"
+    [matTooltip]="tooltip()"
+    (click)="triggered.emit()"
+>
+    <span class="stop-bar"></span>
+    <span class="stop-bar"></span>
+</button>

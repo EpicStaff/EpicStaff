@@ -1,8 +1,8 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
+import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
-import { NodeType } from '../core/enums/node-type';
 import {
     generatePortsForClassificationDecisionTableNode,
     generatePortsForDecisionTableNode,

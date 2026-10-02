@@ -1,10 +1,11 @@
-from typing import Any, Callable, Optional
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Any
 
 from django.db.models import Q
 
-from tables.import_export.id_mapper import IDMapper
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.schemas import ImportSettings
 
 
@@ -14,13 +15,12 @@ class EntityImportExportStrategy(ABC):
     # Define these in a subclass to enable CSV export for the entity.
     # CSV_FIELDS: list of column names written to the CSV header.
     # csv_row_mapper: transforms a raw exported dict into a flat CSV row.
-    CSV_FIELDS: Optional[list[str]] = None
-    csv_row_mapper: Optional[Callable[[dict], dict]] = None
+    CSV_FIELDS: list[str] | None = None
+    csv_row_mapper: Callable[[dict], dict] | None = None
 
     @abstractmethod
-    def get_instance(self, entity_id: int) -> Optional[Any]:
+    def get_instance(self, entity_id: int) -> Any | None:
         """Retrieve instance by ID"""
-        pass
 
     @abstractmethod
     def extract_dependencies_from_instance(self, instance: Any) -> dict[str, list[int]]:
@@ -28,12 +28,10 @@ class EntityImportExportStrategy(ABC):
         Extract dependencies from an instance.
         Returns: {entity_type: [id1, id2, ...]}
         """
-        pass
 
     @abstractmethod
     def export_entity(self, instance: Any) -> dict:
         """Export single entity to dict"""
-        pass
 
     @abstractmethod
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Any:
@@ -82,8 +80,8 @@ class EntityImportExportStrategy(ABC):
         return instance
 
     def find_existing(
-        self, data: dict, id_mapper: IDMapper, org_id: int = None
-    ) -> Optional[Any]:
+        self, data: dict, id_mapper: IDMapper, org_id: int | None = None
+    ) -> Any | None:
         """
         Check if entity already exists. Override per entity type.
         Return existing instance or None.

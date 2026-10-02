@@ -1,13 +1,12 @@
 from django.db import transaction
-from rest_framework import serializers
-
-from tables.models.label_models import Label
-from tables.models.mcp_models import McpTool
-from tables.models.secret_models import Secret
-from tables.serializers.org_scoped_fields import (
+from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
 )
+from rest_framework import serializers
+from tables.models.label_models import Label
+from tables.models.mcp_models import McpTool
+from tables.models.secret_models import Secret
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
@@ -53,9 +52,7 @@ class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation["labels"] = org_scoped_label_ids(
-            instance, self.context.get("request")
-        )
+        representation["labels"] = org_scoped_label_ids(instance, self.context.get("request"))
         return representation
 
     def create(self, validated_data):

@@ -2,12 +2,12 @@ import audioop
 import base64
 import json
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
+from loguru import logger
 
 from infrastructure.persistence.database import save_realtime_session_item_to_db
-from loguru import logger
 
 
 class ElevenLabsServerEventHandler:
@@ -18,9 +18,9 @@ class ElevenLabsServerEventHandler:
 
         self.client: ElevenLabsRealtimeAgentClient = client
 
-        self._current_response_id: Optional[str] = None
-        self._current_item_id: Optional[str] = None
-        self._current_user_item_id: Optional[str] = None
+        self._current_response_id: str | None = None
+        self._current_item_id: str | None = None
+        self._current_user_item_id: str | None = None
 
         self._current_output_index = 0
 
@@ -33,7 +33,7 @@ class ElevenLabsServerEventHandler:
         self._current_user_item_id = None
         self._current_output_index = 0
 
-    async def _send_to_client(self, payload: Dict[str, Any]) -> None:
+    async def _send_to_client(self, payload: dict[str, Any]) -> None:
         if "event_id" not in payload:
             payload["event_id"] = f"evt_{uuid.uuid4().hex[:16]}"
         await self.client.send_client(payload)
@@ -93,13 +93,11 @@ class ElevenLabsServerEventHandler:
                 }
             )
 
-            await self._send_to_client(
-                {"type": "conversation.item.created", "item": agent_item}
-            )
+            await self._send_to_client({"type": "conversation.item.created", "item": agent_item})
 
             self._current_output_index += 1
 
-    async def handle_event(self, data: Dict[str, Any]) -> None:
+    async def handle_event(self, data: dict[str, Any]) -> None:
         event_type = data.get("type", "")
         if event_type not in ("audio", "ping"):
             logger.debug(f"EL Event Routing: {event_type}")
@@ -122,7 +120,7 @@ class ElevenLabsServerEventHandler:
             user_id=self.client.user_id,
         )
 
-    async def _handle_initiation_metadata(self, data: Dict[str, Any]) -> None:
+    async def _handle_initiation_metadata(self, data: dict[str, Any]) -> None:
         meta = data.get("conversation_initiation_metadata_event", {})
         await self._send_to_client(
             {
@@ -135,12 +133,10 @@ class ElevenLabsServerEventHandler:
             }
         )
 
-    async def _handle_audio(self, data: Dict[str, Any]) -> None:
+    async def _handle_audio(self, data: dict[str, Any]) -> None:
         audio_event = data.get("audio_event", {})
         audio_b64 = (
-            audio_event.get("audio_base_64")
-            or data.get("audio_base_64")
-            or data.get("chunk", "")
+            audio_event.get("audio_base_64") or data.get("audio_base_64") or data.get("chunk", "")
         )
         if not audio_b64:
             return
@@ -189,7 +185,7 @@ class ElevenLabsServerEventHandler:
             logger.error(f"ElevenLabs audio upsample error: {e}")
             return audio_b64
 
-    async def _handle_agent_response(self, data: Dict[str, Any]) -> None:
+    async def _handle_agent_response(self, data: dict[str, Any]) -> None:
         agent_response_event = data.get("agent_response_event", {})
         text = agent_response_event.get("agent_response", "")
 
@@ -273,7 +269,7 @@ class ElevenLabsServerEventHandler:
             }
         )
 
-    async def _handle_user_transcript(self, data: Dict[str, Any]) -> None:
+    async def _handle_user_transcript(self, data: dict[str, Any]) -> None:
         user_transcription_event = data.get("user_transcription_event", {})
         text = user_transcription_event.get("user_transcript", "")
         if not text:
@@ -302,7 +298,7 @@ class ElevenLabsServerEventHandler:
             }
         )
 
-    async def _handle_client_tool_call(self, data: Dict[str, Any]) -> None:
+    async def _handle_client_tool_call(self, data: dict[str, Any]) -> None:
         tool_call = data.get("client_tool_call", {})
         tool_call_id = tool_call.get("tool_call_id", "")
         tool_name = tool_call.get("tool_name", "")
@@ -355,18 +351,18 @@ class ElevenLabsServerEventHandler:
         logger.info(f"EL Tool Execution: {tool_name}")
         await self.client.call_tool(tool_call_id, tool_name, parameters)
 
-    async def _handle_interruption(self, data: Dict[str, Any]) -> None:
+    async def _handle_interruption(self, data: dict[str, Any]) -> None:
         self._current_response_id = None
         self._current_item_id = None
         self._current_output_index = 0
         await self._send_to_client({"type": "input_audio_buffer.speech_started"})
 
-    async def _handle_ping(self, data: Dict[str, Any]) -> None:
+    async def _handle_ping(self, data: dict[str, Any]) -> None:
         event_id = data.get("ping_event", {}).get("event_id")
         await self.client.send_server({"type": "pong", "event_id": event_id})
 
-    async def _handle_ignored(self, data: Dict[str, Any]) -> None:
+    async def _handle_ignored(self, data: dict[str, Any]) -> None:
         pass
 
-    async def _handle_unknown(self, data: Dict[str, Any]) -> None:
+    async def _handle_unknown(self, data: dict[str, Any]) -> None:
         logger.warning(f"Unknown EL event: {data.get('type')}")

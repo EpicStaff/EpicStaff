@@ -13,8 +13,8 @@ from tables.models.graph_models import (
     StartNode,
 )
 from tables.models.label_models import Label
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 
 
 @pytest.fixture

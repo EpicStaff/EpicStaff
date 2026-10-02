@@ -38,10 +38,7 @@ class GraphPresenceService:
         return affected
 
     def has_user(self, graph_id: int, user_id: int) -> bool:
-        return any(
-            editor.user_id == user_id
-            for editor in self._store.get(graph_id, {}).values()
-        )
+        return any(editor.user_id == user_id for editor in self._store.get(graph_id, {}).values())
 
     def get_editors(self, graph_id: int) -> list[EditorInfo]:
         graph_editors = self._store.get(graph_id, {})

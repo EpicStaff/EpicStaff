@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { splitNodeTitleBadge } from '../../../core/helpers/split-node-title.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
@@ -54,6 +55,10 @@ export class DecisionTableNodeComponent {
         const nodes = this.flowService.nodes();
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
         return node ? node.node_name : idOrName;
+    }
+
+    get titleParts(): { label: string; badge: string | null } {
+        return splitNodeTitleBadge(this.node.node_name || 'Decision Table', this.node.nodeNumber);
     }
 
     get inputPort() {

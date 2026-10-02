@@ -38,9 +38,7 @@ class PythonCodeSite:
 
 
 PYTHON_CODE_SITES: tuple[PythonCodeSite, ...] = (
-    PythonCodeSite(
-        model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON
-    ),
+    PythonCodeSite(model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON),
     PythonCodeSite(
         model=WebhookTriggerNode,
         code_field="python_code",

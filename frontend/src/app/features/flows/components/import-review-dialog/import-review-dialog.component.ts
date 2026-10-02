@@ -18,7 +18,7 @@ import { finalize } from 'rxjs/operators';
 
 import { EntityTypeResult, ImportResult } from '../../../../core/models/import-result.model';
 import { ImportReviewDialogCloseResult, ImportReviewDialogData } from '../../../../core/models/review-item.model';
-import { ToastService } from '../../../../services/notifications/toast.service';
+import { ToastService } from '../../../../services/notifications';
 import { EntityGroupComponent } from './components/entity-group/entity-group.component';
 import { ImportSummaryTabsComponent } from './components/import-summary-tabs/import-summary-tabs.component';
 import { ReviewNavigatorComponent } from './components/review-navigator/review-navigator.component';

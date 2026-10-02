@@ -1,7 +1,6 @@
 import zlib
 
 from django.db import connection
-
 from tables.models.python_models import PythonCode
 
 #: Distinguishes "the payload omitted secrets" from "the payload sent an empty list".
@@ -46,9 +45,7 @@ def create_python_code(*, python_code_data: dict) -> PythonCode:
     return python_code
 
 
-def apply_python_code_fields(
-    *, python_code: PythonCode, python_code_data: dict
-) -> None:
+def apply_python_code_fields(*, python_code: PythonCode, python_code_data: dict) -> None:
     """Apply serializer data to an existing PythonCode, honouring the M2M."""
     declared = python_code_data.pop("secrets", _UNSET)
     for attr, value in python_code_data.items():

@@ -12,7 +12,7 @@ Default max-retry count is read from ``AGENT_DEFAULT_MAX_RETRIES`` env var via
 from __future__ import annotations
 
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import litellm
 from loguru import logger
@@ -38,9 +38,7 @@ def _cached_prompt_tokens(data: dict) -> int:
     details = data.get("prompt_tokens_details")
 
     if details is not None and not isinstance(details, dict):
-        details = (
-            details.model_dump() if hasattr(details, "model_dump") else vars(details)
-        )
+        details = details.model_dump() if hasattr(details, "model_dump") else vars(details)
 
     if details:
         cached = details.get("cached_tokens")
@@ -96,9 +94,7 @@ def _usage_cost_usd(model: str, usage: dict) -> float:
 
 def _kwargs_for_acompletion(model_config: dict) -> dict:
     """Strip Router-owned and runtime keys from model_config before forwarding."""
-    return {
-        k: v for k, v in model_config.items() if k not in _STRIPPED_MODEL_CONFIG_KEYS
-    }
+    return {k: v for k, v in model_config.items() if k not in _STRIPPED_MODEL_CONFIG_KEYS}
 
 
 def _default_max_retries() -> int:
@@ -163,9 +159,7 @@ class LiteLLMClient(LLMClient):
         rpm = runtime_config.get("max_rpm")
 
         pool = self._pool or get_router_pool()
-        router = await pool.get(
-            model=model_config["model"], model_config=model_config, rpm=rpm
-        )
+        router = await pool.get(model=model_config["model"], model_config=model_config, rpm=rpm)
         synthetic_model = router.model_list[0]["model_name"]
 
         retry = self._retry or RetryPolicy(max_retries=_default_max_retries())
@@ -207,9 +201,7 @@ class LiteLLMClient(LLMClient):
 
             if usage:
                 usage_data = _usage_dict(usage)
-                usage_data["total_cost_usd"] = _usage_cost_usd(
-                    model_config["model"], usage_data
-                )
+                usage_data["total_cost_usd"] = _usage_cost_usd(model_config["model"], usage_data)
                 logger.debug("litellm usage={}", usage_data)
                 yield LLMChunk(usage=usage_data)
 

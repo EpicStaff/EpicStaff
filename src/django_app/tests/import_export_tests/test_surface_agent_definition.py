@@ -6,11 +6,8 @@ import pytest
 
 from tests.fixtures import *  # noqa: F401,F403
 
-from tables.models import (
-    Organization,
-    McpTool,
-    LLMConfig,
-)
+from rbac.models import Organization
+from tables.models import McpTool, LLMConfig
 from agents.models import (
     AgentDefinition,
     AgentDefaultSurface,
@@ -164,7 +161,7 @@ class TestSurfaceRoundTrip:
         new_surface_id = id_mapper.get_new_ids(EntityType.SURFACE)[0]
         new_surface = Surface.objects.get(id=new_surface_id)
 
-        assert new_surface.name == "owned_surface_1 (2)"
+        assert new_surface.name == "owned_surface_1 #2"
 
     def test_tools_and_modes_preserved(
         self, surface_agent_seeded_db, export_service, import_service

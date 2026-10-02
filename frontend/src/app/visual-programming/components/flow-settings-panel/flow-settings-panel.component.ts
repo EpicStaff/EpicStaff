@@ -3,11 +3,13 @@ import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/cor
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
+import {
+    AppIconComponent,
+    AppSvgIconComponent,
+    TimezoneSelectorComponent,
+    ToggleSwitchComponent,
+} from '@shared/components';
 
-import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.component';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { TimezoneSelectorComponent } from '../../../shared/components/timezone-selector/timezone-selector.component';
 import { FlowSettingsService } from '../../services/flow-settings.service';
 
 @Component({

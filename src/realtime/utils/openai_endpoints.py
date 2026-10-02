@@ -29,9 +29,7 @@ def derive_realtime_ws_url(base_url: str | None) -> str:
 
     scheme, _, rest = base_url.partition("://")
     if not rest or scheme not in _SCHEME_TO_WS:
-        raise ValueError(
-            f"base_url must start with 'http://' or 'https://', got: {base_url!r}"
-        )
+        raise ValueError(f"base_url must start with 'http://' or 'https://', got: {base_url!r}")
 
     ws_scheme = _SCHEME_TO_WS[scheme]
     rest = rest.rstrip("/")

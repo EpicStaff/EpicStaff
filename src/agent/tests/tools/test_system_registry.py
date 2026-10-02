@@ -5,14 +5,12 @@ Tests for SystemToolRegistry and the @system_tool decorator.
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel
-
-from shared.models.agent_service import ToolResult
 from app.tools.system_registry import (
-    SystemToolRegistry,
     get_system_registry,
     system_tool,
 )
+from pydantic import BaseModel
+from shared.models.agent_service import ToolResult
 
 
 @pytest.fixture(autouse=True)

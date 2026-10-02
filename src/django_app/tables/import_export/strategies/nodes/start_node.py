@@ -1,17 +1,15 @@
-from typing import Any, Optional
-
-from tables.models import StartNode
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.start_node import StartNodeImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.start_node import StartNodeImportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.models import StartNode
 
 
 class StartNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.START_NODE
     serializer_class = StartNodeImportSerializer
 
-    def get_instance(self, entity_id: int) -> Optional[StartNode]:
+    def get_instance(self, entity_id: int) -> StartNode | None:
         return StartNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: StartNode) -> dict:

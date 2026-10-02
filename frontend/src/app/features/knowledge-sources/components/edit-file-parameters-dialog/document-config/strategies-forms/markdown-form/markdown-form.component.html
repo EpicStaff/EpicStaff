@@ -13,13 +13,17 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number
-                formControlName="chunk_size"
-                [alwaysShowSteps]="true"
-                [stepSize]="DEFAULT_STEP_SIZE"
-                [invalid]="!!getMainParamControl('chunk_size')?.invalid"
-            />
-            <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
+            @if (canUpdate()) {
+                <app-input-number
+                    formControlName="chunk_size"
+                    [alwaysShowSteps]="true"
+                    [stepSize]="DEFAULT_STEP_SIZE"
+                    [invalid]="!!getMainParamControl('chunk_size')?.invalid"
+                />
+                <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
+            } @else {
+                <span>{{ params().chunk_size }}</span>
+            }
         </div>
 
         <div class="config__grid-item">
@@ -32,13 +36,17 @@
             />
         </div>
         <div class="config__grid-item config__grid-item--short">
-            <app-input-number
-                formControlName="chunk_overlap"
-                [alwaysShowSteps]="true"
-                [stepSize]="DEFAULT_STEP_SIZE"
-                [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
-            />
-            <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
+            @if (canUpdate()) {
+                <app-input-number
+                    formControlName="chunk_overlap"
+                    [alwaysShowSteps]="true"
+                    [stepSize]="DEFAULT_STEP_SIZE"
+                    [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
+                />
+                <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
+            } @else {
+                <span>{{ params().chunk_overlap }}</span>
+            }
         </div>
     </div>
 
@@ -61,7 +69,11 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-chips-select [chips]="headerItems" />
+            @if (canUpdate()) {
+                <app-chips-select [chips]="headerItems" />
+            } @else {
+                <span>{{ params().headers_to_split_on }}</span>
+            }
         </div>
         <div class="config__grid-item">
             <label>Return Each Line</label>
@@ -73,7 +85,11 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-toggle-switch formControlName="return_each_line"></app-toggle-switch>
+            @if (canUpdate()) {
+                <app-toggle-switch formControlName="return_each_line"></app-toggle-switch>
+            } @else {
+                <span>{{ params().return_each_line }}</span>
+            }
         </div>
         <div class="config__grid-item">
             <label>Strip Headers</label>
@@ -85,7 +101,11 @@
             />
         </div>
         <div class="config__grid-item">
-            <app-toggle-switch formControlName="strip_headers"></app-toggle-switch>
+            @if (canUpdate()) {
+                <app-toggle-switch formControlName="strip_headers"></app-toggle-switch>
+            } @else {
+                <span>{{ params().strip_headers }}</span>
+            }
         </div>
     </div>
 </form>

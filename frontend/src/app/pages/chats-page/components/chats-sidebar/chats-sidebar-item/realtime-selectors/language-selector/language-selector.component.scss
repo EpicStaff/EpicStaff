@@ -6,7 +6,7 @@
         display: block;
         margin-bottom: 8px;
         font-size: 0.875rem;
-        color: var(--white-alpha-70);
+        color: var(--color-text-secondary);
     }
 
     .selector {
@@ -17,7 +17,7 @@
         padding: 10px 12px;
 
         border: 1px solid var(--white-alpha-10);
-        border-radius: 6px;
+        border-radius: 4px;
         color: var(--gray-110);
         font-size: 0.875rem;
         cursor: pointer;
@@ -53,7 +53,7 @@
         overflow-y: auto;
         background-color: var(--graphite-780);
         border: 1px solid var(--white-alpha-20);
-        border-radius: 6px;
+        border-radius: 4px;
         z-index: 10;
         box-shadow: 0 4px 12px var(--black-alpha-50);
 

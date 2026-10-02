@@ -2,15 +2,14 @@ import asyncio
 import json
 import logging
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Iterable, Iterator
 
 from asgiref.sync import async_to_sync
-
 from tables.exceptions import (
-    ClassificationDecisionTableNodeNotFoundError,
     CdtExplainLLMConfigNotFoundError,
     CdtExplainUpstreamError,
+    ClassificationDecisionTableNodeNotFoundError,
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.models.llm_models import LLMConfig
@@ -76,9 +75,7 @@ class CdtExplainService:
         for block in blocks:
             text = texts.get(block["id"])
             if text:
-                explanations.append(
-                    {"id": block["id"], "text": text, "generated_by": generated_by}
-                )
+                explanations.append({"id": block["id"], "text": text, "generated_by": generated_by})
             else:
                 failures.append(
                     {"id": block["id"], "detail": "No explanation was generated for this step."}
@@ -134,7 +131,7 @@ class CdtExplainService:
 
         texts: dict[str, str] = {}
         failed = 0
-        for batch, result in zip(batches, results):
+        for batch, result in zip(batches, results, strict=False):
             if isinstance(result, BaseException):
                 failed += 1
                 logger.warning(
@@ -163,7 +160,7 @@ class CdtExplainService:
         wanted = {b["id"] for b in batch}
         return {
             item["id"]: item["text"]
-            for item in self._parse(("".join(chunks)))
+            for item in self._parse("".join(chunks))
             if item.get("id") in wanted and item.get("text")
         }
 
@@ -177,8 +174,6 @@ class CdtExplainService:
         try:
             payload = json.loads(text)
         except json.JSONDecodeError as exc:
-            raise CdtExplainUpstreamError(
-                "The model did not return a usable response."
-            ) from exc
+            raise CdtExplainUpstreamError("The model did not return a usable response.") from exc
         items = payload.get("explanations") if isinstance(payload, dict) else None
         return items if isinstance(items, list) else []

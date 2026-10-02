@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { merge, Observable, of, throwError, timer } from 'rxjs';
 import { catchError, map, switchMap, takeWhile } from 'rxjs/operators';
 
-import { ConfigService } from '../../services/config/config.service';
+import { ConfigService } from '../../services/config';
 
 /** Poll cadence and limits for python-code-result. */
 const POLL_INITIAL_DELAY_MS = 1000;

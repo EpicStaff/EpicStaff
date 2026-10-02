@@ -1,10 +1,10 @@
 import asyncio
-from loguru import logger
-from typing import Optional
 
-from app.providers.tunnels.base import AbstractTunnelProvider
-from app.providers.provider_factory import get_provider
+from loguru import logger
 from src.shared.models import BaseTunnelConfigData, WebhookConfigData
+
+from app.providers.provider_factory import get_provider
+from app.providers.tunnels.base import AbstractTunnelProvider
 
 
 class AmbiguousWebhookPathError(Exception):
@@ -31,8 +31,7 @@ def _connection_fingerprint(config: BaseTunnelConfigData) -> dict:
 
 
 class UnregisteredWebhookPathError(Exception):
-    """Raised when no tunnel config is registered for the requested path.
-    """
+    """Raised when no tunnel config is registered for the requested path."""
 
     def __init__(self, domain: str, path: str, registered_ids: list[str]):
         self.domain = domain
@@ -46,9 +45,7 @@ class UnregisteredWebhookPathError(Exception):
 
 class TunnelRegistry:
     def __init__(self, redis_service=None):
-        self._tunnel_pool: dict[
-            str, tuple[AbstractTunnelProvider, BaseTunnelConfigData]
-        ] = dict()
+        self._tunnel_pool: dict[str, tuple[AbstractTunnelProvider, BaseTunnelConfigData]] = {}
         self._lock = asyncio.Lock()
         self._redis_service = redis_service
 
@@ -92,9 +89,7 @@ class TunnelRegistry:
             try:
                 await self._redis_service.delete_tunnel_url(unique_id)
             except Exception as e:
-                logger.error(
-                    f"Error deleting tunnel URL from Redis for {unique_id}: {e}"
-                )
+                logger.error(f"Error deleting tunnel URL from Redis for {unique_id}: {e}")
 
     async def register_many(self, webhook_config_data: WebhookConfigData):
         all_configs = [
@@ -138,14 +133,10 @@ class TunnelRegistry:
                 except Exception as e:
                     logger.error(f"Error registering {unique_id}: {e}")
             elif needs_auth_update:
-                logger.info(
-                    f"Auth config for {unique_id} updated without tunnel restart."
-                )
+                logger.info(f"Auth config for {unique_id} updated without tunnel restart.")
 
         async with self._lock:
-            logger.debug(
-                f"Current pool synced. Active tunnels: {list(self._tunnel_pool.keys())}"
-            )
+            logger.debug(f"Current pool synced. Active tunnels: {list(self._tunnel_pool.keys())}")
 
     @staticmethod
     def _normalize_path(path: str | None) -> str:
@@ -154,8 +145,18 @@ class TunnelRegistry:
     async def resolve_by_path(self, path: str) -> tuple[str, BaseTunnelConfigData]:
         """Resolve the unique_id and config based purely on the requested path.
 
-        This eliminates reliance on spoofable Host headers. The `path` is cryptographically
-        unguessable (UUID/secret) and acts as the secure routing key.
+        This eliminates reliance on spoofable Host headers. `path` is a
+        user-chosen string (validated only by the permissive regex
+        `^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$` on the Django side), not a
+        cryptographically unguessable secret. Cross-org collisions on it
+        are now prevented structurally: Django's `WebhookTrigger` model
+        enforces a DB-level uniqueness constraint on `path` alone (see the
+        `unique=True` on `WebhookTrigger.path` and its accompanying
+        migration), so two different orgs -- regardless of provider type
+        -- can no longer register the same path at all. The
+        `AmbiguousWebhookPathError` fallback below remains as defense-in-depth
+        for this FastAPI service -- it should no longer be reachable via a
+        legitimate cross-org registration attempt.
 
         `config.name` (the matching field) carries no org information --
         only `unique_id` does -- so two configs from different orgs (or
@@ -182,9 +183,7 @@ class TunnelRegistry:
                 f"Ambiguous webhook path '{requested_path}' matches multiple "
                 f"registered configs: {matched_ids}"
             )
-            raise AmbiguousWebhookPathError(
-                path=requested_path, matched_ids=matched_ids
-            )
+            raise AmbiguousWebhookPathError(path=requested_path, matched_ids=matched_ids)
 
         raise UnregisteredWebhookPathError(
             domain="N/A (Path Routing)",
@@ -193,7 +192,7 @@ class TunnelRegistry:
         )
 
 
-_tunnel_registry: Optional[TunnelRegistry] = None
+_tunnel_registry: TunnelRegistry | None = None
 
 
 def get_tunnel_registry(redis_service=None) -> TunnelRegistry:

@@ -3,7 +3,7 @@ import pytest
 from agents.models import AgentDefinition
 from tables.graph_versioning.handlers import _MissingSets
 from tables.import_export.enums import NodeType
-from tables.models import Organization
+from rbac.models import Organization
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 
 # Dependency IDs used consistently across all handler tests

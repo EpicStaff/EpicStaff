@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import litellm
-
 from utils.logger import logger
 
 from .base import (
@@ -73,9 +72,7 @@ class LiteLLMClient(BaseLLMClient):
             raise UnsupportedLLMProviderError("(empty model name)")
 
         provider_name = (
-            (model.llm_provider.name or "").lower().strip()
-            if model.llm_provider
-            else ""
+            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
         )
 
         if not provider_name or provider_name == "openai":

@@ -1,5 +1,12 @@
 @if (facade.isLoading() && items().length === 0) {
     <div class="section-state">Loading storage…</div>
+} @else if (facade.error()) {
+    <app-fetch-error-state
+        mod="small"
+        title="Failed to load storage"
+        message="Check your connection and try again."
+        (retry)="facade.loadTree()"
+    />
 } @else if (items().length === 0) {
     <div class="section-state">Storage is empty</div>
 } @else {

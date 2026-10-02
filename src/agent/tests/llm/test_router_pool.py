@@ -10,11 +10,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import app.llm.router_pool as router_pool_module
+import pytest
 from app.llm.router_pool import RouterPool, get_router_pool
-
 
 MODEL_CONFIG = {"model": "gpt-4o", "api_key": "sk-test"}
 

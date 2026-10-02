@@ -1,12 +1,11 @@
-import json
 import asyncio
-from typing import Dict
-from datetime import datetime, timezone
-
-from services.redis_service import RedisService
-from repositories.session_repository import SessionRepository
+import json
+from datetime import UTC, datetime
 
 from helpers.logger import logger
+from repositories.session_repository import SessionRepository
+
+from services.redis_service import RedisService
 
 
 class SessionTimeoutService:
@@ -26,13 +25,13 @@ class SessionTimeoutService:
 
         self.session_repository: SessionRepository = session_repository
         # Dictionary to track active session timeout tasks
-        self.timeout_tasks_pool: Dict[int, asyncio.Task] = {}
+        self.timeout_tasks_pool: dict[int, asyncio.Task] = {}
 
     async def start(self):
         """
         Start the session timeout monitoring service
         """
-        asyncio.create_task(self._listen_for_session_starts())
+        asyncio.create_task(self._listen_for_session_starts())  # noqa: RUF006
         logger.info("Session Timeout Service started.")
 
     async def initial_check_all_sessions_for_timeout(self):
@@ -63,9 +62,7 @@ class SessionTimeoutService:
                 if status in ["run", "pending", "wait_for_user"]:
                     if time_elapsed > time_to_live:
                         await self._publish_session_timeout(session_id)
-                        logger.info(
-                            f"Session {session_id} timed out during check all sessions"
-                        )
+                        logger.info(f"Session {session_id} timed out during check all sessions")
                     else:
                         # If not timed out, create a monitoring task
                         timeout_task = asyncio.create_task(
@@ -85,9 +82,7 @@ class SessionTimeoutService:
         """
         while True:
             try:
-                pubsub = await self.redis_service.async_subscribe(
-                    self.session_schema_channel
-                )
+                pubsub = await self.redis_service.async_subscribe(self.session_schema_channel)
                 async for message in pubsub.listen():
                     if message["type"] == "message":
                         try:
@@ -102,9 +97,7 @@ class SessionTimeoutService:
                         except Exception as e:
                             logger.error(f"Error processing session start message: {e}")
             except Exception as e:
-                logger.error(
-                    f"Redis session listener disconnected, reconnecting in 1s: {e}"
-                )
+                logger.error(f"Redis session listener disconnected, reconnecting in 1s: {e}")
                 await asyncio.sleep(1)
 
     def _clean_timeout_tasks_pool(self, session_id: int) -> None:
@@ -122,9 +115,7 @@ class SessionTimeoutService:
             self._clean_timeout_tasks_pool(session_id)
 
             # Create a new timeout monitoring task
-            timeout_task = asyncio.create_task(
-                self._monitor_session_timeout(session_id)
-            )
+            timeout_task = asyncio.create_task(self._monitor_session_timeout(session_id))
             self.timeout_tasks_pool[session_id] = timeout_task
         except Exception as e:
             logger.error(f"Error handling session start: {e}")
@@ -171,9 +162,7 @@ class SessionTimeoutService:
         except asyncio.CancelledError:
             logger.info(f"Timeout monitoring for session {session_id} cancelled.")
         except Exception as e:
-            logger.error(
-                f"Error in session timeout monitoring for session {session_id}: {e}"
-            )
+            logger.error(f"Error in session timeout monitoring for session {session_id}: {e}")
 
     async def _get_monitoring_data(self, session_id: int) -> tuple:
         """
@@ -197,7 +186,7 @@ class SessionTimeoutService:
         """
         Calculate the elapsed time (in seconds) since the last update.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return (now - last_update).total_seconds()
 
     async def _publish_session_timeout(self, session_id: int):
@@ -211,15 +200,11 @@ class SessionTimeoutService:
             }
 
             # Publish to crew
-            await self.redis_service.async_publish(
-                self.session_timeout_channel, timeout_message
-            )
+            await self.redis_service.async_publish(self.session_timeout_channel, timeout_message)
 
-            logger.info(f"Published timeout message for session {session_id}")
+            logger.info("Published timeout message for session {}", session_id)
         except Exception as e:
-            logger.error(
-                f"Error publishing timeout message for session {session_id}: {e}"
-            )
+            logger.error("Error publishing timeout message for session {}: {}", session_id, e)
 
     async def stop(self):
         """

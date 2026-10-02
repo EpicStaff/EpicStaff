@@ -13,7 +13,7 @@ containing exactly one item so the loop has a single codepath regardless of
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, ConfigDict
 

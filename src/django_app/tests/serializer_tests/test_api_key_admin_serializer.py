@@ -1,7 +1,7 @@
 import pytest
 
-from tables.models.rbac_models import ApiKey
-from tables.serializers.api_key_serializers import ApiKeyAdminSerializer
+from rbac.models import ApiKey
+from rbac.serializers.api_keys import ApiKeyAdminSerializer
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

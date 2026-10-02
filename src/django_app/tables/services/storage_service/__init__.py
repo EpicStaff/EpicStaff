@@ -1,5 +1,4 @@
 from django.conf import settings
-
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.s3_backend import S3StorageBackend
 

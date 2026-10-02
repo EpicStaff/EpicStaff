@@ -1,6 +1,7 @@
-from tables.models import EndNode
-from tables.exceptions import EndNodeValidationError
 from loguru import logger
+
+from tables.exceptions import EndNodeValidationError
+from tables.models import EndNode
 
 
 class EndNodeValidator:
@@ -48,10 +49,7 @@ class EndNodeValidator:
             if len(variables_path_errors) == 1:
                 msg = f'Value for "{variables_path_errors[0]}" must start with "variables"'
             else:
-                msg = (
-                    f'Values for "{", ".join(variables_path_errors)}" '
-                    f'must start with "variables"'
-                )
+                msg = f'Values for "{", ".join(variables_path_errors)}" must start with "variables"'
             error_messages.append(msg)
 
         if error_messages:

@@ -2,9 +2,10 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
@@ -15,7 +16,7 @@ interface StorageDetailsDialogData extends StorageItemInfo {
 
 @Component({
     selector: 'app-storage-details-dialog',
-    imports: [AppSvgIconComponent, MatTooltipModule, FileSizePipe],
+    imports: [AppSvgIconComponent, MatTooltipModule, FileSizePipe, HasPermissionDirective],
     templateUrl: './storage-details-dialog.component.html',
     styleUrls: ['./storage-details-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -118,4 +119,7 @@ export class StorageDetailsDialogComponent {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

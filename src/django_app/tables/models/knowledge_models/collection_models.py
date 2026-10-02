@@ -2,8 +2,8 @@ import ntpath
 
 from django.core.exceptions import SuspiciousFileOperation
 from django.db import models
-
 from loguru import logger
+from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
     ActiveManager,
@@ -11,7 +11,6 @@ from tables.models.base_models import (
     SoftDeleteMixin,
     soft_delete_consistency_constraint,
 )
-from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 def _is_bare_file_name(file_name: str) -> bool:
@@ -161,9 +160,7 @@ class DocumentMetadata(SoftDeleteFields):
 
     document_id = models.AutoField(primary_key=True)
     file_name = models.CharField(max_length=255, blank=True)
-    file_type = models.CharField(
-        max_length=10, choices=DocumentFileType.choices, blank=True
-    )
+    file_type = models.CharField(max_length=10, choices=DocumentFileType.choices, blank=True)
     file_size = models.PositiveIntegerField(help_text="Size in bytes", null=True)
 
     source_collection = models.ForeignKey(
@@ -194,9 +191,7 @@ class DocumentMetadata(SoftDeleteFields):
         res = super().save(*args, **kwargs)
         collection = self.source_collection
         if collection is None:
-            logger.warning(
-                f"Source collection for document {self.file_name} not found!"
-            )
+            logger.warning(f"Source collection for document {self.file_name} not found!")
         else:
             self.source_collection.update_collection_status()
         return res
@@ -204,9 +199,7 @@ class DocumentMetadata(SoftDeleteFields):
     def delete(self, using=None, keep_parents=None):
         res = super().delete(using, keep_parents)
         if self.source_collection is None:
-            logger.warning(
-                f"Source collection for document {self.file_name} not found!"
-            )
+            logger.warning(f"Source collection for document {self.file_name} not found!")
         else:
             self.source_collection.update_collection_status()
 

@@ -1,7 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
+from rbac.models.enums import ResourceType
 
-from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.serializers.serializers import (
     BulkDeleteRequestSerializer,
     BulkDeleteResultSerializer,
@@ -67,9 +67,9 @@ def _bulk_delete_post_schema(
     gate: ResourceType,
     bucket_types: tuple[ResourceType, ...],
 ) -> dict:
-    return dict(
-        summary=f"Bulk delete {model_name}s",
-        description=(
+    return {
+        "summary": f"Bulk delete {model_name}s",
+        "description": (
             f"Deletes the requested `{model_name}` rows the caller may delete, "
             "scoped to the active org, and reports every other id instead of "
             "failing the request. An id is **not found** when it does not "
@@ -81,9 +81,9 @@ def _bulk_delete_post_schema(
             "was not found or skipped. `usage` is populated only on a dry run; "
             "a real delete returns it empty."
         ),
-        parameters=[DRY_RUN_PARAMETER],
-        request=BulkDeleteRequestSerializer,
-        responses={
+        "parameters": [DRY_RUN_PARAMETER],
+        "request": BulkDeleteRequestSerializer,
+        "responses": {
             200: OpenApiResponse(
                 response=BulkDeleteResultSerializer,
                 description="Every requested id was deleted (or, on a dry run, would be).",
@@ -129,7 +129,7 @@ def _bulk_delete_post_schema(
                 ),
             ),
         },
-    )
+    }
 
 
 GRAPH_BULK_DELETE_POST = _bulk_delete_post_schema(
@@ -157,9 +157,7 @@ EMBEDDING_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
     gate=ResourceType.LLM_CONFIGS,
     bucket_types=(ResourceType.PROJECTS, ResourceType.KNOWLEDGE_SOURCES),
 )
-_REALTIME_CONFIG = dict(
-    gate=ResourceType.LLM_CONFIGS, bucket_types=(ResourceType.AGENTS,)
-)
+_REALTIME_CONFIG = {"gate": ResourceType.LLM_CONFIGS, "bucket_types": (ResourceType.AGENTS,)}
 OPENAI_REALTIME_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
     model_name="OpenAIRealtimeConfig", **_REALTIME_CONFIG
 )

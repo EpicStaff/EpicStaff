@@ -1,17 +1,15 @@
-from typing import Optional
-
 from tables.exceptions import RagException
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.knowledge_node import (
+    KnowledgeNodeImportSerializer,
+)
+from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.models import KnowledgeNode
 from tables.models.knowledge_models import (
     KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS,
     SourceCollection,
 )
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.knowledge_node import (
-    KnowledgeNodeImportSerializer,
-)
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
 from tables.services.rag_registry import resolve_rag_in_collection
 
 
@@ -21,7 +19,7 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
     _CONFIG_MODELS = KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 
-    def get_instance(self, entity_id: int) -> Optional[KnowledgeNode]:
+    def get_instance(self, entity_id: int) -> KnowledgeNode | None:
         return KnowledgeNode.objects.filter(id=entity_id).first()
 
     def get_preview_data(self, instance: KnowledgeNode) -> dict:

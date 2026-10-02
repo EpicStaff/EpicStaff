@@ -19,7 +19,8 @@ import {
     ListComponent,
     ListRowComponent,
 } from '@shared/components';
-import { ResourceCode } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, switchMap } from 'rxjs';
 
 import { FileSizePipe } from '../../../../../../../../shared/pipes/file-size.pipe';
@@ -39,6 +40,7 @@ import { DocumentsStorageService } from '../../../../../../services/documents-st
         ListActionsComponent,
         ListComponent,
         ListRowComponent,
+        HasPermissionDirective,
     ],
 })
 export class FilesListComponent {
@@ -84,4 +86,5 @@ export class FilesListComponent {
     }
 
     protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

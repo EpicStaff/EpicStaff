@@ -25,9 +25,7 @@ def load_env(config_path, expected_vars=None):
     """
     # Convert to absolute path if necessary
     if not os.path.isabs(config_path):
-        config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), config_path
-        )
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
 
     loaded = load_env_from_yaml_config(config_path)
     if not loaded:

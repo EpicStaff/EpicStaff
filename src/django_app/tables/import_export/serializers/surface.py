@@ -1,6 +1,6 @@
+from agents.models import Surface
 from rest_framework import serializers
 
-from agents.models import Surface
 from tables.import_export.enums import EntityType
 
 

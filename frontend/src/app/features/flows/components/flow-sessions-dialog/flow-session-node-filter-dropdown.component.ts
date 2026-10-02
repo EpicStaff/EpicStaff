@@ -9,7 +9,7 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NodeGroup } from 'src/app/shared/models/node-group.model';
+import { NodeGroup } from '@shared/models';
 
 @Component({
     selector: 'app-flow-session-node-filter-dropdown',

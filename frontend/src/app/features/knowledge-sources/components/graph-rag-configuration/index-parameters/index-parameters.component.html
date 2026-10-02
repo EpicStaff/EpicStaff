@@ -97,7 +97,7 @@
             <label>Entity Types</label>
             <app-help-tooltip
                 class="icon"
-                text="The entity types to identify."
+                text="The types of entities to extract from your documents (e.g. Person, Organization, Location)."
                 position="right"
             />
         </div>
@@ -126,7 +126,7 @@
             <label>Max Gleanings</label>
             <app-help-tooltip
                 class="icon"
-                text="The maximum number of gleaning cycles to use."
+                text="How many extra passes to run over each chunk to catch entities missed on the first pass. Higher values improve recall at the cost of more LLM calls."
                 position="right"
             />
         </div>
@@ -151,7 +151,7 @@
             <label>Max Cluster Size</label>
             <app-help-tooltip
                 class="icon"
-                text="The maximum cluster size to export."
+                text="The maximum number of entities grouped into a single community cluster during graph summarization."
                 position="right"
             />
         </div>

@@ -22,6 +22,7 @@ export enum ResourceCode {
     ApiKeys = 'api_keys',
     Secrets = 'secrets',
     Voice = 'voice',
+    Webhooks = 'webhooks',
 }
 
 export interface ActivePermissions {

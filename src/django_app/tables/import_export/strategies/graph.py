@@ -1,40 +1,38 @@
 import re
 import uuid
 from copy import deepcopy
-from typing import Optional
 
+from agents.models import (
+    AgentInlineSurfaceMcpTool,
+    AgentInlineSurfacePythonTool,
+    InlineSurfaceMcpTool,
+    InlineSurfacePythonTool,
+    Surface,
+)
 from loguru import logger
 
-from tables.models import (
-    Graph,
-    GraphOrganization,
+from tables.import_export.constants import NODE_MAPPING_KEY
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.registry import entity_registry
+from tables.import_export.serializers.graph import (
+    ConditionalEdgeImportSerializer,
+    EdgeImportSerializer,
+    GraphImportSerializer,
 )
-from agents.models import (
-    Surface,
-    InlineSurfacePythonTool,
-    InlineSurfaceMcpTool,
-    AgentInlineSurfacePythonTool,
-    AgentInlineSurfaceMcpTool,
-)
-from tables.models.label_models import Label
-from tables.models.graph_models import ClassificationDecisionTablePrompt
-
+from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.strategies.nodes.node_maps import (
     NODE_RELATIONS,
     NODE_TYPE_TO_ENTITY_TYPE,
 )
-from tables.import_export.registry import entity_registry
-from tables.import_export.serializers.graph import (
-    GraphImportSerializer,
-    EdgeImportSerializer,
-    ConditionalEdgeImportSerializer,
-)
-from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
-from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
-from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.utils import ensure_unique_identifier
+from tables.models import (
+    Graph,
+    GraphOrganization,
+)
+from tables.models.graph_models import ClassificationDecisionTablePrompt
+from tables.models.label_models import Label
 
 
 class GraphStrategy(EntityImportExportStrategy):
@@ -47,18 +45,12 @@ class GraphStrategy(EntityImportExportStrategy):
     def get_preview_data(self, instance: Graph) -> dict:
         return {"id": instance.id, "name": instance.name}
 
-    def extract_dependencies_from_instance(
-        self, instance: Graph
-    ) -> dict[str, list[int]]:
+    def extract_dependencies_from_instance(self, instance: Graph) -> dict[str, list[int]]:
         deps = {}
         deps[EntityType.WEBHOOK_TRIGGER] = list(
             {
-                *instance.webhook_trigger_node_list.values_list(
-                    "webhook_trigger_id", flat=True
-                ),
-                *instance.telegram_trigger_node_list.values_list(
-                    "webhook_trigger_id", flat=True
-                ),
+                *instance.webhook_trigger_node_list.values_list("webhook_trigger_id", flat=True),
+                *instance.telegram_trigger_node_list.values_list("webhook_trigger_id", flat=True),
             }
         )
         deps[EntityType.GRAPH] = set(
@@ -72,9 +64,9 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         deps[EntityType.LLM_CONFIG] |= set(
-            ClassificationDecisionTablePrompt.objects.filter(
-                cdt_node__graph=instance
-            ).values_list("llm_config_id", flat=True)
+            ClassificationDecisionTablePrompt.objects.filter(cdt_node__graph=instance).values_list(
+                "llm_config_id", flat=True
+            )
         )
         deps[EntityType.LLM_CONFIG].discard(None)
 
@@ -84,14 +76,8 @@ class GraphStrategy(EntityImportExportStrategy):
         deps[EntityType.AGENT_DEFINITION].discard(None)
 
         deps[EntityType.SURFACE] = set(
-            Surface.objects.filter(agent_nodes__graph=instance).values_list(
-                "id", flat=True
-            )
-        ) | set(
-            Surface.objects.filter(task_nodes__graph=instance).values_list(
-                "id", flat=True
-            )
-        )
+            Surface.objects.filter(agent_nodes__graph=instance).values_list("id", flat=True)
+        ) | set(Surface.objects.filter(task_nodes__graph=instance).values_list("id", flat=True))
 
         deps[EntityType.PYTHON_CODE_TOOL] = (
             deps.get(EntityType.PYTHON_CODE_TOOL, set())
@@ -135,14 +121,10 @@ class GraphStrategy(EntityImportExportStrategy):
         import_labels = kwargs.get("import_labels", True)
         org_id = kwargs.get("org_id")
         import_data = data.copy()
-        import_data["metadata"] = self.update_metadata(
-            import_data["metadata"], id_mapper
-        )
+        import_data["metadata"] = self.update_metadata(import_data["metadata"], id_mapper)
 
         if "name" in import_data:
-            existing_names = Graph.objects.filter(org_id=org_id).values_list(
-                "name", flat=True
-            )
+            existing_names = Graph.objects.filter(org_id=org_id).values_list("name", flat=True)
             import_data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -200,7 +182,7 @@ class GraphStrategy(EntityImportExportStrategy):
         data: dict,
         id_mapper: IDMapper,
         is_partial: bool = False,
-        old_graph_id: Optional[int] = None,
+        old_graph_id: int | None = None,
     ) -> IDMapper:
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -252,7 +234,7 @@ class GraphStrategy(EntityImportExportStrategy):
         graph: Graph,
         node_mapper: IDMapper,
         id_mapper: IDMapper,
-        old_graph_id: Optional[int] = None,
+        old_graph_id: int | None = None,
     ) -> None:
         # Mirror the frontend's node numbering: a single graph-wide counter that
         # starts above the highest metadata["nodeNumber"] already present in the
@@ -283,9 +265,7 @@ class GraphStrategy(EntityImportExportStrategy):
 
             if node_data.get("node_name"):
                 counter += 1
-                node_data["node_name"] = self._with_node_number(
-                    node_data["node_name"], counter
-                )
+                node_data["node_name"] = self._with_node_number(node_data["node_name"], counter)
                 metadata = node_data.get("metadata") or {}
                 metadata["nodeNumber"] = counter
                 node_data["metadata"] = metadata
@@ -300,9 +280,7 @@ class GraphStrategy(EntityImportExportStrategy):
             # an identity mapping for it, exactly as before.
             node_data["graph"] = old_graph_id if old_graph_id is not None else graph.id
             if not id_mapper.has_mapping(EntityType.GRAPH, node_data["graph"]):
-                id_mapper.map(
-                    EntityType.GRAPH, node_data["graph"], graph.id, was_created=False
-                )
+                id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
             strategy = entity_registry.get_strategy(entity_type)
             node = strategy.create_entity(node_data, id_mapper)
@@ -327,9 +305,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 continue
             model = qs.model
             if not any(
-                f.name == "metadata"
-                for f in model._meta.get_fields()
-                if hasattr(f, "column")
+                f.name == "metadata" for f in model._meta.get_fields() if hasattr(f, "column")
             ):
                 continue
             for metadata in qs.values_list("metadata", flat=True):
@@ -346,14 +322,11 @@ class GraphStrategy(EntityImportExportStrategy):
             # An endpoint is unmapped when its node was skipped above (unsupported
             # type). Such an edge cannot be recreated — both columns are NOT NULL —
             # so drop it rather than raise "No mapping found for node:N".
-            start_id = id_mapper.get_or_none(
-                NODE_MAPPING_KEY, edge_data["start_node_id"]
-            )
+            start_id = id_mapper.get_or_none(NODE_MAPPING_KEY, edge_data["start_node_id"])
             end_id = id_mapper.get_or_none(NODE_MAPPING_KEY, edge_data["end_node_id"])
             if start_id is None or end_id is None:
                 logger.warning(
-                    "Skipping edge {} -> {} during import: endpoint node was not "
-                    "imported",
+                    "Skipping edge {} -> {} during import: endpoint node was not imported",
                     edge_data["start_node_id"],
                     edge_data["end_node_id"],
                 )
@@ -382,9 +355,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 # ConditionalEdge.clean() rejects a source that does not resolve,
                 # NULL included, so a branch whose source was skipped is dropped
                 # rather than saved with a blank source.
-                source_id = id_mapper.get_or_none(
-                    NODE_MAPPING_KEY, edge_data["source_node_id"]
-                )
+                source_id = id_mapper.get_or_none(NODE_MAPPING_KEY, edge_data["source_node_id"])
                 if source_id is None:
                     logger.warning(
                         "Skipping conditional edge from {} during import: source "
@@ -435,13 +406,9 @@ class GraphStrategy(EntityImportExportStrategy):
                     group.next_node_id = new_id
                     group.save(update_fields=["next_node_id"])
 
-    def _remap_classification_decision_table_references(
-        self, graph: Graph, node_mapper: IDMapper
-    ):
+    def _remap_classification_decision_table_references(self, graph: Graph, node_mapper: IDMapper):
         new_node_ids = set(node_mapper.get_new_ids(NODE_MAPPING_KEY))
-        nodes = graph.classification_decision_table_node_list.filter(
-            id__in=new_node_ids
-        )
+        nodes = graph.classification_decision_table_node_list.filter(id__in=new_node_ids)
 
         for cdt_node in nodes:
             cdt_node.default_next_node_id = self._remap_node_reference(
@@ -479,16 +446,10 @@ class GraphStrategy(EntityImportExportStrategy):
             graph.metadata = metadata
             graph.save(update_fields=["metadata"])
 
-    def _attach_labels(
-        self, graph: Graph, id_mapper: IDMapper, label_ids: list
-    ) -> None:
-        new_label_ids = [
-            id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids
-        ]
+    def _attach_labels(self, graph: Graph, id_mapper: IDMapper, label_ids: list) -> None:
+        new_label_ids = [id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids]
         if new_label_ids:
-            graph.labels.add(
-                *Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.FLOW)
-            )
+            graph.labels.add(*Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.FLOW))
 
     def update_metadata(self, metadata: dict, id_mapper: IDMapper) -> dict:
         # TODO: Remove metadata when save functionality reworked

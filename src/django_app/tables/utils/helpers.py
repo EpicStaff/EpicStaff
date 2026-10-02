@@ -1,13 +1,10 @@
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 def natural_sort_key(s: str) -> list:
     """Sort key that compares embedded numbers numerically: 'label2' < 'label10'."""
-    return [
-        int(chunk) if chunk.isdigit() else chunk.lower()
-        for chunk in re.split(r"(\d+)", s)
-    ]
+    return [int(chunk) if chunk.isdigit() else chunk.lower() for chunk in re.split(r"(\d+)", s)]
 
 
 def get_label_descendant_ids(label_id: int) -> set[int]:
@@ -28,9 +25,7 @@ def get_label_descendant_ids(label_id: int) -> set[int]:
     return result
 
 
-def generate_file_name(
-    base_name: str, prefix: str = "", default_name: str = "export"
-) -> str:
+def generate_file_name(base_name: str, prefix: str = "", default_name: str = "export") -> str:
     """
     Creates safe json file name with timestamp.
     If `base_name` cannot be sanitized, function falls back to `default_name`
@@ -44,7 +39,7 @@ def generate_file_name(
     if not safe_name:
         safe_name = default_name
 
-    timestamp = datetime.now().strftime("%Y-%m-%d")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d")
     return f"{prefix}_{safe_name}_{timestamp}.json"
 
 

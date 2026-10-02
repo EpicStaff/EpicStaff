@@ -1,10 +1,12 @@
 from drf_spectacular.utils import extend_schema
 from loguru import logger
 from pydantic import ValidationError
+from rbac.access.asserts import assert_org_permission
+from rbac.models.enums import Permission, ResourceType
+from rbac.scoping.mixins import OrgScopedServiceViewSetMixin
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from src.shared.models.search_config_suggestion import (
     GraphRagSuggestInput,
     NaiveRagSuggestInput,
@@ -18,17 +20,14 @@ from tables.exceptions import (
     NoNaiveRagForCollectionException,
 )
 from tables.models import SourceCollection
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.search_config_serializers import (
     GraphRagSuggestInputSerializer,
     NaiveRagSuggestInputSerializer,
 )
-from tables.services.rbac.permission_assert import assert_org_permission
-from tables.views.mixins import OrgScopedServiceViewSetMixin
-from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
-    GRAPH_RAG_SUGGEST_PARAMS_POST,
-    NAIVE_RAG_SUGGEST_PARAMS_POST,
+from tables.services.knowledge_services.collection_management_service import (
+    CollectionManagementService,
 )
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.search_config_service import (
     build_naive_params,
     get_graph_strategy,
@@ -36,10 +35,10 @@ from tables.services.knowledge_services.search_config_service import (
     resolve_effective_budget,
     safe_budget,
 )
-from tables.services.knowledge_services.collection_management_service import (
-    CollectionManagementService,
+from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
+    GRAPH_RAG_SUGGEST_PARAMS_POST,
+    NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
-from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.utils.litellm_model_info import resolve_context_window
 
 
@@ -171,18 +170,12 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            ctx, llm_name, warning, is_trusted = _resolve_graph_llm_ctx(
-                req.knowledge_collection_id
-            )
+            ctx, llm_name, warning, is_trusted = _resolve_graph_llm_ctx(req.knowledge_collection_id)
             metrics = CollectionManagementService.get_collection_metrics(
                 req.knowledge_collection_id, "graph"
             )
-            suggested, clamped = strategy.builder(
-                metrics, ctx, is_trusted, req.user_custom_params
-            )
-            effective_budget = resolve_effective_budget(
-                ctx, is_trusted, req.user_custom_params
-            )
+            suggested, clamped = strategy.builder(metrics, ctx, is_trusted, req.user_custom_params)
+            effective_budget = resolve_effective_budget(ctx, is_trusted, req.user_custom_params)
             return _build_response(
                 metrics,
                 ctx,

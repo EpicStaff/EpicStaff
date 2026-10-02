@@ -1,6 +1,6 @@
 from django.db import migrations
 
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models.enums import BuiltInRole
 
 # Permission.READ | Permission.UPDATE — Org Admin may view the org-admin
 # surface and rename/manage settings for its own org. create/deactivate stay

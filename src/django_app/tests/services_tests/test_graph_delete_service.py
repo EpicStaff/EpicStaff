@@ -15,11 +15,11 @@ from django.test.utils import CaptureQueriesContext
 
 from tables.models import Graph
 from tables.models.graph_models import SubGraphNode
-from tables.models.rbac_models import Organization
-from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from rbac.models import Organization
+from rbac.models.enums import Permission, ResourceType
 from tables.services.delete_services import GraphDeleteService
 from tables.services.delete_services.usage import SkipEntry, SkipReason
-from tables.services.rbac.effective_permissions import EffectivePermissions
+from rbac.access.effective import EffectivePermissions
 
 
 @pytest.fixture

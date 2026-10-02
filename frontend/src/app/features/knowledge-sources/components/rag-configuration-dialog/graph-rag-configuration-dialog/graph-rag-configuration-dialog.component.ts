@@ -2,6 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
 import { filter, switchMap, tap } from 'rxjs/operators';
 
@@ -17,7 +19,7 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
     selector: 'app-graph-rag-configuration-dialog',
     templateUrl: './graph-rag-configuration-dialog.component.html',
     styleUrls: ['../rag-configuration-dialog.component.scss'],
-    imports: [ButtonComponent, GraphRagConfigurationComponent],
+    imports: [ButtonComponent, GraphRagConfigurationComponent, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
@@ -148,4 +150,7 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
                 },
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -1,4 +1,5 @@
 from src.shared.models import args_schema_to_variables
+
 from tables.import_export.version_conversions.base import VersionConverter
 
 _FIELD_TYPE_TO_VAR_TYPE = {
@@ -35,9 +36,7 @@ def v1_to_v2(data: dict) -> dict:
             variables.append(
                 {
                     "name": field.get("name"),
-                    "type": _FIELD_TYPE_TO_VAR_TYPE.get(
-                        field.get("data_type"), "string"
-                    ),
+                    "type": _FIELD_TYPE_TO_VAR_TYPE.get(field.get("data_type"), "string"),
                     "description": field.get("description") or "",
                     "default_value": None,
                     "input_type": "user_input",

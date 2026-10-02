@@ -33,7 +33,7 @@ from django.db import IntegrityError, connection
 
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyService
 from tables.services.copy_services.python_code_tool_copy_service import (
     PythonCodeToolCopyService,

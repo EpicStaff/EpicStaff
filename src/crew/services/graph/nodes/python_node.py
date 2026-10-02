@@ -2,13 +2,12 @@ import json
 from typing import Any
 
 from langgraph.types import StreamWriter
-
-from models.graph_models import PythonMessageData, GraphMessage
+from models.graph_models import GraphMessage, PythonMessageData
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.nodes import BaseNode
-from services.run_python_code_service import RunPythonCodeService
 from services.graph.exceptions import ReturnCodeError
+from services.graph.nodes.base_node import BaseNode
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
 
 
@@ -35,9 +34,7 @@ class PythonNode(BaseNode):
         self.python_code_executor_service = python_code_executor_service
         self.python_code_data = python_code_data
 
-    async def execute(
-        self, state: State, writer: StreamWriter, execution_order: int, input_: Any
-    ):
+    async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         self.custom_session_message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,

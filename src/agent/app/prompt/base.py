@@ -18,9 +18,7 @@ class PromptBuilder(ABC):
             "instructions define your actual objectives."
         )
 
-    def _attachment_messages(
-        self, attachments: Sequence[ContextAttachment]
-    ) -> list[dict]:
+    def _attachment_messages(self, attachments: Sequence[ContextAttachment]) -> list[dict]:
         return [
             {"role": a.role, "content": f"[context source: {a.source}]\n{a.content}"}
             for a in attachments

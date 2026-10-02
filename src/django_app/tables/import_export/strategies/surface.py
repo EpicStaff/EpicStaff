@@ -1,12 +1,12 @@
 from copy import deepcopy
 
+from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
 from django.db.models import Q
 
-from agents.models import Surface, SurfacePythonTool, SurfaceMcpTool
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.surface import SurfaceImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.serializers.surface import SurfaceImportSerializer
+from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
@@ -30,9 +30,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
         deps[EntityType.PYTHON_CODE_TOOL] = list(
             instance.python_tools.values_list("python_tool_id", flat=True)
         )
-        deps[EntityType.MCP_TOOL] = list(
-            instance.mcp_tools.values_list("mcp_tool_id", flat=True)
-        )
+        deps[EntityType.MCP_TOOL] = list(instance.mcp_tools.values_list("mcp_tool_id", flat=True))
 
         return deps
 
@@ -47,9 +45,9 @@ class SurfaceStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(kwargs.get("org_id"))
 
         if "name" in data:
-            existing_names = Surface.objects.filter(
-                organization=organization
-            ).values_list("name", flat=True)
+            existing_names = Surface.objects.filter(organization=organization).values_list(
+                "name", flat=True
+            )
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -64,9 +62,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
 
         return surface
 
-    def find_existing(
-        self, data: dict, id_mapper: IDMapper, org_id: int = None
-    ) -> Surface:
+    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> Surface:
         data_copy = deepcopy(data)
         projected = {field: data_copy.get(field) for field in ("name", "instructions")}
         filters, null_filters = create_filters(projected)
@@ -101,9 +97,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
             if candidate_python_tools != incoming_python_tools:
                 continue
 
-            candidate_mcp_tools = set(
-                candidate.mcp_tools.values_list("mcp_tool_id", "mode")
-            )
+            candidate_mcp_tools = set(candidate.mcp_tools.values_list("mcp_tool_id", "mode"))
             if candidate_mcp_tools != incoming_mcp_tools:
                 continue
 
@@ -135,9 +129,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
         python_tool_rows = []
 
         for entry in tools.get(EntityType.PYTHON_CODE_TOOL, []):
-            new_id = id_mapper.get_or_none(
-                EntityType.PYTHON_CODE_TOOL, entry["python_tool_id"]
-            )
+            new_id = id_mapper.get_or_none(EntityType.PYTHON_CODE_TOOL, entry["python_tool_id"])
             if new_id is None:
                 continue
 

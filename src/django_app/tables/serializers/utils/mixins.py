@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.copy_services.helpers import (
@@ -41,10 +40,8 @@ class TagHandlingMixin:
             if "id" in tag:
                 try:
                     obj = self.tag_model.objects.get(id=tag["id"])
-                except self.tag_model.DoesNotExist:
-                    raise serializers.ValidationError(
-                        f"Tag with id {tag['id']} not found."
-                    )
+                except self.tag_model.DoesNotExist as e:
+                    raise serializers.ValidationError(f"Tag with id {tag['id']} not found.") from e
             elif "name" in tag:
                 obj, _ = self.tag_model.objects.get_or_create(
                     name=tag["name"],
@@ -113,9 +110,7 @@ class NestedPythonCodeMixin:
             expected_hash = python_code_data.pop("content_hash", None)
             if expected_hash is not None:
                 python_code._expected_hash = expected_hash
-            apply_python_code_fields(
-                python_code=python_code, python_code_data=python_code_data
-            )
+            apply_python_code_fields(python_code=python_code, python_code_data=python_code_data)
 
     def create(self, validated_data):
         return self._create_with_python_code(self.Meta.model, validated_data)
@@ -151,6 +146,4 @@ class WebhookCreationMixin:
         if not is_superadmin:
             ngrok_conf = None
 
-        return WebhookTrigger.objects.get_or_create(
-            path=path, ngrok_webhook_config=ngrok_conf
-        )
+        return WebhookTrigger.objects.get_or_create(path=path, ngrok_webhook_config=ngrok_conf)

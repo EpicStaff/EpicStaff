@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import litellm
 import pytest
-
 from app.llm.config import configure_litellm
 
 

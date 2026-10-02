@@ -1,27 +1,27 @@
 from django.db import transaction
-from tables.models.knowledge_models.naive_rag_models import (
-    NaiveRag,
-    AgentNaiveRag,
-    NaiveRagSearchConfig,
-    KnowledgeNodeNaiveRagSearchConfig,
-)
-from tables.models.knowledge_models.graphrag_models import (
-    GraphRag,
-    AgentGraphRag,
-    GraphRagBasicSearchConfig,
-    GraphRagLocalSearchConfig,
-    GraphRagGlobalSearchConfig,
-    GraphRagDriftSearchConfig,
-    KnowledgeNodeGraphRagBasicSearchConfig,
-    KnowledgeNodeGraphRagLocalSearchConfig,
-    KnowledgeNodeGraphRagGlobalSearchConfig,
-    KnowledgeNodeGraphRagDriftSearchConfig,
-)
-from tables.models.crew_models import Agent
 from tables.exceptions import (
     AgentMissingCollectionException,
     RagCollectionMismatchException,
     UnknownRagTypeException,
+)
+from tables.models.crew_models import Agent
+from tables.models.knowledge_models.graphrag_models import (
+    AgentGraphRag,
+    GraphRag,
+    GraphRagBasicSearchConfig,
+    GraphRagDriftSearchConfig,
+    GraphRagGlobalSearchConfig,
+    GraphRagLocalSearchConfig,
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagDriftSearchConfig,
+    KnowledgeNodeGraphRagGlobalSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
+)
+from tables.models.knowledge_models.naive_rag_models import (
+    AgentNaiveRag,
+    KnowledgeNodeNaiveRagSearchConfig,
+    NaiveRag,
+    NaiveRagSearchConfig,
 )
 from tables.services.rag_registry import resolve_rag_in_collection
 
@@ -53,9 +53,7 @@ class RagAssignmentService:
         Polymorphic RAG assignment. Delegates to type-specific methods.
         """
         # Validate assignment
-        rag_instance = RagAssignmentService.validate_rag_assignment(
-            agent, rag_type, rag_id
-        )
+        RagAssignmentService.validate_rag_assignment(agent, rag_type, rag_id)
 
         if rag_type == "naive":
             return RagAssignmentService.assign_naive_rag_to_agent(agent, rag_id)
@@ -127,9 +125,9 @@ class RagAssignmentService:
         NOTE: This method does NOT validate. Use assign_rag_to_agent() for validation.
         This is called internally after validation.
         """
-        naive_rag = NaiveRag.objects.select_related(
-            "base_rag_type__source_collection"
-        ).get(naive_rag_id=naive_rag_id)
+        naive_rag = NaiveRag.objects.select_related("base_rag_type__source_collection").get(
+            naive_rag_id=naive_rag_id
+        )
 
         # Validation: RAG must belong to agent's collection
         if naive_rag.base_rag_type.source_collection != agent.knowledge_collection:
@@ -182,9 +180,9 @@ class RagAssignmentService:
         NOTE: This method does NOT validate. Use assign_rag_to_agent() for validation.
         This is called internally after validation.
         """
-        graph_rag = GraphRag.objects.select_related(
-            "base_rag_type__source_collection"
-        ).get(graph_rag_id=graph_rag_id)
+        graph_rag = GraphRag.objects.select_related("base_rag_type__source_collection").get(
+            graph_rag_id=graph_rag_id
+        )
 
         # Validation: RAG must belong to agent's collection
         if graph_rag.base_rag_type.source_collection != agent.knowledge_collection:
@@ -460,9 +458,7 @@ class SearchConfigService:
             fields,
         ) in SearchConfigService._NODE_GRAPH_METHOD_FIELDS.items():
             row = getattr(node, related_name, None)
-            graph_cfg[method] = (
-                None if row is None else {f: getattr(row, f) for f in fields}
-            )
+            graph_cfg[method] = None if row is None else {f: getattr(row, f) for f in fields}
 
         if any(graph_cfg[method] is not None for method in graph_cfg):
             graph_cfg["search_method"] = node.search_method or "basic"
@@ -504,9 +500,7 @@ class SearchConfigService:
 
         global_config = config.get("global")
         if global_config:
-            SearchConfigService.update_graph_global_search_config(
-                agent, **global_config
-            )
+            SearchConfigService.update_graph_global_search_config(agent, **global_config)
 
         drift_config = config.get("drift")
         if drift_config:
@@ -517,7 +511,7 @@ class SearchConfigService:
         """
         Create search config with default values from model.
         """
-        config, created = NaiveRagSearchConfig.objects.get_or_create(agent=agent)
+        config, _created = NaiveRagSearchConfig.objects.get_or_create(agent=agent)
         return config
 
     @staticmethod
@@ -536,7 +530,7 @@ class SearchConfigService:
         Update agent's search config. Creates if doesn't exist.
         Only updates provided fields (partial update).
         """
-        config, created = NaiveRagSearchConfig.objects.get_or_create(agent=agent)
+        config, _created = NaiveRagSearchConfig.objects.get_or_create(agent=agent)
 
         # Update fields if provided (works for both created and existing configs)
         if search_limit is not None:
@@ -546,11 +540,7 @@ class SearchConfigService:
         if is_suggested is not None:
             config.is_suggested = is_suggested
 
-        if (
-            search_limit is not None
-            or similarity_threshold is not None
-            or is_suggested is not None
-        ):
+        if search_limit is not None or similarity_threshold is not None or is_suggested is not None:
             config.save()
 
         return config

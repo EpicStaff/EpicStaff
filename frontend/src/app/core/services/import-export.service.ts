@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { ConfigService } from '../../services/config/config.service';
+import { ConfigService } from '../../services/config';
 import { ImportFlowRequestOptions, ImportResult } from '../models/import-result.model';
 import { InspectResult } from '../models/review-item.model';
 

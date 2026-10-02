@@ -1,7 +1,9 @@
-from typing import Callable, Dict, Any, Coroutine
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any, ClassVar
 
 from loguru import logger
+
 from infrastructure.persistence.database import save_realtime_session_item_to_db
 
 
@@ -15,7 +17,7 @@ class ServerEventHandler:
         )
 
         self.client: OpenaiRealtimeAgentClient = client
-        self.event_map: Dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
+        self.event_map: dict[str, Callable[[Any], Coroutine[Any, Any, None]]] = {
             "response": self.default_handler,
             "response.created": self.default_handler,
             "session.created": self.default_handler,
@@ -63,7 +65,7 @@ class ServerEventHandler:
         self.client._is_responding = False
         self.client._output_transcript_buffer = ""
 
-    _GA_TO_INTERNAL_EVENT: Dict[str, str] = {
+    _GA_TO_INTERNAL_EVENT: ClassVar[dict[str, str]] = {
         "response.output_audio.delta": "response.audio.delta",
         "response.output_audio.done": "response.audio.done",
         "response.output_audio_transcript.delta": "response.audio_transcript.delta",
@@ -77,7 +79,7 @@ class ServerEventHandler:
     def _normalize_event_type(cls, event_type: str) -> str:
         return cls._GA_TO_INTERNAL_EVENT.get(event_type, event_type)
 
-    async def handle_event(self, data: Dict[str, Any]) -> None:
+    async def handle_event(self, data: dict[str, Any]) -> None:
         """Handle incoming event by calling the appropriate method."""
         event_type = data.get("type", "")
 
@@ -90,24 +92,24 @@ class ServerEventHandler:
             user_id=self.client.user_id,
         )
 
-    async def default_handler(self, data: Dict[str, Any]) -> None:
+    async def default_handler(self, data: dict[str, Any]) -> None:
         event_type = data.get("type", "")
         normalized = self._normalize_event_type(event_type)
         if normalized != event_type:
             data = {**data, "type": normalized}
         await self.client.send_client(data)
 
-    async def unknown_event_handler(self, data: Dict[str, Any]) -> None:
+    async def unknown_event_handler(self, data: dict[str, Any]) -> None:
         """Default handler for unknown events."""
         logger.warning(f"Unknown event type received: {json.dumps(data, indent=2)}")
 
         await self.default_handler(data)
 
-    async def handle_error(self, data: Dict[str, Any]) -> None:
+    async def handle_error(self, data: dict[str, Any]) -> None:
         logger.error(f"Error received: {data}")
         await self.default_handler(data)
 
-    async def handle_session_updated(self, data: Dict[str, Any]) -> None:
+    async def handle_session_updated(self, data: dict[str, Any]) -> None:
         session = data.get("session", {})
         audio = session.get("audio", {})
         logger.info(
@@ -116,14 +118,14 @@ class ServerEventHandler:
         )
         await self.default_handler(data)
 
-    async def handle_transcription_failed(self, data: Dict[str, Any]) -> None:
+    async def handle_transcription_failed(self, data: dict[str, Any]) -> None:
         logger.error(f"Input audio transcription failed: {data}")
         await self.default_handler(data)
 
-    async def handle_function_call_delta(self, data: Dict[str, Any]) -> None:
+    async def handle_function_call_delta(self, data: dict[str, Any]) -> None:
         pass
 
-    async def handle_function_call_done(self, data: Dict[str, Any]) -> None:
+    async def handle_function_call_done(self, data: dict[str, Any]) -> None:
         logger.info(
             f"OpenAI: Calling tool '{data['name']}' with args: {str(data.get('arguments') or '')[:200]}"
         )

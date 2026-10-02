@@ -30,7 +30,7 @@ class NodeSaveableFactory(ABC):
         or None if this node type has no deferred routing refs.
         Called after build(); override only for node types with temp routing refs.
         """
-        return None
+        return
 
 
 class DefaultNodeSaveableFactory(NodeSaveableFactory):

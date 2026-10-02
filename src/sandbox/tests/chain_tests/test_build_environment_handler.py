@@ -1,7 +1,6 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -15,6 +14,8 @@ import settings
 from dynamic_venv_executor_chain import AbstractHandler, ExecuteCodeHandler
 from utils.environment import build_base_env
 
+from conftest import make_execute_context as _make_execute_context
+
 _SENSITIVE_KEYS = {
     "STORAGE_ENDPOINT",
     "STORAGE_BUCKET_NAME",
@@ -23,34 +24,6 @@ _SENSITIVE_KEYS = {
     "STORAGE_ALLOWED_PATHS",
     "STORAGE_ORG_PREFIX",
 }
-
-
-def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
-    """Build a minimal valid context for ExecuteCodeHandler.
-
-    The handler writes to temp_code_path (parent must exist) and reads
-    result_file_path after the subprocess returns.  The caller is responsible
-    for pre-writing result_file_path with valid JSON before driving the handler.
-    """
-    exec_dir = tmp_path / "exec"
-    exec_dir.mkdir(parents=True, exist_ok=True)
-
-    ctx: dict[str, Any] = {
-        "python_executable": tmp_path / "venv" / "bin" / "python",
-        "temp_code_path": exec_dir / "code.py",
-        "result_file_path": exec_dir / "output.txt",
-        "home_path": str(exec_dir / "home"),
-        "tmp_path": str(exec_dir / "tmp"),
-        "work_dir": str(exec_dir),
-        "code": "def main():\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "test-exec-id",
-        "use_storage": False,
-    }
-    ctx.update(overrides)
-    return ctx
 
 
 def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> None:
@@ -285,7 +258,7 @@ async def test_execute_code_handler_storage_allowed_paths_missing_omits_key(
 ):
     recorded: dict = {}
     context = _make_execute_context(tmp_path)
-    # storage_allowed_paths not set at all
+    del context["storage_allowed_paths"]  # not set at all, as distinct from None
     _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
     await ExecuteCodeHandler().handle(context)
@@ -323,6 +296,7 @@ async def test_execute_code_handler_storage_org_prefix_missing_omits_key(
 ):
     recorded: dict = {}
     context = _make_execute_context(tmp_path)
+    del context["storage_org_prefix"]  # not set at all, as distinct from None
     _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
     await ExecuteCodeHandler().handle(context)
@@ -351,48 +325,10 @@ async def test_execute_code_handler_epicstaff_secrets_injected_as_json(
 @pytest.mark.asyncio
 async def test_execute_code_handler_uses_execution_env(tmp_path, monkeypatch):
     recorded: dict = {}
+    context = _make_execute_context(tmp_path, execution_id="x")
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    class FakeProcess:
-        returncode = 0
-
-        async def communicate(self):
-            return (b"", b"")
-
-    async def fake_create_subprocess_exec(*args, **kwargs):
-        recorded.update(kwargs)
-        return FakeProcess()
-
-    import dynamic_venv_executor_chain
-
-    monkeypatch.setattr(
-        dynamic_venv_executor_chain.asyncio,
-        "create_subprocess_exec",
-        fake_create_subprocess_exec,
-    )
-
-    exec_dir = tmp_path / "exec"
-    exec_dir.mkdir(parents=True, exist_ok=True)
-    temp_code_path = exec_dir / "code.py"
-    result_file_path = exec_dir / "output.txt"
-    result_file_path.write_text('"ok"')
-
-    context = {
-        "python_executable": tmp_path / "venv" / "bin" / "python",
-        "temp_code_path": temp_code_path,
-        "result_file_path": result_file_path,
-        "home_path": str(exec_dir / "home"),
-        "tmp_path": str(exec_dir / "tmp"),
-        "work_dir": str(exec_dir),
-        "code": "def main():\n    return 1",
-        "entrypoint": "main",
-        "func_kwargs": {},
-        "global_kwargs": {},
-        "execution_id": "x",
-        "use_storage": False,
-    }
-
-    handler = ExecuteCodeHandler()
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
     # env must be present and must be a dict (built inline in the handler)
     assert "env" in recorded

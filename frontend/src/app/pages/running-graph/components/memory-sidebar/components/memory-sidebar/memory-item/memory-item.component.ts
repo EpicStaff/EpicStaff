@@ -1,8 +1,8 @@
 import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     EntityMemoryPayload,
     LongTermMemoryPayload,
@@ -18,7 +18,7 @@ import {
             <div class="memory-header">
                 <span class="memory-type">{{ memory.payload.type }}</span>
                 <div class="memory-header-right">
-                    <span class="memory-date">{{ memory.payload.created_at | date: 'short' }}</span>
+                    <span class="memory-date">{{ memory.payload.created_at | date: 'M/d/yy, HH:mm' }}</span>
                     <button
                         class="delete-button"
                         matTooltip="Delete memory"

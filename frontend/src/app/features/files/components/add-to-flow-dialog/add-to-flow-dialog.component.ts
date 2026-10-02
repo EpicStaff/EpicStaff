@@ -13,10 +13,9 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
 import { forkJoin } from 'rxjs';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
 import { FlowsApiService } from '../../../flows/services/flows-api.service';
 import { StorageItem } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';

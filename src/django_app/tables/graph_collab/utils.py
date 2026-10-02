@@ -11,7 +11,6 @@ def build_editor_info(user) -> EditorInfo:
             avatar_url = None
     return EditorInfo(
         user_id=user.pk,
-        display_name=getattr(user, "display_name", None)
-        or getattr(user, "email", None),
+        display_name=getattr(user, "display_name", None) or getattr(user, "email", None),
         avatar_url=avatar_url,
     )

@@ -1,6 +1,7 @@
+import os
 import time
 from functools import wraps
-import os
+
 import psutil
 
 
@@ -23,9 +24,7 @@ def psutil_wrapper(func):
 
         print(f"[{func.__name__}] Memory before: {mem_before / 1024:.2f} KB")
         print(f"[{func.__name__}] Memory after: {mem_after / 1024:.2f} KB")
-        print(
-            f"[{func.__name__}] Memory delta: {(mem_after - mem_before) / 1024:.2f} KB"
-        )
+        print(f"[{func.__name__}] Memory delta: {(mem_after - mem_before) / 1024:.2f} KB")
         print(f"[{func.__name__}] Execution time: {time_end - time_start:.4f} seconds")
         print("=" * 40)
 

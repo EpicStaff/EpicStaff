@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from tables.models.rbac_models import Organization, OrganizationUser
+from rbac.models import Organization, OrganizationUser
 
 
 @pytest.mark.django_db

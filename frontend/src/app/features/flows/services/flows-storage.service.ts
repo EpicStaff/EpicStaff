@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { catchError, delay, shareReplay, tap } from 'rxjs/operators';
 
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../models/flow-filter.model';
@@ -138,9 +138,9 @@ export class FlowsStorageService implements StorageService {
                 }
             }),
             shareReplay(1),
-            catchError(() => {
+            catchError((err) => {
                 if (!isFiltered) this.flowsLoaded.set(false);
-                return of([]);
+                return throwError(() => err);
             })
         );
     }

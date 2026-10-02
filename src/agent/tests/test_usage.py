@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.usage import TokenUsageAccumulator
 from shared.models.agent_service import TokenUsage
 

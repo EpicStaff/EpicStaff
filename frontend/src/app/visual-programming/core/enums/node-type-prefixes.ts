@@ -1,5 +1,4 @@
-import { NodeType } from './node-type';
-
+import { NodeType } from '@shared/models';
 export const NODE_TYPE_PREFIXES: Record<NodeType, string> = {
     [NodeType.PYTHON]: 'Python-Node',
     [NodeType.TASK]: 'Task-Node',

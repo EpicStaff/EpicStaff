@@ -2,32 +2,30 @@ from copy import deepcopy
 
 from django.db.models import Q
 
-from tables.models import (
-    LLMConfig,
-    EmbeddingConfig,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
-from tables.models.realtime_models import (
-    OpenAIRealtimeConfig,
-    ElevenLabsRealtimeConfig,
-    GeminiRealtimeConfig,
-)
-from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.serializers.configs import (
-    LLMConfigImportSerializer,
-    EmbeddingConfigImportSerializer,
-    RealtimeConfigImportSerializer,
-    RealtimeTranscriptionConfigImportSerializer,
-    OpenAIRealtimeConfigImportSerializer,
-    ElevenLabsRealtimeConfigImportSerializer,
-    GeminiRealtimeConfigImportSerializer,
-)
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.utils import ensure_unique_identifier, create_filters
+from tables.import_export.serializers.configs import (
+    ElevenLabsRealtimeConfigImportSerializer,
+    EmbeddingConfigImportSerializer,
+    GeminiRealtimeConfigImportSerializer,
+    LLMConfigImportSerializer,
+    OpenAIRealtimeConfigImportSerializer,
+    RealtimeConfigImportSerializer,
+    RealtimeTranscriptionConfigImportSerializer,
+)
+from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import create_filters, ensure_unique_identifier
+from tables.models import (
+    EmbeddingConfig,
+    LLMConfig,
+    RealtimeConfig,
+    RealtimeTranscriptionConfig,
+)
+from tables.models.realtime_models import (
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+    OpenAIRealtimeConfig,
+)
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -81,9 +79,9 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
         org_id = kwargs.get("org_id")
         if "custom_name" in data:
-            existing_names = self.config_model.objects.filter(
-                org_id=org_id
-            ).values_list("custom_name", flat=True)
+            existing_names = self.config_model.objects.filter(org_id=org_id).values_list(
+                "custom_name", flat=True
+            )
             data["custom_name"] = ensure_unique_identifier(
                 base_name=data["custom_name"],
                 existing_names=existing_names,
@@ -93,9 +91,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         tag_overrides = {}
 
         if self.tag_entity and old_tag_ids:
-            new_tag_ids = [
-                id_mapper.get_or_none(self.tag_entity, oid) for oid in old_tag_ids
-            ]
+            new_tag_ids = [id_mapper.get_or_none(self.tag_entity, oid) for oid in old_tag_ids]
             tag_overrides["tags"] = [nid for nid in new_tag_ids if nid is not None]
 
         resolved_fks = self.remap_foreign_keys(data, id_mapper)
@@ -108,7 +104,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper, org_id: int = None):
+    def find_existing(self, data, id_mapper, org_id: int | None = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("tags", None)
@@ -194,9 +190,9 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs):
         org_id = kwargs.get("org_id")
-        existing_names = self.config_model.objects.filter(
-            org_id=org_id
-        ).values_list("custom_name", flat=True)
+        existing_names = self.config_model.objects.filter(org_id=org_id).values_list(
+            "custom_name", flat=True
+        )
         data["custom_name"] = ensure_unique_identifier(
             base_name=data["custom_name"],
             existing_names=existing_names,
@@ -205,14 +201,12 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 
-    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int = None):
+    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None):
         custom_name = data.get("custom_name")
         model_name = data.get("model_name")
         if custom_name and model_name:
             return (
-                self.config_model.objects.filter(
-                    custom_name=custom_name, model_name=model_name
-                )
+                self.config_model.objects.filter(custom_name=custom_name, model_name=model_name)
                 .filter(self.get_org_scope_q(org_id))
                 .first()
             )

@@ -1,5 +1,5 @@
-from tables.import_export.enums import NodeType
 from tables.graph_versioning.handlers.null_fk_handler import NullFkHandler
+from tables.import_export.enums import NodeType
 
 
 class WebhookTriggerNodeHandler(NullFkHandler):

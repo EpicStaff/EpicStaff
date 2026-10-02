@@ -18,8 +18,8 @@ from tables.models.graph_models import (
     PythonNode,
 )
 from tables.models.llm_models import LLMModel
-from tables.models.rbac_models import Organization, OrganizationUser, Role
-from tables.models.rbac_models.rbac_enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_service
 
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'

@@ -60,13 +60,13 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.WEBHOOK_TRIGGERS,
             label: 'Webhook Triggers',
             iconClass: 'ti ti-webhook',
-            isPermitted: () => this.permissionService.isSuperadmin,
+            isPermitted: () => this.permissionService.can(ResourceCode.Webhooks, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.VOICE_SETTINGS,
             label: 'Voice / Twilio',
             iconClass: 'ti ti-phone',
-            isPermitted: () => this.permissionService.isSuperadmin,
+            isPermitted: () => this.permissionService.can(ResourceCode.Voice, ActionCode.Read),
         },
         {
             id: ConfigureModelsTabId.SECRETS,

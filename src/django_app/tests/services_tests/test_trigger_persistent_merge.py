@@ -25,9 +25,11 @@ class _FakeSessionData:
 def _stub_publish(monkeypatch):
     """Stub the run_session tail (SessionData build + Redis publish)."""
     sm = SessionManagerService()
-    monkeypatch.setattr(sm, "create_session_data", lambda session: _FakeSessionData())
     monkeypatch.setattr(
-        sm.redis_service, "publish_session_data", lambda session_data, org_id: 2
+        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+    )
+    monkeypatch.setattr(
+        sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
     )
     return sm
 
@@ -45,7 +47,7 @@ def test_telegram_trigger_merges_org_and_keeps_payload(default_org, monkeypatch)
         },
     )
     GraphOrganization.objects.create(graph=graph, persistent_variables={"counter": 5})
-    trigger = WebhookTrigger.objects.create(path="tgpath")
+    trigger = WebhookTrigger.objects.create(path="tgpath", org=default_org)
 
     # `TelegramTriggerNode.objects.create()` fires
     # `telegram_signals.telegram_trigger_post_save_handler`, which otherwise
@@ -67,9 +69,7 @@ def test_telegram_trigger_merges_org_and_keeps_payload(default_org, monkeypatch)
 
     _stub_publish(monkeypatch)
 
-    TelegramTriggerService().handle_telegram_trigger(
-        path="tgpath", payload={"m": 1}
-    )
+    TelegramTriggerService().handle_telegram_trigger(path="tgpath", payload={"m": 1})
 
     session = Session.objects.filter(graph=graph).order_by("-id").first()
     assert session is not None

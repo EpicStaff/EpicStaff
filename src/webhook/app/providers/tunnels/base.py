@@ -1,5 +1,5 @@
 import abc
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
 
 
 class AbstractTunnelProvider(abc.ABC):
@@ -7,17 +7,15 @@ class AbstractTunnelProvider(abc.ABC):
     Defines the "contract" for any tunnel provider (Ngrok, Cloudflare, SSH, etc.).
     """
 
-    def __init__(
-        self, port: int, auth_token: Optional[str] = None, domain: Optional[str] = None
-    ):
+    def __init__(self, port: int, auth_token: str | None = None, domain: str | None = None):
         """
         Initialize the provider with the target port and optional credentials.
         """
         self._port = port
         self._auth_token = auth_token
         self._domain = domain
-        self._public_url: Optional[str] = None
-        self._on_url_set: Optional[Callable[[str], Awaitable[None]]] = None
+        self._public_url: str | None = None
+        self._on_url_set: Callable[[str], Awaitable[None]] | None = None
 
         # New common state flag
         self._is_running: bool = False
@@ -39,7 +37,7 @@ class AbstractTunnelProvider(abc.ABC):
         raise NotImplementedError
 
     @property
-    def public_url(self) -> Optional[str]:
+    def public_url(self) -> str | None:
         """
         Return the current public URL of the tunnel.
         """

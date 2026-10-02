@@ -2,24 +2,25 @@ import audioop
 import base64
 import json
 import uuid
-from typing import Optional, List, Dict, Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import websockets
+from application.tool_manager_service import ToolManagerService
+from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from starlette.websockets import WebSocketDisconnect
 
-from domain.models.realtime_tool import RealtimeTool
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
-from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler import (
-    ElevenLabsServerEventHandler,
-)
 from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_client_event_handler import (
     ElevenLabsClientEventHandler,
 )
-from application.tool_manager_service import ToolManagerService
+from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler import (
+    ElevenLabsServerEventHandler,
+)
 
 
 class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
@@ -39,18 +40,18 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         self,
         api_key: str,
         connection_key: str,
-        on_server_event: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_server_event: Callable[[dict], Awaitable[None]] | None = None,
         tool_manager_service: ToolManagerService = None,
-        rt_tools: Optional[List[RealtimeTool]] = None,
+        rt_tools: list[RealtimeTool] | None = None,
         voice: str = "21m00Tcm4TlvDq8ikWAM",  # Rachel
         instructions: str = "You are a helpful assistant",
         temperature: float = 0.8,
         agent_id: str = "",
         agent_provisioner: ElevenLabsAgentProvisioner | None = None,
         llm_model: str = "",
-        language: Optional[str] = None,
-        org_id: Optional[int] = None,
-        user_id: Optional[int] = None,
+        language: str | None = None,
+        org_id: int | None = None,
+        user_id: int | None = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -140,7 +141,9 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 return
             raise
 
-        logger.info(f"ElevenLabs WebSocket connected: agent_id={self.agent_id} | voice_id={self.voice!r} | language={self.language!r}")
+        logger.info(
+            f"ElevenLabs WebSocket connected: agent_id={self.agent_id} | voice_id={self.voice!r} | language={self.language!r}"
+        )
 
         config_override = {}
         if self.language:
@@ -155,7 +158,6 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
 
     async def on_stream_start(self) -> None:
         """ElevenLabs starts automatically — no action needed on Twilio stream start."""
-        pass
 
     async def send_audio(self, ulaw8k_b64: str) -> None:
         """
@@ -188,22 +190,16 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
 
                             if data.get("type") == "ping":
                                 event_id = data.get("ping_event", {}).get("event_id")
-                                await self.send_server(
-                                    {"type": "pong", "event_id": event_id}
-                                )
+                                await self.send_server({"type": "pong", "event_id": event_id})
                                 continue
 
                             await self.server_event_handler.handle_event(data)
 
                         except WebSocketDisconnect:
-                            logger.info(
-                                "ElevenLabs: Client disconnected, stopping message handler"
-                            )
+                            logger.info("ElevenLabs: Client disconnected, stopping message handler")
                             return
                         except Exception as e:
-                            logger.exception(
-                                f"ElevenLabs: Error processing message: {str(e)}"
-                            )
+                            logger.exception(f"ElevenLabs: Error processing message: {e!s}")
                 except websockets.exceptions.ConnectionClosed as e:
                     code = e.rcvd.code if e.rcvd else None
                     if code == 3000 and not _retried and self.agent_provisioner:
@@ -227,9 +223,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         finally:
             await self.close()
 
-    async def process_message(
-        self, message: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    async def process_message(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Process messages from the frontend WebSocket."""
         return await self.client_event_handler.handle_event(data=message)
 
@@ -241,9 +235,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         """Send tool execution result back to ElevenLabs and the frontend."""
         clean_result = ""
         if isinstance(result, dict):
-            clean_result = (
-                result.get("result_data") or result.get("stdout") or str(result)
-            )
+            clean_result = result.get("result_data") or result.get("stdout") or str(result)
         else:
             clean_result = str(result)
 
@@ -270,13 +262,9 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
             }
         )
 
-        await self.send_client(
-            {"type": "response.done", "response": {"status": "completed"}}
-        )
+        await self.send_client({"type": "response.done", "response": {"status": "completed"}})
 
-    async def call_tool(
-        self, call_id: str, tool_name: str, tool_arguments: Dict[str, Any]
-    ) -> None:
+    async def call_tool(self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]) -> None:
         """Execute a tool via ToolManagerService."""
         logger.info(f"ElevenLabs: Calling tool {tool_name}")
         try:
@@ -287,9 +275,8 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
             )
             await self.send_function_result(call_id, tool_result)
         except Exception as e:
-            logger.error(f"Tool execution failed: {str(e)}")
-            await self.send_function_result(call_id, f"Error: {str(e)}")
+            logger.error(f"Tool execution failed: {e!s}")
+            await self.send_function_result(call_id, f"Error: {e!s}")
 
     async def request_response(self, data: dict | None = None) -> None:
         """ElevenLabs operates in auto-response mode — no-op."""
-        pass

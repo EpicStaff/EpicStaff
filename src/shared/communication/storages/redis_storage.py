@@ -1,6 +1,7 @@
 from datetime import timedelta
 
-from redis import Redis as SyncRedis, RedisError
+from redis import Redis as SyncRedis
+from redis import RedisError
 from redis.asyncio import Redis as AsyncRedis
 
 from ..error_handler import handle_error

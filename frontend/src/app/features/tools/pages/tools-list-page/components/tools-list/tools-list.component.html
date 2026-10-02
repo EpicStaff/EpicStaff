@@ -6,13 +6,11 @@
         ></app-loading-spinner>
     } @else {
         @if (error()) {
-            <div class="error">{{ error() }}</div>
-            <button
-                type="button"
-                (click)="reload()"
-            >
-                Retry
-            </button>
+            <app-fetch-error-state
+                [title]="errorTitle()"
+                message="Your filters and labels are still applied. Check your connection and try again."
+                (retry)="reload()"
+            />
         } @else {
             @if (recentTools().length > 0) {
                 <div class="recent-section">

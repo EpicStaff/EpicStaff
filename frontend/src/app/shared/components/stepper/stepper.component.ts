@@ -1,6 +1,7 @@
 import { NgClass, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { AppSvgIconComponent } from '@shared/components';
+
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-stepper',
