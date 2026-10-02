@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+from collections.abc import AsyncIterator
 
 import httpx
 from domain.models.realtime_tool import RealtimeTool
@@ -13,7 +14,8 @@ _EL_API_BASE = "https://api.elevenlabs.io/v1"
 _DEFAULT_LLM = "gemini-2.5-flash"
 _HTTP_TIMEOUT = 30.0
 _CACHE_TTL = 3600  # 1 hour
-_AGENT_PAGE_SIZE = 100
+_LISTING_PAGE_SIZE = 100
+_TOOL_NAME_SEPARATOR = "__"
 _TTS_MODEL_EN = "eleven_turbo_v2"
 _TTS_MODEL_MULTILINGUAL = "eleven_flash_v2_5"
 _OPENAI_VOICE_NAMES = {
@@ -41,26 +43,89 @@ def remote_agent_name(org_id: int, rt_agent_definition_id: int) -> str:
     return f"EpicStaff-org{org_id}-rtdef{rt_agent_definition_id}"
 
 
+def _local_tool_name(rt_tool: RealtimeTool) -> str:
+    return rt_tool.name.replace(" ", "_")
+
+
+def remote_tool_name(agent_name: str, rt_tool: RealtimeTool) -> str:
+    """Return the name of the remote ElevenLabs tool record owned by one remote agent.
+
+    Tool records live account-wide and provisioning PATCHes the record it finds by
+    name, so agents sharing a tool name would overwrite each other's tool schema.
+    The agent name is part of the tool name to rule that out.
+    """
+    return f"{agent_name}{_TOOL_NAME_SEPARATOR}{_local_tool_name(rt_tool)}"
+
+
+def local_tool_name(agent_name: str, reported_tool_name: str) -> str:
+    """Return the session-local tool name for a tool name reported by ElevenLabs.
+
+    The agent payload names each tool by its local name while the tool record it
+    points at carries the agent-prefixed name; either may come back in a
+    `client_tool_call`, so the prefix is stripped when present.
+    """
+    return reported_tool_name.removeprefix(f"{agent_name}{_TOOL_NAME_SEPARATOR}")
+
+
 class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
         self._provision_locks: dict[str, asyncio.Lock] = {}
 
+    async def _iterate_listing(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        resource: str,
+        search: str,
+    ) -> AsyncIterator[dict]:
+        """Yield every item of a paginated convai listing (`agents` or `tools`), page by page.
+
+        `search` only narrows the listing server-side; callers still match names exactly.
+
+        Raises:
+            RuntimeError: The listing repeated a cursor. Treating that as "not found"
+                would make the caller create a duplicate.
+        """
+        params: dict[str, str | int] = {"search": search, "page_size": _LISTING_PAGE_SIZE}
+        seen_cursors: set[str] = set()
+        while True:
+            resp = await client.get(
+                f"{_EL_API_BASE}/convai/{resource}", headers=headers, params=params
+            )
+            resp.raise_for_status()
+            page = resp.json()
+            for item in page.get(resource, []):
+                yield item
+            next_cursor = page.get("next_cursor")
+            if not page.get("has_more") or not next_cursor:
+                return
+            if next_cursor in seen_cursors:
+                raise RuntimeError(
+                    f"ElevenLabs {resource} listing repeated cursor {next_cursor!r}; pagination is not advancing"
+                )
+            seen_cursors.add(next_cursor)
+            params = {**params, "cursor": next_cursor}
+
+    async def _find_tool_id(
+        self, client: httpx.AsyncClient, headers: dict[str, str], tool_name: str
+    ) -> str | None:
+        """Return the id of the remote tool record with exactly this name, across all pages."""
+        async for tool in self._iterate_listing(client, headers, "tools", tool_name):
+            if tool.get("tool_config", {}).get("name") == tool_name:
+                return tool["id"]
+        return None
+
     async def _get_or_create_tool(
-        self, client: httpx.AsyncClient, api_key: str, rt_tool: RealtimeTool
+        self,
+        client: httpx.AsyncClient,
+        api_key: str,
+        agent_name: str,
+        rt_tool: RealtimeTool,
     ) -> str:
         headers = {"xi-api-key": api_key}
-        search_name = rt_tool.name.replace(" ", "_")
-
-        resp = await client.get(f"{_EL_API_BASE}/convai/tools", headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        existing_tools = data.get("tools", [])
-
-        existing_tool = next(
-            (t for t in existing_tools if t.get("tool_config", {}).get("name") == search_name),
-            None,
-        )
+        search_name = remote_tool_name(agent_name, rt_tool)
+        existing_tool_id = await self._find_tool_id(client, headers, search_name)
 
         payload = {
             "tool_config": {
@@ -72,8 +137,8 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
             }
         }
 
-        if existing_tool:
-            t_id = existing_tool["id"]
+        if existing_tool_id:
+            t_id = existing_tool_id
             logger.info(
                 f"EL Provisioner: Found existing tool '{search_name}' with ID: {t_id}. Updating..."
             )
@@ -103,15 +168,19 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
 
     def _content_hash(
         self,
+        agent_name: str,
         instructions: str,
         voice: str,
         rt_tools: list[RealtimeTool],
         llm_model: str,
         language: str | None = None,
     ) -> str:
-        # Everything `_build_agent_payload` sends must be in the hash, descriptions included.
+        # Everything `_build_agent_payload` sends must be in the hash, descriptions included,
+        # and so must the names of the tool records the agent points at: an agent cached
+        # while pointing at differently named records must not be served.
         tools_repr = sorted(
-            f"{t.name}:{t.description}:{t.parameters.model_dump_json()}" for t in rt_tools
+            f"{remote_tool_name(agent_name, t)}:{t.name}:{t.description}:{t.parameters.model_dump_json()}"
+            for t in rt_tools
         )
         tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
         raw = json.dumps(
@@ -131,25 +200,10 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         self, client: httpx.AsyncClient, headers: dict[str, str], agent_name: str
     ) -> str | None:
         """Return the id of the remote agent with exactly this name, across all pages."""
-        params: dict[str, str | int] = {"search": agent_name, "page_size": _AGENT_PAGE_SIZE}
-        seen_cursors: set[str] = set()
-        while True:
-            resp = await client.get(f"{_EL_API_BASE}/convai/agents", headers=headers, params=params)
-            resp.raise_for_status()
-            page = resp.json()
-            for agent in page.get("agents", []):
-                if agent["name"] == agent_name:
-                    return agent["agent_id"]
-            next_cursor = page.get("next_cursor")
-            if not page.get("has_more") or not next_cursor:
-                return None
-            if next_cursor in seen_cursors:
-                # Returning None would make the caller create a duplicate agent.
-                raise RuntimeError(
-                    f"ElevenLabs agent listing repeated cursor {next_cursor!r}; pagination is not advancing"
-                )
-            seen_cursors.add(next_cursor)
-            params = {**params, "cursor": next_cursor}
+        async for agent in self._iterate_listing(client, headers, "agents", agent_name):
+            if agent["name"] == agent_name:
+                return agent["agent_id"]
+        return None
 
     async def invalidate_cache(self, api_key: str, agent_name: str) -> None:
         cache_key = self._cache_key(api_key, agent_name)
@@ -173,7 +227,9 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
             f"EL Provisioner: get_or_create_agent | agent_name={agent_name!r} | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
         )
         cache_key = self._cache_key(api_key, agent_name)
-        content_hash = self._content_hash(instructions, voice, rt_tools, llm_model, language)
+        content_hash = self._content_hash(
+            agent_name, instructions, voice, rt_tools, llm_model, language
+        )
 
         cached_agent_id = await self._cached_agent_id(cache_key, content_hash)
         if cached_agent_id:
@@ -234,7 +290,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             tool_ids = []
             for rt_tool in rt_tools:
-                tid = await self._get_or_create_tool(client, api_key, rt_tool)
+                tid = await self._get_or_create_tool(client, api_key, agent_name, rt_tool)
                 tool_ids.append(tid)
 
             existing_agent_id = await self._find_agent_id(client, headers, agent_name)
@@ -291,7 +347,9 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 {
                     "type": "client",
                     "tool_id": tid,
-                    "name": tool_meta.name.replace(" ", "_"),
+                    # The local name, not the remote record name: it is what the
+                    # session's executors are registered under.
+                    "name": _local_tool_name(tool_meta),
                     "description": tool_meta.description or f"Executes {tool_meta.name}",
                     "expects_response": True,
                     "parameters": {

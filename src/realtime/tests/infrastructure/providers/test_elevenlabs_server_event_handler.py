@@ -7,9 +7,17 @@ import struct
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from application.tool_manager_service import ToolManagerService
+from domain.models.realtime_tool import RealtimeTool, ToolParameters
+from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import remote_tool_name
+from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import (
+    ElevenLabsRealtimeAgentClient,
+)
 from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler import (
     ElevenLabsServerEventHandler,
 )
+from tool_executors import BaseToolExecutor
+from utils.singleton_meta import SingletonMeta
 
 
 # ---------------------------------------------------------------------------
@@ -20,6 +28,7 @@ from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_
 def client():
     c = MagicMock()
     c.connection_key = "conn_key"
+    c.agent_name = "EpicStaff-org1-rtdef2"
     c.is_twilio = False
     c._down_resample_state = None
     c.send_client = AsyncMock()
@@ -202,6 +211,91 @@ async def test_tool_call_emits_function_call_created(handler, client):
     sent_types = [c[0][0]["type"] for c in client.send_client.call_args_list]
     assert "conversation.item.created" in sent_types
     assert "response.function_call_arguments.done" in sent_types
+
+
+class RecordingToolExecutor(BaseToolExecutor):
+    def __init__(self, tool_name: str):
+        super().__init__(tool_name=tool_name)
+        self.calls: list[dict] = []
+
+    async def execute(self, **kwargs):
+        self.calls.append(kwargs)
+        return "done"
+
+    async def get_realtime_tool_model(self):
+        return RealtimeTool(name=self.tool_name, parameters=ToolParameters(properties={}))
+
+
+@pytest.fixture
+def tool_manager_service():
+    # A process-wide singleton; drop it so each test registers its own executors.
+    SingletonMeta._instances.pop(ToolManagerService, None)
+    yield ToolManagerService(
+        python_code_executor_service=MagicMock(), knowledge_client=MagicMock()
+    )
+    SingletonMeta._instances.pop(ToolManagerService, None)
+
+
+@pytest.fixture
+def real_client(tool_manager_service):
+    elevenlabs_client = ElevenLabsRealtimeAgentClient(
+        api_key="key",
+        connection_key="conn_1",
+        tool_manager_service=tool_manager_service,
+        org_id=1,
+        rt_agent_definition_id=10,
+    )
+    elevenlabs_client.send_server = AsyncMock()
+    elevenlabs_client.send_client = AsyncMock()
+    return elevenlabs_client
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefixed", [False, True], ids=["local_name", "remote_record_name"])
+async def test_tool_call_reaches_the_local_executor_under_either_tool_name(
+    real_client, tool_manager_service, prefixed
+):
+    executor = RecordingToolExecutor("lookup")
+    tool_manager_service.connection_tool_executors["conn_1"] = [executor]
+    local_tool = RealtimeTool(name="lookup", parameters=ToolParameters(properties={}))
+    remote_name = remote_tool_name(real_client.agent_name, local_tool)
+    assert remote_name == "EpicStaff-org1-rtdef10__lookup"
+    reported_name = remote_name if prefixed else "lookup"
+    data = {
+        "type": "client_tool_call",
+        "client_tool_call": {
+            "tool_call_id": "tc1",
+            "tool_name": reported_name,
+            "parameters": {"order_id": "42"},
+        },
+    }
+
+    await real_client.server_event_handler._handle_client_tool_call(data)
+
+    assert executor.calls == [{"order_id": "42"}]
+    browser_names = {
+        event.args[0]["item"]["name"]
+        for event in real_client.send_client.await_args_list
+        if event.args[0].get("type") == "conversation.item.created"
+        and event.args[0]["item"].get("type") == "function_call"
+    }
+    assert browser_names == {"lookup"}
+
+
+@pytest.mark.asyncio
+async def test_tool_call_prefixed_with_another_agents_name_is_not_stripped(handler, client):
+    data = {
+        "type": "client_tool_call",
+        "client_tool_call": {
+            "tool_call_id": "tc1",
+            "tool_name": "EpicStaff-org1-rtdef3__lookup",
+            "parameters": {},
+        },
+    }
+
+    await handler._handle_client_tool_call(data)
+
+    client.call_tool.assert_awaited_once_with("tc1", "EpicStaff-org1-rtdef3__lookup", {})
 
 
 # ---------------------------------------------------------------------------
