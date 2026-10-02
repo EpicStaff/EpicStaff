@@ -17,6 +17,23 @@ from .base import (
     UnsupportedLLMProviderError,
 )
 
+# litellm reports json_schema support for these providers, but their APIs reject it
+# ("This response_format type is unavailable now") and only accept json_object.
+JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
+
+# litellm emulates json_schema with a hidden tool call for these providers' models that lack
+# native structured outputs, and refuses that emulation when the request carries its own tools.
+TOOL_EMULATED_SCHEMA_PROVIDERS = {"groq"}
+
+# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
+# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
+PROVIDER_ALIASES = {
+    "google_ai": "gemini",
+    "novita_ai": "novita",
+    "aws_sagemaker": "sagemaker",
+    "featherless-ai": "featherless_ai",
+}
+
 
 class LiteLLMClient(BaseLLMClient):
     """Unified streaming + tool-calling client for all LiteLLM-supported providers.
@@ -86,7 +103,13 @@ class LiteLLMClient(BaseLLMClient):
 
         # All other providers: "<provider>/<model>" — litellm understands this format
         # for Anthropic, Gemini, Mistral, Cohere, Bedrock, Together, etc.
-        return f"{provider_name}/{model_name}"
+        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
+        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
+        # model id and must become "groq/openai/gpt-oss-120b".
+        litellm_provider = PROVIDER_ALIASES.get(provider_name, provider_name)
+        if model_name.startswith(f"{litellm_provider}/"):
+            return model_name
+        return f"{litellm_provider}/{model_name}"
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
         if not tools:
@@ -111,6 +134,7 @@ class LiteLLMClient(BaseLLMClient):
             "model": self._model,
             "messages": messages,
             "stream": True,
+            "drop_params": True,
         }
 
         if self._api_key:
@@ -136,10 +160,31 @@ class LiteLLMClient(BaseLLMClient):
         # Structured-output requests pass an output_schema, which becomes the
         # response_format sent to the model.
         if self._output_schema:
-            kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": self._output_schema,
-            }
+            provider_name = (
+                (model.llm_provider.name or "").lower().strip()
+                if model and model.llm_provider
+                else ""
+            )
+            if provider_name in JSON_OBJECT_ONLY_PROVIDERS:
+                kwargs["response_format"] = {"type": "json_object"}
+                # json_object mode carries no schema, so the model only learns the
+                # expected shape from the prompt.
+                kwargs["messages"] = self._with_schema_instruction(messages)
+            elif (
+                provider_name in TOOL_EMULATED_SCHEMA_PROVIDERS
+                and tools
+                and not litellm.supports_response_schema(
+                    model=self._model, custom_llm_provider=provider_name
+                )
+            ):
+                # No response_format: the schema reaches the model only through the prompt,
+                # and the reply is parsed leniently by the caller.
+                kwargs["messages"] = self._with_schema_instruction(messages)
+            else:
+                kwargs["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": self._output_schema,
+                }
         if getattr(cfg, "extra_headers", None):
             kwargs["extra_headers"] = cfg.extra_headers
 
@@ -150,6 +195,18 @@ class LiteLLMClient(BaseLLMClient):
             kwargs["_skip_mcp_handler"] = True
 
         return kwargs
+
+    def _with_schema_instruction(self, messages: list[dict]) -> list[dict]:
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "Respond with a JSON object that matches this JSON schema: "
+                    f"{json.dumps(self._output_schema['schema'])}"
+                ),
+            },
+            *messages,
+        ]
 
     async def stream_completion(
         self,
@@ -169,10 +226,15 @@ class LiteLLMClient(BaseLLMClient):
         # during this turn. Reasoning models (gpt-oss, o1, claude-thinking,
         # DeepSeek-R1) populate this; non-reasoning models leave it absent.
         reasoning_observed = False
+        last_finish_reason: str | None = None
 
         response = await litellm.acompletion(**kwargs)
 
         async for chunk in response:
+            finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+            if finish_reason:
+                last_finish_reason = finish_reason
+
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta is None:
                 continue
@@ -198,7 +260,6 @@ class LiteLLMClient(BaseLLMClient):
                     if tc.function and tc.function.arguments:
                         acc["args"] += tc.function.arguments
 
-            finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
             # Anthropic surfaces "tool_use" and "end_turn"; OpenAI uses "tool_calls"
             # and "stop".  LiteLLM normalises most of this, but we handle all known
             # variants defensively to stay robust across litellm version changes.
@@ -214,4 +275,4 @@ class LiteLLMClient(BaseLLMClient):
                     args = {"_raw": acc["args"]}
                 yield ToolCallEvent(id=acc["id"], name=acc["name"], args=args)
 
-        yield DoneEvent(reasoning_observed=reasoning_observed)
+        yield DoneEvent(reasoning_observed=reasoning_observed, finish_reason=last_finish_reason)
