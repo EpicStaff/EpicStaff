@@ -200,6 +200,26 @@
                     @if (hasNumberChip) {
                         <div class="node-number-badge">#{{ node.nodeNumber }}</div>
                     }
+                    @if (node.type === NodeType.SUBGRAPH && !isReadOnly()) {
+                        <div
+                            class="actions"
+                            (mousedown)="$event.stopPropagation()"
+                            (mouseup)="$event.stopPropagation()"
+                            (click)="$event.stopPropagation()"
+                        >
+                            <div
+                                class="action-button unpack-button"
+                                [class.disabled]="isBlockedSubgraph"
+                                [matTooltip]="
+                                    isBlockedSubgraph ? 'Cannot unpack: referenced flow is missing' : 'Unpack subflow'
+                                "
+                                matTooltipPosition="above"
+                                (click)="onUnpackClick($event)"
+                            >
+                                <i class="ti ti-package-off"></i>
+                            </div>
+                        </div>
+                    }
                     <!-- Stops mousedown/mouseup/click so it never bubbles into appClickOrDrag's actualClick (mouseup) and opens the panel. -->
                     @if (hasDeleteChip) {
                         <div

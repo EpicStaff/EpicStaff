@@ -585,3 +585,12 @@ app-nodes-search {
         color: var(--fog-200);
     }
 }
+
+.extract-subflow-btn {
+    color: var(--fog-alpha-70);
+    font-size: 1.125rem;
+
+    &:hover {
+        color: var(--fog-200);
+    }
+}

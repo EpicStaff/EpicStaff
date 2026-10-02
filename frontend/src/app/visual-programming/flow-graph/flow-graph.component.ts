@@ -169,6 +169,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     /** Nodes were copied into this editor's clipboard. */
     readonly copied = output<void>();
     readonly importComplete = output<void>();
+    readonly extractToSubflow = output<Set<string>>();
+    readonly unpackSubflow = output<string>();
 
     @ViewChild(FFlowComponent, { static: false })
     private fFlowComponent!: FFlowComponent;
@@ -235,6 +237,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (ids.length === 0) return false;
         const nodes = this.flowService.nodes();
         return ids.every((id) => nodes.find((n) => n.id === id)?.type === NodeType.CLASSIFICATION_TABLE);
+    });
+    protected readonly extractableSelectedNodeIds = computed<Set<string>>(() => {
+        const nodes = this.flowService.nodes();
+        return new Set(
+            this.selectedNodeIds().filter((id) => {
+                const type = nodes.find((n) => n.id === id)?.type;
+                return type !== NodeType.START && type !== NodeType.END;
+            })
+        );
     });
 
     readonly multiSelectTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
@@ -844,6 +855,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             fGroupIds: [],
             fConnectionIds: [],
         });
+    }
+
+    public onUnpackSubflow(node: NodeModel): void {
+        this.unpackSubflow.emit(node.id);
     }
 
     public onDeleteConnection(event: MouseEvent, connectionId: string): void {
@@ -1538,6 +1553,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         this.selectedNodeIds.set(nodeIds);
+    }
+
+    protected onExtractToSubflow(): void {
+        const ids = this.extractableSelectedNodeIds();
+        if (ids.size === 0) return;
+        this.extractToSubflow.emit(ids);
     }
 
     public onExportSelectedAsJson(): void {

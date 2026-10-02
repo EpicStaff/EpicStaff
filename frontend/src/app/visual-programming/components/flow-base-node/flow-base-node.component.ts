@@ -11,6 +11,7 @@ import {
     input,
     OnInit,
     Output,
+    output,
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -90,6 +91,7 @@ export class FlowBaseNodeComponent implements OnInit {
     }>();
     @Output() editClicked = new EventEmitter<NodeModel>();
     @Output() deleteClicked = new EventEmitter<NodeModel>();
+    readonly unpackClicked = output<void>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     multiSelectActive = input<boolean>(false);
@@ -145,6 +147,13 @@ export class FlowBaseNodeComponent implements OnInit {
             return;
         }
         this.editClicked.emit(this.node);
+    }
+
+    public onUnpackClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.isBlockedSubgraph) return;
+        this.unpackClicked.emit();
     }
 
     trackByPort(index: number, port: { id: string }): string {
