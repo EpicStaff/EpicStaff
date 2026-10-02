@@ -55,10 +55,12 @@
         }
     }
 
-    // Control buttons wrapper - positioned above the node
+    // Outside-the-box bar, only used by NOTE/EDGE (no header row to embed into).
+    // Header-based node types reuse this class inside .node-action-bar (see below).
     .actions {
         display: flex;
         opacity: 0;
+        pointer-events: none;
         position: absolute;
         right: 0;
         top: -45px;
@@ -78,6 +80,7 @@
             bottom: -20px;
             background: transparent;
             z-index: -1;
+            pointer-events: none;
         }
 
         // Additional transparent zone for smoother transitions
@@ -90,6 +93,7 @@
             bottom: 0;
             background: transparent;
             z-index: -2;
+            pointer-events: none;
         }
     }
 
@@ -169,6 +173,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                flex-shrink: 0;
 
                 i {
                     color: var(--python-node-accent-color);
@@ -187,6 +192,8 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
+                flex: 1 1 auto;
+                min-width: 0;
 
                 .active-dot {
                     display: inline-block;
@@ -224,6 +231,22 @@
             }
         }
 
+        .node-action-bar {
+            @include mixins.node-action-bar-base;
+            left: -2px;
+            right: -2px;
+            bottom: calc(100% - 1px);
+
+            .node-number-badge {
+                @include mixins.node-action-bar-number-badge(var(--color-divider-regular));
+            }
+
+            .actions {
+                @include mixins.node-action-bar-delete-chip(var(--color-divider-regular), 4px);
+                right: 0;
+            }
+        }
+
         .node-details {
             margin-top: 1rem;
         }
@@ -236,6 +259,22 @@
         // border-color) so it never fights the selected/error border-color rules below.
         &.has-key-value-accent {
             box-shadow: inset 3px 0 0 0 var(--key-value-accent);
+        }
+    }
+
+    .node-action-bar--table {
+        @include mixins.node-action-bar-base;
+        left: 0;
+        right: 0;
+        bottom: calc(100% - 3px);
+
+        .node-number-badge {
+            @include mixins.node-action-bar-number-badge(var(--color-divider-subtle));
+        }
+
+        .actions {
+            @include mixins.node-action-bar-delete-chip(var(--color-divider-subtle), 4px);
+            right: 0;
         }
     }
 
@@ -263,6 +302,16 @@
 
         .actions {
             opacity: 1;
+            pointer-events: auto;
+        }
+
+        .interactive-node-body .node-action-bar,
+        .node-action-bar--table {
+            opacity: 1;
+        }
+
+        .interactive-node-body.has-number-chip {
+            border-top-left-radius: 0;
         }
     }
 
@@ -279,6 +328,8 @@
     }
 
     &.f-selected {
+        z-index: 1000 !important;
+
         .node-name-label {
             opacity: 1;
         }
@@ -295,6 +346,25 @@
 
         .actions {
             opacity: 1;
+            pointer-events: auto;
+        }
+
+        .interactive-node-body .node-action-bar,
+        .node-action-bar--table {
+            opacity: 1;
+
+            .node-number-badge {
+                border-color: var(--vp-selected-node-border-color);
+                border-bottom: none;
+            }
+
+            .actions {
+                border: 2px solid var(--vp-selected-node-border-color);
+            }
+        }
+
+        .interactive-node-body.has-number-chip {
+            border-top-left-radius: 0;
         }
     }
 
@@ -425,6 +495,7 @@
     &:hover {
         .actions {
             opacity: 1;
+            pointer-events: auto;
         }
     }
 
@@ -432,6 +503,7 @@
     &.f-selected {
         .actions {
             opacity: 1;
+            pointer-events: auto;
         }
     }
 }

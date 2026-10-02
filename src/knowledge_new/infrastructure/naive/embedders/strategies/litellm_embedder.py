@@ -1,5 +1,20 @@
 import litellm
+import settings
 from application.ports import AbstractEmbedder
+
+
+def _endpoint_overrides() -> dict:
+    """Deployment-wide endpoint overrides, applied to every provider when set.
+
+    `api_base` is the OpenAI-style base that litellm appends `/embeddings` to,
+    not the full embeddings URL.
+    """
+    overrides = {}
+    if settings.CUSTOM_EMBED_BASE_URL:
+        overrides["api_base"] = settings.CUSTOM_EMBED_BASE_URL
+    if settings.EMBEDDING_HEADERS:
+        overrides["extra_headers"] = settings.EMBEDDING_HEADERS
+    return overrides
 
 
 class LiteLLMEmbedder(AbstractEmbedder):
@@ -12,6 +27,7 @@ class LiteLLMEmbedder(AbstractEmbedder):
             api_key=self.api_key,
             model=self.config.model,
             custom_llm_provider=self.config.provider,
+            **_endpoint_overrides(),
             **self._extra_params(),
         )
         result = response.data

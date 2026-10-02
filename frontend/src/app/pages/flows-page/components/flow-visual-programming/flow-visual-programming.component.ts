@@ -71,10 +71,12 @@ import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
+import { PromptConfig } from '../../../../visual-programming/core/models/classification-decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
 import {
     AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
     NodeModel,
     ScheduleTriggerNodeModel,
     TaskNodeModel,
@@ -98,6 +100,7 @@ import {
     getNodeDiff,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
+    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
@@ -157,7 +160,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
+        const current = toDirtyComparableFlowState(this.currentFlowState());
+        const saved = toDirtyComparableFlowState(this.savedFlowState());
+        return JSON.stringify(current) !== JSON.stringify(saved);
     });
 
     public isSaving = signal(false);
@@ -197,6 +202,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly routeQueryParamMap;
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
+    private liveCdtStorageIds = new Set<string>();
     // The nodeId/nodeName query opens its panel once; re-mounting the live canvas must not re-open it.
     private lastNodeQueryKey: string | null = null;
     private isNodeQueryConsumed = false;
@@ -296,6 +302,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.fetchGraph(graphId);
         });
 
+        effect(() => {
+            const flowState = this.currentFlowState();
+            const cdtStorageIds = new Set(
+                flowState.nodes
+                    .filter((node) => node.type === NodeType.CLASSIFICATION_TABLE)
+                    .map((node) => String(node.nodeNumber ?? node.backendId))
+            );
+            const cdtRemoved = [...this.liveCdtStorageIds].some((id) => !cdtStorageIds.has(id));
+            this.liveCdtStorageIds = cdtStorageIds;
+            if (cdtRemoved) this.cleanupCdtGridState(flowState);
+        });
         this.easterEggTrigger.activated$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.startSnakeGame());
@@ -489,6 +506,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             issues = [
                 ...this.getInvalidTaskNodeMessages(flowState),
                 ...this.getInvalidAgentNodeMessages(flowState),
+                ...this.getInvalidClassificationTableMessages(flowState),
                 // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
                 ...invalidKeyValueNodeMessages(flowState.nodes),
             ];
@@ -577,6 +595,45 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
+    }
+
+    /** CDT prompt schemas may legitimately be stored as a JSON string (legacy rows,
+     *  CSV/JSON import, crew runtime `json.loads`) — parse before applying the object rule. */
+    private isValidCdtPromptSchema(schema: PromptConfig['output_schema']): boolean {
+        if (schema == null) return true;
+        if (typeof schema === 'string') {
+            const trimmed = schema.trim();
+            if (trimmed === '') return true;
+            try {
+                return isValidOutputSchema(JSON.parse(trimmed));
+            } catch {
+                return false;
+            }
+        }
+        return isValidOutputSchema(schema);
+    }
+
+    private getInvalidClassificationTableMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.CLASSIFICATION_TABLE) return;
+            const cdtNode = node as ClassificationDecisionTableNodeModel;
+            const prompts = cdtNode.data?.table?.prompts ?? {};
+
+            const invalidKeys = Object.entries(prompts)
+                .filter(([, cfg]) => cfg.output_schema_invalid || !this.isValidCdtPromptSchema(cfg.output_schema))
+                .map(([key]) => key);
+
+            if (invalidKeys.length === 0) return;
+
+            const label = cdtNode.node_name?.trim() || `Untitled decision table #${index + 1}`;
+            const detail =
+                invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
+            messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
         });
 
         return messages;
@@ -1065,6 +1122,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }),
         };
         this.flowService.setFlow(rewrittenFlow);
+        this.cleanupCdtGridState(rewrittenFlow);
 
         this.isLoaded.set(true);
 
