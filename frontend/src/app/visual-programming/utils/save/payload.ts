@@ -1,3 +1,4 @@
+import { slugifyPortName } from '../../core/helpers/helpers';
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
@@ -144,8 +145,7 @@ function buildCdtNodePayload(
             if (g.route_code) {
                 targetUuid = g.next_node ?? null;
                 if (!targetUuid) {
-                    const slugified = g.route_code.toLowerCase().replace(/\s+/g, '-');
-                    const routePortId = `${node.id}_decision-route-${slugified}`;
+                    const routePortId = `${node.id}_decision-route-${slugifyPortName(g.route_code)}`;
                     const conn = connections.find((c) => c.sourceNodeId === node.id && c.sourcePortId === routePortId);
                     if (conn) targetUuid = conn.targetNodeId;
                 }
