@@ -32,7 +32,7 @@ Notes settled during design:
   out of scope here.
 
 Verified against the spec's own examples:
-    status in ["error", "warning"] or tool in ["Web Search Tool", "Notification Tool"]
+    status in ["error", "warning"] or tool in ["Web_Search_Tool", "Notification_Tool"]
     name == "Session Start"
     Error is not empty and not ID == 66
     input : est3285 and output : Greetings

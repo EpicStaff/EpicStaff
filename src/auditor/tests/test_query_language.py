@@ -33,7 +33,7 @@ def test_tokenize_operators():
 
 def test_parse_status_in_or_tool_in():
     ast = parse_query(
-        'status in ["error", "warning"] or tool in ["Web Search Tool", "Notification Tool"]'
+        'status in ["error", "warning"] or tool in ["Web_Search_Tool", "Notification_Tool"]'
     )
     assert ast == {
         "op": "or",
@@ -42,7 +42,7 @@ def test_parse_status_in_or_tool_in():
             {
                 "field": "tool",
                 "op": "in",
-                "value": ["Web Search Tool", "Notification Tool"],
+                "value": ["Web_Search_Tool", "Notification_Tool"],
             },
         ],
     }
@@ -87,7 +87,7 @@ def test_in_accepts_both_paren_and_bracket_spelling():
 @pytest.mark.parametrize(
     "query",
     [
-        'status in ["error", "warning"] or tool in ["Web Search Tool", "Notification Tool"]',
+        'status in ["error", "warning"] or tool in ["Web_Search_Tool", "Notification_Tool"]',
         'name == "Session Start"',
         "Error is not empty and not ID == 66",
         "input : est3285 and output : Greetings",
@@ -119,6 +119,13 @@ def test_validate_filter_node_rejects_unknown_field():
     with pytest.raises(FilterValidationError):
         validate_filter_node(
             SESSIONS_FIELDS, {"field": "org_id", "op": "equals", "value": 1}
+        )
+
+
+def test_validate_filter_node_rejects_removed_message_thought_field():
+    with pytest.raises(FilterValidationError):
+        validate_filter_node(
+            SESSIONS_FIELDS, {"field": "message_thought", "op": "contains", "value": "x"}
         )
 
 

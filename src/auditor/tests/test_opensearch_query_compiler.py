@@ -254,7 +254,7 @@ def test_compile_mixed_structured_and_flattened_and():
         "op": "and",
         "children": [
             {"field": "status", "op": "equals", "value": "failed"},
-            {"field": "tool", "op": "contains", "value": "Web Search"},
+            {"field": "tool", "op": "contains", "value": "Web_Search"},
         ],
     }
     query = compile_filters(node, org_id=1, retention_days=0)
@@ -262,7 +262,7 @@ def test_compile_mixed_structured_and_flattened_and():
     assert {"term": {"org_id": 1}} in clauses
     assert {"term": {"status": "failed"}} in clauses
     assert any(
-        c.get("wildcard", {}).get("details.tool", {}).get("value") == "*Web Search*"
+        c.get("wildcard", {}).get("details.data.name", {}).get("value") == "*Web_Search*"
         for c in clauses
     )
     # No nested `bool.filter` wrapper left over for this AND - it was fully
@@ -369,19 +369,42 @@ def test_compile_flattened_alias_not_in_op_uses_must_not_terms():
     }
 
 
-def test_compile_tool_alias_in_op_uses_terms():
-    node = {"field": "tool", "op": "in", "value": ["Web Search"]}
+def test_compile_tool_alias_equals_op_uses_term_on_agent_event_name():
+    node = {"field": "tool", "op": "equals", "value": "Web_Search_Tool"}
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[0]
-    assert compiled_leaf == {"terms": {"details.tool": ["Web Search"]}}
+    assert compiled_leaf == {"term": {"details.data.name": "Web_Search_Tool"}}
+
+
+def test_compile_tool_alias_in_op_uses_terms():
+    node = {"field": "tool", "op": "in", "value": ["Web_Search_Tool"]}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[0]
+    assert compiled_leaf == {"terms": {"details.data.name": ["Web_Search_Tool"]}}
 
 
 def test_compile_tool_alias_not_in_op_uses_must_not_terms():
-    node = {"field": "tool", "op": "not_in", "value": ["Web Search"]}
+    node = {"field": "tool", "op": "not_in", "value": ["Web_Search_Tool"]}
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[0]
     assert compiled_leaf == {
-        "bool": {"must_not": [{"terms": {"details.tool": ["Web Search"]}}]}
+        "bool": {"must_not": [{"terms": {"details.data.name": ["Web_Search_Tool"]}}]}
+    }
+
+
+@pytest.mark.parametrize(
+    ("alias", "path"),
+    [
+        ("task", "details.data.task.name"),
+        ("message_text", "details.data.message"),
+    ],
+)
+def test_compile_text_alias_contains_uses_wildcard_on_agent_event_path(alias, path):
+    node = {"field": alias, "op": "contains", "value": "vendor"}
+    query = compile_filters(node, org_id=1, retention_days=0)
+    compiled_leaf = _filter_clauses(query)[0]
+    assert compiled_leaf == {
+        "wildcard": {path: {"value": "*vendor*", "case_insensitive": True}}
     }
 
 

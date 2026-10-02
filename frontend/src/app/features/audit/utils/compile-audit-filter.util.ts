@@ -11,7 +11,7 @@ import {
 import { AuditMatchScope } from '../models/audit-session.models';
 
 const TOOL_NAME_FIELD = 'details.data.name';
-const TOKENS_FIELD = 'details.token_usage.total_tokens';
+const TOKENS_FIELD = 'details.data.token_usage.total_tokens';
 
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
@@ -186,11 +186,6 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     const messageTextNode = compileConditionGroups('message_text', state.messageText);
     if (messageTextNode !== null) {
         leaves.push(messageTextNode);
-    }
-
-    const messageThoughtNode = compileConditionGroups('message_thought', state.messageThought);
-    if (messageThoughtNode !== null) {
-        leaves.push(messageThoughtNode);
     }
 
     if (leaves.length === 0) {

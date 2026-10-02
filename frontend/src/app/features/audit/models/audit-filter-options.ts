@@ -135,6 +135,5 @@ export const QUERY_FIELDS: string[] = [
     'task',
     'prompt',
     'message_text',
-    'message_thought',
     'id',
 ];

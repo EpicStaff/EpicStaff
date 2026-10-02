@@ -28,7 +28,6 @@ KNOWN_FIELDS: dict[str, FieldSpec] = {
     "task": FieldSpec(TEXT_CONDITION_OPS),
     "prompt": FieldSpec(TEXT_CONDITION_OPS),
     "message_text": FieldSpec(TEXT_CONDITION_OPS),
-    "message_thought": FieldSpec(TEXT_CONDITION_OPS),
     "duration": FieldSpec(DURATION_OPS, computed=True),
     # special fields
     "__text__": FieldSpec(frozenset({"contains"})),
@@ -36,11 +35,10 @@ KNOWN_FIELDS: dict[str, FieldSpec] = {
 
 DEEP_FILTER_ALIASES: dict[str, str] = {
     "agent": "details.agent_id",
-    "tool": "details.tool",
-    "task": "details.description",
+    "tool": "details.data.name",
+    "task": "details.data.task.name",
     "prompt": "details.prompt_text",
-    "message_text": "details.text",
-    "message_thought": "details.thought",
+    "message_text": "details.data.message",
 }
 
 # `error` is analyzed text: the standard analyzer treats '.' as a word-joiner, so

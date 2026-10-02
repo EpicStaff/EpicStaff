@@ -129,7 +129,6 @@ export class AuditFiltersPanelComponent implements OnInit {
     public isTaskEnabled = computed(() => isFieldAvailable('task', this.filter()));
     public isPromptEnabled = computed(() => isFieldAvailable('prompt', this.filter()));
     public isMessageTextEnabled = computed(() => isFieldAvailable('messageText', this.filter()));
-    public isMessageThoughtEnabled = computed(() => isFieldAvailable('messageThought', this.filter()));
     public isTokensEnabled = computed(() => isFieldAvailable('tokens', this.filter()));
 
     public agentHint = computed(() => {
@@ -245,10 +244,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setMessageText(messageText: AuditConditionGroup[]): void {
         this.updateBuilder({ messageText });
-    }
-
-    public setMessageThought(messageThought: AuditConditionGroup[]): void {
-        this.updateBuilder({ messageThought });
     }
 
     public setTokens(tokens: AuditNumberFilter): void {

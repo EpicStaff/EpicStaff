@@ -69,10 +69,6 @@ export const AUDIT_FILTER_FIELDS: Record<string, AuditFilterFieldMeta> = {
         kinds: ['event'],
         isActive: (state) => hasUsableCondition(state.messageText),
     },
-    messageThought: {
-        kinds: ['event'],
-        isActive: (state) => hasUsableCondition(state.messageThought),
-    },
     tokens: {
         kinds: ['event'],
         isActive: (state) => state.tokens.op === 'is_empty' || state.tokens.value !== '',

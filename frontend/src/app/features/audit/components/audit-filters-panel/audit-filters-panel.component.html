@@ -264,20 +264,6 @@
                         [showKey]="false"
                     />
                 </app-audit-filter-group>
-
-                <app-audit-filter-group
-                    label="Message thought"
-                    [disabled]="!isMessageThoughtEnabled()"
-                    [class.is-disabled]="!isMessageThoughtEnabled()"
-                    [hint]="isMessageThoughtEnabled() ? '' : 'Only events carry a message'"
-                >
-                    <app-audit-condition-filter
-                        [groups]="filter().messageThought"
-                        (groupsChange)="setMessageThought($event)"
-                        [operators]="deepTextOperators"
-                        [showKey]="false"
-                    />
-                </app-audit-filter-group>
             </div>
         } @else if (activeTab() === 'query') {
             <div class="filters-panel__query">

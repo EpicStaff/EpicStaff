@@ -112,7 +112,6 @@ export interface AuditFilterState {
     task: AuditConditionGroup[];
     prompt: AuditConditionGroup[];
     messageText: AuditConditionGroup[];
-    messageThought: AuditConditionGroup[];
     tokens: AuditNumberFilter;
 }
 
@@ -145,7 +144,6 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     task: [createAuditConditionGroup()],
     prompt: [createAuditConditionGroup()],
     messageText: [createAuditConditionGroup()],
-    messageThought: [createAuditConditionGroup()],
     tokens: { op: 'gt', value: '' },
 };
 

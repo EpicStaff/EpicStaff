@@ -256,11 +256,6 @@ export function describeAuditFilter(
         chips.push({ key: 'messageText', label: 'Message text', value: messageTextText });
     }
 
-    const messageThoughtText = describeConditionGroups(state.messageThought);
-    if (messageThoughtText !== null) {
-        chips.push({ key: 'messageThought', label: 'Message thought', value: messageThoughtText });
-    }
-
     const tokensValue = describeTokens(state.tokens);
     if (tokensValue !== null) {
         chips.push({ key: 'tokens', label: 'Tokens', value: tokensValue });
@@ -305,8 +300,6 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
             return { ...state, prompt: [createAuditConditionGroup()] };
         case 'messageText':
             return { ...state, messageText: [createAuditConditionGroup()] };
-        case 'messageThought':
-            return { ...state, messageThought: [createAuditConditionGroup()] };
         case 'tokens':
             return { ...state, tokens: { op: 'gt', value: '' } };
         case 'query':

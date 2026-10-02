@@ -30,6 +30,10 @@
     color: var(--color-text-primary);
 }
 
+.filter-chip__value--wide {
+    max-width: 420px;
+}
+
 .filter-chip__remove {
     display: inline-flex;
     align-items: center;

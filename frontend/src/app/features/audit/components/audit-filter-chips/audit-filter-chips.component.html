@@ -3,6 +3,7 @@
         <span class="filter-chip__label">{{ chip.label }}:</span>
         <span
             class="filter-chip__value"
+            [class.filter-chip__value--wide]="isConditionChip(chip.key)"
             [title]="chip.value"
             >{{ chip.value }}</span
         >

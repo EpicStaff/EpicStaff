@@ -73,7 +73,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "and/or/not (query)": {
         "summary": "Boolean composition - failed rows mentioning a specific tool",
-        "value": {"query": 'status = "failed" and tool = "Web Search Tool"'},
+        "value": {"query": 'status = "failed" and tool = "Web_Search_Tool"'},
     },
     "and/or/not (filters)": {
         "summary": "Same boolean composition, as an AST",
@@ -82,7 +82,7 @@ SEARCH_REQUEST_EXAMPLES = {
                 "op": "and",
                 "children": [
                     {"field": "status", "op": "equals", "value": "failed"},
-                    {"field": "tool", "op": "equals", "value": "Web Search Tool"},
+                    {"field": "tool", "op": "equals", "value": "Web_Search_Tool"},
                 ],
             }
         },
@@ -105,7 +105,7 @@ SEARCH_REQUEST_EXAMPLES = {
         "value": {
             "query": (
                 '(status = "failed" or status = "error") '
-                'and (tool = "Web Search Tool" or agent = "Researcher") '
+                'and (tool = "Web_Search_Tool" or agent = "Researcher") '
                 "and not duration < 10"
             )
         },
@@ -129,7 +129,7 @@ SEARCH_REQUEST_EXAMPLES = {
                             {
                                 "field": "tool",
                                 "op": "equals",
-                                "value": "Web Search Tool",
+                                "value": "Web_Search_Tool",
                             },
                             {"field": "agent", "op": "equals", "value": "Researcher"},
                         ],
@@ -261,14 +261,14 @@ SEARCH_REQUEST_EXAMPLES = {
         "summary": "Free text as an AST leaf - sentinel field `__text__`",
         "value": {"filters": {"field": "__text__", "op": "contains", "value": "timeout"}},
     },
-    # --- deep filters (agent/tool/task/prompt/message_text/message_thought) ---
+    # --- deep filters (agent/tool/task/prompt/message_text) ---
     "deep filter - agent (query)": {
         "summary": "Deep filter alias `agent` -> details.agent_id",
         "value": {"query": 'agent in ["Researcher", "Writer"]'},
     },
     "deep filter - tool (filters)": {
-        "summary": "Deep filter alias `tool` -> details.tool",
-        "value": {"filters": {"field": "tool", "op": "in", "value": ["Web Search Tool"]}},
+        "summary": "Deep filter alias `tool` -> details.data.name (the sanitized tool name the agent reports)",
+        "value": {"filters": {"field": "tool", "op": "in", "value": ["Web_Search_Tool"]}},
     },
     "deep filter - prompt (query)": {
         "summary": "Deep filter alias `prompt` -> details.prompt_text (free text)",
