@@ -1,6 +1,6 @@
 import { generateUuid } from '@shared/utils';
 
-import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from './audit-session.models';
+import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunType } from './audit-session.models';
 
 export type AuditFilterOp =
     | 'equals'
@@ -100,7 +100,7 @@ export interface AuditFilterState {
     dateFrom: string | null;
     dateTo: string | null;
     nodeTypes: AuditNodeType[];
-    runTypes: AuditRunBucket[];
+    runTypes: AuditRunType[];
     flow: AuditValuesFilter;
     id: AuditIdFilter;
     error: AuditConditionGroup[];

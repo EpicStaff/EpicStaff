@@ -97,11 +97,12 @@
                             <col style="width: 140px" />
                             <col style="width: 120px" />
                             <col style="width: 96px" />
+                            <col style="width: 90px" />
                             <col style="width: 150px" />
-                            <col style="width: 140px" />
-                            <col style="width: 140px" />
                             <col style="width: 110px" />
-                            <col style="width: 126px" />
+                            <col style="width: 110px" />
+                            <col style="width: 110px" />
+                            <col style="width: 96px" />
                         </colgroup>
                         <thead>
                             <tr>
@@ -112,6 +113,7 @@
                                 <th>Flow</th>
                                 <th>Node Type</th>
                                 <th>Status</th>
+                                <th>Run Type</th>
                                 <th>Date</th>
                                 <th>Input</th>
                                 <th>Output</th>
@@ -174,6 +176,17 @@
                                             [text]="row.event.name"
                                             [term]="highlightTerm()"
                                         />
+                                        @if (row.nameLabel; as label) {
+                                            <span class="audit-name-label">
+                                                @if (row.event.name) {
+                                                    ·
+                                                }
+                                                <app-audit-highlight
+                                                    [text]="label"
+                                                    [term]="highlightTerm()"
+                                                />
+                                            </span>
+                                        }
                                     </td>
                                     <td>
                                         <app-audit-highlight
@@ -197,6 +210,7 @@
                                             </span>
                                         }
                                     </td>
+                                    <td>{{ row.runLabel }}</td>
                                     <td class="audit-table__date">
                                         {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
                                     </td>

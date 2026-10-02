@@ -8,15 +8,10 @@ import {
     MAX_ROWS_BEFORE,
     VALUE_FREE_OPS,
 } from '../models/audit-filter.models';
-import { AuditMatchScope, AuditRunBucket, AuditRunType } from '../models/audit-session.models';
+import { AuditMatchScope } from '../models/audit-session.models';
 
 const TOOL_NAME_FIELD = 'details.data.name';
 const TOKENS_FIELD = 'details.token_usage.total_tokens';
-
-const RUN_TYPES_BY_BUCKET: Record<AuditRunBucket, AuditRunType[]> = {
-    manual: ['manual'],
-    api: ['schedule', 'webhook', 'telegram', 'parent_flow'],
-};
 
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;
@@ -148,8 +143,7 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
     }
 
     if (state.runTypes.length > 0) {
-        const runTypes = state.runTypes.flatMap((bucket) => RUN_TYPES_BY_BUCKET[bucket]);
-        leaves.push({ field: 'run_type', op: 'in', value: runTypes });
+        leaves.push({ field: 'run_type', op: 'in', value: state.runTypes });
     }
 
     const tokens = state.tokens;

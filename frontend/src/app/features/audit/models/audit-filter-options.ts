@@ -13,7 +13,10 @@ export const STATUS_OPTIONS: AuditEnumOption[] = [
 
 export const RUN_TYPE_OPTIONS: AuditEnumOption[] = [
     { value: 'manual', label: 'Manual' },
-    { value: 'api', label: 'Trigger' },
+    { value: 'schedule', label: 'Schedule' },
+    { value: 'webhook', label: 'Webhook' },
+    { value: 'telegram', label: 'Telegram' },
+    { value: 'parent_flow', label: 'Parent flow' },
 ];
 
 export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [

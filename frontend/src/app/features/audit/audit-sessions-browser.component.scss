@@ -273,6 +273,10 @@ $panel-width: 480px;
     font-variant-numeric: tabular-nums;
 }
 
+.audit-name-label {
+    color: var(--color-text-secondary);
+}
+
 .audit-kind {
     display: inline-block;
     padding: 1px 6px;

@@ -17,7 +17,6 @@ export type AuditNodeType =
     | 'SCHEDULE_TRIGGER'
     | 'WEBHOOK_TRIGGER'
     | 'TELEGRAM_TRIGGER';
-export type AuditRunBucket = 'manual' | 'api';
 
 export interface AuditSessionEvent {
     id: string;

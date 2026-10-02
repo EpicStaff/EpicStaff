@@ -23,7 +23,7 @@ import {
     RUN_TYPE_OPTIONS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
-import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunBucket } from '../../models/audit-session.models';
+import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunType } from '../../models/audit-session.models';
 import {
     allowedKinds,
     AUDIT_FILTER_FIELDS,
@@ -196,7 +196,7 @@ export class AuditFiltersPanelComponent implements OnInit {
     }
 
     public setRunTypes(values: string[]): void {
-        this.updateBuilder({ runTypes: values as AuditRunBucket[] });
+        this.updateBuilder({ runTypes: values as AuditRunType[] });
     }
 
     public setNodeTypes(values: string[]): void {
