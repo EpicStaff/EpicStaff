@@ -240,7 +240,7 @@ class ElevenLabsServerEventHandler:
             {"type": "response.done", "response": {"id": rid, "status": "completed"}}
         )
 
-        logger.info(f"Assistant turn finished with transcript: {text[:30]}...")
+        logger.info("Assistant turn {} finished with a transcript of {} characters", rid, len(text))
 
         self._current_response_id = None
         self._current_item_id = None

@@ -299,6 +299,27 @@ async def test_tool_call_prefixed_with_another_agents_name_is_not_stripped(handl
 
 
 # ---------------------------------------------------------------------------
+# _handle_agent_response
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_agent_response_logs_transcript_length_but_not_its_text(
+    handler, client, captured_log_messages
+):
+    handler._current_response_id = "resp_1"
+    handler._current_item_id = "item_1"
+    reply = "Your account balance is 1234 dollars."
+    data = {"type": "agent_response", "agent_response_event": {"agent_response": reply}}
+
+    await handler._handle_agent_response(data)
+
+    sent_types = [c[0][0]["type"] for c in client.send_client.call_args_list]
+    assert "response.done" in sent_types
+    assert any(f"{len(reply)} characters" in message for message in captured_log_messages)
+    assert not any("Your account" in message for message in captured_log_messages)
+
+
+# ---------------------------------------------------------------------------
 # _handle_user_transcript
 # ---------------------------------------------------------------------------
 
