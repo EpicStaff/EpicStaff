@@ -18,6 +18,9 @@ _LISTING_PAGE_SIZE = 100
 _TOOL_NAME_SEPARATOR = "__"
 _TTS_MODEL_EN = "eleven_turbo_v2"
 _TTS_MODEL_MULTILINGUAL = "eleven_flash_v2_5"
+# Part of the content hash. Change it whenever the agent payload changes shape without
+# its inputs changing, so agents cached under the previous shape are re-provisioned.
+_AGENT_PAYLOAD_SHAPE = "prompt.tool_ids"
 _OPENAI_VOICE_NAMES = {
     "alloy",
     "ash",
@@ -71,9 +74,10 @@ def remote_tool_name(tool_prefix: str, rt_tool: RealtimeTool) -> str:
 def local_tool_name(tool_prefix: str, reported_tool_name: str) -> str:
     """Return the session-local tool name for a tool name reported by ElevenLabs.
 
-    The agent payload names each tool by its local name while the tool record it
-    points at carries the prefixed name; either may come back in a
-    `client_tool_call`, so the prefix is stripped when present.
+    The agent references its tool records by id, so ElevenLabs reports the prefixed
+    record name. An agent still holding the older inline tool definitions (its
+    update failed, so it is served as-is) reports the local name instead, so the
+    prefix is stripped only when present.
 
     Args:
         tool_prefix: The owning configuration's `remote_tool_prefix`.
@@ -189,9 +193,11 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         llm_model: str,
         language: str | None = None,
     ) -> str:
-        # Everything `_build_agent_payload` sends must be in the hash, descriptions included,
-        # and so must the names of the tool records the agent points at: an agent cached
-        # while pointing at differently named records must not be served.
+        # Everything provisioning sends must be in the hash: the agent payload and its tool
+        # records, descriptions included. So must the names of the tool records the agent
+        # points at (an agent cached while pointing at differently named records must not
+        # be served) and the payload shape (the record ids themselves are only known after
+        # provisioning).
         tools_repr = sorted(
             f"{remote_tool_name(tool_prefix, t)}:{t.name}:{t.description}:{t.parameters.model_dump_json()}"
             for t in rt_tools
@@ -205,6 +211,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 "llm": llm_model,
                 "tts_model": tts_model,
                 "language": language,
+                "payload_shape": _AGENT_PAYLOAD_SHAPE,
             },
             sort_keys=True,
         )
@@ -324,7 +331,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
 
             existing_agent_id = await self._find_agent_id(client, headers, agent_name)
             agent_payload = self._build_agent_payload(
-                agent_name, instructions, voice, rt_tools, tool_ids, llm_model, language
+                agent_name, instructions, voice, tool_ids, llm_model, language
             )
 
             if existing_agent_id:
@@ -361,34 +368,17 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         name: str,
         instructions: str,
         voice: str,
-        rt_tools: list[RealtimeTool],
         tool_ids: list[str],
         llm_model: str,
         language: str | None = None,
     ) -> dict:
-        """Build the agent payload for the ElevenLabs API."""
-        tools_config = []
-        for i, tid in enumerate(tool_ids):
-            tool_meta = rt_tools[i]
-            params_data = tool_meta.parameters.model_dump(exclude_none=True)
+        """Build the agent payload for the ElevenLabs API.
 
-            tools_config.append(
-                {
-                    "type": "client",
-                    "tool_id": tid,
-                    # The local name, not the remote record name: it is what the
-                    # session's executors are registered under.
-                    "name": _local_tool_name(tool_meta),
-                    "description": tool_meta.description or f"Executes {tool_meta.name}",
-                    "expects_response": True,
-                    "parameters": {
-                        "type": "object",
-                        "properties": params_data.get("properties", {}),
-                        "required": params_data.get("required", []),
-                    },
-                }
-            )
-
+        Tools are referenced by the ids of the agent's own tool records, never sent
+        inline: ElevenLabs deprecates inline `prompt.tools` in favour of
+        `prompt.tool_ids`, and an inline definition left a second, plain-named
+        record in the workspace next to the agent's own.
+        """
         default_voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel
         voice_id = voice if voice and voice.lower() not in _OPENAI_VOICE_NAMES else default_voice_id
 
@@ -402,7 +392,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                         "prompt": instructions,
                         "llm": llm_model,
                         "first_message": "Hello! I am your AI assistant. How can I help you today?",
-                        "tools": tools_config,
+                        "tool_ids": tool_ids,
                     },
                 },
                 "tts": {"voice_id": voice_id, "model_id": tts_model},

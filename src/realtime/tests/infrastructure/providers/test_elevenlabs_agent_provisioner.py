@@ -73,11 +73,13 @@ class FakeElevenLabs:
             )
         if path == "/agents/create":
             agent_id = f"agent_{len(self.agents) + 1}"
+            self._record_inline_tools(body)
             self.agents[agent_id] = body
             return httpx.Response(200, json={"agent_id": agent_id})
         if path.startswith("/agents/") and request.method == "PATCH":
             if self.fail_agent_patch:
                 return httpx.Response(422, json={"detail": "invalid"})
+            self._record_inline_tools(body)
             self.agents[path.removeprefix("/agents/")] = body
             return httpx.Response(200, json={})
         if path == "/tools" and request.method == "GET":
@@ -107,16 +109,35 @@ class FakeElevenLabs:
             return httpx.Response(200, json={})
         return httpx.Response(404)
 
-    def prompt_of(self, agent_id: str) -> str:
-        return self.agents[agent_id]["conversation_config"]["agent"]["prompt"]["prompt"]
+    def _record_inline_tools(self, agent_body: dict) -> None:
+        # Mirrors what was observed live: an inline `prompt.tools` definition left an
+        # extra workspace tool record named after the inline (plain) tool name.
+        inline_tools = agent_body["conversation_config"]["agent"]["prompt"].get("tools", [])
+        for inline_tool in inline_tools:
+            tool_id = f"tool_{len(self.tools) + 1}"
+            self.tools[tool_id] = {
+                "tool_config": {
+                    "type": inline_tool["type"],
+                    "name": inline_tool["name"],
+                    "description": inline_tool["description"],
+                }
+            }
 
-    def tool_names_of(self, agent_id: str) -> list[str]:
-        tools = self.agents[agent_id]["conversation_config"]["agent"]["prompt"]["tools"]
-        return [tool["name"] for tool in tools]
+    def prompt_section_of(self, agent_id: str) -> dict:
+        return self.agents[agent_id]["conversation_config"]["agent"]["prompt"]
+
+    def prompt_of(self, agent_id: str) -> str:
+        return self.prompt_section_of(agent_id)["prompt"]
 
     def tool_records_of(self, agent_id: str) -> list[dict]:
-        tools = self.agents[agent_id]["conversation_config"]["agent"]["prompt"]["tools"]
-        return [self.tools[tool["tool_id"]]["tool_config"] for tool in tools]
+        tool_ids = self.prompt_section_of(agent_id)["tool_ids"]
+        return [self.tools[tool_id]["tool_config"] for tool_id in tool_ids]
+
+    def tool_names_of(self, agent_id: str) -> list[str]:
+        return [record["name"] for record in self.tool_records_of(agent_id)]
+
+    def tool_record_names(self) -> list[str]:
+        return [tool["tool_config"]["name"] for tool in self.tools.values()]
 
 
 class FakeRedis:
@@ -197,9 +218,12 @@ async def test_two_configurations_get_separate_remote_agents_with_their_own_prom
 
     assert restricted != permissive
     assert fake_api.prompt_of(restricted) == "restricted"
-    assert fake_api.tool_names_of(restricted) == ["read_docs"]
+    assert fake_api.tool_names_of(restricted) == ["o1r10__read_docs"]
     assert fake_api.prompt_of(permissive) == "permissive"
-    assert fake_api.tool_names_of(permissive) == ["read_docs", "delete_everything"]
+    assert fake_api.tool_names_of(permissive) == [
+        "o1r11__read_docs",
+        "o1r11__delete_everything",
+    ]
 
 
 async def test_configurations_in_different_organizations_get_separate_agents(
@@ -446,7 +470,6 @@ async def test_a_54_character_tool_name_yields_a_remote_tool_record_name_elevenl
     [record] = fake_api.tool_records_of(agent_id)
     assert record["name"] == f"o2r2__{_LONG_TOOL_NAME}"
     assert len(record["name"]) <= 64
-    assert fake_api.tool_names_of(agent_id) == [_LONG_TOOL_NAME]
 
 
 async def test_the_fake_api_rejects_the_agent_name_prefixed_tool_name_elevenlabs_rejected_live(
@@ -490,8 +513,8 @@ async def test_editing_only_a_tool_description_reprovisions_the_agent(provisione
 
     await _provision(provisioner, org_id=1, config_id=10, instructions="same", tools=[edited])
 
-    sent_tools = fake_api.agents[agent_id]["conversation_config"]["agent"]["prompt"]["tools"]
-    assert sent_tools[0]["description"] == "new description"
+    [record] = fake_api.tool_records_of(agent_id)
+    assert record["description"] == "new description"
 
 
 async def test_invalidate_cache_removes_the_entry_get_or_create_wrote(provisioner, fake_api):
@@ -542,12 +565,74 @@ async def test_same_named_tools_of_two_configurations_get_separate_remote_tool_r
     assert second_record["parameters"]["required"] == ["customer_email"]
 
 
-async def test_the_agent_payload_names_its_tools_by_their_local_name(provisioner, fake_api):
+async def test_the_agent_references_its_own_tool_records_by_id_and_sends_no_inline_tools(
+    provisioner, fake_api
+):
     agent_id = await _provision(
-        provisioner, org_id=1, config_id=10, instructions="x", tools=[_tool("read docs")]
+        provisioner,
+        org_id=1,
+        config_id=10,
+        instructions="x",
+        tools=[_tool("read docs"), _described_tool("lookup", "Looks up orders", "order_id")],
     )
 
-    assert fake_api.tool_names_of(agent_id) == ["read_docs"]
+    prompt = fake_api.prompt_section_of(agent_id)
+    assert "tools" not in prompt
+    assert prompt["tool_ids"] == list(fake_api.tools)
+    assert fake_api.tool_record_names() == ["o1r10__read_docs", "o1r10__lookup"]
+
+
+async def test_an_agent_cached_with_inline_tools_is_reprovisioned_to_tool_ids(
+    provisioner, fake_api
+):
+    name = remote_agent_name(1, 10)
+    tool = _described_tool("lookup", "Looks up orders", "order_id")
+    # The remote state while the payload carried inline tool definitions.
+    fake_api.tools["tool_own"] = {
+        "tool_config": {"type": "client", "name": "o1r10__lookup", "description": "Looks up orders"}
+    }
+    fake_api.agents["agent_old"] = {
+        "name": name,
+        "conversation_config": {
+            "agent": {
+                "prompt": {
+                    "prompt": "same",
+                    "tools": [{"type": "client", "tool_id": "tool_own", "name": "lookup"}],
+                }
+            }
+        },
+    }
+    # The cache entry exactly as the provisioner wrote it for the inline-tools payload.
+    old_hash_source = json.dumps(
+        {
+            "instructions": "same",
+            "voice": "21m00Tcm4TlvDq8ikWAM",
+            "tools": [
+                f"o1r10__lookup:{tool.name}:{tool.description}:{tool.parameters.model_dump_json()}"
+            ],
+            "llm": "gemini-2.5-flash",
+            "tts_model": "eleven_turbo_v2",
+            "language": None,
+        },
+        sort_keys=True,
+    )
+    redis = provisioner.redis_service.aioredis_client
+    redis.values[provisioner._cache_key("key", name)] = json.dumps(
+        {
+            "agent_id": "agent_old",
+            "content_hash": hashlib.md5(old_hash_source.encode()).hexdigest(),
+        }
+    )
+
+    agent_id = await _provision(
+        provisioner, org_id=1, config_id=10, instructions="same", tools=[tool]
+    )
+
+    assert agent_id == "agent_old"
+    prompt = fake_api.prompt_section_of(agent_id)
+    assert "tools" not in prompt
+    assert prompt["tool_ids"] == ["tool_own"]
+    assert fake_api.tool_record_names() == ["o1r10__lookup"]
 
 
 async def test_reprovisioning_one_configuration_leaves_the_others_tool_record_untouched(
