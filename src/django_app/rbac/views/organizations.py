@@ -5,7 +5,6 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from rbac.access.gates import DenyApiKeyAuth
 from rbac.governance.organizations import (
     OrganizationManagementService,
 )
@@ -41,8 +40,9 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     """Adaptive management of Organizations.
 
     list / retrieve / partial_update are permission-aware (ORGANIZATIONS bits;
-    superadmin sees all). create / deactivate / reactivate are platform-level
-    and stay superadmin-only via `superadmin_actions`.
+    superadmin sees all). create / deactivate / reactivate / destroy are
+    platform-level and stay superadmin-only via `superadmin_actions`. Every
+    write is JWT-only through the base API-key gate.
 
     Domain errors (404 not-found, 400 name-conflict, 400 last-active-org) are
     raised by the service layer as CustomAPIExeption subclasses and rendered
@@ -62,13 +62,6 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     _service = OrganizationManagementService()
     _validator = OrganizationValidationService()
     _hard_delete_validator = HardDeleteValidationService()
-
-    def get_permissions(self):
-        """Permanent deletion is JWT-only; a leaked key must not erase a tenant."""
-        permissions = super().get_permissions()
-        if getattr(self, "action", None) == "destroy":
-            return [*permissions, DenyApiKeyAuth()]
-        return permissions
 
     @extend_schema(**ORGANIZATIONS_LIST_GET)
     def list(self, request):

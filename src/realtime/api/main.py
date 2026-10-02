@@ -296,10 +296,15 @@ async def root(
         backstory=realtime_agent_chat_data.backstory,
     )
 
-    summ_client = OpenaiSummarizationClient(
-        api_key=realtime_agent_chat_data.rt_api_key,
-        base_url=realtime_agent_chat_data.rt_base_url,
-    )
+    try:
+        summ_client = OpenaiSummarizationClient(
+            api_key=realtime_agent_chat_data.rt_api_key,
+            base_url=realtime_agent_chat_data.rt_base_url,
+        )
+    except ValueError as exc:
+        logger.error("Invalid rt_base_url for connection {}: {}", connection_key, exc)
+        await websocket.close(code=1011)
+        return
     service = ConversationService(
         client_websocket=websocket,
         realtime_agent_chat_data=realtime_agent_chat_data,
@@ -595,6 +600,17 @@ async def _voice_stream_handler(
     await service.execute()
 
 
+# The channel token is deliberately a URL path segment (see EST-4312). Twilio
+# addresses a webhook by URL alone, so the channel has to be identifiable from it.
+# Knowing the token by itself grants nothing:
+#   - POST /voice/{channel_token} fails closed (403/503) unless the request carries
+#     a valid X-Twilio-Signature made with the channel's Twilio auth token;
+#   - the media websocket is rejected without a single-use stream token, which is
+#     only handed out in that signed response and is bound to this channel token.
+# Whoever holds the Twilio auth token already controls the whole Twilio account, so
+# keeping the channel token out of proxy/CDN access logs would add no protection.
+# Do not move it out of the path without a migration plan for every Twilio number
+# already pointed at /voice/{channel_token}.
 @app.post("/voice/{channel_token}")
 async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     """

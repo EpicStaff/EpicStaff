@@ -62,6 +62,12 @@
         }
     }
 
+    &__notice {
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: var(--color-ks-transparent-text-60);
+    }
+
     &__loading {
         display: flex;
         justify-content: center;

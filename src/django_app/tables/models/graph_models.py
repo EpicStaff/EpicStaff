@@ -782,6 +782,8 @@ class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDelet
     post_output_variable_path = models.CharField(
         max_length=512, null=True, default=None, blank=True
     )
+    pre_use_storage = models.BooleanField(default=False)
+    post_use_storage = models.BooleanField(default=False)
     prompts = models.JSONField(default=dict, blank=True)
     default_llm_config = models.ForeignKey(
         "LLMConfig",
@@ -852,6 +854,16 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
         unique_together = ("cdt_node", "prompt_key")
 
 
+class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
+    id = models.UUIDField(primary_key=True)  # client-generated id — and the Django PK
+    classification_decision_table_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    name = models.CharField(max_length=255, blank=True, default="")
+
+
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
@@ -875,7 +887,14 @@ class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
     field_expressions = models.JSONField(default=dict, blank=True)
     field_manipulations = models.JSONField(default=dict, blank=True)
     route_code = models.CharField(max_length=128, null=True, default=None, blank=True)
-    section = models.CharField(max_length=128, null=True, default=None, blank=True)
+    section = models.ForeignKey(
+        "ClassificationConditionGroupSection",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        blank=True,
+        related_name="condition_groups",
+    )
 
     class Meta:
         default_manager_name = "objects"

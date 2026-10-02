@@ -11,6 +11,7 @@ import {
     input,
     OnInit,
     Output,
+    output,
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -53,7 +54,6 @@ import { ClassificationDecisionTableNodeComponent } from '../nodes-components/cl
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
-import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -68,7 +68,6 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         DecisionTableNodeComponent,
         ClassificationDecisionTableNodeComponent,
         GraphNoteComponent,
-        FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
         AppSvgIconComponent,
         MatTooltipModule,
@@ -92,9 +91,9 @@ export class FlowBaseNodeComponent implements OnInit {
     }>();
     @Output() editClicked = new EventEmitter<NodeModel>();
     @Output() deleteClicked = new EventEmitter<NodeModel>();
+    readonly unpackClicked = output<void>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
-    @Input() showVariables: boolean = false;
     multiSelectActive = input<boolean>(false);
 
     @Output() portMouseenter = new EventEmitter<void>();
@@ -148,6 +147,13 @@ export class FlowBaseNodeComponent implements OnInit {
             return;
         }
         this.editClicked.emit(this.node);
+    }
+
+    public onUnpackClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.isBlockedSubgraph) return;
+        this.unpackClicked.emit();
     }
 
     trackByPort(index: number, port: { id: string }): string {
@@ -227,6 +233,14 @@ export class FlowBaseNodeComponent implements OnInit {
     }
     public get isBlockedSubgraph(): boolean {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
+    }
+
+    public get hasNumberChip(): boolean {
+        return this.node.nodeNumber != null && this.node.type !== NodeType.START && this.node.type !== NodeType.END;
+    }
+
+    public get hasDeleteChip(): boolean {
+        return this.node.type !== NodeType.START && !this.isReadOnly();
     }
 
     public get keyValueNode(): KeyValueNodeModel | null {

@@ -183,4 +183,8 @@ export class FlowsApiService {
             `${this.configService.apiUrl}graph-versions/${versionId}/preview/`
         );
     }
+
+    getSubflowUsage(graphId: number): Observable<{ parent_flow_ids: number[] }> {
+        return this.http.get<{ parent_flow_ids: number[] }>(`${this.apiUrl}${graphId}/subflow-usage/`);
+    }
 }

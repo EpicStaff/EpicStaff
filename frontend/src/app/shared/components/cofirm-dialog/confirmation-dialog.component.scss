@@ -228,6 +228,16 @@
     }
 }
 
+.dialog-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-body-size);
+    color: var(--color-ks-transparent-text-80);
+    cursor: pointer;
+    user-select: none;
+}
+
 .dialog-actions {
     display: flex;
     justify-content: flex-end;

@@ -95,6 +95,8 @@ by a two-step flow under `/api/profile/`. See
 
 Body: `{ "user_id": <int>, "new_password": "<pw>" }`.
 
+* JWT only: any API key (including the SYSTEM key) gets 403
+  (`DenyApiKeyAuth`).
 * Gate: `actor.is_superadmin` — non-superadmins get 403
   (`superadmin_required`). The gate lives in the service so the CLI
   and the HTTP surface share one authorization path.

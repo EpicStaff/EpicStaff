@@ -39,7 +39,7 @@ describe('ConfirmationDialogComponent actions', () => {
 
         (query(fixture, '.confirm-button') as HTMLButtonElement).click();
 
-        expect(dialogRef.close).toHaveBeenCalledWith('confirm');
+        expect(dialogRef.close).toHaveBeenCalledWith({ action: 'confirm', checked: false });
     });
 
     it('closes with cancel when the cancel button is clicked', () => {
@@ -47,7 +47,7 @@ describe('ConfirmationDialogComponent actions', () => {
 
         (query(fixture, '.cancel-button') as HTMLButtonElement).click();
 
-        expect(dialogRef.close).toHaveBeenCalledWith('cancel');
+        expect(dialogRef.close).toHaveBeenCalledWith({ action: 'cancel' });
     });
 
     it('closes with close when the close button is clicked', () => {
@@ -55,7 +55,7 @@ describe('ConfirmationDialogComponent actions', () => {
 
         (query(fixture, 'app-icon-button.close-button') as HTMLElement).click();
 
-        expect(dialogRef.close).toHaveBeenCalledWith('close');
+        expect(dialogRef.close).toHaveBeenCalledWith({ action: 'close' });
     });
 });
 
@@ -171,7 +171,7 @@ describe('ConfirmationDialogComponent verification', () => {
 
         expect(confirmButton(fixture).disabled).toBe(false);
         confirmButton(fixture).click();
-        expect(dialogRef.close).toHaveBeenCalledWith('confirm');
+        expect(dialogRef.close).toHaveBeenCalledWith({ action: 'confirm', checked: false });
     });
 
     it.each([
