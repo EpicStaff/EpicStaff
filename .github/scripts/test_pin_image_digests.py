@@ -45,7 +45,7 @@ def run_pin_script(digest_map: dict[str, str], compose_yaml: str) -> tuple[int, 
         parsed: dict = {}
         if dst_path.exists() and dst_path.stat().st_size > 0:
             yaml = YAML()
-            with open(dst_path, "r", encoding="utf-8") as f:
+            with open(dst_path, encoding="utf-8") as f:
                 parsed = yaml.load(f) or {}
 
         return result.returncode, result.stderr, parsed

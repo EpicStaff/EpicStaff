@@ -637,10 +637,8 @@ export class AgentsPageStore {
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
-                description: src.description,
                 instructions: src.instructions,
                 owner_agent: src.owner_agent,
-                allow_creation: src.allow_creation,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -666,10 +664,8 @@ export class AgentsPageStore {
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
-                description: src.description,
                 instructions: src.instructions,
                 owner_agent: agentId,
-                allow_creation: src.allow_creation,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,

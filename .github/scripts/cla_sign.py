@@ -23,7 +23,7 @@ import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cla_common import (  # noqa: E402
+from cla_common import (
     cla_sha256,
     drive_service,
     get_or_create_version_folder,
@@ -214,7 +214,7 @@ def record_signature(
         "comment_text": comment_body,
         "comment_url": comment_url,
         "pull_request_no": pr_no,
-        "signed_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+        "signed_at": datetime.datetime.now(datetime.UTC).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         ),
     }
@@ -228,7 +228,7 @@ def main() -> int:
     event_path = os.environ["GITHUB_EVENT_PATH"]
     root_id = os.environ["CLA_GDRIVE_ROOT_ID"]
 
-    with open(event_path, "r", encoding="utf-8") as event_file:
+    with open(event_path, encoding="utf-8") as event_file:
         event = json.load(event_file)
 
     if event_name == "pull_request_target":

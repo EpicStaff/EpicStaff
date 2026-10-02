@@ -62,7 +62,7 @@ def classify(
     retain_main_sha: int,
     branch_max_age_days: int,
 ) -> tuple[list[tuple], list[tuple]]:
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     threshold = now - datetime.timedelta(days=branch_max_age_days)
 
     keep: list[tuple] = []

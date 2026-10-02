@@ -14,11 +14,11 @@ import json
 
 import redis.asyncio as aioredis
 from loguru import logger
-from shared.models.agent_service import AgentRequest
-from shared.redis_streams import StreamEnvelope
 
 from app.exceptions import DataLoadError
 from app.logging_utils import redacted_dump
+from shared.models.agent_service import AgentRequest
+from shared.redis_streams import StreamEnvelope
 
 
 class DataLoader:

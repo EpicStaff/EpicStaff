@@ -61,11 +61,11 @@ export interface AgentSavePayload {
     max_execution_time?: number;
     cache?: boolean;
     max_retry_limit?: number;
-    default_temperature?: number;
-    max_tool_calls?: number | null;
-    tool_timeout?: number | null;
-    max_consecutive_failures?: number | null;
-    schema_max_retries?: number | null;
+    default_temperature?: number | null;
+    max_tool_calls?: number;
+    tool_timeout?: number;
+    max_consecutive_failures?: number;
+    schema_max_retries?: number;
 }
 
 export type AgentSectionId = 'basics' | 'surfaces';
@@ -330,7 +330,12 @@ export class AgentDetailComponent implements OnInit {
 
     private revertToSnapshot(): void {
         const a = this.agent();
-        const target = a ? this.valueFromAgent(a) : this.emptyValue();
+        if (!a) {
+            // A failed create keeps the draft so the user can fix the name and retry.
+            this.savedSnapshot = this.emptyValue();
+            return;
+        }
+        const target = this.valueFromAgent(a);
         this.savedSnapshot = target;
         this.form.reset(target);
         this.bootLength.set((target.instructions ?? '').length);

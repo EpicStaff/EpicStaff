@@ -14,9 +14,9 @@ from collections import defaultdict
 from packaging.version import InvalidVersion, Version
 
 FLOOR_FILE = os.path.join(os.path.dirname(__file__), "..", "dependency-floor.toml")
-PACKAGE_RE = re.compile(r"^name = \"(.+?)\"", re.M)
-VERSION_RE = re.compile(r"^version = \"(.+?)\"", re.M)
-SOURCE_RE = re.compile(r"^source = \{ (\w+) = ", re.M)
+PACKAGE_RE = re.compile(r"^name = \"(.+?)\"", re.MULTILINE)
+VERSION_RE = re.compile(r"^version = \"(.+?)\"", re.MULTILINE)
+SOURCE_RE = re.compile(r"^source = \{ (\w+) = ", re.MULTILINE)
 
 
 def read_locks(root: str = "src") -> dict[str, dict[str, str]]:
@@ -64,7 +64,7 @@ def update_floors(locks: dict[str, dict[str, str]], floor: dict[str, str]) -> in
                 f'{pkg} = "{highest}"',
                 text,
                 count=1,
-                flags=re.M,
+                flags=re.MULTILINE,
             )
             changed.append(f"{pkg}: {want} -> {highest}")
     if not changed:
