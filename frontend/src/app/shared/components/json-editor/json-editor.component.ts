@@ -61,6 +61,8 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public jsonData: string = '{}';
     @Input() public editorHeight: number = 200;
     @Input() public fullHeight: boolean = false;
+    /** Shows the drag handle below the editor that changes its height. */
+    @Input() public resizable: boolean = true;
     @Input() public showHeader: boolean = true;
     @Input() public title: string = 'JSON Editor';
     @Input() public subtitle: string = '';

@@ -706,4 +706,68 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(header().runStatus()).toBeNull();
         });
     });
+
+    describe('stored graph for the editor', () => {
+        const STORED_PYTHON_CODE = { id: 55, code: 'def main(**kwargs): pass', entrypoint: 'main', libraries: [] };
+
+        function loadFlowWithWebhookNode(graphId: number): void {
+            flowsApi['getGraphById'].mockReturnValue(
+                of(
+                    graphDto({
+                        id: graphId,
+                        webhook_trigger_node_list: [
+                            {
+                                id: 21,
+                                graph: graphId,
+                                node_name: 'Webhook Trigger #1',
+                                python_code: STORED_PYTHON_CODE,
+                                input_map: {},
+                                output_variable_path: null,
+                                webhook_trigger_path: '',
+                                metadata: {},
+                                webhook_trigger: null,
+                                test_payload: {},
+                            },
+                        ],
+                    })
+                )
+            );
+            paramMap$.next(convertToParamMap({ id: String(graphId) }));
+            fixture.detectChanges();
+        }
+
+        function remoteSave(): void {
+            TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
+                type: 'graph_saved',
+                graph_id: 2,
+                new_save_version: 3,
+                saved_by: { user_id: 7, display_name: 'Another user' },
+                saved_at: '',
+            });
+        }
+
+        it('gives the editor the stored webhook code and its id of the loaded flow, until the page goes away', () => {
+            loadFlowWithWebhookNode(2);
+
+            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+
+            fixture.destroy();
+
+            expect(flowService.hasSavedGraph()).toBe(false);
+            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+        });
+
+        it('drops it when another user saves the graph, until the graph is loaded again', () => {
+            loadFlowWithWebhookNode(2);
+
+            remoteSave();
+
+            expect(flowService.hasSavedGraph()).toBe(false);
+            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+
+            loadFlowWithWebhookNode(3);
+
+            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+        });
+    });
 });

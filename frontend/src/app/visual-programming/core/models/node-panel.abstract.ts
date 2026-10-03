@@ -194,6 +194,11 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         return false;
     }
 
+    /** Whether an edit outside the node's fields (see `hasUnsavedEditsOutsideNode`) is still unsaved; the shell warns about it instead of failing. */
+    public hasEditsLeftOut(): boolean {
+        return this.hasUnsavedEditsOutsideNode();
+    }
+
     protected shouldReinitializeForm(node: T): boolean {
         return this.lastInitializedNodeId !== node.id;
     }

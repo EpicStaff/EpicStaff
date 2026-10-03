@@ -4,10 +4,12 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    effect,
     inject,
     input,
     signal,
     TemplateRef,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -18,22 +20,55 @@ import {
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { ResourceCode, WebhookTriggerModel } from '@shared/models';
+import { GetPythonCodeRequest, ResourceCode, toSecretIds, WebhookTriggerModel } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { formatTestPayload } from '../../../utils/test-run';
+import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
+import { parseCommaSeparatedList } from '../node-panel-form.utils';
+import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
+import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import { RunTestPayloadButtonComponent } from '../shared/run-test-payload-button/run-test-payload-button.component';
 import { TestPayloadSectionComponent } from '../shared/test-payload-section/test-payload-section.component';
 import { TriggerTestPayloadState, withTestPayload } from '../shared/test-payload-section/trigger-test-payload.state';
 
 /** The editor shown in the big right-hand pane of the expanded panel; the other one moves to the left column. */
 type WebhookExpandedPane = 'code' | 'payload';
+
+/**
+ * How this node's code relates to the code stored on the backend: `outdated` (another user saved the graph),
+ * `not-created` (no backend id yet), `missing` (its backend id is not in the stored graph), `changed` (the panel's
+ * code, libraries or secrets differ) or `stored`.
+ */
+type StoredCodeState = 'outdated' | 'not-created' | 'missing' | 'changed' | 'stored';
+
+export const RUN_PYTHON_CODE_LABEL = 'Run python code';
+export const PYTHON_CODE_RUNNING_MESSAGE = 'The code is already running...';
+export const SAVE_NODE_BEFORE_CODE_RUN_MESSAGE = 'Click Save to save the node before running the code';
+export const SAVE_TO_RUN_LATEST_CODE_MESSAGE = 'Click Save to run your latest code changes';
+/** A node with a backend id the stored graph no longer has (deleted, then restored by undo): only a graph save recreates it. */
+export const SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE =
+    'Click Save in the top panel to save the graph before running the code';
+export const STORED_GRAPH_OUTDATED_MESSAGE = 'Another user saved this graph: refresh it to run the code';
+
+/**
+ * What a code-only run executes, in a comparable form. The order of the secrets is not a difference, and
+ * neither is surrounding whitespace of the code: the backend's PythonCodeSerializer stores `code` through a
+ * DRF CharField (trim_whitespace), so it keeps code.strip() while the canvas keeps the code as typed.
+ */
+function pythonCodeSignature(code: string, libraries: string[], secretIds: number[]): string {
+    return JSON.stringify({
+        code: code.trim(),
+        libraries,
+        secretIds: [...secretIds].sort((first, second) => first - second),
+    });
+}
 
 @Component({
     selector: 'app-webhook-trigger-node-panel',
@@ -48,6 +83,7 @@ type WebhookExpandedPane = 'code' | 'payload';
         ValidationErrorsComponent,
         TestPayloadSectionComponent,
         RunTestPayloadButtonComponent,
+        PythonTerminalComponent,
         NgTemplateOutlet,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
@@ -59,6 +95,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly sidePanelService = inject(SidePanelService);
+    private readonly flowService = inject(FlowService);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -68,6 +105,8 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
     public readonly isFormCollapsed = signal<boolean>(false);
     protected readonly expandedPane = signal<WebhookExpandedPane>('code');
+    /** Set by the first run: the terminal then stays under the code (it has its own hide toggle). */
+    private readonly isCodeTerminalShown = signal(false);
     /** Height in px of an editor shown as a card (small panel, or the left column of the expanded one). */
     protected readonly smallEditorHeight = 220;
     protected readonly testPayload = new TriggerTestPayloadState(
@@ -75,6 +114,61 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         computed(() => this.node().id)
     );
     protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 406);
+    /** "Run python code": the stored code run alone with the test payload, shown in a terminal under the code. */
+    protected readonly codeTestRun = new PythonCodeTestRun();
+    protected readonly showCodeTerminal = computed(
+        () => this.isCodeTerminalShown() && !this.isReadOnly() && this.isExpanded()
+    );
+    /**
+     * Only in the expanded panel, where the output terminal has room. Hidden for a viewer and in a version
+     * preview: running stored code needs Flows:Update.
+     */
+    protected readonly runPythonCodeIcon = computed(() =>
+        this.isReadOnly() || !this.isExpanded() ? null : 'play-outline'
+    );
+    protected readonly runPythonCodeLabel = RUN_PYTHON_CODE_LABEL;
+    /**
+     * The code the backend has stored for this node, which is what run-python-code executes; null until the
+     * node is in the saved graph (new, pasted, or deleted and restored).
+     */
+    private readonly savedPythonCode = computed<GetPythonCodeRequest | null>(() =>
+        this.flowService.savedWebhookPythonCode(this.node().backendId)
+    );
+    private readonly storedCodeState = computed<StoredCodeState>(() => {
+        if (!this.flowService.hasSavedGraph()) return 'outdated';
+        if (this.node().backendId == null) return 'not-created';
+        const savedCode = this.savedPythonCode();
+        if (savedCode === null) return 'missing';
+        return this.differsFromSaved(savedCode) ? 'changed' : 'stored';
+    });
+    /** Why "Run python code" cannot run now, or null. It runs the code saved on the backend, not the editor's. */
+    protected readonly runCodeBlocker = computed<string | null>(() => {
+        if (this.codeTestRun.isRunning()) return PYTHON_CODE_RUNNING_MESSAGE;
+        switch (this.storedCodeState()) {
+            case 'outdated':
+                return STORED_GRAPH_OUTDATED_MESSAGE;
+            case 'not-created':
+                return SAVE_NODE_BEFORE_CODE_RUN_MESSAGE;
+            case 'missing':
+                return SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE;
+            case 'changed':
+                return SAVE_TO_RUN_LATEST_CODE_MESSAGE;
+            case 'stored':
+                // Only the payload: the lock while a flow run starts does not concern a code-only run.
+                return describeTestRunBlocker(this.testPayload.check(), false);
+        }
+    });
+    /** This node is being saved to the backend by the shell's Save (`onSaveClick`). */
+    public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
+    /**
+     * The node must be saved before its code can run although the panel may have no edit (e.g. a new node):
+     * the panel shell then shows its Save button too. Save cannot help a `missing` or `outdated` node.
+     */
+    public readonly needsSave = computed(() => {
+        if (this.isReadOnly()) return false;
+        const state = this.storedCodeState();
+        return state === 'not-created' || state === 'changed';
+    });
 
     pythonCode: string = '';
     initialPythonCode: string = '';
@@ -105,6 +199,19 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         return !!t && !t.live_url;
     });
 
+    constructor() {
+        super();
+        // A save gives a new node its backend id (a single-node save or a graph save); that is not an edit, so
+        // it must not make the panel dirty and bring the Save button back.
+        effect(() => {
+            const backendId = this.node().backendId;
+            untracked(() => {
+                if (!this.form || this.baselineNode().backendId === backendId) return;
+                this.updateBaseline((baseline) => ({ ...baseline, backendId }));
+            });
+        });
+    }
+
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
         this.selectedTrigger.set(trigger);
     }
@@ -127,6 +234,22 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     onSecretsChange(values: number[]): void {
         this.selectedSecretIds.set(values);
         this.notifyExternalChange();
+    }
+
+    /** Runs the stored code alone, as a webhook delivery of the test payload would call it. */
+    protected runPythonCode(): void {
+        const payload = this.testPayload.check().payload;
+        const savedCode = this.savedPythonCode();
+        if (this.runCodeBlocker() !== null || payload === null || savedCode === null) return;
+        this.isCodeTerminalShown.set(true);
+        this.codeTestRun.run({
+            python_code_id: savedCode.id,
+            // The backend runs the stored row and ignores code and libraries; the blocker ensures they match it.
+            code: this.pythonCode,
+            entrypoint: 'main',
+            libraries: this.libraries(),
+            variables: { trigger_payload: payload },
+        });
     }
 
     protected onTestPayloadTextChange(text: string): void {
@@ -155,17 +278,14 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.initialPythonCode = this.pythonCode;
         this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
         this.testPayload.reset(formatTestPayload(this.node().data.test_payload ?? {}));
+        // The panel is reused when another webhook node is selected: a run of the previous one stops, and
+        // the terminal starts hidden and empty.
+        this.codeTestRun.reset();
+        this.isCodeTerminalShown.set(false);
         return form;
     }
 
     createUpdatedNode(): WebhookTriggerNodeModel {
-        const librariesArray = this.form.value.libraries
-            ? this.form.value.libraries
-                  .split(',')
-                  .map((lib: string) => lib.trim())
-                  .filter((lib: string) => lib.length > 0)
-            : [];
-
         return {
             ...this.node(),
             node_name: this.form.value.node_name,
@@ -178,7 +298,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
                     entrypoint: 'main',
-                    libraries: librariesArray,
+                    libraries: this.libraries(),
                     secret_ids: this.selectedSecretIds(),
                     secret_names: this.secretNames(),
                 },
@@ -208,11 +328,40 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         return this.testPayload.hasUnsavedInvalidEdit();
     }
 
+    /**
+     * The shell's Save: saves this node to the backend now (as the Python node's Save does), so its code can
+     * run. Like Ctrl+S it saves nothing while the form is invalid (the shell disables the button then) and
+     * keeps every edit; an invalid test payload edit is left out and reported, as on close.
+     */
+    public onSaveClick(): void {
+        if (this.isReadOnly() || this.isSaving() || !this.form) return;
+        if (this.form.invalid) {
+            this.form.markAllAsTouched();
+            return;
+        }
+        const updatedNode = this.onSaveSilently();
+        if (updatedNode) {
+            this.sidePanelService.requestSaveNode(updatedNode);
+        }
+    }
+
     copyWebhookUrl(): void {
         const url = this.fullUrl();
         if (!url) return;
 
         this.clipboard.copy(url);
         this.copied.set(true);
+    }
+
+    /** The code, libraries or secrets in the panel are not the ones the backend has stored. */
+    private differsFromSaved(savedCode: GetPythonCodeRequest): boolean {
+        this.dirtyCheckTick();
+        if (!this.form) return true;
+        const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
+        return saved !== pythonCodeSignature(this.pythonCode, this.libraries(), this.selectedSecretIds());
+    }
+
+    private libraries(): string[] {
+        return parseCommaSeparatedList(this.form.value.libraries);
     }
 }

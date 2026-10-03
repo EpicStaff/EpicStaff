@@ -24,6 +24,8 @@ import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 
+const INVALID_FIELDS_NOT_SAVED_MESSAGE = "Changes weren't saved — this node has invalid fields.";
+
 @Component({
     selector: 'app-node-panel-shell',
     imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
@@ -167,10 +169,13 @@ export class NodePanelShellComponent {
         | (NodePanel & {
               onSaveSilently?: () => NodeModel | null;
               captureForValidation?: () => NodeModel | null;
+              hasEditsLeftOut?: () => boolean;
           })
         | null = null;
     protected readonly panelInstanceSig = signal<{
         isDirty?: Signal<boolean>;
+        /** Opt-in: the node must be saved to the backend although the panel has no edit (Save shows then too). */
+        needsSave?: Signal<boolean>;
         isSaving?: Signal<boolean>;
         form?: { invalid: boolean };
         onSaveClick?: () => void;
@@ -179,7 +184,8 @@ export class NodePanelShellComponent {
     protected readonly showSaveButton = computed(() => {
         if (this.flowReadOnly.isReadOnly()) return false;
         const panel = this.panelInstanceSig();
-        return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
+        const hasSomethingToSave = (panel?.isDirty?.() ?? false) || (panel?.needsSave?.() ?? false);
+        return hasSomethingToSave && !!panel?.onSaveClick;
     });
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
@@ -228,6 +234,7 @@ export class NodePanelShellComponent {
                         this.panelInstanceSig.set(
                             outletRef.componentInstance as {
                                 isDirty?: Signal<boolean>;
+                                needsSave?: Signal<boolean>;
                                 isSaving?: Signal<boolean>;
                                 form?: { invalid: boolean };
                                 onSaveClick?: () => void;
@@ -308,7 +315,12 @@ export class NodePanelShellComponent {
                 this.save.emit(updatedNode);
                 return;
             }
-            this.toastService.error("Changes weren't saved — this node has invalid fields.");
+            // An invalid test payload is the user's to fix and the last saved one is kept: a warning, not a failure.
+            if (this.panelInstance.hasEditsLeftOut?.()) {
+                this.toastService.warning(INVALID_FIELDS_NOT_SAVED_MESSAGE);
+            } else {
+                this.toastService.error(INVALID_FIELDS_NOT_SAVED_MESSAGE);
+            }
         }
         this.sidePanelService.clearSelection();
     }

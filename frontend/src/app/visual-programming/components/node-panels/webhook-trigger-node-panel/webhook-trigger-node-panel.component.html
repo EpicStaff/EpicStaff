@@ -11,18 +11,38 @@
 </ng-template>
 
 <ng-template #codeEditorCard>
-    <app-code-editor
-        class="code-editor-card"
-        [pythonCode]="pythonCode"
-        [secretNames]="secretNames()"
-        [readOnly]="isReadOnly()"
-        [editorHeight]="smallEditorHeight"
-        [allowExpand]="true"
-        [compactHeader]="true"
-        (pythonCodeChange)="onPythonCodeChange($event)"
-        (errorChange)="onCodeErrorChange($event)"
-        (expand)="expandPane('code')"
-    ></app-code-editor>
+    <div class="code-card-group">
+        <app-code-editor
+            class="code-editor-card"
+            [class.code-editor-card--with-terminal]="showCodeTerminal()"
+            [pythonCode]="pythonCode"
+            [secretNames]="secretNames()"
+            [readOnly]="isReadOnly()"
+            [editorHeight]="smallEditorHeight"
+            [allowExpand]="true"
+            [compactHeader]="true"
+            [actionIcon]="runPythonCodeIcon()"
+            [actionLabel]="runPythonCodeLabel"
+            [actionDisabledReason]="runCodeBlocker()"
+            (pythonCodeChange)="onPythonCodeChange($event)"
+            (errorChange)="onCodeErrorChange($event)"
+            (expand)="expandPane('code')"
+            (action)="runPythonCode()"
+        ></app-code-editor>
+        @if (showCodeTerminal()) {
+            <ng-container [ngTemplateOutlet]="codeTerminal" />
+        }
+    </div>
+</ng-template>
+
+<ng-template #codeTerminal>
+    <app-python-terminal
+        [logs]="codeTestRun.logs()"
+        [terminalHeight]="codeTestRun.terminalHeight()"
+        [status]="codeTestRun.status()"
+        (heightChange)="codeTestRun.setTerminalHeight($event)"
+        (clearLogs)="codeTestRun.clearLogs()"
+    />
 </ng-template>
 
 <ng-template #testPayloadCard>
@@ -152,18 +172,28 @@
                         <ng-container [ngTemplateOutlet]="codeEditorCard" />
                         <ng-container [ngTemplateOutlet]="testPayloadCard" />
                     } @else if (expandedPane() === 'code') {
-                        <app-code-editor
-                            class="code-editor-section"
-                            [pythonCode]="pythonCode"
-                            [secretNames]="secretNames()"
-                            [readOnly]="isReadOnly()"
-                            [allowExpand]="true"
-                            [compactHeader]="true"
-                            expandLabel="Swap with test payload"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                            (expand)="expandPane('payload')"
-                        ></app-code-editor>
+                        <div class="code-editor-column">
+                            <app-code-editor
+                                class="code-editor-section"
+                                [class.code-editor-section--with-terminal]="showCodeTerminal()"
+                                [pythonCode]="pythonCode"
+                                [secretNames]="secretNames()"
+                                [readOnly]="isReadOnly()"
+                                [allowExpand]="true"
+                                [compactHeader]="true"
+                                expandLabel="Swap with test payload"
+                                [actionIcon]="runPythonCodeIcon()"
+                                [actionLabel]="runPythonCodeLabel"
+                                [actionDisabledReason]="runCodeBlocker()"
+                                (pythonCodeChange)="onPythonCodeChange($event)"
+                                (errorChange)="onCodeErrorChange($event)"
+                                (expand)="expandPane('payload')"
+                                (action)="runPythonCode()"
+                            ></app-code-editor>
+                            @if (showCodeTerminal()) {
+                                <ng-container [ngTemplateOutlet]="codeTerminal" />
+                            }
+                        </div>
                     } @else {
                         <app-test-payload-section
                             class="payload-pane"

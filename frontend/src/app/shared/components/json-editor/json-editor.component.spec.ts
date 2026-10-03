@@ -49,6 +49,15 @@ describe('JsonEditorComponent header action', () => {
         fixture.componentRef.setInput('actionLabel', 'Insert example from selected fields');
     }
 
+    it('shows the height drag handle by default and hides it when not resizable', () => {
+        fixture.detectChanges();
+        expect(fixture.debugElement.query(By.css('.editor-resize-handle'))).not.toBeNull();
+
+        fixture.componentRef.setInput('resizable', false);
+        fixture.detectChanges();
+        expect(fixture.debugElement.query(By.css('.editor-resize-handle'))).toBeNull();
+    });
+
     it('renders no action by default, leaving the copy and expand icons as they are', () => {
         fixture.detectChanges();
 

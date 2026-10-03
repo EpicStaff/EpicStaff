@@ -180,6 +180,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
+    /**
+     * A `graphState` whose node lists are older than the backend's: another user saved and only the
+     * save_version was taken over. Any later load or save replaces `graphState` and so ends it.
+     */
+    private readonly outdatedGraphState = signal<GraphDto | null>(null);
+    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
+    private readonly storedGraph = computed<GraphDto | null>(() => {
+        const graph = this.graphState();
+        return graph === this.outdatedGraphState() ? null : graph;
+    });
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
     protected readonly collaborationEditors = this.wsService.editors;
@@ -283,6 +293,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             initialValue: this.route.snapshot.queryParamMap,
         });
 
+        this.flowService.bindSavedGraph(this.storedGraph);
+        this.destroyRef.onDestroy(() => this.flowService.bindSavedGraph(null));
+
         effect(() => {
             const params = this.routeQueryParamMap();
             const nodeQueryKey = [params.get('nodeId'), params.get('nodeName'), params.get('nodeType')].join('|');
@@ -377,6 +390,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!this.hasUnsavedChangesSignal()) {
                 this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
             }
+            // Either way the stored nodes changed and this graph does not have them.
+            this.outdatedGraphState.set(this.graphState());
         });
     }
 
