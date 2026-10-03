@@ -7,7 +7,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers as drf_serializers
 
-from tables.serializers.serializers import RunSessionSerializer
+from tables.serializers.serializers import RunSessionSerializer, SessionTestRunSerializer
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
@@ -98,6 +98,126 @@ RUN_SESSION_POST = {
                 OpenApiExample(
                     "Graph not found",
                     value={"message": "Provided graph does not exist"},
+                    response_only=True,
+                    status_codes=["404"],
+                ),
+            ],
+        ),
+    },
+}
+
+RUN_SESSION_TEST_POST = {
+    "summary": "Test-run a flow from a trigger node",
+    "description": (
+        "Starts a session at the given trigger node as if `payload` had been delivered "
+        "to it, without the HTTP ingress, tunnel or webhook authentication. The node "
+        "must belong to `graph_id` in the active organization. The session is recorded "
+        "with the node's trigger type and `is_test_run: true`. Requires UPDATE on flows. "
+        "Webhook payloads are passed to the flow as `trigger_payload`; Telegram payloads "
+        "as `telegram_payload` and may only use the field parents and fields selected "
+        "on the node, plus the update envelope key `update_id`, which is accepted with "
+        "any value and passed through unchanged."
+    ),
+    "request": SessionTestRunSerializer,
+    "examples": [
+        OpenApiExample(
+            "Webhook trigger",
+            value={
+                "graph_id": 12,
+                "node_type": "webhook-trigger",
+                "node_id": 345,
+                "payload": {"order_id": 42, "status": "paid"},
+            },
+            request_only=True,
+        ),
+        OpenApiExample(
+            "Telegram trigger",
+            value={
+                "graph_id": 12,
+                "node_type": "telegram-trigger",
+                "node_id": 346,
+                "payload": {
+                    "update_id": 900001,
+                    "message": {"text": "hello", "chat": {"id": 1001}},
+                },
+            },
+            request_only=True,
+        ),
+    ],
+    "responses": {
+        201: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Session successfully started.",
+            examples=[
+                OpenApiExample(
+                    "Session started",
+                    value={"session_id": 981},
+                    response_only=True,
+                    status_codes=["201"],
+                ),
+            ],
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "Validation failed, the payload does not fit the node, the "
+                "`X-Organization-Id` header is missing, or the session failed to start."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Payload is not an object",
+                    value={
+                        "status_code": 400,
+                        "code": "invalid",
+                        "message": "payload: Test payload must be a JSON object.",
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    "Payload does not fit the Telegram node",
+                    value={
+                        "status_code": 400,
+                        "code": "test_run_payload_invalid",
+                        "message": "payload: 'message.photo': field not selected on this node",
+                        "errors": ["'message.photo': field not selected on this node"],
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Requires UPDATE on flows in the active organization.",
+            examples=[
+                OpenApiExample(
+                    "Permission denied",
+                    value={
+                        "status_code": 403,
+                        "code": "permission_denied",
+                        "message": "You do not have permission to perform this action.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
+        404: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "No trigger node of `node_type` with `node_id` exists in `graph_id` "
+                "within the active organization."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Node not found",
+                    value={
+                        "status_code": 404,
+                        "code": "not_found",
+                        "message": "Not found.",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -207,6 +327,17 @@ SESSION_LIST_GET = {
             description="Whether to include all session details. Set to `false` to return only minimal fields. The `true` value is deprecated and will be removed in a future version.",
             required=False,
         ),
+        OpenApiParameter(
+            name="is_test_run",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.BOOL,
+            description=(
+                "`true` returns only editor test runs (sessions started from a webhook or "
+                "Telegram trigger node). `false` returns every other session, including "
+                "sessions without a trigger record. Omit to return both. Any other value is a 400."
+            ),
+            required=False,
+        ),
     ],
     "responses": {
         200: OpenApiResponse(
@@ -260,7 +391,8 @@ SESSION_LIST_GET = {
                                 "graph_user": None,
                                 "trigger": {
                                     "trigger_type": "manual",
-                                    "node_name": None,
+                                    "trigger_id": None,
+                                    "is_test_run": False,
                                 },
                                 "principal": {
                                     "kind": "user",
@@ -293,7 +425,8 @@ SESSION_LIST_GET = {
                                 "has_output_files": True,
                                 "trigger": {
                                     "trigger_type": "manual",
-                                    "node_name": None,
+                                    "trigger_id": None,
+                                    "is_test_run": False,
                                 },
                             }
                         ],
