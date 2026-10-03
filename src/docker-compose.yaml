@@ -468,6 +468,8 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
+    stop_grace_period: 5m
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
@@ -476,6 +478,7 @@ services:
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
+      AGENT_MAX_CONCURRENT_RUNS: ${AGENT_MAX_CONCURRENT_RUNS:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}

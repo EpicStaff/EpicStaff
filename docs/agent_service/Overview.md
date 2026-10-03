@@ -231,6 +231,7 @@ boot.
 | env | default | meaning |
 |---|---|---|
 | `AGENT_REQUEST_STREAM` / `AGENT_RESULT_STREAM` / `AGENT_CONSUMER_GROUP` | `agent.requests` / `agent.results` / `agent-executors` | streams |
+| `AGENT_MAX_CONCURRENT_RUNS` | `10` | runs one replica executes concurrently; it reads only as many requests as it has free slots |
 | `AGENT_DEFAULT_MAX_ITER` | `25` | fallback tool-turn cap |
 | `AGENT_SCHEMA_MAX_RETRIES` | `2` | structured-output correction retries |
 | `AGENT_DEFAULT_MAX_RETRIES` | `5` | LLM retry policy |
