@@ -71,7 +71,9 @@
         .code-editor-wrapper {
             flex: 0 0 auto;
             height: auto;
-            display: block;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 1rem;
         }
     }
 }
@@ -136,13 +138,25 @@
         overflow: hidden;
         @include mixins.editor-pane-corner;
     }
+}
 
-    .collapsed & {
-        height: 300px;
-        flex-shrink: 0;
-        border-radius: 8px;
-        overflow: hidden;
-    }
+// An editor shown as a card at its own height: the small panel, or the left column of the expanded one.
+.code-editor-card {
+    flex-shrink: 0;
+    min-width: 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+// The test payload editor in the big pane of the expanded panel.
+.payload-pane {
+    flex: 1;
+    align-self: stretch;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-divider-subtle);
+    @include mixins.editor-pane-corner;
 }
 
 .webhook-url-display {

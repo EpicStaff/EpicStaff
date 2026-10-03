@@ -1,5 +1,15 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    inject,
+    input,
+    signal,
+    TemplateRef,
+    viewChild,
+} from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
     ColumnResizeDividerComponent,
@@ -15,7 +25,15 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { SidePanelService } from '../../../services/side-panel.service';
+import { formatTestPayload } from '../../../utils/test-run';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
+import { RunTestPayloadButtonComponent } from '../shared/run-test-payload-button/run-test-payload-button.component';
+import { TestPayloadSectionComponent } from '../shared/test-payload-section/test-payload-section.component';
+import { TriggerTestPayloadState, withTestPayload } from '../shared/test-payload-section/trigger-test-payload.state';
+
+/** The editor shown in the big right-hand pane of the expanded panel; the other one moves to the left column. */
+type WebhookExpandedPane = 'code' | 'payload';
 
 @Component({
     selector: 'app-webhook-trigger-node-panel',
@@ -28,6 +46,9 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
+        TestPayloadSectionComponent,
+        RunTestPayloadButtonComponent,
+        NgTemplateOutlet,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -37,11 +58,22 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly clipboard = inject(Clipboard);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly sidePanelService = inject(SidePanelService);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
 
+    /** Rendered by the panel shell in its header. */
+    public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+
     public readonly isFormCollapsed = signal<boolean>(false);
+    protected readonly expandedPane = signal<WebhookExpandedPane>('code');
+    /** Height in px of an editor shown as a card (small panel, or the left column of the expanded one). */
+    protected readonly smallEditorHeight = 220;
+    protected readonly testPayload = new TriggerTestPayloadState(
+        'webhook-trigger',
+        computed(() => this.node().id)
+    );
     protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 406);
 
     pythonCode: string = '';
@@ -97,6 +129,22 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.notifyExternalChange();
     }
 
+    protected onTestPayloadTextChange(text: string): void {
+        this.testPayload.edit(text);
+        this.notifyExternalChange();
+    }
+
+    /**
+     * Puts `pane` in the big pane, expanding the panel first when it is small. The expand icon of the
+     * pane already shown big passes the other pane, so it swaps them back (as in the task panel).
+     */
+    protected expandPane(pane: WebhookExpandedPane): void {
+        this.expandedPane.set(pane);
+        if (!this.isExpanded()) {
+            this.sidePanelService.requestExpand();
+        }
+    }
+
     initializeForm(): FormGroup {
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -106,6 +154,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
         this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
+        this.testPayload.reset(formatTestPayload(this.node().data.test_payload ?? {}));
         return form;
     }
 
@@ -133,8 +182,30 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                     secret_ids: this.selectedSecretIds(),
                     secret_names: this.secretNames(),
                 },
+                test_payload: this.testPayload.payloadToSave(this.node().data.test_payload),
             },
         };
+    }
+
+    /** An invalid test payload edit was left out of the saved node (on close, autosave or Ctrl+S), so say so. */
+    protected override afterNodeSaved(): void {
+        this.testPayload.reportInvalidEditNotSaved();
+    }
+
+    /**
+     * On close / autosave the payload does not depend on the other fields: an edit of it is saved
+     * alone, the rest stays unsaved.
+     */
+    protected override saveWhenFormInvalid(): WebhookTriggerNodeModel | null {
+        const payload = this.testPayload.editToSaveAlone(this.baselineNode().data.test_payload);
+        if (payload === null) return null;
+        this.updateBaseline((baseline) => withTestPayload(baseline, payload));
+        this.testPayload.reportSavedAlone(this.isDirty());
+        return withTestPayload(this.node(), payload);
+    }
+
+    protected override hasUnsavedEditsOutsideNode(): boolean {
+        return this.testPayload.hasUnsavedInvalidEdit();
     }
 
     copyWebhookUrl(): void {
