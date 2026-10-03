@@ -6,6 +6,8 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
 class ToolUsageSerializer(serializers.Serializer):
@@ -75,6 +77,13 @@ class RunSessionSerializer(serializers.Serializer):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
             raise serializers.ValidationError("Either 'graph_id' or 'graph_uuid' must be provided.")
         return attrs
+
+
+class SessionTestRunSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    node_type = serializers.ChoiceField(choices=sorted(TEST_RUN_STRATEGIES))
+    node_id = serializers.IntegerField()
+    payload = serializers.JSONField(validators=[validate_trigger_payload])
 
 
 class GetUpdatesSerializer(serializers.Serializer):

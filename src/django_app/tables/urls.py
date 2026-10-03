@@ -111,6 +111,7 @@ from tables.views.views import (
     QuickstartView,
     RunPythonCodeAPIView,
     RunSession,
+    SessionTestRunView,
     SessionViewSet,
     StopSession,
     TelegramTriggerNodeAvailableFieldsView,
@@ -197,6 +198,7 @@ urlpatterns = [
     ),
     path("", include(router.urls)),
     path("run-session/", RunSession.as_view(), name="run-session"),
+    path("run-session/test/", SessionTestRunView.as_view(), name="run-session-test"),
     path(
         "sessions/<int:session_id>/get-updates/",
         GetUpdates.as_view(),
