@@ -30,6 +30,7 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
+from tables.exceptions import SessionNotFoundError
 from tables.filters import SessionFilter
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -80,7 +81,7 @@ from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
-from tables.services.session_access import assert_session_org_access
+from tables.services.session_access import get_accessible_session, get_runnable_graph
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.swagger_schemas.default_config_schemas import (
@@ -409,26 +410,7 @@ class RunSession(APIView):
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
 
-        if graph_id:
-            graph = Graph.objects.filter(id=graph_id).first()
-        else:
-            graph = Graph.objects.filter(uuid=graph_uuid).first()
-
-        if not graph:
-            return Response(
-                {"message": "Provided graph does not exist"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        graph_id = graph.id
-
-        # Running the flow requires READ on flows within its org (superadmin bypasses).
-        assert_org_permission(
-            user=request.user,
-            org_id=graph.org_id,
-            resource_type=ResourceType.FLOWS,
-            action=Permission.READ,
-        )
+        graph_id = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid).id
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
@@ -481,14 +463,7 @@ class RunSession(APIView):
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
-        session_id = kwargs.get("session_id")
-        if session_id is None:
-            return Response("Session id not found", status=status.HTTP_404_NOT_FOUND)
-
-        session = Session.objects.select_related("graph").filter(pk=session_id).first()
-        if session is None:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-        assert_session_org_access(request.user, session)
+        session = get_accessible_session(request.user, kwargs["session_id"])
 
         return Response(
             data={"status": session.status},
@@ -499,14 +474,8 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs.get("session_id")
-        if session_id is None:
-            return Response("Session id is missing", status=status.HTTP_404_NOT_FOUND)
-
-        session = Session.objects.select_related("graph").filter(pk=session_id).first()
-        if session is None:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-        assert_session_org_access(request.user, session)
+        session_id = kwargs["session_id"]
+        get_accessible_session(request.user, session_id)
 
         try:
             required_listeners = 2  # manager and crew
@@ -521,7 +490,7 @@ class StopSession(APIView):
                 session.save()
 
         except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+            raise SessionNotFoundError() from None
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
