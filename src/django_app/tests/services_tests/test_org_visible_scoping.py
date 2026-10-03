@@ -1,15 +1,17 @@
 """org_visible_q / org_visible_queryset / OrgVisiblePrimaryKeyRelatedField must scope
-every org-owned model by its owning-org FK, whatever that FK is named (`org` on the
-`tables` models, `organization` on the `agents` models), and must refuse a model that
-has no owning-org FK instead of returning it unfiltered."""
+every org-owned model by its owning-org FK, found by convention (`org` on the `tables`
+models, `organization` on the `agents` models), and must refuse a model that has
+neither instead of returning it unfiltered."""
 
 from types import SimpleNamespace
 
 import pytest
+from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
 from rest_framework import serializers
 
 from agents.models import AgentDefinition, Surface
+from rbac.models import Organization
 from rbac.scoping.fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
@@ -18,6 +20,28 @@ from rbac.scoping.fields import (
 )
 from tables.models import Label, LLMModel, Provider, PythonCode, PythonCodeTool
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+
+
+ACCEPTED_ORG_FK_NAMES = {"org", "organization"}
+
+
+def test_every_fk_to_organization_follows_naming_convention():
+    misnamed = [
+        f"{model._meta.label}.{field.name}"
+        for model in apps.get_models()
+        for field in model._meta.get_fields()
+        if field.concrete
+        and (field.many_to_one or field.one_to_one)
+        and field.related_model is Organization
+        and field.name not in ACCEPTED_ORG_FK_NAMES
+    ]
+
+    assert not misnamed, (
+        f"ForeignKey/OneToOneField to Organization not named 'org' or 'organization': "
+        f"{misnamed}. org_visible_q finds the owning org by those two names only — "
+        f"rename the field, or extend org_visible_q in rbac/scoping/fields.py to "
+        f"recognise the new name."
+    )
 
 
 def _request_in(org):

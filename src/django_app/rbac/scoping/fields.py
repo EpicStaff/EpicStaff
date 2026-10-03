@@ -5,7 +5,6 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
 from rbac.access.org_context import OrgContextService
-from rbac.models import Organization
 
 
 def resolve_active_org_id(request) -> int:
@@ -19,26 +18,24 @@ def resolve_active_org_id(request) -> int:
     return org_id
 
 
-def _owning_org_column(model) -> str:
-    """The column (`org_id` / `organization_id`) of `model`'s FK to Organization.
+def _owning_org_column(model, field_names: set[str]) -> str:
+    """The column of `model`'s owning-org FK, chosen by naming convention.
 
-    Found through `_meta` by the FK's target, not by its name, because the org FK is
-    named `org` on `tables` models and `organization` on `agents` models.
+    The org FK is named `org` on `tables` models and `organization` on `agents` models;
+    `tests/services_tests/test_org_visible_scoping.py` guards that every FK to
+    Organization uses one of these two names.
 
     Raises:
-        ImproperlyConfigured: `model` has no FK to Organization, or more than one.
+        ImproperlyConfigured: `model` has neither an `org` nor an `organization` field.
     """
-    org_foreign_keys = [
-        field
-        for field in model._meta.get_fields()
-        if field.concrete and field.many_to_one and field.related_model is Organization
-    ]
-    if len(org_foreign_keys) != 1:
-        raise ImproperlyConfigured(
-            f"{model._meta.label} must have exactly one ForeignKey to Organization to be "
-            f"org-scoped, found {len(org_foreign_keys)}."
-        )
-    return org_foreign_keys[0].attname
+    if "org" in field_names:
+        return "org_id"
+    if "organization" in field_names:
+        return "organization_id"
+    raise ImproperlyConfigured(
+        f"{model._meta.label} cannot be org-scoped: it has no owning-org field named "
+        f"'org' or 'organization'."
+    )
 
 
 def org_visible_q(model, org_id) -> Q:
@@ -46,19 +43,20 @@ def org_visible_q(model, org_id) -> Q:
 
     Single source of truth for the scoping rules, shared by
     :func:`org_visible_queryset` and :class:`OrgVisiblePrimaryKeyRelatedField`.
-    The owning org is the model's one FK to Organization, whatever it is named:
+    The owning org is found by convention: the FK named `org` (`tables` models) or,
+    failing that, `organization` (`agents` models). Any other model raises.
 
     - **hybrid** (`built_in` flag, e.g. PythonCodeTool): built-ins + own-org rows;
     - **hybrid** (`is_custom` flag, e.g. LLMModel): built-ins (is_custom=False) + own-org;
     - **strict** (no flag, e.g. McpTool, Label, AgentDefinition, Surface): own-org rows only.
 
     Raises:
-        ImproperlyConfigured: `model` has no single FK to Organization. A model the
-            caller cannot scope is refused rather than returned unfiltered.
+        ImproperlyConfigured: `model` has neither an `org` nor an `organization` field.
+            A model the caller cannot scope is refused rather than returned unfiltered.
     """
-    org_column = _owning_org_column(model)
-    own_org = Q(**{org_column: org_id})
-    field_names = {field.name for field in model._meta.get_fields()}
+    # Concrete fields only: a reverse relation with related_name="org" must not match.
+    field_names = {field.name for field in model._meta.get_fields() if field.concrete}
+    own_org = Q(**{_owning_org_column(model, field_names): org_id})
     if "built_in" in field_names:
         return Q(built_in=True) | own_org
     if "is_custom" in field_names:
@@ -153,11 +151,10 @@ class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     ``OrgScopedPrimaryKeyRelatedField`` — for FKs whose target is a hybrid model,
     otherwise shared built-ins would wrongly become unreferenceable.
 
-    The target's owning org is its FK to Organization whatever it is named, so a
-    strict target (`org` or `organization` FK, no hybrid flag) is also scoped
-    correctly. The target must have exactly one FK to Organization: a target the
-    field cannot scope raises ``ImproperlyConfigured`` when the queryset is
-    resolved, it is never served unfiltered.
+    The target's owning org is its FK named ``org`` or ``organization`` (see
+    :func:`org_visible_q`), so a strict target with no hybrid flag is also scoped
+    correctly. A target with neither field raises ``ImproperlyConfigured`` when the
+    queryset is resolved; it is never served unfiltered.
 
     Same no-request deny+warn fallback as ``OrgScopedPrimaryKeyRelatedField``.
     """
