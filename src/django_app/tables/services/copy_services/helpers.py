@@ -13,9 +13,9 @@ _INT4_MAX = 2**31
 
 
 def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
-    """Serializes concurrent tool-copy name generation for the same
-    (org, clean_base) name family via a transaction-scoped Postgres advisory
-    lock (`pg_advisory_xact_lock`).
+    """Serializes concurrent copy-name generation (tool copies, flow copies,
+    create-flow-from-version) for the same (org, clean_base) name family via a
+    transaction-scoped Postgres advisory lock (`pg_advisory_xact_lock`).
 
     Why: `ensure_unique_identifier` strips any trailing "#N" suffix before
     computing the next free number, so two DIFFERENT source rows whose names

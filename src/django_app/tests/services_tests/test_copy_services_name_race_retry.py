@@ -31,9 +31,12 @@ from typing import Callable
 import pytest
 from django.db import IntegrityError, connection
 
+from tables.graph_versioning.services import GraphVersioningService
+from tables.models import Graph
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
+from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyService
 from tables.services.copy_services.python_code_tool_copy_service import (
     PythonCodeToolCopyService,
@@ -184,6 +187,73 @@ def test_mcp_tool_concurrent_copies_of_same_source_get_unique_names():
         "ConcurrentMcp #4",
         "ConcurrentMcp #5",
         "ConcurrentMcp #6",
+    }
+
+
+# ---- (b2) EST-4265: flow names are deduplicated per org, so concurrent flow
+# copies and create-flow-from-version calls in the same org must serialize on
+# the same (org, clean_base) advisory lock as the tool copies ----
+
+
+@pytest.mark.django_db(transaction=True)
+def test_graph_concurrent_copies_of_different_sources_sharing_clean_base():
+    org = Organization.objects.create(name="Org GraphNamespaceLock")
+    source_a = Graph.objects.create(name="SharedFlow #2", org=org)
+    source_b = Graph.objects.create(name="SharedFlow #3", org=org)
+    source_c = Graph.objects.create(name="SharedFlow #333", org=org)
+
+    outcomes = _run_concurrently(
+        [
+            lambda: GraphCopyService().copy(source_a, org_id=org.id).name,
+            lambda: GraphCopyService().copy(source_b, org_id=org.id).name,
+            lambda: GraphCopyService().copy(source_c, org_id=org.id).name,
+        ]
+    )
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {"SharedFlow #4", "SharedFlow #5", "SharedFlow #6"}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_graph_concurrent_copies_of_same_source_get_unique_names():
+    org = Organization.objects.create(name="Org GraphSameSourceLock")
+    source = Graph.objects.create(name="ConcurrentFlow", org=org)
+
+    outcomes = _run_concurrently(
+        [lambda: GraphCopyService().copy(source, org_id=org.id).name for _ in range(5)]
+    )
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {
+        "ConcurrentFlow #2",
+        "ConcurrentFlow #3",
+        "ConcurrentFlow #4",
+        "ConcurrentFlow #5",
+        "ConcurrentFlow #6",
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_create_graph_from_same_version_get_unique_names():
+    org = Organization.objects.create(name="Org GraphFromVersionLock")
+    source = Graph.objects.create(name="VersionedFlow", org=org)
+    version = GraphVersioningService().save_version(source, name="v1")
+
+    def _create_from_version() -> str:
+        result = GraphVersioningService().create_graph_from_version(version)
+        return Graph.objects.get(pk=result["graph_id"]).name
+
+    outcomes = _run_concurrently([_create_from_version for _ in range(4)])
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {
+        "VersionedFlow from v1",
+        "VersionedFlow from v1 #2",
+        "VersionedFlow from v1 #3",
+        "VersionedFlow from v1 #4",
     }
 
 
