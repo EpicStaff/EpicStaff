@@ -1,9 +1,11 @@
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Q, QuerySet
 from loguru import logger
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
 from rbac.access.org_context import OrgContextService
+from rbac.models import Organization
 
 
 def resolve_active_org_id(request) -> int:
@@ -17,34 +19,59 @@ def resolve_active_org_id(request) -> int:
     return org_id
 
 
-def org_visible_q(model, org_id):
-    """The visibility filter (`Q`) for `model` under `org_id`, or ``None`` when the
-    model is global (has no `org` field). Single source of truth for the scoping
-    rules, shared by :func:`org_visible_queryset` and
-    :class:`OrgVisiblePrimaryKeyRelatedField`:
+def _owning_org_column(model) -> str:
+    """The column (`org_id` / `organization_id`) of `model`'s FK to Organization.
+
+    Found through `_meta` by the FK's target, not by its name, because the org FK is
+    named `org` on `tables` models and `organization` on `agents` models.
+
+    Raises:
+        ImproperlyConfigured: `model` has no FK to Organization, or more than one.
+    """
+    org_foreign_keys = [
+        field
+        for field in model._meta.get_fields()
+        if field.concrete and field.many_to_one and field.related_model is Organization
+    ]
+    if len(org_foreign_keys) != 1:
+        raise ImproperlyConfigured(
+            f"{model._meta.label} must have exactly one ForeignKey to Organization to be "
+            f"org-scoped, found {len(org_foreign_keys)}."
+        )
+    return org_foreign_keys[0].attname
+
+
+def org_visible_q(model, org_id) -> Q:
+    """The visibility filter for `model` under `org_id`.
+
+    Single source of truth for the scoping rules, shared by
+    :func:`org_visible_queryset` and :class:`OrgVisiblePrimaryKeyRelatedField`.
+    The owning org is the model's one FK to Organization, whatever it is named:
 
     - **hybrid** (`built_in` flag, e.g. PythonCodeTool): built-ins + own-org rows;
-    - **hybrid** (`is_custom` flag, e.g. *Model): built-ins (is_custom=False) + own-org;
-    - **strict** (has `org`, no flag, e.g. McpTool / PythonCodeToolConfig / configs):
-      own-org rows only;
-    - **global** (no `org` field, e.g. legacy/global-scoped models): ``None`` (no filter).
+    - **hybrid** (`is_custom` flag, e.g. LLMModel): built-ins (is_custom=False) + own-org;
+    - **strict** (no flag, e.g. McpTool, Label, AgentDefinition, Surface): own-org rows only.
+
+    Raises:
+        ImproperlyConfigured: `model` has no single FK to Organization. A model the
+            caller cannot scope is refused rather than returned unfiltered.
     """
-    field_names = {f.name for f in model._meta.get_fields()}
-    if "org" not in field_names:
-        return None
+    org_column = _owning_org_column(model)
+    own_org = Q(**{org_column: org_id})
+    field_names = {field.name for field in model._meta.get_fields()}
     if "built_in" in field_names:
-        return Q(built_in=True) | Q(org_id=org_id)
+        return Q(built_in=True) | own_org
     if "is_custom" in field_names:
-        return Q(is_custom=False) | Q(org_id=org_id)
-    return Q(org_id=org_id)
+        return Q(is_custom=False) | own_org
+    return own_org
 
 
-def org_visible_queryset(model, org_id):
+def org_visible_queryset(model, org_id) -> QuerySet:
     """Rows of `model` visible to `org_id`, applying the same scoping rules as the
     org viewset mixins — so non-FK reference resolution (e.g. the string-encoded
-    `tool_ids`) honours org isolation identically. See :func:`org_visible_q`."""
-    q = org_visible_q(model, org_id)
-    return model.objects.filter(q) if q is not None else model.objects.all()
+    `tool_ids`) honours org isolation identically. See :func:`org_visible_q`,
+    including its ``ImproperlyConfigured`` for models without an owning org."""
+    return model.objects.filter(org_visible_q(model, org_id))
 
 
 def _warn_missing_request(field) -> None:
@@ -70,8 +97,12 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     ("Invalid pk … object does not exist") — existence in another org is never
     revealed, consistent with the 404-on-cross-org policy.
 
-    ``org_lookup`` is the ORM path from the related model to the org id:
-    - default ``"org_id"`` for models that own an ``org`` FK directly (e.g. Agent);
+    ``org_lookup`` is the ORM path from the related model to the org id. It is
+    used as given, never inferred, so it must name the target's real org path:
+    - default ``"org_id"`` for ``tables`` models that own an ``org`` FK directly
+      (e.g. Agent);
+    - ``"organization_id"`` for ``agents`` models (AgentDefinition, Surface), whose
+      org FK is named ``organization`` — use ``OrganizationScopedPrimaryKeyRelatedField``;
     - e.g. ``"crew__org_id"`` for a model scoped via a parent.
 
     Requires the serializer context to carry ``request`` (the active org is read
@@ -104,7 +135,7 @@ class OrganizationScopedPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
 
     For the newer ``agents`` app models (e.g. ``AgentDefinition``, ``Surface``)
     whose org FK is named ``organization`` rather than ``org`` — see the
-    ``tables`` vs ``agents`` naming split noted on ``OrgScopedPrimaryKeyRelatedField``.
+    ``org_lookup`` paths listed on ``OrgScopedPrimaryKeyRelatedField``.
     """
 
     org_lookup = "organization_id"
@@ -122,6 +153,12 @@ class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     ``OrgScopedPrimaryKeyRelatedField`` — for FKs whose target is a hybrid model,
     otherwise shared built-ins would wrongly become unreferenceable.
 
+    The target's owning org is its FK to Organization whatever it is named, so a
+    strict target (`org` or `organization` FK, no hybrid flag) is also scoped
+    correctly. The target must have exactly one FK to Organization: a target the
+    field cannot scope raises ``ImproperlyConfigured`` when the queryset is
+    resolved, it is never served unfiltered.
+
     Same no-request deny+warn fallback as ``OrgScopedPrimaryKeyRelatedField``.
     """
 
@@ -131,8 +168,7 @@ class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
         if request is None:
             _warn_missing_request(self)
             return queryset.none()
-        q = org_visible_q(queryset.model, resolve_active_org_id(request))
-        return queryset.filter(q) if q is not None else queryset
+        return queryset.filter(org_visible_q(queryset.model, resolve_active_org_id(request)))
 
 
 class OrgScopedUniqueValidator(UniqueValidator):
