@@ -344,10 +344,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph=graph.pk
         ).prefetch_related("condition_groups__conditions")
         subgraph_node_list = SubGraphNode.objects.filter(graph=graph.pk).select_related("subgraph")
-        webhook_trigger_node_list = WebhookTriggerNode.objects.filter(
-            graph=graph.pk
-        ).select_related("python_code")
-        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
+        webhook_trigger_node_list = (
+            WebhookTriggerNode.objects.filter(graph=graph.pk)
+            .defer("test_payload")
+            .select_related("python_code")
+        )
+        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
+            "test_payload"
+        )
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = ClassificationDecisionTableNode.objects.filter(
             graph=graph.pk

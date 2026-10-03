@@ -1915,6 +1915,34 @@ def test_get_node_webhook_trigger_includes_python_code_summary(graph, db):
     assert summary["libraries"] == ["httpx"]
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("node_kind", ["webhook_trigger", "telegram_trigger"])
+def test_get_node_trigger_never_exposes_test_payload(org_a, mock_telegram_service, node_kind):
+    from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
+    from tables.models.python_models import PythonCode
+    from tables.services.flow_assistant import get_node
+
+    org_graph = Graph.objects.create(name="Trigger Flow", org=org_a)
+    test_payload = {"customer_email": "private@example.com"}
+    if node_kind == "webhook_trigger":
+        node = WebhookTriggerNode.objects.create(
+            graph=org_graph,
+            node_name="webhook_entry",
+            python_code=PythonCode.objects.create(code="def main(**kwargs): ..."),
+            test_payload=test_payload,
+        )
+    else:
+        node = TelegramTriggerNode.objects.create(
+            graph=org_graph, node_name="telegram_entry", test_payload=test_payload
+        )
+
+    result = get_node(org_graph.pk, str(node.pk))
+
+    assert result.get("type") == node_kind
+    assert "test_payload" not in result["config"]
+    assert "private@example.com" not in json.dumps(result, default=str)
+
+
 # ── Fix 17: CDT serialization + pre/post python summaries ────────────────────
 
 
