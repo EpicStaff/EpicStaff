@@ -1,6 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 
@@ -31,35 +32,21 @@ describe('CodeEditorComponent', () => {
         return fixture.debugElement.query(By.css(selector))?.nativeElement ?? null;
     }
 
-    it('fills its host with no resize handle or expand icon by default', () => {
+    it('fills its host with no expand icon by default', () => {
         fixture.detectChanges();
 
         expect(fixture.nativeElement.classList.contains('fixed-height')).toBe(false);
         expect(query('.editor-container')?.style.height).toBe('');
-        expect(query('.editor-resize-handle')).toBeNull();
         expect(query('app-icon-button[icon="editor-expand"]')).toBeNull();
     });
 
-    it('uses an opt-in fixed height with a resize handle', () => {
+    it('uses an opt-in fixed height with no resize handle', () => {
         fixture.componentRef.setInput('editorHeight', 220);
         fixture.detectChanges();
 
         expect(fixture.nativeElement.classList.contains('fixed-height')).toBe(true);
         expect(query('.editor-container')?.style.height).toBe('220px');
-        expect(query('.editor-resize-handle')).not.toBeNull();
-    });
-
-    it('applies a dragged height and resets it when the input changes', () => {
-        fixture.componentRef.setInput('editorHeight', 220);
-        fixture.detectChanges();
-
-        fixture.debugElement.query(By.css('.editor-resize-handle')).triggerEventHandler('heightChange', 340);
-        fixture.detectChanges();
-        expect(query('.editor-container')?.style.height).toBe('340px');
-
-        fixture.componentRef.setInput('editorHeight', 180);
-        fixture.detectChanges();
-        expect(query('.editor-container')?.style.height).toBe('180px');
+        expect(query('.editor-resize-handle')).toBeNull();
     });
 
     it('emits expand from the header icon when allowed', () => {
@@ -140,5 +127,87 @@ describe('CodeEditorComponent', () => {
 
             expect(actionButtons().map((button) => button.getAttribute('aria-label'))).toEqual(['Copy code']);
         });
+
+        describe('opt-in action', () => {
+            function actionTooltip(button: HTMLButtonElement): string {
+                return fixture.debugElement
+                    .queryAll(By.css('.right-section button.action-icon'))
+                    .find((element) => element.nativeElement === button)!
+                    .injector.get(MatTooltip).message;
+            }
+
+            beforeEach(() => {
+                fixture.componentRef.setInput('allowExpand', true);
+                fixture.componentRef.setInput('actionIcon', 'play-outline');
+                fixture.componentRef.setInput('actionLabel', 'Run python code');
+            });
+
+            it('renders the action before copy and expand, sized and styled like copy', () => {
+                fixture.detectChanges();
+
+                const [actionButton, copyButton, expandButton] = actionButtons();
+                expect(actionButton.getAttribute('aria-label')).toBe('Run python code');
+                expect(actionButton.className).toBe(copyButton.className);
+                expect(actionButton.querySelector('use')?.getAttribute('href')).toBe('#icon-play-outline');
+                expect(actionButton.querySelector('app-svg-icon')?.getAttribute('size')).toBe('1rem');
+                expect(copyButton.getAttribute('aria-label')).toBe('Copy code');
+                expect(expandButton.getAttribute('aria-label')).toBe('Expand editor');
+                expect(actionButton.getAttribute('aria-disabled')).toBe('false');
+                expect(actionTooltip(actionButton)).toBe('Run python code');
+            });
+
+            it('emits action on click', () => {
+                const action = vi.fn();
+                fixture.componentInstance.action.subscribe(action);
+                fixture.detectChanges();
+
+                actionButtons()[0].click();
+
+                expect(action).toHaveBeenCalledTimes(1);
+            });
+
+            it('is aria-disabled but focusable while disabled, shows why, and does not emit', () => {
+                const action = vi.fn();
+                fixture.componentInstance.action.subscribe(action);
+                fixture.componentRef.setInput('actionDisabledReason', 'Save the graph first');
+                fixture.detectChanges();
+
+                const [actionButton] = actionButtons();
+                actionButton.click();
+
+                expect(actionButton.getAttribute('aria-disabled')).toBe('true');
+                expect(actionButton.disabled).toBe(false);
+                expect(actionButton.getAttribute('aria-label')).toBe('Run python code');
+                expect(actionTooltip(actionButton)).toBe('Save the graph first');
+                expect(action).not.toHaveBeenCalled();
+            });
+
+            it('is not rendered without a label', () => {
+                fixture.componentRef.setInput('actionLabel', null);
+                fixture.detectChanges();
+
+                expect(query('use[href="#icon-play-outline"]')).toBeNull();
+                expect(actionButtons().map((button) => button.getAttribute('aria-label'))).toEqual([
+                    'Copy code',
+                    'Expand editor',
+                ]);
+            });
+
+            it('is not rendered in the default header', () => {
+                fixture.componentRef.setInput('compactHeader', false);
+                fixture.detectChanges();
+
+                expect(query('use[href="#icon-play-outline"]')).toBeNull();
+                expect(query('app-icon-button[icon="play-outline"]')).toBeNull();
+            });
+        });
+    });
+
+    it('renders no action by default', () => {
+        fixture.componentRef.setInput('compactHeader', true);
+        fixture.detectChanges();
+
+        expect(query('use[href="#icon-play-outline"]')).toBeNull();
+        expect(query('.right-section button.action-icon')?.getAttribute('aria-label')).toBe('Copy code');
     });
 });

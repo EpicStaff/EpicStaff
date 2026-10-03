@@ -15,6 +15,24 @@
             <span class="editor-subtitle">(entrypoint "main")</span>
         </div>
         <div class="right-section">
+            @if (headerAction(); as action) {
+                <!-- aria-disabled, not disabled: the button stays focusable, so its tooltip (also its
+                     aria-describedby description) tells keyboard and screen reader users why it cannot be used. -->
+                <button
+                    type="button"
+                    class="action-icon"
+                    [attr.aria-label]="action.label"
+                    [attr.aria-disabled]="isActionDisabled()"
+                    [matTooltip]="actionTooltip()"
+                    matTooltipPosition="above"
+                    (click)="onAction()"
+                >
+                    <app-svg-icon
+                        [icon]="action.icon"
+                        size="1rem"
+                    />
+                </button>
+            }
             <button
                 type="button"
                 class="action-icon"
@@ -83,7 +101,7 @@
 <!-- Editor Container -->
 <div
     class="editor-container"
-    [style.height.px]="currentEditorHeight()"
+    [style.height.px]="editorHeight()"
     #editorContainer
 >
     <ngx-monaco-editor
@@ -102,14 +120,3 @@
         </div>
     }
 </div>
-
-<!-- Resize Handle (only with an opt-in fixed height) -->
-@if (currentEditorHeight() !== null) {
-    <div
-        class="editor-resize-handle"
-        appResizable
-        (heightChange)="onResize($event)"
-    >
-        <div class="little-handle"></div>
-    </div>
-}

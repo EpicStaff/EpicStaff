@@ -1,5 +1,4 @@
 @use '../../../../../styles/editor-header' as editor-header;
-@use '../../../../../styles/editor-resize-handle' as resize-handle;
 
 :host ::ng-deep .monaco-editor {
     --vscode-focusBorder: transparent !important;
@@ -117,9 +116,4 @@
     width: 30px;
     height: 30px;
     animation: spin 1s linear infinite;
-}
-
-// Same handle as the JSON editor's (shared/components/json-editor).
-.editor-resize-handle {
-    @include resize-handle.editor-resize-handle();
 }

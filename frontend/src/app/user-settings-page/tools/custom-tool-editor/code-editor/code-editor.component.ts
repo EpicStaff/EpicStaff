@@ -2,11 +2,11 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     ElementRef,
     EventEmitter,
     Input,
     input,
-    linkedSignal,
     NgZone,
     OnChanges,
     OnDestroy,
@@ -24,7 +24,6 @@ import { from, of, Subject, Subscription } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { ResizableDirective } from '../../../../shared/directives/resizable.directive';
 import type { RuffDiagnostic } from '../../../../shared/ruff-linter/models/ruff-result.model';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
@@ -33,19 +32,12 @@ const LINT_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-code-editor',
-    imports: [
-        FormsModule,
-        MonacoEditorModule,
-        AppSvgIconComponent,
-        IconButtonComponent,
-        MatTooltipModule,
-        ResizableDirective,
-    ],
+    imports: [FormsModule, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
     templateUrl: './code-editor.component.html',
     styleUrls: ['./code-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        '[class.fixed-height]': 'currentEditorHeight() !== null',
+        '[class.fixed-height]': 'editorHeight() !== null',
     },
 })
 export class CodeEditorComponent implements OnChanges, OnDestroy {
@@ -59,8 +51,8 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
     @Output() public pythonCodeChange = new EventEmitter<string>();
     @Output() public errorChange = new EventEmitter<boolean>();
     /**
-     * Opt-in fixed editor height in px, resizable by a handle below the editor. Unset (null) keeps the
-     * default behaviour: the editor fills its host.
+     * Opt-in fixed editor height in px. Unset (null) keeps the default behaviour: the editor fills
+     * its host.
      */
     public readonly editorHeight = input<number | null>(null);
     /** Shows an expand icon next to copy in the header; clicking it emits `expand`. */
@@ -73,9 +65,24 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
      */
     public readonly compactHeader = input(false);
     public readonly expand = output<void>();
+    /**
+     * Opt-in extra icon in the compact header (a sprite icon name), placed before the copy icon and styled
+     * like it, as in the JSON editor. It renders only with both `actionIcon` and `actionLabel` (its aria-label
+     * and tooltip) set. The default header has no slot for it.
+     */
+    public readonly actionIcon = input<string | null>(null);
+    public readonly actionLabel = input<string | null>(null);
+    /** Why the action cannot be used right now (its tooltip then); null enables it. */
+    public readonly actionDisabledReason = input<string | null>(null);
+    public readonly action = output<void>();
 
-    /** The fixed height, following `editorHeight` until the user drags the resize handle. */
-    protected readonly currentEditorHeight = linkedSignal(() => this.editorHeight());
+    protected readonly headerAction = computed(() => {
+        const icon = this.actionIcon();
+        const label = this.actionLabel();
+        return icon && label ? { icon, label } : null;
+    });
+    protected readonly isActionDisabled = computed(() => this.actionDisabledReason() !== null);
+    protected readonly actionTooltip = computed(() => this.actionDisabledReason() ?? this.actionLabel() ?? '');
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private completionDisposable: import('monaco-editor').IDisposable | null = null;
@@ -214,12 +221,13 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
         });
     }
 
-    protected onResize(height: number): void {
-        this.currentEditorHeight.set(height);
-    }
-
     protected onExpand(): void {
         this.expand.emit();
+    }
+
+    protected onAction(): void {
+        if (this.isActionDisabled()) return;
+        this.action.emit();
     }
 
     public copyCode(): void {
