@@ -53,9 +53,9 @@ import { SidePanelService } from '../../../services/side-panel.service';
                         <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
                     <div class="header-actions">
-                        @if (panelInstanceSig()?.exportButtonTemplate?.()) {
+                        @if (panelInstanceSig()?.headerActionsTemplate?.()) {
                             <ng-container
-                                [ngTemplateOutlet]="panelInstanceSig()!.exportButtonTemplate!()!"
+                                [ngTemplateOutlet]="panelInstanceSig()!.headerActionsTemplate!()!"
                             ></ng-container>
                         }
                         @if (showSaveButton()) {
@@ -174,7 +174,7 @@ export class NodePanelShellComponent {
         isSaving?: Signal<boolean>;
         form?: { invalid: boolean };
         onSaveClick?: () => void;
-        exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
+        headerActionsTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
         if (this.flowReadOnly.isReadOnly()) return false;
@@ -231,7 +231,7 @@ export class NodePanelShellComponent {
                                 isSaving?: Signal<boolean>;
                                 form?: { invalid: boolean };
                                 onSaveClick?: () => void;
-                                exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
+                                headerActionsTemplate?: () => TemplateRef<unknown> | undefined;
                             }
                         );
                         this.previousNodeId = node.id;
