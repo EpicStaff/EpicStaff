@@ -35,6 +35,7 @@ import {
     DurationFilter,
     GraphSessionLight,
     GraphSessionService,
+    SessionRunType,
     TriggerType,
 } from '../../services/flows-sessions.service';
 
@@ -71,6 +72,7 @@ export class GlobalSessionsListComponent {
     public sortOrder = signal<'asc' | 'desc'>('desc');
     public flowFilter = signal<string[]>([]);
     public triggerFilter = signal<TriggerType[]>([]);
+    public runTypeFilter = signal<SessionRunType[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
     public durationFilter = signal<DurationFilter | null>(null);
     public dateFilter = signal<DateRangeFilter | null>(null);
@@ -113,6 +115,7 @@ export class GlobalSessionsListComponent {
             const isErrorCause = this.isErrorCauseFilter();
             const durationFilter = this.durationFilter();
             const dateFilter = this.dateFilter();
+            const runType = this.runTypeFilter();
             this.reloadTrigger();
             this.loadGlobalSessions(
                 size,
@@ -123,7 +126,8 @@ export class GlobalSessionsListComponent {
                 triggerName,
                 isErrorCause,
                 durationFilter,
-                dateFilter
+                dateFilter,
+                runType
             );
         });
 
@@ -195,6 +199,11 @@ export class GlobalSessionsListComponent {
 
     public onTriggerFilterChange(types: TriggerType[]): void {
         this.triggerFilter.set(types);
+        this.currentPage.set(1);
+    }
+
+    public onRunTypeFilterChange(runTypes: SessionRunType[]): void {
+        this.runTypeFilter.set(runTypes);
         this.currentPage.set(1);
     }
 
@@ -348,7 +357,8 @@ export class GlobalSessionsListComponent {
         triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null,
-        dateFilter?: DateRangeFilter | null
+        dateFilter?: DateRangeFilter | null,
+        runType?: SessionRunType[]
     ): void {
         this.cancelLoad$.next();
         this.cancelPolling$.next();
@@ -364,7 +374,8 @@ export class GlobalSessionsListComponent {
                 triggerType,
                 isErrorCause,
                 durationFilter,
-                dateFilter
+                dateFilter,
+                runType
             )
             .pipe(takeUntil(this.cancelLoad$), takeUntilDestroyed(this.destroyRef))
             .subscribe({
@@ -400,7 +411,8 @@ export class GlobalSessionsListComponent {
                             this.triggerFilter(),
                             this.isErrorCauseFilter(),
                             this.durationFilter(),
-                            this.dateFilter()
+                            this.dateFilter(),
+                            this.runTypeFilter()
                         )
                         .pipe(catchError(() => EMPTY));
                 }),

@@ -18,6 +18,9 @@
         (click)="toggleDropdown()"
     >
         <span class="session-dropdown-trigger__label">{{ selectedSessionLabel }}</span>
+        @if (isTestRun(selectedSession)) {
+            <app-test-run-chip />
+        }
         <app-svg-icon
             icon="chevron-down"
             size="16px"
@@ -46,7 +49,12 @@
                         [class.active]="session.id.toString() === selectedSessionId"
                         (click)="onSessionChange(session.id.toString())"
                     >
-                        <span class="session-dropdown__item-id">ID {{ session.id }}</span>
+                        <span class="session-dropdown__item-id">
+                            ID {{ session.id }}
+                            @if (isTestRun(session)) {
+                                <app-test-run-chip />
+                            }
+                        </span>
                         <span class="session-dropdown__item-time">{{ getTimeAgo(session.status_updated_at) }}</span>
                     </button>
                 }
