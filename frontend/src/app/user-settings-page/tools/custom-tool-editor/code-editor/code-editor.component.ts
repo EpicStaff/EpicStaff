@@ -5,10 +5,13 @@ import {
     ElementRef,
     EventEmitter,
     Input,
+    input,
+    linkedSignal,
     NgZone,
     OnChanges,
     OnDestroy,
     Output,
+    output,
     SimpleChanges,
     ViewChild,
 } from '@angular/core';
@@ -21,6 +24,7 @@ import { from, of, Subject, Subscription } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
+import { ResizableDirective } from '../../../../shared/directives/resizable.directive';
 import type { RuffDiagnostic } from '../../../../shared/ruff-linter/models/ruff-result.model';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
@@ -29,10 +33,20 @@ const LINT_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-code-editor',
-    imports: [FormsModule, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
+    imports: [
+        FormsModule,
+        MonacoEditorModule,
+        AppSvgIconComponent,
+        IconButtonComponent,
+        MatTooltipModule,
+        ResizableDirective,
+    ],
     templateUrl: './code-editor.component.html',
     styleUrls: ['./code-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[class.fixed-height]': 'currentEditorHeight() !== null',
+    },
 })
 export class CodeEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
@@ -44,6 +58,24 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
     @Input() public readOnly: boolean = false;
     @Output() public pythonCodeChange = new EventEmitter<string>();
     @Output() public errorChange = new EventEmitter<boolean>();
+    /**
+     * Opt-in fixed editor height in px, resizable by a handle below the editor. Unset (null) keeps the
+     * default behaviour: the editor fills its host.
+     */
+    public readonly editorHeight = input<number | null>(null);
+    /** Shows an expand icon next to copy in the header; clicking it emits `expand`. */
+    public readonly allowExpand = input(false);
+    /** Label and tooltip of the expand icon; a host whose expand does something else (e.g. swaps panes) names it. */
+    public readonly expandLabel = input('Expand editor');
+    /**
+     * Renders the header like the JSON editor's (muted entrypoint subtitle, small bare action icons), for a
+     * host that shows this editor next to a JSON editor. Off: the default header with bordered icon buttons.
+     */
+    public readonly compactHeader = input(false);
+    public readonly expand = output<void>();
+
+    /** The fixed height, following `editorHeight` until the user drags the resize handle. */
+    protected readonly currentEditorHeight = linkedSignal(() => this.editorHeight());
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private completionDisposable: import('monaco-editor').IDisposable | null = null;
@@ -180,6 +212,14 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
                 };
             },
         });
+    }
+
+    protected onResize(height: number): void {
+        this.currentEditorHeight.set(height);
+    }
+
+    protected onExpand(): void {
+        this.expand.emit();
     }
 
     public copyCode(): void {

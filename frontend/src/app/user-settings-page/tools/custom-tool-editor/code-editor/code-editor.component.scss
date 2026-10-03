@@ -1,3 +1,6 @@
+@use '../../../../../styles/editor-header' as editor-header;
+@use '../../../../../styles/editor-resize-handle' as resize-handle;
+
 :host ::ng-deep .monaco-editor {
     --vscode-focusBorder: transparent !important;
     height: 100% !important;
@@ -12,32 +15,23 @@
     overflow: visible;
 }
 
+// Opt-in fixed height (`editorHeight` input): the editor keeps its own height instead of filling the host.
+:host(.fixed-height) {
+    height: auto;
+
+    .editor-container {
+        flex: none;
+    }
+}
+
+// Default and compact (`compactHeader`) headers share the JSON editor's header base.
 .editor-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 1rem;
-    font-size: var(--text-body-medium-size);
-    font-weight: var(--text-body-medium-weight);
-    line-height: 1;
-    border-bottom: 1px solid var(--gray-820);
+    @include editor-header.editor-header();
 
     .left-section {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        .editor-title {
-            color: var(--gray-215);
-            font-weight: 500;
-            margin-right: 1rem;
-            display: flex;
-            align-items: center;
-
-            .python-icon {
-                margin-right: 0.5rem;
-                color: var(--gold-475);
-            }
+        .python-icon {
+            margin-right: 0.5rem;
+            color: var(--gold-475);
         }
 
         .entrypoint-main {
@@ -57,10 +51,6 @@
     }
 
     .right-section {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-
         app-icon-button {
             color: var(--gray-215);
             transition: color 0.2s ease;
@@ -70,6 +60,11 @@
             }
         }
     }
+}
+
+// The default header's bordered icon buttons sit closer together than the compact header's bare icons.
+.editor-header:not(.editor-header--compact) .right-section {
+    column-gap: 0.5rem;
 }
 
 .editor-container {
@@ -122,4 +117,9 @@
     width: 30px;
     height: 30px;
     animation: spin 1s linear infinite;
+}
+
+// Same handle as the JSON editor's (shared/components/json-editor).
+.editor-resize-handle {
+    @include resize-handle.editor-resize-handle();
 }

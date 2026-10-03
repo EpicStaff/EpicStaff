@@ -2,13 +2,16 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     ElementRef,
     EventEmitter,
     HostBinding,
     Input,
+    input,
     OnChanges,
     OnDestroy,
     Output,
+    output,
     SimpleChanges,
     ViewChild,
 } from '@angular/core';
@@ -66,6 +69,8 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public allowCopy: boolean = false;
     @Input() public readonly: boolean = false;
     @Input() public allowExpand: boolean = false;
+    /** Label and tooltip of the expand icon; a host whose expand does something else (e.g. swaps panes) names it. */
+    public readonly expandLabel = input('Expand editor');
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public exampleHint: string = '';
@@ -76,6 +81,18 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Output() public errorsChange = new EventEmitter<JsonError[]>();
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
     @Output() public expand = new EventEmitter<void>();
+    /**
+     * Opt-in extra header icon (a sprite icon name), placed before the copy icon and styled like it;
+     * null renders none. `actionLabel` is its aria-label and tooltip.
+     */
+    public readonly actionIcon = input<string | null>(null);
+    public readonly actionLabel = input('');
+    /** Why the action cannot be used right now (its tooltip then); null enables it. */
+    public readonly actionDisabledReason = input<string | null>(null);
+    public readonly action = output<void>();
+
+    protected readonly isActionDisabled = computed(() => this.actionDisabledReason() !== null);
+    protected readonly actionTooltip = computed(() => this.actionDisabledReason() ?? this.actionLabel());
 
     public editorLoaded = false;
     public jsonIsValid = true;
@@ -246,6 +263,11 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
 
     public onExpand(): void {
         this.expand.emit();
+    }
+
+    protected onAction(): void {
+        if (this.isActionDisabled()) return;
+        this.action.emit();
     }
 
     public onResize(newHeight: number): void {
