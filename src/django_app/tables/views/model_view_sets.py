@@ -1334,12 +1334,6 @@ class TaskNodeViewSet(
     )
     serializer_class = TaskNodeSerializer
 
-    def perform_update(self, serializer):
-        # The serializer allows writing `graph`; without this check a PATCH
-        # could move the node into another org's graph.
-        self._assert_parent_in_active_org(serializer)
-        super().perform_update(serializer)
-
     @extend_schema(
         responses={
             200: OpenApiResponse(
@@ -1381,12 +1375,6 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = AgentNodeSerializer
-
-    def perform_update(self, serializer):
-        # The serializer allows writing `graph`; without this check a PATCH
-        # could move the node into another org's graph.
-        self._assert_parent_in_active_org(serializer)
-        super().perform_update(serializer)
 
     @extend_schema(
         responses={
