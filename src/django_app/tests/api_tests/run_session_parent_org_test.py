@@ -23,7 +23,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser, Role
-from tables.models import Graph, Session, StartNode
+from tables.models import Edge, Graph, PythonCode, PythonNode, Session, StartNode
 from rbac.models.enums import BuiltInRole
 from tests.fixtures import *  # noqa: F401,F403
 
@@ -63,10 +63,18 @@ def auth_client(member_a, org_a):
 
 
 def _build_runnable_graph(name: str, org: Organization) -> Graph:
-    """Mirrors the `session_data` fixture's graph shape (a start node) so
-    `create_session_data`/`subgraph_validator` don't reject it."""
+    """A start node wired to a python node: without an edge off the start node
+    `create_session_data` raises GraphEntryPointException and the run never
+    reaches the parent-link outcome under test."""
     graph = Graph.objects.create(name=name, org=org)
-    StartNode.objects.create(graph=graph, variables={})
+    start_node = StartNode.objects.create(graph=graph, variables={})
+    python_code = PythonCode.objects.create(code="def main():\n    return 1\n")
+    python_node = PythonNode.objects.create(
+        graph=graph, python_code=python_code, node_name="python_node"
+    )
+    Edge.objects.create(
+        graph=graph, start_node_id=start_node.pk, end_node_id=python_node.pk
+    )
     return graph
 
 
@@ -157,3 +165,28 @@ def test_nonexistent_parent_session_id_is_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert not Session.objects.filter(graph=graph_in_org_a).exists()
+
+
+@pytest.mark.django_db
+def test_cross_org_and_nonexistent_parent_get_the_same_response(
+    auth_client, redis_client_mock, graph_in_org_a, session_in_org_b
+):
+    url = reverse("run-session")
+
+    def run_with_parent(parent_session_id: int):
+        return auth_client.post(
+            url,
+            {
+                "graph_id": graph_in_org_a.pk,
+                "variables": {},
+                "parent_session_id": parent_session_id,
+            },
+            format="json",
+        )
+
+    cross_org_response = run_with_parent(session_in_org_b.pk)
+    nonexistent_response = run_with_parent(session_in_org_b.pk + 10_000)
+
+    assert cross_org_response.status_code == nonexistent_response.status_code
+    assert cross_org_response.data == nonexistent_response.data
