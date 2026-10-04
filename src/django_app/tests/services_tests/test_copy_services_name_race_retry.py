@@ -271,7 +271,7 @@ def test_python_code_tool_copy_still_raises_integrity_error_on_forced_collision(
     _make_python_code_tool(org, name="RaceTool #2")
 
     monkeypatch.setattr(
-        "tables.services.copy_services.python_code_tool_copy_service.ensure_unique_identifier",
+        "tables.services.copy_services.helpers.ensure_unique_identifier",
         lambda base_name, existing_names: "RaceTool #2",
     )
 
@@ -287,7 +287,7 @@ def test_mcp_tool_copy_still_raises_integrity_error_on_forced_collision(
     _make_mcp_tool(org, name="RaceMcp #2")
 
     monkeypatch.setattr(
-        "tables.services.copy_services.mcp_tool_copy_service.ensure_unique_identifier",
+        "tables.services.copy_services.helpers.ensure_unique_identifier",
         lambda base_name, existing_names: "RaceMcp #2",
     )
 

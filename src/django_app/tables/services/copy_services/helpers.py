@@ -1,6 +1,7 @@
 import zlib
 
 from django.db import connection, models
+from django.db.models import Q
 from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models.python_models import PythonCode
 
@@ -37,7 +38,13 @@ def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
         cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [key1, key2])
 
 
-def next_copy_name(model: type[models.Model], *, org_id: int | None, base_name: str) -> str:
+def next_copy_name(
+    model: type[models.Model],
+    *,
+    org_id: int | None,
+    base_name: str,
+    also_taken: Q | None = None,
+) -> str:
     """Pick the next free copy name for `base_name` among the org's `model` rows.
 
     Takes the per-(org, name family) advisory lock via `acquire_copy_name_lock`, so it
@@ -46,10 +53,18 @@ def next_copy_name(model: type[models.Model], *, org_id: int | None, base_name: 
 
     `model.objects` decides which rows count as taken: `Graph.objects`
     skips soft-deleted rows, matching the `unique_graph_name_per_org` constraint.
+
+    Args:
+        also_taken: Rows outside the org whose names also count as taken. Hybrid
+            models need it: their built-in rows (`org IS NULL`) are visible to every
+            org, so a copy must not reuse a built-in name.
     """
     clean_base = clean_base_name(base_name)
     acquire_copy_name_lock(org_id, clean_base)
-    existing_names = model.objects.filter(org_id=org_id, name__istartswith=clean_base).values_list(
+    taken_rows = Q(org_id=org_id)
+    if also_taken is not None:
+        taken_rows |= also_taken
+    existing_names = model.objects.filter(taken_rows, name__istartswith=clean_base).values_list(
         "name", flat=True
     )
     return ensure_unique_identifier(base_name=base_name, existing_names=existing_names)
