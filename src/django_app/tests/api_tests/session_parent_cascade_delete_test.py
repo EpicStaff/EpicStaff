@@ -99,7 +99,7 @@ def test_session_list_never_contains_child_after_parent_deleted(
 ):
     parent = _make_session(acme_graph)
     child = _make_session(acme_graph, parent=parent)
-    grandchild = _make_session(acme_graph, parent=child)
+    _make_session(acme_graph, parent=child)
     remaining_root = _make_session(acme_graph)
 
     delete_response = acme_admin_client.delete(f"/api/sessions/{parent.id}/")
@@ -109,8 +109,6 @@ def test_session_list_never_contains_child_after_parent_deleted(
     assert list_response.status_code == 200
     listed_ids = {session["id"] for session in _results(list_response)}
     assert listed_ids == {remaining_root.id}
-    assert child.id not in listed_ids
-    assert grandchild.id not in listed_ids
 
 
 @pytest.mark.django_db

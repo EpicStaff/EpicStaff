@@ -21,12 +21,11 @@ def test_deleting_parent_session_deletes_children_and_grandchildren(graph):
     sibling = _make_session(graph, parent=parent)
     grandchild = _make_session(graph, parent=child)
     unrelated_root = _make_session(graph)
-    subtree_ids = [parent.id, child.id, sibling.id, grandchild.id]
 
     parent.delete()
 
-    assert not Session.objects.filter(id__in=subtree_ids).exists()
-    assert Session.objects.filter(id=unrelated_root.id).exists()
+    remaining_ids = set(Session.objects.filter(graph=graph).values_list("id", flat=True))
+    assert remaining_ids == {unrelated_root.id}
 
 
 @pytest.mark.django_db
@@ -43,16 +42,6 @@ def test_deleting_child_session_leaves_parent_and_siblings(graph):
     assert Session.objects.filter(id=parent.id).exists()
     sibling.refresh_from_db()
     assert sibling.parent_session_id == parent.id
-
-
-@pytest.mark.django_db
-def test_no_session_is_left_as_a_parentless_orphan_after_parent_delete(graph):
-    parent = _make_session(graph)
-    _make_session(graph, parent=_make_session(graph, parent=parent))
-
-    parent.delete()
-
-    assert not Session.objects.filter(graph=graph, parent_session_id=None).exists()
 
 
 @pytest.mark.django_db

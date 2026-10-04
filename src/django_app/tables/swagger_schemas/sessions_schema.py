@@ -93,11 +93,18 @@ RUN_SESSION_POST = {
         ),
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="No flow exists for the provided `graph_id` or `graph_uuid`.",
+            description=(
+                "No flow exists for the provided `graph_id` or `graph_uuid`, or it belongs "
+                "to an organization the caller is not a member of."
+            ),
             examples=[
                 OpenApiExample(
                     "Graph not found",
-                    value={"message": "Provided graph does not exist"},
+                    value={
+                        "status_code": 404,
+                        "code": "graph_not_found",
+                        "message": "Provided graph does not exist",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -529,17 +536,18 @@ STOP_SESSION_POST = {
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Session not found or session ID missing.",
+            description=(
+                "No session with this ID, or it belongs to an organization the caller "
+                "is not a member of."
+            ),
             examples=[
                 OpenApiExample(
-                    "Session ID missing",
-                    value="Session id is missing",
-                    response_only=True,
-                    status_codes=["404"],
-                ),
-                OpenApiExample(
                     "Session not found",
-                    value="Session not found",
+                    value={
+                        "status_code": 404,
+                        "code": "session_not_found",
+                        "message": "Session not found.",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -567,17 +575,18 @@ GET_UPDATES_GET = {
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Session not found or session ID missing.",
+            description=(
+                "No session with this ID, or it belongs to an organization the caller "
+                "is not a member of."
+            ),
             examples=[
                 OpenApiExample(
-                    "Session ID missing",
-                    value="Session id not found",
-                    response_only=True,
-                    status_codes=["404"],
-                ),
-                OpenApiExample(
                     "Session not found",
-                    value="Session not found",
+                    value={
+                        "status_code": 404,
+                        "code": "session_not_found",
+                        "message": "Session not found.",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),

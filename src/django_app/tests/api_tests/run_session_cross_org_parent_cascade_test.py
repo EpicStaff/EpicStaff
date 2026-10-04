@@ -47,6 +47,9 @@ def beta_graph(beta):
 def test_cannot_link_other_org_run_under_own_org_session(
     client_as, acme_admin_with_beta_viewer, beta, beta_graph, acme_session, redis_client_mock
 ):
+    """Unlike run_session_parent_org_test, the caller here can see the parent: Admin in
+    Acme (owns the parent session) and Viewer in Beta (may run the child flow). Being a
+    member of both orgs must still not allow linking across them."""
     client = client_as(acme_admin_with_beta_viewer)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(beta.id))
 
@@ -57,6 +60,7 @@ def test_cannot_link_other_org_run_under_own_org_session(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data["code"] == "parent_session_not_found"
     assert not Session.objects.filter(graph=beta_graph).exists()
 
 
@@ -75,11 +79,12 @@ def test_deleting_own_org_session_never_deletes_other_org_session(
         graph=beta_graph, status=Session.SessionStatus.END
     )
     client.credentials(HTTP_X_ORGANIZATION_ID=str(beta.id))
-    client.post(
+    link_response = client.post(
         reverse("run-session"),
         {"graph_id": beta_graph.pk, "variables": {}, "parent_session_id": acme_session.pk},
         format="json",
     )
+    assert link_response.status_code == status.HTTP_400_BAD_REQUEST, link_response.content
     beta_session_ids = set(
         Session.objects.filter(graph=beta_graph).values_list("id", flat=True)
     )
@@ -88,7 +93,7 @@ def test_deleting_own_org_session_never_deletes_other_org_session(
     delete_response = client.delete(f"/api/sessions/{acme_session.pk}/")
 
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
-    assert beta_session.id in Session.objects.values_list("id", flat=True)
+    assert Session.objects.filter(id=beta_session.id).exists()
     assert set(
         Session.objects.filter(graph=beta_graph).values_list("id", flat=True)
     ) == beta_session_ids
