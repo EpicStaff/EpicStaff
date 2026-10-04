@@ -846,6 +846,7 @@ class GraphViewSet(
 
         result = self._partial_export_service.export(
             node_refs,
+            org_id=graph.org_id,
             edge_ids=serializer.validated_data.get("edge_list", []),
         )
 
