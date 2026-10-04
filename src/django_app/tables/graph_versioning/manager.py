@@ -14,7 +14,6 @@ from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
-from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
     ConditionalEdge,
@@ -25,7 +24,7 @@ from tables.models import (
     WebhookTrigger,
 )
 from tables.models.graph_models import StartNode, TelegramTriggerNode
-from tables.services.copy_services.helpers import acquire_copy_name_lock
+from tables.services.copy_services.helpers import next_copy_name
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
@@ -805,17 +804,7 @@ class GraphVersioningManager:
         cond_edges_data = snapshot_copy.pop("conditional_edge_list", [])
 
         with transaction.atomic():
-            clean_base = clean_base_name(new_graph_name)
-            acquire_copy_name_lock(org_id, clean_base)
-
-            # Graph.objects skips soft-deleted rows, matching unique_graph_name_per_org.
-            existing_names = Graph.objects.filter(
-                org_id=org_id, name__istartswith=clean_base
-            ).values_list("name", flat=True)
-            snapshot_copy["name"] = ensure_unique_identifier(
-                base_name=new_graph_name,
-                existing_names=existing_names,
-            )
+            snapshot_copy["name"] = next_copy_name(Graph, org_id=org_id, base_name=new_graph_name)
 
             serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
             serializer.is_valid(raise_exception=True)
