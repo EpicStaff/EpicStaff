@@ -229,7 +229,24 @@ async def test_global_kwargs_are_forwarded_to_sandbox_task():
     assert task.global_kwargs == {"mode": "production"}
 
 
-async def test_org_id_is_forwarded_to_sandbox_task():
+async def test_authoritative_org_id_wins_over_global_kwargs_org_id():
+    sandbox = MagicMock()
+    sandbox.submit = AsyncMock(return_value=_make_success_result())
+
+    data = _make_tool_data(
+        python_code_overrides={"org_id": 77, "global_kwargs": {"org_id": 999, "mode": "production"}}
+    )
+    executor = PythonCodeToolExecutor(sandbox, data)
+    await executor({})
+
+    task = sandbox.submit.call_args[0][0]
+    assert task.global_kwargs == {"org_id": 77, "mode": "production"}
+    assert task.org_id == 77
+    # The tool's own configuration must not be mutated by the override.
+    assert data.python_code.global_kwargs == {"org_id": 999, "mode": "production"}
+
+
+async def test_org_id_is_injected_into_global_kwargs_when_none_declared():
     sandbox = MagicMock()
     sandbox.submit = AsyncMock(return_value=_make_success_result())
 
@@ -238,4 +255,17 @@ async def test_org_id_is_forwarded_to_sandbox_task():
     await executor({})
 
     task = sandbox.submit.call_args[0][0]
-    assert task.org_id == 77
+    assert task.global_kwargs == {"org_id": 77}
+
+
+async def test_org_id_is_not_invented_when_the_payload_has_none():
+    sandbox = MagicMock()
+    sandbox.submit = AsyncMock(return_value=_make_success_result())
+
+    data = _make_tool_data(python_code_overrides={"global_kwargs": {"mode": "production"}})
+    executor = PythonCodeToolExecutor(sandbox, data)
+    await executor({})
+
+    task = sandbox.submit.call_args[0][0]
+    assert task.org_id is None
+    assert task.global_kwargs == {"mode": "production"}
