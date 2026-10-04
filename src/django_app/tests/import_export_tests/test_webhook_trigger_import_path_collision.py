@@ -158,7 +158,8 @@ class TestWebhookTriggerImportPathCollision:
     def test_partial_import_renames_cross_org_colliding_path(self, acme, beta):
         _, source_node = _build_source_graph(acme, path="pasted-path")
         export_result = GraphPartialExportService(entity_registry).export(
-            [NodeRef(entity_type=EntityType.WEBHOOK_TRIGGER_NODE, node_id=source_node.id)]
+            [NodeRef(entity_type=EntityType.WEBHOOK_TRIGGER_NODE, node_id=source_node.id)],
+            org_id=acme.id,
         )
         assert not export_result.has_errors, export_result.errors
         target_graph = Graph.objects.create(name="paste-target", org=beta)
