@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from agents.models import AgentDefinition
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import (
@@ -81,7 +82,11 @@ from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
-from tables.services.session_access import get_accessible_session, get_runnable_graph
+from tables.services.session_access import (
+    assert_parent_session_in_org,
+    get_accessible_session,
+    get_runnable_graph,
+)
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.swagger_schemas.default_config_schemas import (
@@ -358,12 +363,20 @@ class SessionViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        _, per_model = Session.objects.filter(
-            id__in=ids, graph__org_id=self.get_active_org_id()
-        ).delete()
-        deleted_count = per_model.get("tables.Session", 0)
+        # Count the requested sessions before deleting: delete() also counts the
+        # sub-sessions removed by the parent_session cascade. The row lock keeps a
+        # concurrent delete from removing a selected session before ours runs, so
+        # the count matches what this request deleted.
+        with transaction.atomic():
+            owned_session_ids = list(
+                Session.objects.select_for_update(of=("self",))
+                .filter(id__in=ids, graph__org_id=self.get_active_org_id())
+                .order_by("id")
+                .values_list("id", flat=True)
+            )
+            Session.objects.filter(id__in=owned_session_ids).delete()
 
-        return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
+        return Response({"deleted": len(owned_session_ids), "ids": ids}, status=status.HTTP_200_OK)
 
     @extend_schema(**SESSION_WARNINGS_GET)
     @action(detail=True, methods=["get"], url_path="warnings")
@@ -410,7 +423,12 @@ class RunSession(APIView):
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
 
-        graph_id = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid).id
+        graph = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid)
+        graph_id = graph.id
+
+        parent_session_id = serializer.validated_data.get("parent_session_id")
+        if parent_session_id is not None:
+            assert_parent_session_in_org(parent_session_id, org_id=graph.org_id)
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
@@ -420,7 +438,6 @@ class RunSession(APIView):
             variables["files"] = files_dict
             logger.info(f"Added {len(files_dict)} files to variables.")
 
-        parent_session_id = serializer.validated_data.get("parent_session_id")
         # A sub-flow launched by the subflow_tool is triggered by its parent
         # session, not by a human hitting this endpoint.
         trigger = (

@@ -433,9 +433,10 @@ SESSION_STATUSES_GET = {
 SESSION_BULK_DELETE_POST = {
     "summary": "Bulk delete sessions",
     "description": (
-        "Deletes the given sessions within the active organization in a single atomic transaction. "
-        "`ids` echoes the requested IDs verbatim, while `deleted` counts only the sessions actually removed — "
-        "requested IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`."
+        "Deletes the requested sessions that belong to the active organization in a single atomic transaction. "
+        "`ids` echoes the requested IDs verbatim, while `deleted` counts the requested IDs that were deleted — "
+        "IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`. "
+        "Sub-sessions of a deleted session are deleted with it; they count toward `deleted` only when their own ID was requested."
     ),
     "request": inline_serializer(
         name="SessionBulkDeleteRequest",

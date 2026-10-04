@@ -3,7 +3,11 @@ from uuid import UUID
 from django.db.models import F
 from rbac.access.asserts import assert_row_org_permission
 from rbac.models.enums import Permission, ResourceType
-from tables.exceptions import GraphNotFoundError, SessionNotFoundError
+from tables.exceptions import (
+    GraphNotFoundError,
+    ParentSessionNotFoundError,
+    SessionNotFoundError,
+)
 from tables.models import Graph, Session
 
 
@@ -61,3 +65,18 @@ def get_runnable_graph(
         not_found=GraphNotFoundError(),
     )
     return graph
+
+
+def assert_parent_session_in_org(parent_session_id: int, org_id: int) -> None:
+    """Reject a parent session that does not belong to the organization `org_id`.
+
+    A sub-session is deleted together with its parent (`Session.parent_session`
+    cascades), so a parent in another organization would let that organization
+    delete this one. A missing parent and another organization's parent raise
+    the same error, so the response never reveals that a session id exists.
+
+    Raises:
+        ParentSessionNotFoundError (400): no session with this id in the organization.
+    """
+    if not Session.objects.filter(id=parent_session_id, graph__org_id=org_id).exists():
+        raise ParentSessionNotFoundError()

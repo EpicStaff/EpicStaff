@@ -31,6 +31,17 @@ class SessionNotFoundError(CustomAPIExeption):
     default_code = "session_not_found"
 
 
+class ParentSessionNotFoundError(CustomAPIExeption):
+    """Raised for a parent_session_id that is missing or owned by a different org than the graph being run.
+
+    400, not 404: the id is a reference inside the request body, not the resource being addressed.
+    """
+
+    status_code = 400
+    default_detail = "Parent session not found."
+    default_code = "parent_session_not_found"
+
+
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
