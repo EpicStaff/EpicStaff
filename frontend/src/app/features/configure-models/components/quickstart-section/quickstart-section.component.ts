@@ -1,16 +1,7 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    DestroyRef,
-    inject,
-    input,
-    OnInit,
-    signal,
-    WritableSignal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import {
     ButtonComponent,
     ConfirmationDialogData,
@@ -34,7 +25,6 @@ import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { CreateQuickstartRequest } from '../../models/quickstart.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -65,8 +55,7 @@ export class QuickstartSectionComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly toast = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
-
-    public activeTabSignal = input.required<WritableSignal<ConfigureModelsTabId>>();
+    private readonly router = inject(Router);
 
     public readonly quickStartForm = this.fb.group({
         apiKey: ['', [Validators.required]],
@@ -244,7 +233,7 @@ export class QuickstartSectionComponent implements OnInit {
     }
 
     public onReviewDefaults(): void {
-        this.activeTabSignal().set(ConfigureModelsTabId.DEFAULT_LLMS);
+        this.router.navigate(['/settings/default-llms']);
     }
 
     public onUpdateDefaults(): void {

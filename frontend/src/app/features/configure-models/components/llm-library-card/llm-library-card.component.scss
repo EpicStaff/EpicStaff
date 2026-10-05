@@ -46,7 +46,7 @@
         border-radius: 50%;
         border: 1px solid var(--purple-alpha-40);
         background: transparent;
-        color: var(--configure-models-dialog-inactive-color);
+        color: var(--accent-color);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -78,7 +78,7 @@
     &__name {
         font-size: 0.9375rem;
         font-weight: 500;
-        color: var(--configure-models-dialog-active-color);
+        color: var(--fog-200);
         word-break: break-word;
     }
 
@@ -128,7 +128,7 @@
         color: var(--fog-alpha-50);
 
         &--active {
-            color: var(--configure-models-dialog-inactive-color);
+            color: var(--accent-color);
             font-weight: 500;
             cursor: pointer;
 
