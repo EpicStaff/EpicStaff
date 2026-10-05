@@ -75,6 +75,8 @@ class RedisPubSub:
             logger.debug("Received message from session_status_handler: {}", message)
             data = json.loads(message["data"])
             close_old_connections()
+            should_revoke_credentials = False
+            session_id_for_revoke = None
             with transaction.atomic():
                 session = Session.objects.get(id=data["session_id"])
                 if data["status"] == Session.SessionStatus.EXPIRED and session.status in [
@@ -112,6 +114,17 @@ class RedisPubSub:
                         )
                         return
 
+                    # Defer credential revocation to after transaction commit to avoid holding
+                    # a lock during a potentially long network call (10-15s with retries).
+                    if data["status"] in [
+                        Session.SessionStatus.END,
+                        Session.SessionStatus.ERROR,
+                        Session.SessionStatus.STOP,
+                        Session.SessionStatus.EXPIRED,
+                    ]:
+                        should_revoke_credentials = True
+                        session_id_for_revoke = session.id
+
                     if session.status in [
                         Session.SessionStatus.END,
                         Session.SessionStatus.ERROR,
@@ -121,6 +134,14 @@ class RedisPubSub:
                             final_variables=data.get("status_data", {}).get("variables"),
                         )
                         self._save_session_storage_files(session=session)
+
+            # Revoke credentials after transaction commits, not holding any lock.
+            # Failure is not fatal — the row can be retried or manually cleaned later.
+            if should_revoke_credentials and session_id_for_revoke is not None:
+                transaction.on_commit(
+                    lambda: self._revoke_session_credentials(session_id_for_revoke),
+                    robust=True,
+                )
 
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
@@ -795,6 +816,66 @@ class RedisPubSub:
             ScheduleTriggerService().deactivate_node(node_id)
         except Exception as e:
             logger.error(f"[SchedulePubSub] Error deactivating node {node_id}: {e}")
+
+    def _revoke_session_credentials(self, session_id: int) -> None:
+        """Revoke temporary storage credentials for a session.
+
+        Reads the access_key from TemporaryStorageAccount table by session_id,
+        calls session_credential_service.revoke(), and opportunistically
+        deletes the row on success. All errors are logged but do not block
+        session status update.
+
+        Args:
+            session_id: The ID of the session.
+        """
+        try:
+            temp_account = TemporaryStorageAccount.objects.filter(session_id=session_id).first()
+
+            if not temp_account:
+                logger.debug("No temporary storage account found for session {}", session_id)
+                return
+
+            access_key = temp_account.access_key
+
+            try:
+                session = Session.objects.get(id=session_id)
+                session_credential_service.revoke(
+                    access_key=access_key, org_id=session.graph.org_id
+                )
+                logger.info(
+                    "Successfully revoked temporary storage account {} for session {}",
+                    access_key,
+                    session_id,
+                )
+
+                # Opportunistically delete the row on success
+                try:
+                    temp_account.delete()
+                    logger.debug(
+                        "Deleted temporary storage account record for session {}", session_id
+                    )
+                except Exception as delete_error:
+                    logger.warning(
+                        "Failed to delete temporary storage account record for session {}: {}",
+                        session_id,
+                        delete_error,
+                    )
+
+            except TemporaryCredentialRevokeError as revoke_error:
+                logger.warning(
+                    "Failed to revoke temporary storage credentials for session {}: {}",
+                    session_id,
+                    revoke_error,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Error during credential revocation for session {}: {}", session_id, error
+                )
+
+        except Exception as error:
+            logger.error(
+                "Error in credential revocation handler for session {}: {}", session_id, error
+            )
 
     def _revoke_test_run_credentials(self, execution_id: str) -> None:
         """Revoke temporary storage credentials for a test-run execution.
