@@ -73,8 +73,7 @@ class ImportService:
                 raise PermissionDenied(
                     f"Missing CREATE permission on: {names}. No changes were made."
                 )
-            if user is not None:
-                record_last_edits(created_resources, user)
+            record_last_edits(created_resources, user)
 
         return id_mapper, self.registry
 

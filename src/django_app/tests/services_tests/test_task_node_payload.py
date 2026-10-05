@@ -12,6 +12,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from agents.exceptions import SurfaceValidationError
 from tables.models import EmbeddingConfig, EmbeddingModel
@@ -145,6 +147,12 @@ def task_node(graph):
     return TaskNode.objects.create(graph=graph, node_name="task-node-payload")
 
 
+def _last_edit_reads(captured) -> int:
+    return sum(
+        'FROM "rbac_resourcelastedit"' in query["sql"] for query in captured.captured_queries
+    )
+
+
 def wire_entrypoint(graph, task_node):
     start_node = StartNode.objects.create(graph=graph, variables={})
     Edge.objects.create(
@@ -209,6 +217,17 @@ class TestNodeSurfaceService:
         combined = NodeSurfaceService.build_combined_surface(task_node)
 
         assert CombinedSurfaceData(**combined) == CombinedSurfaceData()
+
+    @pytest.mark.django_db
+    def test_last_edits_of_every_surface_are_read_in_one_query(
+        self, task_node, surface_a, surface_b
+    ):
+        task_node.surface_list.set([surface_a, surface_b])
+
+        with CaptureQueriesContext(connection) as captured:
+            NodeSurfaceService.build_combined_surface(task_node)
+
+        assert _last_edit_reads(captured) == 1
 
 
 class TestBuildGraphDataTaskNode:

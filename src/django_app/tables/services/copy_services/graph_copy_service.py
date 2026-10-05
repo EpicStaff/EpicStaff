@@ -72,8 +72,7 @@ class GraphCopyService(BaseCopyService):
 
         self._remap_decision_table_references(new_graph, node_id_map)
         self._remap_classification_decision_table_references(new_graph, node_id_map)
-        if user is not None:
-            record_last_edits([new_graph, *new_nodes], user)
+        record_last_edits([new_graph, *new_nodes], user)
 
         return new_graph
 

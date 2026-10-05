@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from django.db.models import prefetch_related_objects
+
 from agents.models.surface_models import AgentInlineSurface, InlineSurface
 from agents.serializers.inline_surface_serializers import (
     AgentInlineSurfaceReadSerializer,
@@ -14,7 +16,9 @@ from agents.services.surface_combine_service import SurfaceCombineService
 class NodeSurfaceService:
     @staticmethod
     def build_combined_surface(node) -> dict:
-        surface_dicts = [SurfaceReadSerializer(s).data for s in node.surface_list.all()]
+        surfaces = list(node.surface_list.all())
+        prefetch_related_objects(surfaces, "last_edits")
+        surface_dicts = [SurfaceReadSerializer(surface).data for surface in surfaces]
 
         inline_surface = getattr(node, "inline_surface", None)
         if isinstance(inline_surface, AgentInlineSurface):

@@ -9,7 +9,7 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import serializers
 
-from rbac.authorship.policy import resolve_author
+from rbac.authorship.policy import claim_authorship_in_bulk, resolve_author
 from rbac.models.last_edit import LastEditTrackedModel, ResourceLastEdit
 
 LAST_EDIT_TRACKER_CONTEXT_KEY = "last_edit_tracker"
@@ -37,7 +37,10 @@ OwnerReference = tuple[type[models.Model], Any]
 
 
 def record_last_edit(
-    instance: LastEditTrackedModel, user: object, *, edited_at: datetime.datetime | None = None
+    instance: LastEditTrackedModel,
+    user: object | None,
+    *,
+    edited_at: datetime.datetime | None = None,
 ) -> None:
     """Record `user` as the last editor of `instance` at `edited_at` (default: now)."""
     record_last_edits([instance], user, edited_at=edited_at)
@@ -45,22 +48,27 @@ def record_last_edit(
 
 def record_last_edits(
     instances: Iterable[LastEditTrackedModel],
-    user: object,
+    user: object | None,
     *,
     edited_at: datetime.datetime | None = None,
 ) -> None:
-    """Upsert the last edit of every instance in one statement.
+    """Upsert the last edit of every instance in one statement and claim the author-less ones.
 
-    `user` is stored only when it resolves to an author; otherwise the editor is NULL and
-    the time is still recorded. Rows that opt out via `records_last_edit()` are skipped;
-    callers without an acting user must not call this.
+    Does nothing when `user` is None (no acting user). A user that does not resolve to an
+    author, such as the system API-key principal, is recorded as a NULL editor and claims
+    nothing; rows that opt out via `records_last_edit()` are skipped.
     """
+    if user is None:
+        return
+    recorded = [instance for instance in instances if instance.records_last_edit()]
     editor = resolve_author(user)
     edited_at = edited_at or timezone.now()
     _upsert(
         RecordedLastEdit(instance, editor.pk if editor else None, edited_at)
-        for instance in instances
+        for instance in recorded
     )
+    if editor is not None:
+        claim_authorship_in_bulk(recorded, editor)
 
 
 @dataclass(frozen=True)
@@ -101,18 +109,6 @@ def _upsert(recorded: Iterable[RecordedLastEdit]) -> None:
         unique_fields=["content_type", "object_id"],
         update_fields=["edited_by", "edited_at"],
     )
-
-
-@dataclass(frozen=True)
-class LastEditOutcome:
-    """Result of a finished `LastEditTracker`.
-
-    `edited` holds the tracked resources that got a last edit; `changed` is True when any
-    watched write edited its owner (creation, a field change or an allow-listed canvas key).
-    """
-
-    edited: tuple[models.Model, ...]
-    changed: bool
 
 
 @dataclass
@@ -163,17 +159,15 @@ class LastEditTracker:
         """Record `resource` as edited by a write this tracker did not watch."""
         self._marked_edited.append(resource)
 
-    def finish(self) -> LastEditOutcome:
+    def finish(self) -> None:
         """Compare every watched update with its current state and record the edited resources.
 
         Edited rows, the owners they edited and the rows marked edited are recorded in one
-        statement.
+        statement, and the author-less ones are claimed by the acting user.
         """
         edited = []
-        changed = False
         for watched in self._watched.values():
             if watched.state_serializer is None:
-                changed = True
                 edited.append(watched.instance)
                 self._add_owner_reference(_owner_reference(watched.instance))
                 continue
@@ -183,7 +177,6 @@ class LastEditTracker:
             if _owner_view(state_after, canvas_fields) != _owner_view(
                 watched.state_before, canvas_fields
             ):
-                changed = True
                 self._add_owner_reference(watched.owner_before)
                 self._add_owner_reference(_owner_reference(watched.instance))
             if _without(state_after, canvas_fields) != _without(
@@ -195,13 +188,10 @@ class LastEditTracker:
         self._watched.clear()
         self._edited_owner_references.clear()
         self._marked_edited.clear()
-        tracked = tuple(
-            instance
-            for instance in edited
-            if isinstance(instance, LastEditTrackedModel) and instance.records_last_edit()
+        record_last_edits(
+            [instance for instance in edited if isinstance(instance, LastEditTrackedModel)],
+            self._user,
         )
-        record_last_edits(tracked, self._user)
-        return LastEditOutcome(edited=tracked, changed=changed)
 
     def _add_owner_reference(self, reference: OwnerReference | None) -> None:
         if reference is not None:

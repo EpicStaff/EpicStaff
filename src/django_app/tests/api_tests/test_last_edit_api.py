@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
 from rbac.authorship import record_last_edit, record_last_edits
+from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import Organization, OrganizationUser, ResourceLastEdit
 from tables.models import Graph, GraphNote, Label, StorageFile
 from tables.models.graph_models import ConditionGroup, DecisionTableNode, Edge, PythonNode
@@ -132,7 +133,7 @@ def test_patch_of_json_key_named_id_is_an_edit(colleague_client, colleague, grap
     node = PythonNode.objects.create(
         graph=graph, python_code=python_code, node_name="py", input_map={"id": "a"}
     )
-    record_last_edit(node, None, edited_at=PREVIOUS_EDIT_AT)
+    record_last_edit(node, SystemServicePrincipal(), edited_at=PREVIOUS_EDIT_AT)
 
     response = colleague_client.patch(
         reverse("pythonnode-detail", args=[node.pk]), {"input_map": {"id": "b"}}, format="json"

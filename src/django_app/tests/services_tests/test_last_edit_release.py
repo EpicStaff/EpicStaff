@@ -37,18 +37,25 @@ def _last_edit_of(instance) -> ResourceLastEdit:
 
 @pytest.mark.django_db
 def test_release_clears_editor_only_in_target_org_and_keeps_time(acme, beta, editor, colleague):
-    acme_graph = Graph.objects.create(name="acme-edited", org=acme)
+    # Authored by the colleague, so the editor's edits do not claim them and only last
+    # edits are released.
+    acme_graph = Graph.objects.create(name="acme-edited", org=acme, created_by=colleague)
     deleted_graph = Graph.objects.create(
         name="acme-deleted-edited",
         org=acme,
         is_soft_deleted=True,
         soft_deleted_at=timezone.now(),
+        created_by=colleague,
     )
-    acme_note = GraphNote.objects.create(graph=acme_graph, content="acme")
-    acme_definition = AgentDefinition.objects.create(org=acme, name="acme-agent")
-    acme_file = StorageFile.objects.create(org=acme, path="a.txt", name="a.txt")
-    beta_graph = Graph.objects.create(name="beta-edited", org=beta)
-    beta_note = GraphNote.objects.create(graph=beta_graph, content="beta")
+    acme_note = GraphNote.objects.create(graph=acme_graph, content="acme", created_by=colleague)
+    acme_definition = AgentDefinition.objects.create(
+        org=acme, name="acme-agent", created_by=colleague
+    )
+    acme_file = StorageFile.objects.create(
+        org=acme, path="a.txt", name="a.txt", created_by=colleague
+    )
+    beta_graph = Graph.objects.create(name="beta-edited", org=beta, created_by=colleague)
+    beta_note = GraphNote.objects.create(graph=beta_graph, content="beta", created_by=colleague)
     colleague_note = GraphNote.objects.create(graph=acme_graph, content="colleague")
     for instance in (acme_graph, deleted_graph, acme_note, acme_definition, acme_file):
         record_last_edit(instance, editor, edited_at=EDITED_AT)
@@ -82,14 +89,18 @@ def test_release_counts_authorship_and_last_edits_together(acme, editor):
 
 @pytest.mark.django_db
 def test_release_outside_memberships_keeps_editor_in_member_orgs(
-    acme, beta, editor, role_member
+    acme, beta, editor, colleague, role_member
 ):
     OrganizationUser.objects.create(user=editor, org=acme, role=role_member)
     acme_note = GraphNote.objects.create(
         graph=Graph.objects.create(name="member-flow", org=acme), content="kept"
     )
+    # Authored by the colleague, so the editor's edit does not claim it and only its last
+    # edit is released.
     beta_note = GraphNote.objects.create(
-        graph=Graph.objects.create(name="non-member-flow", org=beta), content="released"
+        graph=Graph.objects.create(name="non-member-flow", org=beta),
+        content="released",
+        created_by=colleague,
     )
     record_last_edit(acme_note, editor, edited_at=EDITED_AT)
     record_last_edit(beta_note, editor, edited_at=EDITED_AT)

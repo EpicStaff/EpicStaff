@@ -106,12 +106,14 @@ def test_system_principal_records_time_without_editor(acme_graph, editor):
 
 
 @pytest.mark.django_db
-def test_batch_record_is_one_statement(acme, acme_graph, editor):
+def test_batch_record_is_one_statement(acme, editor):
+    authored_graph = Graph.objects.create(name="authored-flow", org=acme, created_by=editor)
     notes = [
-        GraphNote.objects.create(graph=acme_graph, content=f"note-{index}") for index in range(3)
+        GraphNote.objects.create(graph=authored_graph, content=f"note-{index}", created_by=editor)
+        for index in range(3)
     ]
     record_last_edit(notes[0], editor)
-    instances = [acme_graph, *notes]
+    instances = [authored_graph, *notes]
     for instance in instances:
         ContentType.objects.get_for_model(instance)
 
@@ -243,3 +245,81 @@ def test_built_in_tool_is_never_recorded(acme, editor):
 
     assert not ResourceLastEdit.objects.filter(object_id=built_in.pk).exists()
     assert _last_edit_of(custom).edited_by_id == editor.id
+
+
+def _author_id(instance) -> int | None:
+    return type(instance)._base_manager.values_list("created_by_id", flat=True).get(pk=instance.pk)
+
+
+def _claim_statements(captured) -> list[str]:
+    return [
+        query["sql"] for query in captured.captured_queries if query["sql"].startswith("UPDATE")
+    ]
+
+
+@pytest.mark.django_db
+def test_record_without_acting_user_records_nothing(acme_graph):
+    with CaptureQueriesContext(connection) as captured:
+        record_last_edits([acme_graph], None)
+
+    assert captured.captured_queries == []
+    assert not ResourceLastEdit.objects.exists()
+    assert _author_id(acme_graph) is None
+
+
+@pytest.mark.django_db
+def test_record_claims_unauthored_resources_with_one_update_per_model(acme_graph, editor):
+    notes = [
+        GraphNote.objects.create(graph=acme_graph, content=f"note-{index}") for index in range(2)
+    ]
+    for instance in (acme_graph, *notes):
+        ContentType.objects.get_for_model(instance)
+
+    with CaptureQueriesContext(connection) as captured:
+        record_last_edits([acme_graph, *notes], editor)
+
+    assert len(_claim_statements(captured)) == 2
+    assert {_author_id(instance) for instance in (acme_graph, *notes)} == {editor.id}
+
+
+@pytest.mark.django_db
+def test_record_keeps_existing_author_without_a_claim_statement(acme, editor, other_editor):
+    graph = Graph.objects.create(name="authored-flow", org=acme, created_by=other_editor)
+    ContentType.objects.get_for_model(graph)
+
+    with CaptureQueriesContext(connection) as captured:
+        record_last_edit(graph, editor)
+
+    assert _claim_statements(captured) == []
+    assert _author_id(graph) == other_editor.id
+    assert _last_edit_of(graph).edited_by_id == editor.id
+
+
+@pytest.mark.django_db
+def test_claim_never_overwrites_an_author_set_after_loading(acme_graph, editor, other_editor):
+    Graph.objects.filter(pk=acme_graph.pk).update(created_by=other_editor)
+
+    record_last_edit(acme_graph, editor)
+
+    assert _author_id(acme_graph) == other_editor.id
+
+
+@pytest.mark.django_db
+def test_record_by_system_principal_claims_nothing(acme_graph):
+    record_last_edit(acme_graph, SystemServicePrincipal())
+
+    assert _author_id(acme_graph) is None
+    assert _last_edit_of(acme_graph).edited_by_id is None
+
+
+@pytest.mark.django_db
+def test_built_in_tool_is_never_claimed(acme, editor):
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    built_in = PythonCodeTool.objects.create(
+        name="shared-tool", description="", python_code=code, built_in=True
+    )
+
+    record_last_edit(built_in, editor)
+
+    assert _author_id(built_in) is None
+

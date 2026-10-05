@@ -1,6 +1,5 @@
 from rbac.authorship.last_edit import (
     LAST_EDIT_TRACKER_CONTEXT_KEY,
-    LastEditOutcome,
     LastEditTracker,
     RecordedLastEdit,
     affects_last_edits,
@@ -21,7 +20,6 @@ __all__ = [
     "AuthorStampingSerializerMixin",
     "LastEditDestroyViewSetMixin",
     "LastEditFieldsSerializerMixin",
-    "LastEditOutcome",
     "LastEditTracker",
     "RecordedLastEdit",
     "affects_last_edits",

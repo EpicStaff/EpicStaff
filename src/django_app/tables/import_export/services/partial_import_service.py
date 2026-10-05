@@ -1,6 +1,6 @@
 from django.db import transaction
 from loguru import logger
-from rbac.authorship import claim_authorship, record_last_edits
+from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -92,13 +92,10 @@ class PartialImportService:
                 is_partial=True,
                 user=user,
             )
-            if claim_authorship(graph, user):
-                graph.save(update_fields=["created_by"])
             # Only an added node edits the graph; every node can be skipped (unsupported
             # type), and new dependencies are rows of their own, not graph content.
             edited_graph = [graph] if node_mapper.get_new_ids(NODE_MAPPING_KEY) else []
-            if user is not None:
-                record_last_edits([*created_dependencies, *edited_graph], user)
+            record_last_edits([*created_dependencies, *edited_graph], user)
 
         return id_mapper
 

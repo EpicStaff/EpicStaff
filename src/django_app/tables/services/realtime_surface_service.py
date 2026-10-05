@@ -10,6 +10,7 @@ from agents.models.agent_models import (
 )
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
+from django.db.models import prefetch_related_objects
 from loguru import logger
 from src.shared.models import (
     BaseToolData,
@@ -105,6 +106,7 @@ class RealtimeSurfaceService:
             if surface.id not in explicit_surface_ids:
                 surfaces.append(surface)
 
+        prefetch_related_objects(surfaces, "last_edits")
         surface_dicts = [SurfaceReadSerializer(surface).data for surface in surfaces]
         return SurfaceCombineService.combine(surface_dicts)
 

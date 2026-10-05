@@ -1,5 +1,3 @@
-from collections.abc import Iterable
-
 from django.db import transaction
 from django.db.models import QuerySet, Value
 from django.db.models.functions import Concat, Substr
@@ -44,12 +42,6 @@ def _ancestor_paths(path: str) -> list[str]:
     return ancestors
 
 
-def _record_edited(rows: Iterable[StorageFile], user: object | None) -> None:
-    """Record `user` as the last editor of `rows`; without an acting user nothing is recorded."""
-    if user is not None:
-        record_last_edits(rows, user)
-
-
 def _claim_unauthored(rows: QuerySet[StorageFile], author: User | None) -> None:
     """Make `author` the author of the rows in `rows` that have none.
 
@@ -72,7 +64,7 @@ def _create_missing_rows(org: Organization, rows: list[StorageFile], user: objec
     StorageFile.objects.bulk_create(rows, ignore_conflicts=True)
     new_paths = [row.path for row in rows if row.path not in tracked_paths]
     if new_paths:
-        _record_edited(StorageFile.objects.filter(org=org, path__in=new_paths), user)
+        record_last_edits(StorageFile.objects.filter(org=org, path__in=new_paths), user)
 
 
 def _create_missing_folders(
@@ -151,7 +143,7 @@ class StorageFileSync:
                 _claim_unauthored(StorageFile.objects.filter(pk=file_row.pk), author)
 
         created_folders = _create_missing_folders(org, _ancestor_paths(path), author)
-        _record_edited([file_row, *created_folders], user)
+        record_last_edits([file_row, *created_folders], user)
 
     @staticmethod
     def on_mkdir(org_id: int, path: str, *, user: object | None = None) -> None:
@@ -162,7 +154,7 @@ class StorageFileSync:
         created_folders = _create_missing_folders(
             org, [folder_path, *_ancestor_paths(folder_path)], author
         )
-        _record_edited(created_folders, user)
+        record_last_edits(created_folders, user)
 
     @staticmethod
     def on_delete(org_id: int, path: str) -> None:
@@ -197,7 +189,7 @@ class StorageFileSync:
                 if updated:
                     moved_file = StorageFile.objects.filter(org_id=org_id, path=dst)
                     _claim_unauthored(moved_file, author)
-                    _record_edited(moved_file, user)
+                    record_last_edits(moved_file, user)
 
             if updated == 0:
                 src_prefix = src.rstrip("/") + "/"
@@ -218,7 +210,7 @@ class StorageFileSync:
                 _claim_unauthored(
                     StorageFile.objects.filter(org_id=org_id, path=dst_prefix), author
                 )
-                _record_edited([row for row in moved_rows if row.path == dst_prefix], user)
+                record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
 
     @staticmethod
     def on_copy(org_id: int, actual_dst_paths: list[str], *, user: object | None = None) -> None:
@@ -313,7 +305,7 @@ class StorageFileSync:
                 created_folders = _create_missing_folders(
                     dst_org, _ancestor_paths(actual_dst_path), author
                 )
-                _record_edited([dest_row, *created_folders], user)
+                record_last_edits([dest_row, *created_folders], user)
 
                 StorageFile.objects.filter(org_id=src_org_id, path=src_path).delete()
                 return
@@ -347,6 +339,6 @@ class StorageFileSync:
             created_folders = _create_missing_folders(
                 dst_org, _ancestor_paths(actual_dst_path), author
             )
-            _record_edited(created_folders, user)
+            record_last_edits(created_folders, user)
 
             StorageFile.objects.filter(org_id=src_org_id, path__startswith=src_prefix).delete()

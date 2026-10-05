@@ -101,6 +101,35 @@ def test_partial_import_keeps_graph_author(
 
 
 @pytest.mark.django_db
+def test_partial_import_creating_only_dependencies_leaves_graph_unclaimed(
+    client_as, admin_acme, acme, beta
+):
+    target = Graph.objects.create(name="dependency-only-target", org=acme)
+    exported_tool = ExportService(entity_registry).export_entities(
+        EntityType.MCP_TOOL,
+        [
+            McpTool.objects.create(
+                name="dependency-only-tool",
+                transport="http://mcp.example.com/sse",
+                tool_name="search",
+                org=beta,
+            ).id
+        ],
+    )[EntityType.MCP_TOOL]
+    export_data = {
+        EntityType.MCP_TOOL: exported_tool,
+        EntityType.CREW_NODE: [{"id": 5, "node_name": "retired crew node"}],
+    }
+
+    response = _partial_import(client_as, admin_acme, acme, target, export_data)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert McpTool.objects.filter(org=acme, name="dependency-only-tool").exists()
+    target.refresh_from_db()
+    assert target.created_by_id is None
+
+
+@pytest.mark.django_db
 def test_cross_org_partial_import_returns_404_and_leaves_graph_unclaimed(
     client_as, admin_acme, acme, beta, exported_note
 ):

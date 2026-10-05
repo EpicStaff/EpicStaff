@@ -142,8 +142,7 @@ class CollectionManagementService:
             collection_origin=collection_origin or SourceCollection.SourceCollectionOrigin.USER,
             org_id=org_id,
         )
-        if created_by is not None:
-            record_last_edit(collection, created_by)
+        record_last_edit(collection, created_by)
 
         logger.info(
             f"Created collection '{collection.collection_name}' (ID: {collection.collection_id})"
@@ -194,7 +193,7 @@ class CollectionManagementService:
         if update_fields:
             collection.save()
         changed = (collection.collection_name, collection.description) != state_before
-        if user is not None and changed:
+        if changed:
             record_last_edit(collection, user)
 
         logger.info(f"Updated collection {collection_id} fields: {update_fields or 'none'}")
@@ -402,8 +401,7 @@ class CollectionManagementService:
             org_id=org_id,
             created_by=resolve_author(user),
         )
-        if user is not None:
-            record_last_edit(new_collection, user)
+        record_last_edit(new_collection, user)
 
         # Get source documents with content
         source_documents = DocumentMetadata.objects.filter(

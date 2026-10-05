@@ -10,6 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from rbac.authorship import record_last_edit
+from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import OrganizationUser, ResourceLastEdit
 from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
@@ -68,7 +69,7 @@ def test_save_version_records_last_edit_of_every_edited_node(
     service, flow, member_only, member_edited_agent_node, never_edited_note
 ):
     system_edited_note = GraphNote.objects.create(graph=flow, content="system")
-    record_last_edit(system_edited_note, None, edited_at=RECORDED_AT)
+    record_last_edit(system_edited_note, SystemServicePrincipal(), edited_at=RECORDED_AT)
 
     version = service.save_version(flow, name="v1")
 
@@ -129,7 +130,7 @@ def test_restore_gives_recreated_nodes_the_recorded_last_edit(
 @pytest.mark.django_db
 def test_restore_keeps_a_recorded_system_edit_without_editor(service, flow, admin_acme):
     note = GraphNote.objects.create(graph=flow, content="note")
-    record_last_edit(note, None, edited_at=RECORDED_AT)
+    record_last_edit(note, SystemServicePrincipal(), edited_at=RECORDED_AT)
     version = service.save_version(flow, name="v1")
 
     _restore(service, version, admin_acme)

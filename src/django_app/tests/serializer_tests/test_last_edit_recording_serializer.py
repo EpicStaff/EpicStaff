@@ -249,10 +249,8 @@ def test_shared_tracker_records_only_on_finish(note, editor):
     GraphNote.objects.filter(pk=note.pk).update(content="changed-later")
 
     assert _last_edit_of(note).edited_at == PREVIOUS_EDIT_AT
-    outcome = tracker.finish()
+    tracker.finish()
 
-    assert outcome.edited == (note, note.graph)
-    assert outcome.changed is True
     assert _last_edit_of(note).edited_by_id == editor.id
     assert _last_edit_of(note.graph).edited_by_id == editor.id
 
@@ -265,29 +263,23 @@ def _finish_metadata_write(note, editor, metadata):
     )
     serializer.is_valid(raise_exception=True)
     serializer.save()
-    return tracker.finish()
+    tracker.finish()
 
 
 @pytest.mark.django_db
 def test_position_change_is_owner_edit_only(note, editor, previous_editor):
-    outcome = _finish_metadata_write(
-        note, editor, {"position": {"x": 5, "y": 5}, "color": "#000"}
-    )
+    _finish_metadata_write(note, editor, {"position": {"x": 5, "y": 5}, "color": "#000"})
 
-    assert outcome.edited == (note.graph,)
-    assert outcome.changed is True
     assert _last_edit_of(note).edited_by_id == previous_editor.id
     assert _last_edit_of(note.graph).edited_by_id == editor.id
 
 
 @pytest.mark.django_db
 def test_appearance_change_is_no_edit_at_all(note, editor, previous_editor):
-    outcome = _finish_metadata_write(
+    _finish_metadata_write(
         note, editor, {"position": {"x": 1, "y": 1}, "color": "#000", "size": {"width": 9}}
     )
 
-    assert outcome.edited == ()
-    assert outcome.changed is False
     assert _last_edit_of(note).edited_by_id == previous_editor.id
     assert _last_edit_of(note.graph) is None
 

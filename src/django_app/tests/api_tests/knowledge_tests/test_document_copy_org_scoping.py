@@ -3,18 +3,20 @@
 import pytest
 from django.urls import reverse
 from rest_framework import status
+from rest_framework.exceptions import NotFound
 
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-def _document(collection) -> DocumentMetadata:
+def _document(collection, **fields) -> DocumentMetadata:
     return DocumentMetadata.objects.create(
         source_collection=collection,
         document_content=DocumentContent.objects.create(content=b"text"),
         file_name="notes.txt",
         file_type="txt",
         file_size=4,
+        **fields,
     )
 
 
@@ -113,11 +115,13 @@ def test_download_mixing_own_and_foreign_documents_is_404(
 
 @pytest.mark.django_db
 def test_download_names_no_missing_or_foreign_id(admin_client, foreign_collection):
-    foreign_document = _document(foreign_collection)
+    # An id that is a substring of the 404 body itself must not make the check flaky.
+    foreign_document = _document(foreign_collection, document_id=404)
 
     response = _download(admin_client, [foreign_document])
 
-    assert str(foreign_document.document_id) not in response.content.decode()
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["message"] == str(NotFound.default_detail)
 
 
 @pytest.mark.django_db

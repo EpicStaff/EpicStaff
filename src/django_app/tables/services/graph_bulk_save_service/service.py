@@ -2,11 +2,7 @@ from functools import lru_cache
 
 from django.apps import apps
 from django.db import connection, transaction
-from rbac.authorship import (
-    LAST_EDIT_TRACKER_CONTEXT_KEY,
-    LastEditTracker,
-    claim_authorship,
-)
+from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
 from tables.models.base_models import BaseGlobalNode
@@ -494,8 +490,6 @@ class GraphBulkSaveService:
 
         # check if graph was changed meanwhile editing
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
-        if claim_authorship(graph, getattr(self._request, "user", None)):
-            graph.save(update_fields=["created_by"])
 
         temp_id_map: dict[str, int] = {}
 

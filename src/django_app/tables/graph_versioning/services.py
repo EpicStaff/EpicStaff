@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from django.db import transaction
-from rbac.authorship import claim_authorship, record_last_edit
+from rbac.authorship import record_last_edit
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.constants import IMPORT_VERSION
@@ -200,6 +200,7 @@ class GraphVersioningService:
             ``node_authorship`` and ``node_last_edit`` are replayed, keeping recorded users
             who are still members of the graph's organization. It becomes the graph's
             author when the graph has none, and gates re-binding of key-value tables.
+            When ``None``, no last edit is recorded and no author is claimed.
 
         Returns
         -------
@@ -245,10 +246,7 @@ class GraphVersioningService:
             recorded_last_edits=prepared.converted_snapshot.get("node_last_edit"),
             node_mapper=node_mapper,
         )
-        if claim_authorship(graph, user):
-            graph.save(update_fields=["created_by"])
-        if user is not None:
-            record_last_edit(graph, user)
+        record_last_edit(graph, user)
 
         warnings.extend(
             self._manager.restore_secret_declarations(

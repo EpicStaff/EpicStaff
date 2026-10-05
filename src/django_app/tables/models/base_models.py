@@ -324,8 +324,9 @@ GRAPH_EDIT_METADATA_KEYS = ("position",)
 
 class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
     # Every edit of a node or edge is also an edit of its graph, and canvas metadata is
-    # never an edit of the node or edge itself; see LastEditTracker.
-    last_edit_owner_field: ClassVar[str] = "graph"
+    # never an edit of the node or edge itself; see LastEditTracker. A subclass without a
+    # `graph` foreign key sets None (enforced by the rbac.E002 system check).
+    last_edit_owner_field: ClassVar[str | None] = "graph"
     last_edit_canvas_fields: ClassVar[Mapping[str, tuple[str, ...]]] = {
         "metadata": GRAPH_EDIT_METADATA_KEYS
     }

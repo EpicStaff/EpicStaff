@@ -47,8 +47,7 @@ class PythonCodeToolCopyService(BaseCopyService):
                 org_id=target_org_id,
                 created_by=resolve_author(user),
             )
-            if user is not None:
-                record_last_edit(new_tool, user)
+            record_last_edit(new_tool, user)
 
         new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id))
         return new_tool

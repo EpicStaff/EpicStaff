@@ -356,8 +356,7 @@ class GraphStrategy(EntityImportExportStrategy):
         self._create_conditional_edges(conditional_edges_data, graph, node_mapper)
         self._remap_decision_table_references(graph, node_mapper)
         self._remap_classification_decision_table_references(graph, node_mapper)
-        if user is not None:
-            record_last_edits(created_nodes, user)
+        record_last_edits(created_nodes, user)
 
         # need only for versioning system
         return node_mapper

@@ -975,8 +975,7 @@ class GraphVersioningManager:
             id_mapper,
             user=user,
         )
-        if user is not None:
-            record_last_edit(graph, user)
+        record_last_edit(graph, user)
 
         return graph, node_mapper
 

@@ -874,6 +874,9 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
 
 
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
+    # A child row of its classification decision table, with no `graph` of its own.
+    last_edit_owner_field = None
+
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
         on_delete=models.CASCADE,

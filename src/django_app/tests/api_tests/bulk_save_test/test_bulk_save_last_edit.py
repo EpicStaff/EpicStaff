@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -12,6 +13,7 @@ from rest_framework import status
 
 from rbac.authorship import record_last_edits
 from rbac.models import ResourceLastEdit
+from tables.models import Graph
 from tables.models.graph_models import DecisionTableNode, Edge, GraphNote, PythonNode
 from tests.fixtures import *  # noqa: F401,F403
 
@@ -442,3 +444,63 @@ def test_failed_save_rolls_back_and_records_nothing(auth_client, saved_flow, pre
     assert GraphNote.objects.get(pk=saved_flow.note.pk).content == "note"
     _assert_previous_edit(saved_flow.note, previous_editor)
     _assert_previous_edit(saved_flow.graph, previous_editor)
+
+
+def _python_nodes_flow(client, graph, count: int) -> list[PythonNode]:
+    _post_save(
+        client,
+        graph,
+        python_node_list=[
+            _python_item(graph, node_name=f"py-{index}", temp_id=str(uuid.uuid4()))
+            for index in range(count)
+        ],
+    )
+    return list(PythonNode.objects.filter(graph=graph).order_by("id"))
+
+
+def _queries_to_change_code_of(client, graph, nodes: list[PythonNode]) -> int:
+    graph.refresh_from_db()
+    payload = {
+        "save_version": graph.save_version,
+        "python_node_list": [
+            _python_item(
+                graph, id=node.id, node_name=node.node_name, code=f"def main(): return {node.id}"
+            )
+            for node in nodes
+        ],
+    }
+    with CaptureQueriesContext(connection) as captured:
+        response = client.post(_save_url(graph.id), payload, format="json")
+    assert response.status_code == status.HTTP_200_OK, response.content
+    return len(captured.captured_queries)
+
+
+# Per changed python node: validation reads its python code, secret names and graph (3);
+# the write updates python code, node and the graph's updated_at (3); the last-edit tracker
+# renders the node's secrets and graph before the write (2), then refreshes the node and
+# renders its python code, secrets and graph after it (4). The graph, its owner lookup, the
+# one last-edit upsert and the response cost the same whatever the node count.
+MAX_QUERIES_PER_CHANGED_PYTHON_NODE = 12
+
+
+@pytest.mark.django_db
+def test_changed_nodes_cost_a_fixed_number_of_queries_each(auth_client, graph, regular_user):
+    # Content type lookups are cached per process after the first save.
+    warm_up = _python_nodes_flow(auth_client, graph, 1)
+    _queries_to_change_code_of(auth_client, graph, warm_up)
+    flows = {
+        count: _python_nodes_flow(
+            auth_client, Graph.objects.create(name=f"query-count-{count}", org=graph.org), count
+        )
+        for count in (1, 2, 3)
+    }
+    query_counts = {
+        count: _queries_to_change_code_of(auth_client, nodes[0].graph, nodes)
+        for count, nodes in flows.items()
+    }
+
+    per_node = query_counts[2] - query_counts[1]
+    assert query_counts[3] - query_counts[2] == per_node, query_counts
+    assert per_node <= MAX_QUERIES_PER_CHANGED_PYTHON_NODE, query_counts
+    for node in flows[3]:
+        _assert_edited_now_by(node, regular_user)

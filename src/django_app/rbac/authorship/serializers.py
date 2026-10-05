@@ -1,7 +1,6 @@
 import datetime
 import functools
 
-from django.core.exceptions import FieldDoesNotExist
 from rest_framework import serializers
 
 from rbac.authorship.last_edit import (
@@ -10,10 +9,9 @@ from rbac.authorship.last_edit import (
     LastEditTracker,
     affects_last_edits,
 )
-from rbac.authorship.policy import resolve_author
+from rbac.authorship.policy import AUTHOR_FIELD, has_author_field, resolve_author
 from rbac.models.last_edit import ResourceLastEdit
 
-AUTHOR_FIELD = "created_by"
 _STAMPING_MARKER = "_stamps_author"
 _ACTIVE_TRACKER_ATTRIBUTE = "_active_last_edit_tracker"
 
@@ -137,13 +135,7 @@ def represent_last_edited_at(edited_at: datetime.datetime | None) -> str | None:
 def _has_author_field(model) -> bool:
     # Plain serializers have no model; they hand validated_data to a service
     # that creates the row, so the author key is passed through.
-    if model is None:
-        return True
-    try:
-        model._meta.get_field(AUTHOR_FIELD)
-    except FieldDoesNotExist:
-        return False
-    return True
+    return model is None or has_author_field(model)
 
 
 def _mark_stamping(wrapper):
