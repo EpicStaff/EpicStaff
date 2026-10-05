@@ -27,7 +27,7 @@ def test_next_copy_name_ignores_names_in_other_org(acme, beta):
 @pytest.mark.django_db
 def test_next_copy_name_ignores_soft_deleted_rows(acme):
     Graph.objects.create(
-        name="Flow", org=acme, is_soft_deleted=True, soft_deleted_at=timezone.now()
+        name="Flow", org=acme, active=False, soft_deleted_at=timezone.now()
     )
 
     assert next_copy_name(Graph, org_id=acme.id, base_name="Flow") == "Flow"

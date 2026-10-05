@@ -80,7 +80,7 @@ def test_copy_name_reuses_name_of_soft_deleted_same_org_flow(acme_admin_client, 
     source = Graph.objects.create(name="Acme Flow", org=acme)
     deleted = Graph.objects.create(name="Acme Flow #2", org=acme)
     deleted.soft_delete()
-    assert Graph.all_objects.get(pk=deleted.pk).is_soft_deleted
+    assert Graph.all_objects.get(pk=deleted.pk).active is False
 
     response = _copy_flow(acme_admin_client, source)
 
