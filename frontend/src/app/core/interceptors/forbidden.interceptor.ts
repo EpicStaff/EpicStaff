@@ -16,7 +16,15 @@ let refresh$: Observable<unknown> | null = null;
  * These must not trigger the session refresh/reload below — the caller's own error
  * handling shows the message instead.
  */
-const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>(['built_in_model_immutable', 'permission_escalation_denied']);
+const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
+    'built_in_model_immutable',
+    'permission_escalation_denied',
+    // A flow save with a Key-Value node whose mode needs a key_value_tables permission the role lacks
+    // (read: R, write: C and U, delete: D); the save's own error handling shows it.
+    'key_value_mode_denied',
+    // An upload over an existing file without FILES:UPDATE; the upload's own error handling shows it.
+    'overwrite_not_permitted',
+]);
 
 /**
  * Extracts the server `message` field from an HttpErrorResponse.

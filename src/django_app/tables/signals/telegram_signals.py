@@ -1,6 +1,7 @@
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 from loguru import logger
+from rest_framework.exceptions import APIException
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTriggerAuthKind
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -72,6 +73,13 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
         TelegramTriggerService().register_telegram_trigger(telegram_trigger_instance=instance)
         logger.info(f"Successfully registered telegram trigger for TelegramTriggerNode : {id_}")
 
+    except APIException as error:
+        # An APIException detail (RegisterTelegramTriggerError,
+        # SecretResolutionError) is a message we wrote to be safe to log; a
+        # traceback adds nothing and would widen what reaches the log
+        # (loguru's `diagnose` prints local variable values, including the
+        # resolved bot token and secret_token).
+        logger.error("Error registering telegram bot {id_}: {detail}", id_=id_, detail=error.detail)
     except Exception:
         logger.exception("Error registering telegram bot {id_}", id_=id_)
 

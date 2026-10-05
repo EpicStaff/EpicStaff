@@ -29,7 +29,10 @@
         </div>
     }
 
-    <div class="decision-table__header">
+    <div
+        class="decision-table__header"
+        [style.min-height.px]="headerHeightPx"
+    >
         <div class="icon-wrapper">
             <i
                 [class]="node.icon"
@@ -56,7 +59,10 @@
         @if (conditionGroups.length > 0) {
             @for (group of conditionGroups; track trackConditionGroup($index, group)) {
                 @if (group.route_code) {
-                    <div class="decision-table__group">
+                    <div
+                        class="decision-table__group"
+                        [style.min-height.px]="rowHeightPx"
+                    >
                         <span class="group-name">{{ group.route_code }}</span>
 
                         @if (getPortForGroup(group); as port) {
@@ -87,12 +93,18 @@
                 }
             }
         } @else {
-            <div class="decision-table__group decision-table__empty">
+            <div
+                class="decision-table__group decision-table__empty"
+                [style.min-height.px]="rowHeightPx"
+            >
                 <span class="group-name">No condition groups</span>
             </div>
         }
 
-        <div class="decision-table__group">
+        <div
+            class="decision-table__group"
+            [style.min-height.px]="rowHeightPx"
+        >
             <span class="group-name">
                 Default
                 @if (!defaultNextNodeName) {
@@ -128,7 +140,10 @@
             }
         </div>
 
-        <div class="decision-table__group">
+        <div
+            class="decision-table__group"
+            [style.min-height.px]="rowHeightPx"
+        >
             <span class="group-name">
                 Error
                 @if (!nextErrorNodeName) {

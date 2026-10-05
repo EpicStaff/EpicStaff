@@ -18,15 +18,17 @@
                             size="14px"
                         ></app-svg-icon>
                     </button>
-                    <app-button
-                        type="outline-primary"
-                        [leftIcon]="'group'"
-                        [iconSize]="'12px'"
-                        (click)="groupSelectedRows()"
-                        [disabled]="!canGroupSelected()"
-                    >
-                        Group rows
-                    </app-button>
+                    @if (selectedRowsContiguous()) {
+                        <app-button
+                            type="outline-primary"
+                            [leftIcon]="'group'"
+                            [iconSize]="'12px'"
+                            (click)="groupSelectedRows()"
+                            [disabled]="!canGroupSelected()"
+                        >
+                            Group rows
+                        </app-button>
+                    }
                 }
                 <app-button
                     type="primary"
@@ -42,6 +44,7 @@
     <div
         class="grid-wrapper"
         [class.has-above-btns]="hasAboveAddButtons()"
+        (mouseleave)="hoveredSectionId.set(null)"
     >
         <!-- Above-grid "+" buttons: shown only when the corresponding params group is empty -->
         @if (!readonly() && !hasFieldCols() && exprAddPos()) {
@@ -65,31 +68,104 @@
             </button>
         }
 
-        <div class="group-overlays">
-            @for (item of groupOverlayItems(); track item.sectionId) {
+        <div
+            class="group-overlays"
+            [class.animating]="groupOverlaysAnimating()"
+            [style.--cdt-group-toggle-duration]="groupToggleDuration"
+        >
+            @for (item of groupOverlayItems(); track item.key) {
                 <div
                     class="group-overlay"
+                    [class.collapsed]="item.isCollapsed"
                     [style.top.px]="item.top"
                     [style.height.px]="item.height"
                 >
-                    <button
-                        type="button"
-                        class="group-overlay-chevron"
-                        [class.collapsed]="item.isCollapsed"
-                        [class.active]="groupMenuSectionId() === item.sectionId"
-                        (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
-                        title="Group options"
-                    >
-                        <app-svg-icon
-                            icon="play"
-                            size="14px"
-                        ></app-svg-icon>
-                    </button>
-                    @if (!item.isCollapsed) {
+                    <div class="group-overlay-gutter">
+                        <button
+                            type="button"
+                            class="group-overlay-chevron"
+                            [class.collapsed]="item.isCollapsed"
+                            [class.merged]="!!item.members"
+                            [style.top.px]="item.isCollapsed ? null : item.chevronTop"
+                            [style.border-color]="item.members ? null : item.color"
+                            [style.color]="item.members ? null : item.color"
+                            (click)="toggleGroupFromOverlay(item, $event)"
+                            (contextmenu)="openGroupMenuFromOverlay(item, $event)"
+                            (mouseenter)="hoveredSectionId.set(item.key)"
+                            [title]="groupOverlayIconTitle(item)"
+                        >
+                            @if (item.members) {
+                                <app-svg-icon
+                                    icon="group-expand"
+                                    size="22px"
+                                ></app-svg-icon>
+                            } @else {
+                                <app-svg-icon
+                                    icon="play"
+                                    size="14px"
+                                ></app-svg-icon>
+                            }
+                        </button>
+                        @if (!item.isCollapsed && item.bracketHeight > 0) {
+                            <div
+                                class="group-overlay-bracket"
+                                [style.top.px]="item.bracketTop"
+                                [style.height.px]="item.bracketHeight"
+                                [style.border-color]="item.color"
+                            ></div>
+                        }
+                    </div>
+                    @if (hoveredSectionId() === item.key) {
+                        @if (item.isCollapsed) {
+                            <div
+                                class="group-overlay-seam-line"
+                                [class.merged]="!!item.members"
+                                [style.top.px]="item.seamOffset"
+                                [style.background]="item.members ? null : item.color"
+                            ></div>
+                        } @else {
+                            <div
+                                class="group-overlay-border"
+                                [style.border-color]="item.color"
+                            ></div>
+                        }
                         <div
-                            class="group-overlay-bracket"
-                            [class.active]="groupMenuSectionId() === item.sectionId"
-                        ></div>
+                            class="group-overlay-chip"
+                            [class.merged]="!!item.members"
+                            [style.background]="item.members ? null : item.color"
+                            [class.is-light]="!item.members && isLightSectionColor(item.color)"
+                            (mouseenter)="hoveredSectionId.set(item.key)"
+                        >
+                            <span
+                                class="group-overlay-chip-name"
+                                [title]="item.name"
+                                >{{ item.name }}</span
+                            >
+                            @if (!item.members) {
+                                <button
+                                    type="button"
+                                    class="group-overlay-chip-btn"
+                                    title="Edit group"
+                                    (click)="openEditGroupDialog(item.sectionId, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="edit-label"
+                                        size="12px"
+                                    ></app-svg-icon>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="group-overlay-chip-btn group-overlay-chip-btn--delete"
+                                    title="Ungroup"
+                                    (click)="handleChipUngroup(item.sectionId, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="close"
+                                        size="16px"
+                                    ></app-svg-icon>
+                                </button>
+                            }
+                        </div>
                     }
                 </div>
             }
@@ -123,7 +199,7 @@
                 [style.left.px]="badge.x"
                 [style.top.px]="badge.y"
                 [title]="'Restore: ' + badge.label"
-                (click)="unhideColumn(badge.colId)"
+                (click)="onHiddenBadgeClick($event, badge.colId)"
             >
                 <i class="ti ti-arrows-horizontal"></i>
             </button>
@@ -175,42 +251,71 @@
         [selectedValues]="manipSelectedFieldsModel()"
         (selectionChange)="onManipSelectionChange($event)"
     />
+    <app-multi-select
+        #expandGroupMultiSelect
+        [hideTrigger]="true"
+        [showSearch]="true"
+        checkboxPosition="left"
+        color="white"
+        searchPlaceholder="Search group..."
+        [items]="expandGroupMultiSelectItems()"
+        [selectedValues]="expandGroupSelectedModel()"
+        (selectionChange)="onExpandGroupSelectionChange($event)"
+    />
 </div>
 
 <ng-template #groupMenuTemplate>
     <div class="group-menu-dropdown">
-        <div
-            class="group-menu-item"
-            (click)="handleGroupMenuUngroup()"
-        >
-            Ungroup
-        </div>
-        @if (isCurrentGroupCollapsed()) {
+        @if (isMergedGroupMenu()) {
             <div
-                class="group-menu-item"
-                (click)="handleGroupMenuExpand()"
+                class="group-menu-item group-menu-item--submenu"
+                [class.active]="expandGroupMultiSelect?.isOpen()"
+                (click)="openExpandGroupSubmenu($event)"
             >
-                Expand Group
+                <span>Expand Group</span>
+                <app-svg-icon
+                    icon="chevron-right"
+                    size="12px"
+                ></app-svg-icon>
             </div>
         } @else {
             <div
                 class="group-menu-item"
-                (click)="handleGroupMenuCollapse()"
+                (click)="handleGroupMenuUngroup()"
             >
-                Collapse Group
+                Ungroup
             </div>
         }
         <div
             class="group-menu-item"
             (click)="handleGroupMenuExpandAll()"
         >
-            Expand All Row Groups
+            Expand All Groups
         </div>
         <div
             class="group-menu-item"
             (click)="handleGroupMenuCollapseAll()"
         >
-            Collapse All Row Groups
+            Collapse All Groups
+        </div>
+    </div>
+</ng-template>
+
+<ng-template #hiddenBadgeMenuTemplate>
+    <div class="chm-dropdown">
+        @for (item of sortedHiddenBadges(); track item.colId) {
+            <div
+                class="chm-menu-item"
+                (click)="handleExpandHiddenEntry(item.colId)"
+            >
+                <span>Expand {{ item.label }}</span>
+            </div>
+        }
+        <div
+            class="chm-menu-item"
+            (click)="handleExpandAllHidden()"
+        >
+            <span>Expand All</span>
         </div>
     </div>
 </ng-template>

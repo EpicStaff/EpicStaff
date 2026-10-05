@@ -285,7 +285,7 @@ def test_python_code_tool_copy_race_on_name_returns_clean_400(
     _make_tool(org=org_a, built_in=False, name="RaceTool #2")
 
     monkeypatch.setattr(
-        "tables.services.copy_services.python_code_tool_copy_service.ensure_unique_identifier",
+        "tables.services.copy_services.helpers.ensure_unique_identifier",
         lambda base_name, existing_names: "RaceTool #2",
     )
 

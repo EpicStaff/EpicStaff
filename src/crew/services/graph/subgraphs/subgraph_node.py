@@ -80,6 +80,7 @@ class SubGraphNode:
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
             agent_task_service=self.session_graph_builder.agent_task_service,
+            key_value_client=self.session_graph_builder.key_value_client,
             stop_event=self.stop_event,
         )
 
@@ -221,10 +222,8 @@ class SubGraphNode:
 
         temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
-        if self.output_variable_path == "variables":
-            temp_state["variables"] = DotDict(subgraph_output)
-        elif self.output_variable_path:
-            if self.output_variable_path.startswith("variables."):
+        if self.output_variable_path:
+            if self.output_variable_path == "variables" or self.output_variable_path.startswith("variables."):
                 full_path = self.output_variable_path
             else:
                 full_path = f"variables.{self.output_variable_path}"

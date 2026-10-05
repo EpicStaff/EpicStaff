@@ -20,10 +20,15 @@ import {
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ConfirmationDialogService,
+    SpinnerComponent,
+    UnsavedChangesDialogService,
+} from '@shared/components';
 import { ActionCode, GetLlmConfigRequest, NodeType, ResourceCode } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
+import { extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
     defaultIfEmpty,
@@ -46,6 +51,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
+import { CreateFlowDialogComponent } from '../../../../features/flows/components/create-flow-dialog/create-flow-dialog.component';
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
 import { RestoreWarningsDialogComponent } from '../../../../features/flows/components/restore-warnings-dialog/restore-warnings-dialog.component';
 import {
@@ -62,6 +68,7 @@ import {
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
+import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
@@ -70,12 +77,16 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
+import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
+import { PromptConfig } from '../../../../visual-programming/core/models/classification-decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
 import {
     AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
     NodeModel,
     ScheduleTriggerNodeModel,
+    SubGraphNodeModel,
     TaskNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
 import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter-egg/snake-game/snake-game-overlay.component';
@@ -85,7 +96,12 @@ import { FlowService } from '../../../../visual-programming/services/flow.servic
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
-import { buildFlowModelFromGraphDto, normalizeFlowPorts } from '../../../../visual-programming/utils/load';
+import { extractToSubflow } from '../../../../visual-programming/utils/extract/extract-to-subflow';
+import {
+    buildFlowModelFromGraphDto,
+    mapGraphDtoToFlowModel,
+    normalizeFlowPorts,
+} from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
 import {
     buildBulkSavePayload,
@@ -97,7 +113,9 @@ import {
     getNodeDiff,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
+    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
+import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
@@ -139,6 +157,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly confirmationDialogService = inject(ConfirmationDialogService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -156,7 +175,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
+        const current = toDirtyComparableFlowState(this.currentFlowState());
+        const saved = toDirtyComparableFlowState(this.savedFlowState());
+        return JSON.stringify(current) !== JSON.stringify(saved);
     });
 
     public isSaving = signal(false);
@@ -196,6 +217,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly routeQueryParamMap;
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
+    private liveCdtStorageIds = new Set<string>();
     // The nodeId/nodeName query opens its panel once; re-mounting the live canvas must not re-open it.
     private lastNodeQueryKey: string | null = null;
     private isNodeQueryConsumed = false;
@@ -295,6 +317,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.fetchGraph(graphId);
         });
 
+        effect(() => {
+            const flowState = this.currentFlowState();
+            const cdtStorageIds = new Set(
+                flowState.nodes
+                    .filter((node) => node.type === NodeType.CLASSIFICATION_TABLE)
+                    .map((node) => String(node.nodeNumber ?? node.backendId))
+            );
+            const cdtRemoved = [...this.liveCdtStorageIds].some((id) => !cdtStorageIds.has(id));
+            this.liveCdtStorageIds = cdtStorageIds;
+            if (cdtRemoved) this.cleanupCdtGridState(flowState);
+        });
         this.easterEggTrigger.activated$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.startSnakeGame());
@@ -439,6 +472,193 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
+    public onExtractToSubflow(selectedNodeIds: Set<string>): void {
+        if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+
+        // Step 1: Save current parent graph to establish a clean baseline.
+        this.saveFlowState(this.currentFlowState(), false)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                // Step 2: Open the Create Flow dialog so the user names the new subflow.
+                switchMap(() => {
+                    const dialogRef = this.dialog.open<GraphDto | undefined>(CreateFlowDialogComponent, {
+                        width: '500px',
+                        providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
+                    });
+                    return dialogRef.closed;
+                }),
+                // If the user cancelled the dialog, stop.
+                filter((newGraphDto): newGraphDto is GraphDto => newGraphDto != null),
+                switchMap((newGraphDto) => {
+                    // Step 3: Run the extraction utility.
+                    const currentFlow = this.currentFlowState();
+                    const { subflowModel, parentModel } = extractToSubflow(
+                        currentFlow,
+                        selectedNodeIds,
+                        generateUuid(),
+                        newGraphDto.id
+                    );
+
+                    // Step 4: Build the subflow save payload (empty previous = all creates).
+                    const emptyFlow: FlowModel = { nodes: [], connections: [] };
+                    const subflowNodeDiff = getNodeDiff(emptyFlow, subflowModel);
+                    const subflowIdMap = buildUuidToBackendIdMap(subflowModel.nodes);
+                    const subflowConnectionDiff = getConnectionDiff(emptyFlow, subflowModel, subflowIdMap);
+                    const subflowPayload = buildBulkSavePayload(
+                        newGraphDto.id,
+                        subflowNodeDiff,
+                        subflowConnectionDiff,
+                        subflowModel,
+                        subflowIdMap,
+                        newGraphDto.save_version
+                    );
+
+                    // Step 5: Bulk-save the subflow nodes to the server.
+                    return this.flowApiService
+                        .bulkSaveGraph(newGraphDto.id, subflowPayload)
+                        .pipe(map(() => ({ newGraphDto, parentModel })));
+                }),
+                // Step 6: Update the parent flow with the extraction result and save it.
+                switchMap(({ newGraphDto, parentModel }) => {
+                    // Update the subgraph node name to match the newly created flow name.
+                    const namedParentModel: FlowModel = {
+                        ...parentModel,
+                        nodes: parentModel.nodes.map((node) => {
+                            if (node.type !== NodeType.SUBGRAPH) return node;
+                            const subgraphNode = node as SubGraphNodeModel;
+                            if (subgraphNode.data.id !== newGraphDto.id) return node;
+                            return {
+                                ...subgraphNode,
+                                node_name: newGraphDto.name,
+                                data: {
+                                    ...subgraphNode.data,
+                                    name: newGraphDto.name,
+                                    uuid: newGraphDto.uuid ?? '',
+                                    description: newGraphDto.description ?? '',
+                                },
+                            };
+                        }),
+                    };
+
+                    this.flowService.setFlow(normalizeFlowPorts(namedParentModel));
+                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => newGraphDto.name));
+                }),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Extract to subflow failed: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                })
+            )
+            .subscribe((subflowName) => {
+                this.toastService.success(`Extracted selection into subflow "${subflowName}"`);
+            });
+    }
+
+    public onUnpackSubflow(subGraphNodeId: string): void {
+        if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+
+        // Step 1: Find the SubGraphNode.
+        const subGraphNode = this.flowService
+            .nodes()
+            .find((node): node is SubGraphNodeModel => node.id === subGraphNodeId && node.type === NodeType.SUBGRAPH);
+        if (!subGraphNode) {
+            this.toastService.error('SubGraph node not found');
+            return;
+        }
+
+        const subgraphId = subGraphNode.data.id;
+        if (!subgraphId) {
+            this.toastService.error('SubGraph node has no linked flow');
+            return;
+        }
+
+        const subflowName = subGraphNode.data.name || subGraphNode.node_name || `Subflow #${subgraphId}`;
+
+        // Step 2: Check how many other flows reference this subflow.
+        this.flowApiService
+            .getSubflowUsage(subgraphId)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Could not check subflow usage: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                }),
+                // Step 3: If used elsewhere, show a confirmation dialog; otherwise skip it.
+                switchMap(({ parent_flow_ids }) => {
+                    const currentGraphId = this.graph!.id;
+                    const otherFlowIds = parent_flow_ids.filter((id) => id !== currentGraphId);
+                    if (otherFlowIds.length > 0) {
+                        return this.confirmationDialogService
+                            .confirmWithOptions({
+                                title: 'Unpack Subflow',
+                                message:
+                                    `This subflow is used in ${otherFlowIds.length} other flow(s). ` +
+                                    `Unpack <strong>${subflowName}</strong> into the current graph?`,
+                                confirmText: 'Unpack',
+                                cancelText: 'Cancel',
+                                type: 'warning',
+                                checkbox: { label: 'Also delete the subflow (will break other flows that use it)' },
+                            })
+                            .pipe(
+                                filter(
+                                    (result): result is Exclude<typeof result, 'close'> =>
+                                        result !== 'close' && result.confirmed
+                                ),
+                                map((dialogResult) => dialogResult.checked)
+                            );
+                    }
+                    // Not used elsewhere — skip dialog, auto-delete after unpack.
+                    return of(true);
+                }),
+                // Step 4: Fetch the subflow graph from the server.
+                switchMap((deleteSubflow) =>
+                    this.flowApiService
+                        .getGraphById(subgraphId, true)
+                        .pipe(map((graphDto) => ({ graphDto, deleteSubflow })))
+                ),
+                switchMap(({ graphDto, deleteSubflow }) => {
+                    // Step 5: Map the subflow DTO to a FlowModel.
+                    const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(graphDto));
+
+                    // Step 6: Run the unpack utility.
+                    const currentFlow = this.currentFlowState();
+                    const unpackedModel = unpackSubflow(currentFlow, subGraphNodeId, subflowFlowModel);
+
+                    // Step 7: Update the parent flow and save.
+                    this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
+                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => deleteSubflow));
+                }),
+                // Step 8: Optionally delete the subflow.
+                switchMap((deleteSubflow) => {
+                    if (deleteSubflow) {
+                        return this.flowStorageService.deleteFlow(subgraphId).pipe(
+                            map(() => true),
+                            catchError(() => {
+                                this.toastService.error('Unpacked successfully, but failed to delete the subflow');
+                                return of(false);
+                            })
+                        );
+                    }
+                    return of(false);
+                }),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Unpack subflow failed: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                })
+            )
+            .subscribe((deleted) => {
+                const suffix = deleted ? ' and deleted the subflow' : '';
+                this.toastService.success(`Unpacked "${subflowName}" into the current graph${suffix}`);
+            });
+    }
+
     private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false, onSettled?: () => void): void {
         forkJoin({
             graph: this.flowApiService.getGraphById(graphId, forceRefresh),
@@ -485,7 +705,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private getBlockingNodeValidationIssues(flowState: FlowModel): string[] {
         let issues: string[] = [];
         try {
-            issues = [...this.getInvalidTaskNodeMessages(flowState), ...this.getInvalidAgentNodeMessages(flowState)];
+            issues = [
+                ...this.getInvalidTaskNodeMessages(flowState),
+                ...this.getInvalidAgentNodeMessages(flowState),
+                ...this.getInvalidClassificationTableMessages(flowState),
+                // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
+                ...invalidKeyValueNodeMessages(flowState.nodes),
+            ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);
             return ['a node failed validation — check the console and try again'];
@@ -571,6 +797,45 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
+    }
+
+    /** CDT prompt schemas may legitimately be stored as a JSON string (legacy rows,
+     *  CSV/JSON import, crew runtime `json.loads`) — parse before applying the object rule. */
+    private isValidCdtPromptSchema(schema: PromptConfig['output_schema']): boolean {
+        if (schema == null) return true;
+        if (typeof schema === 'string') {
+            const trimmed = schema.trim();
+            if (trimmed === '') return true;
+            try {
+                return isValidOutputSchema(JSON.parse(trimmed));
+            } catch {
+                return false;
+            }
+        }
+        return isValidOutputSchema(schema);
+    }
+
+    private getInvalidClassificationTableMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.CLASSIFICATION_TABLE) return;
+            const cdtNode = node as ClassificationDecisionTableNodeModel;
+            const prompts = cdtNode.data?.table?.prompts ?? {};
+
+            const invalidKeys = Object.entries(prompts)
+                .filter(([, cfg]) => cfg.output_schema_invalid || !this.isValidCdtPromptSchema(cfg.output_schema))
+                .map(([key]) => key);
+
+            if (invalidKeys.length === 0) return;
+
+            const label = cdtNode.node_name?.trim() || `Untitled decision table #${index + 1}`;
+            const detail =
+                invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
+            messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
         });
 
         return messages;
@@ -1059,6 +1324,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }),
         };
         this.flowService.setFlow(rewrittenFlow);
+        this.cleanupCdtGridState(rewrittenFlow);
 
         this.isLoaded.set(true);
 

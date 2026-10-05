@@ -20,7 +20,8 @@
       "llm_configs": [ "create", "read", "update", "delete" ],
       "secrets": [ "create", "read", "delete", "use" ],
       "voice": [ "create", "read", "update", "delete" ],
-      "webhooks": [ "create", "read", "update", "delete" ]
+      "webhooks": [ "create", "read", "update", "delete" ],
+      "key_value_tables": [ "create", "read", "update", "delete" ]
     }
   },
   "Member": {
@@ -35,7 +36,8 @@
       "projects": [ "create", "read", "update" ],
       "llm_configs": [ "read" ],
       "voice": [ "read" ],
-      "webhooks": [ "create", "read", "update", "delete" ]
+      "webhooks": [ "create", "read", "update", "delete" ],
+      "key_value_tables": [ "read" ]
     }
   },
   "Viewer": {
@@ -50,7 +52,8 @@
       "projects": [ "read" ],
       "llm_configs": [ "read" ],
       "voice": [ "read" ],
-      "webhooks": [ "read" ]
+      "webhooks": [ "read" ],
+      "key_value_tables": [ "read" ]
     }
   }
 }

@@ -784,6 +784,32 @@ def test_restore_does_not_duplicate_task_node(manager, graph):
 
 
 @pytest.mark.django_db
+def test_restore_recreates_key_value_node_with_its_table(manager, graph):
+    from tables.models import KeyValueNode, KeyValueTable
+
+    table = KeyValueTable.objects.create(org=graph.org, name="Customers")
+    node = KeyValueNode.objects.create(
+        graph=graph,
+        node_name="key_value_node",
+        key_value_table=table,
+        mode="write",
+        entries=[{"key": "k", "value": "variables.v"}],
+    )
+    snapshot = manager.create_snapshot(graph)
+    # Edit after the snapshot, so only a real wipe-and-rebuild restores the old state.
+    node.mode = "delete"
+    node.key_value_table = None
+    node.save()
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    restored = graph.key_value_node_list.get()
+    assert restored.key_value_table_id == table.id
+    assert restored.mode == "write"
+    assert restored.entries == [{"key": "k", "value": "variables.v"}]
+
+
+@pytest.mark.django_db
 def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
     """
     Guard against regression: every reverse relation on Graph that

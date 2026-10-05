@@ -15,6 +15,7 @@ from src.shared.models import (
     EndNodeData,
     FileExtractorNodeData,
     GraphRagSearchConfig,
+    KeyValueNodeData,
     KnowledgeNodeData,
     LLMConfigData,
     LLMData,
@@ -50,6 +51,7 @@ from tables.models.graph_models import (
     FileExtractorNode,
     Graph,
     GraphStorageFile,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
@@ -295,6 +297,7 @@ class ConverterService(metaclass=SingletonMeta):
             backstory=ad.instructions or "You are a helpful voice assistant",
             org_id=ad.organization_id,
             user_id=user_id,
+            rt_agent_definition_id=rt_agent_chat.rt_agent_definition_id,
             knowledge_collection_id=surface_resolution.knowledge_collection_id,
             rag_type_id=surface_resolution.rag_type_id,
             rag_search_config=surface_resolution.rag_search_config,
@@ -617,6 +620,8 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         node: ClassificationDecisionTableNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -653,13 +658,47 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
+        pre_storage_allowed_paths = None
+        pre_storage_org_prefix = None
+        if node.pre_use_storage and graph_id is not None:
+            pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                pre_storage_allowed_paths.append(f"sessions/{session_id}/")
+            pre_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        post_storage_allowed_paths = None
+        post_storage_org_prefix = None
+        if node.post_use_storage and graph_id is not None:
+            post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                post_storage_allowed_paths.append(f"sessions/{session_id}/")
+            post_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
         pre_python_code_data = None
         if node.pre_python_code is not None:
-            pre_python_code_data = self.convert_python_code_to_pydantic(node.pre_python_code)
+            pre_python_code_data = self.convert_python_code_to_pydantic(
+                node.pre_python_code,
+                use_storage=node.pre_use_storage,
+                storage_allowed_paths=pre_storage_allowed_paths,
+                storage_org_prefix=pre_storage_org_prefix,
+                session_id=session_id,
+                org_id=org_id,
+            )
 
         post_python_code_data = None
         if node.post_python_code is not None:
-            post_python_code_data = self.convert_python_code_to_pydantic(node.post_python_code)
+            post_python_code_data = self.convert_python_code_to_pydantic(
+                node.post_python_code,
+                use_storage=node.post_use_storage,
+                storage_allowed_paths=post_storage_allowed_paths,
+                storage_org_prefix=post_storage_org_prefix,
+                session_id=session_id,
+                org_id=org_id,
+            )
 
         return ClassificationDecisionTableNodeData(
             node_name=resolver(node.id),
@@ -808,6 +847,20 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+        )
+
+    def convert_key_value_node_to_pydantic(
+        self,
+        key_value_node: KeyValueNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> KeyValueNodeData:
+        return KeyValueNodeData(
+            node_name=resolver(key_value_node.id),
+            key_value_table_id=key_value_node.key_value_table_id,
+            mode=key_value_node.mode,
+            entries=key_value_node.entries,
+            input_map=key_value_node.input_map,
+            output_variable_path=key_value_node.output_variable_path,
         )
 
     def convert_audio_transcription_node_to_pydantic(

@@ -96,6 +96,7 @@ class ResourceType(models.TextChoices):
         SURFACES,
     )
     WEBHOOKS
+    KEY_VALUE_TABLES
 
 
 class Permission(IntFlag):
@@ -143,6 +144,11 @@ after `migrate`) makes the database match it exactly.
   memberships cascade from it.
 - **Superadmin** has `"permissions": {}` — its authority is `User.is_superadmin`.
 
+`key_value_tables` has no `use` action; its built-in grants are in `builtin_roles.json` like
+every other resource. A Key-Value node's mode decides which `key_value_tables` bits configuring
+it needs (`MODE_PERMISSIONS` in `tables/services/key_value_table_service.py`: read → R, write →
+C and U, delete → R and D, since a delete node's session message shows the deleted values).
+
 **To change a built-in role:** edit the JSON, run
 `make django-tests ARGS="tests/command_tests/test_seed_builtin_roles.py tests/services_tests/test_builtin_role_permissions.py"`,
 restart the `django_app` container. Running Django outside Docker? `make django-migrate` does not
@@ -188,12 +194,16 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
   `X-Organization-Id` header the caller sends — identical to that owner authenticating with
   a JWT. Key management endpoints (`/api/profile/api-keys/`,
   `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
-  [api_keys.md](api_keys.md). Permanent deletion (`DELETE /api/admin/users/{id}/`,
-  `DELETE /api/admin/organizations/{id}/`) is JWT-only for the same reason
-  (`DenyApiKeyAuth`): a leaked credential must not be able to erase accounts or
-  tenants. These endpoints are superadmin-only by construction — they add no
-  `ResourceType` and no `Permission` bit, so no custom role can ever be granted
-  them.
+  [api_keys.md](api_keys.md). Every write on the governance surface
+  (`/api/admin/roles|memberships|organizations|users/`, including permanent
+  deletion) is JWT-only, and the SYSTEM key is rejected there even on reads
+  (`RestrictApiKeyToUserKeyReads`, prepended first by the `get_permissions` of
+  `CrossOrgAdminViewSet` and of `UserAdminViewSet`): a leaked credential must not
+  be able to rewrite governance or erase accounts or tenants. `reset-user` and the
+  admin password reset are JWT-only via `DenyApiKeyAuth`. Those two, and permanent
+  deletion of users and organizations, are superadmin-only by construction — they
+  add no `ResourceType` and no `Permission` bit, so no custom role can ever be
+  granted them.
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `rbac/identity/tickets.py`): `POST /api/auth/sse-ticket/`

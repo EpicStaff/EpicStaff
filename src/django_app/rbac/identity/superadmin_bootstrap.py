@@ -56,9 +56,12 @@ class SuperadminBootstrap:
         email: str,
         password: str,
         org_name: str | None = None,
+        display_name: str | None = None,
     ) -> SuperadminBootstrapResult:
         UserModel = get_user_model()  # noqa: N806
-        user = UserModel.objects.create_superuser(email=email, password=password)
+        user = UserModel.objects.create_superuser(
+            email=email, password=password, display_name=display_name
+        )
 
         organization, default_org_created = self._get_or_create_default_org(org_name=org_name)
 

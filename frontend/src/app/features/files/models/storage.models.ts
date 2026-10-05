@@ -64,8 +64,47 @@ export interface StorageArchiveUploadResult {
 
 export type StorageUploadResult = StorageFileUploadResult | StorageArchiveUploadResult;
 
-export interface StorageUploadResponse {
-    uploaded: StorageUploadResult[];
+export interface UploadedFile {
+    file: File;
+    result: StorageUploadResult;
+}
+
+export interface UploadFailure {
+    file: File;
+    error: unknown;
+}
+
+/** Result of a multi-file upload: each file is in exactly one list. */
+export interface StorageUploadBatchResult {
+    uploaded: UploadedFile[];
+    failed: UploadFailure[];
+}
+
+/** Response of POST storage/upload/stream: `size` for a file, `extracted` for an unpacked archive. */
+export interface StorageStreamUploadResponse {
+    status: 'DONE';
+    path: string;
+    size?: number;
+    extracted?: string[];
+}
+
+/** How one file of a batch ended: its result, or the error it failed with. */
+export type StorageUploadOutcome =
+    | { ok: true; file: File; result: StorageUploadResult }
+    | { ok: false; file: File; error: unknown };
+
+/** GET storage/upload-limits/: sizes in bytes. */
+export interface StorageUploadLimits {
+    /** Null when plain files are not capped. */
+    max_file_size: number | null;
+    /** Size cap for archives (see isArchiveForLimits). */
+    max_archive_size: number;
+    /** Free space left in the organization's storage. */
+    free_bytes: number;
+    /** Archive suffixes, lower-case with a leading dot (".tar.gz"). */
+    archive_suffixes: string[];
+    /** Extensions that are never archives, even with an archive suffix (".docx"). */
+    document_extensions: string[];
 }
 
 export interface SessionOutputFile {

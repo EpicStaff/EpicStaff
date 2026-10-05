@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
-from tables.models import GraphVersion, PythonCode, PythonNode
+from tables.models import GraphVersion, KeyValueNode, KeyValueTable, PythonCode, PythonNode
 from tables.models.graph_models import Edge, Graph, SubGraphNode
 from tests.api_tests.graph_version_api_fixtures import *  # noqa: F401,F403
 from tests.api_tests.graph_version_api_fixtures import save_version
@@ -358,3 +358,27 @@ def test_preview_rejects_every_method_but_get(client, graph_with_declared_secret
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert GraphVersion.objects.filter(pk=version_id).exists()
+
+
+@pytest.mark.django_db
+def test_preview_returns_key_value_node_bound_to_its_live_table(client, org):
+    graph = Graph.objects.create(name="flow-with-key-value", org=org)
+    table = KeyValueTable.objects.create(org=org, name="Customers")
+    KeyValueNode.objects.create(
+        graph=graph,
+        node_name="Key-Value #1",
+        key_value_table=table,
+        mode="write",
+        entries=[{"key": "k", "value": "variables.v"}],
+    )
+    version_id = save_version(client=client, graph=graph)
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    (node,) = response.data["snapshot"]["nodes"]
+    assert node["node_type"] == "KeyValueNode"
+    assert node["key_value_table"] == table.id
+    assert node["key_value_table_name"] == "Customers"
+    assert node["mode"] == "write"
+    assert node["entries"] == [{"key": "k", "value": "variables.v"}]

@@ -37,7 +37,17 @@ def masking_enabled() -> bool:
 
 
 def _pattern(*, secrets: dict[str, str]) -> re.Pattern | None:
-    """One compiled pattern matching every form every secret value can appear in."""
+    """One compiled pattern matching every form every secret value can appear in.
+
+    Only an EMPTY value is skipped here -- there is no minimum length. A
+    one-character secret masks every occurrence of that character in the
+    output, including incidental, unrelated matches. This is intentional,
+    pinned in tests/chain_tests/test_secret_scrubber.py::TestLengthIsNotConsidered:
+    garbling output is a loud, self-correcting symptom, while leaking a value
+    is silent and permanent, so the trade is accepted rather than bounded. The
+    fix for a short-value collision is not to store something like "1" as a
+    credential, not to add a length threshold here.
+    """
     literals: set[str] = set()
     for value in secrets.values():
         if not value:

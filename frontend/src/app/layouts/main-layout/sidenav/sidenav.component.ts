@@ -206,10 +206,10 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: () => this.resolveFilesRoute(),
+                routeLink: () => this.permissionService.resolveFilesTab(),
                 icon: 'sources',
                 label: 'Files',
-                isPermitted: () => this.resolveFilesRoute() !== null,
+                isPermitted: () => this.permissionService.resolveFilesTab() !== null,
                 showTooltip: false,
             },
             {
@@ -296,13 +296,5 @@ export class LeftSidebarComponent implements AfterViewInit {
     public resolveRouteLink(item: NavItem): string | null {
         if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
-    }
-
-    /** Route to whichever `/files/*` sub-tab the user has read access to in the current org, or `null` if none. */
-    private resolveFilesRoute(): string | null {
-        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read))
-            return '/files/knowledge-sources';
-        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
-        return null;
     }
 }

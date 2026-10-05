@@ -15,8 +15,9 @@ import { EndNode } from '../../../core/models/end-node.model';
 import { GetFileExtractorNodeRequest } from '../../../core/models/file-extractor.model';
 import { FlowModel } from '../../../core/models/flow.model';
 import { GraphNote } from '../../../core/models/graph-note.model';
+import { GetKeyValueNodeRequest } from '../../../core/models/key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../core/models/knowledge-retriever-node.model';
-import { NodeModel } from '../../../core/models/node.model';
+import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { GetScheduleTriggerNodeRequest } from '../../../core/models/schedule-trigger.model';
 import { StartNode } from '../../../core/models/start-node.model';
@@ -50,6 +51,7 @@ const ID = {
     decisionTable: 13,
     classificationTable: 14,
     knowledge: 15,
+    keyValue: 16,
 } as const;
 
 const secretsByName = new Map([
@@ -190,6 +192,8 @@ const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
     post_python_code: null,
     post_input_map: {},
     post_output_variable_path: null,
+    pre_use_storage: false,
+    post_use_storage: false,
     prompt_configs: [],
     default_llm_config: null,
     default_next_node_id: ID.end,
@@ -225,6 +229,15 @@ const liveKnowledge: GetKnowledgeRetrieverNodeRequest = {
     rag_id: 8,
     content_hash: null,
 };
+const liveKeyValue: GetKeyValueNodeRequest = {
+    ...nodeBase,
+    id: ID.keyValue,
+    graph: 1,
+    node_name: 'Remember',
+    key_value_table: 61,
+    mode: 'write',
+    entries: [{ key: 'customer', value: 'variables.customer' }],
+};
 const liveEdges: Edge[] = [
     { id: 1, graph: 1, start_node_id: ID.start, end_node_id: ID.python, metadata: {} },
     { id: 2, graph: 1, start_node_id: ID.python, end_node_id: ID.decisionTable, metadata: {} },
@@ -254,6 +267,7 @@ const liveGraph = {
     decision_table_node_list: [liveDecisionTable],
     classification_decision_table_node_list: [liveClassificationTable],
     knowledge_node_list: [liveKnowledge],
+    key_value_node_list: [liveKeyValue],
     edge_list: liveEdges,
     conditional_edge_list: [],
 } as unknown as GraphDto;
@@ -331,6 +345,7 @@ const snapshot: GraphVersionSnapshot = {
             // The export writes the Decimal column as a string.
             naive_search_config: { search_limit: 3, similarity_threshold: '0.70', is_suggested: false },
         }),
+        exported('KeyValueNode', { ...liveKeyValue, key_value_table_name: 'Customers' }),
     ],
     edge_list: liveEdges.map((edge) => exportedEdge(edge)),
     conditional_edge_list: [],
@@ -438,6 +453,19 @@ describe('buildPreviewFlowModel', () => {
         const subgraph = result.flow.nodes.find((node) => node.type === NodeType.SUBGRAPH);
         expect(subgraph?.isBlocked).toBe(true);
         expect(byId(ID.agent).data).toMatchObject({ agent_definition: null });
+    });
+});
+
+describe('buildPreviewFlowModel (key-value nodes)', () => {
+    it('shows a node whose table is gone with no table selected', () => {
+        const orphaned: GraphVersionSnapshot = {
+            // The backend found no table to re-bind the stored name to.
+            nodes: [exported('KeyValueNode', { ...liveKeyValue, key_value_table: null, key_value_table_name: 'Gone' })],
+        };
+        const { flow } = buildPreviewFlowModel(orphaned, secretsByName, availableFlows);
+
+        const keyValue = flow.nodes.find((node) => node.type === NodeType.KEY_VALUE) as KeyValueNodeModel;
+        expect(keyValue.data).toEqual({ key_value_table: null, mode: 'write', entries: liveKeyValue.entries });
     });
 });
 

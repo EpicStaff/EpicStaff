@@ -8,6 +8,11 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from utils.openai_endpoints import derive_realtime_ws_url
+from utils.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.openai.event_handlers.agent_client_event_handler import (
@@ -223,16 +228,17 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
                 tool_name=tool_name,
                 call_arguments=tool_arguments,
             )
-            await self.send_function_result(call_id, str(tool_result))
+            output = str(tool_result)
         except Exception as e:
-            # Never interpolate the exception itself into the log or the
-            # model-visible result: tool failures can carry secret plaintext
-            # or other sensitive detail (see the equivalent CodeTaskData
-            # ValidationError fix in python_code_executor_service.py).
-            logger.error(
-                "OpenAI: Tool execution failed (tool_name={}): {}", tool_name, type(e).__name__
+            correlation_id = new_error_correlation_id()
+            logger.exception(
+                f"OpenAI: Tool execution failed [correlation_id={correlation_id}]: {e}"
             )
-            await self.send_function_result(call_id, "Error: tool execution failed.")
+            output = build_public_error_message(
+                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+            )
+
+        await self.send_function_result(call_id, output)
 
         if self.is_twilio:
             # Appending a function_call_output item does NOT by itself make the

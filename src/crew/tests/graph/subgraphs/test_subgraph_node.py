@@ -55,6 +55,7 @@ def test_create_subgraph_builder_does_not_raise_and_inherits_services():
         python_code_executor_service=SimpleNamespace(name="python_code_executor"),
         knowledge_search_service=SimpleNamespace(name="knowledge_search"),
         agent_task_service=SimpleNamespace(name="agent_task"),
+        key_value_client=SimpleNamespace(name="key_value_client"),
     )
     node = _make_subgraph_node(output_variable_path="variables.result")
     node.session_graph_builder = parent_builder
@@ -71,6 +72,7 @@ def test_create_subgraph_builder_does_not_raise_and_inherits_services():
         is parent_builder.knowledge_search_service
     )
     assert subgraph_builder.agent_task_service is parent_builder.agent_task_service
+    assert subgraph_builder.key_value_client is parent_builder.key_value_client
 
 
 def test_nested_output_path_does_not_mutate_parent_variables():
@@ -136,6 +138,25 @@ def test_state_history_variables_snapshot_is_detached_from_later_mutations():
     assert history_variables["a"] is not state["variables"].a
 
 
+def test_whole_variables_output_path_deep_merges_into_parent():
+    """When output_variable_path='variables', subgraph output is deep-merged
+    into the parent variables — matching Python node behaviour."""
+    node = _make_subgraph_node(output_variable_path="variables")
+    state = _make_parent_state()
+    # Subgraph returns a.b (overwrites) but NOT a.keep or scalar
+    result = _make_result({"a": {"b": "sub_value"}, "new_var": 42})
+
+    updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
+
+    # Subgraph value merged in
+    assert updated["variables"].a.b == "sub_value"
+    assert updated["variables"].new_var == 42
+    # Parent-only keys preserved (not wiped)
+    assert updated["variables"].a.keep == "untouched"
+    assert updated["variables"].scalar == 1
+    assert len(updated["variables"].records) == 2
+
+
 def test_whole_variables_output_path_does_not_alias_subgraph_containers():
     """When output_variable_path='variables', returned containers should not alias the result."""
     node = _make_subgraph_node(output_variable_path="variables")
@@ -163,8 +184,10 @@ def test_whole_variables_output_path_keeps_state_history_immutable():
     updated = node._process_subgraph_result(state, subgraph_input={}, result=result)
     history = updated["state_history"][0]
 
-    # Before mutation, check history values
+    # After deep-merge, a.b is overwritten by subgraph output
     assert history["variables"]["a"]["b"] == "sub"
+    # Parent-only key preserved by the merge
+    assert history["variables"]["a"]["keep"] == "untouched"
     assert history["output"]["a"]["b"] == "sub"
 
     # Mutate the returned variables

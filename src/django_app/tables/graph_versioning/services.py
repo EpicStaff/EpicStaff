@@ -89,7 +89,7 @@ class GraphVersioningService:
         )
 
     @transaction.atomic
-    def create_graph_from_version(self, version: GraphVersion) -> dict:
+    def create_graph_from_version(self, version: GraphVersion, user=None) -> dict:
         """
         Create a brand-new Graph from a version snapshot.
         The new graph is fully independent — own id/uuid, zero GraphVersion rows.
@@ -105,6 +105,7 @@ class GraphVersioningService:
             graph_name=graph_name,
             version_name=version.name,
             org_id=source_graph.org_id,
+            user=user,
         )
 
         # Copy labels from source graph
@@ -126,7 +127,7 @@ class GraphVersioningService:
             "warnings": warnings,
         }
 
-    def preview_version(self, version: GraphVersion) -> VersionPreview:
+    def preview_version(self, version: GraphVersion, user=None) -> VersionPreview:
         """Return the snapshot that restoring or creating a graph from ``version`` would apply.
 
         Runs the same conversion and dependency filtering as ``restore_version`` and
@@ -140,12 +141,20 @@ class GraphVersioningService:
         Credential-named fields in the graph-level ``metadata`` are nulled, since old
         snapshots can hold them in plaintext.
 
+        Key-Value nodes carry the live id of the table a restore by ``user`` would bind, not
+        the stored id (see ``GraphVersioningManager.bind_key_value_tables``).
+
         Returns:
             ``snapshot``: the filtered snapshot, with the version's original node ids.
             ``warnings``: the dependency-filtering warnings, keyed by those same ids.
         """
         prepared = self._prepare(version)
-        snapshot = prepared.filtered_snapshot
+        snapshot = {
+            **prepared.filtered_snapshot,
+            "nodes": self._manager.bind_key_value_tables(
+                prepared.filtered_snapshot["nodes"], version.graph.org_id, user
+            ),
+        }
         if "metadata" in snapshot:
             snapshot = {**snapshot, "metadata": _scrub_plaintext_secrets(snapshot["metadata"])}
         return {
@@ -160,6 +169,7 @@ class GraphVersioningService:
         *,
         expected_save_version: int,
         backup: bool = False,
+        user=None,
     ) -> dict:
         """
         Restore a graph to the state captured in ``version``.
@@ -177,6 +187,9 @@ class GraphVersioningService:
             When ``True``, a named ``GraphVersion`` snapshot of the *current*
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
+        user:
+            The acting user. Permission-gated node references (key-value
+            tables) are re-bound only if this user may use them.
 
         Returns
         -------
@@ -209,7 +222,7 @@ class GraphVersioningService:
             auto_backup_id = backup_version.id
 
         node_mapper = self._manager.apply_snapshot_to_graph(
-            graph, prepared.filtered_snapshot, prepared.available_dependencies
+            graph, prepared.filtered_snapshot, prepared.available_dependencies, user=user
         )
 
         warnings.extend(
