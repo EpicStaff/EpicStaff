@@ -11,9 +11,12 @@ from tables.models.graph_models import (
     ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
+class ClassificationConditionGroupImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     classification_decision_table_node_id = serializers.PrimaryKeyRelatedField(
         queryset=ClassificationDecisionTableNode.objects.all(),
@@ -52,7 +55,9 @@ class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSeriali
         ]
 
 
-class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerializer):
+class ClassificationDecisionTableNodeImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     condition_groups = ClassificationConditionGroupImportSerializer(

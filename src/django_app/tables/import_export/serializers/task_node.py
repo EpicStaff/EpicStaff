@@ -3,9 +3,10 @@ from rest_framework import serializers
 
 from tables.import_export.serializers.inline_surface import serialize_inline_surface
 from tables.models import Graph, TaskNode
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class TaskNodeImportSerializer(serializers.ModelSerializer):
+class TaskNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 

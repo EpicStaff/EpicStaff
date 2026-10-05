@@ -43,6 +43,7 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
@@ -116,7 +117,10 @@ def validate_output_schema(value):
 
 
 class PythonNodeSerializer(
-    ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    ContentHashWritableMixin,
+    NestedPythonCodeMixin,
+    serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -126,7 +130,9 @@ class PythonNodeSerializer(
         fields = "__all__"
 
 
-class FileExtractorNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class FileExtractorNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
@@ -162,7 +168,9 @@ class KeyValueTableReferenceField(OrgScopedPrimaryKeyRelatedField):
         return None
 
 
-class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class KeyValueNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     key_value_table = KeyValueTableReferenceField(
         queryset=KeyValueTable.objects.all(), required=False, allow_null=True
@@ -193,7 +201,9 @@ class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializ
         )
 
 
-class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class KnowledgeNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     """Plain node serializer (no search configs). Base for bulk-save, which
     persists the config blocks separately via its saveable.
 
@@ -258,7 +268,9 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
         return data
 
 
-class AudioTranscriptionNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class AudioTranscriptionNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
@@ -266,7 +278,9 @@ class AudioTranscriptionNodeSerializer(ContentHashWritableMixin, serializers.Mod
         fields = "__all__"
 
 
-class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class EdgeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -281,7 +295,9 @@ class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return attrs
 
 
-class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class TaskNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     inline_surface = InlineSurfaceWriteSerializer(required=False, allow_null=True, write_only=True)
     # Org isolation: agent_definition/surface_list/graph must belong to the
     # caller's active org — a cross-org pk is rejected exactly like a
@@ -389,7 +405,9 @@ class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class AgentNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     tasks = AgentNodeTaskWriteSerializer(many=True, required=False)
     inline_surface = AgentInlineSurfaceWriteSerializer(
         required=False, allow_null=True, write_only=True
@@ -609,7 +627,9 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class SubGraphNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class SubGraphNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     # Org isolation: the referenced sub-flow must be in the caller's active org.
     subgraph = OrgScopedPrimaryKeyRelatedField(
         queryset=Graph.objects.all(), required=False, allow_null=True

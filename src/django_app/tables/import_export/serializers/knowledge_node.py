@@ -9,6 +9,7 @@ from tables.models.knowledge_models import (
     KnowledgeNodeGraphRagLocalSearchConfig,
     KnowledgeNodeNaiveRagSearchConfig,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
 class _NaiveSearchConfigImportSerializer(serializers.ModelSerializer):
@@ -41,7 +42,7 @@ class _GraphDriftSearchConfigImportSerializer(serializers.ModelSerializer):
         exclude = ["id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES]
 
 
-class KnowledgeNodeImportSerializer(serializers.ModelSerializer):
+class KnowledgeNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     naive_search_config = _NaiveSearchConfigImportSerializer(read_only=True)

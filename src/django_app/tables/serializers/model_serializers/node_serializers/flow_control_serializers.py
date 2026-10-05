@@ -26,6 +26,7 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -40,7 +41,10 @@ from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 
 class ConditionalEdgeSerializer(
-    ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    ContentHashWritableMixin,
+    NestedPythonCodeMixin,
+    serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -103,7 +107,9 @@ class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return "__end_node__"
 
 
-class ConditionSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class ConditionSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -111,7 +117,9 @@ class ConditionSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         fields = "__all__"
 
 
-class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class ConditionGroupSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     conditions = ConditionSerializer(many=True, required=False)
     decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -120,7 +128,9 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
         fields = "__all__"
 
 
-class DecisionTableNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class DecisionTableNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     condition_groups = ConditionGroupSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 

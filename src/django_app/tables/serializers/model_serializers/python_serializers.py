@@ -27,6 +27,7 @@ from tables.serializers.utils.org_scoped_labels import (
     set_org_scoped_labels,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
@@ -255,7 +256,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         return instance
 
 
-class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
+class PythonCodeToolConfigSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
     tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
 

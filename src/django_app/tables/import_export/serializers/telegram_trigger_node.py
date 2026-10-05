@@ -6,15 +6,20 @@ from tables.models import (
     TelegramTriggerNodeField,
     WebhookTrigger,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):
+class TelegramTriggerNodeFieldImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     class Meta:
         model = TelegramTriggerNodeField
         exclude = ["telegram_trigger_node"]
 
 
-class TelegramTriggerNodeImportSerializer(serializers.ModelSerializer):
+class TelegramTriggerNodeImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     fields = TelegramTriggerNodeFieldImportSerializer(many=True, read_only=True)
