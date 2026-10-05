@@ -25,10 +25,9 @@ class OrgCredentialStore:
     user-facing Secret API)."""
 
     def save(self, *, org: Organization, access_key: str, secret_key: str) -> Secret:
-        """(Re)provision this org's stored credential. A prior row (e.g. one
-        marked revoked by `mark_revoked`) is deleted first: `Secret` enforces
-        one row per (org, name), and reactivation always mints a brand new
-        storage user rather than resurrecting the deprovisioned one."""
+        """(Re)provision this org's stored credential. A prior row is deleted first:
+        `Secret` enforces one row per (org, name), and reactivation always mints a
+        brand new storage user rather than resurrecting the deprovisioned one."""
         Secret.all_objects.filter(org=org, name=SECRET_NAME_ORG_STORAGE_USER, system=True).delete()
         text = f"{access_key}{_CREDENTIAL_SEPARATOR}{secret_key}"
         return secret_service.create(
@@ -42,7 +41,7 @@ class OrgCredentialStore:
         secret = Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_STORAGE_USER, system=True
         ).first()
-        if secret is None or secret.metadata.get("revoked") is True:
+        if secret is None:
             raise OrgStorageCredentialMissingError(
                 f"No active org-level storage credential for org_id={org_id}."
             )
@@ -54,16 +53,15 @@ class OrgCredentialStore:
         secret = Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_STORAGE_USER, system=True
         ).first()
-        return secret is not None and secret.metadata.get("revoked") is not True
+        return secret is not None
 
-    def mark_revoked(self, *, org_id: int) -> None:
-        secret = Secret.all_objects.filter(
+    def delete(self, *, org_id: int) -> None:
+        """Delete this org's stored credential. If no credential exists for this
+        org, this is a safe no-op (consistent with cascade delete on Organization
+        deletion, which may have already removed the Secret)."""
+        Secret.all_objects.filter(
             org_id=org_id, name=SECRET_NAME_ORG_STORAGE_USER, system=True
-        ).first()
-        if secret is None:
-            return
-        secret.metadata = {**secret.metadata, "revoked": True}
-        secret.save(update_fields=["metadata"])
+        ).delete()
 
 
 org_credential_store = OrgCredentialStore()

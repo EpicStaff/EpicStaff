@@ -75,12 +75,12 @@ class OrgStorageProvisioningService:
 
     def deprovision_for_organization(self, org_id: int) -> None:
         """Remove the org-level storage user (cascades to revoke every active
-        service account it minted) and mark the stored `Secret` as revoked.
+        service account it minted) and delete the stored `Secret`.
         Objects already written under `org_<id>/*` are left untouched
 
         Takes `org_id` rather than an `Organization` instance: a delete-path
         caller only has the id left once the row itself is gone. In that case
-        `mark_revoked` is a no-op -- `Secret.org` cascades on org delete, so
+        `delete()` is a safe no-op -- `Secret.org` cascades on org delete, so
         the row is already gone by the time this runs post-commit; only the
         storage-side removal still matters there."""
         access_key = _org_access_key(org_id)
@@ -91,7 +91,7 @@ class OrgStorageProvisioningService:
                 f"Failed to deprovision storage user for org_id={org_id}: {error}"
             ) from error
 
-        org_credential_store.mark_revoked(org_id=org_id)
+        org_credential_store.delete(org_id=org_id)
         logger.info("Deprovisioned org-level storage user for org_id={}", org_id)
 
     async def _provision_in_storage(self, *, org_id: int, access_key: str, secret_key: str) -> None:

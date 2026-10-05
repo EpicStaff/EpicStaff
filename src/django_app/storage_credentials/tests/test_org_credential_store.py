@@ -1,11 +1,5 @@
-"""Regression test for the `.exclude(metadata__revoked=True)` bug: with
-`metadata={}` (the state of a freshly provisioned, never-revoked row),
-Postgres evaluates `metadata -> 'revoked'` as SQL NULL, and
-`NOT (NULL = 'true'::jsonb)` is also NULL -- so the row was wrongly excluded
-from the queryset and every never-revoked org's credentials were invisible
-to `OrgCredentialStore`. `get()`/`exists()` must instead select the single
-(org, name, system) row and test `revoked` in Python.
-"""
+"""Tests for `OrgCredentialStore` which manages organization-level storage
+credentials persisted as `Secret` rows."""
 
 import pytest
 
@@ -56,35 +50,39 @@ def test_exists_is_true_for_never_revoked_secret(org):
 
 
 @pytest.mark.django_db
-def test_get_raises_for_revoked_secret(org):
-    secret = secret_service.create(
-        text=CREDENTIAL_TEXT,
-        system=True,
-        org=org,
-        name=SECRET_NAME_ORG_STORAGE_USER,
-    )
-    secret.metadata = {"revoked": True}
-    secret.save(update_fields=["metadata"])
-
-    with pytest.raises(OrgStorageCredentialMissingError):
-        org_credential_store.get(org_id=org.id)
-
-
-@pytest.mark.django_db
-def test_exists_is_false_for_revoked_secret(org):
-    secret = secret_service.create(
-        text=CREDENTIAL_TEXT,
-        system=True,
-        org=org,
-        name=SECRET_NAME_ORG_STORAGE_USER,
-    )
-    secret.metadata = {"revoked": True}
-    secret.save(update_fields=["metadata"])
-
-    assert org_credential_store.exists(org_id=org.id) is False
-
-
-@pytest.mark.django_db
 def test_get_raises_when_no_secret_exists(org):
     with pytest.raises(OrgStorageCredentialMissingError):
         org_credential_store.get(org_id=org.id)
+
+
+@pytest.mark.django_db
+def test_delete_removes_secret(org):
+    secret_service.create(
+        text=CREDENTIAL_TEXT,
+        system=True,
+        org=org,
+        name=SECRET_NAME_ORG_STORAGE_USER,
+    )
+    assert org_credential_store.exists(org_id=org.id) is True
+
+    org_credential_store.delete(org_id=org.id)
+
+    assert org_credential_store.exists(org_id=org.id) is False
+    with pytest.raises(OrgStorageCredentialMissingError):
+        org_credential_store.get(org_id=org.id)
+
+
+@pytest.mark.django_db
+def test_delete_is_idempotent(org):
+    secret_service.create(
+        text=CREDENTIAL_TEXT,
+        system=True,
+        org=org,
+        name=SECRET_NAME_ORG_STORAGE_USER,
+    )
+
+    org_credential_store.delete(org_id=org.id)
+    # Second delete should not raise, just be a no-op
+    org_credential_store.delete(org_id=org.id)
+
+    assert org_credential_store.exists(org_id=org.id) is False
