@@ -23,6 +23,20 @@
         <span class="nav-label">My Profile</span>
     </button>
 
+    @if (canStartQuickStartTour()) {
+        <button
+            class="nav-item"
+            (click)="onQuickStartTourClick()"
+        >
+            <app-svg-icon
+                size="16px"
+                icon="help"
+                class="nav-icon"
+            />
+            <span class="nav-label">Quick Start Tour</span>
+        </button>
+    }
+
     <button
         class="nav-item"
         (click)="onSignOutClick()"

@@ -1,9 +1,20 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    effect,
+    HostListener,
+    inject,
+    OnInit,
+    untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 
 import { EpicChatService } from '../../features/epic-chat/epic-chat.service';
+import { QuickStartTourService } from '../../features/quick-start-tour/quick-start-tour.service';
+import { ProfileService } from '../../services/auth/profile.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
 
@@ -81,6 +92,18 @@ const TABBED_ROUTES: Record<string, string[]> = {
     `,
 })
 export class MainLayoutComponent implements OnInit {
+    /**
+     * The app shell (and with it the sidenav the tour points at) exists only here, so the auto-start lives here too.
+     * Re-runs on user change and on permission change (org switch), so a newly permitted user still gets the tour.
+     */
+    private readonly quickStartTourAutoStart = effect(() => {
+        const user = this.profileService.currentUserSignal();
+        const isTourAvailable = this.quickStartTourService.isAvailable();
+        if (user && isTourAvailable) {
+            untracked(() => this.quickStartTourService.startIfNotCompleted());
+        }
+    });
+
     private isDockResizing = false;
     private dockResizeStartX = 0;
     private dockResizeStartWidth = 0;
@@ -88,10 +111,14 @@ export class MainLayoutComponent implements OnInit {
     private router = inject(Router);
     private destroyRef = inject(DestroyRef);
     private lastVisitedTabService = inject(LastVisitedTabService);
+    private readonly profileService = inject(ProfileService);
+    private readonly quickStartTourService = inject(QuickStartTourService);
 
     constructor(public epicChatService: EpicChatService) {}
 
     ngOnInit(): void {
+        this.destroyRef.onDestroy(() => this.quickStartTourService.stop());
+
         this.router.events
             .pipe(
                 filter((e): e is NavigationEnd => e instanceof NavigationEnd),

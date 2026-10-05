@@ -1,0 +1,222 @@
+// Quick Start tour (features/quick-start-tour). driver.js renders its popover and overlay straight into <body>,
+// so they can only be styled globally. Base styles: node_modules/driver.js/dist/driver.css (angular.json).
+//
+// Stacking: CDK overlays (the Settings dialog, select dropdowns) live in the browser top layer, which paints above any
+// z-index. tour-top-layer.ts therefore moves the driver.js overlay and popover into a `popover="manual"` host of its
+// own and re-shows it on every step, so it sits above them. The dialog and the dropdown stay under the dimmed overlay
+// and show through its cut-out. While the tour runs, driver.css makes everything except the highlighted element and
+// the popover ignore pointer events.
+
+// The top-layer host: undo the UA [popover] box (centred, bordered, padded, opaque, scrolling) so it is an invisible
+// full-viewport layer. driver.js keeps positioning its fixed elements against the viewport.
+.quickstart-tour-layer {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: transparent;
+    color: inherit;
+    // The host is click-through; driver.js re-enables pointer events on the overlay path and the popover.
+    pointer-events: none;
+}
+
+// Matches .sidebar-wrapper in main-layout: the welcome card sits just right of the sidenav.
+$sidenav-width: 3.7rem;
+$card-padding: 24px;
+// Token gap (docs/design-tokens.md): the design fills the card with Figma "Line" #2B2D30, which has no exact variable.
+// --color-ks-line (#2c2c2e) is the documented closest match. The semantic surfaces do not fit: --color-modals-background
+// is the Settings dialog itself, so the card would vanish against it. --color-ks-line has no light-theme override yet.
+$card-surface: var(--color-ks-line);
+
+.driver-popover.quickstart-tour {
+    min-width: 0;
+    max-width: 324px;
+    padding: 0;
+    background: $card-surface;
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-panel-elevated);
+    font-family: inherit;
+
+    .driver-popover-title,
+    .quickstart-tour__welcome-title {
+        margin: 0;
+        color: var(--accent-color);
+        font-size: 18px;
+        font-weight: 500;
+        line-height: 100%;
+    }
+
+    .driver-popover-title {
+        // Right padding keeps the title clear of the close button.
+        padding: $card-padding 48px 0 $card-padding;
+    }
+
+    .driver-popover-description {
+        margin: 0;
+        padding: $card-padding;
+        color: var(--color-text-primary);
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 130%;
+
+        p {
+            margin: 0;
+        }
+
+        p + p {
+            margin-top: 8px;
+        }
+    }
+
+    // driver.css adds a 5px gap between title and description; the paddings above already space them.
+    .driver-popover-title[style*='block'] + .driver-popover-description {
+        margin-top: 0;
+    }
+
+    .driver-popover-close-btn {
+        top: 16px;
+        right: 16px;
+        width: 24px;
+        height: 24px;
+        color: var(--color-text-secondary);
+        font-size: 18px;
+        opacity: 0.7;
+        transition: opacity 120ms ease;
+
+        &:hover,
+        &:focus {
+            color: var(--color-text-secondary);
+            opacity: 1;
+        }
+    }
+
+    .driver-popover-footer {
+        gap: 8px;
+        margin: 0;
+        padding: 0 $card-padding $card-padding;
+    }
+
+    // Back/Skip on the left, the primary action on the right.
+    .driver-popover-navigation-btns {
+        justify-content: space-between;
+        gap: 8px;
+
+        button + button {
+            margin-left: 0;
+        }
+    }
+
+    .driver-popover-footer-btn {
+        padding: 6px 14px;
+        border: 1px solid transparent;
+        border-radius: var(--radius-md);
+        font-size: 14px; // Body Medium — the scale has no 13px
+        font-weight: 500;
+        line-height: 1.3;
+        text-shadow: none;
+        transition:
+            background 120ms ease,
+            border-color 120ms ease,
+            color 120ms ease;
+    }
+
+    .driver-popover-next-btn {
+        // Keeps the primary action right-aligned on steps that hide "Back".
+        margin-left: auto;
+        background: var(--accent-color);
+        color: var(--color-text-primary);
+
+        &:hover,
+        &:focus {
+            background: var(--accent-color-hover);
+        }
+
+        &:active {
+            background: var(--accent-color-active);
+        }
+    }
+
+    .driver-popover-prev-btn {
+        background: transparent;
+        color: var(--inactive-purple);
+        border-color: var(--inactive-purple);
+
+        &:hover,
+        &:focus {
+            background: var(--color-ghost-btn-hover);
+        }
+    }
+
+    // driver.js draws the arrow as a CSS border triangle; only the side facing the target is coloured.
+    .driver-popover-arrow-side-left {
+        border-left-color: $card-surface;
+    }
+
+    .driver-popover-arrow-side-right {
+        border-right-color: $card-surface;
+    }
+
+    .driver-popover-arrow-side-top {
+        border-top-color: $card-surface;
+    }
+
+    .driver-popover-arrow-side-bottom {
+        border-bottom-color: $card-surface;
+    }
+
+    // Progress bar along the top edge; --tour-progress is set per step by quick-start-tour-steps.ts.
+    &.quickstart-tour--has-progress::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
+        width: var(--tour-progress, 0%);
+        height: 4px;
+        background: var(--accent-color);
+        // Card radius minus its 1px border, so the bar follows the inner curve.
+        border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+        transition: width 240ms ease;
+        pointer-events: none;
+    }
+
+    // Welcome step: unattached card pinned bottom-left next to the sidenav, image above the title.
+    &.quickstart-tour--welcome {
+        top: auto !important;
+        right: auto !important;
+        bottom: 24px !important;
+        left: $sidenav-width !important;
+
+        .quickstart-tour__welcome-image {
+            display: block;
+            width: 276px;
+            height: 283px;
+            margin: 0 auto $card-padding;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        .quickstart-tour__welcome-title {
+            margin-bottom: $card-padding;
+        }
+
+        // Kept for the accessible name only (see the welcome step); the visible heading sits under the image.
+        .driver-popover-title {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+    }
+}

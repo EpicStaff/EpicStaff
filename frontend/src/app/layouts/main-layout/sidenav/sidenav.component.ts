@@ -21,6 +21,7 @@ import { filter, map } from 'rxjs/operators';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
@@ -142,6 +143,7 @@ export class LeftSidebarComponent implements AfterViewInit {
     public isOrgMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
     public showOrgTooltip = false;
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
 
     private router = inject(Router);
     public isWorkspaceRoute = toSignal(

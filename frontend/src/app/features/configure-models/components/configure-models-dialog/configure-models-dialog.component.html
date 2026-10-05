@@ -25,6 +25,7 @@
                     type="button"
                     class="configure-models-dialog__tab"
                     [class.configure-models-dialog__tab--active]="activeTabId() === tab.id"
+                    [attr.data-tour]="tab.id === tabIds.QUICKSTART ? tourAnchors.quickstartTab : null"
                     (click)="selectTab(tab.id)"
                 >
                     @if (tab.svgIcon) {

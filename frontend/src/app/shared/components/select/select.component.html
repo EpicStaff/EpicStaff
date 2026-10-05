@@ -85,6 +85,7 @@
 <ng-template #dropdownTemplate>
     <div
         class="selector__dropdown"
+        [attr.data-tour]="dropdownDataAnchor()"
         [class.selector__dropdown--boxed]="variant() === 'boxed'"
     >
         @if (showSearch()) {

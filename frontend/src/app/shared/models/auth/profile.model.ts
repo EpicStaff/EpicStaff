@@ -13,6 +13,8 @@ export interface GetMeResponse {
     active_organization_id: number | null;
     active_permissions: ActivePermissions | null;
     avatar_url: string | null;
+    /** True once the user finished or skipped the Quick Start tour; the tour auto-starts only while false. */
+    quickstart_tour_completed: boolean;
 }
 
 export interface UpdateMeRequest {

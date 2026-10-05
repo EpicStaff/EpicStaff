@@ -149,6 +149,7 @@
             @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
+                    [attr.data-tour]="item.id === 'settings' ? tourAnchors.sidenavSettings : null"
                     (mouseenter)="item.showTooltip = true"
                     (mouseleave)="item.showTooltip = false"
                 >
