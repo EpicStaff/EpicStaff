@@ -58,6 +58,9 @@ const DTO: GetKeyValueNodeRequest = {
     input_map: {},
     output_variable_path: 'variables.saved',
     metadata: {},
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 // Stands in for the form-bound shared controls so the real template renders without their dependencies.

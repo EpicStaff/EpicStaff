@@ -1,4 +1,6 @@
-export interface EndNode {
+import { AuthorshipFields } from '@shared/models';
+
+export interface EndNode extends AuthorshipFields {
     id: number;
     graph: number;
     output_map: Record<string, unknown>;

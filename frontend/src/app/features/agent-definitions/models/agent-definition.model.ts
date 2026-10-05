@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '@shared/models';
+
 export type AgentSurfacePlace = 'all' | 'flow' | 'chat' | 'realtime';
 
 export const FLOW_CONTEXT_PLACES: readonly AgentSurfacePlace[] = ['all', 'flow'];
@@ -24,9 +26,9 @@ export interface AgentMetadata {
     [key: string]: unknown;
 }
 
-export interface AgentDefinition {
+export interface AgentDefinition extends AuthorshipFields {
     id: number;
-    organization: number;
+    org: number;
     name: string;
     description: string;
     instructions: string;

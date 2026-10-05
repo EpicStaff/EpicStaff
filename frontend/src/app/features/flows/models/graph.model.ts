@@ -1,3 +1,5 @@
+import { LastEditFields } from '@shared/models';
+
 import { AgentNode } from '../../../visual-programming/core/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../visual-programming/core/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../visual-programming/core/models/classification-decision-table-node.model';
@@ -32,7 +34,9 @@ export interface SubflowLightDto {
     updated_at?: string;
 }
 
-export interface GetGraphLightRequest {
+// Last-edit fields are optional like created_at/updated_at: light graphs are also built
+// client-side from SubflowLightDto (flow-card, flows-menu), which carries no last edit.
+export interface GetGraphLightRequest extends Partial<LastEditFields> {
     id: number;
     uuid: string;
     name: string;

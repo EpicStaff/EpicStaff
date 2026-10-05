@@ -1,6 +1,6 @@
-import { CreatePythonCodeRequest, GetPythonCodeRequest, WebhookTriggerWrite } from '@shared/models';
+import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest, WebhookTriggerWrite } from '@shared/models';
 
-export interface GetWebhookTriggerNodeRequest {
+export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

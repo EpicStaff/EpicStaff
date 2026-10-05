@@ -6,20 +6,20 @@ import { InlineSurface } from '../../core/models/task-node.model';
  * nodes and the `Surface`-shaped model consumed by the reusable `SurfaceCardComponent`.
  *
  * `InlineSurface` is field-for-field identical to `Surface` except it has no
- * `name`/`organization`/`owner_agent` (per the backend `inline_surface` write serializer,
+ * `name`/`org`/`owner_agent` (per the backend `inline_surface` write serializer,
  * which reuses the regular `Surface` write serializers).
  */
 
 /**
  * Fabricates a full `Surface`-shaped object from an `InlineSurface` so it can be fed
  * directly into `SurfaceCardComponent`. The anonymous/local-only fields (`id`, `name`,
- * `organization`, `owner_agent`, `description`) are filled with sensible empties since
+ * `org`, `owner_agent`, `description`, authorship) are filled with sensible empties since
  * an inline surface has no catalog identity.
  */
 export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
     return {
         id: -1,
-        organization: 0,
+        org: 0,
         name: '',
         description: '',
         instructions: inline.instructions,
@@ -31,5 +31,8 @@ export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
         knowledge: inline.knowledge,
         created_at: inline.created_at ?? '',
         updated_at: inline.updated_at ?? '',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
     };
 }

@@ -1,4 +1,4 @@
-import { WebhookTriggerWrite } from '@shared/models';
+import { AuthorshipFields, WebhookTriggerWrite } from '@shared/models';
 
 export interface TelegramTriggerField {
     field_name: string;
@@ -40,7 +40,7 @@ export interface TelegramTriggerNodeField {
     variable_path: string;
 }
 
-export interface GetTelegramTriggerNodeRequest {
+export interface GetTelegramTriggerNodeRequest extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

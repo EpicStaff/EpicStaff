@@ -1,4 +1,6 @@
-export interface EmbeddingConfig {
+import { AuthorshipFields } from '../authorship.model';
+
+export interface EmbeddingConfig extends AuthorshipFields {
     id: number; // Unique identifier for the embedding config
     custom_name: string;
     model: number; // Required integer field
@@ -7,7 +9,7 @@ export interface EmbeddingConfig {
     is_visible: boolean;
 }
 
-export interface GetEmbeddingConfigRequest {
+export interface GetEmbeddingConfigRequest extends AuthorshipFields {
     id: number; // Unique identifier for the embedding config
     custom_name: string;
     model: number; // Required integer field

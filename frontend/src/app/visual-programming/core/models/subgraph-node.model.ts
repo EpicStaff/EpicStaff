@@ -1,6 +1,8 @@
+import { AuthorshipFields } from '@shared/models';
+
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 
-export interface SubGraphNode {
+export interface SubGraphNode extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

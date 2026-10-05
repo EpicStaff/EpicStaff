@@ -1,3 +1,5 @@
+import { LastEditFields } from '../authorship.model';
+
 export type WebhookProviderType = 'ngrok' | 'localhost';
 
 export interface NgrokConfigInline {
@@ -19,7 +21,8 @@ export interface WebhookTriggerAuth {
     secret_tail: string | null;
 }
 
-export interface WebhookTriggerModel {
+// Also the nested write payload, so the read-only last-edit fields are optional.
+export interface WebhookTriggerModel extends Partial<LastEditFields> {
     id?: number;
     path: string;
     provider_type: WebhookProviderType | null;

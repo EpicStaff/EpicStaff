@@ -1,6 +1,7 @@
+import { AuthorshipFields } from '../authorship.model';
 import { Tag } from '../tag.model';
 
-export interface GetLlmConfigRequest {
+export interface GetLlmConfigRequest extends AuthorshipFields {
     id: number;
     custom_name: string;
     model: number;

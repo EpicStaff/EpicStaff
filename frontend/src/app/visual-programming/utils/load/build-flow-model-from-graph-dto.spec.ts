@@ -13,6 +13,9 @@ function subgraphNode(id: number, subgraph: number): SubGraphNode {
         input_map: {},
         output_variable_path: null,
         metadata: {},
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
     };
 }
 

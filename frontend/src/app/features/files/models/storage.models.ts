@@ -1,4 +1,7 @@
-export interface StorageItem {
+import { LastEditFields } from '@shared/models';
+
+// Also built client-side from other shapes (e.g. picker tree nodes), so the last-edit fields are optional.
+export interface StorageItem extends Partial<LastEditFields> {
     id?: number | null;
     name: string;
     path: string;
@@ -10,7 +13,7 @@ export interface StorageItem {
     isExpanded?: boolean;
 }
 
-export interface StorageFileRecord {
+export interface StorageFileRecord extends LastEditFields {
     id: number;
     path: string;
     name: string;
@@ -23,7 +26,7 @@ export interface StorageFileRecord {
     updated_at: string;
 }
 
-export interface StorageTreeNode {
+export interface StorageTreeNode extends LastEditFields {
     id: number | null;
     name: string;
     path: string;

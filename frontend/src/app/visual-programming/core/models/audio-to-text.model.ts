@@ -1,4 +1,6 @@
-export interface GetAudioToTextNodeRequest {
+import { AuthorshipFields } from '@shared/models';
+
+export interface GetAudioToTextNodeRequest extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

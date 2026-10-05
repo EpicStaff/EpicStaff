@@ -64,12 +64,30 @@ const availableFlows = [{ id: 99 }];
 
 const persisted = { graph: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' };
 const nodeBase = { metadata: {}, input_map: {}, output_variable_path: null };
+// Authorship is not exported either: the preview leaves it unknown (null).
+const authored = { created_by: 7, last_edited_by: 8, last_edited_at: '2026-01-02T00:00:00Z' };
+const authorshipFields = Object.keys(authored);
 
-const liveStart: StartNode = { id: ID.start, graph: 1, node_name: '__start__', variables: { topic: '' }, metadata: {} };
-const liveEnd: EndNode = { id: ID.end, graph: 1, node_name: '__end_node__', output_map: { answer: 'a' }, metadata: {} };
-const liveNote: GraphNote = { id: ID.note, graph: 1, node_name: 'Note', content: 'hello', metadata: {} };
+const liveStart: StartNode = {
+    ...authored,
+    id: ID.start,
+    graph: 1,
+    node_name: '__start__',
+    variables: { topic: '' },
+    metadata: {},
+};
+const liveEnd: EndNode = {
+    ...authored,
+    id: ID.end,
+    graph: 1,
+    node_name: '__end_node__',
+    output_map: { answer: 'a' },
+    metadata: {},
+};
+const liveNote: GraphNote = { ...authored, id: ID.note, graph: 1, node_name: 'Note', content: 'hello', metadata: {} };
 const livePython: PythonNode = {
     ...nodeBase,
+    ...authored,
     id: ID.python,
     graph: 1,
     node_name: 'Python',
@@ -85,6 +103,7 @@ const livePython: PythonNode = {
 };
 const liveTask: TaskNode = {
     ...nodeBase,
+    ...authored,
     ...persisted,
     id: ID.task,
     node_name: 'Task',
@@ -103,6 +122,7 @@ const liveTask: TaskNode = {
 };
 const liveAgent: AgentNode = {
     ...nodeBase,
+    ...authored,
     id: ID.agent,
     graph: 1,
     node_name: 'Agent',
@@ -113,14 +133,23 @@ const liveAgent: AgentNode = {
 };
 const liveFileExtractor: GetFileExtractorNodeRequest = {
     ...nodeBase,
+    ...authored,
     id: ID.fileExtractor,
     graph: 1,
     node_name: 'Files',
 };
-const liveAudio: GetAudioToTextNodeRequest = { ...nodeBase, id: ID.audio, graph: 1, node_name: 'Audio' };
-const liveSubgraph: SubGraphNode = { ...nodeBase, id: ID.subgraph, graph: 1, node_name: 'Sub', subgraph: 99 };
+const liveAudio: GetAudioToTextNodeRequest = { ...nodeBase, ...authored, id: ID.audio, graph: 1, node_name: 'Audio' };
+const liveSubgraph: SubGraphNode = {
+    ...nodeBase,
+    ...authored,
+    id: ID.subgraph,
+    graph: 1,
+    node_name: 'Sub',
+    subgraph: 99,
+};
 const liveWebhook: GetWebhookTriggerNodeRequest = {
     ...nodeBase,
+    ...authored,
     id: ID.webhook,
     graph: 1,
     node_name: 'Webhook',
@@ -129,6 +158,7 @@ const liveWebhook: GetWebhookTriggerNodeRequest = {
     python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
 };
 const liveTelegram: GetTelegramTriggerNodeRequest = {
+    ...authored,
     id: ID.telegram,
     graph: 1,
     node_name: 'Telegram',
@@ -139,6 +169,7 @@ const liveTelegram: GetTelegramTriggerNodeRequest = {
 };
 const liveSchedule: GetScheduleTriggerNodeRequest = {
     ...persisted,
+    ...authored,
     id: ID.schedule,
     node_name: 'Schedule',
     metadata: {},
@@ -155,6 +186,7 @@ const liveSchedule: GetScheduleTriggerNodeRequest = {
     },
 };
 const liveDecisionTable: GetDecisionTableNodeRequest = {
+    ...authored,
     id: ID.decisionTable,
     graph: 1,
     node_name: 'Decide',
@@ -176,6 +208,7 @@ const liveDecisionTable: GetDecisionTableNodeRequest = {
     ],
 };
 const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
+    ...authored,
     id: ID.classificationTable,
     graph: 1,
     node_name: 'Classify',
@@ -216,6 +249,7 @@ const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
 };
 const liveKnowledge: GetKnowledgeRetrieverNodeRequest = {
     ...nodeBase,
+    ...authored,
     ...persisted,
     id: ID.knowledge,
     node_name: 'Knowledge',
@@ -229,6 +263,7 @@ const liveKnowledge: GetKnowledgeRetrieverNodeRequest = {
 };
 const liveKeyValue: GetKeyValueNodeRequest = {
     ...nodeBase,
+    ...authored,
     id: ID.keyValue,
     graph: 1,
     node_name: 'Remember',
@@ -270,12 +305,10 @@ const liveGraph = {
     conditional_edge_list: [],
 } as unknown as GraphDto;
 
-/** What the export does to a row whose shape is otherwise identical: drop DB columns, tag the type. */
+/** What the export does to a row whose shape is otherwise identical: drop DB columns and authorship, tag the type. */
 function exported<T extends object>(nodeType: SnapshotNodeType, row: T): SnapshotNode {
     const copy: Record<string, unknown> = { ...row, node_type: nodeType };
-    delete copy['graph'];
-    delete copy['created_at'];
-    delete copy['updated_at'];
+    for (const field of ['graph', 'created_at', 'updated_at', ...authorshipFields]) delete copy[field];
     return copy as unknown as SnapshotNode;
 }
 
@@ -357,12 +390,12 @@ const snapshot: GraphVersionSnapshot = {
     },
 };
 
-/** Canvas ids are random; replace each by its order of first appearance. DB columns are not exported. */
+/** Canvas ids are random; replace each by its order of first appearance. DB columns and authorship are not exported. */
 function comparable(flow: FlowModel): unknown {
     const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
     const order = new Map<string, number>();
     const json = JSON.stringify(flow, (key, value: unknown) =>
-        ['graph', 'created_at', 'updated_at'].includes(key) ? undefined : value
+        ['graph', 'created_at', 'updated_at', ...authorshipFields].includes(key) ? undefined : value
     ).replace(uuidPattern, (uuid) => {
         if (!order.has(uuid)) order.set(uuid, order.size);
         return `uuid-${order.get(uuid)}`;
@@ -387,6 +420,15 @@ describe('mapSnapshotToGraphDto', () => {
         for (const node of snapshot.nodes) {
             const list = graphDto[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as { id: number }[];
             expect(list.map((item) => item.id)).toEqual([node.id]);
+        }
+    });
+
+    it('leaves every node unattributed, since the export carries no authorship', () => {
+        const graphDto = mapSnapshotToGraphDto(snapshot, secretsByName);
+
+        for (const node of snapshot.nodes) {
+            const [item] = graphDto[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as object[];
+            expect(item).toMatchObject({ created_by: null, last_edited_by: null, last_edited_at: null });
         }
     });
 });

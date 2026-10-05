@@ -19,6 +19,9 @@ const dto: GetKeyValueNodeRequest = {
     input_map: {},
     output_variable_path: 'variables.saved',
     metadata: {},
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 describe('key-value node save/load', () => {

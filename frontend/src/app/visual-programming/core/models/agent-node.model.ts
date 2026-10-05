@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '@shared/models';
+
 import { InlineSurface } from './task-node.model';
 
 /**
@@ -30,7 +32,7 @@ export interface AgentNodeTaskWrite {
     context_task_ids?: number[];
 }
 
-export interface AgentNode {
+export interface AgentNode extends AuthorshipFields {
     id: number;
     created_at?: string;
     updated_at?: string;

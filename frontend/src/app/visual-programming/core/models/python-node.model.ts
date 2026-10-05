@@ -1,5 +1,6 @@
-import { GetPythonCodeRequest } from '@shared/models';
-export interface PythonNode {
+import { AuthorshipFields, GetPythonCodeRequest } from '@shared/models';
+
+export interface PythonNode extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

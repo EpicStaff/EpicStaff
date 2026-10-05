@@ -41,7 +41,18 @@ function graphDto(overrides: Partial<GraphDto> = {}): GraphDto {
 
 const RESTORED_GRAPH = graphDto({
     save_version: 2,
-    graph_note_list: [{ id: 99, node_name: 'Restored note', graph: 1, content: 'restored', metadata: {} }],
+    graph_note_list: [
+        {
+            id: 99,
+            node_name: 'Restored note',
+            graph: 1,
+            content: 'restored',
+            metadata: {},
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
+        },
+    ],
 });
 
 @Component({

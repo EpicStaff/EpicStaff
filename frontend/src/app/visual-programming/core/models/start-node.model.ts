@@ -1,4 +1,6 @@
-export interface StartNode {
+import { AuthorshipFields } from '@shared/models';
+
+export interface StartNode extends AuthorshipFields {
     id: number;
     graph: number;
     node_name: string;

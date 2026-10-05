@@ -1,4 +1,6 @@
-export interface GetFileExtractorNodeRequest {
+import { AuthorshipFields } from '@shared/models';
+
+export interface GetFileExtractorNodeRequest extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

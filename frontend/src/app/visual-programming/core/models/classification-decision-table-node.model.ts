@@ -1,4 +1,5 @@
-import { DeclaredSecretRef } from '@shared/models';
+import { AuthorshipFields, DeclaredSecretRef } from '@shared/models';
+
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;
@@ -63,7 +64,7 @@ export interface CDTPythonCodeBlock {
     secrets?: DeclaredSecretRef[];
 }
 
-export interface GetClassificationDecisionTableNodeRequest {
+export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields {
     id: number;
     graph: number;
     node_name: string;

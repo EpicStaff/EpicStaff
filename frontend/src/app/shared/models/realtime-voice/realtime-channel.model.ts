@@ -1,3 +1,4 @@
+import { AuthorshipFields } from '../authorship.model';
 import { WebhookTriggerModel } from '../webhook-trigger/webhook-trigger.model';
 
 export interface TwilioChannel {
@@ -8,7 +9,7 @@ export interface TwilioChannel {
     webhook_trigger: WebhookTriggerModel | null;
 }
 
-export interface RealtimeChannel {
+export interface RealtimeChannel extends AuthorshipFields {
     id: number;
     name: string;
     channel_type: 'twilio';

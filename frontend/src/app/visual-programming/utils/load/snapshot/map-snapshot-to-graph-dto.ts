@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '@shared/models';
+
 import { GetGraphLightRequest, GraphDto } from '../../../../features/flows/models/graph.model';
 import {
     GraphVersionSnapshot,
@@ -61,11 +63,12 @@ interface AdapterContext {
     secretDeclarations: SnapshotSecretDeclarations | undefined;
 }
 
+/** Authorship is added to every node in `adaptNode`, so an adapter leaves it out. */
 type SnapshotNodeAdapters = {
     [TNodeType in SnapshotNodeType]: (
         node: SnapshotNodeOfType<TNodeType>,
         context: AdapterContext
-    ) => NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>;
+    ) => Omit<NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>, keyof AuthorshipFields>;
 };
 
 /**
@@ -74,6 +77,9 @@ type SnapshotNodeAdapters = {
  * definition, LLM config, …) are passed through as null — the node is kept.
  */
 const NOT_PERSISTED = { graph: 0, created_at: '', updated_at: '' } as const;
+
+/** The export carries no authorship (backend import/export serializers exclude it): author and last edit are unknown. */
+const NO_AUTHORSHIP: AuthorshipFields = { created_by: null, last_edited_by: null, last_edited_at: null };
 
 const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     StartNode: (node) => ({ ...node, graph: 0 }),
@@ -233,8 +239,8 @@ export function buildPreviewFlowModel(
 }
 
 function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
-    const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => unknown;
-    return adapter(node, context);
+    const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
+    return { ...adapter(node, context), ...NO_AUTHORSHIP };
 }
 
 function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphDto[TKey]> } {
