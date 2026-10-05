@@ -12,9 +12,12 @@ from tables.serializers.utils.org_scoped_labels import (
     set_org_scoped_labels,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class McpToolSerializer(
+    ExcludeSoftDeleteFieldsMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("auth_secret_id",)
 
     auth_secret_id = OrgScopedPrimaryKeyRelatedField(
