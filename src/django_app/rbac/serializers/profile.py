@@ -10,7 +10,8 @@ class ProfileResponseSerializer(UserResponseSerializer):
     """GET / PATCH / POST-avatar response for /api/profile/.
 
     Strict superset of UserResponseSerializer: same fields, plus
-    `avatar_url`, `active_organization_id`, `active_permissions`. The
+    `avatar_url`, `active_organization_id`, `active_permissions` and
+    `quickstart_tour_completed`. The
     `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
     organization with the built-in Superadmin role — so the response shape is
@@ -27,6 +28,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
     active_permissions = serializers.JSONField(
         source="_active_permissions", allow_null=True, default=None, read_only=True
     )
+    quickstart_tour_completed = serializers.SerializerMethodField()
 
     class Meta(UserResponseSerializer.Meta):
         fields = [
@@ -34,8 +36,12 @@ class ProfileResponseSerializer(UserResponseSerializer):
             "avatar_url",
             "active_organization_id",
             "active_permissions",
+            "quickstart_tour_completed",
         ]
         read_only_fields = fields
+
+    def get_quickstart_tour_completed(self, user) -> bool:
+        return user.quickstart_tour_completed_at is not None
 
     def get_avatar_url(self, user):
         if not user.avatar:
