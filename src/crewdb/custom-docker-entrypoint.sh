@@ -146,6 +146,39 @@ BEGIN
     ELSE
         RAISE NOTICE '[manager] tables_scheduletriggernode not found, skipping';
     END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'storage_credentials_temp_account'
+    ) THEN
+        REVOKE ALL ON TABLE storage_credentials_temp_account FROM "${manager_user}";
+        GRANT SELECT, DELETE ON TABLE storage_credentials_temp_account TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE on storage_credentials_temp_account';
+    ELSE
+        RAISE NOTICE '[manager] storage_credentials_temp_account not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_pythoncoderesult'
+    ) THEN
+        REVOKE ALL ON TABLE tables_pythoncoderesult FROM "${manager_user}";
+        GRANT SELECT ON TABLE tables_pythoncoderesult TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on tables_pythoncoderesult';
+    ELSE
+        RAISE NOTICE '[manager] tables_pythoncoderesult not found, skipping';
+    END IF;
+
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'realtime_agent_chat'
+    ) THEN
+        REVOKE ALL ON TABLE realtime_agent_chat FROM "${manager_user}";
+        GRANT SELECT ON TABLE realtime_agent_chat TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on realtime_agent_chat';
+    ELSE
+        RAISE NOTICE '[manager] realtime_agent_chat not found, skipping';
+    END IF;
 END
 \$\$;
 EOF
@@ -344,6 +377,24 @@ BEGIN
         IF tbl_name = 'tables_scheduletriggernode' THEN
             EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl_name, '${manager_user}');
             RAISE NOTICE '[auto-grant] SELECT,UPDATE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT + DELETE for temp-creds cleanup backstop
+        IF tbl_name = 'storage_credentials_temp_account' THEN
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT only (finished_at used by temp-creds cleanup)
+        IF tbl_name = 'tables_pythoncoderesult' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- manager: SELECT only (ended_at used by temp-creds cleanup)
+        IF tbl_name = 'realtime_agent_chat' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
         END IF;
 
         -- knowledge: read-only tables

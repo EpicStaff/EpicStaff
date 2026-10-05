@@ -1,13 +1,16 @@
 import asyncio
 import signal
+from zoneinfo import ZoneInfo
 
 import settings
 from db.config import AsyncSessionLocal
 from helpers.logger import logger
 from repositories.session_repository import SessionRepository
+from repositories.temp_storage_account_repository import TempStorageAccountRepository
 from services.redis_service import RedisService
 from services.schedule_service import ScheduleService
 from services.session_timeout_service import SessionTimeoutService
+from services.storage_account_cleanup_service import StorageAccountCleanupService
 from sqlalchemy import text
 
 redis_service = RedisService(
@@ -27,6 +30,12 @@ session_timeout_service = SessionTimeoutService(
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
+
+temp_storage_account_repository = TempStorageAccountRepository(AsyncSessionLocal)
+storage_account_cleanup_service = StorageAccountCleanupService(
+    repository=temp_storage_account_repository,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
 
 
 async def test_database_connection():
@@ -81,6 +90,9 @@ async def main():
         await schedule_service.start()
         logger.info("ScheduleService started successfully.")
 
+        await storage_account_cleanup_service.start()
+        logger.info("StorageAccountCleanupService started successfully.")
+
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
@@ -94,6 +106,7 @@ async def shutdown():
 
     if schedule_service.scheduler.running:
         schedule_service.scheduler.shutdown(wait=False)
+    storage_account_cleanup_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
 
