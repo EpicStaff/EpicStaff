@@ -137,6 +137,10 @@ podman run -d   --name crew   --network backend-network   --network mcp-network 
 podman run -d   --name sandbox   --network backend-network   -v sandbox_venvs:${BASE_VENV_PATH}   -v ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}   --env-file .env   -t   -i   sandbox
 ```
 
+Savefiles is deprecated and will be removed: use `epicstaff_storage` instead.
+If the `${CREW_SAVEFILES_PATH}` folder is not owned by uid 1000, the sandbox makes its user (uid 1000 in the container) the owner of the folder itself, not its contents. With rootless Podman that uid maps to a subordinate uid on the host, so the folder looks owned by an unknown uid there.
+If agent code must write into files that already exist in the folder, run `podman unshare chown -R 1000 ${CREW_SAVEFILES_PATH}` once.
+
 ---
 
 ### Frontend
