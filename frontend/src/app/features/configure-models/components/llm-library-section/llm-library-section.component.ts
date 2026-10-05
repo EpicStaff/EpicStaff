@@ -14,6 +14,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     ButtonComponent,
     ConfirmationDialogData,
     ConfirmationDialogService,
@@ -87,6 +89,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
@@ -289,6 +292,17 @@ export class LlmLibrarySectionComponent implements OnInit {
             width: '600px',
             data: { configId: model.id },
         });
+    }
+
+    public onViewDetails(model: LlmLibraryModel): void {
+        const findDetails: Partial<Record<ModelTypes, () => AuthorshipDetailsSource | undefined>> = {
+            [ModelTypes.LLM]: () => this.llmConfigStorageService.configs().find((config) => config.id === model.id),
+            [ModelTypes.EMBEDDING]: () =>
+                this.embeddingConfigStorage.configs().find((config) => config.id === model.id),
+        };
+        const details = findDetails[model.configType]?.();
+        if (!details) return;
+        this.authorshipDetailsDialog.open('Configuration Details', details);
     }
 
     public onDelete(model: LlmLibraryModel): void {

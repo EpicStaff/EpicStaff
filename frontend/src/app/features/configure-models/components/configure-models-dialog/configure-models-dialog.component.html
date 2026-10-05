@@ -46,7 +46,11 @@
         }
     </nav>
 
-    <main class="configure-models-dialog__content">
+    <!-- cdkScrollable: overlays anchored inside (card menus, tooltips) follow this area's scrolling. -->
+    <main
+        cdkScrollable
+        class="configure-models-dialog__content"
+    >
         @switch (activeTabId()) {
             @case (tabIds.QUICKSTART) {
                 <section class="configure-models-dialog__panel">

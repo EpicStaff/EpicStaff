@@ -1,7 +1,7 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
 import { rolePermissionsToSet } from '@shared/utils';
 
@@ -13,7 +13,6 @@ import {
     DuplicateRoleSource,
 } from '../create-role-dialog/create-role-dialog.component';
 import { PermissionsTableComponent } from '../permissions-table/permissions-table.component';
-import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 
 @Component({
     selector: 'app-role-info-dialog',

@@ -16,6 +16,8 @@ import {
     AppIncludeExcludeDialogComponent,
     AppIncludeExcludeDialogData,
     AppIncludeExcludeDialogResult,
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     ConfirmationDialogService,
     FetchErrorStateComponent,
     IncludeExcludeTab,
@@ -47,7 +49,7 @@ import { ToolCardMenuAction, ToolCardVM } from '../tool-card/tool-card.model';
 import { TOOLS_LIST_PORT, ToolsListPort } from './tools-list-port';
 
 /** Minimal shape shared by all tool DTOs the port supplies. */
-interface Tool {
+interface Tool extends AuthorshipDetailsSource {
     id: number;
     name: string;
     labels: number[];
@@ -70,6 +72,7 @@ export class ToolsListComponent implements OnInit {
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
@@ -250,6 +253,11 @@ export class ToolsListComponent implements OnInit {
                         },
                     });
                 return;
+            case 'view_details': {
+                const tool = this.findToolById(payload.tool.id);
+                if (tool) this.authorshipDetailsDialog.open('Tool Details', tool);
+                return;
+            }
             case 'show_used_places':
                 this.port
                     .getUsageDetail(payload.tool.id)

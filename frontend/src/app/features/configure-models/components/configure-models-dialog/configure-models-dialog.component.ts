@@ -1,4 +1,5 @@
 import { DialogRef } from '@angular/cdk/dialog';
+import { CdkScrollable } from '@angular/cdk/scrolling';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -27,6 +28,7 @@ import { WebhookTriggersSectionComponent } from '../webhook-triggers-section/web
         SecretsSectionComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        CdkScrollable,
     ],
     templateUrl: './configure-models-dialog.component.html',
     styleUrls: ['./configure-models-dialog.component.scss'],

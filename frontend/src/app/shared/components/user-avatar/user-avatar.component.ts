@@ -1,7 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { getUserInitials } from './user-initials.util';
+
+/**
+ * Round user avatar: the avatar image when there is one, otherwise the initials of `name`,
+ * otherwise a generic person placeholder (no name, e.g. a user who never set a display name).
+ */
 @Component({
     selector: 'app-user-avatar',
+    imports: [AppSvgIconComponent],
     template: `
         @if (avatarUrl()) {
             <img
@@ -9,8 +17,14 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
                 alt="User avatar"
                 class="avatar-img"
             />
-        } @else {
+        } @else if (initials()) {
             <span class="initials">{{ initials() }}</span>
+        } @else {
+            <app-svg-icon
+                class="placeholder"
+                icon="user"
+                size="12px"
+            />
         }
     `,
     styles: [
@@ -46,14 +60,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserAvatarComponent {
-    name = input.required<string>();
-    avatarUrl = input<string | null>(null);
+    readonly name = input.required<string | null>();
+    readonly avatarUrl = input<string | null>(null);
 
-    readonly initials = computed(() => {
-        const parts = this.name().trim().split(/\s+/);
-        if (parts.length >= 2) {
-            return (parts[0][0] + parts[1][0]).toUpperCase();
-        }
-        return parts[0].substring(0, 2).toUpperCase();
-    });
+    protected readonly initials = computed(() => getUserInitials(this.name()));
 }
