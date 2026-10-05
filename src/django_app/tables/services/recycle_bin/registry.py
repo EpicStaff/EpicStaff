@@ -30,6 +30,7 @@ class BinResource:
 @cache
 def bin_resources() -> dict[str, BinResource]:
     """Every recycle-bin resource, keyed by the name the bin API uses."""
+    from agents.models import Surface
     from tables.models import Graph, SourceCollection
     from tables.models.mcp_models import McpTool
     from tables.models.python_models import PythonCodeTool
@@ -40,6 +41,7 @@ def bin_resources() -> dict[str, BinResource]:
             PythonCodeTool, "name", "org", ResourceType.TOOLS, also_taken=Q(built_in=True)
         ),
         "mcp_tool": BinResource(McpTool, "name", "org", ResourceType.TOOLS),
+        "surface": BinResource(Surface, "name", "organization", ResourceType.SURFACES),
         "collection": BinResource(
             SourceCollection, "collection_name", "org", ResourceType.KNOWLEDGE_SOURCES
         ),

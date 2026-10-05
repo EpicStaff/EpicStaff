@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.db import models
 from tables.models.base_models import (
     SoftDeleteFields,
+    SoftDeleteMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -19,7 +20,7 @@ class StorageAccess(models.TextChoices):
     DENY = "deny"  # explicitly forbidden — hard deny, overrides any grant
 
 
-class Surface(TimestampMixin, models.Model):
+class Surface(TimestampMixin, SoftDeleteMixin):
     organization = models.ForeignKey(
         "rbac.Organization",
         on_delete=models.CASCADE,
@@ -46,9 +47,13 @@ class Surface(TimestampMixin, models.Model):
     )
 
     class Meta(TimestampMixin.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["organization", "name"],
+                condition=models.Q(active=True),
                 name="uniq_surface_org_name",
             ),
         ]

@@ -11,7 +11,8 @@ class ExcludeSoftDeleteFieldsMixin:
 
     NOTE: DRF builds the validator for a conditional unique constraint
     (`condition=Q(active=True)`) only when `active` is among the fields, so on a
-    serializer of such a model (Graph, PythonCodeTool, SourceCollection) the name
+    serializer of such a model (Graph, PythonCodeTool, SourceCollection, McpTool,
+    Surface) the name
     clash surfaces as an IntegrityError instead of a 400. Add an explicit
     validator if that serializer writes names without deduplicating them first.
     """

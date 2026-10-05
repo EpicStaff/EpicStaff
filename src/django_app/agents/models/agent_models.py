@@ -228,3 +228,17 @@ class AgentDefaultSurface(SoftDeleteFields, models.Model):
                 name="uniq_agent_default_surface",
             ),
         ]
+
+    @classmethod
+    def soft_delete_owned_references(cls, field_name: str, target) -> models.Q | None:
+        """Rows reached through a reference field that still belong to the target.
+
+        A surface owns its owner agent's default-surface rows for it: they go to
+        the recycle bin with the surface, so a restore keeps the places the owner
+        chose instead of falling back to "applies everywhere". Other agents' rows
+        stay references and are removed. Restore is an undo: rows the owner adds
+        while the surface is binned stay next to the restored ones.
+        """
+        if field_name == "surface" and target.owner_agent_id is not None:
+            return models.Q(agent_definition_id=target.owner_agent_id)
+        return None

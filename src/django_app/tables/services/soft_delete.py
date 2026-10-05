@@ -30,7 +30,8 @@ class DeleteService:
 
     Child reached through a field in its soft_delete_reference_fields
         -> hard delete at the end of the call, unless the same child was
-           soft-deleted into this batch through its owner
+           soft-deleted into this batch through its owner, or the link model's
+           soft_delete_owned_references() says it still belongs to the target
 
     Normal model + SET_NULL
         -> set FK to NULL
@@ -226,7 +227,12 @@ class _DeleteContext:
             )
 
             if self._is_reference_relation(relation):
-                self._queue_reference_children(children)
+                owned_children, reference_children = self._split_owned_references(
+                    obj, relation, children
+                )
+                if owned_children is not None:
+                    self._batch_soft_delete_cascade(owned_children)
+                self._queue_reference_children(reference_children)
                 continue
 
             if self._is_soft_delete_cascade_relation(relation):
@@ -306,6 +312,21 @@ class _DeleteContext:
         """
         reference_fields = getattr(relation.related_model, "soft_delete_reference_fields", ())
         return relation.field.name in reference_fields
+
+    @staticmethod
+    def _split_owned_references(obj, relation, children):
+        """
+        Split the children of a reference relation into the rows that still
+        belong to `obj` (binned with it) and true references (removed for good).
+        A link model opts in with a `soft_delete_owned_references(field_name,
+        target)` classmethod returning a Q for its owned rows, or None.
+        """
+        owned_references = getattr(relation.related_model, "soft_delete_owned_references", None)
+        condition = owned_references(relation.field.name, obj) if owned_references else None
+        # A one-to-one reference comes back as a list; the hook doesn't apply there.
+        if condition is None or isinstance(children, list):
+            return None, children
+        return children.filter(condition), children.exclude(condition)
 
     def _queue_reference_children(self, children):
         for child in children:

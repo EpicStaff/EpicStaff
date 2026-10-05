@@ -2,9 +2,10 @@ from agents.models import Surface
 from rest_framework import serializers
 
 from tables.import_export.enums import EntityType
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class SurfaceImportSerializer(serializers.ModelSerializer):
+class SurfaceImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = Surface
         exclude = ["organization", "owner_agent"]
