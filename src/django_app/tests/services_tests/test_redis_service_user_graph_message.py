@@ -25,7 +25,7 @@ def _published(pubsub) -> list[dict]:
     return messages
 
 
-def test_user_graph_message_is_cached_and_announced_only_to_its_session(
+def test_user_graph_message_is_published_whole_only_to_its_session(
     redis_service_with_fake_redis,
 ):
     redis_service, redis_client = redis_service_with_fake_redis
@@ -33,10 +33,10 @@ def test_user_graph_message_is_cached_and_announced_only_to_its_session(
     subscriber.subscribe("session:update:11:messages", "session:update:12:messages")
     data = {"session_id": 11, "uuid": "user-message-uuid", "message_data": {"message_type": "user"}}
 
-    redis_service.publish_user_graph_message(11, "user-message-uuid", data)
+    redis_service.publish_user_graph_message(11, data)
 
     messages = _published(subscriber)
     subscriber.close()
     assert [message["channel"] for message in messages] == ["session:update:11:messages"]
-    assert json.loads(messages[0]["data"]) == {"uuid": "user-message-uuid", "session_id": 11}
-    assert json.loads(redis_client.get("graph:message:11:user-message-uuid")) == data
+    assert json.loads(messages[0]["data"]) == data
+    assert redis_client.keys("*") == []

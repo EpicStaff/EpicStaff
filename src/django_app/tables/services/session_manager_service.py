@@ -296,9 +296,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 created_at=created_at_dt,
             )
 
-            self.redis_service.publish_user_graph_message(
-                session.id, str(graph_session_message_data.uuid), data
-            )
+            self.redis_service.publish_user_graph_message(session.id, data)
 
         else:
             raise ValueError(f"Unsupported message_type: {data['message_data']['message_type']}")

@@ -11,11 +11,13 @@ from redis import Redis
 from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
+from settings import GRAPH_MESSAGE_STREAM_MAXLEN
 from src.shared.redis_keys import (
     SESSION_FINAL_VARIABLES_TTL_SECONDS,
     session_final_variables_key,
     session_status_channel,
 )
+from src.shared.redis_streams import GRAPH_MESSAGE_STREAM, graph_message_fields
 from utils.singleton_meta import SingletonMeta
 
 
@@ -238,6 +240,29 @@ class RedisService(metaclass=SingletonMeta):
     def publish(self, channel: str, message: object):
         self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
         logger.info(f"Message published to channel '{channel}'.")
+
+    async def aadd_graph_message(self, message: dict) -> None:
+        """Append a graph session message to the stream django_app persists from.
+
+        Unlike a publish, the entry waits in Redis until django_app has stored it.
+        """
+        await self.aioredis_client.xadd(
+            GRAPH_MESSAGE_STREAM,
+            graph_message_fields(message),
+            maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
+            approximate=True,
+        )
+        logger.debug("Graph message {} added to {}", message["uuid"], GRAPH_MESSAGE_STREAM)
+
+    def add_graph_message(self, message: dict) -> None:
+        """Synchronous ``aadd_graph_message`` for code without an event loop to await on."""
+        self.sync_redis_client.xadd(
+            GRAPH_MESSAGE_STREAM,
+            graph_message_fields(message),
+            maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
+            approximate=True,
+        )
+        logger.debug("Graph message {} added to {}", message["uuid"], GRAPH_MESSAGE_STREAM)
 
     async def aupdate_session_status(self, session_id: int, status: str, **kwargs):
         message = {

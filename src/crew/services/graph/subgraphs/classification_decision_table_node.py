@@ -123,9 +123,9 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
     def _publish_message(self, graph_message: GraphMessage):
-        """Publish a GraphMessage directly to Redis.
+        """Add a GraphMessage directly to the graph message stream.
         Subgraph StreamWriter messages don't propagate to the parent graph's
-        astream, so we publish directly to Redis instead."""
+        astream, so we write to Redis directly instead."""
         if self.redis_service is None:
             return
         try:
@@ -144,7 +144,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "timestamp": graph_message.timestamp,
             }
         data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
+        self.redis_service.add_graph_message(data)
 
     @staticmethod
     def _resolve_path(path_expr: str, ctx: dict):

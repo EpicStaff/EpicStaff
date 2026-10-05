@@ -33,4 +33,4 @@ async def test_final_variables_are_stored_as_json_under_the_shared_key_with_ttl(
     assert json.loads(await fake_redis.get("session:7:final_variables")) == variables
     ttl = await fake_redis.ttl("session:7:final_variables")
     assert 0 < ttl <= SESSION_FINAL_VARIABLES_TTL_SECONDS
-    assert SESSION_FINAL_VARIABLES_TTL_SECONDS == 900
+    assert SESSION_FINAL_VARIABLES_TTL_SECONDS == 120

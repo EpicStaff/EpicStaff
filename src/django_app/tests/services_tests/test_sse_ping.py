@@ -1,8 +1,10 @@
 import asyncio
+import importlib
 
 import fakeredis
 import pytest
 
+import utils.logger
 from tables.utils import mixins
 from tables.utils.mixins import SSEMixin
 
@@ -128,3 +130,35 @@ async def test_closing_an_idle_event_stream_after_a_ping_runs_its_cleanup(
     assert other_tasks == []
     assert mixins._active_sse_count == active_streams_before
     assert await fake_async_redis.pubsub_numsub(LIVE_CHANNEL) == [(LIVE_CHANNEL, 0)]
+
+
+class _ReprCountingStr(str):
+    """A payload value that counts how often it is rendered into a log line."""
+
+    render_count = 0
+
+    def __repr__(self):
+        type(self).render_count += 1
+        return super().__repr__()
+
+
+@pytest.fixture
+def production_log_level():
+    """Reapply the project's INFO-level loguru setup, as configured in production."""
+    importlib.reload(utils.logger)
+    yield
+
+
+@pytest.mark.asyncio
+async def test_streamed_items_are_not_rendered_for_debug_logs_at_info_level(
+    production_log_level,
+):
+    _ReprCountingStr.render_count = 0
+
+    async def one_large_message():
+        yield {"event": "messages", "data": {"output": _ReprCountingStr("large node output")}}
+
+    frames = [frame async for frame in _StubStream()._data_generator(one_large_message)]
+
+    assert frames == ["event: messages\n", 'data: {"output": "large node output"}\n\n']
+    assert _ReprCountingStr.render_count == 0

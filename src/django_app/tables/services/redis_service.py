@@ -163,31 +163,22 @@ class RedisService(metaclass=SingletonMeta):
             token,
         )
 
-    def publish_user_graph_message(self, session_id: int, uuid: str, data: dict) -> None:
-        """Cache a user-created graph message and announce it to the session's SSE streams."""
-        message = {
-            "uuid": str(uuid),
-            "session_id": session_id,
-        }
+    def publish_user_graph_message(self, session_id: int, data: dict) -> None:
+        """Send a stored user-created graph message to the session's SSE streams.
 
-        self.redis_client.setex(
-            name=f"graph:message:{session_id}:{uuid}",
-            time=60,
-            value=json.dumps(data),
-        )
-
+        The message must already be in the database: a stream that connects later
+        replays it from there.
+        """
         self.redis_client.publish(
-            channel=session_messages_channel(session_id), message=json.dumps(message)
+            channel=session_messages_channel(session_id), message=json.dumps(data)
         )
-        logger.info(
-            f"Cached for saving graph message data created by user unput: {uuid} in {session_id=}."
-        )
+        logger.info("Published user graph message {} of session {}", data.get("uuid"), session_id)
 
     async def redis_get_message(self, channels: list, pubsub):
         try:
             async for message in pubsub.listen():
                 if message["type"] == "message":
-                    logger.debug(f"message from redis_get_message {message['data']}")
+                    logger.debug("message from redis_get_message {}", message["data"])
                     yield message
                     await asyncio.sleep(0.01)
 

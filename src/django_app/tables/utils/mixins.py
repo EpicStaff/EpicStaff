@@ -4,17 +4,16 @@ import json
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
-from datetime import datetime
 from functools import partial
 
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
-from loguru import logger
 from rbac.identity.tickets import sse_ticket_service
 from tables.services.redis_service import RedisService
 from tables.utils.memory_trim import read_rss_mb, start_periodic_malloc_trim
+from utils.logger import logger
 
 redis_service = RedisService()
 
@@ -42,6 +41,10 @@ class SSEMixin(View, ABC):
 
     ping_interval = 15  # seconds
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.held_live_messages: list = []
+
     def get_channels(self) -> list[str]:
         """Return the Redis channels whose messages `get_live_updates()` receives.
 
@@ -51,7 +54,19 @@ class SSEMixin(View, ABC):
         """
         return []
 
+    def hold_live_message(self, message: dict) -> None:
+        """Keep a message published on `get_channels()` while the initial data was sent.
+
+        `get_live_updates()` must send everything in ``self.held_live_messages``, in
+        order, before what it reads from the pubsub. Default: keep the message as is;
+        override to keep less of it.
+        """
+        self.held_live_messages.append(message)
+
     async def async_orm_generator(self, queryset):
+        # NOTE: for small results only. Outside a transaction Django declares this
+        # cursor WITH HOLD, so PostgreSQL computes the whole result first, and each
+        # fetch holds chunk_size rows in memory.
         async for entity in queryset.aiterator(chunk_size=200):
             yield entity
 
@@ -73,15 +88,6 @@ class SSEMixin(View, ABC):
             - a dict with optional 'event' and required 'data' keys
             - or any JSON-serializable primitive (str, int, etc)
         """
-
-    async def sort_by_timestamp(self, messages: list[dict]) -> list[dict]:
-        """
-        Sort a list of messages by their 'timestamp' field in ascending order.
-        """
-        return sorted(
-            messages,
-            key=lambda m: datetime.fromisoformat(m["timestamp"]),
-        )
 
     async def _data_generator(
         self,
@@ -128,7 +134,7 @@ class SSEMixin(View, ABC):
                 finally:
                     next_item = None
 
-                logger.debug(f"_data_generator item: {item}")
+                logger.debug("_data_generator item: {}", item)
                 last_sent = time.monotonic()
                 if isinstance(item, dict):
                     if "event" in item:
@@ -167,6 +173,8 @@ class SSEMixin(View, ABC):
             ) as initial_frames:
                 async for data in initial_frames:
                     yield data
+                    if pubsub is not None:
+                        await self._hold_published_messages(pubsub)
 
             if test_mode:
                 for i in range(3):
@@ -177,7 +185,7 @@ class SSEMixin(View, ABC):
                 self._data_generator(partial(self.get_live_updates, pubsub))
             ) as live_frames:
                 async for data in live_frames:
-                    logger.debug(f"event_stream data: {data}")
+                    logger.debug("event_stream data: {}", data)
                     yield data
 
         except (GeneratorExit, KeyboardInterrupt):
@@ -198,6 +206,14 @@ class SSEMixin(View, ABC):
 
             _active_sse_count -= 1
             _log_sse_state("CLOSE", view_name)
+
+    async def _hold_published_messages(self, pubsub) -> None:
+        # Read what was published meanwhile rather than leaving it in Redis: past
+        # client-output-buffer-limit Redis drops the subscriber, and a long initial
+        # replay of large messages would end the stream.
+        while (message := await pubsub.get_message(timeout=0)) is not None:
+            if message["type"] == "message":
+                self.hold_live_message(message)
 
     async def authorize(self, request, *args, **kwargs):
         """Optional post-ticket authorization hook. Runs after the SSE ticket

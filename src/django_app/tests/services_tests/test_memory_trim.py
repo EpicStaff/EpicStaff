@@ -5,6 +5,7 @@ import fakeredis
 import pytest
 
 from tables.services import redis_pubsub
+from tables.services.graph_message_stream_consumer import GraphMessageStreamConsumer
 from tables.utils import memory_trim
 
 
@@ -104,11 +105,7 @@ def test_read_rss_mb_reports_this_process():
     assert memory_trim.read_rss_mb() > 0
 
 
-@pytest.mark.parametrize(
-    "worker_name",
-    ["listen_for_redis_messages_worker", "cache_for_redis_messages_worker"],
-)
-def test_redis_worker_starts_the_trim_thread(fake_libc, monkeypatch, worker_name):
+def test_redis_listener_starts_the_trim_thread(fake_libc, monkeypatch):
     monkeypatch.setattr(
         redis_pubsub.RedisPubSub,
         "_create_redis_client",
@@ -118,7 +115,34 @@ def test_redis_worker_starts_the_trim_thread(fake_libc, monkeypatch, worker_name
     # The reconnect loop never returns; the trim thread must already be running by then.
     monkeypatch.setattr(pubsub, "_run_with_reconnect", lambda label, inner_loop: None)
 
-    getattr(pubsub, worker_name)()
+    pubsub.listen_for_redis_messages_worker()
 
     assert memory_trim._trim_thread is not None
     assert memory_trim._trim_thread.is_alive()
+
+
+class _StopConsuming(BaseException):
+    """Not an Exception, so run()'s start-over loop does not catch it."""
+
+
+def test_graph_message_consumer_starts_the_trim_thread(fake_libc, monkeypatch):
+    consumer = GraphMessageStreamConsumer(
+        redis_client=fakeredis.FakeRedis(decode_responses=True),
+        store=None,
+        consumer_name="trim-test",
+        batch_size=1,
+    )
+    trim_thread_when_consuming = []
+
+    def record_and_stop():
+        trim_thread_when_consuming.append(memory_trim._trim_thread)
+        raise _StopConsuming
+
+    # run() never returns on its own; stop it once it starts consuming.
+    monkeypatch.setattr(consumer, "start", record_and_stop)
+
+    with pytest.raises(_StopConsuming):
+        consumer.run()
+
+    assert trim_thread_when_consuming[0] is not None
+    assert trim_thread_when_consuming[0].is_alive()

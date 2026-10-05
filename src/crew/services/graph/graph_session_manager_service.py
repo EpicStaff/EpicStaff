@@ -34,7 +34,7 @@ def _extract_finish_token_total(message_data: dict) -> int:
     """Extract total_tokens from a streamed custom-chunk's message_data, if any.
 
     Mirrors the extraction logic in
-    tables/services/redis_pubsub.py::_calculate_subgraph_token_usage so both
+    tables/services/session_token_usage.py::extract_token_usage so both
     sides agree on where token usage lives in a "finish" message: AgentNode
     (services/graph/nodes/agent_node.py) and TaskNode
     (services/graph/nodes/task_node.py) embed it as output["token_usage"].
@@ -201,11 +201,11 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                             # etc.) with no new status.
                             stop_event.set()
 
-                    self.redis_service.publish("graph:messages", data)
+                    await self.redis_service.aadd_graph_message(data)
                 elif stream_mode == "values":
                     final_state = chunk
 
-                logger.debug(f"Mode: {stream_mode}. Chunk: {chunk}")
+                logger.debug("Mode: {}. Chunk: {}", stream_mode, chunk)
                 stop_event.check_stop()
 
             await asyncio.sleep(0.01)
@@ -224,7 +224,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             graph_end_message_data = asdict(graph_end_data)
             graph_end_message_data["uuid"] = str(uuid.uuid4())
 
-            self.redis_service.publish("graph:messages", graph_end_message_data)
+            await self.redis_service.aadd_graph_message(graph_end_message_data)
             await asyncio.sleep(0.05)
 
             await self._store_final_variables(

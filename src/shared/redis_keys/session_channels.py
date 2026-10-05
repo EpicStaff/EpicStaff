@@ -13,10 +13,10 @@ def session_status_channel(session_id: int) -> str:
 
 
 def session_messages_channel(session_id: int) -> str:
-    """Name of the Redis pub/sub channel announcing one session's new graph messages.
+    """Name of the Redis pub/sub channel carrying one session's new graph messages.
 
-    The payload is a pointer, ``{"uuid", "session_id"}``; the message itself is
-    cached under ``graph:message:{session_id}:{uuid}``. SSE streams subscribe to
-    the channel of their own session.
+    The payload is the whole message as JSON, published by django_app only after the
+    message is stored, so a stream that missed it finds it in the database. SSE
+    streams subscribe to the channel of their own session.
     """
     return f"session:update:{session_id}:messages"

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.shared.envtools import Env
+from src.shared.redis_streams.graph_message_stream import DEFAULT_GRAPH_MESSAGE_STREAM_MAXLEN
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -31,6 +32,16 @@ AGENT_REQUEST_STREAM = env.str("AGENT_REQUEST_STREAM")
 # Prefix, not a stream: each run reads "<prefix>:<correlation_id>".
 AGENT_RESULT_STREAM = env.str("AGENT_RESULT_STREAM")
 AGENT_RESULT_TIMEOUT = env.time("AGENT_RESULT_TIMEOUT")
+
+# Approximate cap on the graph message stream (src/shared/redis_streams/graph_message_stream.py).
+# django_app deletes each entry once stored, so the stream only holds its backlog; the cap
+# only bites when django_app falls this far behind or is down. Trimming drops unread
+# messages silently, and each entry can be ~300 KB, so the worst case is about
+# 2000 x 300 KB = 600 MB of Redis memory. django_app warns when its backlog grows past
+# half of the default.
+GRAPH_MESSAGE_STREAM_MAXLEN = env.int(
+    "CREW_GRAPH_MESSAGE_STREAM_MAXLEN", DEFAULT_GRAPH_MESSAGE_STREAM_MAXLEN
+)
 
 DEFAULT_RAG_SEARCH_TIMEOUT = env.time("DEFAULT_RAG_SEARCH_TIMEOUT")
 NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")

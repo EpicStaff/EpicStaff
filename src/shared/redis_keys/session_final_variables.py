@@ -1,4 +1,7 @@
-SESSION_FINAL_VARIABLES_TTL_SECONDS = 900
+# django_app reads the key within milliseconds of the ``end`` status. Each key holds the
+# whole flow state (hundreds of KB), so a long lifetime only keeps Redis memory occupied;
+# this is far above any realistic listener backlog.
+SESSION_FINAL_VARIABLES_TTL_SECONDS = 120
 
 
 def session_final_variables_key(session_id: int) -> str:

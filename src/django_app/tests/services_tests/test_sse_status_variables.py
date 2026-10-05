@@ -173,17 +173,35 @@ async def test_end_status_reads_the_variables_of_the_url_session_not_the_payload
 
 
 @pytest.mark.asyncio
-async def test_graph_message_is_read_from_the_url_session_not_the_payload_one(
-    fake_async_redis,
-):
-    await fake_async_redis.set("graph:message:5:uuid-1", json.dumps({"owner": "url"}))
-    await fake_async_redis.set("graph:message:9:uuid-1", json.dumps({"owner": "payload"}))
-    message_with_foreign_session_id = {
+async def test_graph_message_is_sent_as_received_without_a_redis_lookup(fake_async_redis):
+    graph_message = {
+        "session_id": 5,
+        "uuid": "uuid-1",
+        "name": "Agent",
+        "execution_order": 1,
+        "timestamp": "2026-10-05T10:00:00+00:00",
+        "message_data": {"message_type": "agent", "text": "hi"},
+    }
+    live_message = {
         "type": "message",
         "channel": "session:update:5:messages",
-        "data": json.dumps({"uuid": "uuid-1", "session_id": 9}),
+        "data": json.dumps(graph_message),
     }
 
-    events = await _live_events(_view_for(5), [message_with_foreign_session_id])
+    events = await _live_events(_view_for(5), [live_message])
 
-    assert events == [{"event": "messages", "data": {"owner": "url"}}]
+    assert events == [{"event": "messages", "data": graph_message}]
+    assert await fake_async_redis.keys("*") == []
+
+
+@pytest.mark.asyncio
+async def test_graph_message_on_another_sessions_channel_is_not_sent(fake_async_redis):
+    other_sessions_message = {
+        "type": "message",
+        "channel": "session:update:9:messages",
+        "data": json.dumps({"session_id": 9, "uuid": "uuid-9", "message_data": {}}),
+    }
+
+    events = await _live_events(_view_for(5), [other_sessions_message])
+
+    assert events == []

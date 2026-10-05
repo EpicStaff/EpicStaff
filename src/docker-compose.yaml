@@ -33,7 +33,6 @@ x-communication-env: &communication-env
   KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL:?}
   KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL:?}
   KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL:?}
-  GRAPH_MESSAGES_CHANNEL: ${GRAPH_MESSAGES_CHANNEL:?}
   WEBHOOK_MESSAGE_CHANNEL: ${WEBHOOK_MESSAGE_CHANNEL:?}
   REQUEST_WEBHOOK_UPDATE_CHANNEL: ${REQUEST_WEBHOOK_UPDATE_CHANNEL:?}
   STORAGE_MUTATION_CHANNEL: ${STORAGE_MUTATION_CHANNEL:?}
@@ -63,6 +62,9 @@ services:
       context: .
       dockerfile: ./django_app/Dockerfile.dj
     container_name: django_app
+    # The graph message stream consumer is named after the hostname; a fixed one lets a
+    # recreated container resume the entries its predecessor left unacknowledged at once.
+    hostname: django_app
     command: ./entrypoint.sh
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
@@ -121,6 +123,7 @@ services:
       # glibc reads only the unprefixed name, so the DJANGO_ setting is mapped to it here.
       MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
       DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
+      DJANGO_GRAPH_MESSAGE_BATCH_SIZE: ${DJANGO_GRAPH_MESSAGE_BATCH_SIZE:-50}
 
       WEBHOOK_USE_TUNNEL: ${WEBHOOK_USE_TUNNEL:?}
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
@@ -293,6 +296,7 @@ services:
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
       CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
+      CREW_GRAPH_MESSAGE_STREAM_MAXLEN: ${CREW_GRAPH_MESSAGE_STREAM_MAXLEN:-2000}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_KEY: ${DJANGO_API_KEY:?}
