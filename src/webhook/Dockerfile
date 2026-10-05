@@ -42,14 +42,28 @@ RUN uv sync --frozen --no-install-project --all-groups --no-group dev --no-group
 # Add virtualenv to PATH so the existing CMD keeps resolving python from it.
 ENV PATH="/app/src/.venv/bin:$PATH"
 
-# Install ngrok via official APT repo (S3-hosted, not equinox CDN)
-RUN apt-get update && apt-get install -y curl apt-transport-https gnupg && \
-    curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-      | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
-    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
-      | tee /etc/apt/sources.list.d/ngrok.list && \
-    apt-get update && apt-get install -y ngrok && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install ngrok via official APT repo (S3-hosted, not equinox CDN).
+# The repo key lives in /etc/apt/keyrings and is bound to this one source via
+# signed-by, so it cannot vouch for any other repository (a key in the global
+# APT trust directory is trusted for every source). The key is checked against
+# ngrok's published fingerprint before use, and the package version is pinned.
+# To bump ngrok: update NGROK_VERSION to a version listed in the repo's
+# dists/bookworm/main/binary-<arch>/Packages index.
+ARG NGROK_VERSION=3.39.11
+RUN set -eux; \
+    ngrok_key_fingerprint=F0271FCF712CF2E39901F1A30E61D3BBAAEE37FE; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl gnupg; \
+    install -d -m 0755 /etc/apt/keyrings; \
+    curl --fail -sSL -o /etc/apt/keyrings/ngrok.asc https://ngrok-agent.s3.amazonaws.com/ngrok.asc; \
+    actual_fingerprint="$(gpg --show-keys --with-colons /etc/apt/keyrings/ngrok.asc | awk -F: '/^fpr:/ {print $10; exit}')"; \
+    [ "$actual_fingerprint" = "$ngrok_key_fingerprint" ]; \
+    echo "deb [signed-by=/etc/apt/keyrings/ngrok.asc] https://ngrok-agent.s3.amazonaws.com bookworm main" \
+      > /etc/apt/sources.list.d/ngrok.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends "ngrok=${NGROK_VERSION}"; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY ./webhook .
 COPY ./shared /app/src/shared
