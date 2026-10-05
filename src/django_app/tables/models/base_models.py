@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Self
 
 from django.apps import apps
-from django.db import connection, models
+from django.db import connection, models, transaction
 from django.db.models import Func, Value
 from django.utils import timezone
 
@@ -278,8 +278,25 @@ class SoftDeleteMixin(SoftDeleteFields):
 
         Django's Collector walks reverse relations through each model's base
         manager (`all_objects`), so it reaches rows already in the bin.
+
+        Raises:
+            NotInRecycleBinError: The row is live, e.g. a restore committed
+                after the caller loaded it. The row is locked first, so a purge
+                racing a restore never deletes the restored row.
         """
-        return super().delete(using=using, keep_parents=keep_parents)
+        from tables.exceptions import NotInRecycleBinError
+
+        with transaction.atomic(using=using):
+            is_binned = (
+                type(self)
+                .all_objects.using(using)
+                .select_for_update()
+                .filter(pk=self.pk, active=False)
+                .exists()
+            )
+            if not is_binned:
+                raise NotInRecycleBinError()
+            return super().delete(using=using, keep_parents=keep_parents)
 
 
 class TimestampMixin(models.Model):

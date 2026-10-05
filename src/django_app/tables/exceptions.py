@@ -112,6 +112,13 @@ class BuiltInToolModificationError(CustomAPIExeption):
         super().__init__(detail=detail, code=code, status_code=400)
 
 
+class NotInRecycleBinError(CustomAPIExeption):
+    """The row isn't in the recycle bin (it's live, or was binned before batches existed)."""
+
+    def __init__(self, detail="Not found in the recycle bin.", code="not_in_recycle_bin"):
+        super().__init__(detail=detail, code=code, status_code=404)
+
+
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"

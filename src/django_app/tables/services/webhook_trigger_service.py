@@ -327,18 +327,26 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                 "Use ngrok or a publicly accessible provider."
             )
 
-        if kind == WebhookTriggerAuthKind.WEBHOOK and trigger.telegram_trigger_nodes.exists():
+        # all_objects: a trigger node in the recycle bin still holds its trigger.
+        if (
+            kind == WebhookTriggerAuthKind.WEBHOOK
+            and trigger.telegram_trigger_nodes(manager="all_objects").exists()
+        ):
             raise ValueError(
                 "This trigger is attached to a Telegram trigger node and "
                 "cannot use kind='webhook' auth; use kind='telegram' instead."
             )
-        if kind == WebhookTriggerAuthKind.TELEGRAM and trigger.webhook_trigger_nodes.exists():
+        if (
+            kind == WebhookTriggerAuthKind.TELEGRAM
+            and trigger.webhook_trigger_nodes(manager="all_objects").exists()
+        ):
             raise ValueError(
                 "This trigger is attached to a webhook trigger node and "
                 "cannot use kind='telegram' auth; use kind='webhook' instead."
             )
         if kind == WebhookTriggerAuthKind.TWILIO and (
-            trigger.webhook_trigger_nodes.exists() or trigger.telegram_trigger_nodes.exists()
+            trigger.webhook_trigger_nodes(manager="all_objects").exists()
+            or trigger.telegram_trigger_nodes(manager="all_objects").exists()
         ):
             raise ValueError(
                 "This trigger already has a webhook or Telegram trigger node "

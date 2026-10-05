@@ -34,7 +34,9 @@ def _cleanup_orphaned_telegram_node_auth(trigger_id: int | None) -> None:
     cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.TELEGRAM,
-        is_claimed=lambda: TelegramTriggerNode.objects.filter(
+        # all_objects: a binned node still claims the auth, so a restore can
+        # register it again. Only a purge (post_delete) frees it.
+        is_claimed=lambda: TelegramTriggerNode.all_objects.filter(
             webhook_trigger_id=trigger_id
         ).exists(),
     )

@@ -232,10 +232,13 @@ class CollectionManagementService:
         held by the knowledge service.
 
         Args:
-            collection: The collection to remove, usually one already in the recycle bin.
+            collection: A collection in the recycle bin.
 
         Returns:
             dict: Deletion summary
+
+        Raises:
+            NotInRecycleBinError: The collection is live.
         """
         collection_id = collection.collection_id
         collection_name = collection.collection_name

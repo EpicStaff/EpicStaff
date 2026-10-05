@@ -44,6 +44,8 @@ def next_copy_name(
     org_id: int | None,
     base_name: str,
     also_taken: Q | None = None,
+    name_field: str = "name",
+    org_field: str = "org",
 ) -> str:
     """Pick the next free copy name for `base_name` among the org's `model` rows.
 
@@ -58,15 +60,17 @@ def next_copy_name(
         also_taken: Rows outside the org whose names also count as taken. Hybrid
             models need it: their built-in rows (`org IS NULL`) are visible to every
             org, so a copy must not reuse a built-in name.
+        name_field: The model's name column (`collection_name` on SourceCollection).
+        org_field: The model's organization FK (`organization` on AgentDefinition and Surface).
     """
     clean_base = clean_base_name(base_name)
     acquire_copy_name_lock(org_id, clean_base)
-    taken_rows = Q(org_id=org_id)
+    taken_rows = Q(**{f"{org_field}_id": org_id})
     if also_taken is not None:
         taken_rows |= also_taken
-    existing_names = model.objects.filter(taken_rows, name__istartswith=clean_base).values_list(
-        "name", flat=True
-    )
+    existing_names = model.objects.filter(
+        taken_rows, **{f"{name_field}__istartswith": clean_base}
+    ).values_list(name_field, flat=True)
     return ensure_unique_identifier(base_name=base_name, existing_names=existing_names)
 
 

@@ -138,7 +138,8 @@ def _cleanup_orphaned_webhook_node_auth(trigger_id: int | None) -> None:
     cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.WEBHOOK,
-        is_claimed=lambda: WebhookTriggerNode.objects.filter(
+        # all_objects: a binned node still claims the auth (see the telegram one).
+        is_claimed=lambda: WebhookTriggerNode.all_objects.filter(
             webhook_trigger_id=trigger_id
         ).exists(),
     )
