@@ -3,11 +3,6 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import pandas
-from application.commands import RunSearch
-from application.orchestrators.searching.base import AbstractSearchOrchestrator
-from application.results import SearchResult
-from domain.enums import GraphSearchMethodEnum
-from domain.errors import UnsupportedError
 from graphrag.api import basic_search, drift_search, global_search, local_search
 from graphrag.config.models.basic_search_config import BasicSearchConfig
 from graphrag.config.models.drift_search_config import DRIFTSearchConfig
@@ -17,8 +12,15 @@ from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
-from infrastructure.grounding_guard import apply_grounding_guard
 from pydantic import BaseModel as PydanticModel
+
+from application.commands import RunSearch
+from application.orchestrators.searching.base import AbstractSearchOrchestrator
+from application.results import SearchResult
+from domain.enums import GraphSearchMethodEnum
+from domain.errors import UnsupportedError
+from infrastructure.grounding_guard import apply_grounding_guard
+from infrastructure.prompt_patching import patch_graphrag_prompts
 
 
 @dataclass(frozen=True)
@@ -28,13 +30,17 @@ class SearchSpecification:
     config_model: type[PydanticModel]
     required_files: Iterable[str]
     optional_files: Iterable[str] | None = None
-    extra_kwargs: Callable[..., dict[str, Any]] | dict[str, Any] = field(default_factory=dict)
+    extra_kwargs: Callable[..., dict[str, Any]] | dict[str, Any] = field(
+        default_factory=dict
+    )
 
 
 def _drift_extra_kwargs(search_config, method_config, files) -> dict[str, Any]:
     # Empty primer folds cause the primer to hallucinate from entity names if folds
     # exceed the number of available community reports — limit folds to the report count.
-    usable_reports = min(search_config.drift_k_followups, len(files["community_reports"]))
+    usable_reports = min(
+        search_config.drift_k_followups, len(files["community_reports"])
+    )
     method_config.primer_folds = max(1, min(method_config.primer_folds, usable_reports))
     return {
         "response_type": GraphSearchOrchestrator.DEFAULT_RESPONSE_TYPE,
@@ -102,12 +108,20 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         ),
     }
 
+    def __init__(self, uow):
+        patch_graphrag_prompts()
+        super().__init__(uow)
+
     async def on_execute(self, command: RunSearch) -> SearchResult:
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
 
-        config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
-        config.completion_models["default_completion_model"].api_key = command.llm_api_key
+        config.embedding_models[
+            "default_embedding_model"
+        ].api_key = command.embedding_api_key
+        config.completion_models[
+            "default_completion_model"
+        ].api_key = command.llm_api_key
 
         if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
@@ -116,7 +130,9 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             )
 
         specs = self._SEARCH_MAP[command.search_config.method]
-        method_config = specs.config_model.model_validate(command.search_config.model_dump())
+        method_config = specs.config_model.model_validate(
+            command.search_config.model_dump()
+        )
         setattr(
             config,
             specs.config_field,
