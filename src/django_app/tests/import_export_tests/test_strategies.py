@@ -1,6 +1,8 @@
 import pytest
 from copy import deepcopy
 
+from rest_framework.exceptions import ValidationError
+
 from rbac.models import Organization
 from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
 from agents.models import (
@@ -63,7 +65,7 @@ def agent_definition(rich_seeded_db, default_org):
         organization=default_org,
         name="agent_def_1",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         metadata={"key": "value"},
         llm_config=rich_seeded_db["llm_config"],
         max_iter=5,
@@ -89,7 +91,7 @@ class TestAgentDefinitionStrategy:
         [
             ("name", "different_name"),
             ("description", "different description"),
-            ("instructions", "different instructions"),
+            ("instruction_list", [{"name": "Instruction_1.md", "content": "different"}]),
             ("metadata", {"different": "value"}),
             ("max_iter", 99),
         ],
@@ -130,6 +132,85 @@ class TestAgentDefinitionStrategy:
         data["fcm_llm_config"] = agent_definition.llm_config_id
 
         assert strategy.find_existing(data, mapper) is None
+
+    def test_export_carries_instruction_list_not_compiled_instructions(
+        self, agent_definition, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        exported = export_data[EntityType.AGENT_DEFINITION][0]
+
+        assert exported["instruction_list"] == [
+            {"name": "Instruction_1.md", "content": "instructions"}
+        ]
+        assert "instructions" not in exported
+
+    def test_find_existing_matches_legacy_instructions_payload(
+        self, agent_definition, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        del data["instruction_list"]
+        data["instructions"] = "instructions"
+        data["metadata"] = {**data["metadata"], "instructions_format": "markdown"}
+
+        found = strategy.find_existing(data, mapper)
+        assert found is not None
+        assert found.id == agent_definition.id
+
+    @pytest.mark.parametrize(
+        "legacy_instructions,expected_instruction_list",
+        [
+            ("be brief", [{"name": "Instruction_1.md", "content": "be brief"}]),
+            ("   ", []),
+            ("", []),
+        ],
+    )
+    def test_create_entity_converts_legacy_instructions(
+        self,
+        agent_definition,
+        export_service,
+        default_org,
+        legacy_instructions,
+        expected_instruction_list,
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        del data["instruction_list"]
+        data["instructions"] = legacy_instructions
+        data["metadata"] = {"key": "value", "instructions_format": "markdown"}
+
+        created = strategy.create_entity(data, mapper, org_id=default_org.id)
+
+        created.refresh_from_db()
+        assert created.instruction_list == expected_instruction_list
+        assert created.metadata == {"key": "value"}
+
+    def test_create_entity_rejects_duplicate_instruction_names(
+        self, agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        data["instruction_list"] = [
+            {"name": "Rules.md", "content": "a"},
+            {"name": "rules.md", "content": "b"},
+        ]
+
+        with pytest.raises(ValidationError):
+            strategy.create_entity(data, mapper, org_id=default_org.id)
 
     def test_find_existing_hit_ignoring_default_surfaces(
         self, agent_definition, export_service, default_org
@@ -255,7 +336,7 @@ def graph_with_agent_node(rich_seeded_db, default_org):
         organization=default_org,
         name="flow_agent_def",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         llm_config=rich_seeded_db["llm_config"],
     )
     shared_surface = Surface.objects.create(
