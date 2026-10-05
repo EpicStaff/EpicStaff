@@ -17,9 +17,12 @@ class PythonCodeToolExecutor:
     per graph/session.
     """
 
-    def __init__(self, sandbox: SandboxClient, data: PythonCodeToolData) -> None:
+    def __init__(
+        self, sandbox: SandboxClient, data: PythonCodeToolData, storage_credentials=None
+    ) -> None:
         self._sandbox = sandbox
         self._data = data
+        self._storage_credentials = storage_credentials
 
     async def __call__(self, args: dict) -> ToolResult:
         python_code = self._data.python_code
@@ -47,6 +50,7 @@ class PythonCodeToolExecutor:
                 session_id=python_code.session_id,
                 org_id=python_code.org_id,
                 secrets=python_code.secrets,
+                storage_credentials=self._storage_credentials,
             )
         except ValidationError as error:
             return ToolResult(

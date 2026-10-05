@@ -23,6 +23,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -111,6 +112,7 @@ class ClassificationDecisionTableNodeSubgraph:
         stop_event: StopEvent,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
@@ -121,6 +123,7 @@ class ClassificationDecisionTableNodeSubgraph:
         self.custom_session_message_writer = (
             custom_session_message_writer or CustomSessionMessageWriter()
         )
+        self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
         """Publish a GraphMessage directly to Redis.
@@ -232,6 +235,7 @@ class ClassificationDecisionTableNodeSubgraph:
             python_code_data=python_code,
             inputs=inputs,
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -359,6 +363,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "variables": state["variables"].model_dump(),
             },
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -419,6 +424,7 @@ def main(**kwargs) -> dict:
             python_code_data=python_code_data,
             inputs={"variables": variables_dict},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:

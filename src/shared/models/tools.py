@@ -176,17 +176,23 @@ class CodeTaskData(StorageScopedData):
 
     @model_validator(mode="after")
     def _validate_storage_scope(self) -> "CodeTaskData":
-        """Second echelon of defense:
-        a task that asks for storage access must already carry the trusted
-        scope a publisher is responsible for filling in. Without this,
-        sandbox would receive `use_storage=True` with nothing for the
-        credential issuer to scope a temporary account to.
+        """Second echelon of defense (fail-closed):
+        a task that asks for storage access must already carry:
+        1. The trusted scope a publisher is responsible for filling in (org_id, storage_org_prefix)
+        2. The temporary credentials (storage_credentials) injected by crew/agent at publication time
+
+        Without both, sandbox cannot execute the task safely.
         """
-        if self.use_storage and (not self.org_id or not self.storage_org_prefix):
-            raise ValueError(
-                "use_storage=True requires both org_id and storage_org_prefix "
-                "to be set on CodeTaskData."
-            )
+        if self.use_storage:
+            if not self.org_id or not self.storage_org_prefix:
+                raise ValueError(
+                    "use_storage=True requires both org_id and storage_org_prefix "
+                    "to be set on CodeTaskData."
+                )
+            if self.storage_credentials is None:
+                raise ValueError(
+                    "use_storage=True requires storage_credentials to be set on CodeTaskData."
+                )
         return self
 
     def log_summary(self) -> str:

@@ -13,6 +13,7 @@ from src.shared.models import (
     DecisionTableNodeData,
     PythonCodeData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class DecisionTableNodeDataError(Exception):
@@ -30,6 +31,7 @@ class DecisionTableNodeSubgraph:
         stop_event: StopEvent,
         run_code_execution_service: RunPythonCodeService,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.decision_table_node_data = decision_table_node_data
         self._graph_builder = graph_builder
@@ -42,6 +44,7 @@ class DecisionTableNodeSubgraph:
             custom_session_message_writer or CustomSessionMessageWriter()
         )
         self.run_code_execution_service = run_code_execution_service
+        self.storage_credentials = storage_credentials
 
     async def _execute_condition_group(
         self,
@@ -95,6 +98,7 @@ def main(**kwargs) -> bool:
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         logger.info(f"Python code execution data: {python_code_execution_data}")
@@ -129,6 +133,7 @@ def main(variables: dict) -> bool:
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(

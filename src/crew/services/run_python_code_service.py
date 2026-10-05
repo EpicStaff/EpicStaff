@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
-from src.shared.storage_credentials import publish_credential_scope_async
+from src.shared.models.storage_scope import StorageCredentials
 from utils.singleton_meta import SingletonMeta
 
 
@@ -22,6 +22,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         inputs: dict[str, Any],
         additional_global_kwargs: dict[str, Any] | None = None,
         stop_event: StopEvent | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> dict[str, Any]:
         additional_global_kwargs = additional_global_kwargs or {}
         venv_name = python_code_data.venv_name
@@ -54,6 +55,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 session_id=python_code_data.session_id,
                 secrets=python_code_data.secrets,
                 org_id=python_code_data.org_id,
+                storage_credentials=storage_credentials,
             )
         except ValidationError as error:
             logger.error("Invalid storage scope for code execution: {}", error)
@@ -73,9 +75,6 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
 
-        # Trusted scope for the storage-credential issuer, written before the
-        # task itself is published.
-        await publish_credential_scope_async(self.redis_service.aioredis_client, code_task_data)
         await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
         logger.info("Waiting for code_results")
 

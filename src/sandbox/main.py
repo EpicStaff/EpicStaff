@@ -9,31 +9,17 @@ import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
-from services.storage_credential_client import StorageCredentialClient
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData, CodeTaskData
-from src.shared.redis_streams import RedisStreamClient
 from utils.logger import logger
 
 # Deliberately no STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here:
 # sandbox no longer holds any static MinIO credential. Temporary,
-# per-execution credentials are requested from the issuer running in
-# django_app -- see StorageCredentialClient / dynamic_venv_executor_chain.py.
-storage_credential_request_stream_client = RedisStreamClient(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    password=settings.REDIS_PASSWORD,
-)
-storage_credential_client = StorageCredentialClient(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    password=settings.REDIS_PASSWORD,
-    stream_client=storage_credential_request_stream_client,
-)
+# per-execution credentials are passed via CodeTaskData.storage_credentials,
+# injected by crew/agent at task publication time.
 executor_chain = DynamicVenvExecutorChain(
     output_path=settings.OUTPUT_PATH,
     base_venv_path=settings.BASE_VENV_PATH,
-    storage_credential_client=storage_credential_client,
 )
 redis_service = RedisService(
     host=settings.REDIS_HOST,
@@ -159,7 +145,6 @@ async def init():
     log_secret_masking_state()
     log_isolation_state()
     await redis_service.connect()
-    await storage_credential_request_stream_client.connect()
 
 
 async def listen_redis():
@@ -205,6 +190,7 @@ async def run(code_task_data: CodeTaskData):
                 use_storage=code_task_data.use_storage,
                 storage_allowed_paths=code_task_data.storage_allowed_paths,
                 storage_org_prefix=code_task_data.storage_org_prefix,
+                storage_credentials=code_task_data.storage_credentials,
                 secrets=code_task_data.secrets,
             )
         except asyncio.CancelledError:

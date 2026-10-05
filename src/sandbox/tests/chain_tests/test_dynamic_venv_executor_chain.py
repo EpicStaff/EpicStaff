@@ -39,26 +39,6 @@ import dynamic_venv_executor_chain
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 
 
-class FakeStorageCredentialClient:
-    """sandbox no longer mints/revokes anything itself; it only asks the
-    issuer (django_app) for credentials by execution_id and never sees --
-    let alone chooses -- org_id/storage_org_prefix/storage_allowed_paths."""
-
-    def __init__(self, response=None, error=None):
-        self.response = response or {
-            "access_key": "scoped-ak",
-            "secret_key": "scoped-sk",
-        }
-        self.error = error
-        self.requested_execution_ids: list[str] = []
-
-    async def request(self, execution_id: str) -> dict:
-        self.requested_execution_ids.append(execution_id)
-        if self.error:
-            raise self.error
-        return self.response
-
-
 class _FakeProcess:
     """Minimal asyncio.subprocess.Process look-alike that always succeeds."""
 
@@ -148,12 +128,9 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
         _make_fake_exec(result_file_path, expected_result, recorded_exec_calls),
     )
 
-    fake_client = FakeStorageCredentialClient()
-
     chain = DynamicVenvExecutorChain(
         output_path=output_path,
         base_venv_path=base_venv_path,
-        storage_credential_client=fake_client,
     )
 
     result = await chain.run(
@@ -178,7 +155,6 @@ async def test_chain_happy_path_returns_code_result_data(tmp_path, monkeypatch):
     assert (
         len(recorded_exec_calls) >= 1
     ), "Expected at least one create_subprocess_exec call (code execution)"
-    assert fake_client.requested_execution_ids == []
 
 
 @pytest.mark.asyncio
@@ -227,12 +203,9 @@ async def test_chain_run_propagates_cancelled_error(tmp_path, monkeypatch):
         _fake_slow_exec,
     )
 
-    fake_client = FakeStorageCredentialClient()
-
     chain = DynamicVenvExecutorChain(
         output_path=output_path,
         base_venv_path=base_venv_path,
-        storage_credential_client=fake_client,
     )
 
     # Create a task and cancel it while chain.run() is executing

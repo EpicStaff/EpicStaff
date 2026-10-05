@@ -18,10 +18,6 @@ from jail import build_jail
 from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
 from secret_scrubber import build_masking_values, masking_enabled, scrub
-from services.storage_credential_client import (
-    StorageCredentialClient,
-    StorageCredentialRequestError,
-)
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
 from utils.environment import build_base_env
@@ -801,11 +797,9 @@ class DynamicVenvExecutorChain:
         self,
         output_path: str | Path,
         base_venv_path: str | Path,
-        storage_credential_client: StorageCredentialClient,
     ):
         self.output_path = output_path
         self.base_venv_path = base_venv_path
-        self.storage_credential_client = storage_credential_client
 
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
@@ -833,6 +827,7 @@ class DynamicVenvExecutorChain:
         use_storage: bool = False,
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
+        storage_credentials=None,
         secrets: dict[str, str] | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
@@ -886,56 +881,33 @@ class DynamicVenvExecutorChain:
             "secrets": secrets,
         }
         if use_storage:
-            # sandbox never claims its own org_id/storage_org_prefix (finding
-            # #38): it asks the issuer in django_app for credentials by
-            # execution_id alone. The issuer resolves the trusted scope a
-            # publisher already wrote for this execution_id, mints a
-            # temporary MinIO service account scoped to it, and replies here.
-            # Any failure -- timeout, missing scope, issuer-reported error --
-            # is fail-closed: code never executes without storage access it
-            # asked for.
-            try:
-                credentials = await self.storage_credential_client.request(execution_id)
-            except StorageCredentialRequestError as error:
+            # Fail-closed: code that requests storage access must have valid
+            # credentials already provided via storage_credentials parameter.
+            # These are injected by crew/agent at task publication time and
+            # carry a trusted org scope.
+            if storage_credentials is None:
                 logger.error(
-                    "Failed to obtain scoped storage credentials for execution_id={}: {}",
+                    "Execution requested storage access but no storage_credentials provided, "
+                    "execution_id={}",
                     execution_id,
-                    error,
                 )
                 return CodeResultData(
                     execution_id=execution_id,
-                    stderr="Failed to obtain scoped storage credentials.",
+                    stderr="Storage access requested but no credentials provided.",
                     stdout="",
                     returncode=1,
                 )
-            except Exception:
-                # Anything unwrapped that still escapes the credential-request
-                # path (StorageCredentialClient is expected to wrap everything
-                # as StorageCredentialRequestError, but this is defense in
-                # depth) must fail closed the same way.
-                logger.exception("Unexpected failure obtaining scoped storage credentials")
-                return CodeResultData(
-                    execution_id=execution_id,
-                    stderr="Unexpected failure obtaining scoped storage credentials.",
-                    stdout="",
-                    returncode=1,
-                )
-            context["temp_storage_access_key"] = credentials["access_key"]
-            context["temp_storage_secret_key"] = credentials["secret_key"]
+            context["temp_storage_access_key"] = storage_credentials.access_key
+            context["temp_storage_secret_key"] = storage_credentials.secret_key
 
         try:
             result = await self.chain.handle(context)
         except Exception:
-            # Mirrors the storage-credential-request failure branch above:
-            # once a temporary credential has been acquired for this
-            # execution_id, main.py must always reach the code_results
-            # publish step so django_app's result_listener revokes it. If
-            # venv creation or library install blows up (subprocess spawn
-            # failure, OOM, disk error, ...) the exception must not
-            # propagate past this point, or the credential leaks until the
-            # TTL sweep.
-            # stderr travels to the SSE stream and the LLM tool observation, so
-            # it carries fixed text only; the detail stays in the log.
+            # venv creation or library install blowing up (subprocess spawn
+            # failure, OOM, disk error, ...) must not propagate past this
+            # point. stderr travels to the SSE stream and the LLM tool
+            # observation, so it carries fixed text only; the detail stays
+            # in the log.
             logger.exception("Execution chain failed")
             return CodeResultData(
                 execution_id=execution_id,

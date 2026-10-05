@@ -4,12 +4,6 @@ import re
 from collections import defaultdict
 from typing import Self
 
-from shared.knowledge.client import KnowledgeClient
-from shared.knowledge.target import KnowledgeSearchTarget
-from shared.models.agent_service import CollectionSpec, SearchConfigEntry
-from shared.models.knowledge import GraphRagSearchConfig
-from shared.models.tools import McpToolData, PythonCodeToolData
-
 from app.exceptions import AgentServiceError, DuplicateToolNameError
 from app.knowledge.events import KnowledgeEventSink
 from app.sandbox.client import SandboxClient
@@ -22,6 +16,11 @@ from app.tools.executors.python_code import PythonCodeToolExecutor
 from app.tools.mcp.gateway import McpToolGateway
 from app.tools.registry import ToolRegistry, ToolSpec
 from app.tools.system_registry import SystemToolRegistry, get_system_registry
+from shared.knowledge.client import KnowledgeClient
+from shared.knowledge.target import KnowledgeSearchTarget
+from shared.models.agent_service import CollectionSpec, SearchConfigEntry
+from shared.models.knowledge import GraphRagSearchConfig
+from shared.models.tools import McpToolData, PythonCodeToolData
 
 _INVALID_TOOL_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
@@ -101,11 +100,13 @@ class ToolRegistryBuilder:
         mcp_gateway: McpToolGateway | None = None,
         knowledge_client: KnowledgeClient | None = None,
         knowledge_sink: KnowledgeEventSink | None = None,
+        storage_credentials=None,
     ) -> None:
         self._sandbox = sandbox
         self._mcp_gateway = mcp_gateway
         self._knowledge_client = knowledge_client
         self._knowledge_sink = knowledge_sink
+        self._storage_credentials = storage_credentials
         self._registry = ToolRegistry()
         self._names: set[str] = set()
         self._built = False
@@ -135,7 +136,7 @@ class ToolRegistryBuilder:
 
         return self
 
-    def add_python_code_tool(self, data: PythonCodeToolData) -> Self:
+    def add_python_code_tool(self, data: PythonCodeToolData, storage_credentials=None) -> Self:
         """Register a python-code tool. Name, description, and schema come from ``data``."""
         self._check_built()
         clean_name = sanitize_tool_name(data.name)
@@ -145,7 +146,9 @@ class ToolRegistryBuilder:
             description=data.description,
             parameters_schema=data.args_schema.model_dump(),
         )
-        executor = PythonCodeToolExecutor(self._sandbox, data)
+        executor = PythonCodeToolExecutor(
+            self._sandbox, data, storage_credentials=storage_credentials
+        )
         self._registry.register(spec, executor)
         return self
 

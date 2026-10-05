@@ -13,6 +13,7 @@ from services.graph.remembered_outputs import (
     format_remembered_outputs_preamble,
 )
 from src.shared.models import TaskNodeData
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class TaskNode(BaseNode):
@@ -26,6 +27,7 @@ class TaskNode(BaseNode):
         task_node_data: TaskNodeData,
         agent_task_service: AgentTaskService,
         remembered_outputs_store: RememberedOutputsStore,
+        storage_credentials: StorageCredentials | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -37,6 +39,7 @@ class TaskNode(BaseNode):
         self.task_node_data = task_node_data
         self.agent_task_service = agent_task_service
         self.remembered_outputs_store = remembered_outputs_store
+        self.storage_credentials = storage_credentials
 
     def get_output_variable_value(self, output: Any) -> Any:
         return agent_output_variable_value(output)
@@ -65,7 +68,10 @@ class TaskNode(BaseNode):
         )
 
         result = await self.agent_task_service.run_task(
-            task_node_data, self.stop_event, on_event=on_agent_event
+            task_node_data,
+            self.stop_event,
+            on_event=on_agent_event,
+            storage_credentials=self.storage_credentials,
         )
 
         final_text = result.get("final_text")

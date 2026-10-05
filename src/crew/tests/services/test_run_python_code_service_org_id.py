@@ -39,13 +39,6 @@ class FakeRedisService:
         self.unsubscribe = MagicMock()
         # run_code() reads this to log the current subscriber count.
         self._async_pubsub_groups = {}
-        # run_code() passes this straight to publish_credential_scope_async(),
-        # which only calls `.set()` on it -- and only when
-        # code_task_data.use_storage is True. None of these tests set
-        # use_storage, so `.set` is never actually awaited; it just needs to
-        # exist so the attribute access itself doesn't raise.
-        self.aioredis_client = MagicMock()
-        self.aioredis_client.set = AsyncMock()
 
     async def apublish(self, channel: str, message: dict):
         self.published = message
