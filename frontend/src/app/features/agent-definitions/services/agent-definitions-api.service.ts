@@ -71,7 +71,7 @@ export class AgentDefinitionsApiService {
     copy(source: AgentDefinition, newName: string): Observable<AgentDefinition> {
         const body: CreateAgentDefinitionRequest = {
             name: newName,
-            instructions: source.instructions,
+            instruction_list: source.instruction_list,
             description: source.description,
             llm_config: source.llm_config,
             fcm_llm_config: source.fcm_llm_config,
