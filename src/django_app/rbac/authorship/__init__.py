@@ -14,7 +14,7 @@ from rbac.authorship.serializers import (
     AuthorStampingSerializerMixin,
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
-    represent_last_edited_at,
+    represent_authorship_time,
 )
 from rbac.authorship.user_summary import (
     UserSummarySerializer,
@@ -38,7 +38,7 @@ __all__ = [
     "claim_authorship",
     "record_last_edit",
     "record_last_edits",
-    "represent_last_edited_at",
+    "represent_authorship_time",
     "represent_user_summary",
     "resolve_author",
     "restore_last_edits",

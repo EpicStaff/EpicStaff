@@ -19,6 +19,8 @@ export interface RealtimeChannel extends AuthorshipFields {
     realtime_agent_definition: number | null;
     is_enabled: boolean;
     twilio?: TwilioChannel;
+    /** Read-only ISO 8601 creation time; null for channels created before it was recorded. Never sent back. */
+    created_at: string | null;
 }
 
 export interface CreateRealtimeChannelRequest {

@@ -168,6 +168,14 @@ class AgentDefinition(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFilla
         help_text="Surfaces applied to this agent by default, per place (flow/chat/all). Managed via AgentDefaultSurface through table.",
     )
 
+    # Nullable because agents created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        help_text="When this agent definition was created. Null for agents created before creation times were recorded.",
+    )
+
     def get_default_model(self):
         return DefaultAgentDefinitionConfig.load()
 

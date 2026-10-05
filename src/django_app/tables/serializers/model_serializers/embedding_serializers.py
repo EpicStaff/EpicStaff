@@ -88,4 +88,4 @@ class EmbeddingConfigSerializer(
     class Meta:
         model = EmbeddingConfig
         exclude = ["api_key_secret"]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]

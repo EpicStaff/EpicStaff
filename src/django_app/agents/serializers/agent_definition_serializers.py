@@ -64,6 +64,7 @@ class AgentDefinitionReadSerializer(LastEditFieldsSerializerMixin, serializers.M
             "id",
             "org",
             "created_by",
+            "created_at",
             "name",
             "description",
             "instructions",

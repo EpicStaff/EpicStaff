@@ -14,6 +14,8 @@ class FileListItem:
     size: int
     modified: str | None
     is_empty: bool
+    created_by: int | None = None
+    created_at: str | None = None
     last_edited_by: int | None = None
     last_edited_at: str | None = None
 
@@ -31,6 +33,8 @@ class FileInfo:
     size: int
     content_type: str
     modified: str
+    created_by: int | None = None
+    created_at: str | None = None
     last_edited_by: int | None = None
     last_edited_at: str | None = None
 
@@ -46,6 +50,8 @@ class FolderInfo:
     name: str
     path: str
     modified: str
+    created_by: int | None = None
+    created_at: str | None = None
     last_edited_by: int | None = None
     last_edited_at: str | None = None
 
@@ -99,6 +105,8 @@ class TreeNode:
     size: int
     modified: str | None
     children: list[TreeNode] | None  # None for files, list for folders (possibly empty)
+    created_by: int | None = None
+    created_at: str | None = None
     last_edited_by: int | None = None
     last_edited_at: str | None = None
 
@@ -110,6 +118,8 @@ class TreeNode:
             "type": self.type,
             "size": self.size,
             "modified": self.modified,
+            "created_by": self.created_by,
+            "created_at": self.created_at,
             "last_edited_by": self.last_edited_by,
             "last_edited_at": self.last_edited_at,
             "children": (

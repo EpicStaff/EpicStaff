@@ -1,4 +1,4 @@
-import { LastEditFields } from '../authorship.model';
+import { AuthorshipFields } from '../authorship.model';
 
 export type WebhookProviderType = 'ngrok' | 'localhost';
 
@@ -22,8 +22,8 @@ export interface WebhookTriggerAuth {
 }
 
 // Also built client-side as the form value of webhook-trigger-field, so the read-only
-// last-edit fields are optional.
-export interface WebhookTriggerModel extends Partial<LastEditFields> {
+// author, creation time and last-edit fields are optional.
+export interface WebhookTriggerModel extends Partial<AuthorshipFields> {
     id?: number;
     path: string;
     provider_type: WebhookProviderType | null;
@@ -33,10 +33,12 @@ export interface WebhookTriggerModel extends Partial<LastEditFields> {
     auth_kind?: WebhookTriggerAuthKind;
     auth_secret_id?: number | null;
     auth?: WebhookTriggerAuth | null;
+    /** Read-only ISO 8601 creation time; null for triggers created before it was recorded. */
+    created_at?: string | null;
 }
 
 // Body of `POST`/`PATCH /webhook-triggers/`: only the writable fields. The read-only ones
-// (`id`, `live_url`, `auth`, the last edit) are never sent back.
+// (`id`, `live_url`, `auth`, the author, the creation time, the last edit) are never sent back.
 export type WebhookTriggerPayload = Pick<
     WebhookTriggerModel,
     'path' | 'provider_type' | 'ngrok_config' | 'localhost_config' | 'auth_kind' | 'auth_secret_id'

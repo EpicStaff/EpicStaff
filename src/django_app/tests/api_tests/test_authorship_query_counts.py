@@ -6,6 +6,7 @@ missing prefetch shows up as one `rbac_user` (or `rbac_resourcelastedit`) query 
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -51,6 +52,7 @@ from tables.models import (
     Secret,
     SourceCollection,
     StartNode,
+    StorageFile,
     SubGraphNode,
     TaskNode,
     TelegramTriggerNode,
@@ -59,10 +61,13 @@ from tables.models import (
     WebhookTriggerNode,
 )
 from tables.services.secrets import secret_encryption
+from tables.services.storage_service.manager import StorageManager
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 USER_TABLE = 'FROM "rbac_user"'
 LAST_EDIT_TABLE = 'FROM "rbac_resourcelastedit"'
-# One query loads every author; editors arrive joined to their last edit.
+# One query loads every author of one authored relation; editors arrive joined to
+# their last edit.
 MAX_USER_QUERIES = 1
 
 
@@ -202,6 +207,9 @@ class ListCase:
     # rbac_user and rbac_resourcelastedit counts are compared, not the total.
     unrelated_per_row: str = ""
     id_field: str = "id"
+    # Authored relations each row renders (the row itself, plus a nested trigger or
+    # subflow); each loads its authors in one query.
+    authored_relations: int = 1
 
 
 NODE_GRAPH = "the node's graph"
@@ -277,6 +285,7 @@ LIST_CASES = [
             SubGraphNode, index, node_name="sub", subgraph=factory.edited_graph(index)
         ),
         unrelated_per_row="the node's graph and the subflow's tags and labels",
+        authored_relations=2,
     ),
     ListCase(
         "decisiontablenode",
@@ -298,6 +307,7 @@ LIST_CASES = [
             webhook_trigger=factory.edited_webhook_trigger(index),
         ),
         unrelated_per_row="python code, its secrets and the trigger's auth",
+        authored_relations=2,
     ),
     ListCase(
         "telegramtriggernode",
@@ -308,6 +318,7 @@ LIST_CASES = [
             webhook_trigger=factory.edited_webhook_trigger(index),
         ),
         unrelated_per_row="the trigger's auth",
+        authored_relations=2,
     ),
     ListCase("scheduletriggernode", _node(ScheduleTriggerNode, node_name="nightly")),
     ListCase("graphnote", _node(GraphNote, content="note"), unrelated_per_row=NODE_GRAPH),
@@ -349,7 +360,12 @@ LIST_CASES = [
         "geminirealtimeconfig",
         _owned(GeminiRealtimeConfig, "custom_name", "query-count-gemini", edited=False),
     ),
-    ListCase("realtimechannel", _realtime_channel, unrelated_per_row="the webhook trigger's auth"),
+    ListCase(
+        "realtimechannel",
+        _realtime_channel,
+        unrelated_per_row="the webhook trigger's auth",
+        authored_relations=2,
+    ),
     ListCase(
         "mcptool",
         _owned(
@@ -440,7 +456,79 @@ def test_list_renders_authorship_without_a_query_per_row(
     three_rows = _list_query_counts(member_client, case, created_ids)
 
     record_property("query_counts", {"one_row": one_row, "three_rows": three_rows})
-    assert three_rows.user == one_row.user <= MAX_USER_QUERIES
+    assert three_rows.user == one_row.user <= MAX_USER_QUERIES * case.authored_relations
     assert three_rows.last_edit == one_row.last_edit
     if not case.unrelated_per_row:
         assert three_rows.total == one_row.total
+
+
+@dataclass(frozen=True)
+class StorageCase:
+    url: str
+    # Query parameters for the endpoint, given the ids of the files it should render.
+    params: Callable[[list[int]], dict]
+
+
+STORAGE_CASES = {
+    "list": StorageCase("/api/storage/list/", lambda ids: {"path": "docs"}),
+    "tree": StorageCase("/api/storage/tree/", lambda ids: {"path": ""}),
+    "search": StorageCase("/api/storage/search/", lambda ids: {"q": "query-count"}),
+    "info": StorageCase("/api/storage/info/", lambda ids: {"path": "docs/query-count-0.txt"}),
+    "files-by-ids": StorageCase(
+        "/api/storage/files/", lambda ids: {"ids": ",".join(str(file_id) for file_id in ids)}
+    ),
+}
+
+
+def _storage_file(factory: RowFactory, index: int) -> StorageFile:
+    name = f"query-count-{index}.txt"
+    return factory.edit(
+        StorageFile.objects.create(
+            org=factory.org,
+            path=f"docs/{name}",
+            name=name,
+            parent_path="docs/",
+            size=1,
+            created_by=factory.author(index),
+        ),
+        index,
+    )
+
+
+def _storage_query_counts(client, case: StorageCase, file_ids: list[int]) -> QueryCounts:
+    with CaptureQueriesContext(connection) as captured:
+        response = client.get(case.url, case.params(file_ids))
+    assert response.status_code == status.HTTP_200_OK, response.content
+    sql = [query["sql"] for query in captured.captured_queries]
+    return QueryCounts(
+        total=len(sql),
+        user=sum(USER_TABLE in statement for statement in sql),
+        last_edit=sum(LAST_EDIT_TABLE in statement for statement in sql),
+    )
+
+
+@pytest.fixture
+def in_memory_storage():
+    manager = StorageManager(InMemoryStorageBackend(organization_prefix=""))
+    with patch("tables.views.storage_views.get_storage_manager", return_value=manager):
+        yield manager
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("endpoint", sorted(STORAGE_CASES))
+def test_storage_renders_authors_and_editors_in_one_user_query(
+    endpoint, row_factory, member_client, in_memory_storage, record_property
+):
+    case = STORAGE_CASES[endpoint]
+    StorageFile.objects.create(
+        org=row_factory.org, path="docs/", name="docs", item_type="folder", parent_path=""
+    )
+    file_ids = [_storage_file(row_factory, 0).pk]
+    one_file = _storage_query_counts(member_client, case, file_ids)
+
+    file_ids += [_storage_file(row_factory, index).pk for index in (1, 2)]
+    three_files = _storage_query_counts(member_client, case, file_ids)
+
+    record_property("query_counts", {"one_file": one_file, "three_files": three_files})
+    assert three_files.user == one_file.user == MAX_USER_QUERIES
+    assert three_files.total == one_file.total

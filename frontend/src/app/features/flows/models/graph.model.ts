@@ -1,4 +1,4 @@
-import { LastEditFields } from '@shared/models';
+import { AuthorshipFields, UserSummary } from '@shared/models';
 
 import { AgentNode } from '../../../visual-programming/core/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../visual-programming/core/models/audio-to-text.model';
@@ -34,9 +34,9 @@ export interface SubflowLightDto {
     updated_at?: string;
 }
 
-// Last-edit fields are optional like created_at/updated_at: light graphs are also built
-// client-side from SubflowLightDto (flow-card, flows-menu), which carries no last edit.
-export interface GetGraphLightRequest extends Partial<LastEditFields> {
+// Author and last-edit fields are optional like created_at/updated_at: light graphs are also
+// built client-side from SubflowLightDto (flow-card, flows-menu), which carries no authorship.
+export interface GetGraphLightRequest extends Partial<AuthorshipFields> {
     id: number;
     uuid: string;
     name: string;
@@ -50,7 +50,15 @@ export interface GetGraphLightRequest extends Partial<LastEditFields> {
     save_version?: number;
 }
 
+// Every graph the API returns (`GraphSerializer`; also `GraphLightSerializer` for copy and graph-light)
+// carries the author, the last edit and a non-null `created_at`. The version preview also builds one
+// client-side (`mapSnapshotToGraphDto`): it has no authorship (null) and is never persisted, so its
+// `created_at` is a placeholder like its `id` and `uuid`.
 export interface GraphDto extends GetGraphLightRequest {
+    created_by: UserSummary | null;
+    created_at: string;
+    last_edited_by: UserSummary | null;
+    last_edited_at: string | null;
     save_version: number;
     start_node_list: StartNode[];
     python_node_list: PythonNode[];
@@ -105,6 +113,12 @@ export interface UpdateGraphDtoRequest {
     tags?: string[];
     save_version?: number;
 }
+
+// Body of `PATCH /graphs/{id}/`: only the writable graph metadata the app patches. The read-only
+// author, timestamps and last edit of a loaded graph are never sent back.
+export type PatchGraphDtoRequest = Partial<
+    Pick<GraphDto, 'name' | 'description' | 'tags' | 'label_ids' | 'epicchat_enabled' | 'save_version'>
+>;
 
 export interface GraphVersionCreateRequest {
     graph_id: number;

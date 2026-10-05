@@ -203,10 +203,11 @@ class PythonCodeToolSerializer(
             "built_in",
             "use_storage",
             "labels",
+            "created_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
+        read_only_fields = ["id", "built_in", "created_by", "created_at", "updated_at"]
 
     def validate_description(self, value: str) -> str:
         """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""

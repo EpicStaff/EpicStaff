@@ -15,11 +15,13 @@ const LOADED_TRIGGER: WebhookTriggerModel = {
     localhost_config: { name: 'Local orders', domain: null },
     live_url: 'http://localhost:8009/webhooks/orders/',
     auth: { kind: 'webhook', secret_tail: '…a1b2' },
+    created_by: { id: 2, display_name: 'Grace Hopper', avatar_url: null },
+    created_at: '2026-09-15T08:00:00Z',
     last_edited_by: { id: 3, display_name: 'Ada Lovelace', avatar_url: 'https://cdn.example.com/avatars/3.png' },
     last_edited_at: '2026-10-01T09:30:00Z',
 };
 
-const READ_ONLY_KEYS = ['id', 'live_url', 'auth', 'last_edited_by', 'last_edited_at'];
+const READ_ONLY_KEYS = ['id', 'live_url', 'auth', 'created_by', 'created_at', 'last_edited_by', 'last_edited_at'];
 
 describe('WebhookTriggerService payloads', () => {
     let service: WebhookTriggerService;

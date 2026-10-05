@@ -540,7 +540,7 @@ class PythonCodeToolViewSet(
     queryset = (
         PythonCodeTool.objects.all()
         .select_related("python_code")
-        .prefetch_related("python_code__secrets", *authorship_prefetches(author=False))
+        .prefetch_related("python_code__secrets", *authorship_prefetches())
     )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1015,8 +1015,8 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return (
-            Graph.objects.only("id", "name", "description")
-            .prefetch_related("tags", "labels", *authorship_prefetches(author=False))
+            Graph.objects.only("id", "name", "description", "created_by")
+            .prefetch_related("tags", "labels", *authorship_prefetches())
             .filter(org_id=self.get_active_org_id())
         )
 
@@ -1711,8 +1711,8 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "twilio__webhook_trigger__localhost",
     ).prefetch_related(
         *authorship_prefetches(),
-        # The nested webhook trigger renders its last edit but not its author.
-        *authorship_prefetches("twilio__webhook_trigger", author=False),
+        # The nested webhook trigger renders its author and last edit.
+        *authorship_prefetches("twilio__webhook_trigger"),
     )
     serializer_class = RealtimeChannelSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1957,8 +1957,8 @@ class SubGraphNodeModelViewSet(
     org_filter_path = "graph__org_id"
     queryset = SubGraphNode.objects.prefetch_related(
         *authorship_prefetches(),
-        # The referenced flow renders through GraphLightSerializer: last edit, no author.
-        *authorship_prefetches("subgraph", author=False),
+        # The referenced flow renders through GraphLightSerializer, author and last edit.
+        *authorship_prefetches("subgraph"),
     )
     serializer_class = SubGraphNodeSerializer
 
@@ -2388,8 +2388,8 @@ class WebhookTriggerNodeViewSet(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
     ).prefetch_related(
         *authorship_prefetches(),
-        # The read serializer nests the trigger: last edit, no author.
-        *authorship_prefetches("webhook_trigger", author=False),
+        # The read serializer nests the trigger with its author and last edit.
+        *authorship_prefetches("webhook_trigger"),
     )
     serializer_class = WebhookTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -2423,7 +2423,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
-    ).prefetch_related(*authorship_prefetches(author=False))
+    ).prefetch_related(*authorship_prefetches())
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = WebhookTriggerFilter
@@ -2474,8 +2474,8 @@ class TelegramTriggerNodeViewSet(
     ).prefetch_related(
         "fields",
         *authorship_prefetches(),
-        # The read serializer nests the trigger: last edit, no author.
-        *authorship_prefetches("webhook_trigger", author=False),
+        # The read serializer nests the trigger with its author and last edit.
+        *authorship_prefetches("webhook_trigger"),
     )
     serializer_class = TelegramTriggerNodeSerializer
 

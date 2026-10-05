@@ -23,6 +23,7 @@ export function mapLLMNodeToModel(ln: GetLLMNodeRequest): LLMNodeModel {
         timeout: null,
         is_visible: true,
         tags: [],
+        created_at: null,
         created_by: null,
         last_edited_by: null,
         last_edited_at: null,

@@ -7,7 +7,7 @@ from collections.abc import Iterator
 
 from django.db.models import Case, F, IntegerField, QuerySet, Value, When
 from django.db.models.functions import Lower
-from rbac.authorship import represent_last_edited_at
+from rbac.authorship import represent_authorship_time
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -60,6 +60,29 @@ def _with_last_edit(rows: QuerySet[StorageFile]) -> QuerySet[StorageFile]:
     return rows.annotate(
         last_editor_id=F("last_edits__edited_by"), last_edit_time=F("last_edits__edited_at")
     )
+
+
+def _authorship_of(row: StorageFile) -> dict:
+    """Return the author and last-edit fields of a row loaded through `_with_last_edit`.
+
+    User fields are ids; the API layer replaces them with user summaries.
+    """
+    return {
+        "created_by": row.created_by_id,
+        "created_at": represent_authorship_time(row.created_at),
+        "last_edited_by": row.last_editor_id,
+        "last_edited_at": represent_authorship_time(row.last_edit_time),
+    }
+
+
+# Tree nodes without a row of their own (the requested root, folders implied by a deeper
+# path) have no author or editor.
+_NO_AUTHORSHIP = {
+    "created_by": None,
+    "created_at": None,
+    "last_edited_by": None,
+    "last_edited_at": None,
+}
 
 
 class StorageManager:
@@ -138,8 +161,7 @@ class StorageManager:
                         size=row.size or 0,
                         modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=row.path not in non_empty,
-                        last_edited_by=row.last_editor_id,
-                        last_edited_at=represent_last_edited_at(row.last_edit_time),
+                        **_authorship_of(row),
                     )
                 )
             else:
@@ -151,8 +173,7 @@ class StorageManager:
                         size=row.size or 0,
                         modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=False,
-                        last_edited_by=row.last_editor_id,
-                        last_edited_at=represent_last_edited_at(row.last_edit_time),
+                        **_authorship_of(row),
                     )
                 )
 
@@ -249,8 +270,7 @@ class StorageManager:
                 size=row.size or 0,
                 content_type=content_type or "application/octet-stream",
                 modified=(row.s3_modified or row.created_at).isoformat(),
-                last_edited_by=row.last_editor_id,
-                last_edited_at=represent_last_edited_at(row.last_edit_time),
+                **_authorship_of(row),
             )
         except StorageFile.DoesNotExist:
             pass
@@ -263,8 +283,7 @@ class StorageManager:
                 name=row.name,
                 path=row.path,
                 modified=(row.s3_modified or row.created_at).isoformat(),
-                last_edited_by=row.last_editor_id,
-                last_edited_at=represent_last_edited_at(row.last_edit_time),
+                **_authorship_of(row),
             )
         except StorageFile.DoesNotExist:
             pass
@@ -392,8 +411,7 @@ class StorageManager:
             "type": "folder",
             "size": 0,
             "modified": None,
-            "last_edited_by": None,
-            "last_edited_at": None,
+            **_NO_AUTHORSHIP,
             "children_map": {},
         }
         nodes_by_path: dict[str, dict] = {norm: root_dict}
@@ -437,8 +455,7 @@ class StorageManager:
                         "type": "folder",
                         "size": 0,
                         "modified": None,
-                        "last_edited_by": None,
-                        "last_edited_at": None,
+                        **_NO_AUTHORSHIP,
                         "children_map": {},
                     }
                     nodes_by_path[cur_path] = node
@@ -469,8 +486,7 @@ class StorageManager:
                     "type": "folder",
                     "size": 0,
                     "modified": row.s3_modified.isoformat() if row.s3_modified else None,
-                    "last_edited_by": row.last_editor_id,
-                    "last_edited_at": represent_last_edited_at(row.last_edit_time),
+                    **_authorship_of(row),
                     "children_map": {},
                 }
             else:
@@ -481,8 +497,7 @@ class StorageManager:
                     "type": "file",
                     "size": row.size or 0,
                     "modified": row.s3_modified.isoformat() if row.s3_modified else None,
-                    "last_edited_by": row.last_editor_id,
-                    "last_edited_at": represent_last_edited_at(row.last_edit_time),
+                    **_authorship_of(row),
                     "children_map": None,
                 }
 
@@ -507,6 +522,8 @@ class StorageManager:
                 size=node_dict["size"],
                 modified=node_dict["modified"],
                 children=children,
+                created_by=node_dict["created_by"],
+                created_at=node_dict["created_at"],
                 last_edited_by=node_dict["last_edited_by"],
                 last_edited_at=node_dict["last_edited_at"],
             )
@@ -521,7 +538,7 @@ class StorageManager:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """Substring search on filename within an org, with each result's last edit."""
+        """Substring search on filename within an org, with each result's author and last edit."""
         qs = StorageFile.objects.filter(org_id=org_id, name__icontains=q, item_type="file")
 
         if path:
@@ -531,17 +548,25 @@ class StorageManager:
         rows = (
             _with_last_edit(qs)
             .order_by("path")
-            .values("id", "path", "name", "last_editor_id", "last_edit_time")[
-                offset : offset + limit
-            ]
+            .values(
+                "id",
+                "path",
+                "name",
+                "created_by_id",
+                "created_at",
+                "last_editor_id",
+                "last_edit_time",
+            )[offset : offset + limit]
         )
         results = [
             {
                 "id": row["id"],
                 "path": row["path"],
                 "name": row["name"],
+                "created_by": row["created_by_id"],
+                "created_at": represent_authorship_time(row["created_at"]),
                 "last_edited_by": row["last_editor_id"],
-                "last_edited_at": represent_last_edited_at(row["last_edit_time"]),
+                "last_edited_at": represent_authorship_time(row["last_edit_time"]),
             }
             for row in rows
         ]

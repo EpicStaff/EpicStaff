@@ -61,18 +61,23 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_UPLOAD_SWAGGER,
 )
 
+_USER_ID_KEYS = ("created_by", "last_edited_by")
 
-def _replace_editor_ids_with_summaries(entries: list[dict], request) -> None:
-    """Swap, in place, the editor id in each entry's `last_edited_by` for its user summary.
 
-    The storage manager reports editors as ids; this renders them for the response.
-    Folder `children` are walked recursively and all editors load in one query. An
-    editor deleted since the edit renders as None.
+def _replace_user_ids_with_summaries(entries: list[dict], request) -> None:
+    """Swap, in place, the author and editor ids in each entry for their user summaries.
+
+    The storage manager reports `created_by` and `last_edited_by` as ids; this renders
+    them for the response. Folder `children` are walked recursively and every author
+    and editor loads in one query. A user deleted since renders as None.
     """
     all_entries = list(_with_descendants(entries))
-    summaries = user_summaries_by_id((entry["last_edited_by"] for entry in all_entries), request)
+    summaries = user_summaries_by_id(
+        (entry[key] for entry in all_entries for key in _USER_ID_KEYS), request
+    )
     for entry in all_entries:
-        entry["last_edited_by"] = summaries.get(entry["last_edited_by"])
+        for key in _USER_ID_KEYS:
+            entry[key] = summaries.get(entry[key])
 
 
 def _with_descendants(entries: list[dict]) -> Iterator[dict]:
@@ -133,7 +138,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 raise NotFound({"path": f"Path does not exist: {prefix}"}) from e
 
         items = [item.to_dict() for item in self.manager.list_(org_id, prefix)]
-        _replace_editor_ids_with_summaries(items, request)
+        _replace_user_ids_with_summaries(items, request)
         return Response({"path": prefix, "items": items})
 
     @extend_schema(**STORAGE_INFO_SWAGGER)
@@ -150,7 +155,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         response = data.to_dict()
-        _replace_editor_ids_with_summaries([response], request)
+        _replace_user_ids_with_summaries([response], request)
 
         graph_path = path
         if isinstance(data, FolderInfo) and not graph_path.endswith("/"):
@@ -417,7 +422,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         root, truncated = self.manager.list_tree(org_id, prefix, max_depth=max_depth)
         tree = root.to_dict()
-        _replace_editor_ids_with_summaries([tree], request)
+        _replace_user_ids_with_summaries([tree], request)
         return Response({"path": prefix, "truncated": truncated, "tree": tree})
 
     @extend_schema(**STORAGE_GRAPH_FILES_SWAGGER)
@@ -447,7 +452,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         params.is_valid(raise_exception=True)
         qs = StorageFile.objects.filter(
             org_id=org_id, id__in=params.validated_data["ids"]
-        ).prefetch_related(*authorship_prefetches(author=False))
+        ).prefetch_related(*authorship_prefetches())
         return Response(StorageFileSerializer(qs, many=True, context={"request": request}).data)
 
     @extend_schema(**STORAGE_SEARCH_SWAGGER)
@@ -463,7 +468,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             limit=params.validated_data["limit"],
             offset=params.validated_data["offset"],
         )
-        _replace_editor_ids_with_summaries(results, request)
+        _replace_user_ids_with_summaries(results, request)
         return Response(
             {
                 "total": total,

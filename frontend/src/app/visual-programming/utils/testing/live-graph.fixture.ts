@@ -8,6 +8,7 @@ import { GetDecisionTableNodeRequest } from '../../core/models/decision-table-no
 import { Edge } from '../../core/models/edge.model';
 import { EndNode } from '../../core/models/end-node.model';
 import { GetFileExtractorNodeRequest } from '../../core/models/file-extractor.model';
+import { FlowModel } from '../../core/models/flow.model';
 import { GraphNote } from '../../core/models/graph-note.model';
 import { GetKeyValueNodeRequest } from '../../core/models/key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../core/models/knowledge-retriever-node.model';
@@ -55,7 +56,7 @@ const author: UserSummary = {
 // A user who never set a display name or an avatar.
 const lastEditor: UserSummary = { id: 8, display_name: null, avatar_url: null };
 
-/** Read-only authorship as the backend renders it on every node. */
+/** Read-only authorship as the backend renders it on the graph and on every node. */
 export const LIVE_AUTHORSHIP: AuthorshipFields = {
     created_by: author,
     last_edited_by: lastEditor,
@@ -288,13 +289,17 @@ export const liveEdges: Edge[] = [
     { id: 3, graph: 1, start_node_id: ID.task, end_node_id: ID.classificationTable, metadata: {} },
 ];
 
-export const liveGraph = {
+export const liveGraph: GraphDto = {
+    ...authored,
     id: 1,
     uuid: 'graph-uuid',
     name: 'Flow',
     description: '',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-02T00:00:00Z',
     save_version: 3,
-    metadata: {},
+    // The API sends whatever metadata the canvas stored; an empty object is enough for the loaders.
+    metadata: {} as FlowModel,
     start_node_list: [liveStart],
     end_node_list: [liveEnd],
     graph_note_list: [liveNote],
@@ -314,4 +319,4 @@ export const liveGraph = {
     key_value_node_list: [liveKeyValue],
     edge_list: liveEdges,
     conditional_edge_list: [],
-} as unknown as GraphDto;
+};

@@ -49,6 +49,10 @@ class LLMConfigImportSerializer(BaseConfigImportSerializer):
 
     class Meta(BaseConfigImportSerializer.Meta):
         model = LLMConfig
+        # Keep created_at out of the export: BaseConfigStrategy.find_existing filters on
+        # every exported key, and an equivalent config created by an earlier import has
+        # its own creation time, so re-imports would stop matching it and duplicate it.
+        exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
 
 
 class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
@@ -61,6 +65,10 @@ class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
 
     class Meta(BaseConfigImportSerializer.Meta):
         model = EmbeddingConfig
+        # Keep created_at out of the export: BaseConfigStrategy.find_existing filters on
+        # every exported key, and an equivalent config created by an earlier import has
+        # its own creation time, so re-imports would stop matching it and duplicate it.
+        exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
 
 
 class RealtimeConfigImportSerializer(BaseConfigImportSerializer):

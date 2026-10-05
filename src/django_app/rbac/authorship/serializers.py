@@ -139,7 +139,7 @@ class LastEditFieldsSerializerMixin(AuthorSummarySerializerMixin):
 
     def get_last_edited_at(self, instance) -> str | None:
         last_edit = self._last_edit_being_rendered(instance)
-        return represent_last_edited_at(last_edit.edited_at if last_edit is not None else None)
+        return represent_authorship_time(last_edit.edited_at if last_edit is not None else None)
 
     def _last_edit_being_rendered(self, instance) -> ResourceLastEdit | None:
         # Keyed by the instance itself: a subclass whose to_representation() skips
@@ -151,11 +151,11 @@ class LastEditFieldsSerializerMixin(AuthorSummarySerializerMixin):
         return rendered[1]
 
 
-def represent_last_edited_at(edited_at: datetime.datetime | None) -> str | None:
-    """Render `edited_at` the way every API response renders `last_edited_at`."""
-    if edited_at is None:
+def represent_authorship_time(moment: datetime.datetime | None) -> str | None:
+    """Render `moment` the way every API response renders `created_at` and `last_edited_at`."""
+    if moment is None:
         return None
-    return serializers.DateTimeField().to_representation(edited_at)
+    return serializers.DateTimeField().to_representation(moment)
 
 
 def _has_author_field(model) -> bool:

@@ -15,7 +15,15 @@ from agents.models import AgentDefinition
 from rbac.authorship import record_last_edit, record_last_edits
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import Organization, OrganizationUser, ResourceLastEdit
-from tables.models import Graph, GraphNote, Label, StorageFile
+from tables.models import (
+    EmbeddingConfig,
+    Graph,
+    GraphNote,
+    Label,
+    RealtimeChannel,
+    StorageFile,
+    WebhookTrigger,
+)
 from tables.models.graph_models import ConditionGroup, DecisionTableNode, Edge, PythonNode
 from tables.models.knowledge_models import SourceCollection
 from tables.models.llm_models import LLMConfig
@@ -302,6 +310,36 @@ def test_python_code_tool_patch_without_change_records_nothing(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("basename", "model", "name_field"),
+    [
+        ("embeddingconfig", EmbeddingConfig, "custom_name"),
+        ("realtimechannel", RealtimeChannel, "name"),
+        ("webhooktrigger", WebhookTrigger, "path"),
+        ("agentdefinition", AgentDefinition, "name"),
+    ],
+    ids=["embedding-config", "realtime-channel", "webhook-trigger", "agent-definition"],
+)
+def test_patch_resending_unchanged_values_and_created_at_records_nothing(
+    colleague_client, regular_user, default_org, basename, model, name_field
+):
+    row = model.objects.create(org=default_org, **{name_field: "unchanged-row"})
+    record_last_edit(row, regular_user, edited_at=PREVIOUS_EDIT_AT)
+
+    response = colleague_client.patch(
+        reverse(f"{basename}-detail", args=[row.pk]),
+        {name_field: "unchanged-row", "created_at": "2001-01-01T00:00:00Z"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert ResourceLastEdit.objects.count() == 1
+    last_edit = _last_edit_of(row)
+    assert last_edit.edited_by_id == regular_user.id
+    assert last_edit.edited_at == PREVIOUS_EDIT_AT
+
+
+@pytest.mark.django_db
 def test_label_change_on_built_in_tool_records_nothing(auth_client, default_org):
     tool = PythonCodeTool.objects.create(
         name="built-in-tool",
@@ -540,8 +578,10 @@ def _count_patch_queries(client, graph, payload) -> int:
 def test_graph_patch_query_count_does_not_grow_with_nodes(
     auth_client, regular_user, default_org, python_code
 ):
-    small = Graph.objects.create(name="small-patch-flow", org=default_org)
-    large = Graph.objects.create(name="large-patch-flow", org=default_org)
+    # Both graphs are authored, so neither PATCH claims an author-less graph and the
+    # counts differ only by node count.
+    small = Graph.objects.create(name="small-patch-flow", org=default_org, created_by=regular_user)
+    large = Graph.objects.create(name="large-patch-flow", org=default_org, created_by=regular_user)
     _add_edited_nodes(small, python_code, [regular_user], 1)
     _add_edited_nodes(large, python_code, [regular_user], 3)
     _count_patch_queries(auth_client, small, {"description": "warm-up"})

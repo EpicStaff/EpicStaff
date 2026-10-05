@@ -1,4 +1,4 @@
-import { LastEditFields } from '../authorship.model';
+import { AuthorshipFields } from '../authorship.model';
 import { CreatePythonCodeRequest, GetPythonCodeRequest, UpdatePythonCodeRequest } from './python-code.model';
 
 export interface ArgsSchema {
@@ -15,7 +15,7 @@ export interface ArgsSchema {
     required?: string[];
 }
 
-export interface GetPythonCodeToolRequest extends LastEditFields {
+export interface GetPythonCodeToolRequest extends AuthorshipFields {
     id: number;
     python_code: GetPythonCodeRequest;
     name: string;

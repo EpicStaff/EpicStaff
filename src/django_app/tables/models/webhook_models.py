@@ -163,6 +163,9 @@ class WebhookTrigger(OrgScopedModel, LastEditTrackedModel, models.Model):
         null=True,
         blank=True,
     )
+    # Nullable because triggers created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta(OrgScopedModel.Meta):
         abstract = False
@@ -235,6 +238,9 @@ class RealtimeChannel(OrgScopedModel, LastEditTrackedModel, EnabledToggleFields,
         on_delete=models.SET_NULL,
         related_name="channels",
     )
+    # Nullable because channels created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def clean(self):
         # A channel answers to exactly one destination — either a staff

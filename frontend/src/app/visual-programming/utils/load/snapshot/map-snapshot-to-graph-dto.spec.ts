@@ -176,6 +176,12 @@ describe('mapSnapshotToGraphDto', () => {
             expect(item).toMatchObject({ created_by: null, last_edited_by: null, last_edited_at: null });
         }
     });
+
+    it('leaves the graph itself unattributed', () => {
+        const graphDto = mapSnapshotToGraphDto(snapshot, secretsByName);
+
+        expect(graphDto).toMatchObject({ created_by: null, last_edited_by: null, last_edited_at: null });
+    });
 });
 
 describe('buildPreviewFlowModel', () => {

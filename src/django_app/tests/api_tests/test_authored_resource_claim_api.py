@@ -28,7 +28,6 @@ class AuthoredResource:
     create_row: Callable[[Organization, str, object], object]
     create_body: Callable[[str], dict]
     patch_body: Callable[[object], dict]
-    exposes_author: bool = True
 
 
 def _create_python_code_tool(org, name, author):
@@ -47,7 +46,6 @@ RESOURCES = [
         ),
         create_body=lambda name: {"name": name},
         patch_body=lambda row: {"description": "edited", "save_version": row.save_version},
-        exposes_author=False,
     ),
     AuthoredResource(
         basename="pythoncodetool",
@@ -59,7 +57,6 @@ RESOURCES = [
             "python_code": _PYTHON_CODE_DATA,
         },
         patch_body=lambda row: {"description": "edited"},
-        exposes_author=False,
     ),
     AuthoredResource(
         basename="mcptool",
@@ -113,7 +110,6 @@ RESOURCES = [
         ),
         create_body=lambda name: {"path": name},
         patch_body=lambda row: {"path": f"{row.path}-edited"},
-        exposes_author=False,
     ),
 ]
 RESOURCE_IDS = [resource.basename for resource in RESOURCES]
@@ -152,10 +148,8 @@ def _spoofed_author(user, shape: str):
     return {"id": user.id, "display_name": "Spoofed", "avatar_url": None}
 
 
-def _assert_response_author(resource: AuthoredResource, data: dict, user) -> None:
-    assert ("created_by" in data) == resource.exposes_author
-    if resource.exposes_author:
-        assert data["created_by"] == expected_user_summary(user)
+def _assert_response_author(data: dict, user) -> None:
+    assert data["created_by"] == expected_user_summary(user)
 
 
 # ---- create ----
@@ -176,7 +170,7 @@ def test_create_stamps_acting_user_and_ignores_body_author(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(resource.model, response.data["id"]) == admin_acme.id
-    _assert_response_author(resource, response.data, admin_acme)
+    _assert_response_author(response.data, admin_acme)
 
 
 @pytest.mark.django_db
@@ -218,7 +212,7 @@ def test_patch_of_unauthored_row_claims_it_for_editor(resource, acme_client, adm
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(resource.model, row.pk) == admin_acme.id
-    _assert_response_author(resource, response.data, admin_acme)
+    _assert_response_author(response.data, admin_acme)
 
 
 @pytest.mark.django_db
@@ -234,7 +228,7 @@ def test_patch_of_unauthored_row_ignores_body_author(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(resource.model, row.pk) == admin_acme.id
-    _assert_response_author(resource, response.data, admin_acme)
+    _assert_response_author(response.data, admin_acme)
 
 
 @pytest.mark.django_db
@@ -250,7 +244,7 @@ def test_patch_of_authored_row_keeps_author(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(resource.model, row.pk) == member_only.id
-    _assert_response_author(resource, response.data, member_only)
+    _assert_response_author(response.data, member_only)
 
 
 @pytest.mark.django_db

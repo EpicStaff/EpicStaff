@@ -300,6 +300,9 @@ class WebhookTriggerNestedSerializer(
             "localhost_config",
             "auth_secret_id",
             "auth_kind",
+            "created_by",
+            "created_at",
         ]
+        read_only_fields = ["created_by", "created_at"]
         extra_kwargs = {"path": {"validators": []}}
         validators = []

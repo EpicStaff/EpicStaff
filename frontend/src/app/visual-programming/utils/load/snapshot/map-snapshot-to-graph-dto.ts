@@ -190,11 +190,15 @@ export function mapSnapshotToGraphDto(
     }
 
     return {
+        // The snapshot is not a persisted graph: its identity and creation time are placeholders the
+        // loaders never read, and it is unattributed like its nodes.
         id: 0,
         uuid: '',
         name: '',
         description: '',
         save_version: 0,
+        created_at: '',
+        ...NO_AUTHORSHIP,
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
         ...nodeLists,
         edge_list: (snapshot.edge_list ?? []).map((edge) => ({ ...edge, graph: 0 })),

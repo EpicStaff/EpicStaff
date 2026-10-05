@@ -48,6 +48,8 @@ export interface AgentDefinition extends AuthorshipFields {
     tool_timeout: number | null;
     max_consecutive_failures: number | null;
     schema_max_retries: number | null;
+    /** Read-only ISO 8601 creation time; null for agents created before it was recorded. Never sent back. */
+    created_at: string | null;
 }
 
 export interface CreateAgentDefinitionRequest {

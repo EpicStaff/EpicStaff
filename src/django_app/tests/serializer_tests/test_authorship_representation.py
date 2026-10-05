@@ -111,6 +111,12 @@ def test_scan_finds_author_exposing_serializers():
         "SurfaceReadSerializer",
         "RealtimeChannelSerializer",
         "McpToolSerializer",
+        "GraphSerializer",
+        "GraphLightSerializer",
+        "PythonCodeToolSerializer",
+        "WebhookTriggerNestedSerializer",
+        "StorageFileSerializer",
+        "FileItemSerializer",
     } <= names
 
 

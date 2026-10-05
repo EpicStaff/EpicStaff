@@ -44,6 +44,7 @@ const liveLlm: GetLLMNodeRequest = {
         timeout: null,
         is_visible: true,
         tags: [],
+        created_at: null,
     },
     input_map: {},
     output_variable_path: null,
@@ -107,6 +108,16 @@ describe('bulk-save payload of nodes loaded from the API', () => {
         expect(items).toHaveLength(loadedFlow.nodes.length);
         expect(items.every((item) => item['id'] != null)).toBe(true);
         expect(authorshipPaths(payload)).toEqual([]);
+    });
+
+    it("never echoes the graph's own author, creation time or last edit", () => {
+        const graphReadOnlyKeys = [...AUTHORSHIP_KEYS, 'created_at', 'updated_at'];
+        // Without this the check below could pass only because the fixture graph had nothing to echo.
+        expect(Object.keys(graph)).toEqual(expect.arrayContaining(graphReadOnlyKeys));
+
+        const payload = bulkSavePayload(emptyFlow, loadedFlow);
+
+        expect(Object.keys(payload).filter((key) => graphReadOnlyKeys.includes(key))).toEqual([]);
     });
 
     it('references the webhook trigger by its bare id, never as a nested trigger', () => {

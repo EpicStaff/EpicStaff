@@ -48,6 +48,9 @@ class EmbeddingConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     )
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(EmbeddingConfigTag, blank=True, related_name="embedding_configs")
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

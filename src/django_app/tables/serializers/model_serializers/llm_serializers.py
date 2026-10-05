@@ -135,7 +135,7 @@ class LLMConfigSerializer(
     class Meta:
         model = LLMConfig
         exclude = ["api_key_secret"]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
 class LLMModelSerializer(

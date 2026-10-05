@@ -18,6 +18,8 @@ export interface GetLlmConfigRequest extends AuthorshipFields {
     is_visible: boolean;
     extra_headers?: Record<string, string>;
     tags: Tag[];
+    /** Read-only ISO 8601 creation time; null for configs created before it was recorded. Never sent back. */
+    created_at: string | null;
 }
 
 export interface CreateLLMConfigRequest {

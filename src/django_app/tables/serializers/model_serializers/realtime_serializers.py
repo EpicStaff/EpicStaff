@@ -281,7 +281,7 @@ class RealtimeChannelSerializer(
     class Meta:
         model = RealtimeChannel
         fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
     def validate(self, attrs):
         # `realtime_agent` is read-only, so a caller can no longer set both
@@ -294,6 +294,19 @@ class RealtimeChannelSerializer(
             attrs["realtime_agent"] = None
 
         return attrs
+
+
+class _WebhookTriggerInternalSerializer(WebhookTriggerNestedSerializer):
+    """`WebhookTriggerNestedSerializer` without its author, for `lookup_by_token`.
+
+    Rendered without authorship, `created_by` would still be the author's plain id;
+    the realtime service is sent no user ids, so the field is left out.
+    """
+
+    class Meta(WebhookTriggerNestedSerializer.Meta):
+        fields = [
+            field for field in WebhookTriggerNestedSerializer.Meta.fields if field != "created_by"
+        ]
 
 
 class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
@@ -312,6 +325,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     model no longer has that attribute.
     """
 
+    webhook_trigger = _WebhookTriggerInternalSerializer(read_only=True)
     auth_token = serializers.SerializerMethodField()
 
     class Meta(_TwilioChannelReadSerializer.Meta):

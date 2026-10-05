@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from rest_framework import status
+from rest_framework import serializers, status
 
 from tables.models import Graph, StorageFile
 from tables.services import redis_pubsub
@@ -13,6 +13,7 @@ from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.reconciler import StorageReconciler
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.user_summary_helpers import expected_user_summary
 
 pytestmark = pytest.mark.django_db
 
@@ -352,3 +353,136 @@ class TestSystemWritesLeaveAuthorEmpty:
         assert kept.size == len(b"grown")
         assert _author_id(acme, "docs/b.txt") is None
         assert _author_id(acme, "docs/") is None
+
+
+# ---- listing output ----
+
+
+def _creation_time(org, path: str) -> str:
+    return serializers.DateTimeField().to_representation(
+        StorageFile.objects.get(org=org, path=path).created_at
+    )
+
+
+def _assert_authorship(entry: dict, org, path: str, author) -> None:
+    assert entry["created_by"] == (expected_user_summary(author) if author else None)
+    assert entry["created_at"] == _creation_time(org, path)
+
+
+@pytest.fixture
+def authored_tree(manager, admin_acme, member_only, acme):
+    """`docs/` authored by admin_acme, `docs/a.txt` by member_only, `docs/b.txt` by no one."""
+    manager.mkdir(acme.id, "docs", user=admin_acme)
+    manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=member_only)
+    manager.upload(acme.id, "docs/b.txt", BytesIO(b"b"))
+
+
+class TestListingOutput:
+    def test_list_returns_author_and_creation_time_of_each_entry(
+        self, client_in_org, authored_tree, admin_acme, member_only, acme
+    ):
+        client = client_in_org(admin_acme, acme)
+
+        root = client.get("/api/storage/list/", {"path": ""})
+        folder = client.get("/api/storage/list/", {"path": "docs"})
+
+        assert root.status_code == status.HTTP_200_OK, root.data
+        _assert_authorship(root.data["items"][0], acme, "docs/", admin_acme)
+        items = {item["name"]: item for item in folder.data["items"]}
+        _assert_authorship(items["a.txt"], acme, "docs/a.txt", member_only)
+        _assert_authorship(items["b.txt"], acme, "docs/b.txt", None)
+
+    def test_info_returns_author_and_creation_time_of_file_and_folder(
+        self, client_in_org, authored_tree, admin_acme, member_only, acme
+    ):
+        client = client_in_org(admin_acme, acme)
+
+        file_info = client.get("/api/storage/info/", {"path": "docs/a.txt"})
+        folder_info = client.get("/api/storage/info/", {"path": "docs"})
+
+        assert file_info.status_code == status.HTTP_200_OK, file_info.data
+        _assert_authorship(file_info.data, acme, "docs/a.txt", member_only)
+        _assert_authorship(folder_info.data, acme, "docs/", admin_acme)
+
+    def test_tree_returns_author_of_each_row_and_nulls_for_folders_without_one(
+        self, client_in_org, authored_tree, admin_acme, member_only, acme
+    ):
+        # A row whose parent folder has no row of its own: the tree implies that folder.
+        StorageFile.objects.create(
+            org=acme, path="loose/c.txt", name="c.txt", parent_path="loose/", created_by=admin_acme
+        )
+
+        response = client_in_org(admin_acme, acme).get("/api/storage/tree/", {"path": ""})
+
+        assert response.status_code == status.HTTP_200_OK, response.data
+        root = response.data["tree"]
+        assert root["created_by"] is None
+        assert root["created_at"] is None
+        children = {child["name"]: child for child in root["children"]}
+        _assert_authorship(children["docs"], acme, "docs/", admin_acme)
+        docs_children = {child["name"]: child for child in children["docs"]["children"]}
+        _assert_authorship(docs_children["a.txt"], acme, "docs/a.txt", member_only)
+        _assert_authorship(docs_children["b.txt"], acme, "docs/b.txt", None)
+        implied_folder = children["loose"]
+        assert implied_folder["id"] is None
+        assert implied_folder["created_by"] is None
+        assert implied_folder["created_at"] is None
+        _assert_authorship(implied_folder["children"][0], acme, "loose/c.txt", admin_acme)
+
+    def test_search_returns_author_and_creation_time_of_each_result(
+        self, client_in_org, authored_tree, admin_acme, member_only, acme
+    ):
+        response = client_in_org(admin_acme, acme).get("/api/storage/search/", {"q": ".txt"})
+
+        assert response.status_code == status.HTTP_200_OK, response.data
+        results = {result["name"]: result for result in response.data["results"]}
+        _assert_authorship(results["a.txt"], acme, "docs/a.txt", member_only)
+        _assert_authorship(results["b.txt"], acme, "docs/b.txt", None)
+
+    def test_files_by_ids_returns_author_with_absolute_avatar(
+        self, client_in_org, authored_tree, admin_acme, member_only, acme
+    ):
+        member_only.display_name = "Member Only"
+        member_only.avatar.name = f"avatars/{member_only.id}/face.png"
+        member_only.save(update_fields=["display_name", "avatar"])
+        file_row = StorageFile.objects.get(org=acme, path="docs/a.txt")
+
+        response = client_in_org(admin_acme, acme).get(
+            "/api/storage/files/", {"ids": str(file_row.id)}
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.data
+        assert response.data[0]["created_by"] == {
+            "id": member_only.id,
+            "display_name": "Member Only",
+            "avatar_url": f"http://testserver/media/avatars/{member_only.id}/face.png",
+        }
+        assert response.data[0]["created_at"] == _creation_time(acme, "docs/a.txt")
+
+    def test_deleted_author_renders_as_null(
+        self, client_in_org, manager, admin_acme, member_only, acme
+    ):
+        manager.upload(acme.id, "orphan.txt", BytesIO(b"o"), user=member_only)
+        file_row = StorageFile.objects.get(org=acme, path="orphan.txt")
+        member_only.delete()
+        client = client_in_org(admin_acme, acme)
+
+        listed = client.get("/api/storage/list/", {"path": ""})
+        info = client.get("/api/storage/info/", {"path": "orphan.txt"})
+        files = client.get("/api/storage/files/", {"ids": str(file_row.id)})
+
+        assert listed.data["items"][0]["created_by"] is None
+        assert info.data["created_by"] is None
+        assert files.data[0]["created_by"] is None
+        assert info.data["created_at"] == _creation_time(acme, "orphan.txt")
+
+    def test_info_of_another_orgs_file_is_not_found(
+        self, client_in_org, manager, admin_acme, superadmin, acme, beta
+    ):
+        manager.upload(beta.id, "beta-only.txt", BytesIO(b"b"), user=superadmin)
+
+        response = client_in_org(admin_acme, acme).get(
+            "/api/storage/info/", {"path": "beta-only.txt"}
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND

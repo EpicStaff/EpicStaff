@@ -17,6 +17,7 @@ import {
     GraphVersionCreateRequest,
     GraphVersionDto,
     GraphVersionUpdateRequest,
+    PatchGraphDtoRequest,
     UpdateGraphDtoRequest,
 } from '../models/graph.model';
 import { PreviewGraphVersionResponse } from '../models/graph-version-preview.model';
@@ -102,7 +103,7 @@ export class FlowsApiService {
         });
     }
 
-    patchGraph(id: number, fields: Partial<GraphDto>): Observable<GraphDto> {
+    patchGraph(id: number, fields: PatchGraphDtoRequest): Observable<GraphDto> {
         return this.http.patch<GraphDto>(`${this.apiUrl}${id}/`, fields, {
             headers: this.httpHeaders,
         });

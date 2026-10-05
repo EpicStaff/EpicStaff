@@ -162,7 +162,7 @@ class GraphLightSerializer(LastEditFieldsSerializerMixin, GraphLightBaseSerializ
     subflows = serializers.SerializerMethodField()
 
     class Meta(GraphLightBaseSerializer.Meta):
-        fields = [*GraphLightBaseSerializer.Meta.fields, "subflows"]
+        fields = [*GraphLightBaseSerializer.Meta.fields, "created_by", "subflows"]
 
     def get_subflows(self, obj):
         graphs = Graph.objects.get_transitive_subflows(obj.id)
@@ -266,9 +266,11 @@ class GraphSerializer(
             "label_ids",
             "graph_note_list",
             "save_version",
+            "created_by",
+            "created_at",
         ]
         # Derived on Domain save — never set directly by the client.
-        read_only_fields = ["enable_persistent_variables"]
+        read_only_fields = ["enable_persistent_variables", "created_by", "created_at"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -290,8 +292,7 @@ class GraphSerializer(
             and isinstance(field.child, LastEditFieldsSerializerMixin)
         }
         return [
-            # The graph renders its own last edit but not its author.
-            *authorship_prefetches(author=False),
+            *authorship_prefetches(),
             *(
                 prefetch
                 for relation, node_serializer in node_serializers.items()
@@ -299,8 +300,9 @@ class GraphSerializer(
                     relation, author=AUTHOR_FIELD in node_serializer.fields
                 )
             ),
-            # SubGraphNodeSerializer renders the referenced flow with GraphLightSerializer.
-            *authorship_prefetches("subgraph_node_list__subgraph", author=False),
+            # SubGraphNodeSerializer renders the referenced flow, author included, with
+            # GraphLightSerializer.
+            *authorship_prefetches("subgraph_node_list__subgraph"),
         ]
 
     def create(self, validated_data):

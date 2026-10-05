@@ -352,8 +352,13 @@ def test_graph_prefetch_lookups_cover_every_tracked_graph_relation():
     assert len(tracked_node_relations) == 16
     assert {f"{relation}__last_edits" for relation in tracked_node_relations} <= lookups
     assert {f"{relation}__created_by" for relation in tracked_node_relations} <= lookups
-    assert "last_edits" in lookups
-    assert "created_by" not in lookups
+    # The graph renders its own author and last edit, and those of each subflow.
+    assert {
+        "last_edits",
+        "created_by",
+        "subgraph_node_list__subgraph__last_edits",
+        "subgraph_node_list__subgraph__created_by",
+    } <= lookups
 
 
 @pytest.mark.django_db
