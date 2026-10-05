@@ -91,6 +91,10 @@ class DeleteService:
                 )
                 if stored_active is False:
                     return None
+                if stored_active is not None:
+                    # The walk trusts `obj.active`; a copy loaded while the row
+                    # was binned (and since restored) must not skip it.
+                    obj.active = stored_active
             context = _DeleteContext(using=using)
             context.delete(obj)
             context.finish()
@@ -143,6 +147,11 @@ class _DeleteContext:
             return
 
         self.visited.add(key)
+
+        # Binned earlier on its own: its subtree was handled then, so walking
+        # it again would only cost queries that grow with the recycle bin.
+        if isinstance(obj, SoftDeleteFields) and not obj.active:
+            return
 
         # Process relations first.
         self._process_reverse_relations(obj)
@@ -225,9 +234,9 @@ class _DeleteContext:
     def _get_reverse_relations(obj):
         """
         Yield every reverse FK/OneToOne relation of `obj`, including
-        hidden ones (related_name="+"). Hidden relations have no reverse
-        accessor, so _get_related_objects fetches their children through
-        a direct queryset filter instead of getattr(obj, accessor).
+        hidden ones (related_name="+"). _get_related_objects fetches the
+        children of every relation, hidden or not, with a direct queryset
+        filter, since hidden relations have no reverse accessor.
         """
         for relation in obj._meta.get_fields(include_hidden=True):
             if not relation.auto_created:
@@ -250,30 +259,29 @@ class _DeleteContext:
 
             yield relation
 
-    @staticmethod
     def _get_related_objects(
+        self,
         obj,
         relation,
     ):
-        if relation.hidden:
-            queryset = relation.related_model._default_manager.filter(**{relation.field.name: obj})
+        """
+        Every row of `relation` that points at `obj`, binned rows included.
 
-            if relation.one_to_one:
-                return list(queryset[:1])
-
-            return queryset
-
-        accessor = relation.get_accessor_name()
+        Read through the unfiltered base manager, not the reverse accessor
+        (the active-only default manager): a binned row must still lose its
+        reference through SET_NULL/SET_DEFAULT/SET(...), or a restore brings
+        it back pointing at a deleted row. CASCADE children that are already
+        binned are marked visited and not walked into (see delete() and
+        _batch_soft_delete_cascade).
+        """
+        queryset = relation.related_model._base_manager.using(self.using).filter(
+            **{relation.field.name: obj}
+        )
 
         if relation.one_to_one:
-            try:
-                return [getattr(obj, accessor)]
-            except relation.related_model.DoesNotExist:
-                return []
+            return list(queryset[:1])
 
-        manager = getattr(obj, accessor)
-
-        return manager.all()
+        return queryset
 
     # ==========================================================
     # Relation-level CASCADE / SoftDeleteFields batching
@@ -345,14 +353,16 @@ class _DeleteContext:
 
             self.visited.add(key)
 
+            # Binned earlier on its own: skipped without descending, as in
+            # delete(). It keeps its batch and its subtree stays as it was.
+            if not child.active:
+                continue
+
             # Descend into this child's own reverse/M2M relations before
             # closing it off with the batched write below — identical
             # ordering to delete()'s single-object recursive path.
             self._process_reverse_relations(child)
             self._process_m2m_relations(child)
-
-            if not child.active:
-                continue
 
             pks_to_soft_delete_by_model[type(child)].append(child.pk)
 

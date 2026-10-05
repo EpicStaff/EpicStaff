@@ -43,7 +43,7 @@ from tables.models import (
     TaskNode,
     WebhookTriggerNode,
 )
-from tables.models import AgentNode, AgentNodeTask, Edge
+from tables.models import AgentNode, AgentNodeTask, Edge, SubGraphNode
 from tables.models.label_models import Label
 from tables.models.base_models import SoftDeleteFields
 from tables.models.session_models import SessionTrigger
@@ -744,3 +744,81 @@ class TestManyToManyOnDelete:
             large_flow.delete()
 
         assert len(many) == len(few), "\n".join(query["sql"] for query in many.captured_queries)
+
+
+@pytest.mark.django_db
+class TestReferencesFromBinnedRowsAreDropped:
+    """SET_NULL also reaches rows already in the recycle bin: otherwise a
+    restored row comes back pointing at something deleted while it was binned."""
+
+    def test_binned_flow_subflow_node_loses_subflow_deleted_later(self, graph):
+        subflow = Graph.objects.create(org=graph.org, name="Sub")
+        subflow_node = SubGraphNode.objects.create(graph=graph, node_name="sub", subgraph=subflow)
+        graph.delete()
+
+        subflow.delete()
+
+        assert SubGraphNode.all_objects.get(pk=subflow_node.pk).subgraph_id is None
+
+    def test_binned_flow_knowledge_node_loses_collection_deleted_later(self, graph, default_org):
+        collection = SourceCollection.objects.create(org=default_org, collection_name="Docs")
+        knowledge_node = KnowledgeNode.objects.create(graph=graph, source_collection=collection)
+        graph.delete()
+
+        collection.delete()
+
+        assert KnowledgeNode.all_objects.get(pk=knowledge_node.pk).source_collection_id is None
+
+
+@pytest.mark.django_db
+class TestChildrenBinnedEarlierAreLeftAlone:
+    """A child binned on its own had its subtree handled then. The parent's
+    delete marks it visited without walking into it again or re-stamping it."""
+
+    def test_flow_delete_does_not_walk_into_children_binned_earlier(self, default_org):
+        def flow_with_binned_task_nodes(name, node_count):
+            flow = Graph.objects.create(name=name, org=default_org)
+            node_batches = {}
+            for index in range(node_count):
+                task_node = TaskNode.objects.create(graph=flow, node_name=f"task_{index}")
+                node_batches[task_node.pk] = DeleteService.delete(task_node)
+            return flow, node_batches
+
+        small_flow, _ = flow_with_binned_task_nodes("small-binned-flow", 2)
+        large_flow, large_node_batches = flow_with_binned_task_nodes("large-binned-flow", 20)
+
+        with CaptureQueriesContext(connection) as few:
+            small_flow.delete()
+        with CaptureQueriesContext(connection) as many:
+            large_flow.delete()
+
+        assert len(many) == len(few), "\n".join(query["sql"] for query in many.captured_queries)
+        assert dict(
+            TaskNode.all_objects.filter(pk__in=large_node_batches).values_list("pk", "soft_delete_batch")
+        ) == large_node_batches
+
+    def test_per_row_child_binned_earlier_is_not_saved_again(self, graph, mocker):
+        # ScheduleTriggerNode has a post_save listener, so it goes through the
+        # per-row path; a second save() would republish it to the Manager.
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+        node_batch = DeleteService.delete(schedule_node)
+        binned_at = ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk).soft_deleted_at
+        redis_service = mocker.patch("tables.signals.schedule_signals.RedisService")
+
+        graph.delete()
+
+        binned_node = ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk)
+        assert binned_node.soft_delete_batch == node_batch
+        assert binned_node.soft_deleted_at == binned_at
+        redis_service.return_value.redis_client.publish.assert_not_called()
+
+    def test_stale_copy_of_a_restored_root_is_binned(self, graph):
+        # The caller's instance was loaded while the flow was binned; the flow
+        # has been restored since. Its delete() must bin it, not return early.
+        graph.delete()
+        Graph.all_objects.filter(pk=graph.pk).update(active=True, soft_deleted_at=None, soft_delete_batch=None)
+
+        batch = DeleteService.delete(graph)
+
+        assert batch is not None
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == batch
