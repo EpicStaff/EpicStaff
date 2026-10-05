@@ -23,6 +23,14 @@ class PythonCodeToolExecutor:
     async def __call__(self, args: dict) -> ToolResult:
         python_code = self._data.python_code
 
+        # `global_kwargs` is author-editable and reaches the code as globals(),
+        # where tools read `org_id`. The typed `org_id` is resolved from the
+        # graph on the Django side, so it must win over a same-named key here
+        # (the crew's RunPythonCodeService does the same).
+        global_kwargs = python_code.global_kwargs
+        if python_code.org_id is not None:
+            global_kwargs = {**(global_kwargs or {}), "org_id": python_code.org_id}
+
         task = CodeTaskData(
             venv_name=python_code.venv_name,
             libraries=python_code.libraries,
@@ -30,7 +38,7 @@ class PythonCodeToolExecutor:
             execution_id=str(uuid.uuid4()),
             entrypoint=python_code.entrypoint,
             func_kwargs=args,
-            global_kwargs=python_code.global_kwargs,
+            global_kwargs=global_kwargs,
             use_storage=python_code.use_storage,
             storage_allowed_paths=python_code.storage_allowed_paths,
             storage_org_prefix=python_code.storage_org_prefix,
