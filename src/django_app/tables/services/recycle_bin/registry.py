@@ -18,6 +18,9 @@ class BinResource:
         resource_type: The RBAC resource the bin actions are checked against.
         also_taken: Rows outside the org whose names count as taken on restore
             (built-in tools are visible to every org).
+        owner_field: An FK to another recycle-bin root that owns the row (a
+            surface's `owner_agent`). A row whose owner is binned can't be
+            restored on its own.
     """
 
     model: type[Model]
@@ -25,12 +28,13 @@ class BinResource:
     org_field: str
     resource_type: ResourceType
     also_taken: Q | None = field(default=None)
+    owner_field: str | None = field(default=None)
 
 
 @cache
 def bin_resources() -> dict[str, BinResource]:
     """Every recycle-bin resource, keyed by the name the bin API uses."""
-    from agents.models import Surface
+    from agents.models import AgentDefinition, Surface
     from tables.models import Graph, SourceCollection
     from tables.models.mcp_models import McpTool
     from tables.models.python_models import PythonCodeTool
@@ -41,7 +45,10 @@ def bin_resources() -> dict[str, BinResource]:
             PythonCodeTool, "name", "org", ResourceType.TOOLS, also_taken=Q(built_in=True)
         ),
         "mcp_tool": BinResource(McpTool, "name", "org", ResourceType.TOOLS),
-        "surface": BinResource(Surface, "name", "organization", ResourceType.SURFACES),
+        "agent": BinResource(AgentDefinition, "name", "organization", ResourceType.AGENTS),
+        "surface": BinResource(
+            Surface, "name", "organization", ResourceType.SURFACES, owner_field="owner_agent"
+        ),
         "collection": BinResource(
             SourceCollection, "collection_name", "org", ResourceType.KNOWLEDGE_SOURCES
         ),

@@ -2,6 +2,7 @@ from django.db import models
 from tables.models.base_models import (
     AbstractDefaultFillableModel,
     SoftDeleteFields,
+    SoftDeleteMixin,
     soft_delete_consistency_constraint,
 )
 
@@ -69,7 +70,7 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(AbstractDefaultFillableModel):
+class AgentDefinition(AbstractDefaultFillableModel, SoftDeleteMixin):
     # Identity
     organization = models.ForeignKey(
         "rbac.Organization",
@@ -183,11 +184,15 @@ class AgentDefinition(AbstractDefaultFillableModel):
         return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["organization", "name"],
+                condition=models.Q(active=True),
                 name="unique_agent_definition_name_per_organization",
-            )
+            ),
         ]
 
 

@@ -119,6 +119,17 @@ class NotInRecycleBinError(CustomAPIExeption):
         super().__init__(detail=detail, code=code, status_code=404)
 
 
+class OwnerInRecycleBinError(CustomAPIExeption):
+    """The row's owner is in the recycle bin, so the row can't come back on its own."""
+
+    def __init__(
+        self,
+        detail="Restore its owner first; it is in the recycle bin.",
+        code="owner_in_recycle_bin",
+    ):
+        super().__init__(detail=detail, code=code, status_code=409)
+
+
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"

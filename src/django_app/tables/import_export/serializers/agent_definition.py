@@ -1,8 +1,10 @@
 from agents.models import AgentDefinition
 from rest_framework import serializers
 
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
-class AgentDefinitionImportSerializer(serializers.ModelSerializer):
+
+class AgentDefinitionImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = AgentDefinition
         exclude = ["organization", "default_surface_list"]

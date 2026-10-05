@@ -129,14 +129,15 @@ class TestAgentOwnedSurface:
         restored_row = AgentDefaultSurface.objects.get(pk=owner_row.pk)
         assert restored_row.place == SurfacePlace.CHAT
 
-    def test_deleting_the_owner_agent_removes_its_binned_surface(self, default_org, python_code_tool):
+    def test_purging_the_owner_agent_removes_its_binned_surface(self, default_org, python_code_tool):
         owner = AgentDefinition.objects.create(organization=default_org, name="Owner")
         surface, contents = _surface_with_contents(default_org, python_code_tool, name="Owned")
         Surface.objects.filter(pk=surface.pk).update(owner_agent=owner)
         surface.refresh_from_db()
         surface.delete()
-
         owner.delete()
+
+        AgentDefinition.all_objects.get(pk=owner.pk).purge()
 
         assert not Surface.all_objects.filter(pk=surface.pk).exists()
         for row in contents:

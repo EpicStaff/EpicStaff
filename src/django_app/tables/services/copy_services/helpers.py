@@ -1,4 +1,5 @@
 import zlib
+from collections.abc import Collection
 
 from django.db import connection, models
 from django.db.models import Q
@@ -12,6 +13,18 @@ _UNSET = object()
 
 # Postgres int4 range for the two-key form of pg_advisory_xact_lock.
 _INT4_MAX = 2**31
+
+
+def name_lock_key(org_id: int | None, clean_base: str) -> tuple[int, int]:
+    """The two int4 keys of the advisory lock for an (org, name family).
+
+    Callers that take several of these locks sort by this key, so they all take
+    them in one order and can't deadlock on each other.
+    """
+    key2 = zlib.crc32(clean_base.encode("utf-8"))
+    if key2 >= _INT4_MAX:
+        key2 -= 2**32
+    return (org_id if org_id is not None else 0, key2)
 
 
 def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
@@ -30,12 +43,10 @@ def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
     whole generate-name -> insert step: `pg_advisory_xact_lock` auto-releases
     on commit/rollback of that transaction, no manual unlock needed.
     """
-    key1 = org_id if org_id is not None else 0
-    key2 = zlib.crc32(clean_base.encode("utf-8"))
-    if key2 >= _INT4_MAX:
-        key2 -= 2**32
     with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [key1, key2])
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)", list(name_lock_key(org_id, clean_base))
+        )
 
 
 def next_copy_name(
@@ -46,6 +57,7 @@ def next_copy_name(
     also_taken: Q | None = None,
     name_field: str = "name",
     org_field: str = "org",
+    extra_taken_names: Collection[str] = (),
 ) -> str:
     """Pick the next free copy name for `base_name` among the org's `model` rows.
 
@@ -62,15 +74,20 @@ def next_copy_name(
             org, so a copy must not reuse a built-in name.
         name_field: The model's name column (`collection_name` on SourceCollection).
         org_field: The model's organization FK (`organization` on AgentDefinition and Surface).
+        extra_taken_names: Names that aren't live yet but will be once the caller's
+            transaction ends (other rows a restore brings back), so they count as taken.
     """
     clean_base = clean_base_name(base_name)
     acquire_copy_name_lock(org_id, clean_base)
     taken_rows = Q(**{f"{org_field}_id": org_id})
     if also_taken is not None:
         taken_rows |= also_taken
-    existing_names = model.objects.filter(
-        taken_rows, **{f"{name_field}__istartswith": clean_base}
-    ).values_list(name_field, flat=True)
+    existing_names = list(
+        model.objects.filter(taken_rows, **{f"{name_field}__istartswith": clean_base}).values_list(
+            name_field, flat=True
+        )
+    )
+    existing_names += list(extra_taken_names)
     return ensure_unique_identifier(base_name=base_name, existing_names=existing_names)
 
 
