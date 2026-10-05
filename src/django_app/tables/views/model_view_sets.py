@@ -65,6 +65,9 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from storage_credentials.exceptions import TemporaryCredentialRevokeError
+from storage_credentials.models import TemporaryStorageAccount
+from storage_credentials.services import session_credential_service
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
@@ -1622,7 +1625,88 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         chat.duration_seconds = request.data.get("duration_seconds")
         chat.end_reason = request.data.get("end_reason", "completed")
         chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+
+        # Attempt to revoke temporary storage credentials for this realtime chat
+        self._revoke_realtime_credentials(chat.id)
+
         return Response({"detail": "Updated"})
+
+    def _revoke_realtime_credentials(self, realtime_agent_chat_id: int) -> None:
+        """Revoke temporary storage credentials for a realtime chat.
+
+        Reads the access_key from TemporaryStorageAccount table by realtime_agent_chat_id,
+        calls StorageAdminGateway.delete_service_account(), and opportunistically
+        deletes the row on success. All errors are logged but do not block
+        chat termination.
+
+        Args:
+            realtime_agent_chat_id: The ID of the RealtimeAgentChat.
+        """
+        try:
+            temp_account = TemporaryStorageAccount.objects.filter(
+                realtime_agent_chat_id=realtime_agent_chat_id
+            ).first()
+
+            if not temp_account:
+                logger.debug(
+                    "No temporary storage account found for realtime chat {}",
+                    realtime_agent_chat_id,
+                )
+                return
+
+            access_key = temp_account.access_key
+            realtime_agent_chat = temp_account.realtime_agent_chat
+
+            if not realtime_agent_chat:
+                logger.warning(
+                    "Temporary storage account for realtime chat {} has no associated realtime_agent_chat",
+                    realtime_agent_chat_id,
+                )
+                return
+
+            org_id = realtime_agent_chat.rt_agent_definition.agent_definition.organization_id
+
+            try:
+                session_credential_service.revoke(access_key=access_key, org_id=org_id)
+                logger.info(
+                    "Successfully revoked temporary storage account {} for realtime chat {}",
+                    access_key,
+                    realtime_agent_chat_id,
+                )
+
+                # Opportunistically delete the row on success
+                try:
+                    temp_account.delete()
+                    logger.debug(
+                        "Deleted temporary storage account record for realtime chat {}",
+                        realtime_agent_chat_id,
+                    )
+                except Exception as delete_error:
+                    logger.warning(
+                        "Failed to delete temporary storage account record for realtime chat {}: {}",
+                        realtime_agent_chat_id,
+                        delete_error,
+                    )
+
+            except TemporaryCredentialRevokeError as revoke_error:
+                logger.warning(
+                    "Failed to revoke temporary storage credentials for realtime chat {}: {}",
+                    realtime_agent_chat_id,
+                    revoke_error,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Error during credential revocation for realtime chat {}: {}",
+                    realtime_agent_chat_id,
+                    error,
+                )
+
+        except Exception as error:
+            logger.error(
+                "Error in credential revocation handler for realtime chat {}: {}",
+                realtime_agent_chat_id,
+                error,
+            )
 
 
 class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):

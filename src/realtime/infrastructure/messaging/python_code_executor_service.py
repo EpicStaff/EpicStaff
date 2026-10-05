@@ -7,8 +7,7 @@ from domain.ports.i_python_code_executor_service import IPythonCodeExecutorServi
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from loguru import logger
 from pydantic import ValidationError
-from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
-from src.shared.storage_credentials import publish_credential_scope_async
+from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData, StorageCredentials
 from utils.singleton_meta import SingletonMeta
 
 
@@ -21,6 +20,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         python_code_data: PythonCodeData,
         inputs: dict[str, Any],
         additional_global_kwargs: dict[str, Any] | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> dict:
         additional_global_kwargs = additional_global_kwargs or {}
         venv_name = python_code_data.venv_name
@@ -51,6 +51,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 storage_allowed_paths=python_code_data.storage_allowed_paths,
                 storage_org_prefix=python_code_data.storage_org_prefix,
                 org_id=python_code_data.org_id,
+                storage_credentials=storage_credentials,
                 secrets=python_code_data.secrets,
             )
         except (ValidationError, ValueError):
@@ -69,9 +70,6 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
             ).model_dump()
 
         pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
-        # Trusted scope for the storage-credential issuer, written before the
-        # task itself is published.
-        await publish_credential_scope_async(self.redis_service.aioredis_client, code_task_data)
         await self.redis_service.async_publish(
             config.CODE_EXEC_CHANNEL, code_task_data.model_dump()
         )

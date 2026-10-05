@@ -5,7 +5,7 @@ from typing import Any
 from django.conf import settings
 from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
-from src.shared.storage_credentials import publish_credential_scope
+from storage_credentials.services.session_credential_service import issue_for_test_run
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
@@ -71,7 +71,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
 
         execution_id = self.gen_execution_id()
-        PythonCodeResult.objects.create(
+        python_code_result = PythonCodeResult.objects.create(
             execution_id=execution_id,
             org_id=organization_id,
             created_by=user,
@@ -112,11 +112,15 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             secrets=secrets,
         )
 
+        # If storage is needed, mint temporary credentials and persist them
+        if use_storage:
+            code_task_data.storage_credentials = issue_for_test_run(
+                python_code_result=python_code_result,
+                storage_allowed_paths=storage_allowed_paths,
+                org_id=organization_id,
+            )
+
         channel = self.code_exec_task_channel
-        # Trusted scope for the storage-credential issuer, written before the
-        # task itself is published.
-        # Sync variant on purpose: run_code() is sync and uses the sync redis_client
-        publish_credential_scope(self.redis_service.redis_client, code_task_data)
         self.redis_service.redis_client.publish(channel, code_task_data.model_dump_json())
         return execution_id
 

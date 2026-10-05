@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .ai_providers import EmbedderData, LLMData
 from .knowledge import RagSearchConfig
+from .storage_scope import StorageCredentials
 from .tools import BaseToolData
 
 
@@ -64,6 +65,7 @@ class RealtimeAgentChatData(BaseModel):
     memory: bool
     tools: list[BaseToolData] = []
     connection_key: str
+    storage_credentials: StorageCredentials | None = None
     wake_word: str | None
     stop_prompt: str | None
     language: str | None

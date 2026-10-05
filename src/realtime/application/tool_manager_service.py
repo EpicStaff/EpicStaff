@@ -65,6 +65,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 tool_executor = PythonCodeToolExecutor(
                     python_code_tool_data=tool_data,
                     python_code_executor_service=self.python_code_executor_service,
+                    storage_credentials=realtime_agent_chat_data.storage_credentials,
                 )
             else:
                 logger.warning(

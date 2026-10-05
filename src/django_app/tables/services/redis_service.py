@@ -150,9 +150,6 @@ class RedisService(metaclass=SingletonMeta):
             settings.REALTIME_AGENTS_SCHEMA_CHANNEL, resolved.model_dump_json()
         )
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
-        # Deliberately dumps the UNRESOLVED original: logging `resolved` would
-        # write plaintext credentials into the log stream.
-        logger.debug(f"Schema: {rt_agent_chat_data.model_dump()}.")
 
     def publish_channel_invalidation(self, token) -> None:
         """Tell the `realtime` service to drop its cached

@@ -3,9 +3,15 @@
 all -- `run_code()` used to build `CodeTaskData` without
 `storage_org_prefix`/`storage_allowed_paths`/`org_id`, so the storage_credentials
 issuer would always fail closed for any `use_storage=True` task started from
-a voice-agent code tool. Reading `python_code_executor_service.py` today
-shows this is already fixed and `publish_credential_scope_async` is already
-called; this is that fix's only test.
+a voice-agent code tool.
+
+Storage credentials 2.0 (EST-3892 commit 5): django now mints temporary
+storage credentials once per realtime chat session (in
+`converter_service.convert_rt_agent_definition_chat_to_pydantic`) and hands
+them to this service as the `storage_credentials` parameter -- this service
+never mints/requests anything itself, it only forwards what it is given onto
+`CodeTaskData.storage_credentials`. The old issuer round-trip
+(`publish_credential_scope_async`) is gone.
 """
 
 import asyncio
@@ -13,11 +19,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import infrastructure.messaging.python_code_executor_service as executor_module
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
-from src.shared.models import CodeResultData, PythonCodeData
+from src.shared.models import CodeResultData, PythonCodeData, StorageCredentials
 
 
 @pytest.fixture(autouse=True)
@@ -79,11 +84,6 @@ def make_python_code_data(**overrides) -> PythonCodeData:
 @pytest.mark.asyncio
 async def test_use_storage_forwards_all_three_scoping_fields(monkeypatch):
     call_order: list[str] = []
-    monkeypatch.setattr(
-        executor_module,
-        "publish_credential_scope_async",
-        AsyncMock(side_effect=lambda *a, **kw: call_order.append("publish_scope")),
-    )
     redis = FakeRedisService(call_order)
     service = PythonCodeExecutorService(redis_service=redis)
 
@@ -106,15 +106,12 @@ async def test_use_storage_forwards_all_three_scoping_fields(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_publish_credential_scope_is_called_before_the_task_is_published(
-    monkeypatch,
-):
+async def test_storage_credentials_parameter_is_forwarded_onto_code_task_data():
+    """The service must never mint or request credentials itself -- it only
+    copies whatever `storage_credentials` it is handed onto the published
+    `CodeTaskData`, exactly as `tool_manager_service` passes
+    `rt_agent_chat_data.storage_credentials` through."""
     call_order: list[str] = []
-    monkeypatch.setattr(
-        executor_module,
-        "publish_credential_scope_async",
-        AsyncMock(side_effect=lambda *a, **kw: call_order.append("publish_scope")),
-    )
     redis = FakeRedisService(call_order)
     service = PythonCodeExecutorService(redis_service=redis)
 
@@ -124,12 +121,38 @@ async def test_publish_credential_scope_is_called_before_the_task_is_published(
         storage_allowed_paths=["flowA"],
         org_id=1,
     )
+    creds = StorageCredentials(access_key="AK123", secret_key="SK456")
+
+    await asyncio.wait_for(
+        service.run_code(
+            python_code_data=python_code_data,
+            inputs={},
+            storage_credentials=creds,
+        ),
+        timeout=5,
+    )
+
+    assert redis.published is not None
+    assert redis.published["storage_credentials"] == {
+        "access_key": "AK123",
+        "secret_key": "SK456",
+    }
+
+
+@pytest.mark.asyncio
+async def test_no_storage_credentials_means_none_on_code_task_data():
+    call_order: list[str] = []
+    redis = FakeRedisService(call_order)
+    service = PythonCodeExecutorService(redis_service=redis)
+
+    python_code_data = make_python_code_data(use_storage=False)
 
     await asyncio.wait_for(
         service.run_code(python_code_data=python_code_data, inputs={}), timeout=5
     )
 
-    assert call_order == ["publish_scope", "async_publish"]
+    assert redis.published is not None
+    assert redis.published["storage_credentials"] is None
 
 
 @pytest.mark.asyncio

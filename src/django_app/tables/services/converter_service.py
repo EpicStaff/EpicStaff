@@ -37,6 +37,8 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from storage_credentials.exceptions import TemporaryCredentialIssueError
+from storage_credentials.services.session_credential_service import issue_for_realtime_chat
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -322,6 +324,35 @@ class ConverterService(metaclass=SingletonMeta):
             output_audio_format=rt_agent_chat.output_audio_format,
             rt_provider=rt_provider,
         )
+
+        # Check if any tools require storage and mint credentials if needed
+        try:
+            union_allowed_paths = set()
+            needs_storage = False
+
+            for tool in surface_resolution.tools:
+                tool_data = tool.data
+                if isinstance(tool_data, PythonCodeToolData) and tool_data.python_code.use_storage:
+                    needs_storage = True
+                    if tool_data.python_code.storage_allowed_paths:
+                        union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
+
+            if needs_storage:
+                if not union_allowed_paths:
+                    raise TemporaryCredentialIssueError(
+                        f"Storage needed but no paths found in realtime agent tools for org {ad.organization_id}"
+                    )
+                rt_agent_chat_data.storage_credentials = issue_for_realtime_chat(
+                    realtime_agent_chat=rt_agent_chat,
+                    storage_allowed_paths=list(union_allowed_paths),
+                    org_id=ad.organization_id,
+                )
+        except TemporaryCredentialIssueError:
+            raise
+        except Exception as error:
+            raise TemporaryCredentialIssueError(
+                f"Failed to mint temporary storage credentials for realtime chat {rt_agent_chat.id}: {error}"
+            ) from error
 
         return rt_agent_chat_data
 

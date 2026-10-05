@@ -16,6 +16,9 @@ from src.shared.models import (
     StorageMutationEvent,
     WebhookEventData,
 )
+from storage_credentials.exceptions import TemporaryCredentialRevokeError
+from storage_credentials.models import TemporaryStorageAccount
+from storage_credentials.services import session_credential_service
 from tables.models import (
     GraphSessionMessage,
     Session,
@@ -123,6 +126,7 @@ class RedisPubSub:
             logger.error(f"Error handling session_status message: {e}")
 
     def code_results_handler(self, message: dict):
+        result = None
         try:
             logger.debug("Received message from code_result_handler: {}", message)
             result = CodeResultData.model_validate_json(message["data"])
@@ -131,6 +135,11 @@ class RedisPubSub:
                 logger.debug(f"No pending execution for {result.execution_id}, skipping")
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
+        finally:
+            # Attempt to revoke temporary storage credentials for this execution
+            # (revocation failure is not fatal to result persistence)
+            if result is not None:
+                self._revoke_test_run_credentials(result.execution_id)
 
     def storage_mutations_handler(self, message: dict):
         try:
@@ -786,3 +795,70 @@ class RedisPubSub:
             ScheduleTriggerService().deactivate_node(node_id)
         except Exception as e:
             logger.error(f"[SchedulePubSub] Error deactivating node {node_id}: {e}")
+
+    def _revoke_test_run_credentials(self, execution_id: str) -> None:
+        """Revoke temporary storage credentials for a test-run execution.
+
+        Reads the access_key from TemporaryStorageAccount table by execution_id,
+        calls StorageAdminGateway.delete_service_account(), and opportunistically
+        deletes the row on success. All errors are logged but do not block
+        result persistence.
+
+        Args:
+            execution_id: The execution ID of the test-run.
+        """
+        try:
+            temp_account = TemporaryStorageAccount.objects.filter(
+                python_code_result__execution_id=execution_id
+            ).first()
+
+            if not temp_account:
+                logger.debug(
+                    "No temporary storage account found for test-run execution {}", execution_id
+                )
+                return
+
+            access_key = temp_account.access_key
+
+            try:
+                python_code_result = temp_account.python_code_result
+                if not python_code_result:
+                    logger.warning(
+                        "Temporary storage account for {} has no associated python_code_result",
+                        execution_id,
+                    )
+                    return
+
+                session_credential_service.revoke(
+                    access_key=access_key, org_id=python_code_result.org_id
+                )
+                logger.info(
+                    "Successfully revoked temporary storage account {} for test-run {}",
+                    access_key,
+                    execution_id,
+                )
+
+                # Opportunistically delete the row on success
+                try:
+                    temp_account.delete()
+                    logger.debug(
+                        "Deleted temporary storage account record for test-run {}", execution_id
+                    )
+                except Exception as delete_error:
+                    logger.warning(
+                        "Failed to delete temporary storage account record for {}: {}",
+                        execution_id,
+                        delete_error,
+                    )
+
+            except TemporaryCredentialRevokeError as revoke_error:
+                logger.warning(
+                    "Failed to revoke temporary storage credentials for {}: {}",
+                    execution_id,
+                    revoke_error,
+                )
+            except Exception as error:
+                logger.warning("Error during credential revocation for {}: {}", execution_id, error)
+
+        except Exception as error:
+            logger.error("Error in credential revocation handler for {}: {}", execution_id, error)
