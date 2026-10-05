@@ -1,5 +1,6 @@
 import { Provider } from '@angular/core';
 
+import { CdtExplanationStoreService } from '../../services/cdt-explanation-store.service';
 import { ClipboardService } from '../../services/clipboard.service';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
@@ -31,4 +32,5 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     NodeFactoryService,
     NodeNameValidatorService,
     UniqueNodeNameValidatorService,
+    CdtExplanationStoreService,
 ];

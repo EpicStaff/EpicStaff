@@ -76,17 +76,26 @@ import {
 } from '../../../../utils/condition-expression.helper';
 import {
     CDT_COLUMN_KIND,
+    CDT_ENABLE_CONTINUE_DIALOG_WIDTH,
     CDT_FIELD_PREFIX,
     CDT_GRID_ROW_HEIGHT,
     CDT_GROUP_TOGGLE_ANIMATION_MS,
     CDT_MANIP_PREFIX,
     CDT_OVERLAY_ROW_HEIGHT,
+    CDT_ROUTE_CONTINUE_COPY,
 } from '../cdt.constants';
 import {
     CdtGroupDialogComponent,
     CdtGroupDialogData,
     CdtGroupDialogResult,
 } from '../cdt-group-dialog/cdt-group-dialog.component';
+import {
+    continueFlagAfterRouteCodeEdit,
+    isMissingRouteOrContinue,
+    isRouteContinueConflict,
+    normalizeRouteCode,
+    routePortIdForRow,
+} from '../cdt-route-continue.util';
 import { ColumnHeaderMenuComponent } from './column-header-menu/column-header-menu.component';
 import { EnableFilterHeaderComponent, EnableFilterMode } from './enable-filter-header/enable-filter-header.component';
 import { ExpressionBuilderCellEditorComponent } from './expression-builder/expression-builder-cell-editor.component';
@@ -95,12 +104,21 @@ import { MonacoCellRendererComponent } from './monaco-cell-renderer/monaco-cell-
 import { ParamsGroupHeaderComponent } from './params-group-header/params-group-header.component';
 import { PromptIdCellEditorComponent } from './prompt-id-cell-editor/prompt-id-cell-editor.component';
 import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt-tooltip-renderer.component';
+import { RouteCodeCellRendererComponent } from './route-code-cell-renderer/route-code-cell-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
 import { NoDragGhostComponent } from './shared/no-drag-ghost.component';
 import { OverlayMenuController } from './shared/overlay-menu.util';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+/** Emitted when the user confirms Continue on a wired route code; see `enableContinueRequest`. */
+export interface CdtEnableContinueRequest {
+    /** The route-code output port whose connection must go (`routePortIdForRow`). */
+    readonly portId: string;
+    /** All rows as they should be once Continue is on and the port is unwired. */
+    readonly rows: ConditionGroup[];
+}
 
 interface GroupOverlayMember {
     sectionId: string;
@@ -145,11 +163,22 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public llmConfigs = input<{ id: number; label: string }[]>([]);
     public preInputMapKeys = input<string[]>([]);
     public domainKeys = input<string[]>([]);
+    /**
+     * Route-code output port ids that lead to a canvas node, from live flow state
+     * (`routePortIdsWithTarget`). Drives the Route Code status and the Enable
+     * Continue confirmation.
+     */
+    public routePortIdsWithTarget = input<ReadonlySet<string>>(new Set<string>());
     public readonly = input<boolean>(false);
     public sections = input<CdtSection[]>([]);
 
     public conditionGroupsChange = output<ConditionGroup[]>();
     public sectionsChange = output<CdtSection[]>();
+    /**
+     * The user confirmed Continue on a wired route code. The parent removes the
+     * connection on `portId` and, only if that worked, adopts `rows`.
+     */
+    public enableContinueRequest = output<CdtEnableContinueRequest>();
     public promptChange = output<{
         promptId: string;
         field: keyof PromptConfig;
@@ -694,6 +723,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 if (this.gridApi) {
                     this.gridApi.refreshCells({ columns: ['prompt_id'], force: true });
                 }
+            });
+        });
+        effect(() => {
+            // A connection drawn or removed on the canvas changes the Route Code status.
+            this.routePortIdsWithTarget();
+            untracked(() => {
+                this.gridApi?.refreshCells({ columns: ['route_code'], force: true });
             });
         });
         effect(() => {
@@ -1776,10 +1812,26 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerComponentParams: this.makeMenuHeaderParams('route_code', 'Route Code'),
             field: 'route_code',
             editable: true,
+            // Stored trimmed, so whitespace-only is empty and the grid, the canvas
+            // port and the save all see the same code.
+            valueParser: (p) => normalizeRouteCode(p.newValue),
             width: 150,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
+            },
+            cellClassRules: {
+                // Red: the row neither routes nor continues, or (saved data only) its
+                // route code is wired to a node while Continue is on.
+                'cell-required-invalid': (p) => {
+                    const row = p.data as ConditionGroup | undefined;
+                    return isMissingRouteOrContinue(row) || isRouteContinueConflict(row, this.routeHasTarget(row));
+                },
+            },
+            // Shows the code plus a status icon whose tooltip explains the red or dimmed state.
+            cellRenderer: RouteCodeCellRendererComponent,
+            cellRendererParams: {
+                routeHasTarget: (row: ConditionGroup | undefined) => this.routeHasTarget(row),
             },
         };
 
@@ -1797,6 +1849,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 alignItems: 'center',
                 justifyContent: 'center',
             },
+            // Ticking Continue on a wired route code asks first; see `setContinueFlag`.
+            valueSetter: (p) => this.setContinueFlag(p),
         };
 
         const deleteCol: ColDef = {
@@ -2371,6 +2425,80 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         return !parseManipulation(manip).ok;
     }
 
+    /** Whether the row's route code leads to a canvas node, per `routePortIdsWithTarget`. */
+    private routeHasTarget(row: ConditionGroup | null | undefined): boolean {
+        const portId = routePortIdForRow(this.currentNodeId(), row);
+        return !!portId && this.routePortIdsWithTarget().has(portId);
+    }
+
+    /**
+     * The Continue column's valueSetter. Ticking Continue on a wired route code
+     * would leave a connection Continue cannot use, so the tick is not committed
+     * here: the user confirms first, and the parent commits it only once the
+     * connection is gone (see `requestEnableContinue`). Returning false makes
+     * ag-grid redraw the checkbox unticked. Unticking never asks, including on a
+     * saved row flagged by `isRouteContinueConflict`.
+     */
+    private setContinueFlag(params: ValueSetterParams<ConditionGroup, boolean>): boolean {
+        if (this.readonly()) return false;
+        const row = params.data;
+        const nextContinue = params.newValue === true;
+
+        if (nextContinue && this.routeHasTarget(row)) {
+            this.confirmEnableContinue(params.node);
+            return false;
+        }
+
+        if (row.continue_flag === nextContinue) return false;
+        row.continue_flag = nextContinue;
+        return true;
+    }
+
+    private confirmEnableContinue(rowNode: IRowNode<ConditionGroup> | null): void {
+        const row = rowNode?.data;
+        const portId = routePortIdForRow(this.currentNodeId(), row);
+        if (!row || !portId) return;
+
+        this.confirmDialog
+            .confirm(
+                {
+                    ...CDT_ROUTE_CONTINUE_COPY.enableContinueDialog,
+                    type: 'warning',
+                    isShownBorder: true,
+                    appearance: 'raised',
+                },
+                { width: CDT_ENABLE_CONTINUE_DIALOG_WIDTH }
+            )
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                // Cancel and close leave the row as it was: the tick was never committed.
+                if (result === true) this.requestEnableContinue(row, portId);
+            });
+    }
+
+    /**
+     * Hands the parent the rows as they should be once Continue is on: the row
+     * ticked, and every row on the same port without `next_node` (otherwise the
+     * panel's next autosave would write the old target back and restore the
+     * connection). The grid's own rows stay untouched; they change only if the
+     * parent removes the connection and feeds the rows back through
+     * `conditionGroups`.
+     */
+    private requestEnableContinue(row: ConditionGroup, portId: string): void {
+        // The rows may have been replaced while the dialog was open; then the
+        // confirmed row is gone and nothing is removed or ticked.
+        if (!this.rowData().includes(row)) return;
+
+        const nodeId = this.currentNodeId();
+        const rows = this.rowData().map((current, index) => ({
+            ...current,
+            order: index + 1,
+            continue_flag: current === row ? true : current.continue_flag,
+            next_node: routePortIdForRow(nodeId, current) === portId ? null : current.next_node,
+        }));
+        this.enableContinueRequest.emit({ portId, rows });
+    }
+
     onCellValueChanged(event: CellValueChangedEvent): void {
         // Guard against recursive loops triggered by programmatic cell writes
         if (this.isSyncing) return;
@@ -2380,6 +2508,22 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const rowData = event.data as ConditionGroup;
         const activeNames = this.activeFieldColumns();
         const activeManipNames = this.activeManipFieldColumns();
+
+        if (colId === 'route_code') {
+            // Naming a route unticks Continue and clearing it ticks Continue back;
+            // see `continueFlagAfterRouteCodeEdit`. Written in place like the other
+            // cross-cell syncs here, then emitted with the rest of the row below.
+            const nextContinue = continueFlagAfterRouteCodeEdit(event.oldValue, event.newValue);
+            if (nextContinue !== null) {
+                rowData.continue_flag = nextContinue;
+            }
+        }
+
+        if (colId === 'route_code' || colId === 'continue_flag') {
+            // Route Code's red border, dimmed text and status icon depend on the flag,
+            // and the flag can change with the code.
+            event.api.refreshCells({ rowNodes: [event.node], columns: ['route_code', 'continue_flag'], force: true });
+        }
 
         if (colId === CDT_COLUMN_KIND.EXPRESSION) {
             // Expression → params sync
@@ -2515,7 +2659,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             expression: null,
             conditions: [],
             manipulation: null,
-            continue_flag: false,
+            // Falling through to the next rule is the readable default; stopping on
+            // the table default is the deliberate choice, made by unticking.
+            continue_flag: true,
             route_code: '',
             dock_visible: true,
             next_node: null,

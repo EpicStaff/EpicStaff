@@ -46,6 +46,32 @@ export const CDT_EXPRESSION_EDITOR_POPUP_WIDTH = 660;
 /** Fallback display label used when no LLM config is selected. */
 export const CDT_DEFAULT_LLM_LABEL = 'Default LLM';
 
+// ── Route Code / Continue copy ────────────────────────────────────────────────
+
+/** Width of the "Enable Continue?" confirmation, from the design. */
+export const CDT_ENABLE_CONTINUE_DIALOG_WIDTH = '485px';
+
+/** Route Code cell tooltip and the Continue confirmation; see `cdt-route-continue.util.ts` for the rule. */
+export const CDT_ROUTE_CONTINUE_COPY = {
+    routeCodeIgnored: 'Route code is ignored. To use it, turn off Continue and connect this output to a node.',
+    routeContinueConflict:
+        'Use one: this route code is connected and Continue is on. Remove the connection or turn off Continue.',
+    /** Canvas toast when a connection is drawn from a route code whose row has Continue on. */
+    routePortBlockedByContinue: 'Continue is on for this route code. Turn it off to connect this output.',
+    enableContinueDialog: {
+        title: 'Enable Continue?',
+        message: 'You are about to enable Continue for this Route code.',
+        cautionTitle: 'Attention',
+        // HTML: the confirmation dialog renders `caution` with [innerHTML] and paints <strong> white.
+        caution:
+            'The connection from this output to the current node <strong>will be removed</strong>, and the Conditions analysis will continue on the next row.',
+        confirmText: 'Enable Continue',
+        cancelText: 'Cancel',
+    },
+    /** Toast when the connection could not be removed, so Continue stays off. */
+    enableContinueFailed: "Couldn't remove the connection from this route code, so Continue was not enabled.",
+} as const;
+
 // ── Header auto-collapse ──────────────────────────────────────────────────────
 
 /** Grid scrollTop (px) past which the panel's node-header block collapses. */

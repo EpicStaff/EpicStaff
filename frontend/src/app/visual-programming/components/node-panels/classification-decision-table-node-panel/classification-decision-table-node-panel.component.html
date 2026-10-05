@@ -8,6 +8,21 @@
         (mainClick)="exportAsJson()"
         (itemClick)="onExportItemSelected($event)"
     />
+
+    <button
+        class="cdt-tree-button"
+        type="button"
+        matTooltip="View this table as a read-only flowchart"
+        matTooltipPosition="below"
+        (click)="openDecisionTree()"
+    >
+        <app-svg-icon
+            icon="decision-tree"
+            width="8px"
+            height="10px"
+        />
+        <span class="cdt-tree-button__label">Decision Tree</span>
+    </button>
 </ng-template>
 
 <div class="panel-container">
@@ -111,9 +126,11 @@
                             [llmConfigs]="llmConfigOptions()"
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
+                            [routePortIdsWithTarget]="routePortIdsWithTarget()"
                             [readonly]="isReadOnly()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
                             (sectionsChange)="onSectionsChange($event)"
+                            (enableContinueRequest)="onEnableContinueRequest($event)"
                             (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
                             (promptAdd)="onPromptAdd($event.id, $event.config)"
                             (openPromptLibrary)="onOpenPromptLibrary($event)"
