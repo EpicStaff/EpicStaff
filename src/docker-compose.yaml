@@ -254,14 +254,16 @@ services:
       - backend-network
       - sandbox-network
     volumes:
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
     environment:
       REDIS_PORT: ${REDIS_PORT:?}
       REDIS_USER: ${REDIS_USER:?}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    # The config file must stay the first argument: it carries the pub/sub output buffer
+    # limit. The flags after it override same-named directives in the file.
     command: >
-      sh -c "redis-server --port $${REDIS_PORT}
+      sh -c "redis-server /usr/local/etc/redis/redis.conf --port $${REDIS_PORT}
       $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}
       $${REDIS_USER:+--user \"$${REDIS_USER}\" on \">$${REDIS_PASSWORD}\" ~* &* +@all}"
     healthcheck:
