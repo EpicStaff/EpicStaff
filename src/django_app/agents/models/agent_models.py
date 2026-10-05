@@ -1,5 +1,9 @@
 from django.db import models
-from tables.models.base_models import AbstractDefaultFillableModel
+from tables.models.base_models import (
+    AbstractDefaultFillableModel,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 
 
 class DefaultAgentDefinitionConfig(models.Model):
@@ -194,7 +198,7 @@ class SurfacePlace(models.TextChoices):
     REALTIME = "realtime", "Realtime"
 
 
-class AgentDefaultSurface(models.Model):
+class AgentDefaultSurface(SoftDeleteFields, models.Model):
     soft_delete_reference_fields = ("surface",)
     agent_definition = models.ForeignKey(
         AgentDefinition,
@@ -215,7 +219,10 @@ class AgentDefaultSurface(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["agent_definition", "surface", "place"],
                 name="uniq_agent_default_surface",

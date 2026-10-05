@@ -3,7 +3,12 @@ from django.db import models
 from django.utils import timezone
 from rbac.models.org_scoped import OrgScopedModel
 
-from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
+from tables.models.base_models import (
+    AbstractDefaultFillableModel,
+    DefaultBaseModel,
+    SoftDeleteFields,
+    soft_delete_consistency_constraint,
+)
 
 
 class AudioFormatChoices(models.TextChoices):
@@ -183,9 +188,12 @@ class RealtimeAgent(AbstractDefaultFillableModel):
 # ---------------------------------------------------------------------------
 # RealtimeAgentChat  (session snapshot)
 # ---------------------------------------------------------------------------
-class RealtimeAgentDefinition(AbstractDefaultFillableModel):
+class RealtimeAgentDefinition(AbstractDefaultFillableModel, SoftDeleteFields):
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "realtime_agent_definition"
+        constraints = [soft_delete_consistency_constraint()]
 
     agent_definition = models.OneToOneField(
         "agents.AgentDefinition",

@@ -212,6 +212,11 @@ def soft_delete_consistency_constraint() -> models.CheckConstraint:
     )
 
 
+# The soft-delete state. Only DeleteService (and restore) write it: API
+# serializers, import files and copies must leave it out.
+SOFT_DELETE_FIELD_NAMES = ("active", "soft_deleted_at", "soft_delete_batch")
+
+
 class SoftDeleteFields(models.Model):
     """
     Only the fields required for soft deletion. No delete() override —

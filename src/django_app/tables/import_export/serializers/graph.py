@@ -22,6 +22,7 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.graph_models import (
     ClassificationDecisionTablePrompt,
     GraphNote,
@@ -241,9 +242,7 @@ class GraphImportSerializer(serializers.ModelSerializer):
             "save_version",
             "created_by",
             # Deletion goes through DeleteService, never through a crafted import file.
-            "active",
-            "soft_deleted_at",
-            "soft_delete_batch",
+            *SOFT_DELETE_FIELD_NAMES,
         ]
 
 

@@ -16,6 +16,7 @@ Covers, per root and per mechanism rule:
 """
 
 import json
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,7 +28,13 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from agents.models import (
+    AgentInlineSurface,
+    AgentInlineSurfaceGraphDriftSearchConfig,
+    AgentInlineSurfaceGraphGlobalSearchConfig,
+    AgentInlineSurfaceKnowledge,
     InlineSurface,
+    InlineSurfaceGraphDriftSearchConfig,
+    InlineSurfaceGraphGlobalSearchConfig,
     InlineSurfaceKnowledge,
     InlineSurfacePythonTool,
     Surface,
@@ -52,9 +59,33 @@ from tables.models import (
     WebhookTriggerNode,
 )
 from tables.models import Agent, AgentNode, AgentNodeTask, Edge, SubGraphNode
-from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag, NaiveRag
+from tables.models.favorite_models import PythonCodeToolFavorite
+from tables.models.knowledge_models.graphrag_models import (
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagDriftSearchConfig,
+    KnowledgeNodeGraphRagGlobalSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
+)
+from tables.models.knowledge_models.naive_rag_models import (
+    AgentNaiveRag,
+    KnowledgeNodeNaiveRagSearchConfig,
+    NaiveRag,
+)
 from tables.models.label_models import Label
-from tables.models.base_models import SoftDeleteFields
+from tables.import_export.serializers.knowledge_node import (
+    _GraphBasicSearchConfigImportSerializer,
+    _GraphDriftSearchConfigImportSerializer,
+    _GraphGlobalSearchConfigImportSerializer,
+    _GraphLocalSearchConfigImportSerializer,
+    _NaiveSearchConfigImportSerializer,
+)
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, SoftDeleteFields
+from tables.serializers.model_serializers.realtime_serializers import RealtimeAgentDefinitionSerializer
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.strategies.nodes.knowledge_node import KnowledgeNodeStrategy
+from tables.services.copy_services.inline_surface_copy_helpers import _copy_field_values
+from tables.services.copy_services.node_copy_handlers import copy_knowledge_node
 from tables.models.session_models import SessionTrigger
 from tables.models.webhook_models import (
     WebhookTrigger,
@@ -946,3 +977,130 @@ class TestOwnerVersusReferenceLinks:
             field = model._meta.get_field(field_name)
             assert field.many_to_one or field.one_to_one, f"{model._meta.label}.{field_name} is not a FK"
             assert field.remote_field.on_delete is models.CASCADE, f"{model._meta.label}.{field_name}"
+
+
+@pytest.mark.django_db
+class TestOwnedChildrenGoToTheBinWithTheirOwner:
+    """Children that only belong to their owner are binned with it, in its batch,
+    so a restore brings them back instead of losing them for good."""
+
+    def test_knowledge_node_search_configs_go_to_the_bin_with_their_flow(self, graph):
+        knowledge_node = KnowledgeNode.objects.create(graph=graph)
+        configs = [
+            model.objects.create(knowledge_node=knowledge_node)
+            for model in (
+                KnowledgeNodeNaiveRagSearchConfig,
+                KnowledgeNodeGraphRagBasicSearchConfig,
+                KnowledgeNodeGraphRagLocalSearchConfig,
+                KnowledgeNodeGraphRagGlobalSearchConfig,
+                KnowledgeNodeGraphRagDriftSearchConfig,
+            )
+        ]
+
+        batch = graph.delete()
+
+        for config in configs:
+            assert type(config).all_objects.get(pk=config.pk).soft_delete_batch == batch, type(config)
+
+    def test_inline_surface_search_configs_go_to_the_bin_with_their_flow(self, graph, default_org):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        knowledge_link = InlineSurfaceKnowledge.objects.create(
+            inline_surface=inline_surface,
+            collection=SourceCollection.objects.create(org=default_org, collection_name="KB"),
+        )
+        global_config = InlineSurfaceGraphGlobalSearchConfig.objects.create(surface_knowledge=knowledge_link)
+        drift_config = InlineSurfaceGraphDriftSearchConfig.objects.create(surface_knowledge=knowledge_link)
+
+        batch = graph.delete()
+
+        assert InlineSurfaceGraphGlobalSearchConfig.all_objects.get(pk=global_config.pk).soft_delete_batch == batch
+        assert InlineSurfaceGraphDriftSearchConfig.all_objects.get(pk=drift_config.pk).soft_delete_batch == batch
+
+    def test_favorite_goes_to_the_bin_with_its_tool(self, python_code_tool, regular_user):
+        favorite = PythonCodeToolFavorite.objects.create(user=regular_user, tool=python_code_tool)
+
+        batch = python_code_tool.delete()
+
+        assert PythonCodeToolFavorite.all_objects.get(pk=favorite.pk).soft_delete_batch == batch
+
+    def test_agent_inline_surface_search_configs_go_to_the_bin_with_their_flow(self, graph, default_org):
+        agent_inline_surface = AgentInlineSurface.objects.create(
+            agent_node=AgentNode.objects.create(graph=graph, node_name="agent")
+        )
+        knowledge_link = AgentInlineSurfaceKnowledge.objects.create(
+            agent_inline_surface=agent_inline_surface,
+            collection=SourceCollection.objects.create(org=default_org, collection_name="KB"),
+        )
+        global_config = AgentInlineSurfaceGraphGlobalSearchConfig.objects.create(surface_knowledge=knowledge_link)
+        drift_config = AgentInlineSurfaceGraphDriftSearchConfig.objects.create(surface_knowledge=knowledge_link)
+
+        batch = graph.delete()
+
+        assert AgentInlineSurfaceGraphGlobalSearchConfig.all_objects.get(pk=global_config.pk).soft_delete_batch == batch
+        assert AgentInlineSurfaceGraphDriftSearchConfig.all_objects.get(pk=drift_config.pk).soft_delete_batch == batch
+
+
+@pytest.mark.django_db
+class TestSoftDeleteStateStaysOutOfApiImportAndCopy:
+    """Only DeleteService (and restore) write the soft-delete fields: clients,
+    import files and copies never do."""
+
+    @pytest.mark.parametrize(
+        "serializer_class",
+        [
+            RealtimeAgentDefinitionSerializer,
+            _NaiveSearchConfigImportSerializer,
+            _GraphBasicSearchConfigImportSerializer,
+            _GraphLocalSearchConfigImportSerializer,
+            _GraphGlobalSearchConfigImportSerializer,
+            _GraphDriftSearchConfigImportSerializer,
+        ],
+        ids=lambda serializer_class: serializer_class.__name__,
+    )
+    def test_serializer_does_not_expose_soft_delete_fields(self, serializer_class):
+        assert not set(serializer_class().fields) & set(SOFT_DELETE_FIELD_NAMES)
+
+    def test_copying_a_knowledge_node_does_not_copy_its_soft_delete_state(self, graph):
+        knowledge_node = KnowledgeNode.objects.create(graph=graph)
+        config = KnowledgeNodeNaiveRagSearchConfig.objects.create(knowledge_node=knowledge_node)
+        KnowledgeNodeNaiveRagSearchConfig.objects.filter(pk=config.pk).update(soft_delete_batch=uuid.uuid4())
+
+        new_node = copy_knowledge_node(graph, KnowledgeNode.objects.get(pk=knowledge_node.pk))
+
+        new_config = KnowledgeNodeNaiveRagSearchConfig.objects.get(knowledge_node=new_node)
+        assert new_config.active is True
+        assert new_config.soft_delete_batch is None
+
+    def test_imported_knowledge_node_config_ignores_soft_delete_state_in_the_file(self, graph, default_org):
+        id_mapper = IDMapper()
+        id_mapper.map(EntityType.GRAPH, 1, graph.id)
+        data = {
+            "graph": 1,
+            "node_name": "kb",
+            "naive_search_config": {
+                "active": False,
+                "soft_deleted_at": "2026-01-01T00:00:00Z",
+                "soft_delete_batch": "11111111-1111-1111-1111-111111111111",
+            },
+        }
+
+        node = KnowledgeNodeStrategy().create_entity(data, id_mapper, org_id=default_org.id)
+
+        config = KnowledgeNodeNaiveRagSearchConfig.all_objects.get(knowledge_node=node)
+        assert config.active is True
+        assert config.soft_deleted_at is None
+        assert config.soft_delete_batch is None
+
+    def test_inline_surface_copy_does_not_copy_soft_delete_state(self, python_code_tool, graph):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        tool_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+
+        copied_values = _copy_field_values(tool_link, exclude={"inline_surface"})
+
+        assert not set(copied_values) & set(SOFT_DELETE_FIELD_NAMES)

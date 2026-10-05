@@ -4,6 +4,7 @@ from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from rest_framework import serializers
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -52,7 +53,7 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RealtimeAgentDefinition
-        fields = "__all__"
+        exclude = SOFT_DELETE_FIELD_NAMES
 
     def validate(self, attrs):
         if self.instance is not None and "agent_definition" in attrs:

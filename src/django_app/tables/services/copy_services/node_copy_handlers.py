@@ -9,6 +9,7 @@ from agents.services.surface_content_service import (
 )
 from tables.import_export.enums import NodeType
 from tables.models import Graph
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
@@ -165,7 +166,7 @@ def copy_knowledge_node(graph: Graph, node: KnowledgeNode, **kwargs) -> Knowledg
         field_values = {
             f.name: getattr(config, f.name)
             for f in config._meta.fields
-            if f.name not in ("id", "knowledge_node")
+            if f.name not in ("id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES)
         }
         type(config).objects.create(knowledge_node=new_node, **field_values)
     return new_node
