@@ -1,6 +1,6 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -46,6 +46,12 @@ export class PasswordChangeDialogComponent {
 
     readonly step = signal<DialogStep>('verify');
     readonly loading = signal(false);
+
+    readonly isEnterSubmitDisabled = computed(() =>
+        this.step() === 'verify'
+            ? this.loading() || this.verifyForm.invalid
+            : this.loading() || this.newPasswordForm.invalid
+    );
 
     private ticket = '';
 
@@ -131,6 +137,14 @@ export class PasswordChangeDialogComponent {
                     }
                 },
             });
+    }
+
+    onEnterSubmit(): void {
+        if (this.step() === 'verify') {
+            this.onVerify();
+        } else {
+            this.onSubmit();
+        }
     }
 
     onCancel(): void {

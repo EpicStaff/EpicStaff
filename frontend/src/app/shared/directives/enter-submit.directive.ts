@@ -6,11 +6,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
     selector: '[appEnterSubmit]',
 })
 export class EnterSubmitDirective implements OnInit {
-    private readonly dialogRef = inject(DialogRef);
-    private readonly destroyRef = inject(DestroyRef);
-
     readonly appEnterSubmitDisabled = input(false);
     readonly appEnterSubmit = output<void>();
+
+    private readonly dialogRef = inject(DialogRef);
+    private readonly destroyRef = inject(DestroyRef);
 
     ngOnInit(): void {
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {

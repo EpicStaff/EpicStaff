@@ -1,7 +1,7 @@
 <div
     class="dialog"
-    (appEnterSubmit)="step() === 'pending' ? onCreate() : onClose()"
-    [appEnterSubmitDisabled]="step() === 'pending' ? loading() || form.invalid : !copiedToClipboard()"
+    (appEnterSubmit)="onEnterSubmit()"
+    [appEnterSubmitDisabled]="isEnterSubmitDisabled()"
 >
     <div class="header">
         <span class="title">{{ step() === 'pending' ? 'Create API Key' : 'Key Created' }}</span>
