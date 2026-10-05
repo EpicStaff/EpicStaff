@@ -1,16 +1,18 @@
-import asyncio
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from typing import Literal
 
-from infrastructure.processing_run import set_process_pool
-from infrastructure.prompt_patching import patch_graphrag_prompts
 import settings
+from infrastructure.graphrag.availability import detect_graphrag_availability
+from infrastructure.processing_run import set_process_pool
+from loguru import logger
 
 __all__ = ["get_lifespans"]
 
-_lifespans: dict[Literal["on_startup", "on_shutdown"], list[Callable]] = defaultdict(list)
+_lifespans: dict[Literal["on_startup", "on_shutdown"], list[Callable]] = defaultdict(
+    list
+)
 
 
 def get_lifespans(type: Literal["on_startup", "on_shutdown"], /) -> list[Callable]:
@@ -34,5 +36,9 @@ def init_process_pool():
 
 
 @on_startup
-def init_graphrag_prompt_patches():
-    patch_graphrag_prompts()
+def check_graphrag_availability():
+    if not detect_graphrag_availability():
+        logger.warning(
+            "AVX2 not detected on this CPU: GraphRAG is unavailable. "
+            "GraphRAG endpoints return HTTP 503."
+        )

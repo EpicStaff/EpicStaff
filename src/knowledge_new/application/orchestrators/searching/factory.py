@@ -1,16 +1,31 @@
+from typing import TYPE_CHECKING
+
 from application.orchestrators.searching import strategies
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.ports import AbstractUnitOfWork
+from common.lazy_import import LazyImport
 from domain.enums import RAGStrategy
 from domain.errors import UnsupportedError
 
+if TYPE_CHECKING:
+    from application.orchestrators.searching.strategies.graph_search import (
+        GraphSearchOrchestrator,
+    )
+else:
+    GraphSearchOrchestrator = LazyImport(
+        "application.orchestrators.searching.strategies.graph_search",
+        obj="GraphSearchOrchestrator",
+    )
+
 _STRATEGIES: dict[RAGStrategy, type[AbstractSearchOrchestrator]] = {
     RAGStrategy.NAIVE: strategies.NaiveSearchOrchestrator,
-    RAGStrategy.GRAPH: strategies.GraphSearchOrchestrator,
+    RAGStrategy.GRAPH: GraphSearchOrchestrator,
 }
 
 
-def build_search(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractSearchOrchestrator:
+def build_search(
+    strategy: RAGStrategy, uow: AbstractUnitOfWork
+) -> AbstractSearchOrchestrator:
     """Build the searcher registered for `strategy`.
 
     Args:
