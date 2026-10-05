@@ -3,7 +3,6 @@ import copy
 import json
 
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from django.http import JsonResponse
 from drf_spectacular.utils import (
     extend_schema,
@@ -11,6 +10,11 @@ from drf_spectacular.utils import (
 from loguru import logger
 from rest_framework.exceptions import APIException
 from rest_framework.views import APIView
+from src.shared.redis_keys import (
+    session_final_variables_key,
+    session_messages_channel,
+    session_status_channel,
+)
 from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
@@ -29,15 +33,16 @@ class RunSessionSSEViewSwagger(APIView):
 
 
 class RunSessionSSEView(SSEMixin):
-    session_status_channel_name = settings.SESSION_STATUS_CHANNEL
-    graph_messages_channel_name = settings.GRAPH_MESSAGE_UPDATE_CHANNEL
-
-    def __init__(self):
-        super().__init__()
-        self.handlers = {
-            self.session_status_channel_name: self._handle_session_statuses,
-            self.graph_messages_channel_name: self._handle_graph_session_messages,
+    def _channel_handlers(self) -> dict:
+        # Keyed by this session's own channels: whatever arrives on them belongs to it.
+        session_id = self.kwargs["session_id"]
+        return {
+            session_status_channel(session_id): self._handle_session_statuses,
+            session_messages_channel(session_id): self._handle_graph_session_messages,
         }
+
+    def get_channels(self) -> list[str]:
+        return list(self._channel_handlers())
 
     def __log(self, event, state, data):
         logger.debug(f"{self.__class__.__name__} sends event {event} {state} data: {data}")
@@ -88,7 +93,8 @@ class RunSessionSSEView(SSEMixin):
             yield data
 
     async def _handle_graph_session_messages(self, data):
-        redis_key = f"graph:message:{data['session_id']}:{data['uuid']}"
+        # The session id comes from the URL the caller was authorized for, never the payload.
+        redis_key = f"graph:message:{self.kwargs['session_id']}:{data['uuid']}"
         redis_data = await redis_service.async_redis_client.get(redis_key)
 
         if redis_data:
@@ -98,14 +104,34 @@ class RunSessionSSEView(SSEMixin):
 
     async def _handle_session_statuses(self, data):
         self.__log(event="status", state="update", data=data["status"])
+        status_data = data.get("status_data", {})
+        if data["status"] == Session.SessionStatus.END:
+            final_variables = await self._read_final_variables(self.kwargs["session_id"])
+            if final_variables is not None:
+                status_data["variables"] = final_variables
         yield {
             "event": "status",
             "data": {
                 "session_id": data["session_id"],
                 "status": data["status"],
-                "status_data": data.get("status_data", {}),
+                "status_data": status_data,
             },
         }
+
+    async def _read_final_variables(self, session_id) -> dict | None:
+        # Crew sends `end` without variables; clients (the EpicChat widget) read
+        # `status_data.variables` from this live event, so they are filled in here.
+        raw_variables = await redis_service.async_redis_client.get(
+            session_final_variables_key(session_id)
+        )
+        if raw_variables is not None:
+            return json.loads(raw_variables)
+
+        # Once the key has expired, the persisted status is the only remaining copy.
+        stored_status_data = await (
+            Session.objects.filter(id=session_id).values_list("status_data", flat=True).afirst()
+        )
+        return (stored_status_data or {}).get("variables")
 
     async def get_initial_data(self):
         # Graph Session Messages
@@ -140,12 +166,9 @@ class RunSessionSSEView(SSEMixin):
             }
 
     async def get_live_updates(self, pubsub):
-        session_id = self.kwargs["session_id"]
+        handlers = self._channel_handlers()
         async for message in redis_service.redis_get_message(
-            channels=[
-                self.graph_messages_channel_name,
-                self.session_status_channel_name,
-            ],
+            channels=list(handlers),
             pubsub=pubsub,
         ):
             if not message:
@@ -157,14 +180,13 @@ class RunSessionSSEView(SSEMixin):
                 continue
 
             try:
-                data = json.loads(message["data"])
-                if str(data.get("session_id")) != str(session_id):
+                handler = handlers.get(message.get("channel"))
+                if handler is None:
                     continue
 
-                if message.get("channel") in self.handlers:
-                    async for i in self.handlers[message.get("channel")](data):
-                        logger.debug(f"get_live_updates data: {i}")
-                        yield i
+                async for i in handler(json.loads(message["data"])):
+                    logger.debug(f"get_live_updates data: {i}")
+                    yield i
 
             except Exception as e:
                 logger.exception(f"Error processing live update: {e}")

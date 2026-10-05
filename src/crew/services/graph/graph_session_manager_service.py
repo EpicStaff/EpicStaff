@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from types import CoroutineType
 from typing import Any
 
+import redis
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from loguru import logger
@@ -149,11 +150,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 "execution_counts": {},
             }
 
-            await self.redis_service.aupdate_session_status(
-                session_id=session_id,
-                status="run",
-                variables=state["variables"].model_dump(),
-            )
+            await self.redis_service.aupdate_session_status(session_id=session_id, status="run")
             final_state = state  # Will be updated with last 'values' chunk
             async for stream_mode, chunk in graph.astream(
                 input=state,
@@ -230,11 +227,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             self.redis_service.publish("graph:messages", graph_end_message_data)
             await asyncio.sleep(0.05)
 
-            await self.redis_service.aupdate_session_status(
-                session_id=session_id,
-                status="end",
-                variables=final_state["variables"].model_dump(),
+            await self._store_final_variables(
+                session_id=session_id, variables=final_state["variables"].model_dump()
             )
+            await self.redis_service.aupdate_session_status(session_id=session_id, status="end")
 
             await session_graph_builder.remembered_outputs_store.clear(session_id)
 
@@ -253,6 +249,17 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )
+
+    async def _store_final_variables(self, session_id: int, variables: dict) -> None:
+        # A Redis outage must not lose the `end` status: the session still finished,
+        # only its final variables are missing. Anything else (unserialisable
+        # variables) propagates, so the session ends as `error`.
+        try:
+            await self.redis_service.aset_session_final_variables(
+                session_id=session_id, variables=variables
+            )
+        except redis.RedisError:
+            logger.exception("Failed to store final variables of session {}", session_id)
 
     async def _listen_callback(self, message: dict[str, Any]):
         try:

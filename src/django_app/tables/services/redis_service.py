@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import json
-import os
 from threading import Lock
 
 import redis
@@ -17,6 +16,7 @@ from src.shared.models import (
     SessionData,
     StopSessionMessage,
 )
+from src.shared.redis_keys import session_messages_channel
 from tables.services.secrets import secret_resolver
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
@@ -164,8 +164,7 @@ class RedisService(metaclass=SingletonMeta):
         )
 
     def publish_user_graph_message(self, session_id: int, uuid: str, data: dict) -> None:
-        channel = os.environ.get("GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update")
-
+        """Cache a user-created graph message and announce it to the session's SSE streams."""
         message = {
             "uuid": str(uuid),
             "session_id": session_id,
@@ -177,7 +176,9 @@ class RedisService(metaclass=SingletonMeta):
             value=json.dumps(data),
         )
 
-        self.redis_client.publish(channel=channel, message=json.dumps(message))
+        self.redis_client.publish(
+            channel=session_messages_channel(session_id), message=json.dumps(message)
+        )
         logger.info(
             f"Cached for saving graph message data created by user unput: {uuid} in {session_id=}."
         )

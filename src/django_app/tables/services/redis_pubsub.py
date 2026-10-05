@@ -16,6 +16,11 @@ from src.shared.models import (
     StorageMutationEvent,
     WebhookEventData,
 )
+from src.shared.redis_keys import (
+    SESSION_STATUS_CHANNEL_PATTERN,
+    session_final_variables_key,
+    session_messages_channel,
+)
 from tables.models import (
     GraphSessionMessage,
     Session,
@@ -29,11 +34,13 @@ from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.utils.memory_trim import start_periodic_malloc_trim
 
 
 class RedisPubSub:
     def __init__(self):
         self.handlers = {}
+        self.pattern_handlers = {}
         self.buffers = {settings.GRAPH_MESSAGES_CHANNEL: deque(maxlen=1000)}
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
@@ -60,12 +67,26 @@ class RedisPubSub:
         self.pubsub = self.redis_client.pubsub()
 
     def subscribe_to_channels(self):
-        self.pubsub.subscribe(**self.handlers)
+        # Called again after every reconnect: the new pubsub starts with no subscriptions.
+        if self.handlers:
+            self.pubsub.subscribe(**self.handlers)
+        if self.pattern_handlers:
+            self.pubsub.psubscribe(**self.pattern_handlers)
 
     def set_handler(self, message_channel: str, handler: callable):
         if message_channel:
             self.handlers[message_channel] = handler
             logger.success(f"Set handler for {message_channel}")
+
+    def set_pattern_handler(self, channel_pattern: str, handler: callable):
+        """Register a handler for every channel matching a glob-style pattern.
+
+        The pattern must not match a channel registered with ``set_handler``:
+        Redis would deliver a message on it twice, once as ``message`` and once
+        as ``pmessage``.
+        """
+        self.pattern_handlers[channel_pattern] = handler
+        logger.success("Set handler for pattern {}", channel_pattern)
 
     def session_status_handler(self, message: dict):
         try:
@@ -83,6 +104,11 @@ class RedisPubSub:
                     )
                 else:
                     status_data = data.get("status_data", {})
+                    final_variables = None
+                    if data["status"] == Session.SessionStatus.END:
+                        final_variables = self._read_session_final_variables(data["session_id"])
+                        if final_variables is not None:
+                            status_data["variables"] = final_variables
                     status_data["total_token_usage"] = self._calculate_total_token_usage(
                         data["session_id"]
                     )
@@ -113,14 +139,38 @@ class RedisPubSub:
                         Session.SessionStatus.END,
                         Session.SessionStatus.ERROR,
                     ]:
-                        self.persistent_variables_service.persist_session_results(
-                            session=session,
-                            final_variables=data.get("status_data", {}).get("variables"),
-                        )
-                        self._save_session_storage_files(session=session)
+                        # Each step runs in its own savepoint: a DB error inside one would
+                        # otherwise abort the transaction, and the outer atomic would roll
+                        # back the status update above, leaving the session running.
+                        try:
+                            with transaction.atomic():
+                                self.persistent_variables_service.persist_session_results(
+                                    session=session,
+                                    final_variables=final_variables,
+                                )
+                        except Exception:
+                            logger.exception(
+                                "Could not persist the results of session {}", session.pk
+                            )
+                        try:
+                            with transaction.atomic():
+                                self._save_session_storage_files(session=session)
+                        except Exception:
+                            logger.exception(
+                                "Could not link the storage files of session {}", session.pk
+                            )
 
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
+
+    def _read_session_final_variables(self, session_id: int) -> dict | None:
+        # Not deleted after reading: the key expires on its own, so a redelivered
+        # `end` status and the SSE views still find it.
+        raw_variables = self.redis_client.get(session_final_variables_key(session_id))
+        if raw_variables is None:
+            logger.warning("No final variables stored for session {}", session_id)
+            return None
+        return json.loads(raw_variables)
 
     def code_results_handler(self, message: dict):
         try:
@@ -367,11 +417,12 @@ class RedisPubSub:
 
             message_type = graph_session_message_data.message_data.get("message_type")
 
-            # Save in Redis.
+            # Save in Redis. The received string is stored as is: re-serialising a
+            # payload of hundreds of KB only to get the same JSON back costs memory.
             self.redis_client.setex(
                 name=f"graph:message:{session_id}:{message_uuid}",
                 time=60,
-                value=json.dumps(data),
+                value=message["data"],
             )
 
             subgraph_execution_ids = (graph_session_message_data.message_data or {}).get(
@@ -396,7 +447,7 @@ class RedisPubSub:
 
             # Notify SSE about updates.
             self.redis_client.publish(
-                settings.GRAPH_MESSAGE_UPDATE_CHANNEL,
+                session_messages_channel(session_id),
                 json.dumps({"uuid": str(message_uuid), "session_id": session_id}),
             )
 
@@ -441,7 +492,8 @@ class RedisPubSub:
 
     def listen_for_redis_messages_worker(self):
         logger.info(f"Start worker {os.getpid()} listening for Redis messages...")
-        self.set_handler(settings.SESSION_STATUS_CHANNEL, self.session_status_handler)
+        start_periodic_malloc_trim()
+        self.set_pattern_handler(SESSION_STATUS_CHANNEL_PATTERN, self.session_status_handler)
         self.set_handler(settings.CODE_RESULT_CHANNEL, self.code_results_handler)
         self.set_handler(settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
         self.set_handler(
@@ -459,6 +511,7 @@ class RedisPubSub:
     def cache_for_redis_messages_worker(self):
         """Saves to DB a bunch of data"""
         logger.info(f"Start worker {os.getpid()} caching for Redis messages...")
+        start_periodic_malloc_trim()
         self.set_handler(settings.GRAPH_MESSAGES_CHANNEL, self.graph_session_message_handler)
 
         start_time = time.time()

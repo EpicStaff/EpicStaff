@@ -6,12 +6,16 @@ import time
 
 import redis
 import redis.asyncio as aioredis
-import settings
 from loguru import logger
 from redis import Redis
 from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
+from src.shared.redis_keys import (
+    SESSION_FINAL_VARIABLES_TTL_SECONDS,
+    session_final_variables_key,
+    session_status_channel,
+)
 from utils.singleton_meta import SingletonMeta
 
 
@@ -241,7 +245,19 @@ class RedisService(metaclass=SingletonMeta):
             "status": status,
             "status_data": kwargs,
         }
-        await self.apublish(settings.SESSION_STATUS_CHANNEL, message)
+        await self.apublish(session_status_channel(session_id), message)
+
+    async def aset_session_final_variables(self, session_id: int, variables: dict) -> None:
+        """Store a session's final variables under the shared key, with a TTL.
+
+        The ``end`` status carries no variables; django_app reads them from this
+        key, so it must be written before ``end`` is published.
+        """
+        await self.aioredis_client.set(
+            session_final_variables_key(session_id),
+            json.dumps(variables),
+            ex=SESSION_FINAL_VARIABLES_TTL_SECONDS,
+        )
 
     def update_session_status(self, session_id: int, status: str, **kwargs):
         message = {
@@ -250,7 +266,7 @@ class RedisService(metaclass=SingletonMeta):
             "status_data": kwargs,
         }
 
-        self.publish(channel=settings.SESSION_STATUS_CHANNEL, message=message)
+        self.publish(channel=session_status_channel(session_id), message=message)
 
     def unsubscribe(self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber):
         if isinstance(subscriber, AsyncPubsubSubscriber):
