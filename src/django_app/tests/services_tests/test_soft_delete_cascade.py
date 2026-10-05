@@ -3,10 +3,10 @@
 `SoftDeleteMixin` base classes it operates on.
 
 Covers, per root and per mechanism rule:
-- Full cascade through a multi-level subtree when SOFT_DELETE=True (default).
-- Real DB CASCADE hard-delete when SOFT_DELETE=False.
+- Full cascade through a multi-level subtree on `delete()` (always soft).
+- `purge()` removes a root and its whole subtree, binned rows included.
 - A model with only `SoftDeleteFields` (no `SoftDeleteMixin`) always hard-deletes
-  on a direct `.delete()`, regardless of the flag.
+  on a direct `.delete()`.
 - `Session.graph` is nulled rather than cascaded (nullable-fallback branch).
 - Forward-FK targets (`PythonCode`, `DocumentContent`, `GraphRagIndexConfig`)
   are never visited by the reverse-relation walker.
@@ -22,7 +22,6 @@ import pytest
 from django.db import connection, models
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.core.exceptions import ImproperlyConfigured
-from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -58,17 +57,6 @@ from tables.models.knowledge_models.graphrag_models import (
     GraphRagIndexConfig,
 )
 from tables.services.soft_delete import DeleteService, _DeleteContext
-
-
-@pytest.fixture(autouse=True)
-def _soft_delete_enabled(settings):
-    """This module exercises the soft-delete cascade path, which only
-    `SoftDeleteMixin.delete()` takes when `settings.SOFT_DELETE` is True.
-    Per docs/soft_delete/SOFT_DELETE_FEATURE.md, that's the default the team
-    develops/tests against day to day (production defaults it to False and
-    opts in per-deployment). `TestHardDeletePath` explicitly overrides back
-    to False to exercise the opposite branch."""
-    settings.SOFT_DELETE = True
 
 
 @pytest.mark.django_db
@@ -187,15 +175,19 @@ class TestFullCascadePerRoot:
 
 
 @pytest.mark.django_db
-class TestHardDeletePath:
-    """Item 2: SOFT_DELETE=False performs a genuine hard delete; real DB
-    CASCADE still fires through the subtree exactly as it did before this
-    feature existed."""
+class TestPurgePath:
+    """`delete()` on a root always moves it to the recycle bin; `purge()` removes
+    it for good through Django's Collector, binned subtree rows included."""
 
-    @override_settings(SOFT_DELETE=False)
-    def test_graph_hard_delete_removes_subtree_but_not_forward_fk_targets(
-        self, graph, default_org
-    ):
+    def test_delete_is_soft_without_any_setting(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task_1")
+
+        graph.delete()
+
+        assert Graph.deleted_objects.filter(id=graph.id).exists()
+        assert TaskNode.deleted_objects.filter(id=task_node.id).exists()
+
+    def test_purge_removes_binned_subtree_but_not_forward_fk_targets(self, graph, default_org):
         task_node = TaskNode.objects.create(graph=graph, node_name="task_1")
         inline_surface = InlineSurface.objects.create(task_node=task_node)
         attached_collection = SourceCollection.objects.create(
@@ -204,20 +196,15 @@ class TestHardDeletePath:
         inline_surface_knowledge = InlineSurfaceKnowledge.objects.create(
             inline_surface=inline_surface, collection=attached_collection
         )
-        graph_id = graph.id
-        task_node_id = task_node.id
-        inline_surface_id = inline_surface.id
-        inline_surface_knowledge_id = inline_surface_knowledge.id
-
         graph.delete()
 
-        assert not Graph.all_objects.filter(id=graph_id).exists()
-        assert not TaskNode.all_objects.filter(id=task_node_id).exists()
-        assert not InlineSurface.all_objects.filter(id=inline_surface_id).exists()
-        assert not InlineSurfaceKnowledge.all_objects.filter(
-            id=inline_surface_knowledge_id
-        ).exists()
-        # Forward-FK target: real DB CASCADE never reaches it either.
+        Graph.all_objects.get(id=graph.id).purge()
+
+        assert not Graph.all_objects.filter(id=graph.id).exists()
+        assert not TaskNode.all_objects.filter(id=task_node.id).exists()
+        assert not InlineSurface.all_objects.filter(id=inline_surface.id).exists()
+        assert not InlineSurfaceKnowledge.all_objects.filter(id=inline_surface_knowledge.id).exists()
+        # Forward-FK target: the Collector never reaches it.
         assert SourceCollection.all_objects.filter(
             collection_id=attached_collection.collection_id
         ).exists()
@@ -227,7 +214,7 @@ class TestHardDeletePath:
 class TestDirectDeleteOnGroup2OnlyModel:
     """Item 3: a model with only `SoftDeleteFields` (no `SoftDeleteMixin`)
     always performs a normal hard delete on a direct `.delete()` call, because
-    it never overrides `delete()` — regardless of `SOFT_DELETE`."""
+    it never overrides `delete()`."""
 
     def test_direct_delete_on_task_node_is_always_hard_delete(self, graph):
         task_node = TaskNode.objects.create(graph=graph, node_name="standalone_task")

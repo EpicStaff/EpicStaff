@@ -23,6 +23,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.models.graph_models import (
+    Graph,
     ClassificationDecisionTableNode,
     ConditionalEdge,
     PythonNode,
@@ -64,28 +65,48 @@ def webhook_trigger(ngrok_config) -> WebhookTrigger:
 
 
 @pytest.mark.django_db
-def test_delete_python_code_tool_deletes_python_code(
-    auth_client, django_capture_on_commit_callbacks
+def test_binning_a_python_code_tool_keeps_its_python_code(
+    python_code_tool, django_capture_on_commit_callbacks
 ):
-    create_payload = {
-        "name": "cleanup-test-tool",
-        "description": "",
-        "variables": [],
-        "python_code": _PYTHON_CODE_DATA,
-    }
-    create_response = auth_client.post(
-        "/api/python-code-tool/", create_payload, format="json"
-    )
-    assert create_response.status_code == status.HTTP_201_CREATED, create_response.data
-    tool_id = create_response.data["id"]
-    python_code_id = create_response.data["python_code"]["id"]
-    assert PythonCode.objects.filter(id=python_code_id).exists()
+    # A restore needs the code. Binning sends no post_delete today, so this
+    # guards against a future signal on binning that would reclaim it.
+    with django_capture_on_commit_callbacks(execute=True):
+        python_code_tool.delete()
+
+    assert PythonCodeTool.deleted_objects.filter(id=python_code_tool.id).exists()
+    assert PythonCode.objects.filter(id=python_code_tool.python_code_id).exists()
+
+
+@pytest.mark.django_db
+def test_purging_a_python_code_tool_deletes_its_python_code(
+    python_code_tool, django_capture_on_commit_callbacks
+):
+    python_code_id = python_code_tool.python_code_id
+    python_code_tool.delete()
 
     with django_capture_on_commit_callbacks(execute=True):
-        delete_response = auth_client.delete(f"/api/python-code-tool/{tool_id}/")
+        PythonCodeTool.all_objects.get(id=python_code_tool.id).purge()
 
-    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert not PythonCodeTool.all_objects.filter(id=python_code_tool.id).exists()
     assert not PythonCode.objects.filter(id=python_code_id).exists()
+
+
+@pytest.mark.django_db
+def test_python_code_shared_with_a_binned_owner_survives_when_the_other_owner_goes(
+    graph, python_code, django_capture_on_commit_callbacks
+):
+    # A binned owner still owns the code: reclaiming it would CASCADE-delete
+    # the binned owner and break the restore of its flow.
+    other_graph = Graph.objects.create(org=graph.org, name="Other flow")
+    binned_owner = PythonNode.objects.create(graph=graph, python_code=python_code)
+    live_owner = PythonNode.objects.create(graph=other_graph, python_code=python_code)
+    graph.delete()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        live_owner.delete()
+
+    assert PythonCode.objects.filter(id=python_code.id).exists()
+    assert PythonNode.deleted_objects.filter(id=binned_owner.id).exists()
 
 
 # ---------------------------------------------------------------------------

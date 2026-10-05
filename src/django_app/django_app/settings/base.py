@@ -108,8 +108,8 @@ TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
-# Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
-SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
+# Days a deleted item stays in the recycle bin before the purge job removes it for good.
+RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS", 7)
 
 REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
 

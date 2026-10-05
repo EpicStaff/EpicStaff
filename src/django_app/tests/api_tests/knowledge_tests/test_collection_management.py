@@ -3,7 +3,6 @@ Tests for SourceCollection CRUD operations
 """
 
 import pytest
-from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -384,7 +383,7 @@ class TestCollectionCopy:
 
 @pytest.mark.django_db
 class TestCollectionSoftDelete:
-    """Tests for the SOFT_DELETE env-flag behavior on SourceCollection deletion."""
+    """Deleting a SourceCollection moves it to the recycle bin; purge removes it for good."""
 
     def _create_collection(self, auth_client, name):
         url = reverse("sourcecollection-list")
@@ -393,9 +392,8 @@ class TestCollectionSoftDelete:
         return response.json()
 
     def test_delete_collection_default_soft_deletes(self, auth_client):
-        """SOFT_DELETE=True (default): DELETE hides the collection from `objects`
-        but keeps it in `all_objects` with `active=False` and
-        `soft_deleted_at` set."""
+        """DELETE hides the collection from `objects` but keeps it in
+        `all_objects` with `active=False` and `soft_deleted_at` set."""
         collection = self._create_collection(auth_client, "Soft Delete Me")
         collection_id = collection["collection_id"]
 
@@ -414,24 +412,55 @@ class TestCollectionSoftDelete:
         assert deleted.active is False
         assert deleted.soft_deleted_at is not None
 
-    @override_settings(SOFT_DELETE=False)
-    def test_delete_collection_hard_deletes_when_soft_delete_disabled(
+    def test_purge_removes_binned_collection_documents_and_unshared_content(
         self, auth_client
     ):
-        """SOFT_DELETE=False: DELETE removes the row entirely, even from
-        `all_objects`."""
-        collection = self._create_collection(auth_client, "Hard Delete Me")
-        collection_id = collection["collection_id"]
+        """purge_collection() removes the binned collection, its binned
+        documents and the content no other document uses. Content that another
+        collection uses survives, even while that collection is in the bin
+        too, because a restore of it would need the content."""
+        from tables.models import DocumentContent, DocumentMetadata
+        from tables.services.knowledge_services.collection_management_service import (
+            CollectionManagementService,
+        )
 
-        detail_url = reverse("sourcecollection-detail", args=[collection_id])
-        delete_response = auth_client.delete(detail_url)
-        assert (
-            delete_response.status_code == status.HTTP_200_OK
-        ), delete_response.content
+        collection = SourceCollection.objects.get(
+            collection_id=self._create_collection(auth_client, "Purge Me")["collection_id"]
+        )
+        other_collection = SourceCollection.objects.get(
+            collection_id=self._create_collection(auth_client, "Keeps Shared")["collection_id"]
+        )
+        own_content = DocumentContent.objects.create(content=b"only mine")
+        shared_content = DocumentContent.objects.create(content=b"shared")
+        own_document = DocumentMetadata.objects.create(
+            source_collection=collection, document_content=own_content,
+            file_name="own.txt", file_type="txt", file_size=9,
+        )
+        DocumentMetadata.objects.create(
+            source_collection=collection, document_content=shared_content,
+            file_name="shared.txt", file_type="txt", file_size=6,
+        )
+        DocumentMetadata.objects.create(
+            source_collection=other_collection, document_content=shared_content,
+            file_name="shared.txt", file_type="txt", file_size=6,
+        )
+        collection.delete()
+        other_collection.delete()
 
-        assert not SourceCollection.all_objects.filter(
-            collection_id=collection_id
-        ).exists()
+        summary = CollectionManagementService.purge_collection(
+            SourceCollection.all_objects.get(collection_id=collection.collection_id)
+        )
+
+        assert summary == {
+            "collection_id": collection.collection_id,
+            "collection_name": "Purge Me",
+            "deleted_documents": 2,
+            "deleted_content": 1,
+        }
+        assert not SourceCollection.all_objects.filter(collection_id=collection.collection_id).exists()
+        assert not DocumentMetadata.all_objects.filter(document_id=own_document.document_id).exists()
+        assert not DocumentContent.objects.filter(id=own_content.id).exists()
+        assert DocumentContent.objects.filter(id=shared_content.id).exists()
 
     def test_create_collection_with_name_of_soft_deleted_collection_keeps_name(
         self, auth_client
@@ -453,8 +482,8 @@ class TestCollectionSoftDelete:
     def test_delete_collection_with_soft_delete_leaves_documents_intact(
         self, auth_client
     ):
-        """When SOFT_DELETE=True, deleting a collection must not clean up its
-        DocumentContent/DocumentMetadata rows — content stays intact."""
+        """Deleting a collection bins its documents with it but keeps their
+        DocumentContent, so a restore brings everything back."""
         from tables.models import DocumentContent, DocumentMetadata
 
         collection = self._create_collection(auth_client, "Collection With Docs")
@@ -477,14 +506,14 @@ class TestCollectionSoftDelete:
         ), delete_response.content
 
         assert DocumentContent.objects.filter(id=content.id).exists()
-        assert DocumentMetadata.objects.filter(
+        assert DocumentMetadata.deleted_objects.filter(
             document_id=document.document_id
         ).exists()
 
 
 @pytest.mark.django_db
 class TestCollectionBulkDeleteSoftDelete:
-    """Tests for the SOFT_DELETE env-flag behavior on bulk collection deletion."""
+    """Bulk-deleting collections moves each one to the recycle bin."""
 
     def _create_collection(self, auth_client, name):
         url = reverse("sourcecollection-list")
@@ -495,9 +524,9 @@ class TestCollectionBulkDeleteSoftDelete:
     def test_bulk_delete_soft_deletes_collections_and_leaves_documents_intact(
         self, auth_client
     ):
-        """SOFT_DELETE=True (default): bulk-delete soft-deletes every collection
-        via a per-instance `.delete()` loop (so `DeleteService` runs for each
-        one) and leaves associated documents untouched."""
+        """Bulk-delete soft-deletes every collection via a per-instance
+        `.delete()` loop (so `DeleteService` runs for each one) and leaves
+        associated documents untouched."""
         from tables.models import DocumentContent, DocumentMetadata
 
         first = self._create_collection(auth_client, "Bulk Soft 1")
@@ -534,6 +563,6 @@ class TestCollectionBulkDeleteSoftDelete:
             assert deleted.soft_deleted_at is not None
 
         assert DocumentContent.objects.filter(id=content.id).exists()
-        assert DocumentMetadata.objects.filter(
+        assert DocumentMetadata.deleted_objects.filter(
             document_id=document.document_id
         ).exists()

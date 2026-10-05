@@ -35,18 +35,6 @@ from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-@pytest.fixture(autouse=True)
-def soft_delete(request, settings):
-    """SOFT_DELETE is on unless a test parametrizes this fixture indirectly."""
-    settings.SOFT_DELETE = getattr(request, "param", True)
-    return settings.SOFT_DELETE
-
-
-both_delete_modes = pytest.mark.parametrize(
-    "soft_delete", [True, False], ids=["soft", "hard"], indirect=True
-)
-
-
 def _flow(org, name):
     graph = Graph.objects.create(name=name, org=org, metadata={"nodes": [], "edges": []})
     StartNode.objects.create(graph=graph, variables={})
@@ -154,7 +142,6 @@ def _schedule_events(redis_client_mock):
 
 @pytest.mark.django_db
 class TestReplaceInPlace:
-    @both_delete_modes
     def test_replace_keeps_the_row_and_takes_the_file_content(self, client_as, admin_acme, acme):
         holder, export_data = _flow_edited_after_export(acme)
         original_uuid = holder.uuid
@@ -232,7 +219,6 @@ class TestReplaceInPlace:
         holder.refresh_from_db()
         assert holder.name == "Taken #2"
 
-    @both_delete_modes
     def test_parent_subgraph_node_keeps_pointing_at_the_replaced_flow(
         self, client_as, admin_acme, acme
     ):
@@ -247,7 +233,6 @@ class TestReplaceInPlace:
         parent_node.refresh_from_db()
         assert parent_node.subgraph_id == subflow.id
 
-    @both_delete_modes
     def test_replacing_parent_and_subflow_keeps_both_rows(self, client_as, admin_acme, acme):
         subflow = _flow(acme, "Sub")
         parent = _flow(acme, "Parent")

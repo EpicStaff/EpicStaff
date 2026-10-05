@@ -4,7 +4,6 @@ different org. Covers the fields whose uniqueness moved from field-level
 `unique=True` to a per-org UniqueConstraint (PR #593)."""
 
 import pytest
-from django.test import override_settings
 from rest_framework.test import APIClient
 
 from tables.models import Graph
@@ -208,8 +207,8 @@ def test_python_code_tool_create_with_name_of_soft_deleted_tool_succeeds(
 def test_python_code_tool_delete_soft_delete_default_leaves_row_in_all_objects(
     client_a, org_a
 ):
-    """SOFT_DELETE=True (default): DELETE hides the tool from `objects` but keeps
-    it in `all_objects` with `active=False` and `soft_deleted_at` set."""
+    """DELETE moves the tool to the recycle bin: hidden from `objects`, kept in
+    `all_objects` with `active=False` and `soft_deleted_at` set."""
     tool = _make_tool(org=org_a, built_in=False, name="to-delete")
 
     resp = client_a.delete(f"/api/python-code-tool/{tool.id}/")
@@ -223,23 +222,9 @@ def test_python_code_tool_delete_soft_delete_default_leaves_row_in_all_objects(
 
 
 @pytest.mark.django_db
-@override_settings(SOFT_DELETE=False)
-def test_python_code_tool_delete_hard_deletes_when_soft_delete_disabled(
-    client_a, org_a
-):
-    """SOFT_DELETE=False: DELETE removes the row entirely, even from `all_objects`."""
-    tool = _make_tool(org=org_a, built_in=False, name="to-hard-delete")
-
-    resp = client_a.delete(f"/api/python-code-tool/{tool.id}/")
-
-    assert resp.status_code == 204, resp.data
-    assert not PythonCodeTool.all_objects.filter(id=tool.id).exists()
-
-
-@pytest.mark.django_db
-def test_python_code_tool_builtin_cannot_be_deleted_with_soft_delete_enabled(client_a):
-    """Built-in tool deletion protection holds regardless of SOFT_DELETE — the
-    guard in PythonCodeToolViewSet.destroy() runs before any .delete() call."""
+def test_python_code_tool_builtin_cannot_be_deleted(client_a):
+    """The guard in PythonCodeToolViewSet.destroy() runs before any .delete()
+    call, so a built-in tool never reaches the recycle bin."""
     builtin_tool = _make_tool(built_in=True, org=None, name="builtin")
 
     resp = client_a.delete(f"/api/python-code-tool/{builtin_tool.id}/")
@@ -248,21 +233,6 @@ def test_python_code_tool_builtin_cannot_be_deleted_with_soft_delete_enabled(cli
     untouched = PythonCodeTool.all_objects.get(id=builtin_tool.id)
     assert untouched.active is True
     assert untouched.soft_deleted_at is None
-
-
-@pytest.mark.django_db
-@override_settings(SOFT_DELETE=False)
-def test_python_code_tool_builtin_cannot_be_deleted_with_soft_delete_disabled(
-    client_a,
-):
-    """Same guard holds when SOFT_DELETE=False — the built-in tool must not be
-    hard-deleted either."""
-    builtin_tool = _make_tool(built_in=True, org=None, name="builtin-hard")
-
-    resp = client_a.delete(f"/api/python-code-tool/{builtin_tool.id}/")
-
-    assert resp.status_code == 400
-    assert PythonCodeTool.all_objects.filter(id=builtin_tool.id).exists()
 
 
 # ---- PythonCodeToolConfig (tool, name) per org ----

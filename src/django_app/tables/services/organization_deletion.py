@@ -322,7 +322,7 @@ class TablesOrganizationDeletion:
         )
 
         # A bulk QuerySet.delete() bypasses SoftDeleteMixin.delete(), so this
-        # hard-deletes regardless of settings.SOFT_DELETE: a permanently
+        # hard-deletes instead of using the recycle bin: a permanently
         # deleted organization must not leave its knowledge content behind.
         targets["collections"].delete()
 

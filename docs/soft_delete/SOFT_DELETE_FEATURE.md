@@ -2,14 +2,14 @@
 
 ## Architecture and System-Level Reference for Developers
 
-This document covers the EpicStaff soft-delete mechanism: the `SOFT_DELETE` feature flag, the `SoftDeleteFields`/`SoftDeleteMixin` model mixins, the `objects`/`deleted_objects`/`all_objects` managers, and the `DeleteService` cascade engine.
+This document covers the EpicStaff soft-delete mechanism (the recycle bin): the `SoftDeleteFields`/`SoftDeleteMixin` model mixins, the `objects`/`deleted_objects`/`all_objects` managers, and the `DeleteService` cascade engine, delete batches and `purge()`.
 
 ---
 
 ## Table of Contents
 
 1. [System Overview](#1-system-overview)
-2. [The `SOFT_DELETE` Setting](#2-the-soft_delete-setting)
+2. [Batches and Retention](#2-batches-and-retention)
 3. [Model Mixins](#3-model-mixins)
    - [SoftDeleteFields](#softdeletefields)
    - [SoftDeleteMixin](#softdeletemixin)
@@ -24,25 +24,15 @@ This document covers the EpicStaff soft-delete mechanism: the `SOFT_DELETE` feat
 
 ## 1. System Overview
 
-Deleting a `Graph`, `GraphVersion`, `SourceCollection`, or `PythonCodeTool` does not necessarily remove rows from the database. When `SOFT_DELETE` is enabled, `.delete()` on one of these roots marks the row (and every soft-delete-capable row it cascades into) as `active=False` instead of issuing a real `DELETE`. This lets deleted flows/collections/tools be recovered, audited, or referenced by historical data (e.g. session snapshots) without the referential-integrity headaches of undoing a hard delete.
+Deleting a `Graph`, `GraphVersion`, `SourceCollection`, or `PythonCodeTool` never removes rows on its own. `.delete()` on one of these roots always marks the row (and every soft-delete-capable row it cascades into) as `active=False`, which moves it to the recycle bin. Deleted flows, collections and tools can then be restored, or referenced by historical data (e.g. session snapshots), without the referential-integrity headaches of undoing a hard delete.
 
-When `SOFT_DELETE` is disabled, `.delete()` on the same roots performs a genuine hard delete, and the database's own `on_delete` behavior (real `CASCADE`, `SET_NULL`, etc.) takes over exactly as it would without this feature.
+A permanent delete is always explicit: `purge()` on a root removes it and its whole subtree through Django's normal `Model.delete()`, so the database's own `on_delete` behavior (real `CASCADE`, `SET_NULL`, etc.) applies. The recycle bin's "delete permanently" action and the retention cleanup use it.
 
-## 2. The `SOFT_DELETE` Setting
+## 2. Batches and Retention
 
-Read once at Django startup in `src/django_app/django_app/settings.py`:
+Every `DeleteService.delete()` call creates one `soft_delete_batch` UUID and one timestamp and writes both to every row it bins, the root and its children alike. A restore brings back exactly the rows of one batch, never rows that were deleted on their own earlier. `DeleteService.delete()` returns the batch id, or `None` when the root was already in the bin; it locks the root first, so two concurrent deletes of the same item can't split a batch.
 
-```python
-SOFT_DELETE = os.getenv("SOFT_DELETE", "False").lower() in ("true", "1", "yes", "on")
-```
-
-Default is `False` — soft delete is opt-in. It's read from the environment in three places that must be kept consistent for a given deployment:
-
-- `src/django_app/django_app/settings.py` — the Python-level default (`False`).
-- `src/docker-compose.yaml` — `DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:-False}` for the `django_app` service.
-- `src/.env` — set `DJANGO_SOFT_DELETE=True` here to opt a local dev environment in, since soft-delete behavior is what the team develops/tests against day to day. Generate `src/.env` with `python scripts/envtool.py --dev`.
-
-`SoftDeleteMixin.delete()` (see below) is the only place that reads `settings.SOFT_DELETE`; everything else in the mechanism is agnostic to the flag.
+`DJANGO_RECYCLE_BIN_RETENTION_DAYS` (default `7`, read into `settings.RECYCLE_BIN_RETENTION_DAYS`) sets how long a binned item stays before it is purged for good. It is declared in `src/env.yaml`, `src/.env.example` and `src/docker-compose.yaml`.
 
 ## 3. Model Mixins
 
@@ -66,7 +56,7 @@ class SoftDeleteFields(models.Model):
         constraints = [...]  # active/soft_deleted_at consistency, see §8
 ```
 
-This is the **fields-only** mixin: it adds the two tracking columns and the managers, but does **not** override `delete()`. A model that only inherits `SoftDeleteFields` (not `SoftDeleteMixin`) always performs a normal, unconditional Django hard delete when `.delete()` is called directly on an instance — regardless of `SOFT_DELETE`. It only ever gets soft-deleted when it's reached as a *dependent* of a `SoftDeleteMixin` root's cascade (see §6): `DeleteService` explicitly flips its flags and writes them, bypassing the (nonexistent) `delete()` override.
+This is the **fields-only** mixin: it adds the two tracking columns and the managers, but does **not** override `delete()`. A model that only inherits `SoftDeleteFields` (not `SoftDeleteMixin`) always performs a normal, unconditional Django hard delete when `.delete()` is called directly on an instance. It only ever gets soft-deleted when it's reached as a *dependent* of a `SoftDeleteMixin` root's cascade (see §6): `DeleteService` explicitly flips its flags and writes them, bypassing the (nonexistent) `delete()` override.
 
 Use `SoftDeleteFields` for every node/child model that should participate in a soft-delete cascade but is never deleted directly by application code (nodes, edges, condition groups, surface attachments, etc. — essentially every non-root model in the graph/agent/knowledge domain).
 
@@ -75,20 +65,18 @@ Use `SoftDeleteFields` for every node/child model that should participate in a s
 ```python
 class SoftDeleteMixin(SoftDeleteFields):
     def delete(self, using=None, keep_parents=False):
-        if settings.SOFT_DELETE:
-            return self.soft_delete(using)
-        return self.hard_delete(using, keep_parents)
+        return self.soft_delete(using)
 
     def soft_delete(self, using=None):
         from tables.services.soft_delete import DeleteService
 
         return DeleteService.delete(self, using=using)
 
-    def hard_delete(self, using=None, keep_parents=False):
+    def purge(self, using=None, keep_parents=False):
         return super().delete(using=using, keep_parents=keep_parents)
 ```
 
-This is the **entry-point** mixin: `.delete()` on an instance branches on `SOFT_DELETE` and either delegates to `DeleteService` (soft path) or falls back to Django's normal `Model.delete()` (hard path, real DB `CASCADE`/`SET_NULL`/etc. apply). Use `SoftDeleteMixin` only on the 4 roots (§5) — the models application code actually calls `.delete()` on directly.
+This is the **entry-point** mixin: `.delete()` on an instance always delegates to `DeleteService` and returns the batch id. `purge()` falls back to Django's normal `Model.delete()` (real DB `CASCADE`/`SET_NULL`/etc. apply); the Collector walks reverse relations through each model's base manager (`all_objects`), so it reaches rows already in the bin. Use `SoftDeleteMixin` only on the 4 roots (§5) — the models application code actually calls `.delete()` on directly.
 
 ## 4. Managers
 
@@ -98,7 +86,7 @@ This is the **entry-point** mixin: `.delete()` on an instance branches on `SOFT_
 
 ## 5. The 4 Soft-Delete Roots
 
-Only these 4 models use `SoftDeleteMixin` (i.e., their `.delete()` actually branches on `SOFT_DELETE`):
+Only these 4 models use `SoftDeleteMixin` (i.e., their `.delete()` goes to the recycle bin and they have `purge()`):
 
 | Model | File |
 |---|---|
@@ -170,8 +158,8 @@ This rejects any row where `active` and `soft_deleted_at` disagree (e.g. a stray
 
 - `src/django_app/tables/models/base_models.py` — `SoftDeleteFields`, `SoftDeleteMixin`, `ActiveManager`, `DeletedManager`.
 - `src/django_app/tables/services/soft_delete.py` — `DeleteService`, `_DeleteContext` (the cascade engine).
-- `src/django_app/django_app/settings.py` — `SOFT_DELETE` flag definition.
+- `src/django_app/django_app/settings/base.py` — `RECYCLE_BIN_RETENTION_DAYS`.
 - `src/django_app/tables/models/graph_models.py` — `Graph`, `GraphVersion` roots + the majority of `SoftDeleteFields` node/edge models.
 - `src/django_app/tables/models/knowledge_models/collection_models.py` — `SourceCollection` root.
 - `src/django_app/tables/models/python_models.py` — `PythonCodeTool` root.
-- `src/django_app/tests/services_tests/test_soft_delete_cascade.py` — cascade behavior test suite (per-root full cascade, hard-delete path, PROTECT/RESTRICT/DO_NOTHING guards, forward-FK exclusions).
+- `src/django_app/tests/services_tests/test_soft_delete_cascade.py` — cascade behavior test suite (per-root full cascade, purge path, batches, PROTECT/RESTRICT/DO_NOTHING guards, forward-FK exclusions).
