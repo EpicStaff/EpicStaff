@@ -96,6 +96,11 @@ git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && 
 Generate it once and keep it: changing it signs out every user, and see
 [docs/signing-keys.md](docs/signing-keys.md) for the full details.
 
+Savefiles is deprecated and will be removed: use `epicstaff_storage` instead. Until then, on Linux,
+if the `CREW_SAVEFILES_PATH` folder is not owned by uid 1000, the sandbox makes uid 1000 its owner
+(the folder itself, not its contents). Files already in it keep their owner: if agent code must
+write into them, run `sudo chown -R 1000 <folder>` once.
+
 The blocks above copy `src/.env.example` to `src/.env`. If you have Python,
 you can instead generate `src/.env` from the single source of truth
 (`src/env.yaml`) with `python scripts/envtool.py` (production defaults) or
