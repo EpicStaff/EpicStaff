@@ -1,6 +1,6 @@
 # RBAC — Auth Endpoints & Operator Guide
 
-Covers the auth surface delivered by EST-2615: first-time
+Covers the auth surface: first-time
 setup, JWT login, current-user, token introspection, API key validation,
 user reset (destructive), and the `reset_user` management command. Ends with
 a frontend migration checklist.
