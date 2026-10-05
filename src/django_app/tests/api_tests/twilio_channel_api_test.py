@@ -174,7 +174,7 @@ class TestTwilioChannelWebhookTrigger:
     def test_create_twilio_channel_rejected_when_trigger_already_kind_webhook(
         self, auth_client, db, default_org
     ):
-        """EST-3939: a trigger already claimed by `kind=webhook` auth cannot
+        """A trigger already claimed by `kind=webhook` auth cannot
         be repointed to by a TwilioChannel -- claiming it would silently
         collide with the Twilio-kind auth sync."""
         from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind

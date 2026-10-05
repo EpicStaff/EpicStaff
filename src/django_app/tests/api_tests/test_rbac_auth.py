@@ -1219,7 +1219,7 @@ def test_admin_password_reset_validates_user_id_shape(api_client, superadmin_use
 
 
 # ------------------------------------------------------------------
-# PrintableAsciiPasswordValidator — unit tests (EST-2418)
+# PrintableAsciiPasswordValidator — unit tests
 # ------------------------------------------------------------------
 from django.core.exceptions import ValidationError as _DjangoValidationError
 
@@ -1280,7 +1280,7 @@ class TestPrintableAsciiPasswordValidator:
 
 
 # ------------------------------------------------------------------
-# Password alphabet — integration tests across all 4 endpoints (EST-2418)
+# Password alphabet — integration tests across all 4 endpoints
 # ------------------------------------------------------------------
 
 _BAD_PASSWORDS = [
@@ -1375,7 +1375,7 @@ class TestAdminPasswordResetAlphabet:
 
 
 # ------------------------------------------------------------------
-# Email whitespace + throttle non-string guard (EST-2418)
+# Email whitespace + throttle non-string guard
 # ------------------------------------------------------------------
 
 _BAD_EMAILS_WHITESPACE = [

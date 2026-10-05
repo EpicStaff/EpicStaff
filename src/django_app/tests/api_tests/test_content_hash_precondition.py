@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
+pytestmark = pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
 
 from django.urls import reverse
 from rest_framework import status
