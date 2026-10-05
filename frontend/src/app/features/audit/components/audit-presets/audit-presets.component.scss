@@ -187,10 +187,10 @@
     align-items: center;
     gap: 4px;
     max-width: 100%;
-    height: 20px;
+    height: 24px;
     padding: 0 6px;
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 10px;
+    border-radius: 4px;
     background-color: var(--color-secondary-btn-background);
     font-size: 11px;
     white-space: nowrap;
@@ -210,7 +210,6 @@
 .preset-chip--more {
     color: var(--color-ks-transparent-text-60);
 }
-
 .preset-menu {
     width: max-content;
     min-width: 180px;

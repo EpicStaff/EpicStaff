@@ -75,6 +75,18 @@
     transform: none !important;
 }
 
+.cdk-overlay-pane.audit-preset-delete-dialog-panel {
+    .dialog-container {
+        background: var(--graphite-750);
+        color: var(--fog-200);
+    }
+
+    .dialog-title,
+    .dialog-message {
+        color: var(--fog-200);
+    }
+}
+
 .cdk-overlay-pane.audit-select-panel {
     .select-dropdown__panel {
         padding: 6px;

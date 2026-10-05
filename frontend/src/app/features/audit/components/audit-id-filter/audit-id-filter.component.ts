@@ -22,6 +22,14 @@ export class AuditIdFilterComponent {
         this.filter.update((current) => ({ ...current, mode }));
     }
 
+    protected keepDigits(event: Event): void {
+        this.stripInput(event, /\D/g);
+    }
+
+    protected keepDigitList(event: Event): void {
+        this.stripInput(event, /[^\d,\s]/g);
+    }
+
     protected setFrom(event: Event): void {
         const from = (event.target as HTMLInputElement).value;
         this.filter.update((current) => ({ ...current, from }));
@@ -42,5 +50,13 @@ export class AuditIdFilterComponent {
         const parsed = raw.split(/[\s,]+/).filter((part) => /^\d+$/.test(part));
         const values = Array.from(new Set(parsed));
         this.filter.update((current) => ({ ...current, values }));
+    }
+
+    private stripInput(event: Event, disallowed: RegExp): void {
+        const input = event.target as HTMLInputElement;
+        const cleaned = input.value.replace(disallowed, '');
+        if (cleaned !== input.value) {
+            input.value = cleaned;
+        }
     }
 }

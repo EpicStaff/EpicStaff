@@ -9,15 +9,19 @@
         <div class="id-filter__range">
             <input
                 type="text"
+                inputmode="numeric"
                 placeholder="Enter a value..."
                 [value]="filter().from"
+                (input)="keepDigits($event)"
                 (change)="setFrom($event)"
             />
             <span class="id-filter__dash">—</span>
             <input
                 type="text"
+                inputmode="numeric"
                 placeholder="Enter a value..."
                 [value]="filter().to"
+                (input)="keepDigits($event)"
                 (change)="setTo($event)"
             />
         </div>
@@ -25,16 +29,20 @@
     @case ('in') {
         <input
             type="text"
+            inputmode="numeric"
             placeholder="1002, 1041"
             [value]="filter().values.join(', ')"
+            (input)="keepDigitList($event)"
             (change)="setValues($event)"
         />
     }
     @default {
         <input
             type="text"
+            inputmode="numeric"
             placeholder="Enter a value..."
             [value]="filter().value"
+            (input)="keepDigits($event)"
             (change)="setValue($event)"
         />
     }

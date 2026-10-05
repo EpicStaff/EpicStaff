@@ -265,16 +265,19 @@ export class AuditPresetsComponent implements OnInit {
     protected confirmDelete(preset: AuditPreset): void {
         this.closeMenu(preset.id);
         this.confirmationDialog
-            .confirm({
-                title: 'Delete preset?',
-                message: `Are you sure you want to delete <strong>${escapeHtml(preset.name)}</strong> preset?`,
-                cautionTitle: 'Attention',
-                caution:
-                    "It will <strong>disappear</strong> from your presets list, and the filters and match scope saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.",
-                confirmText: 'Delete',
-                cancelText: 'Cancel',
-                type: 'warning',
-            })
+            .confirm(
+                {
+                    title: 'Delete preset?',
+                    message: `Are you sure you want to delete <strong>${escapeHtml(preset.name)}</strong> preset?`,
+                    cautionTitle: 'Attention',
+                    caution:
+                        "It will <strong>disappear</strong> from your presets list, and the filters and match scope saved in it <strong>will be lost</strong>. You'll have to set them up manually next time.",
+                    confirmText: 'Delete',
+                    cancelText: 'Cancel',
+                    type: 'warning',
+                },
+                { width: '485px', panelClass: 'audit-preset-delete-dialog-panel' }
+            )
             .pipe(
                 filter((result) => result === true),
                 switchMap(() => this.presetsApi.deletePreset(preset.id)),
