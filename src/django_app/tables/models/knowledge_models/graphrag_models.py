@@ -138,6 +138,8 @@ class AgentGraphRag(SoftDeleteFields, models.Model):
     - Keeps Agent model clean and unchanged when adding new RAG types
     """
 
+    soft_delete_reference_fields = ("graph_rag",)
+
     class SearchMethod(models.TextChoices):
         BASIC = "basic", "Basic Search"
         LOCAL = "local", "Local Search"

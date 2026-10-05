@@ -327,6 +327,8 @@ class AgentNaiveRag(SoftDeleteFields, models.Model):
     - Keeps Agent model clean and unchanged when adding new RAG types
     """
 
+    soft_delete_reference_fields = ("naive_rag",)
+
     agent = models.ForeignKey(
         Agent,
         on_delete=models.CASCADE,

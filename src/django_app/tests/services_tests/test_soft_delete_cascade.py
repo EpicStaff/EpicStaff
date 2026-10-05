@@ -19,13 +19,21 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from django.apps import apps
 from django.db import connection, models
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.core.exceptions import ImproperlyConfigured
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from agents.models import InlineSurface, InlineSurfaceKnowledge
+from agents.models import (
+    InlineSurface,
+    InlineSurfaceKnowledge,
+    InlineSurfacePythonTool,
+    Surface,
+    SurfacePythonTool,
+    ToolMode,
+)
 from django_app.settings import SCHEDULE_CHANNEL
 from tables.models import (
     BaseRagType,
@@ -43,7 +51,8 @@ from tables.models import (
     TaskNode,
     WebhookTriggerNode,
 )
-from tables.models import AgentNode, AgentNodeTask, Edge, SubGraphNode
+from tables.models import Agent, AgentNode, AgentNodeTask, Edge, SubGraphNode
+from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag, NaiveRag
 from tables.models.label_models import Label
 from tables.models.base_models import SoftDeleteFields
 from tables.models.session_models import SessionTrigger
@@ -822,3 +831,118 @@ class TestChildrenBinnedEarlierAreLeftAlone:
 
         assert batch is not None
         assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == batch
+
+
+@pytest.mark.django_db
+class TestOwnerVersusReferenceLinks:
+    """A link row that only points at the deleted row (a surface using a tool)
+    is removed for good, so restoring the target never re-links it. A link
+    row that belongs to the deleted row goes to the bin in the same batch."""
+
+    def test_tool_delete_removes_surface_links(self, python_code_tool, default_org, graph):
+        surface = Surface.objects.create(organization=default_org, name="S")
+        surface_link = SurfacePythonTool.objects.create(
+            surface=surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        inline_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+
+        python_code_tool.delete()
+
+        assert not SurfacePythonTool.all_objects.filter(pk=surface_link.pk).exists()
+        assert not InlineSurfacePythonTool.all_objects.filter(pk=inline_link.pk).exists()
+
+    def test_tool_delete_removes_link_from_a_binned_flow(self, python_code_tool, graph):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        inline_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        graph.delete()
+
+        python_code_tool.delete()
+
+        assert not InlineSurfacePythonTool.all_objects.filter(pk=inline_link.pk).exists()
+
+    def test_collection_delete_removes_knowledge_link(self, default_org, graph):
+        collection = SourceCollection.objects.create(org=default_org, collection_name="KB")
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        knowledge_link = InlineSurfaceKnowledge.objects.create(
+            inline_surface=inline_surface, collection=collection
+        )
+
+        collection.delete()
+
+        assert not InlineSurfaceKnowledge.all_objects.filter(pk=knowledge_link.pk).exists()
+
+    def test_owner_delete_keeps_its_links_in_the_batch(self, python_code_tool, default_org, graph):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        tool_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        knowledge_link = InlineSurfaceKnowledge.objects.create(
+            inline_surface=inline_surface,
+            collection=SourceCollection.objects.create(org=default_org, collection_name="KB"),
+        )
+
+        batch = graph.delete()
+
+        assert InlineSurfacePythonTool.all_objects.get(pk=tool_link.pk).soft_delete_batch == batch
+        assert InlineSurfaceKnowledge.all_objects.get(pk=knowledge_link.pk).soft_delete_batch == batch
+
+    def test_collection_delete_drops_the_agent_rag_link(self, default_org):
+        agent = Agent.objects.create(role="tester", goal="goal", org=default_org)
+        collection = SourceCollection.objects.create(org=default_org, collection_name="KB")
+        base_rag_type = BaseRagType.objects.create(
+            rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
+        )
+        naive_rag = NaiveRag.objects.create(base_rag_type=base_rag_type)
+        link = AgentNaiveRag.objects.create(agent=agent, naive_rag=naive_rag)
+
+        collection.delete()
+
+        assert not AgentNaiveRag.all_objects.filter(pk=link.pk).exists()
+        assert NaiveRag.all_objects.get(pk=naive_rag.pk).active is False
+
+    def test_link_reached_through_owner_and_target_in_one_call_stays_binned(
+        self, python_code_tool, graph
+    ):
+        # No current delete path reaches one link both ways, so one context
+        # deletes the owner's flow and the referenced tool together.
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        tool_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        context = _DeleteContext()
+
+        context.delete(graph)
+        context.delete(python_code_tool)
+        context.finish()
+
+        assert InlineSurfacePythonTool.all_objects.get(pk=tool_link.pk).soft_delete_batch == context.batch
+
+    def test_every_reference_field_is_a_cascade_foreign_key(self):
+        # The reference check runs before the PROTECT/RESTRICT/SET_* rules, so a
+        # marked non-CASCADE field would silently bypass them.
+        marked = [
+            (model, field_name)
+            for model in apps.get_models()
+            for field_name in getattr(model, "soft_delete_reference_fields", ())
+        ]
+
+        assert marked
+        for model, field_name in marked:
+            field = model._meta.get_field(field_name)
+            assert field.many_to_one or field.one_to_one, f"{model._meta.label}.{field_name} is not a FK"
+            assert field.remote_field.on_delete is models.CASCADE, f"{model._meta.label}.{field_name}"

@@ -58,6 +58,7 @@ class Surface(TimestampMixin, models.Model):
 
 
 class BaseSurfacePythonTool(models.Model):
+    soft_delete_reference_fields = ("python_tool",)
     python_tool = models.ForeignKey(
         "tables.PythonCodeTool",
         on_delete=models.CASCADE,
@@ -95,6 +96,7 @@ class SurfacePythonTool(BaseSurfacePythonTool, SoftDeleteFields):
 
 
 class BaseSurfaceMcpTool(models.Model):
+    soft_delete_reference_fields = ("mcp_tool",)
     mcp_tool = models.ForeignKey(
         "tables.McpTool",
         on_delete=models.CASCADE,
@@ -129,6 +131,7 @@ class SurfaceMcpTool(BaseSurfaceMcpTool):
 
 
 class BaseSurfaceStorageItem(models.Model):
+    soft_delete_reference_fields = ("storage_file",)
     can_list = models.CharField(
         max_length=5,
         choices=StorageAccess.choices,
@@ -182,6 +185,7 @@ class SurfaceStorageItem(BaseSurfaceStorageItem):
 
 
 class BaseSurfaceKnowledge(models.Model):
+    soft_delete_reference_fields = ("collection",)
     collection = models.ForeignKey(
         "tables.SourceCollection",
         on_delete=models.CASCADE,

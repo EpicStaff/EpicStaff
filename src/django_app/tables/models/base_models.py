@@ -230,6 +230,12 @@ class SoftDeleteFields(models.Model):
     # so a restore brings back exactly that delete. Null on live rows and on rows
     # binned before the column existed.
     soft_delete_batch = models.UUIDField(null=True, blank=True, db_index=True)
+    # FK names on this model that only point at another row (a surface's link
+    # to a tool) instead of at the row that owns this one. A delete arriving
+    # through one of them removes this row for good, so restoring the target
+    # never re-links it. Plain link models may set it too. See
+    # _DeleteContext._is_reference_relation.
+    soft_delete_reference_fields: tuple[str, ...] = ()
 
     objects = ActiveManager()
     deleted_objects = DeletedManager()

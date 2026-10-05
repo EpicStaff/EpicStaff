@@ -195,6 +195,7 @@ class SurfacePlace(models.TextChoices):
 
 
 class AgentDefaultSurface(models.Model):
+    soft_delete_reference_fields = ("surface",)
     agent_definition = models.ForeignKey(
         AgentDefinition,
         on_delete=models.CASCADE,

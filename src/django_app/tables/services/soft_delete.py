@@ -28,6 +28,10 @@ class DeleteService:
     Normal model + RESTRICT
         -> RestrictedError
 
+    Child reached through a field in its soft_delete_reference_fields
+        -> hard delete at the end of the call, unless the same child was
+           soft-deleted into this batch through its owner
+
     Normal model + SET_NULL
         -> set FK to NULL
 
@@ -135,6 +139,8 @@ class _DeleteContext:
         # Reverse auto-through M2M relation -> pks of visited rows it points at,
         # resolved in finish(), once the whole batch is known.
         self.incoming_m2m: defaultdict[ManyToManyRel, list[Any]] = defaultdict(list)
+        # Reference link rows to hard-delete in finish(), by model.
+        self.reference_children: defaultdict[type[models.Model], set[Any]] = defaultdict(set)
 
     # ==========================================================
     # Main entry point
@@ -219,6 +225,10 @@ class _DeleteContext:
                 relation,
             )
 
+            if self._is_reference_relation(relation):
+                self._queue_reference_children(children)
+                continue
+
             if self._is_soft_delete_cascade_relation(relation):
                 self._batch_soft_delete_cascade(children)
                 continue
@@ -282,6 +292,39 @@ class _DeleteContext:
             return list(queryset[:1])
 
         return queryset
+
+    # ==========================================================
+    # Reference links
+    # ==========================================================
+
+    @staticmethod
+    def _is_reference_relation(relation) -> bool:
+        """
+        True when the child only points at the row being deleted (a surface
+        using a tool) instead of belonging to it. Every field listed in
+        soft_delete_reference_fields must be a CASCADE FK.
+        """
+        reference_fields = getattr(relation.related_model, "soft_delete_reference_fields", ())
+        return relation.field.name in reference_fields
+
+    def _queue_reference_children(self, children):
+        for child in children:
+            self.reference_children[type(child)].add(child.pk)
+
+    def _hard_delete_reference_children(self):
+        """
+        Hard-delete the queued reference link rows. A row that was also
+        soft-deleted into this batch through its owner (an inline surface's
+        tool link, when one call reaches it through both its flow and its
+        tool) is kept, so it comes back when the owner is restored.
+        """
+        for model_class, pks in self.reference_children.items():
+            links = model_class._base_manager.using(self.using).filter(pk__in=pks)
+
+            if issubclass(model_class, SoftDeleteFields):
+                links = links.exclude(soft_delete_batch=self.batch)
+
+            links.delete()
 
     # ==========================================================
     # Relation-level CASCADE / SoftDeleteFields batching
@@ -594,6 +637,14 @@ class _DeleteContext:
                 self.incoming_m2m[relation].append(obj.pk)
 
     def finish(self):
+        """
+        Run the writes that can only happen once the whole subtree is known:
+        only then can we tell which link rows belong to this batch.
+        """
+        self._clear_incoming_m2m()
+        self._hard_delete_reference_children()
+
+    def _clear_incoming_m2m(self):
         """
         Remove M2M links that point at a binned row from a live row outside
         this batch, so live rows don't point into the recycle bin. One DELETE

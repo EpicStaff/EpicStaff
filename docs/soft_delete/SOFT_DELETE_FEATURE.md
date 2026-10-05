@@ -117,9 +117,13 @@ An explicit `PROTECT`/`RESTRICT`/`SET_NULL`/`SET_DEFAULT`/`SET(...)` on the FK i
 
 **Batching:** all rows reached through a single reverse relation that resolve to rule 6 are soft-deleted with one `UPDATE ... WHERE pk IN (...)` instead of one `.save()` per row. Recursion into each row's own descendants (further reverse relations + M2M) still happens per-object, exactly as before batching was introduced — only the terminal `active`/`soft_deleted_at` write is batched. Cycle-safety (a `visited` set keyed by `(model_class, pk)`) is unchanged.
 
-**Hidden relations (`related_name="+"`):** `_get_reverse_relations` only sees non-hidden relations. A handful of `related_name="+"` fields exist in the schema deliberately (e.g. `SessionTrigger`'s snapshot FKs, which must survive node/graph deletion; `OrgScopedModel.created_by`, an audit trail) — see the docstring on `_get_reverse_relations` for the full audited list. Adding a new `related_name="+"` field whose target should participate in a cascade requires giving it a real `related_name`, or explicitly extending this method — don't assume hiding it is always safe.
+**Hidden relations (`related_name="+"`):** `_get_reverse_relations` walks hidden reverse relations too (`include_hidden=True`); `_get_related_objects` fetches every relation's rows with a direct queryset through the related model's base manager, so binned rows are included. The hidden reverse FKs of Django's auto-created M2M through tables are skipped: their rows are M2M links (next paragraph).
 
-**M2M:** clearing an M2M relationship only removes the join rows; the other side of the relationship is never deleted or soft-deleted.
+**Rows already in the bin:** `SET_NULL`/`SET_DEFAULT`/`SET(...)` also reach binned rows, so a restored row never points at something deleted while it was binned. A `CASCADE` child that was binned earlier on its own is marked visited and not walked into again; it keeps its own batch.
+
+**M2M:** a deleted row keeps its own links (a flow's labels, a node's surfaces, a task's context tasks), so a restore brings them back. At the end of the call, `finish()` removes links that point at a binned row from live rows, in one query per relation; links from any binned row stay. M2M fields with an explicit `through=` model are real rows and follow the normal rules.
+
+**Reference links:** a link model can list FK names in `soft_delete_reference_fields` (e.g. `("python_tool",)` on the surface tool links, `("collection",)` on the surface knowledge links, `("naive_rag",)` on `AgentNaiveRag`). A delete arriving through one of them means the link only *points at* the deleted row, so `finish()` hard-deletes the link: restoring a tool never re-links the surfaces that used it. A delete arriving through the link's owner FK bins it with the owner, so it comes back on restore. A link reached both ways in one call stays in the batch. Unlike M2M links, a reference link is removed even when its owner is already in the bin: deleting a tool permanently edits flows that are binned at that moment, which come back from a restore without that tool.
 
 ## 7. Manager Configuration Per Model
 

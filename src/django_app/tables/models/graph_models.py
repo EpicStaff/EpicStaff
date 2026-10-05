@@ -1021,6 +1021,7 @@ class StorageFile(models.Model):
 
 
 class GraphStorageFile(SoftDeleteFields):
+    soft_delete_reference_fields = ("storage_file",)
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="storage_files")
     storage_file = models.ForeignKey(
         "StorageFile", on_delete=models.CASCADE, related_name="graph_storage_files"
