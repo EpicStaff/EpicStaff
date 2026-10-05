@@ -82,10 +82,10 @@ class AgentDefinition(AbstractDefaultFillableModel):
         default="",
         help_text="Human-readable description of this agent — its purpose, persona, or capabilities. E.g. 'Senior Researcher focused on market analysis'.",
     )
-    instructions = models.TextField(
+    instruction_list = models.JSONField(
+        default=list,
         blank=True,
-        default="",
-        help_text="Free-form prompt for the agent. Put behavior, goals, tone, and constraints here.",
+        help_text='Ordered list of named prompt instructions, each {"name": str, "content": str}. Applied to the agent in list order; put behavior, goals, tone, and constraints here.',
     )
     metadata = models.JSONField(
         default=dict,
@@ -171,6 +171,15 @@ class AgentDefinition(AbstractDefaultFillableModel):
         blank=True,
         help_text="Surfaces applied to this agent by default, per place (flow/chat/all). Managed via AgentDefaultSurface through table.",
     )
+
+    @property
+    def instructions(self) -> str:
+        """Return the non-blank instruction contents joined in application order."""
+        return "\n\n".join(
+            instruction["content"]
+            for instruction in self.instruction_list
+            if instruction["content"].strip()
+        )
 
     def get_default_model(self):
         return DefaultAgentDefinitionConfig.load()

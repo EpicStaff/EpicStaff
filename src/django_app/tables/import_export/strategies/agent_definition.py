@@ -22,7 +22,7 @@ from tables.models import LLMConfig
 COMPARED_FIELDS = (
     "name",
     "description",
-    "instructions",
+    "instruction_list",
     "metadata",
     "max_iter",
     "max_rpm",
@@ -35,6 +35,30 @@ COMPARED_FIELDS = (
     "max_consecutive_failures",
     "schema_max_retries",
 )
+
+LEGACY_INSTRUCTION_NAME = "Instruction_1.md"
+
+
+def convert_legacy_instructions(data: dict) -> None:
+    """Replace a released-version `instructions` string with `instruction_list` in place.
+
+    Export files written before AgentDefinition switched to named instructions carry a
+    single `instructions` text; it becomes the agent's only instruction. Their obsolete
+    `metadata["instructions_format"]` flag is dropped, as the migration does for stored
+    rows, so reuse matching in `find_existing` still finds migrated agents.
+    """
+    metadata = data.get("metadata")
+    if isinstance(metadata, dict):
+        metadata.pop("instructions_format", None)
+    legacy_instructions = data.pop("instructions", None)
+    if data.get("instruction_list") is not None:
+        return
+    if isinstance(legacy_instructions, str) and legacy_instructions.strip():
+        data["instruction_list"] = [
+            {"name": LEGACY_INSTRUCTION_NAME, "content": legacy_instructions}
+        ]
+    else:
+        data["instruction_list"] = []
 
 
 class AgentDefinitionStrategy(EntityImportExportStrategy):
@@ -72,6 +96,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         old_llm_config_id = data.pop("llm_config", None)
         old_fcm_llm_config_id = data.pop("fcm_llm_config", None)
         data.pop("id", None)
+        convert_legacy_instructions(data)
 
         organization = resolve_import_organization(kwargs.get("org_id"))
 
@@ -100,6 +125,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> AgentDefinition:
         data_copy = deepcopy(data)
+        convert_legacy_instructions(data_copy)
         projected = {field: data_copy.get(field) for field in COMPARED_FIELDS}
         filters, null_filters = create_filters(projected)
 
