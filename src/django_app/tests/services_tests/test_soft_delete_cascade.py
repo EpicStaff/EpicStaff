@@ -43,7 +43,8 @@ from tables.models import (
     TaskNode,
     WebhookTriggerNode,
 )
-from tables.models import Edge
+from tables.models import AgentNode, AgentNodeTask, Edge
+from tables.models.label_models import Label
 from tables.models.base_models import SoftDeleteFields
 from tables.models.session_models import SessionTrigger
 from tables.models.webhook_models import (
@@ -577,10 +578,10 @@ class TestBatchedCascadeQueryCountDoesNotGrowWithChildCount:
     a large batch of plain (no post_save receiver, no M2M or reverse-relation
     descendants of its own) `GraphNote` children of the same `Graph` root —
     no growth confirms the batch path, not one `.save()` per object, is
-    still in effect. `TaskNode` is deliberately avoided here: it carries its
-    own M2M field (`surface_list`), whose clearing is legitimately done
-    per-object regardless of batching, which would make query count grow
-    with child count for reasons unrelated to what this test checks."""
+    still in effect. `TaskNode` is deliberately avoided here: each one has its
+    own reverse relations (its inline surface), walked per object, which
+    would make query count grow for reasons unrelated to what this test
+    checks."""
 
     def test_graph_note_cascade_query_count_is_flat(self, default_org):
         small_graph = Graph.objects.create(name="small-batch-graph", org=default_org)
@@ -663,3 +664,83 @@ class TestSoftDeleteBatch:
         assert second_batch is None
         assert binned_graph.soft_delete_batch == first_batch
         assert binned_graph.soft_deleted_at == first_deleted_at
+
+
+def _context_link_exists(task: AgentNodeTask, context_task: AgentNodeTask) -> bool:
+    # Through the link table: the related manager would hide binned tasks.
+    return AgentNodeTask.context_tasks.through.objects.filter(
+        from_agentnodetask_id=task.pk, to_agentnodetask_id=context_task.pk
+    ).exists()
+
+
+@pytest.mark.django_db
+class TestManyToManyOnDelete:
+    """A deleted row keeps its own M2M links (restore needs them). Links from
+    rows outside its batch are removed, so those rows don't point into the bin."""
+
+    def test_flow_keeps_its_own_labels(self, graph):
+        label = Label.objects.create(name="prod", org=graph.org)
+        graph.labels.add(label)
+
+        graph.delete()
+
+        assert list(Graph.all_objects.get(pk=graph.pk).labels.all()) == [label]
+
+    def test_links_between_rows_of_one_batch_survive(self, graph):
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent")
+        first_task = AgentNodeTask.objects.create(agent_node=agent_node, name="first", order=0)
+        second_task = AgentNodeTask.objects.create(agent_node=agent_node, name="second", order=1)
+        second_task.context_tasks.add(first_task)
+
+        graph.delete()
+
+        assert _context_link_exists(second_task, first_task)
+
+    def test_incoming_link_from_outside_the_batch_is_removed_own_link_kept(self, graph):
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent")
+        binned_task = AgentNodeTask.objects.create(agent_node=agent_node, name="binned", order=0)
+        live_task = AgentNodeTask.objects.create(agent_node=agent_node, name="live", order=1)
+        earlier_task = AgentNodeTask.objects.create(agent_node=agent_node, name="earlier", order=2)
+        live_task.context_tasks.add(binned_task)
+        binned_task.context_tasks.add(earlier_task)
+
+        DeleteService.delete(binned_task)
+
+        assert AgentNodeTask.deleted_objects.filter(pk=binned_task.pk).exists()
+        assert AgentNodeTask.objects.filter(pk=live_task.pk).exists()
+        assert not _context_link_exists(live_task, binned_task)
+        assert _context_link_exists(binned_task, earlier_task)
+
+    def test_link_between_two_separately_binned_rows_survives(self, graph):
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent")
+        first_binned = AgentNodeTask.objects.create(agent_node=agent_node, name="first", order=0)
+        later_binned = AgentNodeTask.objects.create(agent_node=agent_node, name="later", order=1)
+        first_binned.context_tasks.add(later_binned)
+        DeleteService.delete(first_binned)
+
+        DeleteService.delete(later_binned)
+
+        # Restoring `first_binned` must bring its own link back.
+        assert _context_link_exists(first_binned, later_binned)
+
+    def test_flow_delete_query_count_does_not_grow_with_linked_tasks(self, default_org):
+        def flow_with_linked_tasks(name, task_count):
+            flow = Graph.objects.create(name=name, org=default_org)
+            agent_node = AgentNode.objects.create(graph=flow, node_name="agent")
+            tasks = [
+                AgentNodeTask.objects.create(agent_node=agent_node, name=f"task_{index}", order=index)
+                for index in range(task_count)
+            ]
+            for task, context_task in zip(tasks[1:], tasks):
+                task.context_tasks.add(context_task)
+            return flow
+
+        small_flow = flow_with_linked_tasks("small-linked-flow", 2)
+        large_flow = flow_with_linked_tasks("large-linked-flow", 20)
+
+        with CaptureQueriesContext(connection) as few:
+            small_flow.delete()
+        with CaptureQueriesContext(connection) as many:
+            large_flow.delete()
+
+        assert len(many) == len(few), "\n".join(query["sql"] for query in many.captured_queries)

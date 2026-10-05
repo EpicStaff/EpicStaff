@@ -10,6 +10,7 @@ from django.db.models.deletion import (
     ProtectedError,
     RestrictedError,
 )
+from django.db.models.fields.reverse_related import ManyToManyRel
 from django.db.models.signals import post_save
 from django.utils import timezone
 from tables.models.base_models import SoftDeleteFields
@@ -53,12 +54,14 @@ class DeleteService:
     receiver also wins over SoftDeleteFields batching, since it must be
     soft-deleted per-object so that signal still fires.
 
-    M2M:
-        implicit through
-            -> delete only relationship rows
+    M2M (implicit through):
+        the deleted row's own links -> kept (a restore needs them)
+        links from rows outside this delete's batch -> removed at the end,
+            so live rows don't point into the recycle bin
+        links between rows of the same batch -> kept
 
-        explicit through
-            -> process through model normally
+    M2M (explicit through):
+        -> process through model normally
     """
 
     @classmethod
@@ -90,6 +93,7 @@ class DeleteService:
                     return None
             context = _DeleteContext(using=using)
             context.delete(obj)
+            context.finish()
             return context.batch
 
 
@@ -124,6 +128,9 @@ class _DeleteContext:
         # bins can be found and restored together.
         self.batch = uuid.uuid4()
         self.deleted_at = timezone.now()
+        # Reverse auto-through M2M relation -> pks of visited rows it points at,
+        # resolved in finish(), once the whole batch is known.
+        self.incoming_m2m: defaultdict[ManyToManyRel, list[Any]] = defaultdict(list)
 
     # ==========================================================
     # Main entry point
@@ -231,6 +238,11 @@ class _DeleteContext:
 
             # M2M is handled separately.
             if relation.many_to_many:
+                continue
+
+            # The hidden reverse FK of an auto-created M2M through table: its
+            # rows are M2M links, handled by _process_m2m_relations/finish().
+            if relation.related_model._meta.auto_created:
                 continue
 
             if not (relation.one_to_many or relation.one_to_one):
@@ -557,56 +569,42 @@ class _DeleteContext:
         obj: models.Model,
     ):
         """
-        M2M deletion only removes relationship rows.
+        Record the reverse auto-through M2M relations of `obj` for finish().
 
-        The other side of the M2M is NOT deleted.
+        `obj`'s own (forward) M2M links are left alone: they travel with it
+        into the recycle bin and come back on restore. Explicit through models
+        are real rows, walked by _process_reverse_relations instead.
         """
-
-        # Forward M2M fields.
-        for field in obj._meta.many_to_many:
-            self._clear_m2m(obj, field)
-
-        # Reverse M2M fields.
         for relation in obj._meta.get_fields(include_hidden=True):
-            if not relation.auto_created:
-                continue
+            if (
+                relation.auto_created
+                and relation.many_to_many
+                and relation.through._meta.auto_created
+            ):
+                self.incoming_m2m[relation].append(obj.pk)
 
-            if not relation.many_to_many:
-                continue
+    def finish(self):
+        """
+        Remove M2M links that point at a binned row from a live row outside
+        this batch, so live rows don't point into the recycle bin. One DELETE
+        per relation, whatever the batch size.
 
-            self._clear_reverse_m2m(
-                obj,
-                relation,
+        Kept: links from any binned row, which covers rows of this batch (e.g.
+        context links between tasks of one flow) and rows binned earlier on
+        their own; a restore of that row brings the link back.
+        """
+        for relation, target_pks in self.incoming_m2m.items():
+            field = relation.field
+            source_name = field.m2m_field_name()
+            links = field.remote_field.through._default_manager.using(self.using).filter(
+                **{f"{field.m2m_reverse_field_name()}_id__in": target_pks}
             )
-
-    @staticmethod
-    def _clear_m2m(
-        obj,
-        field,
-    ):
-        manager = getattr(
-            obj,
-            field.name,
-        )
-
-        manager.clear()
-
-    @staticmethod
-    def _clear_reverse_m2m(
-        obj,
-        relation,
-    ):
-        """
-        Remove reverse M2M rows without deleting
-        objects on the other side.
-        """
-
-        manager = getattr(
-            obj,
-            relation.get_accessor_name(),
-        )
-
-        manager.clear()
+            # finish() runs after every visited row is written, so a binned
+            # source here is inactive. A plain source has no bin: if it was in
+            # this delete it was hard-deleted, and its links went with it.
+            if issubclass(field.model, SoftDeleteFields):
+                links = links.exclude(**{f"{source_name}__active": False})
+            links.delete()
 
     # ==========================================================
     # Helpers
