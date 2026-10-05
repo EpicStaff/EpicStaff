@@ -66,18 +66,15 @@ class TemporaryCredentialIssueError(TemporaryCredentialError):
 
 class TemporaryCredentialRevokeError(TemporaryCredentialError):
     """Revoking a temporary service account failed. Callers should log this
-    at ERROR and move on -- an un-revoked account is picked up by
-    `TtlReconciliationService.sweep()` once it expires."""
+    at ERROR and move on (best-effort revoke). Best-effort cleanup of
+    orphaned accounts is provided by the manager's background cleanup job."""
 
     default_detail = "Failed to revoke temporary storage credential."
     default_code = "temporary_credential_revoke_error"
 
 
 class TemporaryCredentialListError(TemporaryCredentialError):
-    """Listing an org's temporary service accounts failed -- raised by
-    `TtlReconciliationService.sweep()`'s read path, distinct from a mint
-    or revoke failure so logs/alerts don't misattribute which operation
-    actually failed."""
+    """Listing an org's temporary service accounts failed."""
 
     default_detail = "Failed to list temporary storage credentials."
     default_code = "temporary_credential_list_error"

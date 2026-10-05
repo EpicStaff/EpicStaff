@@ -1,17 +1,13 @@
 """`realtime` was the one publisher of the four (crew/agent/realtime/django
 "Test run") that reached production carrying no storage-scoping fields at
-all -- `run_code()` used to build `CodeTaskData` without
-`storage_org_prefix`/`storage_allowed_paths`/`org_id`, so the storage_credentials
-issuer would always fail closed for any `use_storage=True` task started from
-a voice-agent code tool.
+all -- `run_code()` used to build `CodeTaskData` without scoping fields.
 
-Storage credentials 2.0 (EST-3892 commit 5): django now mints temporary
-storage credentials once per realtime chat session (in
+Storage credentials 2.0 (EST-3892): django now mints temporary storage
+credentials once per realtime chat session (in
 `converter_service.convert_rt_agent_definition_chat_to_pydantic`) and hands
-them to this service as the `storage_credentials` parameter -- this service
-never mints/requests anything itself, it only forwards what it is given onto
-`CodeTaskData.storage_credentials`. The old issuer round-trip
-(`publish_credential_scope_async`) is gone.
+them to this service as the `storage_credentials` parameter. This service
+never mints or requests credentials itself, only forwards what it receives
+to `CodeTaskData.storage_credentials`.
 """
 
 import asyncio

@@ -97,11 +97,10 @@ class OrgStorageProvisioningService:
     async def _provision_in_storage(self, *, org_id: int, access_key: str, secret_key: str) -> None:
         # Each public method here runs its own one-off `asyncio.run()`
         # (see the module docstring), so there is no long-lived event loop
-        # to cache a gateway/aiohttp session against across calls the way
-        # `TemporaryCredentialService`/`TtlReconciliationService` do -- a
-        # session created in one `asyncio.run()` cannot be reused once that
-        # loop closes. Explicitly closing it here (StorageAdminGateway.close())
-        # is the correct fix for this call shape.
+        # to cache a gateway/aiohttp session across calls. A session created
+        # in one `asyncio.run()` cannot be reused once that loop closes.
+        # Explicitly closing it here (StorageAdminGateway.close()) is the
+        # correct fix for this call shape.
         gateway = StorageAdminGateway(
             host=self._host,
             access_key=self._root_access_key,
