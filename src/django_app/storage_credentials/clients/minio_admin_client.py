@@ -247,7 +247,7 @@ class StorageAdminGateway:
     # --- per-execution (temporary) service account ------------------------
 
     async def create_service_account(
-        self, policy: dict[str, Any], expiration: timedelta
+        self, policy: dict[str, Any], expiration: timedelta | None = None
     ) -> tuple[str, str]:
         """Mint a temporary service account scoped to `policy`. Returns
         (access_key, secret_key).
@@ -256,8 +256,15 @@ class StorageAdminGateway:
         miniopy_async (which fails to decrypt responses with AEAD ID 2). Success
         is determined by the absence of an exception from _url_open; the
         credentials are known immediately after generation since they were
-        supplied in the request."""
-        expiration_str = (datetime.now(UTC) + expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
+        supplied in the request.
+
+        Args:
+            policy: IAM policy dict scoped to allowed paths.
+            expiration: Lifetime of the account (timedelta). If None, no expiration is set.
+
+        Returns:
+            Tuple of (access_key, secret_key).
+        """
         access_key = _generate_credential(_ACCESS_KEY_LENGTH, _ACCESS_KEY_ALPHABET)
         secret_key = _generate_credential(_SECRET_KEY_LENGTH, _SECRET_KEY_ALPHABET)
 
@@ -267,8 +274,11 @@ class StorageAdminGateway:
                 "accessKey": access_key,
                 "secretKey": secret_key,
                 "policy": policy,
-                "expiration": expiration_str,
             }
+            if expiration is not None:
+                expiration_str = (datetime.now(UTC) + expiration).strftime("%Y-%m-%dT%H:%M:%SZ")
+                data["expiration"] = expiration_str
+
             body = json.dumps(data).encode()
             admin_creds = await self._client._provider.retrieve()
             encrypted_body = encrypt(body, admin_creds.secret_key)

@@ -78,7 +78,15 @@ class RedisService(metaclass=SingletonMeta):
     def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
         # Resolve here, not upstream: the caller's object is what gets persisted
         # to Session.graph_schema, so plaintext must exist only on this copy.
-        resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
+        from copy import deepcopy
+
+        resolved = deepcopy(session_data)
+        resolved = secret_resolver.resolve_payload(payload=resolved, org_id=org_id)
+
+        # Preserve storage credentials from original (not resolved by secret_resolver)
+        if session_data.storage_credentials:
+            resolved.storage_credentials = session_data.storage_credentials
+
         return self.redis_client.publish(
             settings.SESSION_SCHEMA_CHANNEL,
             resolved.model_dump_json(),

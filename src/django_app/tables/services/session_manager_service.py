@@ -248,6 +248,17 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             # TODO: add ping or waiting for crew to accept connections
 
+            # Issue temporary storage credentials if needed
+            from storage_credentials.services.session_credential_service import issue_for_session
+
+            storage_credentials = issue_for_session(
+                session_data=session_data,
+                session_orm=session,
+                org=graph.organization,
+            )
+            if storage_credentials:
+                session_data.storage_credentials = storage_credentials
+
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,

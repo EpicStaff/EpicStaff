@@ -105,6 +105,46 @@ class TestGraphSchemaNeverHoldsPlaintext:
 
         assert SENTINEL not in session_data.model_dump_json()
 
+    def test_storage_credentials_secret_key_not_in_graph_schema(
+        self, graph_with_secret_backed_llm, monkeypatch
+    ):
+        """Verify that storage_credentials secret_key (if issued) never reaches graph_schema.
+
+        storage_credentials is ephemeral and only flows to crew via the resolved
+        published message, never into Session.graph_schema persistence."""
+        graph, _ = graph_with_secret_backed_llm
+        service = SessionManagerService()
+        monkeypatch.setattr(
+            service.redis_service.redis_client,
+            "publish",
+            lambda channel, message: 2,
+        )
+
+        # Mock issue_for_session to return dummy credentials
+        from unittest.mock import patch
+        mock_creds = {"access_key": "test_access", "secret_key": "SHOULD_NOT_BE_STORED"}
+        with patch(
+            "storage_credentials.services.session_credential_service.issue_for_session"
+        ) as mock_issue:
+            from src.shared.models.storage_scope import StorageCredentials
+            mock_issue.return_value = StorageCredentials(
+                access_key="test_access", secret_key="SHOULD_NOT_BE_STORED"
+            )
+
+            session_id = service.run_session(
+                graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            )
+            session = Session.objects.get(pk=session_id)
+
+            # Verify secret_key is not in persisted graph_schema
+            stored = json.dumps(session.graph_schema)
+            assert "SHOULD_NOT_BE_STORED" not in stored, (
+                "storage_credentials secret_key leaked into graph_schema persistence"
+            )
+            assert "secret_key" not in stored or "storage_credentials" not in stored, (
+                "graph_schema must never contain storage_credentials"
+            )
+
 
 @pytest.mark.django_db
 class TestUnresolvableSecretFailsTheSession:
