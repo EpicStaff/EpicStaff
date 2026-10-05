@@ -43,6 +43,7 @@ from tests.import_export_tests.test_node_authorship_import_export import (
     _create_every_node_type,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 PREVIOUS_EDIT_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
 STRUCTURAL_NODE_TYPES = {NodeType.START_NODE, NodeType.END_NODE}
@@ -404,7 +405,7 @@ def test_python_code_tool_copy_records_copier(client_as, admin_acme, member_only
     assert _last_edit_of(PythonCodeTool.objects.get(pk=response.data["id"])).edited_by_id == (
         admin_acme.id
     )
-    assert response.data["last_edited_by"] == admin_acme.id
+    assert response.data["last_edited_by"] == expected_user_summary(admin_acme)
     assert _last_edit_of(tool).edited_by_id == member_only.id
 
 
@@ -421,7 +422,7 @@ def test_mcp_tool_copy_records_copier(client_as, admin_acme, member_only, acme):
     assert _last_edit_of(McpTool.objects.get(pk=response.data["id"])).edited_by_id == (
         admin_acme.id
     )
-    assert response.data["last_edited_by"] == admin_acme.id
+    assert response.data["last_edited_by"] == expected_user_summary(admin_acme)
     assert _last_edit_of(tool).edited_by_id == member_only.id
 
 

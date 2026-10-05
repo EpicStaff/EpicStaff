@@ -21,6 +21,7 @@ from tables.models.knowledge_models import SourceCollection
 from tables.models.llm_models import LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tests.fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 PREVIOUS_EDIT_AT = timezone.now() - timedelta(days=1)
 
@@ -69,7 +70,7 @@ def _last_edit_of(instance) -> ResourceLastEdit | None:
 
 
 def _assert_fields_show(data: dict, user) -> None:
-    assert data["last_edited_by"] == user.id
+    assert data["last_edited_by"] == expected_user_summary(user)
     assert data["last_edited_at"] is not None
 
 
@@ -337,7 +338,7 @@ def test_agent_definition_create_patch_and_list_carry_last_edit(
         format="json",
     )
     assert unchanged.status_code == status.HTTP_200_OK, unchanged.content
-    assert unchanged.data["last_edited_by"] == regular_user.id
+    assert unchanged.data["last_edited_by"] == expected_user_summary(regular_user)
 
     edited = colleague_client.patch(
         reverse("agentdefinition-detail", args=[definition.pk]),
@@ -395,42 +396,53 @@ def test_resource_without_last_edit_returns_nulls(auth_client, graph):
 # ---- query counts do not grow with rows ----
 
 
-def _count_queries(client, url) -> int:
+def _captured_sql(client, url) -> list[str]:
     with CaptureQueriesContext(connection) as captured:
         response = client.get(url)
     assert response.status_code == status.HTTP_200_OK, response.content
-    return len(captured.captured_queries)
+    return [query["sql"] for query in captured.captured_queries]
 
 
-def _add_edited_nodes(graph, python_code, user, count: int) -> None:
-    created = []
+def _count_queries(client, url) -> int:
+    return len(_captured_sql(client, url))
+
+
+def _add_edited_nodes(graph, python_code, users: list, count: int) -> None:
     for index in range(count):
-        created.append(GraphNote.objects.create(graph=graph, content=f"note-{index}"))
-        created.append(
-            PythonNode.objects.create(
-                graph=graph,
-                python_code=PythonCode.objects.create(code=python_code.code, entrypoint="main"),
-                node_name=f"py-{index}",
-            )
+        author = users[index % len(users)]
+        editor = users[(index + 1) % len(users)]
+        note = GraphNote.objects.create(graph=graph, content=f"note-{index}", created_by=author)
+        python_node = PythonNode.objects.create(
+            graph=graph,
+            python_code=PythonCode.objects.create(code=python_code.code, entrypoint="main"),
+            node_name=f"py-{index}",
+            created_by=author,
         )
-    record_last_edits(created, user)
+        record_last_edits([note, python_node], editor)
 
 
 @pytest.mark.django_db
 def test_graph_detail_query_count_does_not_grow_with_nodes(
-    auth_client, regular_user, default_org, python_code
+    auth_client, regular_user, colleague, default_org, python_code
 ):
+    users = [regular_user, colleague]
     small = Graph.objects.create(name="small-flow", org=default_org)
     large = Graph.objects.create(name="large-flow", org=default_org)
-    _add_edited_nodes(small, python_code, regular_user, 1)
-    _add_edited_nodes(large, python_code, regular_user, 3)
-    record_last_edits([small, large], regular_user)
+    _add_edited_nodes(small, python_code, users, 1)
+    _add_edited_nodes(large, python_code, users, 3)
+    record_last_edit(small, regular_user)
+    record_last_edit(large, colleague)
     _count_queries(auth_client, reverse("graphs-detail", args=[small.pk]))
 
-    small_count = _count_queries(auth_client, reverse("graphs-detail", args=[small.pk]))
-    large_count = _count_queries(auth_client, reverse("graphs-detail", args=[large.pk]))
+    small_sql = _captured_sql(auth_client, reverse("graphs-detail", args=[small.pk]))
+    large_sql = _captured_sql(auth_client, reverse("graphs-detail", args=[large.pk]))
 
-    assert large_count == small_count
+    assert len(large_sql) == len(small_sql)
+    assert _user_query_count(large_sql) == _user_query_count(small_sql)
+
+
+def _user_query_count(captured_sql: list[str]) -> int:
+    return sum('FROM "rbac_user"' in sql for sql in captured_sql)
 
 
 def _count_last_edit_queries(client, url) -> int:
@@ -530,8 +542,8 @@ def test_graph_patch_query_count_does_not_grow_with_nodes(
 ):
     small = Graph.objects.create(name="small-patch-flow", org=default_org)
     large = Graph.objects.create(name="large-patch-flow", org=default_org)
-    _add_edited_nodes(small, python_code, regular_user, 1)
-    _add_edited_nodes(large, python_code, regular_user, 3)
+    _add_edited_nodes(small, python_code, [regular_user], 1)
+    _add_edited_nodes(large, python_code, [regular_user], 3)
     _count_patch_queries(auth_client, small, {"description": "warm-up"})
 
     small_count = _count_patch_queries(auth_client, small, {"description": "renamed small"})

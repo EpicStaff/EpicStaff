@@ -1,4 +1,4 @@
-import { AuthorshipFields, WebhookTriggerWrite } from '@shared/models';
+import { AuthorshipFields } from '@shared/models';
 
 export interface TelegramTriggerField {
     field_name: string;
@@ -28,7 +28,8 @@ export interface CreateTelegramTriggerNodeRequest {
     node_name: string;
     graph: number;
     telegram_bot_api_key: string;
-    webhook_trigger: WebhookTriggerWrite | null;
+    /** Bulk save accepts only the id of an existing trigger; triggers are created through `/webhook-triggers/`. */
+    webhook_trigger: number | null;
     fields: CreateTelegramTriggerNodeField[];
     metadata?: Record<string, unknown>;
 }
@@ -47,6 +48,6 @@ export interface GetTelegramTriggerNodeRequest extends AuthorshipFields {
     telegram_bot_api_key_secret_id: number | null;
     fields: TelegramTriggerNodeField[];
     metadata: Record<string, unknown>;
-    /** Nested object from the live API; a bare id when built from a version snapshot. */
-    webhook_trigger: WebhookTriggerWrite | null;
+    /** Id of the referenced webhook trigger — the graph API and the version snapshot both send a bare id. */
+    webhook_trigger: number | null;
 }

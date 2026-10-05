@@ -15,6 +15,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
 )
 from tests.fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 _PYTHON_CODE_DATA = {"code": "def main(): return 42", "entrypoint": "main", "libraries": []}
 
@@ -61,7 +62,7 @@ def test_create_graph_note_stamps_acting_user(auth_client, regular_user, graph):
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(GraphNote, response.data["id"]) == regular_user.id
-    assert response.data["created_by"] == regular_user.id
+    assert response.data["created_by"] == expected_user_summary(regular_user)
 
 
 @pytest.mark.django_db
@@ -72,7 +73,7 @@ def test_create_start_node_stamps_acting_user_and_shows_author(auth_client, regu
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(StartNode, response.data["id"]) == regular_user.id
-    assert response.data["created_by"] == regular_user.id
+    assert response.data["created_by"] == expected_user_summary(regular_user)
 
 
 @pytest.mark.django_db
@@ -85,7 +86,7 @@ def test_create_schedule_trigger_node_stamps_acting_user(auth_client, regular_us
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(ScheduleTriggerNode, response.data["id"]) == regular_user.id
-    assert response.data["created_by"] == regular_user.id
+    assert response.data["created_by"] == expected_user_summary(regular_user)
 
 
 @pytest.mark.django_db
@@ -112,7 +113,7 @@ def test_create_telegram_trigger_node_stamps_acting_user(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(TelegramTriggerNode, response.data["id"]) == regular_user.id
-    assert response.data["created_by"] == regular_user.id
+    assert response.data["created_by"] == expected_user_summary(regular_user)
 
 
 @pytest.mark.django_db
@@ -139,19 +140,32 @@ def test_create_classification_decision_table_node_stamps_acting_user(
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(ClassificationDecisionTableNode, response.data["id"]) == regular_user.id
-    assert response.data["created_by"] == regular_user.id
+    assert response.data["created_by"] == expected_user_summary(regular_user)
+
+
+def _spoofed_author(user, shape: str):
+    if shape == "id":
+        return user.id
+    return {"id": user.id, "display_name": "Spoofed", "avatar_url": None}
 
 
 @pytest.mark.django_db
-def test_created_by_in_create_body_is_ignored(auth_client, regular_user, editor, graph):
+@pytest.mark.parametrize("shape", ["id", "summary"])
+def test_created_by_in_create_body_is_ignored(shape, auth_client, regular_user, editor, graph):
     response = auth_client.post(
         _list_url("graphnote"),
-        {"graph": graph.id, "content": "spoof", "metadata": {}, "created_by": editor.id},
+        {
+            "graph": graph.id,
+            "content": "spoof",
+            "metadata": {},
+            "created_by": _spoofed_author(editor, shape),
+        },
         format="json",
     )
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(GraphNote, response.data["id"]) == regular_user.id
+    assert response.data["created_by"] == expected_user_summary(regular_user)
 
 
 # ---- REST update ----
@@ -245,17 +259,19 @@ def test_update_of_authored_node_keeps_author(
 
 
 @pytest.mark.django_db
-def test_created_by_in_update_body_is_ignored(editor_client, editor, regular_user, graph):
+@pytest.mark.parametrize("shape", ["id", "summary"])
+def test_created_by_in_update_body_is_ignored(shape, editor_client, editor, regular_user, graph):
     note = GraphNote.objects.create(graph=graph, content="note")
 
     response = editor_client.patch(
         _detail_url("graphnote", note.pk),
-        {"content": "edited", "created_by": regular_user.id},
+        {"content": "edited", "created_by": _spoofed_author(regular_user, shape)},
         format="json",
     )
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(GraphNote, note.pk) == editor.id
+    assert response.data["created_by"] == expected_user_summary(editor)
 
 
 @pytest.mark.django_db

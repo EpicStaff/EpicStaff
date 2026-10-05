@@ -474,8 +474,20 @@ class TestSearch:
     def test_search_returns_paged_results(self, auth_client, mock_manager):
         mock_manager.search.return_value = (
             [
-                {"id": 1, "path": "reports/q1_report.pdf", "name": "q1_report.pdf"},
-                {"id": 2, "path": "archive/old_report.txt", "name": "old_report.txt"},
+                {
+                    "id": 1,
+                    "path": "reports/q1_report.pdf",
+                    "name": "q1_report.pdf",
+                    "last_edited_by": None,
+                    "last_edited_at": None,
+                },
+                {
+                    "id": 2,
+                    "path": "archive/old_report.txt",
+                    "name": "old_report.txt",
+                    "last_edited_by": None,
+                    "last_edited_at": None,
+                },
             ],
             137,
         )

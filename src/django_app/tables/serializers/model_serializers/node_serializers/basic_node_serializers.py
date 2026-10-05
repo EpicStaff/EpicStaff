@@ -674,5 +674,5 @@ class SubGraphNodeSerializer(
         )
 
         data = super().to_representation(instance)
-        data["subgraph_detail"] = GraphLightSerializer(instance.subgraph).data
+        data["subgraph_detail"] = GraphLightSerializer(instance.subgraph, context=self.context).data
         return data

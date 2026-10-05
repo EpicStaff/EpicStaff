@@ -1,4 +1,4 @@
-import { CustomPythonCode, GetLlmConfigRequest, NodeType, WebhookTriggerWrite } from '@shared/models';
+import { CustomPythonCode, GetLlmConfigRequest, NodeType } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
@@ -99,7 +99,8 @@ export interface AudioToTextNodeModel extends BaseNodeModel {
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
-        webhook_trigger: WebhookTriggerWrite | null;
+        /** Id of an existing webhook trigger (the panel's trigger select only ever yields an id). */
+        webhook_trigger: number | null;
         python_code: CustomPythonCode;
     };
 }
@@ -108,7 +109,8 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
         telegram_bot_api_key_secret_id: number | null;
-        webhook_trigger: WebhookTriggerWrite | null;
+        /** Id of an existing webhook trigger (the panel's trigger select only ever yields an id). */
+        webhook_trigger: number | null;
         fields: TelegramTriggerNodeField[];
     };
 }

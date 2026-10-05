@@ -5,6 +5,7 @@ from rest_framework import status
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 AGENT_DEFINITION = "agentdefinition"
 SURFACE = "surface"
@@ -58,13 +59,19 @@ def test_create_stamps_active_org_and_acting_user(
 @pytest.mark.django_db
 @pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
 def test_read_response_exposes_org_and_author(basename, acme_client, member_only, acme):
+    member_only.display_name = "Member Only"
+    member_only.save(update_fields=["display_name"])
     row = _create_row(basename, acme, f"read-{basename}", author=member_only)
 
     response = acme_client.get(_detail_url(basename, row.pk))
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["org"] == acme.id
-    assert response.data["created_by"] == member_only.id
+    assert response.data["created_by"] == {
+        "id": member_only.id,
+        "display_name": "Member Only",
+        "avatar_url": None,
+    }
     assert "organization" not in response.data
 
 
@@ -85,7 +92,7 @@ def test_update_of_unauthored_row_claims_it(basename, method, acme_client, admin
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(basename, row.pk) == admin_acme.id
-    assert response.data["created_by"] == admin_acme.id
+    assert response.data["created_by"] == expected_user_summary(admin_acme)
 
 
 @pytest.mark.django_db

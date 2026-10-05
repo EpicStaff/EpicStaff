@@ -4,6 +4,7 @@ from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import authorship_prefetches
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
@@ -29,7 +30,7 @@ class SurfaceViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "org",
         "owner_agent",
     ).prefetch_related(
-        "last_edits",
+        *authorship_prefetches(),
         "python_tools__python_tool",
         "mcp_tools__mcp_tool",
         "storage_items__storage_file",

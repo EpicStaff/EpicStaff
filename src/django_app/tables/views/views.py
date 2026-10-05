@@ -720,17 +720,28 @@ class InitRealtimeAPIView(APIView):
 
 class QuickstartView(APIView):
     """
-    API endpoint for managing quickstart configurations
+    API endpoint for managing quickstart configurations.
+
+    Reading the status requires LLM config read permission in the active organization
+    (it renders the last quickstart LLM and embedding configs); running a quickstart
+    requires LLM config create permission. Each handler asserts its own action: a plain
+    APIView has no DRF action for HasOrgPermission to map.
     """
 
     permission_classes = [IsAuthenticated]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_required_action = Permission.CREATE
     _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        # Outside the try below: its broad except would turn the 403 into a 500.
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=Permission.READ,
+        )
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
@@ -743,7 +754,8 @@ class QuickstartView(APIView):
                     "supported_providers": supported_providers,
                     "last_config": last_config,
                     "is_synced": is_synced,
-                }
+                },
+                context={"request": request},
             ).data
             return Response(data, status=status.HTTP_200_OK)
 
@@ -769,7 +781,7 @@ class QuickstartView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=self.rbac_resource_type,
-            action=self.rbac_required_action,
+            action=Permission.CREATE,
         )
 
         result = quickstart_service.quickstart(
@@ -792,7 +804,8 @@ class QuickstartView(APIView):
                 "config_name": config_name,
                 "llm_config": result["llm_config"],
                 "embedding_config": result["embedding_config"],
-            }
+            },
+            context={"request": request},
         ).data
         return Response(
             data={

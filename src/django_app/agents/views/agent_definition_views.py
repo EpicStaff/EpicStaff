@@ -2,6 +2,7 @@ from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import authorship_prefetches
 from rbac.models.enums import ResourceType
 from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
@@ -20,7 +21,7 @@ class AgentDefinitionViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     rbac_resource_type = ResourceType.AGENTS
     queryset = AgentDefinition.objects.select_related(
         "org", "llm_config", "fcm_llm_config", "realtime_agent"
-    ).prefetch_related("default_surfaces__surface", "owned_surfaces", "last_edits")
+    ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["llm_config", "fcm_llm_config"]
 

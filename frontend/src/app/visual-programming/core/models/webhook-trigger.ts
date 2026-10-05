@@ -1,4 +1,4 @@
-import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest, WebhookTriggerWrite } from '@shared/models';
+import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest } from '@shared/models';
 
 export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     id: number;
@@ -9,8 +9,8 @@ export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     output_variable_path: string | null;
     webhook_trigger_path: string;
     metadata: Record<string, unknown>;
-    /** Nested object from the live API; a bare id when built from a version snapshot. */
-    webhook_trigger: WebhookTriggerWrite | null;
+    /** Id of the referenced webhook trigger — the graph API and the version snapshot both send a bare id. */
+    webhook_trigger: number | null;
 }
 
 export interface CreateWebhookTriggerNodeRequest {
@@ -21,5 +21,6 @@ export interface CreateWebhookTriggerNodeRequest {
     output_variable_path: string | null;
     webhook_trigger_path: string;
     metadata?: Record<string, unknown>;
-    webhook_trigger: WebhookTriggerWrite | null;
+    /** Bulk save accepts only the id of an existing trigger; triggers are created through `/webhook-triggers/`. */
+    webhook_trigger: number | null;
 }

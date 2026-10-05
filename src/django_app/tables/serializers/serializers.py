@@ -98,13 +98,13 @@ class BaseToolSerializer(serializers.Serializer):
         repr = {}
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
-            repr["data"] = PythonCodeToolSerializer(instance).data
+            repr["data"] = PythonCodeToolSerializer(instance, context=self.context).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
-            repr["data"] = McpToolSerializer(instance).data
+            repr["data"] = McpToolSerializer(instance, context=self.context).data
         elif isinstance(instance, PythonCodeToolConfig):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
-            repr["data"] = PythonCodeToolConfigSerializer(instance).data
+            repr["data"] = PythonCodeToolConfigSerializer(instance, context=self.context).data
         else:
             raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 

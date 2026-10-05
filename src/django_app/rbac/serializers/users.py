@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from tables.models.user import User
 
+from rbac.profile.avatar import build_avatar_url
+
 
 class OrganizationNestedSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
@@ -47,17 +49,7 @@ class UserResponseSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_avatar_url(self, user):
-        if not user.avatar:
-            return None
-        request = self.context.get("request")
-        try:
-            return (
-                request.build_absolute_uri(user.avatar.url)
-                if request is not None
-                else user.avatar.url
-            )
-        except ValueError:
-            return None
+        return build_avatar_url(user, self.context.get("request"))
 
 
 # ---- request serializers (schema-only; real validation in

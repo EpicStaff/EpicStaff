@@ -1,4 +1,8 @@
-from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -20,7 +24,9 @@ from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class EmbeddingModelSerializer(
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+):
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
 

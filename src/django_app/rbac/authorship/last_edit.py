@@ -13,9 +13,11 @@ from rbac.authorship.policy import claim_authorship_in_bulk, resolve_author
 from rbac.models.last_edit import LastEditTrackedModel, ResourceLastEdit
 
 LAST_EDIT_TRACKER_CONTEXT_KEY = "last_edit_tracker"
-# Set in the context of the serializer that renders comparison state; output-only
-# fields such as the last edit itself are left out of that representation.
-LAST_EDIT_STATE_CONTEXT_KEY = "last_edit_state"
+# Set in a serializer context to render without authorship: `created_by` stays its
+# plain id and `last_edited_by`/`last_edited_at` are left out, so rendering reads no
+# user and no last edit. Propagates to nested serializers. Used for change-detection
+# state and for payloads no person reads (surface combining, internal service lookups).
+OMIT_AUTHORSHIP_CONTEXT_KEY = "omit_authorship"
 
 # Keys a write changes without the resource's own state changing: timestamps,
 # authorship, the optimistic-lock hash and the graph save counter.
@@ -245,7 +247,7 @@ def _state_serializer_for(serializer: serializers.BaseSerializer) -> serializers
     state_serializer_class = getattr(serializer, "last_edit_state_serializer_class", None) or type(
         serializer
     )
-    return state_serializer_class(context={**serializer.context, LAST_EDIT_STATE_CONTEXT_KEY: True})
+    return state_serializer_class(context={**serializer.context, OMIT_AUTHORSHIP_CONTEXT_KEY: True})
 
 
 def _comparable_state(state_serializer: serializers.BaseSerializer, instance: models.Model) -> dict:

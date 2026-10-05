@@ -2,7 +2,7 @@ import itertools
 
 from django.db.models import Count, F
 from loguru import logger
-from rbac.authorship import LastEditFieldsSerializerMixin
+from rbac.authorship import AuthorSummarySerializerMixin, LastEditFieldsSerializerMixin
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     BaseRagType,
@@ -364,7 +364,7 @@ class SourceCollectionDetailSerializer(LastEditFieldsSerializerMixin, serializer
             return []
 
 
-class SourceCollectionCreateSerializer(serializers.ModelSerializer):
+class SourceCollectionCreateSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     """
     Serializer for creating a new empty collection.
     """

@@ -588,7 +588,11 @@ class TestCollectionAuthorship:
         )
 
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.json()["created_by"] == regular_user.pk
+        assert response.json()["created_by"] == {
+            "id": regular_user.pk,
+            "display_name": None,
+            "avatar_url": None,
+        }
 
     def test_patch_claims_null_author(self, auth_client, source_collection, regular_user):
         assert source_collection.created_by is None

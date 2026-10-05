@@ -1,5 +1,11 @@
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from django.db.models import Prefetch
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    authorship_prefetches,
+)
+from rbac.authorship.policy import AUTHOR_FIELD
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -270,23 +276,31 @@ class GraphSerializer(
             self.fields["save_version"].required = False
 
     @classmethod
-    def last_edit_prefetch_lookups(cls) -> list[str]:
-        """Prefetch lookups that let this serializer render every last edit without a query per row.
+    def authorship_prefetch_lookups(cls) -> list[Prefetch]:
+        """Prefetches that let this serializer render every author and last edit without a query per row.
 
         Derived from the declared node-list fields, so a new node list is covered as soon
-        as its serializer carries LastEditFieldsSerializerMixin.
+        as its serializer carries LastEditFieldsSerializerMixin; its author is prefetched
+        only when that serializer exposes `created_by`.
         """
-        node_relations = [
-            field.source or field_name
+        node_serializers = {
+            field.source or field_name: field.child
             for field_name, field in cls._declared_fields.items()
             if isinstance(field, serializers.ListSerializer)
             and isinstance(field.child, LastEditFieldsSerializerMixin)
-        ]
+        }
         return [
-            "last_edits",
-            *(f"{relation}__last_edits" for relation in node_relations),
+            # The graph renders its own last edit but not its author.
+            *authorship_prefetches(author=False),
+            *(
+                prefetch
+                for relation, node_serializer in node_serializers.items()
+                for prefetch in authorship_prefetches(
+                    relation, author=AUTHOR_FIELD in node_serializer.fields
+                )
+            ),
             # SubGraphNodeSerializer renders the referenced flow with GraphLightSerializer.
-            "subgraph_node_list__subgraph__last_edits",
+            *authorship_prefetches("subgraph_node_list__subgraph", author=False),
         ]
 
     def create(self, validated_data):

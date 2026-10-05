@@ -1,6 +1,6 @@
 import os
 
-from rbac.authorship import LastEditFieldsSerializerMixin
+from rbac.authorship import LastEditFieldsSerializerMixin, UserSummarySerializer
 from rest_framework import serializers
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.validators.file_upload_validator import FileValidator
@@ -160,8 +160,8 @@ class StorageAddToGraphSerializer(serializers.Serializer):
 
 
 class LastEditResponseFieldsSerializer(serializers.Serializer):
-    last_edited_by = serializers.IntegerField(
-        allow_null=True, help_text="Id of the user who last edited the entry"
+    last_edited_by = UserSummarySerializer(
+        allow_null=True, help_text="The user who last edited the entry"
     )
     last_edited_at = serializers.DateTimeField(
         allow_null=True, help_text="When the entry was last edited"

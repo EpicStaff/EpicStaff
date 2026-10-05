@@ -1,5 +1,10 @@
 from agents.models.agent_models import AgentDefinition
-from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.authorship import (
+    OMIT_AUTHORSHIP_CONTEXT_KEY,
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.realtime_models import (
@@ -86,7 +91,7 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class RealtimeSessionItemSerializer(serializers.ModelSerializer):
+class RealtimeSessionItemSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = RealtimeSessionItem
         fields = "__all__"
@@ -98,7 +103,9 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class OpenAIRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class OpenAIRealtimeConfigSerializer(
+    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -131,7 +138,9 @@ class OpenAIRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.Mode
         read_only_fields = ["org", "created_by"]
 
 
-class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class ElevenLabsRealtimeConfigSerializer(
+    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -155,7 +164,9 @@ class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.
         read_only_fields = ["org", "created_by"]
 
 
-class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class GeminiRealtimeConfigSerializer(
+    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -321,10 +332,20 @@ class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):
 
     Nests `_TwilioChannelInternalSerializer` so the response includes `twilio.auth_token`.
     Only ever instantiated behind `IsSystemApiKeyAuthenticated` — see
-    `RealtimeChannelViewSet.lookup_by_token`.
+    `RealtimeChannelViewSet.lookup_by_token`. Rendered without authorship, nested rows
+    included: the realtime service never reads it, so no user ids, names or avatars are
+    sent there and rendering queries no user or last edit.
     """
 
     twilio = _TwilioChannelInternalSerializer(read_only=True)
+
+    class Meta(RealtimeChannelSerializer.Meta):
+        fields = None
+        exclude = ["created_by"]
+
+    def __init__(self, *args, **kwargs):
+        kwargs["context"] = {**kwargs.get("context", {}), OMIT_AUTHORSHIP_CONTEXT_KEY: True}
+        super().__init__(*args, **kwargs)
 
 
 class ConversationRecordingSerializer(serializers.ModelSerializer):

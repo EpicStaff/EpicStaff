@@ -1,8 +1,15 @@
+from collections.abc import Iterator
+
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
-from rbac.authorship import record_last_edit, resolve_author
+from rbac.authorship import (
+    authorship_prefetches,
+    record_last_edit,
+    resolve_author,
+    user_summaries_by_id,
+)
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
@@ -53,6 +60,25 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_SWAGGER,
 )
+
+
+def _replace_editor_ids_with_summaries(entries: list[dict], request) -> None:
+    """Swap, in place, the editor id in each entry's `last_edited_by` for its user summary.
+
+    The storage manager reports editors as ids; this renders them for the response.
+    Folder `children` are walked recursively and all editors load in one query. An
+    editor deleted since the edit renders as None.
+    """
+    all_entries = list(_with_descendants(entries))
+    summaries = user_summaries_by_id((entry["last_edited_by"] for entry in all_entries), request)
+    for entry in all_entries:
+        entry["last_edited_by"] = summaries.get(entry["last_edited_by"])
+
+
+def _with_descendants(entries: list[dict]) -> Iterator[dict]:
+    for entry in entries:
+        yield entry
+        yield from _with_descendants(entry.get("children") or [])
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
@@ -106,8 +132,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             except FileNotFoundError as e:
                 raise NotFound({"path": f"Path does not exist: {prefix}"}) from e
 
-        items = self.manager.list_(org_id, prefix)
-        return Response({"path": prefix, "items": [i.to_dict() for i in items]})
+        items = [item.to_dict() for item in self.manager.list_(org_id, prefix)]
+        _replace_editor_ids_with_summaries(items, request)
+        return Response({"path": prefix, "items": items})
 
     @extend_schema(**STORAGE_INFO_SWAGGER)
     @action(detail=False, methods=["get"], url_path="info")
@@ -123,6 +150,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         response = data.to_dict()
+        _replace_editor_ids_with_summaries([response], request)
 
         graph_path = path
         if isinstance(data, FolderInfo) and not graph_path.endswith("/"):
@@ -388,7 +416,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 raise ValidationError({"path": "tree requires a folder path"})
 
         root, truncated = self.manager.list_tree(org_id, prefix, max_depth=max_depth)
-        return Response({"path": prefix, "truncated": truncated, "tree": root.to_dict()})
+        tree = root.to_dict()
+        _replace_editor_ids_with_summaries([tree], request)
+        return Response({"path": prefix, "truncated": truncated, "tree": tree})
 
     @extend_schema(**STORAGE_GRAPH_FILES_SWAGGER)
     @action(detail=False, methods=["get"], url_path="graph-files")
@@ -417,8 +447,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         params.is_valid(raise_exception=True)
         qs = StorageFile.objects.filter(
             org_id=org_id, id__in=params.validated_data["ids"]
-        ).prefetch_related("last_edits")
-        return Response(StorageFileSerializer(qs, many=True).data)
+        ).prefetch_related(*authorship_prefetches(author=False))
+        return Response(StorageFileSerializer(qs, many=True, context={"request": request}).data)
 
     @extend_schema(**STORAGE_SEARCH_SWAGGER)
     @action(detail=False, methods=["get"], url_path="search")
@@ -433,6 +463,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             limit=params.validated_data["limit"],
             offset=params.validated_data["offset"],
         )
+        _replace_editor_ids_with_summaries(results, request)
         return Response(
             {
                 "total": total,

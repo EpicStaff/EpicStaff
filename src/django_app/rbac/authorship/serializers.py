@@ -1,15 +1,17 @@
 import datetime
 import functools
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from rbac.authorship.last_edit import (
-    LAST_EDIT_STATE_CONTEXT_KEY,
     LAST_EDIT_TRACKER_CONTEXT_KEY,
+    OMIT_AUTHORSHIP_CONTEXT_KEY,
     LastEditTracker,
     affects_last_edits,
 )
 from rbac.authorship.policy import AUTHOR_FIELD, has_author_field, resolve_author
+from rbac.authorship.user_summary import UserSummarySerializer, represent_user_summary
 from rbac.models.last_edit import ResourceLastEdit
 
 _STAMPING_MARKER = "_stamps_author"
@@ -88,17 +90,37 @@ class AuthorStampingSerializerMixin:
         return instance
 
 
-class LastEditFieldsSerializerMixin:
-    """Expose the resource's last edit as read-only `last_edited_by` and `last_edited_at`.
+class AuthorSummarySerializerMixin:
+    """Render an exposed `created_by` as the author's user summary instead of an id.
 
-    Both come from one read of `instance.last_edits.all()` per rendered instance, so a
-    queryset that prefetches `last_edits` adds no query per row. Comparison state for
-    change detection is rendered without them.
+    Never adds `created_by` to a serializer that does not expose it. A context with
+    `OMIT_AUTHORSHIP_CONTEXT_KEY` keeps the plain id field, which reads `created_by_id`
+    without a query. Must precede the DRF serializer base so it post-processes its fields.
     """
 
     def get_fields(self):
         fields = super().get_fields()
-        if not self.context.get(LAST_EDIT_STATE_CONTEXT_KEY):
+        if AUTHOR_FIELD in fields and not self.context.get(OMIT_AUTHORSHIP_CONTEXT_KEY):
+            fields[AUTHOR_FIELD] = UserSummarySerializer(read_only=True, allow_null=True)
+        return fields
+
+
+class LastEditFieldsSerializerMixin(AuthorSummarySerializerMixin):
+    """Expose the resource's last edit as read-only `last_edited_by` and `last_edited_at`.
+
+    Also renders an exposed `created_by` as the author's user summary (inherited from
+    `AuthorSummarySerializerMixin`), so a queryset rendered through it should prefetch the
+    author too unless the serializer does not expose `created_by`.
+
+    Both last-edit fields come from one read of `instance.last_edits.all()` per rendered
+    instance, so a queryset that prefetches `last_edits` with its editor (see
+    `authorship_prefetches`) adds no query per row. A context with
+    `OMIT_AUTHORSHIP_CONTEXT_KEY` renders without them.
+    """
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if not self.context.get(OMIT_AUTHORSHIP_CONTEXT_KEY):
             fields["last_edited_by"] = serializers.SerializerMethodField()
             fields["last_edited_at"] = serializers.SerializerMethodField()
         return fields
@@ -107,9 +129,13 @@ class LastEditFieldsSerializerMixin:
         self._rendered_last_edit = None
         return super().to_representation(instance)
 
-    def get_last_edited_by(self, instance) -> int | None:
+    @extend_schema_field(UserSummarySerializer(allow_null=True))
+    def get_last_edited_by(self, instance) -> dict | None:
         last_edit = self._last_edit_being_rendered(instance)
-        return last_edit.edited_by_id if last_edit is not None else None
+        if last_edit is None:
+            return None
+        # A NULL `edited_by_id` resolves to None without a query.
+        return represent_user_summary(last_edit.edited_by, self.context.get("request"))
 
     def get_last_edited_at(self, instance) -> str | None:
         last_edit = self._last_edit_being_rendered(instance)

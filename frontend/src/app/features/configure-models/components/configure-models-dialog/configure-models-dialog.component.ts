@@ -42,7 +42,7 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.QUICKSTART,
             label: 'Quickstart',
             iconClass: 'ti ti-bolt',
-            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create),
+            isPermitted: () => this.canUseQuickstart(),
         },
         {
             id: ConfigureModelsTabId.DEFAULT_LLMS,
@@ -80,7 +80,7 @@ export class ConfigureModelsDialogComponent implements OnInit {
     public readonly activeTabId = signal<ConfigureModelsTabId>(ConfigureModelsTabId.DEFAULT_LLMS);
 
     ngOnInit() {
-        if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create)) {
+        if (this.canUseQuickstart()) {
             this.activeTabId.set(ConfigureModelsTabId.QUICKSTART);
         } else if (this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
             this.activeTabId.set(ConfigureModelsTabId.DEFAULT_LLMS);
@@ -96,5 +96,13 @@ export class ConfigureModelsDialogComponent implements OnInit {
 
     public close(): void {
         this.dialogRef.close();
+    }
+
+    // Quickstart reads the last applied configs (GET needs read) and creates new ones (POST needs create).
+    private canUseQuickstart(): boolean {
+        return (
+            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create) &&
+            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read)
+        );
     }
 }

@@ -22,6 +22,7 @@ from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.reconciler import StorageReconciler
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.user_summary_helpers import expected_user_summary
 
 pytestmark = pytest.mark.django_db
 
@@ -427,7 +428,7 @@ def _assert_last_edit_fields(entry: dict, editor) -> None:
         assert entry["last_edited_by"] is None
         assert entry["last_edited_at"] is None
     else:
-        assert entry["last_edited_by"] == editor.id
+        assert entry["last_edited_by"] == expected_user_summary(editor)
         assert entry["last_edited_at"] == EXPECTED_EDITED_AT
 
 
@@ -482,6 +483,25 @@ class TestListingOutput:
         _assert_last_edit_fields(results["a.txt"], member_only)
         _assert_last_edit_fields(results["b.txt"], None)
 
+    def test_files_by_ids_returns_editor_with_absolute_avatar(
+        self, client_in_org, edited_tree, admin_acme, member_only, acme
+    ):
+        member_only.display_name = "Member Only"
+        member_only.avatar.name = f"avatars/{member_only.id}/face.png"
+        member_only.save(update_fields=["display_name", "avatar"])
+        file_row = _row(acme, "docs/a.txt")
+
+        response = client_in_org(admin_acme, acme).get(
+            "/api/storage/files/", {"ids": str(file_row.id)}
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.data
+        assert response.data[0]["last_edited_by"] == {
+            "id": member_only.id,
+            "display_name": "Member Only",
+            "avatar_url": f"http://testserver/media/avatars/{member_only.id}/face.png",
+        }
+
     def test_listing_never_shows_another_orgs_entries(
         self, client_in_org, manager, admin_acme, superadmin, acme, beta
     ):
@@ -520,6 +540,35 @@ def test_listing_query_count_does_not_grow_with_entries(
         manager.upload(acme.id, f"docs/more-{index}.txt", BytesIO(b"n"), user=admin_acme)
 
     assert _count_listing_queries(client, url, params) == few_entries
+
+
+def _count_user_queries(client, url: str, params: dict) -> int:
+    with CaptureQueriesContext(connection) as context:
+        response = client.get(url, params)
+    assert response.status_code == status.HTTP_200_OK, response.data
+    return sum('FROM "rbac_user"' in query["sql"] for query in context.captured_queries)
+
+
+@pytest.mark.parametrize(
+    ("url", "params"),
+    [
+        ("/api/storage/list/", {"path": "docs"}),
+        ("/api/storage/tree/", {"path": ""}),
+        ("/api/storage/search/", {"q": ".txt"}),
+    ],
+    ids=["list", "tree", "search"],
+)
+def test_listing_resolves_every_editor_in_one_user_query(
+    client_in_org, manager, admin_acme, member_only, acme, url, params
+):
+    client = client_in_org(admin_acme, acme)
+    manager.mkdir(acme.id, "docs", user=admin_acme)
+    manager.mkdir(acme.id, "docs/nested", user=member_only)
+    manager.upload(acme.id, "docs/first.txt", BytesIO(b"1"), user=admin_acme)
+    manager.upload(acme.id, "docs/second.txt", BytesIO(b"2"), user=member_only)
+    manager.upload(acme.id, "docs/nested/third.txt", BytesIO(b"3"), user=member_only)
+
+    assert _count_user_queries(client, url, params) == 1
 
 
 def test_listing_ignores_last_edit_of_another_model_with_the_same_id(

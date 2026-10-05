@@ -12,8 +12,6 @@ storage_items were never read at all. These tests pin down:
 from __future__ import annotations
 
 import pytest
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 
 from agents.models import AgentDefinition, Surface
 from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
@@ -199,21 +197,3 @@ class TestResolveEndToEnd:
         # org_id is unconditional (not gated on use_storage/grants) -- always
         # the agent-definition's own authoritative org.
         assert python_code.org_id == agent_definition.org_id
-
-
-@pytest.mark.django_db
-def test_last_edits_of_every_surface_are_read_in_one_query(
-    resolver, org, agent_definition, surface
-):
-    _attach_default_surface(agent_definition, surface)
-    _attach_default_surface(
-        agent_definition, Surface.objects.create(org=org, name="second-realtime-surface")
-    )
-
-    with CaptureQueriesContext(connection) as captured:
-        resolver._build_combined_surface(agent_definition)
-
-    last_edit_reads = sum(
-        'FROM "rbac_resourcelastedit"' in query["sql"] for query in captured.captured_queries
-    )
-    assert last_edit_reads == 1

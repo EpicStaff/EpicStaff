@@ -24,6 +24,7 @@ from tables.serializers.model_serializers.graph_serializers import (
 )
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 PREVIOUS_EDIT_AT = timezone.now() - timedelta(days=1)
 
@@ -56,7 +57,11 @@ class LabelWriteSerializer(AuthorStampingSerializerMixin, serializers.ModelSeria
         fields = ["id", "name", "org", "created_by"]
 
 
-LAYOUTS = [GraphNoteWriteSerializer, GraphNoteBodySuperSerializer, GraphNoteBodySuperChildSerializer]
+LAYOUTS = [
+    GraphNoteWriteSerializer,
+    GraphNoteBodySuperSerializer,
+    GraphNoteBodySuperChildSerializer,
+]
 LAYOUT_IDS = ["mixin-only", "body-super", "body-super-child"]
 
 
@@ -102,8 +107,7 @@ def _last_edit_of(instance) -> ResourceLastEdit | None:
 
 def _last_edit_upserts(captured) -> int:
     return sum(
-        'INSERT INTO "rbac_resourcelastedit"' in query["sql"]
-        for query in captured.captured_queries
+        'INSERT INTO "rbac_resourcelastedit"' in query["sql"] for query in captured.captured_queries
     )
 
 
@@ -298,7 +302,7 @@ def test_unprefetched_render_reads_last_edit_once(note, previous_editor):
         data = GraphNoteSerializer(note).data
 
     assert _last_edit_reads(captured) == 1
-    assert data["last_edited_by"] == previous_editor.id
+    assert data["last_edited_by"] == expected_user_summary(previous_editor)
     assert data["last_edited_at"] is not None
 
 
@@ -311,7 +315,10 @@ def test_list_render_never_mixes_rows(acme_graph, editor, previous_editor):
 
     data = GraphNoteSerializer([first, second], many=True).data
 
-    assert [row["last_edited_by"] for row in data] == [editor.id, previous_editor.id]
+    assert [row["last_edited_by"] for row in data] == [
+        expected_user_summary(editor),
+        expected_user_summary(previous_editor),
+    ]
 
 
 @pytest.mark.django_db
@@ -334,11 +341,79 @@ def test_graph_prefetch_lookups_cover_every_tracked_graph_relation():
     tracked_node_relations = {
         relation.get_accessor_name()
         for relation in Graph._meta.related_objects
-        if relation.field.name == "graph" and issubclass(relation.related_model, LastEditTrackedModel)
+        if relation.field.name == "graph"
+        and issubclass(relation.related_model, LastEditTrackedModel)
     }
 
-    lookups = set(GraphSerializer.last_edit_prefetch_lookups())
+    lookups = {
+        prefetch.prefetch_through for prefetch in GraphSerializer.authorship_prefetch_lookups()
+    }
 
     assert len(tracked_node_relations) == 16
     assert {f"{relation}__last_edits" for relation in tracked_node_relations} <= lookups
+    assert {f"{relation}__created_by" for relation in tracked_node_relations} <= lookups
     assert "last_edits" in lookups
+    assert "created_by" not in lookups
+
+
+@pytest.mark.django_db
+def test_graph_prefetch_lookups_render_node_authorship_without_queries(
+    acme_graph, editor, previous_editor
+):
+    authored = GraphNote.objects.create(graph=acme_graph, content="note", created_by=editor)
+    record_last_edit(authored, previous_editor)
+    graph = Graph.objects.prefetch_related(*GraphSerializer.authorship_prefetch_lookups()).get(
+        pk=acme_graph.pk
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        rendered_note = GraphNoteSerializer(graph.graph_note_list.all()[0]).data
+
+    assert captured.captured_queries == []
+    assert rendered_note["created_by"] == expected_user_summary(editor)
+    assert rendered_note["last_edited_by"] == expected_user_summary(previous_editor)
+
+
+# ---- change detection keeps reading ids, never users ----
+
+
+def _user_reads(captured) -> int:
+    return sum('FROM "rbac_user"' in query["sql"] for query in captured.captured_queries)
+
+
+@pytest.mark.django_db
+def test_no_op_update_of_authored_resource_records_nothing(acme_graph, editor, previous_editor):
+    authored = GraphNote.objects.create(
+        graph=acme_graph, content="note", created_by=previous_editor
+    )
+    record_last_edit(authored, previous_editor, edited_at=PREVIOUS_EDIT_AT)
+    authored = GraphNote.objects.get(pk=authored.pk)
+    serializer = GraphNoteSerializer(
+        authored, data={"content": "note"}, partial=True, context=_context_for(editor)
+    )
+    serializer.is_valid(raise_exception=True)
+
+    with CaptureQueriesContext(connection) as captured:
+        serializer.save()
+
+    assert _last_edit_upserts(captured) == 0
+    assert _user_reads(captured) == 0
+    assert _last_edit_of(authored).edited_by_id == previous_editor.id
+
+
+@pytest.mark.django_db
+def test_tracker_compares_authored_state_without_reading_users(acme_graph, editor, previous_editor):
+    authored = GraphNote.objects.create(
+        graph=acme_graph, content="note", created_by=previous_editor
+    )
+    authored = GraphNote.objects.get(pk=authored.pk)
+    tracker = LastEditTracker(editor)
+    tracker.watch_update(GraphNoteSerializer(context=_context_for(editor)), authored)
+    GraphNote.objects.filter(pk=authored.pk).update(content="edited elsewhere")
+
+    with CaptureQueriesContext(connection) as captured:
+        tracker.finish()
+
+    assert _user_reads(captured) == 0
+    assert _last_edit_upserts(captured) == 1
+    assert _last_edit_of(authored).edited_by_id == editor.id

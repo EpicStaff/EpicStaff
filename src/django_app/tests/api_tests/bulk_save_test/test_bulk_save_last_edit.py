@@ -16,6 +16,7 @@ from rbac.models import ResourceLastEdit
 from tables.models import Graph
 from tables.models.graph_models import DecisionTableNode, Edge, GraphNote, PythonNode
 from tests.fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 PREVIOUS_EDIT_AT = timezone.now() - timedelta(days=2)
 
@@ -385,10 +386,36 @@ def test_save_response_carries_last_edit_fields(
 
     note = response.data["graph_note_list"][0]
     python_node = response.data["python_node_list"][0]
-    assert response.data["last_edited_by"] == regular_user.id
-    assert note["last_edited_by"] == regular_user.id
+    assert response.data["last_edited_by"] == expected_user_summary(regular_user)
+    assert note["last_edited_by"] == expected_user_summary(regular_user)
     assert note["last_edited_at"] is not None
-    assert python_node["last_edited_by"] == previous_editor.id
+    assert python_node["last_edited_by"] == expected_user_summary(previous_editor)
+
+
+@pytest.mark.django_db
+def test_save_response_renders_authorship_like_graph_detail(
+    auth_client, saved_flow, previous_editor, regular_user
+):
+    regular_user.display_name = "Flow Author"
+    regular_user.avatar.name = f"avatars/{regular_user.id}/author.png"
+    regular_user.save(update_fields=["display_name", "avatar"])
+    payload = saved_flow.unchanged_payload()
+    payload["graph_note_list"] = [_note_item(saved_flow.graph, id=saved_flow.note.id, content="new")]
+
+    saved = _post_save(auth_client, saved_flow.graph, **payload)
+    detail = auth_client.get(reverse("graphs-detail", args=[saved_flow.graph.id]))
+
+    expected_author = {
+        "id": regular_user.id,
+        "display_name": "Flow Author",
+        "avatar_url": f"http://testserver/media/avatars/{regular_user.id}/author.png",
+    }
+    saved_note = saved.data["graph_note_list"][0]
+    assert saved_note["created_by"] == expected_author
+    assert saved_note["last_edited_by"] == expected_author
+    assert saved_note["created_by"] == detail.data["graph_note_list"][0]["created_by"]
+    assert saved.data["python_node_list"][0]["created_by"] == expected_author
+    assert saved.data["last_edited_by"] == detail.data["last_edited_by"] == expected_author
 
 
 @pytest.mark.django_db

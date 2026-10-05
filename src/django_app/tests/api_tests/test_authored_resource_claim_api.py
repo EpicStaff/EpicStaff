@@ -14,6 +14,7 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.webhook_models import RealtimeChannel, WebhookTrigger
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.user_summary_helpers import expected_user_summary
 
 _PYTHON_CODE_DATA = {"code": "def main(): return 1", "entrypoint": "main", "libraries": []}
 
@@ -27,6 +28,7 @@ class AuthoredResource:
     create_row: Callable[[Organization, str, object], object]
     create_body: Callable[[str], dict]
     patch_body: Callable[[object], dict]
+    exposes_author: bool = True
 
 
 def _create_python_code_tool(org, name, author):
@@ -45,6 +47,7 @@ RESOURCES = [
         ),
         create_body=lambda name: {"name": name},
         patch_body=lambda row: {"description": "edited", "save_version": row.save_version},
+        exposes_author=False,
     ),
     AuthoredResource(
         basename="pythoncodetool",
@@ -56,6 +59,7 @@ RESOURCES = [
             "python_code": _PYTHON_CODE_DATA,
         },
         patch_body=lambda row: {"description": "edited"},
+        exposes_author=False,
     ),
     AuthoredResource(
         basename="mcptool",
@@ -109,6 +113,7 @@ RESOURCES = [
         ),
         create_body=lambda name: {"path": name},
         patch_body=lambda row: {"path": f"{row.path}-edited"},
+        exposes_author=False,
     ),
 ]
 RESOURCE_IDS = [resource.basename for resource in RESOURCES]
@@ -141,20 +146,37 @@ def _author_id(model, pk: int) -> int | None:
     return model._base_manager.values_list("created_by_id", flat=True).get(pk=pk)
 
 
+def _spoofed_author(user, shape: str):
+    if shape == "id":
+        return user.id
+    return {"id": user.id, "display_name": "Spoofed", "avatar_url": None}
+
+
+def _assert_response_author(resource: AuthoredResource, data: dict, user) -> None:
+    assert ("created_by" in data) == resource.exposes_author
+    if resource.exposes_author:
+        assert data["created_by"] == expected_user_summary(user)
+
+
 # ---- create ----
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("shape", ["id", "summary"])
 @pytest.mark.parametrize("resource", RESOURCES, ids=RESOURCE_IDS)
 def test_create_stamps_acting_user_and_ignores_body_author(
-    resource, acme_client, admin_acme, member_only
+    resource, shape, acme_client, admin_acme, member_only
 ):
-    body = {**resource.create_body("created-row"), "created_by": member_only.id}
+    body = {
+        **resource.create_body("created-row"),
+        "created_by": _spoofed_author(member_only, shape),
+    }
 
     response = acme_client.post(_list_url(resource.basename), body, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert _author_id(resource.model, response.data["id"]) == admin_acme.id
+    _assert_response_author(resource, response.data, admin_acme)
 
 
 @pytest.mark.django_db
@@ -196,32 +218,39 @@ def test_patch_of_unauthored_row_claims_it_for_editor(resource, acme_client, adm
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(resource.model, row.pk) == admin_acme.id
+    _assert_response_author(resource, response.data, admin_acme)
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("shape", ["id", "summary"])
 @pytest.mark.parametrize("resource", RESOURCES, ids=RESOURCE_IDS)
 def test_patch_of_unauthored_row_ignores_body_author(
-    resource, acme_client, admin_acme, member_only, acme
+    resource, shape, acme_client, admin_acme, member_only, acme
 ):
     row = resource.create_row(acme, "ownerless-row", None)
-    body = {**resource.patch_body(row), "created_by": member_only.id}
+    body = {**resource.patch_body(row), "created_by": _spoofed_author(member_only, shape)}
 
     response = acme_client.patch(_detail_url(resource.basename, row.pk), body, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(resource.model, row.pk) == admin_acme.id
+    _assert_response_author(resource, response.data, admin_acme)
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("shape", ["id", "summary"])
 @pytest.mark.parametrize("resource", RESOURCES, ids=RESOURCE_IDS)
-def test_patch_of_authored_row_keeps_author(resource, acme_client, admin_acme, member_only, acme):
+def test_patch_of_authored_row_keeps_author(
+    resource, shape, acme_client, admin_acme, member_only, acme
+):
     row = resource.create_row(acme, "authored-row", member_only)
-    body = {**resource.patch_body(row), "created_by": admin_acme.id}
+    body = {**resource.patch_body(row), "created_by": _spoofed_author(admin_acme, shape)}
 
     response = acme_client.patch(_detail_url(resource.basename, row.pk), body, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert _author_id(resource.model, row.pk) == member_only.id
+    _assert_response_author(resource, response.data, member_only)
 
 
 @pytest.mark.django_db

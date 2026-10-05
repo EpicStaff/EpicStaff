@@ -1,5 +1,9 @@
 from django.db import transaction
-from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -261,7 +265,7 @@ class PythonCodeToolSerializer(
         return instance
 
 
-class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
+class PythonCodeToolConfigSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
     tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
 

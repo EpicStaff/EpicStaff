@@ -1,4 +1,8 @@
-from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -25,7 +29,7 @@ from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class RealtimeModelSerializer(serializers.ModelSerializer):
+class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = RealtimeModel
         fields = ["id", "name", "provider", "is_custom", "org", "created_by"]
@@ -39,7 +43,9 @@ class RealtimeModelSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class RealtimeConfigSerializer(
+    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -58,7 +64,9 @@ class RealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSeria
         read_only_fields = ["org", "created_by"]
 
 
-class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
+class RealtimeTranscriptionModelSerializer(
+    AuthorSummarySerializerMixin, serializers.ModelSerializer
+):
     class Meta:
         model = RealtimeTranscriptionModel
         fields = ["id", "name", "provider", "is_custom", "org", "created_by"]
@@ -72,7 +80,9 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeTranscriptionConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class RealtimeTranscriptionConfigSerializer(
+    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -128,7 +138,9 @@ class LLMConfigSerializer(
         read_only_fields = ["org", "created_by"]
 
 
-class LLMModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class LLMModelSerializer(
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+):
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
 
