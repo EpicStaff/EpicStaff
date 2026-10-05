@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onCopy()"
+    [appEnterSubmitDisabled]="!canSubmit() || form.invalid"
+>
     <div class="header">
         <span class="title">Duplicate Role</span>
         <app-svg-icon

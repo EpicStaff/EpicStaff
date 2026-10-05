@@ -805,7 +805,7 @@ export class SurfaceCardComponent {
         if (sub === 'built') return; // Built-in tools can't be created from here.
         if (sub === 'custom') {
             this.dialog
-                .open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent)
+                .open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, { autoFocus: false })
                 .closed.pipe(take(1))
                 .subscribe((tool) => {
                     if (tool)
@@ -819,7 +819,7 @@ export class SurfaceCardComponent {
                 });
         } else {
             this.dialog
-                .open<GetMcpToolRequest>(McpToolDialogComponent, { data: {} })
+                .open<GetMcpToolRequest>(McpToolDialogComponent, { data: {}, autoFocus: false })
                 .closed.pipe(take(1))
                 .subscribe((tool) => {
                     if (tool) this.addCreatedTool({ id: tool.id, name: tool.name, description: '', kind: 'mcp' });

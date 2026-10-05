@@ -14,6 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { StorageItem } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
@@ -40,7 +41,7 @@ export interface FolderNode {
 
 @Component({
     selector: 'app-copy-to-dialog',
-    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule, EnterSubmitDirective],
     templateUrl: './copy-to-dialog.component.html',
     styleUrls: ['./copy-to-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

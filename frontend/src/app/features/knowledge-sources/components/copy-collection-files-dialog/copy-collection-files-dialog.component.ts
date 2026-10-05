@@ -8,6 +8,7 @@ import {
     MultiSelectTriggerDirective,
     SelectItem,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { GetCollectionRequest } from '../../models/collection.model';
 import { CollectionDocument } from '../../models/document.model';
@@ -23,7 +24,13 @@ export interface CopyCollectionFilesDialogData {
     selector: 'app-copy-collection-files-dialog',
     templateUrl: './copy-collection-files-dialog.component.html',
     styleUrls: ['./copy-collection-files-dialog.component.scss'],
-    imports: [AppSvgIconComponent, ButtonComponent, MultiSelectComponent, MultiSelectTriggerDirective],
+    imports: [
+        AppSvgIconComponent,
+        ButtonComponent,
+        MultiSelectComponent,
+        MultiSelectTriggerDirective,
+        EnterSubmitDirective,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CopyCollectionFilesDialogComponent {

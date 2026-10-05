@@ -1,4 +1,8 @@
-<div class="dialog-container">
+<div
+    class="dialog-container"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="!flowForm.valid || isSubmitting"
+>
     <div class="dialog-header">
         <h2 class="dialog-title">{{ dialogTitle }}</h2>
         <button

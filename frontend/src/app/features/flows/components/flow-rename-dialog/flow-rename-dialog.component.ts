@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonComponent, LabelDropdownComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -25,10 +26,14 @@ interface FlowRenameData {
 
 @Component({
     selector: 'app-flow-rename-dialog',
-    imports: [FormsModule, ButtonComponent, LabelDropdownComponent],
+    imports: [FormsModule, ButtonComponent, LabelDropdownComponent, EnterSubmitDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="dialog-container">
+        <div
+            class="dialog-container"
+            (appEnterSubmit)="save()"
+            [appEnterSubmitDisabled]="isSubmitting || !newName || !newName.trim().length"
+        >
             <h2 class="dialog-title">{{ data.title || 'Edit Flow' }}</h2>
             <div class="dialog-content">
                 <div class="form-group">

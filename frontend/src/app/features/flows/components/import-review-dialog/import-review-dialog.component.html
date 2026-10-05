@@ -1,4 +1,8 @@
-<div class="import-review-dialog">
+<div
+    class="import-review-dialog"
+    (appEnterSubmit)="onImport()"
+    [appEnterSubmitDisabled]="isImporting()"
+>
     <div class="dialog-header">
         <h2 class="dialog-title">Review Import</h2>
         <div class="dialog-header-actions">

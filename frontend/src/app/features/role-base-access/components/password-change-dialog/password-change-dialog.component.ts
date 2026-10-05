@@ -10,7 +10,7 @@ import {
     PasswordStrengthComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
+import { EnterSubmitDirective, ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { notNumericOnlyValidator } from '@shared/form-validators';
 import { finalize } from 'rxjs/operators';
 
@@ -29,9 +29,10 @@ type DialogStep = 'verify' | 'new-password';
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        EnterSubmitDirective,
         PasswordStrengthComponent,
-        ValidationErrorsComponent,
         ServerErrorsDirective,
+        ValidationErrorsComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, Inject, OnDestroy, OnInit } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { Subscription } from 'rxjs';
 
@@ -12,7 +13,7 @@ export interface SaveVersionDialogResult {
 
 @Component({
     selector: 'app-save-version-dialog',
-    imports: [ReactiveFormsModule, ButtonComponent, AppSvgIconComponent],
+    imports: [ReactiveFormsModule, ButtonComponent, AppSvgIconComponent, EnterSubmitDirective],
     templateUrl: './save-version-dialog.component.html',
     styleUrls: ['./save-version-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

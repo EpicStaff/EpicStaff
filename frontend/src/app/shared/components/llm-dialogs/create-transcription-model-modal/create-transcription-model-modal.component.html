@@ -1,4 +1,8 @@
-<div class="create-model">
+<div
+    class="create-model"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="form.invalid || isSubmitting()"
+>
     <div class="create-model__header">
         <h3 class="create-model__title">{{ isEditMode ? 'Edit Transcription Model' : 'Add Transcription Model' }}</h3>
         <button

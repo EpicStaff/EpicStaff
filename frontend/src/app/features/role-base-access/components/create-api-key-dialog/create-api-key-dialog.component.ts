@@ -13,6 +13,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { finalize } from 'rxjs/operators';
 
@@ -27,12 +28,13 @@ import { ToastService } from '../../../../services/notifications';
     imports: [
         AppSvgIconComponent,
         ButtonComponent,
-        ValidationErrorsComponent,
-        CustomInputComponent,
-        ReactiveFormsModule,
-        InputNumberComponent,
-        SelectComponent,
         CopyFieldComponent,
+        CustomInputComponent,
+        EnterSubmitDirective,
+        InputNumberComponent,
+        ReactiveFormsModule,
+        SelectComponent,
+        ValidationErrorsComponent,
     ],
 })
 export class CreateApiKeyDialogComponent {

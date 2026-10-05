@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { CdtExportData } from '../cdt-export-import.service';
 
@@ -7,7 +8,7 @@ export type CdtImportPreviewResult = 'confirm' | 'cancel';
 
 @Component({
     selector: 'app-cdt-import-preview-dialog',
-    imports: [DialogModule],
+    imports: [DialogModule, EnterSubmitDirective],
     templateUrl: './cdt-import-preview-dialog.component.html',
     styleUrls: ['./cdt-import-preview-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

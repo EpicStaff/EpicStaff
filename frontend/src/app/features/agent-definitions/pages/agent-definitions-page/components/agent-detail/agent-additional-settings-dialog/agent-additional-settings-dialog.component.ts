@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonComponent, IconButtonComponent, SelectItem, TabButtonComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { FullLLMConfigService, RealtimeVoice, RealtimeVoicesService } from '@shared/services';
 
 import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/elevenlabs-realtime-config-storage.service';
@@ -64,6 +65,7 @@ export interface AgentAdditionalSettingsResult {
         ExecutionTabComponent,
         AdvancedTabComponent,
         VoiceTabComponent,
+        EnterSubmitDirective,
     ],
     templateUrl: './agent-additional-settings-dialog.component.html',
     styleUrls: ['./agent-additional-settings-dialog.component.scss'],

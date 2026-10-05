@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, viewChild } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { Surface } from '../../../../../features/agent-definitions/models/surface.model';
 import { SurfaceCardComponent } from '../../../../../features/agent-definitions/pages/agent-definitions-page/components/agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
@@ -24,7 +25,7 @@ const EMPTY_INLINE_SURFACE: InlineSurface = {
 
 @Component({
     selector: 'app-local-surface-dialog',
-    imports: [AppSvgIconComponent, SurfaceCardComponent],
+    imports: [AppSvgIconComponent, EnterSubmitDirective, SurfaceCardComponent],
     templateUrl: './local-surface-dialog.component.html',
     styleUrls: ['./local-surface-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

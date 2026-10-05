@@ -12,6 +12,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
 import { finalize, switchMap } from 'rxjs';
 
@@ -33,6 +34,7 @@ export interface CopyRoleDialogData {
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        EnterSubmitDirective,
         HelpTooltipComponent,
         ReactiveFormsModule,
         SelectComponent,

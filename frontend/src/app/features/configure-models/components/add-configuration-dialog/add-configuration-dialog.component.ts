@@ -17,6 +17,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
@@ -48,6 +49,7 @@ export type ConfigTab = 'llm' | 'realtime';
         InputNumberComponent,
         JsonEditorFormFieldComponent,
         LlmModelSelectorComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
