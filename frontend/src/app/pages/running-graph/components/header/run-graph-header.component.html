@@ -82,6 +82,7 @@
         <div class="session-meta-row__right">
             @if (canStop) {
                 <app-stop-button
+                    variant="stop"
                     tooltip="Stop session"
                     (triggered)="stopSession.emit()"
                 />

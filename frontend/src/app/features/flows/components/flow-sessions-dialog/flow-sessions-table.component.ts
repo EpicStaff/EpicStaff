@@ -227,6 +227,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         </button>
                                         @if (canStop(session.status)) {
                                             <app-stop-button
+                                                variant="stop"
                                                 tooltip="Stop session"
                                                 (triggered)="stopSession.emit(session.id)"
                                             />

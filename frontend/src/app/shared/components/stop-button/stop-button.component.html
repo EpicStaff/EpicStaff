@@ -1,10 +1,15 @@
 <button
     type="button"
     class="stop-btn"
+    [class.stop-btn--stop]="variant() === 'stop'"
     [disabled]="disabled()"
     [matTooltip]="tooltip()"
     (click)="triggered.emit()"
 >
-    <span class="stop-bar"></span>
-    <span class="stop-bar"></span>
+    @if (variant() === 'stop') {
+        <span class="stop-square"></span>
+    } @else {
+        <span class="stop-bar"></span>
+        <span class="stop-bar"></span>
+    }
 </button>
