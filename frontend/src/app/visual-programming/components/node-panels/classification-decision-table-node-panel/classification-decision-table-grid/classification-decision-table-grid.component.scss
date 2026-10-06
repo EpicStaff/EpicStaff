@@ -488,7 +488,6 @@ $group-gutter-width: 28px;
 
 .hidden-col-badge {
     position: absolute;
-    width: 20px;
     height: 20px;
     border-radius: 5px;
     background: var(--graphite-800);
@@ -498,9 +497,10 @@ $group-gutter-width: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 2px;
     font-size: 0.7rem;
     z-index: 30;
-    padding: 0;
+    padding: 0 4px;
     box-sizing: border-box;
     transition:
         background 0.15s ease,
@@ -516,6 +516,11 @@ $group-gutter-width: 28px;
 
     i {
         font-size: 0.7rem;
+        line-height: 1;
+    }
+
+    .hidden-col-count {
+        font-size: 0.625rem;
         line-height: 1;
     }
 }

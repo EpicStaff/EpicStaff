@@ -119,12 +119,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
     protected readonly isSidebarCollapsed = signal<boolean>(false);
+    protected readonly promptsListWidth = createColumnWidthState('cdt-prompts-list', 420);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public sections = signal<CdtSection[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
     public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
+    public schemaEditorPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
@@ -183,6 +185,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public promptEntries = computed(() => {
         const p = this.prompts();
         return Object.entries(p).map(([id, config]) => ({ id, ...config }));
+    });
+
+    public schemaEditorPrompt = computed(() => {
+        const id = this.schemaEditorPromptId();
+        if (!id) return null;
+        const config = this.prompts()[id];
+        return config ? { id, ...config } : null;
     });
 
     private preInputMapVersion = signal(0);
@@ -532,6 +541,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
         this.editingPromptId.set(newId);
         this.pendingPromptName.set(newId);
+        if (this.schemaEditorPromptId() !== null) {
+            this.schemaEditorPromptId.set(newId);
+        }
         this.sidePanelService.triggerAutosave();
     }
 
@@ -549,6 +561,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.prompts.set(updated);
         this.rekeySchemaState(oldId, trimmed);
         this.editingPromptId.set(trimmed);
+        if (this.schemaEditorPromptId() === oldId) {
+            this.schemaEditorPromptId.set(trimmed);
+        }
         this.sidePanelService.triggerAutosave();
     }
 
@@ -613,6 +628,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         if (this.editingPromptId() === id) {
             this.editingPromptId.set(null);
         }
+        if (this.schemaEditorPromptId() === id) {
+            this.schemaEditorPromptId.set(null);
+        }
         this.flowService.updateNode(this.createUpdatedNode());
     }
 
@@ -621,7 +639,29 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.editingPromptId.set(newId);
         if (newId) {
             this.pendingPromptName.set(newId);
+            if (this.schemaEditorPromptId() !== null) {
+                this.schemaEditorPromptId.set(newId);
+            }
+        } else {
+            this.schemaEditorPromptId.set(null);
         }
+    }
+
+    public openSchemaEditor(promptId: string): void {
+        this.schemaEditorPromptId.set(promptId);
+    }
+
+    public closeSchemaEditor(): void {
+        this.schemaEditorPromptId.set(null);
+    }
+
+    public copySchemaJson(): void {
+        const prompt = this.schemaEditorPrompt();
+        if (!prompt) return;
+        const text = this.getPromptSchemaText(prompt.id, prompt.output_schema);
+        navigator.clipboard.writeText(text).then(() => {
+            this.toastService.success('Copied to clipboard!');
+        });
     }
 
     public commitPromptRename(oldId: string): void {

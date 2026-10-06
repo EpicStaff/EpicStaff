@@ -192,16 +192,17 @@
             ></div>
         }
 
-        <!-- Hidden-column restore badges -->
-        @for (badge of hiddenColumnBadges(); track badge.colId) {
+        <!-- Hidden-column restore badge -->
+        @if (sortedHiddenBadges().length > 0) {
             <button
                 class="hidden-col-badge"
-                [style.left.px]="badge.x"
-                [style.top.px]="badge.y"
-                [title]="'Restore: ' + badge.label"
-                (click)="onHiddenBadgeClick($event, badge.colId)"
+                [style.left.px]="sortedHiddenBadges()[0].x"
+                [style.top.px]="sortedHiddenBadges()[0].y"
+                [title]="totalHiddenEntries() + ' hidden columns'"
+                (click)="onHiddenBadgeClick($event)"
             >
                 <i class="ti ti-arrows-horizontal"></i>
+                <span class="hidden-col-count">{{ totalHiddenEntries() }}</span>
             </button>
         }
     </div>

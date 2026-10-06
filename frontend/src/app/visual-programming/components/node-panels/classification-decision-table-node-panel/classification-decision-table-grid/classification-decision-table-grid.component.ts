@@ -1071,12 +1071,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: ids.map((colId) => ({ colId, hide: false })),
         });
     }
-    public onHiddenBadgeClick(event: MouseEvent, colId: string): void {
+    public onHiddenBadgeClick(event: MouseEvent): void {
         event.stopPropagation();
-        if (this.totalHiddenEntries() <= 1) {
-            this.unhideColumn(colId);
-            return;
-        }
         this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate);
     }
 
