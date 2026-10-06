@@ -2,6 +2,7 @@ import asyncio
 import csv
 import json
 import os
+import textwrap
 from pathlib import Path
 
 from app.core import settings
@@ -38,10 +39,12 @@ class ExportWriteService:
 
     @classmethod
     def _write_json_page(cls, f, page: list[BaseAuditEvent], *, is_first_page: bool) -> bool:
+        """Pretty-prints each event (2-space indent, one level inside the
+        array) and keeps non-ASCII text readable instead of \\u-escaped."""
         for i, event in enumerate(page):
-            if not is_first_page or i > 0:
-                f.write(",")
-            f.write(json.dumps(event.model_dump(mode="json")))
+            f.write("\n" if is_first_page and i == 0 else ",\n")
+            event_json = json.dumps(event.model_dump(mode="json"), indent=2, ensure_ascii=False)
+            f.write(textwrap.indent(event_json, "  "))
         return bool(page)
 
     @staticmethod
@@ -67,7 +70,7 @@ class ExportWriteService:
             row_count = 0
             truncated = False
 
-            f = await asyncio.to_thread(open, file_path, "w", newline="")
+            f = await asyncio.to_thread(open, file_path, "w", newline="", encoding="utf-8")
             try:
                 csv_writer = None
                 wrote_any_json_row = False
@@ -113,7 +116,7 @@ class ExportWriteService:
                         break
 
                 if body.format == "json":
-                    await asyncio.to_thread(f.write, "]")
+                    await asyncio.to_thread(f.write, "\n]\n" if wrote_any_json_row else "]")
 
             finally:
                 await asyncio.to_thread(f.close)

@@ -124,6 +124,38 @@ async def test_export_empty_result_set_csv_has_header_only(empty_app_and_client)
 
 
 @pytest.mark.asyncio
+async def test_download_pending_job_returns_202(app_and_client):
+    app, client = app_and_client
+    await app.state.export_job_service.create_job(
+        domain="sessions",
+        job_id="job-pending",
+        org_id=7,
+        user_id=42,
+        ttl_seconds=3600,
+        format="json",
+    )
+
+    resp = await client.get("/api/audit/sessions/export/job-pending")
+    assert resp.status_code == 202
+    assert resp.json() == {"status": "pending"}
+
+
+@pytest.mark.asyncio
+async def test_json_export_is_pretty_printed_utf8(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "AUDITOR_EXPORT_DATA_DIR", str(tmp_path))
+    event = _make_event().model_copy(update={"flow_name": "Vendor — Звіт"})
+    transport = ASGITransport(app=_build_app(events=[event]))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/audit/sessions/export", json={"format": "json"})
+        resp = await client.get(f"/api/audit/sessions/export/{resp.json()['job_id']}")
+
+    text = resp.content.decode("utf-8")
+    assert text.startswith('[\n  {\n    "id": "evt-1",')
+    assert '"flow_name": "Vendor — Звіт"' in text
+    assert json.loads(text)[0]["flow_name"] == "Vendor — Звіт"
+
+
+@pytest.mark.asyncio
 async def test_start_export_then_download_completed_job(app_and_client):
     app, client = app_and_client
 

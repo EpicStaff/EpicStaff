@@ -8,7 +8,7 @@ from app.services.export_job_service import ExportJobService, JobStatus
 from app.services.export_write_service import ExportWriteService
 from app.services.search_pipeline import SearchPipeline
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 
@@ -110,7 +110,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         if job["status"] == JobStatus.FAILED.value:
             raise HTTPException(status_code=500, detail="Export job failed")
         if job["status"] != JobStatus.COMPLETED.value:
-            return {"status": job["status"]}
+            return JSONResponse({"status": job["status"]}, status_code=202)
 
         path = _resolve_export_file_path(job_id, job["format"])
         if not path.exists():
