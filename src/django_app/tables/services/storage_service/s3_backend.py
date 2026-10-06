@@ -337,13 +337,9 @@ class S3StorageBackend(AbstractStorageBackend):
         prefix = full_path if full_path.endswith("/") else full_path + "/"
         paginator = self.client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
-            objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
-            if objects:
-                self.client.delete_objects(
-                    Bucket=self.bucket_name,
-                    Delete={"Objects": objects},
-                )
-                logger.info("Deleted {} S3 objects under prefix {}", len(objects), prefix)
+            # delete_keys raises on per-key errors instead of dropping them.
+            if keys := [obj["Key"] for obj in page.get("Contents", [])]:
+                self.delete_keys(keys)
 
     @_outage_as_storage_unreachable()
     def delete_keys(self, keys: list[str]) -> None:
@@ -374,13 +370,9 @@ class S3StorageBackend(AbstractStorageBackend):
 
         paginator = self.client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
-            objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
-            if objects:
-                self.client.delete_objects(
-                    Bucket=self.bucket_name,
-                    Delete={"Objects": objects},
-                )
-                logger.info("Deleted {} S3 objects under prefix {}", len(objects), full_prefix)
+            # delete_keys raises on per-key errors instead of dropping them.
+            if keys := [obj["Key"] for obj in page.get("Contents", [])]:
+                self.delete_keys(keys)
 
     @_outage_as_storage_unreachable()
     def mkdir(self, path: str) -> None:

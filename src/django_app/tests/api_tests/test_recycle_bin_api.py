@@ -39,7 +39,7 @@ from tables.services.recycle_bin.flow_bin_service import FLOW_BIN_NODE_TYPES
 from tables.services.recycle_bin.registry import bin_resources
 from tables.views.knowledge_views.collection_management_views import SourceCollectionViewSet
 from tables.views.model_view_sets import GraphViewSet, McpToolViewSet, PythonCodeToolViewSet
-from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin, _actor
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin, request_actor
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from utils.logger import logger
 
@@ -235,17 +235,17 @@ class TestPurgeActor:
     def test_a_signed_in_user(self):
         request = SimpleNamespace(user=SimpleNamespace(pk=7), auth=None)
 
-        assert _actor(request) == "user 7"
+        assert request_actor(request) == "user 7"
 
     def test_a_user_api_key(self):
         request = SimpleNamespace(user=SimpleNamespace(pk=7), auth=ApiKey(pk=3))
 
-        assert _actor(request) == "user 7 via API key 3"
+        assert request_actor(request) == "user 7 via API key 3"
 
     def test_a_system_api_key_has_no_user_pk(self):
         request = SimpleNamespace(user=SystemServicePrincipal(), auth=ApiKey(pk=4))
 
-        assert _actor(request) == "system-service via API key 4"
+        assert request_actor(request) == "system-service via API key 4"
 
 
 @pytest.fixture

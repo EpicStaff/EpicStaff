@@ -130,6 +130,18 @@ class OwnerInRecycleBinError(CustomAPIExeption):
         super().__init__(detail=detail, code=code, status_code=409)
 
 
+class StorageRestoreConflictError(CustomAPIExeption):
+    """An object nobody indexed already sits where a restored storage item would go."""
+
+    def __init__(self, path: str):
+        super().__init__(
+            detail=f"Can't restore to '{path}': storage already holds a file there that isn't listed. "
+            "Ask an administrator to re-index storage, then try again.",
+            code="storage_restore_conflict",
+            status_code=409,
+        )
+
+
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"

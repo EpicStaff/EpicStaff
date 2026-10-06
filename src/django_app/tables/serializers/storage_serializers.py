@@ -1,6 +1,7 @@
 import os
 
 from rest_framework import serializers
+from tables.serializers.recycle_bin_serializers import RecycleBinEntrySerializer
 from tables.services.storage_service.path_utils import (
     TRASH_DIRECTORY,
     is_trash_path,
@@ -357,3 +358,26 @@ class StorageFileSerializer(serializers.Serializer):
     parent_path = serializers.CharField(read_only=True, help_text="Immediate parent directory path")
     created_at = serializers.DateTimeField(read_only=True, help_text="Row creation timestamp")
     updated_at = serializers.DateTimeField(read_only=True, help_text="Row last update timestamp")
+
+
+class StorageRecycleBinIdsSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        min_length=1,
+        max_length=100,
+        help_text="Recycle-bin entry ids (1 to 100)",
+    )
+
+
+class StorageRecycleBinEntrySerializer(RecycleBinEntrySerializer):
+    name = serializers.CharField(help_text="Full org-relative path; folders end in '/'")
+    item_type = serializers.ChoiceField(choices=["file", "folder"])
+
+
+class StorageRecycleBinPageSerializer(serializers.Serializer):
+    """Response of GET /api/storage/recycle-bin/ (limit/offset paging)."""
+
+    count = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = StorageRecycleBinEntrySerializer(many=True)

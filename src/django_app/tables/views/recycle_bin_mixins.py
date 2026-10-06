@@ -74,11 +74,11 @@ class RecycleBinActionsMixin:
     @extend_schema(request=None, responses={204: None})
     @action(detail=True, methods=["delete"], url_path="purge")
     def purge(self, request, pk=None):
-        PurgeService.purge(self._get_binned_or_404(pk), actor=_actor(request))
+        PurgeService.purge(self._get_binned_or_404(pk), actor=request_actor(request))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-def _actor(request) -> str:
+def request_actor(request) -> str:
     """Who made the request, for the purge log: the user, and the API key if one was used."""
     # A system API key acts as SystemServicePrincipal, which has no pk.
     user_pk = getattr(request.user, "pk", None)

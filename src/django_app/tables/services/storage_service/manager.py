@@ -196,6 +196,51 @@ class StorageManager:
                 first=source_keys[:5],
             )
 
+    def move_from_trash(
+        self, org_id: int, batch: uuid.UUID, trashed_path: str, destination_path: str
+    ) -> None:
+        """Move a binned file or folder's objects from its trash batch back to a live path.
+
+        A folder made only by an upload's ancestors has no objects; that's fine.
+        Known limitation: keys carry no trailing slash, so if one batch holds
+        both a file "a" and a folder "a/" (storage allows it), the folder's key
+        resolves to the file. Same for delete_trash_path.
+
+        Raises:
+            FileExistsError: an object already sits at the destination.
+        """
+        destination_key = self._build_storage_key(org_id, destination_path)
+        try:
+            self._backend.rename(trash_storage_key(org_id, batch, trashed_path), destination_key)
+        except FileExistsError:
+            raise  # checked before anything was copied: the destination isn't ours
+        except FileNotFoundError:
+            logger.warning("Trash path {} of batch {} has no objects", trashed_path, batch)
+        except SourceCleanupError as error:
+            # Every object reached the live path; the trash copies left are duplicates.
+            self._delete_leftover_sources(error.source_keys)
+        except Exception:
+            # The copy failed partway. rename checked the destination was free
+            # first, so whatever sits there now is a partial copy of ours: left
+            # behind it would block every retry and be indexed as live files.
+            self._discard_partial_copy(destination_key)
+            raise
+
+    def _discard_partial_copy(self, destination_key: str) -> None:
+        try:
+            self._backend.delete(destination_key)  # the file key, else everything under the folder
+        except Exception:
+            logger.exception("Could not remove the partial restore copy at {}", destination_key)
+
+    def delete_trash_path(self, org_id: int, batch: uuid.UUID, trashed_path: str) -> None:
+        """Delete a binned file's objects, or a binned folder's, from its trash batch."""
+        # backend.delete: the exact file key, else everything under the folder.
+        self._backend.delete(trash_storage_key(org_id, batch, trashed_path))
+
+    def delete_trash_batch(self, org_id: int, batch: uuid.UUID) -> None:
+        """Delete every object of a trash batch."""
+        self._backend.delete_prefix(trash_batch_prefix(org_id, batch))
+
     def _discard_trash_batch(self, org_id: int, batch: uuid.UUID) -> None:
         try:
             self._backend.delete_prefix(trash_batch_prefix(org_id, batch))
