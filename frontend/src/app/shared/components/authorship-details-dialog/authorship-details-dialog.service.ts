@@ -14,14 +14,27 @@ export class AuthorshipDetailsDialogService {
     private readonly dialog = inject(Dialog);
     private openedCount = 0;
 
-    /** Shows who created and who last edited `resource` under the given heading. */
-    open(title: string, resource: AuthorshipDetailsSource): DialogRef<void, AuthorshipDetailsDialogComponent> {
+    /**
+     * Shows who created and who last edited `resource` under the given heading.
+     *
+     * Pass `restoreFocusTo` when the dialog is opened from a menu: the dialog closes back to that
+     * element (typically the menu trigger) instead of to whatever was focused when it opened, which
+     * for a menu is an item destroyed with the menu. Focus moves there only on close, so a trigger
+     * that is disabled now but enabled by then still gets it; if it is still disabled, focus falls
+     * back to the document body. Omit it to keep the default (the element focused on open).
+     */
+    open(
+        title: string,
+        resource: AuthorshipDetailsSource,
+        restoreFocusTo?: HTMLElement
+    ): DialogRef<void, AuthorshipDetailsDialogComponent> {
         const titleId = `authorship-details-dialog-title-${++this.openedCount}`;
         // Only the authorship fields travel into the dialog, never the whole resource.
         return this.dialog.open<void, AuthorshipDetailsDialogData, AuthorshipDetailsDialogComponent>(
             AuthorshipDetailsDialogComponent,
             {
                 ariaLabelledBy: titleId,
+                restoreFocus: restoreFocusTo ?? true,
                 data: {
                     title,
                     titleId,

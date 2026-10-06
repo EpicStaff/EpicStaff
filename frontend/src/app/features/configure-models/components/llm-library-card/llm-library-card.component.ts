@@ -6,6 +6,12 @@ import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, ResourceCode } from '@shared/models';
 
+/** "View Details" was chosen on a card; `trigger` is the ⋮ button the details dialog should close back to. */
+export interface LlmLibraryCardViewDetailsEvent {
+    model: LlmLibraryModel;
+    trigger: HTMLElement;
+}
+
 @Component({
     selector: 'app-llm-library-card',
     imports: [MatTooltipModule, HasPermissionDirective, AppSvgIconComponent, CdkMenuTrigger, CdkMenu, CdkMenuItem],
@@ -18,7 +24,7 @@ export class LlmLibraryCardComponent {
 
     public readonly editClick = output<LlmLibraryModel>();
     public readonly deleteClick = output<LlmLibraryModel>();
-    public readonly viewDetailsClick = output<LlmLibraryModel>();
+    public readonly viewDetailsClick = output<LlmLibraryCardViewDetailsEvent>();
 
     private readonly menuTrigger = viewChild.required(CdkMenuTrigger);
     private readonly menuTriggerButton = viewChild.required<CdkMenuTrigger, ElementRef<HTMLButtonElement>>(
@@ -43,13 +49,13 @@ export class LlmLibraryCardComponent {
         this.deleteClick.emit(this.model());
     }
 
+    /**
+     * The menu item closes the menu itself once this returns, focusing the trigger — so focus stays on
+     * the card even when the host opens nothing. The host's details dialog, though, has already
+     * recorded the focused menu item by then, which is why the trigger travels with the event.
+     */
     protected onViewDetails(): void {
-        // Return focus to the trigger *before* the host opens the details dialog: a CDK dialog
-        // restores focus on close to whatever was focused when it opened, and the menu item is
-        // destroyed with the menu, so focus would otherwise fall to <body> — outside the
-        // Configure Models dialog.
-        this.closeMenuToTrigger();
-        this.viewDetailsClick.emit(this.model());
+        this.viewDetailsClick.emit({ model: this.model(), trigger: this.menuTriggerButton().nativeElement });
     }
 
     /**

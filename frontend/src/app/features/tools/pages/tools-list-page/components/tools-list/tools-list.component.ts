@@ -45,7 +45,7 @@ import {
 } from '../../../../utils/bulk-tool-op.util';
 import { compareTools, matchesToolFilter, toUsageVmFields } from '../../../../utils/tools-cards.util';
 import { ToolCardComponent } from '../tool-card/tool-card.component';
-import { ToolCardMenuAction, ToolCardVM } from '../tool-card/tool-card.model';
+import { ToolCardMenuActionEvent, ToolCardVM } from '../tool-card/tool-card.model';
 import { TOOLS_LIST_PORT, ToolsListPort } from './tools-list-port';
 
 /** Minimal shape shared by all tool DTOs the port supplies. */
@@ -226,7 +226,7 @@ export class ToolsListComponent implements OnInit {
             });
     }
 
-    public onCardMenuAction(payload: { tool: ToolCardVM; action: ToolCardMenuAction }): void {
+    public onCardMenuAction(payload: ToolCardMenuActionEvent): void {
         switch (payload.action) {
             case 'delete':
                 this.onCardDelete(payload.tool);
@@ -255,7 +255,7 @@ export class ToolsListComponent implements OnInit {
                 return;
             case 'view_details': {
                 const tool = this.findToolById(payload.tool.id);
-                if (tool) this.authorshipDetailsDialog.open('Tool Details', tool);
+                if (tool) this.authorshipDetailsDialog.open('Tool Details', tool, payload.trigger);
                 return;
             }
             case 'show_used_places':

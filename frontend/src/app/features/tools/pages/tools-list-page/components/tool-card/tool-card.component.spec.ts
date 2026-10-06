@@ -7,7 +7,7 @@ import { of } from 'rxjs';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolCardComponent } from './tool-card.component';
-import { ToolCardMenuAction, ToolCardVM } from './tool-card.model';
+import { ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
 
 const CUSTOM_TOOL: ToolCardVM = {
     id: 3,
@@ -24,7 +24,7 @@ const MCP_TOOL: ToolCardVM = { ...CUSTOM_TOOL, id: 9, kind: 'mcp', name: 'Weathe
 interface Rendered {
     fixture: ComponentFixture<ToolCardComponent>;
     overlay: HTMLElement;
-    emitted: { tool: ToolCardVM; action: ToolCardMenuAction }[];
+    emitted: ToolCardMenuActionEvent[];
 }
 
 function render(tool: ToolCardVM, canWrite = true): Rendered {
@@ -45,8 +45,12 @@ function render(tool: ToolCardVM, canWrite = true): Rendered {
     return { fixture, overlay, emitted };
 }
 
+function menuButton(fixture: ComponentFixture<ToolCardComponent>): HTMLButtonElement {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.menu-btn')!;
+}
+
 function openMenu(fixture: ComponentFixture<ToolCardComponent>): void {
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.menu-btn')!.click();
+    menuButton(fixture).click();
     fixture.detectChanges();
 }
 
@@ -63,14 +67,15 @@ function viewDetailsItem(overlay: HTMLElement): HTMLButtonElement | undefined {
 }
 
 describe('ToolCardComponent "View Details" menu item', () => {
-    it('emits view_details for a custom tool and closes the menu', () => {
+    it('emits view_details for a custom tool with the menu trigger, and closes the menu', () => {
         const { fixture, overlay, emitted } = render(CUSTOM_TOOL);
         openMenu(fixture);
 
         viewDetailsItem(overlay)!.click();
         fixture.detectChanges();
 
-        expect(emitted).toEqual([{ tool: CUSTOM_TOOL, action: 'view_details' }]);
+        // The details dialog closes back to the trigger: the focused menu item dies with the menu.
+        expect(emitted).toEqual([{ tool: CUSTOM_TOOL, action: 'view_details', trigger: menuButton(fixture) }]);
         expect(menuItems(overlay)).toHaveLength(0);
     });
 
@@ -80,7 +85,7 @@ describe('ToolCardComponent "View Details" menu item', () => {
 
         viewDetailsItem(overlay)!.click();
 
-        expect(emitted).toEqual([{ tool: MCP_TOOL, action: 'view_details' }]);
+        expect(emitted).toEqual([{ tool: MCP_TOOL, action: 'view_details', trigger: menuButton(fixture) }]);
     });
 
     it('sits right above Delete', () => {

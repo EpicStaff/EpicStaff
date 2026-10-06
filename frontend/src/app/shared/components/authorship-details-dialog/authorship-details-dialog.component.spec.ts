@@ -83,8 +83,21 @@ describe('AuthorshipDetailsDialogService', () => {
 
         expect(dialog.open).toHaveBeenCalledWith(AuthorshipDetailsDialogComponent, {
             ariaLabelledBy: expect.any(String),
+            restoreFocus: true,
             data: { ...SOURCE, title: 'Tool Details', titleId: expect.any(String) },
         });
+    });
+
+    it('restores focus on close to the given element instead of the one focused on open', () => {
+        const { dialog, service } = openDialog();
+        const trigger = document.createElement('button');
+
+        service.open('Tool Details', SOURCE, trigger);
+
+        expect(dialog.open).toHaveBeenCalledWith(
+            AuthorshipDetailsDialogComponent,
+            expect.objectContaining({ restoreFocus: trigger })
+        );
     });
 
     it('names the dialog by its heading, with a fresh heading id on every open', () => {

@@ -40,7 +40,10 @@ import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elev
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
+import {
+    LlmLibraryCardComponent,
+    LlmLibraryCardViewDetailsEvent,
+} from '../llm-library-card/llm-library-card.component';
 import {
     RealtimeConfigDialogComponent,
     RealtimeProvider,
@@ -294,7 +297,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         });
     }
 
-    public onViewDetails(model: LlmLibraryModel): void {
+    public onViewDetails({ model, trigger }: LlmLibraryCardViewDetailsEvent): void {
         const findDetails: Partial<Record<ModelTypes, () => AuthorshipDetailsSource | undefined>> = {
             [ModelTypes.LLM]: () => this.llmConfigStorageService.configs().find((config) => config.id === model.id),
             [ModelTypes.EMBEDDING]: () =>
@@ -302,7 +305,7 @@ export class LlmLibrarySectionComponent implements OnInit {
         };
         const details = findDetails[model.configType]?.();
         if (!details) return;
-        this.authorshipDetailsDialog.open('Configuration Details', details);
+        this.authorshipDetailsDialog.open('Configuration Details', details, trigger);
     }
 
     public onDelete(model: LlmLibraryModel): void {

@@ -125,13 +125,16 @@ function render(models: LlmLibraryModel[]): {
     return { fixture, open };
 }
 
-/** Fires the card's "View Details" output, as choosing the menu item does. */
-function viewDetailsOn(fixture: ComponentFixture<LlmLibrarySectionComponent>, model: LlmLibraryModel): void {
-    const card = fixture.debugElement
+/** Fires the card's "View Details" output, as choosing the menu item does; returns the card's ⋮ trigger. */
+function viewDetailsOn(fixture: ComponentFixture<LlmLibrarySectionComponent>, model: LlmLibraryModel): HTMLElement {
+    const cardElement = fixture.debugElement
         .queryAll(By.directive(LlmLibraryCardComponent))
-        .map((debugElement) => debugElement.componentInstance as LlmLibraryCardComponent)
-        .find((instance) => instance.model() === model);
-    card!.viewDetailsClick.emit(model);
+        .find((debugElement) => (debugElement.componentInstance as LlmLibraryCardComponent).model() === model)!;
+    const trigger = (cardElement.nativeElement as HTMLElement).querySelector<HTMLElement>(
+        '[aria-label="More actions"]'
+    )!;
+    (cardElement.componentInstance as LlmLibraryCardComponent).viewDetailsClick.emit({ model, trigger });
+    return trigger;
 }
 
 describe('LlmLibrarySectionComponent "View Details"', () => {
@@ -139,18 +142,18 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
         const llmModel = libraryModel(ModelTypes.LLM, SHARED_ID);
         const { fixture, open } = render([llmModel, libraryModel(ModelTypes.EMBEDDING, SHARED_ID)]);
 
-        viewDetailsOn(fixture, llmModel);
+        const trigger = viewDetailsOn(fixture, llmModel);
 
-        expect(open).toHaveBeenCalledExactlyOnceWith('Configuration Details', LLM_CONFIG);
+        expect(open).toHaveBeenCalledExactlyOnceWith('Configuration Details', LLM_CONFIG, trigger);
     });
 
     it('opens "Configuration Details" with the embedding config of an embedding card sharing the id', () => {
         const embeddingModel = libraryModel(ModelTypes.EMBEDDING, SHARED_ID);
         const { fixture, open } = render([libraryModel(ModelTypes.LLM, SHARED_ID), embeddingModel]);
 
-        viewDetailsOn(fixture, embeddingModel);
+        const trigger = viewDetailsOn(fixture, embeddingModel);
 
-        expect(open).toHaveBeenCalledExactlyOnceWith('Configuration Details', EMBEDDING_CONFIG);
+        expect(open).toHaveBeenCalledExactlyOnceWith('Configuration Details', EMBEDDING_CONFIG, trigger);
     });
 
     it('opens nothing when the config is no longer in storage', () => {

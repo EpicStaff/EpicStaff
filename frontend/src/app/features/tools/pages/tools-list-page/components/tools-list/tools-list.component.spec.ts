@@ -35,7 +35,7 @@ const MCP_CARD: ToolCardVM = {
 };
 
 describe('ToolsListComponent "view_details" action', () => {
-    it('opens "Tool Details" with the authorship of the chosen tool', () => {
+    it('opens "Tool Details" with the authorship of the chosen tool, closing back to the card menu trigger', () => {
         const authorshipDetailsDialog = { open: vi.fn() };
         const port = {
             kind: 'mcp',
@@ -66,8 +66,10 @@ describe('ToolsListComponent "view_details" action', () => {
         const fixture = TestBed.createComponent(ToolsListComponent);
         fixture.detectChanges();
 
-        fixture.componentInstance.onCardMenuAction({ tool: MCP_CARD, action: 'view_details' });
+        const trigger = document.createElement('button');
 
-        expect(authorshipDetailsDialog.open).toHaveBeenCalledWith('Tool Details', MCP_TOOL);
+        fixture.componentInstance.onCardMenuAction({ tool: MCP_CARD, action: 'view_details', trigger });
+
+        expect(authorshipDetailsDialog.open).toHaveBeenCalledWith('Tool Details', MCP_TOOL, trigger);
     });
 });

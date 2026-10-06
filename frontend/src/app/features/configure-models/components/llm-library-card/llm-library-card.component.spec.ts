@@ -3,10 +3,11 @@ import { DOWN_ARROW, ENTER, ESCAPE } from '@angular/cdk/keycodes';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApplicationRef, Component, inject } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
 import { LlmLibraryModel, ModelTypes } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { LlmLibraryCardComponent } from './llm-library-card.component';
+import { LlmLibraryCardComponent, LlmLibraryCardViewDetailsEvent } from './llm-library-card.component';
 
 const MODEL: LlmLibraryModel = {
     id: 7,
@@ -28,13 +29,13 @@ function configure(canWrite: boolean): void {
 function render(canWrite: boolean): {
     fixture: ComponentFixture<LlmLibraryCardComponent>;
     overlay: HTMLElement;
-    emitted: LlmLibraryModel[];
+    emitted: LlmLibraryCardViewDetailsEvent[];
 } {
     configure(canWrite);
     const fixture = TestBed.createComponent(LlmLibraryCardComponent);
     fixture.componentRef.setInput('model', MODEL);
-    const emitted: LlmLibraryModel[] = [];
-    fixture.componentInstance.viewDetailsClick.subscribe((model) => emitted.push(model));
+    const emitted: LlmLibraryCardViewDetailsEvent[] = [];
+    fixture.componentInstance.viewDetailsClick.subscribe((event) => emitted.push(event));
     fixture.detectChanges();
     const overlay = TestBed.inject(OverlayContainer).getContainerElement();
     return { fixture, overlay, emitted };
@@ -72,20 +73,17 @@ describe('LlmLibraryCardComponent more menu', () => {
         expect(document.activeElement).toBe(viewDetailsItem(overlay));
     });
 
-    it('emits viewDetailsClick, closes the menu and returns focus to the trigger when "View Details" is chosen', () => {
+    it('emits viewDetailsClick with the model and its trigger, and closes the menu, when "View Details" is chosen', () => {
         const { fixture, overlay, emitted } = render(true);
         const trigger = moreButton(fixture.nativeElement);
-        let focusedOnEmit: Element | null = null;
-        fixture.componentInstance.viewDetailsClick.subscribe(() => (focusedOnEmit = document.activeElement));
 
         trigger.click();
         fixture.detectChanges();
         viewDetailsItem(overlay)!.click();
         fixture.detectChanges();
 
-        expect(emitted).toEqual([MODEL]);
-        // The host opens a dialog on emit, which restores focus on close to whatever was focused now.
-        expect(focusedOnEmit).toBe(trigger);
+        // The host closes the details dialog back to `trigger`: the focused menu item dies with the menu.
+        expect(emitted).toEqual([{ model: MODEL, trigger }]);
         expect(viewDetailsItem(overlay)).toBeNull();
         expect(trigger.classList).not.toContain('llm-card__action--active');
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
@@ -140,7 +138,7 @@ describe('LlmLibraryCardComponent more menu', () => {
         pressKey(item, 'Enter', ENTER);
         fixture.detectChanges();
 
-        expect(emitted).toEqual([MODEL]);
+        expect(emitted).toEqual([{ model: MODEL, trigger }]);
         expect(viewDetailsItem(overlay)).toBeNull();
         expect(document.activeElement).toBe(trigger);
     });
@@ -161,25 +159,27 @@ describe('LlmLibraryCardComponent more menu', () => {
     });
 });
 
-@Component({
-    template: `<button type="button">Close</button>`,
-})
-class DetailsDialogStubComponent {}
+const AUTHORSHIP: AuthorshipDetailsSource = {
+    created_by: { id: 1, display_name: 'Ivan Bohun', avatar_url: null },
+    created_at: '2026-03-12T13:28:23Z',
+    last_edited_by: { id: 2, display_name: 'Olena Petrenko', avatar_url: null },
+    last_edited_at: '2026-03-13T09:00:00Z',
+};
 
-/** Stands in for the Configure Models dialog: hosts a card and opens a details dialog from it. */
+/** Stands in for the Configure Models dialog: hosts a card and opens its details the way the section does. */
 @Component({
     imports: [LlmLibraryCardComponent],
     template: `<app-llm-library-card
         [model]="model"
-        (viewDetailsClick)="openDetails()"
+        (viewDetailsClick)="openDetails($event)"
     />`,
 })
 class CardInDialogHostComponent {
     protected readonly model = MODEL;
-    private readonly dialog = inject(Dialog);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
 
-    protected openDetails(): void {
-        this.dialog.open(DetailsDialogStubComponent);
+    protected openDetails({ trigger }: LlmLibraryCardViewDetailsEvent): void {
+        this.authorshipDetailsDialog.open('Configuration Details', AUTHORSHIP, trigger);
     }
 }
 
