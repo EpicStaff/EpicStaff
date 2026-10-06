@@ -31,6 +31,7 @@ export function getNodeTitle(node: NodeModel): string {
         case NodeType.WEBHOOK_TRIGGER:
         case NodeType.TELEGRAM_TRIGGER:
         case NodeType.KNOWLEDGE_RETRIEVER:
+        case NodeType.KEY_VALUE:
         case NodeType.SCHEDULE_TRIGGER:
         case NodeType.TASK:
         case NodeType.AGENT:

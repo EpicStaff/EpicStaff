@@ -2,45 +2,37 @@
 
 ## Overview
 
-The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. It works with MinIO (self-hosted) or AWS S3 (managed) — the same backend code handles both, distinguished only by `STORAGE_ENDPOINT`.
+The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. The default server is [RustFS](https://github.com/rustfs/rustfs) (Apache-2.0), which replaced MinIO after MinIO stopped publishing images.
+
+The sandbox also uses the MinIO Admin API (which RustFS implements) to create short-lived, org-scoped credentials for each code execution. A plain S3 service without that API (for example AWS S3) can serve files, but sandbox storage access will not work.
 
 ---
 
 ## Quick Start
 
-### MinIO (default)
-
-MinIO starts automatically as a core service. No extra configuration needed.
+RustFS starts automatically as a core service (compose service name `storage`). No extra configuration is needed.
 
 ```bash
 docker compose up
 ```
 
-MinIO console is available at `http://localhost:9001` (default credentials: `minioadmin` / `minioadmin_secret`).
-The `minio-init` service auto-creates the bucket on first start.
-
-### AWS S3
-
-```bash
-# Set env vars in .env
-STORAGE_ENDPOINT=           # leave empty for AWS
-STORAGE_ACCESS_KEY=<your-aws-access-key>
-STORAGE_SECRET_KEY=<your-aws-secret-key>
-STORAGE_BUCKET_NAME=<your-bucket-name>
-```
+The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
 
 ---
 
 ## Environment Variables
 
+Set in `.env` (generated from `src/env.yaml`). Services build the endpoint as `http(s)://STORAGE_HOST:STORAGE_PORT`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STORAGE_ENDPOINT` | `http://minio:9000` | S3 endpoint URL. Leave empty for AWS S3. |
-| `STORAGE_ACCESS_KEY` | `minioadmin` | S3 access key / MinIO root user |
-| `STORAGE_SECRET_KEY` | `minioadmin_secret` | S3 secret key / MinIO root password |
-| `STORAGE_BUCKET_NAME` | `epicstaff` | S3 bucket name |
-| `MINIO_PORT` | `9000` | MinIO API port (used in healthcheck and mc commands) |
-| `MINIO_CONSOLE_PORT` | `9001` | MinIO web console port |
+| `STORAGE_HOST` | `storage` | Hostname of the storage service |
+| `STORAGE_PORT` | `9000` | S3 API port (also used by the healthcheck and `storage-init`) |
+| `STORAGE_SSL` | `False` | Use HTTPS to reach the storage service |
+| `STORAGE_USER` | — | Root access key |
+| `STORAGE_PASSWORD` | — | Root secret key |
+| `STORAGE_BUCKET` | `epicstaff` | Bucket for file storage |
+| `KNOWLEDGE_STORAGE_BUCKET` | `epicstaff-knowledge` | Bucket for knowledge (GraphRAG) data |
 | `STORAGE_MUTATION_CHANNEL` | `storage_mutations` | Redis pub/sub channel for storage mutation events |
 | `MAX_TOTAL_FILE_SIZE` | `10485760` (10 MB) | Maximum total upload size per request |
 
@@ -65,10 +57,10 @@ StorageAPIView (REST endpoints)
 |------|---------|
 | `tables/services/storage_service/__init__.py` | Factory functions `get_storage_backend()`, `get_storage_manager()` |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/s3_backend.py` | S3/MinIO implementation |
+| `tables/services/storage_service/s3_backend.py` | S3 implementation |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, archive handling) |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` — keeps DB in sync with storage mutations |
-| `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `UploadResult`, etc. |
+| `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `FileDownload`, etc. |
 | `tables/validators/file_upload_validator.py` | `FileValidator` — blocks executable uploads, scans archives |
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/views/storage_views.py` | `StorageAPIView` REST endpoints |
@@ -84,16 +76,21 @@ StorageAPIView (REST endpoints)
 `S3StorageBackend` implements `AbstractStorageBackend`:
 
 - `list_(prefix)` -- list files and folders
-- `upload(path, file)` -- upload a file
+- `upload_chunks(path, chunks, size_guard, before_commit)` -- store an async stream as multipart parts of `part_size`; `before_commit` runs before the object becomes visible and aborts it by raising
+- `upload_stream(path, file)` -- store a readable of unknown size, one part in memory
+- `put_bytes(path, data)` -- store bytes in one request
 - `download(path)` -- download a file
+- `download_range(path, first, last)` -- a byte range and its `Content-Range`
+- `unique_key(key, is_folder)` -- the key, or its first free `name (n)` variant
 - `delete(path)` -- delete a file or folder
 - `mkdir(path)` -- create a folder
+- `claim_folder(path)` -- create a folder marker only if none exists (atomic in S3); False if taken
 - `move(src, dst)` -- move / rename
-- `copy(src, dst)` -- copy
+- `copy(src, dst)` -- copy into a folder; returns `(key, size)` of every created object, sizes from the store; a failure midway deletes what it created
+- `delete_keys(keys)` -- delete exactly these keys (batched `DeleteObjects`, ≤1000 per call)
 - `info(path)` -- file metadata
+- `head_file(path)` -- file metadata from one short, non-retried request (`None` if absent); used by the agent-write listener
 - `exists(path)` -- check existence
-- `download_zip(paths)` -- create a zip archive
-- `upload_archive(prefix, archive)` -- extract an archive (ZIP or TAR)
 
 Tests exercise the same interface against `InMemoryStorageBackend` (see `django_app/tests/storage_tests/in_memory_backend.py`), a fake that mirrors S3 semantics without touching a real bucket.
 
@@ -117,11 +114,82 @@ superadmin. See `docs/rbac/organization_scoping.md`.
 
 ### Archive auto-extraction
 
-`upload_file()` detects ZIP and TAR archives and extracts them into the target directory automatically. Supported formats: `.zip`, `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`.
+Uploads go through the streaming endpoint (`tables/views/storage_upload_stream_view.py` →
+`storage_service/upload/`), which routes on the file name: `is_archive_name()`
+covers `.zip`, `.tar`, `.tgz`, `.taz`, `.tar.gz`, `.tar.bz2`, `.tbz`, `.tbz2`,
+`.tar.xz`, `.txz`. The archive itself is capped at `DJANGO_MAX_ARCHIVE_FILE_SIZE`
+while it is buffered; its unpacked size has no cap of its own and is bounded
+only by the organization's free storage quota.
 
-Archives extract into a subfolder named after the archive stem (e.g., `data.zip` → `data/`). If the subfolder already exists, the name auto-increments: `data` → `data (1)` → `data (2)`.
+### Upload limits
 
-Password-protected ZIP files are rejected.
+A plain file is capped at `DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE` (default `2gb`,
+`none` = unlimited), an archive at `DJANGO_MAX_ARCHIVE_FILE_SIZE` (default `50mb`,
+must be set); over either the upload fails with `413 upload_too_large`. A
+`Content-Length` already over the cap is rejected before the upload waits for a
+slot (`upload/admission.py`). So is, with one query (`check_target`), a target
+whose parent folder is a file (`409 storage_path_is_file`) and, for a plain file,
+replacing an existing file without `FILES:UPDATE` (`403 overwrite_not_permitted`);
+the connection is released before the wait, so none is held through it. The
+overwrite is authorized again under the org row lock right before the row is
+written. The org quota is checked once the slot is held, in
+`save_stream` before the body is read, and again on the real byte count under
+the org row lock (`record_files_within_quota`).
+
+`GET /api/storage/upload-limits/` (`FILES:READ`) returns what
+`upload/limits.py`'s `upload_limits()` assembles: `max_file_size` (null =
+unlimited), `max_archive_size`, `free_bytes`, and the sorted `archive_suffixes` /
+`document_extensions` from `archive_unpacking/names.py`, so the frontend can apply
+`is_archive_name()`'s rule itself. `free_bytes` ignores uploads in flight and does
+not credit a file an upload would overwrite; the upload's own 413 is
+authoritative. See `STORAGE_API_REFERENCE.md` → Upload Limits.
+
+Before anything is written, `inspect_archive()` makes one pass over the headers:
+it confirms the bytes really are an archive (a file with an archive extension
+but no ZIP/gzip/bzip2/xz/tar signature is stored as a plain file; one that has
+the signature but does not parse is rejected as damaged), and rejects empty or
+encrypted archives, symlinks, hardlinks and any other tar member that is not a
+plain file or folder (FIFOs, devices, sparse files), ZIP members compressed with
+a method `zipfile` cannot inflate (Deflate64, implode, ...), zip-slip names, names
+with control characters or blank segments, a file and a folder with the same
+name, embedded executables, more than `DJANGO_MAX_ARCHIVE_ENTRIES` entries
+(folders included), and a declared unpacked size past the free quota (413).
+
+Tars are opened through `archive_unpacking/safe_readers.py`, never bare `tarfile.open`/`is_tarfile`:
+`open_tar()`/`is_tar()` reject a GNU long-name/long-link or pax header over
+`MAX_TAR_EXTENDED_HEADER_BYTES` (64 KiB), more than `MAX_TAR_HEADER_CHAIN`
+headers stacked on one member, and global pax headers over 64 KiB in total,
+before `tarfile` reads them into memory; iteration drops members already passed.
+`zip_entry_count()` counts the central directory before `ZipFile` builds an
+object per entry, so the entry cap fires first. The knowledge upload validator
+(`FileValidator`) does not use these readers yet: it still calls `tarfile` and
+`zipfile` directly.
+
+Members are read in archive order through `archive_unpacking/extraction.py`'s `iter_archive_members()`,
+and `ArchiveExtractionGuard` (capped at the same free quota) is charged as each
+is read, so a ZIP whose declared sizes lie is still stopped mid-member; the
+keys written so far are then deleted (exactly those keys, plus the claimed
+folder marker, via `delete_keys`; never a name- or prefix-based `delete`, which
+could hit a plain file named like the folder). Their uploads to storage overlap
+(`upload/archive_members.py`'s `ArchiveMemberUploader`, up to
+`DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` at a time).
+
+Archives extract into a subfolder named after the archive stem, deduped as
+`<stem> (1)`, `<stem> (2)`, …; the name is claimed with a conditional folder-marker
+write (`claim_folder`, `PutObject` with `If-None-Match: *`), so a repeated or
+concurrent archive upload never shares a folder: the loser of a race sees the
+winner's marker and moves on to the next name. No DB lock is held during these
+S3 calls. Empty folders in the archive are kept
+as folder markers. All rows of one archive are written with two bulk INSERTs
+(`StorageFileSync.on_bulk_upload`) while the org lock is held.
+
+A file larger than `DJANGO_UPLOAD_PART_SIZE` inside an archive is streamed with
+`upload_stream()` (parts of that size, one at a time), so memory stays near
+`DJANGO_ARCHIVE_UPLOAD_CONCURRENCY` × part size.
+
+Two concurrent uploads to the same path both succeed and the last one to commit
+wins; its StorageFile row may carry the other upload's size if their row writes
+and commits interleave.
 
 Document formats (`.xlsx`, `.docx`, `.pptx`, `.epub`, `.jar`, `.apk`, `.war`, `.xpi`, etc.) are NOT extracted even though they are ZIP-based.
 
@@ -172,9 +240,19 @@ Run inside the `django_app` container:
 docker exec django_app python manage.py <command> [flags]
 ```
 
+### Upgrade step: count files that predate size tracking
+
+Rows written before sizes were tracked have `size = NULL`, which the org quota
+counts as 0. Copies are charged at the size S3 reports, but the files themselves
+stay uncounted until their rows are refreshed. After deploying, run
+`backfill_storage_files` once (below): it upserts every file row with its S3 size.
+It also deletes rows it finds no S3 object for, which includes rows of empty
+folders (their marker objects are skipped by the listing), so check `--dry-run`
+and any graph links to empty folders first.
+
 ### `backfill_storage_files` — S3 → DB
 
-Walks the backend for every org, upserts a `StorageFile` row per key. Additive only: inserts missing rows, updates `name` on existing rows, never deletes. Safe to re-run (idempotent).
+Walks the backend for every org, upserts a `StorageFile` row per key (name, size, modified), then deletes the org's rows that match no listed object (`StorageReconciler.reconcile_tree`). Safe to re-run (idempotent).
 
 Use when:
 - Bootstrapping the mirror for files that pre-date the sync layer
@@ -202,7 +280,7 @@ Deletes `StorageFile` rows whose corresponding backend key no longer exists (orp
 Cascading: deleting a `StorageFile` row also removes linked `GraphStorageFile` and `SessionStorageFile` entries via FK `CASCADE`. Always run with `--dry-run` first on production.
 
 Use when:
-- Files were deleted directly in S3/MinIO (bypassing the API)
+- Files were deleted directly in S3 (bypassing the API)
 - Recovering from a missed sync hook
 - After a backend migration that removed objects
 
@@ -242,7 +320,8 @@ Base path: `/api/storage/`
 | GET | `/search/` | Substring search on filename (DB-backed) | `q`, `path`, `limit`, `offset` (query) |
 | GET | `/info/` | File/folder metadata + linked graphs | `path` (query) |
 | GET | `/download/` | Download a file | `path` (query) |
-| POST | `/upload/` | Upload files (multipart) | `path` (form), `files` (multipart) |
+| GET | `/upload-limits/` | Size limits, free quota and archive-name rules of the streaming upload | — |
+| POST | `/upload/stream` | Stream one file (raw body, no trailing slash) | `path`, `filename` (query) |
 | POST | `/download-zip/` | Download multiple files/folders as ZIP | `paths` (JSON body) |
 | POST | `/mkdir/` | Create a folder | `path` (body) |
 | DELETE | `/delete/` | Bulk delete files/folders | `paths` (JSON body, min 1) |
@@ -263,12 +342,12 @@ Full Swagger documentation is available at the `/swagger/` endpoint.
 
 ## Docker Compose
 
-MinIO is a core service — it starts with every `docker compose up`. No profiles are needed.
+The storage server is a core service — it starts with every `docker compose up`. No profiles are needed.
 
-- **`minio`** — S3-compatible object storage (`minio/minio:latest`), volume: `minio_data`
-- **`minio-init`** — one-shot container that creates the bucket using `mc` (MinIO client), restarts on failure until successful
+- **`storage`** — RustFS (`rustfs/rustfs:1.0.0`, pinned by digest), volume: `rustfs_data`.
+- **`storage-init`** — one-shot container (same RustFS image) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
 
-The `django_app` service depends on `minio` being healthy before starting.
+The `django_app` and `knowledge_new` services depend on `storage` being healthy before starting.
 
 ---
 

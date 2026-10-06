@@ -12,11 +12,12 @@
     <div
         class="number-stepper__control"
         [class]="'number-stepper__control--' + size()"
-        [class.number-stepper__control--error]="hasError()"
+        [class.number-stepper__control--error]="hasError() && !readonly()"
+        [class.number-stepper__control--readonly]="readonly()"
         (mouseenter)="hovered.set(true)"
         (mouseleave)="hovered.set(false)"
     >
-        @if (hovered() || size() === 'lg') {
+        @if (!readonly() && (hovered() || size() === 'lg')) {
             <button
                 type="button"
                 class="number-stepper__btn number-stepper__btn--minus"
@@ -42,9 +43,10 @@
             (keydown)="onKeyDown($event)"
             (blur)="onBlur()"
             [disabled]="isDisabled()"
+            [readonly]="readonly()"
         />
 
-        @if (hovered() || size() === 'lg') {
+        @if (!readonly() && (hovered() || size() === 'lg')) {
             <button
                 type="button"
                 class="number-stepper__btn number-stepper__btn--plus"
@@ -60,7 +62,7 @@
         }
     </div>
 
-    @if (hasError() && errorMessage()) {
+    @if (hasError() && errorMessage() && !readonly()) {
         <div class="number-stepper__error">{{ errorMessage() }}</div>
     }
 </div>

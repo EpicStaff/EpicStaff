@@ -19,6 +19,7 @@ import {
     GraphVersionUpdateRequest,
     UpdateGraphDtoRequest,
 } from '../models/graph.model';
+import { PreviewGraphVersionResponse } from '../models/graph-version-preview.model';
 
 @Injectable({
     providedIn: 'root',
@@ -175,5 +176,15 @@ export class FlowsApiService {
             {},
             { headers: this.httpHeaders }
         );
+    }
+
+    previewGraphVersion(versionId: number): Observable<PreviewGraphVersionResponse> {
+        return this.http.get<PreviewGraphVersionResponse>(
+            `${this.configService.apiUrl}graph-versions/${versionId}/preview/`
+        );
+    }
+
+    getSubflowUsage(graphId: number): Observable<{ parent_flow_ids: number[] }> {
+        return this.http.get<{ parent_flow_ids: number[] }>(`${this.apiUrl}${graphId}/subflow-usage/`);
     }
 }

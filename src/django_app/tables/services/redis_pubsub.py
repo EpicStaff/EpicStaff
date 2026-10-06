@@ -8,6 +8,7 @@ from uuid import uuid4
 import redis
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, models, transaction
+from django.utils import timezone
 from loguru import logger
 from src.shared.models import (
     CodeResultData,
@@ -89,6 +90,18 @@ class RedisPubSub:
                         status=data["status"],
                         status_data=status_data,
                         token_usage=status_data["total_token_usage"],
+                        finished_at=session.finished_at
+                        or (
+                            timezone.now()
+                            if data["status"]
+                            in [
+                                Session.SessionStatus.END,
+                                Session.SessionStatus.ERROR,
+                                Session.SessionStatus.EXPIRED,
+                                Session.SessionStatus.STOP,
+                            ]
+                            else None
+                        ),
                     )
                     if updated_rows == 0:
                         logger.warning(
@@ -136,6 +149,7 @@ class RedisPubSub:
             close_old_connections()
 
             from tables.services.storage_service.db_sync import StorageFileSync
+            from tables.services.storage_service.quota import is_over_quota
 
             for mutation in event.mutations:
                 rel_path = mutation.path
@@ -143,10 +157,16 @@ class RedisPubSub:
                 if rel_path and rel_path.startswith(org_prefix + "/"):
                     rel_path = rel_path[len(org_prefix) + 1 :]
 
-                if mutation.op == "write":
-                    StorageFileSync.on_upload(org_id, rel_path)
-                elif mutation.op == "delete":
-                    StorageFileSync.on_delete(org_id, rel_path)
+                # One bad mutation must not drop the rest of the batch or the bookkeeping below.
+                try:
+                    if mutation.op == "write":
+                        self._record_external_write(org_id, rel_path)
+                    elif mutation.op == "delete":
+                        StorageFileSync.on_delete(org_id, rel_path)
+                except Exception:
+                    logger.exception(
+                        "Could not sync storage {} of {} in org {}", mutation.op, rel_path, org_id
+                    )
 
             if event.session_id is not None:
                 redis_key = f"session:{event.session_id}:storage_mutations"
@@ -166,8 +186,38 @@ class RedisPubSub:
 
                 self.redis_client.expire(redis_key, 7200)
 
+            # Agent writes are already stored, so they cannot be rejected; flag them.
+            if any(mutation.op == "write" for mutation in event.mutations) and is_over_quota(
+                org_id
+            ):
+                logger.warning(
+                    "Org {} is over its storage quota after agent writes (execution {})",
+                    org_id,
+                    event.execution_id,
+                )
+
         except Exception as e:
             logger.error(f"Error handling storage_mutations message: {e}")
+
+    @staticmethod
+    def _record_external_write(org_id: int, rel_path: str) -> None:
+        """Record an agent write at its stored size; if the store can't be asked, without a size."""
+        from tables.services.storage_service import get_storage_manager
+        from tables.services.storage_service.db_sync import StorageFileSync
+
+        try:
+            get_storage_manager().record_external_write(org_id, rel_path)
+        except FileNotFoundError:
+            logger.warning(
+                "Skipping storage write of {} in org {}: no such object", rel_path, org_id
+            )
+        except Exception:
+            logger.exception(
+                "Could not read the stored size of {} in org {}; recording it without one",
+                rel_path,
+                org_id,
+            )
+            StorageFileSync.on_upload(org_id, rel_path)
 
     def webhook_events_handler(self, message: dict):
         try:

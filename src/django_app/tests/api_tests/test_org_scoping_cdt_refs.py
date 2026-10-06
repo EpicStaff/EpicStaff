@@ -1,5 +1,5 @@
 """Cross-org reference leaks in Classification Decision Table (CDT) node write
-bodies (EST-3318). An org_a client tries to reference org_b / cross-graph
+bodies. An org_a client tries to reference org_b / cross-graph
 resources through the single-node CDT endpoint and must get a 400.
 
 Covers both enforcement layers:

@@ -20,7 +20,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { LLMProvider, ModelTypes } from '@shared/models';
+import { ActionCode, LLMProvider, ModelTypes, ResourceCode } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -32,6 +32,7 @@ import { getProviderIconPath } from '@shared/utils';
 import { EMPTY, filter, finalize, forkJoin, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { CreateQuickstartRequest } from '../../models/quickstart.model';
@@ -63,6 +64,7 @@ export class QuickstartSectionComponent implements OnInit {
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly toast = inject(ToastService);
+    private readonly permissionService = inject(PermissionsService);
 
     public activeTabSignal = input.required<WritableSignal<ConfigureModelsTabId>>();
 
@@ -78,6 +80,7 @@ export class QuickstartSectionComponent implements OnInit {
             text1: `Your Quick Start provider has been applied to recommended default LLMs.`,
             text2: `To ensure optimal performance, please review and assign models for the remaining tasks.`,
             actionText: 'Review default models',
+            requiresApplyPermission: false,
             action: () => this.onReviewDefaults(),
         },
         updated: {
@@ -86,6 +89,7 @@ export class QuickstartSectionComponent implements OnInit {
             text1: `Would you like to use it as the default model across all supported tasks?`,
             text2: `This will replace the currently assigned default models.`,
             actionText: 'Update default models',
+            requiresApplyPermission: true,
             action: () => this.onUpdateDefaults(),
         },
         synced: {
@@ -94,6 +98,7 @@ export class QuickstartSectionComponent implements OnInit {
             text1: `Your new LLM model has been successfully applied as the default across all supported tasks.`,
             text2: `You can review or adjust these assignments at any time.`,
             actionText: 'Review default models',
+            requiresApplyPermission: false,
             action: () => this.onReviewDefaults(),
         },
     } as const;
@@ -108,6 +113,17 @@ export class QuickstartSectionComponent implements OnInit {
             value: provider.name,
             icon: getProviderIconPath(provider.name),
         }));
+    });
+
+    protected readonly canApplyQuickstart = computed<boolean>(
+        () =>
+            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create) &&
+            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Update)
+    );
+
+    protected readonly canRunActiveCardAction = computed<boolean>(() => {
+        const status = this.quickstartStatus();
+        return !status || !this.quickstartCards[status].requiresApplyPermission || this.canApplyQuickstart();
     });
 
     get activeCard() {

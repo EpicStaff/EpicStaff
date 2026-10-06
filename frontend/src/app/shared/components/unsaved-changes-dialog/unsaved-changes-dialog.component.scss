@@ -20,12 +20,11 @@
 .dialog-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     padding: 20px 24px;
 }
 
 .close-button {
-    margin-top: -8px;
     margin-right: -8px;
 }
 
@@ -69,14 +68,17 @@
 }
 
 .button {
-    padding: 8px 12px;
-    border-radius: 6px;
+    height: 40px;
+    padding: 0 24px;
+    border-radius: 8px;
     font-size: var(--text-body-medium-size);
     font-weight: var(--text-body-medium-weight);
     cursor: pointer;
     transition: all 0.2s ease;
     border: none;
-    min-width: 80px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 
     &:disabled {
         cursor: not-allowed;
@@ -85,7 +87,8 @@
 
     &.cancel-button {
         background: transparent;
-        color: var(--color-text-secondary);
+        color: var(--accent-color);
+        border: 1px solid var(--accent-color);
 
         &:hover:not(:disabled) {
             background: var(--color-secondary-btn-background-hover);
@@ -94,11 +97,12 @@
 
     &.dont-save-button {
         background: transparent;
-        color: var(--color-text-secondary);
-        border: 1px solid var(--color-divider-regular);
+        color: var(--color-error);
+        border: 1px solid var(--color-error);
+        padding: 0 16px;
 
         &:hover:not(:disabled) {
-            background: var(--color-secondary-btn-background-hover);
+            background: var(--red-alpha-8-flat);
         }
     }
 
@@ -169,10 +173,10 @@
 }
 
 .dialog-container.danger .dialog-icon {
-    color: var(--scarlet-500);
+    color: var(--color-error);
 }
 .dialog-container.warning .dialog-icon {
-    color: var(--amber-450);
+    color: var(--color-ks-status-warning);
 }
 .dialog-container.info .dialog-icon {
     color: var(--accent-color);

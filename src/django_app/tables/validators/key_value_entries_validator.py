@@ -1,0 +1,189 @@
+import re
+from typing import Any
+
+from rest_framework import serializers
+
+from tables.constants.key_value_constants import (
+    KEY_PATTERN,
+    KEY_RULE,
+    MAX_KEY_LENGTH,
+    MAX_KEYS_PER_REQUEST,
+)
+
+_FIELDS = {
+    "read": ("key", "value"),
+    "write": ("key", "value"),
+    "delete": ("key",),
+}
+# Crew's `variables` is a DotDict, so a path starts with a name (`variables[0]` never
+# resolves). ASCII matches the frontend. Indexes are canonical (`[0]`, `[10]`, not `[01]`) so
+# equal paths compare equal as strings. Crew's KeyValueNode checks the same rules at run
+# time.
+_STATE_PATH = re.compile(r"variables\.\w+(?:\.\w+|\[(?:0|[1-9]\d*)\])*", re.ASCII)
+_PATH_NAME = re.compile(r"\w+", re.ASCII)
+_PATH_SEGMENT = re.compile(r"\w+|\[(?:0|[1-9]\d*)\]", re.ASCII)
+# Same placeholder syntax crew renders: `{variables.user.id}`, spaces inside the braces allowed.
+_PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
+# DotDict attribute access finds these before a stored key, so crew could never read a value
+# kept under one of these names: the dict methods plus DotDict's own public methods.
+DOTDICT_METHOD_NAMES = frozenset(
+    {
+        "add_property",
+        "add_setter",
+        "clear",
+        "copy",
+        "deep_dump",
+        "fromkeys",
+        "get",
+        "items",
+        "keys",
+        "model_dump",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "values",
+    }
+)
+
+
+def resolved_key_error(key: str) -> str | None:
+    """Return why `key`, a fully resolved key, cannot be stored, or None when it can."""
+    if len(key) > MAX_KEY_LENGTH or not KEY_PATTERN.fullmatch(key):
+        return KEY_RULE
+    return None
+
+
+class KeyValueEntriesValidator:
+    """Rules for KeyValueNode.entries.
+
+    A key template is checked statically, each placeholder standing in for `_`; crew checks
+    the key it resolves to at run time.
+
+    `value` is a flow state path in both modes that have one: the source of a write, the
+    target a read stores into. Returned entries carry the stripped path.
+    """
+
+    def validate(self, mode: str, entries: Any) -> list[dict]:
+        if not isinstance(entries, list):
+            raise serializers.ValidationError({"entries": "Must be a list."})
+        if len(entries) > MAX_KEYS_PER_REQUEST:
+            raise serializers.ValidationError(
+                {"entries": f"A Key-Value node can have at most {MAX_KEYS_PER_REQUEST} keys."}
+            )
+        errors: list[str] = []
+        # Entry index by exact key, for write entries only.
+        written_keys: dict[str, int] = {}
+        # (segments, stripped target, entry index) of each valid read entry.
+        read_targets: list[tuple[list[str], str, int]] = []
+        for index, entry in enumerate(entries):
+            error = self._entry_error(mode, entry)
+            if not error and mode == "write":
+                error = self._duplicate_key_error(entry["key"], index, written_keys)
+            elif not error and mode == "read":
+                error = self._target_conflict_error(entry["value"].strip(), index, read_targets)
+            if error:
+                errors.append(f"Entry {index}: {error}")
+        if errors:
+            raise serializers.ValidationError({"entries": errors})
+        if mode == "delete":
+            return entries
+        # Crew rejects a path with surrounding whitespace, and keeps a write's `|default` text
+        # verbatim, so `variables.x|0 ` would default to "0 ".
+        return [{**entry, "value": entry["value"].strip()} for entry in entries]
+
+    def _entry_error(self, mode: str, entry: Any) -> str | None:
+        if not isinstance(entry, dict):
+            return "must be an object."
+        unknown = set(entry) - set(_FIELDS[mode])
+        if unknown:
+            return f"unknown fields {sorted(unknown)} for mode '{mode}'."
+        for field in _FIELDS[mode]:
+            value = entry.get(field)
+            if not isinstance(value, str) or not value.strip():
+                return f"'{field}' must be a non-empty string."
+        if len(entry["key"]) > MAX_KEY_LENGTH:
+            return f"'key' must be at most {MAX_KEY_LENGTH} characters."
+        key_error = self._key_template_error(entry["key"])
+        if key_error:
+            return key_error
+        if mode == "delete":
+            return None
+        path = entry["value"].strip()
+        if mode == "read" and "|" in path:
+            return (
+                "'value' is where the stored value goes: use a plain state path like "
+                "'variables.user.name', without '|default'."
+            )
+        return self._state_path_error(path.split("|", 1)[0], "'value'")
+
+    def _key_template_error(self, key: str) -> str | None:
+        leftover = _PLACEHOLDER.sub("", key)
+        if "{" in leftover or "}" in leftover:
+            return (
+                "'key' has an empty or unbalanced placeholder; use '{variables.<path>}', "
+                "e.g. 'profile_{variables.user.id}'."
+            )
+        for placeholder in _PLACEHOLDER.findall(key):
+            path = placeholder.strip()
+            error = self._state_path_error(path, f"'key' placeholder '{path}'")
+            if error:
+                return error
+        if not KEY_PATTERN.fullmatch(_PLACEHOLDER.sub("_", key)):
+            return (
+                "'key' must use only letters, digits and _ outside {placeholders}, and must not "
+                "start with a digit, e.g. 'profile_{variables.user.id}'."
+            )
+        return None
+
+    def _duplicate_key_error(
+        self, key: str, index: int, written_keys: dict[str, int]
+    ) -> str | None:
+        """Two write entries must not share a key; crew rejects it at run time.
+
+        One source may feed several keys. Crew also rejects different templates that render
+        to the same key, which only it can see.
+        """
+        first = written_keys.setdefault(key, index)
+        if first != index:
+            return f"key '{key}' is already written by entry {first}; use a different key."
+        return None
+
+    def _target_conflict_error(
+        self, target: str, index: int, read_targets: list[tuple[list[str], str, int]]
+    ) -> str | None:
+        """Two read entries must not fill the same or nested variables; crew rejects it too.
+
+        A parent target would overwrite its child. Compared by path segment, so
+        `variables.user` and `variables.username` do not conflict. One key may still be read
+        into several variables.
+        """
+        segments = _PATH_SEGMENT.findall(target)
+        for earlier_segments, earlier, earlier_index in read_targets:
+            shared = min(len(segments), len(earlier_segments))
+            if segments[:shared] != earlier_segments[:shared]:
+                continue
+            if len(segments) == len(earlier_segments):
+                return f"'{target}' is already filled by entry {earlier_index}; use a different variable."
+            if len(segments) > shared:
+                return (
+                    f"'{target}' is inside '{earlier}' (entry {earlier_index}); "
+                    "use a different variable."
+                )
+            return (
+                f"'{target}' contains '{earlier}' (entry {earlier_index}); "
+                "use a different variable."
+            )
+        read_targets.append((segments, target, index))
+        return None
+
+    def _state_path_error(self, state_path: str, label: str) -> str | None:
+        """Return why `state_path` is not a usable state path; `label` names it in the message."""
+        if not _STATE_PATH.fullmatch(state_path):
+            return f"{label} must be a state path like 'variables.user.name'."
+        for name in _PATH_NAME.findall(state_path):
+            if name.startswith("_"):
+                return f"{label} names '{name}'; use a variable name without the leading '_'."
+            if name in DOTDICT_METHOD_NAMES:
+                return f"{label} names '{name}', a built-in method; use a different variable name."
+        return None

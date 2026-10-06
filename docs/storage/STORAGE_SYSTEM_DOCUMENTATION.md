@@ -64,7 +64,7 @@ Surface storage grants (SurfaceStorageItem / InlineSurfaceStorageItem / AgentInl
 
 **StorageManager** is the central org-aware service. It wraps every backend operation with org isolation and DB sync (authorization is enforced upstream at the REST API layer, not in the manager). Views never call the backend directly.
 
-**AbstractStorageBackend** defines the interface. `S3StorageBackend` is the sole production implementation (MinIO or any S3-compatible service). Tests exercise the same interface against `InMemoryStorageBackend`, a fake that mirrors S3 semantics.
+**AbstractStorageBackend** defines the interface. `S3StorageBackend` is the sole production implementation (RustFS by default, or any S3-compatible service). Tests exercise the same interface against `InMemoryStorageBackend`, a fake that mirrors S3 semantics.
 
 **StorageFileSync** keeps the `StorageFile` DB table consistent with actual storage mutations. It is called by `StorageManager` after every mutating operation.
 
@@ -126,12 +126,14 @@ Located at `tables/services/storage_service/db_sync.py`. Keeps the `StorageFile`
 
 | Method | Behavior |
 |--------|----------|
-| `on_upload(org_id, path)` | `get_or_create` StorageFile record |
+| `on_upload(org_id, path, size)` | `get_or_create` StorageFile record |
+| `on_bulk_upload(org_id, files, folders)` | Upsert many `(path, size)` file rows plus folder rows in two INSERTs |
 | `on_delete(org_id, path)` | Delete exact match; if no match, delete all files with that prefix (folder delete) |
 | `on_move(org_id, src, dst)` | Update path; if no exact match, bulk-update all paths under prefix via `Concat+Substr` |
-| `on_copy(org_id, actual_dst_paths)` | `bulk_create` with `ignore_conflicts=True` |
-| `on_move_cross_org(src_org, src_path, dst_org, dst_path)` | Delete from source org, create in destination org |
-| `on_copy_cross_org(dst_org, dst_path)` | Create record in destination org |
+
+Copy and cross-org move have no sync method of their own: the manager records the copied rows through `quota.record_files_within_quota` (see §7).
+
+**Agent and sandbox writes** arrive as `storage_mutations` events (`RedisPubSub.storage_mutations_handler`). Each write is recorded at the size S3 reports (`StorageManager.record_external_write` → backend `head_file`: one request, 2 s connect / 5 s read, no retries, because the handler runs on the shared pub/sub listener thread). If that lookup fails, the row is still written without a size; a write whose object is gone is skipped. A mutation that fails is logged and skipped, and the rest of the batch and the session's `session:{id}:storage_mutations` Redis set are still updated. Agent writes are not quota-checked (the bytes are already stored); an organization left over its quota is logged.
 
 **Folder delete** works by prefix matching: if no exact `path` match exists, all records whose `path` starts with `{path}/` are deleted. This handles recursive folder removal without requiring a tree walk.
 
@@ -173,14 +175,14 @@ The rename serializer additionally validates that the destination filename does 
 
 ## 6. Archive Handling Flow
 
-When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is.
+When a ZIP or TAR file is uploaded, it is automatically extracted rather than stored as-is (`upload/archive_upload.upload_archive`).
 
-1. Upload receives the file
-2. `StorageManager._is_archive()` checks if it is a ZIP or TAR — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
-3. `AbstractStorageBackend._check_archive_password()` rejects password-protected ZIP files before any extraction
-4. Files are extracted into a subfolder named after the archive stem (e.g., `data.zip` → `data/`)
-5. If the subfolder already exists, the name auto-increments: `data` → `data (1)` → `data (2)`
-6. `StorageFileSync.on_upload()` is called for each extracted file to create DB records
+1. The name decides the route (`archive_unpacking/names.is_archive_name`) — document formats that use ZIP internally (e.g., `.docx`, `.xlsx`) are explicitly excluded
+2. The body is buffered (up to `DJANGO_MAX_ARCHIVE_FILE_SIZE`, spilling to disk past one part)
+3. `archive_unpacking/inspection.inspect_archive()` checks the whole archive before anything is written (password-protected, damaged, zip-slip, links, executables, entry count, declared size vs. free quota); bytes without an archive signature are stored as a plain file instead
+4. `_reserve_folder()` claims a subfolder named after the archive stem with a conditional marker write (e.g., `data.zip` → `data/`); a taken name auto-increments: `data` → `data (1)` → `data (2)`
+5. `upload/archive_members.ArchiveMemberUploader.upload()` streams the members into it, a few PUTs in parallel, counting the real inflated bytes
+6. `quota.record_files_within_quota()` writes all rows under the org lock; any failure removes exactly the objects this upload created
 
 ### Document Extensions Treated as Regular Files (Not Extracted)
 
@@ -199,12 +201,12 @@ Cross-org operations are restricted to **superadmin**, enforced at the REST API 
 ### `copy_cross_org`
 
 - Uses server-side S3 copy (no data round-trip through application server)
-- DB sync: `on_copy_cross_org(dst_org, dst_path)` creates record in destination
+- Same path as a same-org `copy`: the copied rows get the sizes S3 reports for the copied objects (not the source rows, which may predate size tracking) and are written by `record_files_within_quota` under the destination org's lock. Over quota the copied objects are deleted again (one batched `DeleteObjects` per 1000 keys, exactly the keys this copy created) and `413` is raised. If a single `copy_object` fails midway, the objects already copied are deleted and the original error propagates. An unlocked pre-check on the source rows rejects the obvious cases before anything is copied.
 
 ### `move_cross_org`
 
 - **Non-atomic**: copy happens first, then delete. If the delete step fails, the file exists in both orgs. No automatic rollback.
-- DB sync: `on_move_cross_org(src_org, src_path, dst_org, dst_path)` deletes from source, creates in destination
+- Copies exactly like `copy_cross_org` (quota-checked, `413` leaves the source untouched), then deletes the source objects and their rows.
 
 Authorization (superadmin) is enforced at the API layer; the `StorageManager` performs no permission checks.
 
@@ -248,9 +250,13 @@ Authorization (superadmin) is enforced at the API layer; the `StorageManager` pe
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org-aware wrapper) |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/s3_backend.py` | S3/MinIO backend |
+| `tables/services/storage_service/s3_backend.py` | S3 backend |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
+| `tables/services/storage_service/quota.py` | Org storage quota: free bytes, row writes under the org lock |
+| `tables/services/storage_service/upload/` | Streaming upload: plain file, archive, archive member writes, admission gate, upload limits |
+| `tables/services/storage_service/archive_unpacking/` | Archive routing by name, inspection, bounded readers, member extraction (no storage writes) |
+| `tables/views/storage_upload_stream_view.py` | Raw ASGI handler of `POST /api/storage/upload/stream` |
 | `tables/validators/file_upload_validator.py` | `FileValidator` (upload security) |
 | `shared/epicstaff_storage/storage.py` | Storage SDK for flow execution |
 | `tables/views/views.py` | `SessionViewSet.output_files` endpoint |
@@ -263,18 +269,20 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 
 | Service | Image | Purpose |
 |---------|-------|---------|
-| `minio` | `minio/minio:latest` | S3-compatible object storage, volume `minio_data` |
-| `minio-init` | MinIO client (`mc`) | One-shot container that creates the bucket on startup |
+| `storage` | `rustfs/rustfs:1.0.0` (pinned by digest) | S3-compatible object storage (RustFS), volume `rustfs_data` |
+| `storage-init` | `rustfs/rustfs:1.0.0` | One-shot container that creates the bucket on startup (SigV4-signed `curl`) |
 
-`django_app` depends on `minio` being healthy before starting.
+`django_app` and `knowledge_new` depend on `storage` being healthy before starting.
 
 ### Configuration Environment Variables
 
+The sandbox sets these in the user-code process env for storage-enabled executions. They are separate from the service-level `STORAGE_HOST` / `STORAGE_USER` / … variables in `.env` (see the [Storage Backend Guide](STORAGE_BACKEND_GUIDE.md)).
+
 | Variable | Purpose |
 |----------|---------|
-| `STORAGE_ENDPOINT` | S3/MinIO endpoint URL |
-| `STORAGE_ACCESS_KEY` | S3 access key |
-| `STORAGE_SECRET_KEY` | S3 secret key |
+| `STORAGE_ENDPOINT` | S3 endpoint URL |
+| `STORAGE_ACCESS_KEY` | Per-execution scoped access key (MinIO Admin API service account, revoked after the run) |
+| `STORAGE_SECRET_KEY` | Secret for that scoped key |
 | `STORAGE_BUCKET_NAME` | Target bucket name |
 | `STORAGE_ORG_PREFIX` | Org prefix used by SDK (set per execution context) |
 | `STORAGE_ALLOWED_PATHS` | JSON array of allowed paths for SDK access |

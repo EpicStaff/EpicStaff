@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, Input, input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ToastService } from '../../../services/notifications';
+import { copyWithFeedback } from '../../utils/clipboard.util';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
@@ -15,18 +16,14 @@ export class CopyButtonComponent {
     @Input() text: string = '';
     @Input() iconSize: string = '0.875rem';
     @Input() ariaLabel: string = 'Copy to clipboard';
+    // Copies text that is fetched on click (e.g. a value the list only previews) instead of `text`.
+    readonly resolveText = input<(() => Promise<string>) | null>(null);
 
     private readonly toastService = inject(ToastService);
 
     copy(event: Event): void {
         event.stopPropagation();
-        navigator.clipboard
-            .writeText(this.text)
-            .then(() => {
-                this.toastService.success('Copied to clipboard!', 3000, 'bottom-right');
-            })
-            .catch(() => {
-                this.toastService.error('Failed to copy', 3000, 'top-right');
-            });
+        const resolveText = this.resolveText();
+        copyWithFeedback(resolveText ? resolveText() : this.text, this.toastService);
     }
 }

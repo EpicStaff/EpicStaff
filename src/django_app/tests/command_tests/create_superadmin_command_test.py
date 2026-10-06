@@ -27,6 +27,21 @@ def test_creates_superadmin_with_org_and_membership():
 
 
 @pytest.mark.django_db
+def test_created_superadmin_gets_display_name_from_email():
+    call_command(
+        "create_superadmin",
+        "--email",
+        "site_ops@example.com",
+        "--password-stdin",
+        stdin=io.StringIO("StrongPass123!\n"),
+        stdout=io.StringIO(),
+    )
+
+    user = get_user_model().objects.get(email="site_ops@example.com")
+    assert user.display_name == "Site Ops"
+
+
+@pytest.mark.django_db
 def test_is_idempotent_when_a_user_already_exists():
     get_user_model().objects.create_user(
         email="existing@example.com", password="StrongPass123!"

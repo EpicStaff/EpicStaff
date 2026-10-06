@@ -10,6 +10,7 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
@@ -27,6 +28,7 @@ from tables.serializers.graph_bulk_save_serializers import (
     EndNodeBulkSerializer,
     FileExtractorNodeBulkSerializer,
     GraphNoteBulkSerializer,
+    KeyValueNodeBulkSerializer,
     KnowledgeNodeBulkSerializer,
     PythonNodeBulkSerializer,
     ScheduleTriggerNodeBulkSerializer,
@@ -96,6 +98,12 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "file_extractor_node_ids",
         FileExtractorNode,
         FileExtractorNodeBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "key_value_node_list",
+        "key_value_node_ids",
+        KeyValueNode,
+        KeyValueNodeBulkSerializer,
     ),
     NodeTypeConfig(
         "audio_transcription_node_list",

@@ -12,12 +12,16 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import egress_firewall
 import settings
 from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
+from network_policy import NetworkPolicy, decide_network_policy
+from savefiles_ownership import ensure_savefiles_writable
 from secret_scrubber import scrub
 from services.storage_credential_manager import StorageCredentialManager
+from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
 from utils.environment import build_base_env
 from utils.logger import logger
@@ -33,6 +37,9 @@ except KeyError:
     SANDBOX_GID = 1000
 
 
+# NOTE: the root -> sandboxuser drop below is the only thing that stops an
+# execution from signalling this supervisor process on kernels without
+# Landlock signal isolation (ABI < 6)
 def _can_drop_privileges() -> bool:
     """Return True only when the current process is root."""
     return os.geteuid() == 0
@@ -44,6 +51,76 @@ if not _can_drop_privileges():
         "This is expected in local dev/CI but a security risk in production.",
         os.geteuid(),
     )
+
+
+_BASE_PREDEFINED_LIBRARIES: frozenset[str] = frozenset(
+    {
+        "/app/src/shared/dotdict",
+        "/app/src/shared/epicstaff_secrets",
+        "/app/src/shared/epicstaff_common",
+    }
+)
+_STORAGE_PREDEFINED_LIBRARY = "/app/src/shared/epicstaff_storage"
+
+# The only paths _fingerprint_library is allowed to walk. Anything else -- a pip
+# spec or a caller-supplied path -- is hashed as its own string.
+ALLOWED_LOCAL_LIBRARY_PATHS: frozenset[str] = _BASE_PREDEFINED_LIBRARIES | {
+    _STORAGE_PREDEFINED_LIBRARY
+}
+
+
+def _fingerprint_library(library: str) -> str:
+    """Content hash for trusted local path deps; pass-through for everything else.
+
+    Only the directories in ALLOWED_LOCAL_LIBRARY_PATHS are walked: a library
+    entry reaches this function from user-authored code-node metadata, so
+    fingerprinting any directory that happens to exist would let a caller point
+    it at "/" or "/proc/self" and stall the sandbox reading an unbounded tree.
+    Every other entry -- pip specs included -- is returned unchanged.
+
+    For trusted directories, recursively hashes all file paths and content,
+    skipping .venv, __pycache__, .pytest_cache, .git, *.egg-info, and symlinks.
+    """
+    if library not in ALLOWED_LOCAL_LIBRARY_PATHS:
+        return library
+
+    path = Path(library)
+    if not path.is_dir():
+        return library
+
+    skip_dirs = {".venv", "__pycache__", ".pytest_cache", ".git"}
+    skip_suffixes = {".egg-info"}
+
+    digest = hashlib.sha256()
+    for file_path in sorted(path.rglob("*")):
+        if file_path.is_symlink() or not file_path.is_file():
+            continue
+        if any(part in skip_dirs for part in file_path.parts):
+            continue
+        if any(part.endswith(s) for part in file_path.parts for s in skip_suffixes):
+            continue
+        relative = file_path.relative_to(path).as_posix()
+        try:
+            content = file_path.read_bytes()
+        except OSError as exc:
+            logger.warning(
+                "Skipping unreadable file {} while fingerprinting library: {}", file_path, exc
+            )
+            continue
+        digest.update(relative.encode("utf-8"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def _calculate_libraries_hash(libraries: list[str]) -> str:
+    """Calculate a hash of the libraries list, content-aware for local paths.
+
+    Fingerprints each library (content hash for local paths, pass-through for pip specs),
+    then hashes the sorted JSON representation of all fingerprints.
+    """
+    fingerprints = [_fingerprint_library(lib) for lib in libraries]
+    libraries_str = json.dumps(fingerprints, sort_keys=True)
+    return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
 
 
 def _privilege_drop_kwargs() -> dict[str, object]:
@@ -127,26 +204,21 @@ class DummyHandler(AbstractHandler):
 
 class CreateVenvHandler(AbstractHandler):
     def calculate_hash(self, libraries: list[str]) -> str:
-        """Calculate a hash of the libraries list."""
-        libraries_str = json.dumps(libraries, sort_keys=True)
-        return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+        """Calculate a hash of the libraries list, content-aware for local paths."""
+        return _calculate_libraries_hash(libraries)
 
     async def handle(self, context: dict[str, Any]) -> Any:
         """Create virtual environment task."""
 
         context["libraries"] = set(context["libraries"])
         # Install libraries
-        predefined_libraries = {
-            "/app/src/shared/dotdict",
-            "/app/src/shared/epicstaff_secrets",
-            "/app/src/shared/epicstaff_common",
-        }  # TODO: deal with hard coded path
+        predefined_libraries = set(_BASE_PREDEFINED_LIBRARIES)
         if context.get("use_storage"):
-            predefined_libraries.add("/app/src/shared/epicstaff_storage")
+            predefined_libraries.add(_STORAGE_PREDEFINED_LIBRARY)
         context["libraries"].update(predefined_libraries)
 
         context["libraries"] = sorted(context["libraries"])
-        lib_hash = self.calculate_hash(context["libraries"])
+        lib_hash = await asyncio.to_thread(self.calculate_hash, context["libraries"])
         base_venv_path = context.get("base_venv_path")
         venv_path: Path = Path(base_venv_path) / Path(lib_hash)
         python_executable = (
@@ -178,9 +250,8 @@ class CreateVenvHandler(AbstractHandler):
 
 class InstallLibrariesHandler(AbstractHandler):
     def calculate_hash(self, libraries: list[str]) -> str:
-        """Calculate a hash of the libraries list."""
-        libraries_str = json.dumps(libraries, sort_keys=True)
-        return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
+        """Calculate a hash of the libraries list, content-aware for local paths."""
+        return _calculate_libraries_hash(libraries)
 
     def _hash_changed(self, lib_hash: str, hash_file: Path) -> bool:
         """Check if the hash of the libraries has changed."""
@@ -271,6 +342,20 @@ class InstallLibrariesHandler(AbstractHandler):
                     )
 
             # Install libraries
+            #
+            # Deliberately NOT passing _privilege_drop_kwargs() here, unlike the
+            # code-execution subprocess below -- pip for a caller-supplied specifier
+            # (which can run setup.py/PEP 517 build code at install time) runs as this
+            # container's own user, not sandboxuser. Accepted risk (Igor Polishchuk /
+            # Volodymyr Panchyshyn, 2026-09-07/08): the install subprocess gets the same
+            # curated, minimal env as user code (build_base_env -- no os.environ
+            # inheritance, no credentials), the container has cap_drop: ALL and
+            # no-new-privileges, and no Docker socket is mounted, so install-time root
+            # has no path off this container and no secret to reach. This is a real,
+            # accepted asymmetry with the code-execution path below, not an oversight
+            # left uncommented -- don't "fix" it by adding drop_kwargs without checking
+            # whether pip still needs root for its own reasons (writing into root-owned
+            # venv directories) first.
             for library in context["libraries"]:
                 logger.info(f"Installing {library}...")
                 process = await asyncio.create_subprocess_exec(
@@ -316,8 +401,59 @@ class ExecuteCodeHandler(AbstractHandler):
         code_lines = ["    " + line for line in code_lines]
         code = "\n".join(code_lines)
         wrapped_code = f"""
+import errno
+import os
+import socket
 import sys
 import json
+
+# Message-quality aid only, NOT a security control -- the real boundary is
+# the kernel-enforced seccomp/Landlock filter launcher.py installs before
+# this interpreter starts. SANDBOX_NETWORK_BLOCKED mirrors that real state
+# ("all" / "storage_only"), set by ExecuteCodeHandler.handle.
+__sys_network_block_mode = os.environ.get("SANDBOX_NETWORK_BLOCKED")
+
+
+def __sys_network_block_message():
+    if __sys_network_block_mode == "storage_only":
+        return (
+            "Network access denied: the sandbox network policy allows outbound "
+            "network access only to the storage endpoint."
+        )
+    return "Network access denied: the sandbox network policy blocks all outbound network access."
+
+
+# Some in-sandbox tools catch socket.gaierror themselves and format it into
+# their own returned string, e.g. f"could not resolve host {{host}}: {{e}}",
+# so it never reaches __sys_is_network_denial() below. Monkeypatching
+# getaddrinfo makes the exception itself carry the policy message, so every
+# consumer that does str(e) gets it for free. Message-quality aid only, not a
+# security control. Gated on "all" only: under storage_only, DNS genuinely
+# still works over UDP, so a gaierror there is a real failure, not this.
+if __sys_network_block_mode == "all":
+    __sys_real_getaddrinfo = socket.getaddrinfo
+
+    def __sys_getaddrinfo(*args, **kwargs):
+        try:
+            return __sys_real_getaddrinfo(*args, **kwargs)
+        except socket.gaierror as exc:
+            raise socket.gaierror(exc.errno, __sys_network_block_message()) from None
+
+    socket.getaddrinfo = __sys_getaddrinfo
+
+
+def __sys_is_network_denial(exc):
+    # Partial coverage, deliberately: the raw OSError/PermissionError from
+    # seccomp/Landlock, socket.gaierror (DNS), and one level of unwrap for
+    # urllib's URLError (.reason). Other wrapper exceptions (requests, httpx,
+    # botocore, ...) fall through to the generic str(e) message below.
+    if isinstance(exc, socket.gaierror):
+        # Only a full block guarantees DNS itself fails; under storage_only,
+        # Landlock leaves DNS reachable, so a gaierror there is real and must
+        # not be misreported as a policy denial.
+        return __sys_network_block_mode == "all"
+    return isinstance(exc, OSError) and exc.errno == errno.EACCES and exc.filename is None
+
 
 try:
     from dotdict import DotDict, DotObject, DotList
@@ -332,6 +468,13 @@ try:
     sys_result_variable = {entrypoint}(**__sys_dot_kwargs)
     with open(r'{result_file_path.as_posix()}', 'w', encoding='utf-8') as file:
         file.write(json.dumps(sys_result_variable))
+except OSError as e:
+    __sys_candidate = getattr(e, "reason", e)
+    if __sys_network_block_mode and __sys_is_network_denial(__sys_candidate):
+        print(__sys_network_block_message(), file=sys.stderr)
+    else:
+        print(str(e), file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
@@ -423,17 +566,118 @@ except Exception:
                 context["execution_id"],
                 REQUIRE_ISOLATION_ENV_VAR,
             )
-        else:
-            # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
-            # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
-            # ExecuteCodeHandler only receives "python_executable" when driven directly,
-            # without CreateVenvHandler ahead of it (as the unit tests do).
-            jail = build_jail(
-                exec_dir=Path(context["result_file_path"]).parent,
-                venv_path=Path(python_executable).parent.parent,
-                savefiles_root=Path(context["work_dir"]),
+
+        signal_isolation_policy = decide_signal_isolation_policy(
+            landlock_abi=isolation_abi,
+            require_signal_isolation=settings.REQUIRE_SIGNAL_ISOLATION,
+        )
+        if signal_isolation_policy is SignalIsolationPolicy.REFUSE:
+            logger.error(
+                "Sandbox signal isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
+                isolation_abi,
+                context["execution_id"],
             )
-            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(asdict(jail)), *argv]
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=(
+                    "Sandbox signal isolation unavailable: executions require Landlock ABI 6+ "
+                    "(Linux 6.12+) to stop them signalling each other; refusing to execute. "
+                    f"Set {settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR}=false to run without it."
+                ),
+                stdout="",
+                returncode=1,
+            )
+        if signal_isolation_policy is SignalIsolationPolicy.UNISOLATED:
+            logger.warning(
+                "Sandbox signal isolation unavailable (Landlock ABI {} < 6); executing {} "
+                "UNISOLATED because {}=false: it can signal other executions.",
+                isolation_abi,
+                context["execution_id"],
+                settings.REQUIRE_SIGNAL_ISOLATION_ENV_VAR,
+            )
+
+        network_decision = decide_network_policy(
+            block_network=settings.BLOCK_NETWORK,
+            use_storage=bool(context.get("use_storage")),
+            landlock_abi=isolation_abi,
+            storage_port=int(settings.STORAGE_PORT),
+        )
+
+        # Lets wrap_code's preamble tell a genuine network denial apart from
+        # an unrelated Landlock filesystem EACCES, and pick the right wording
+        # for which policy is actually in effect; see the comment there.
+        if network_decision.policy is NetworkPolicy.BLOCK_ALL:
+            env["SANDBOX_NETWORK_BLOCKED"] = "all"
+        elif network_decision.policy is NetworkPolicy.ALLOW_PORTS:
+            env["SANDBOX_NETWORK_BLOCKED"] = "storage_only"
+
+        if network_decision.policy is NetworkPolicy.REFUSE:
+            message = (
+                "Sandbox network isolation unavailable: storage-enabled executions "
+                "require Landlock ABI 4+ (Linux 6.7+) to restrict outbound connections "
+                "to the storage port; refusing to execute. Set SANDBOX_BLOCK_NETWORK=false "
+                "to disable network isolation for this execution."
+            )
+            logger.error(
+                "Sandbox network isolation unavailable (Landlock ABI {} < 4); "
+                "refusing to execute {} because it uses storage.",
+                isolation_abi,
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=message,
+                stdout="",
+                returncode=1,
+            )
+
+        if settings.BLOCK_PRIVATE_NETWORK and not egress_firewall.is_active():
+            logger.error(
+                "Sandbox private-network isolation unavailable (egress firewall not "
+                "installed); refusing to execute {}.",
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=(
+                    "Sandbox private-network isolation unavailable: the egress firewall could "
+                    "not be installed at startup; refusing to execute. "
+                    f"Set {settings.BLOCK_PRIVATE_NETWORK_ENV_VAR}=false to run without it."
+                ),
+                stdout="",
+                returncode=1,
+            )
+
+        use_launcher = isolation_abi >= 1 or network_decision.policy is NetworkPolicy.BLOCK_ALL
+        if use_launcher:
+            jail = None
+            if isolation_abi >= 1:
+                # venv_path is the grandparent of python_executable (<venv_path>/bin/python,
+                # or <venv_path>/Scripts/python on Windows) rather than context["venv_path"]:
+                # ExecuteCodeHandler only receives "python_executable" when driven directly,
+                # without CreateVenvHandler ahead of it (as the unit tests do).
+                jail = asdict(
+                    build_jail(
+                        exec_dir=Path(context["result_file_path"]).parent,
+                        venv_path=Path(python_executable).parent.parent,
+                        savefiles_root=Path(context["work_dir"]),
+                    )
+                )
+            if network_decision.policy is NetworkPolicy.BLOCK_ALL:
+                network = {"mode": "block_all"}
+            elif network_decision.policy is NetworkPolicy.ALLOW_PORTS:
+                network = {"mode": "allow_ports", "ports": list(network_decision.allowed_tcp_ports)}
+            else:
+                network = {"mode": "unrestricted"}
+            # Signal isolation is part of the Landlock ruleset, so it can only be
+            # enforced when a jail is built; ENFORCE implies ABI >= 6, which
+            # implies the jail branch above ran.
+            plan = {
+                "jail": jail,
+                "network": network,
+                "isolate_signals": signal_isolation_policy is SignalIsolationPolicy.ENFORCE,
+            }
+            argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
         process = await asyncio.create_subprocess_exec(
             *argv,
@@ -614,6 +858,7 @@ class DynamicVenvExecutorChain:
         os.makedirs(home_path, exist_ok=True)
         tmp_path = output_path / "tmp"
         os.makedirs(tmp_path, exist_ok=True)
+        work_dir = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
 
         if _can_drop_privileges():
             """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and
@@ -634,6 +879,10 @@ class DynamicVenvExecutorChain:
                     stdout="",
                     returncode=1,
                 )
+            # TEMPORARY: remove with the savefiles feature (see savefiles_ownership.py).
+            # Unlike the execution dirs above, a failure here only warns: code that
+            # does not write to savefiles still runs.
+            ensure_savefiles_writable(work_dir, SANDBOX_UID, SANDBOX_GID)
 
         context = {
             "base_venv_path": self.base_venv_path,
@@ -647,7 +896,7 @@ class DynamicVenvExecutorChain:
             "global_kwargs": global_kwargs,
             "home_path": str(home_path),
             "tmp_path": str(tmp_path),
-            "work_dir": os.environ.get("CONTAINER_SAVEFILES_PATH", "."),
+            "work_dir": work_dir,
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,

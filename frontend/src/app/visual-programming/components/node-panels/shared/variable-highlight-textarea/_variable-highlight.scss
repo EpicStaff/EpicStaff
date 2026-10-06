@@ -1,0 +1,21 @@
+// The highlight field look, shared by the textarea here and single-line highlight inputs.
+
+// A highlighted `{variable}` in the backdrop.
+@mixin variable-token {
+    color: var(--accent-color);
+    background-color: var(--color-ghost-btn-hover);
+    border-radius: 4px;
+    display: inline;
+}
+
+// The real input over the backdrop: only its caret and selection show.
+@mixin transparent-text {
+    background: transparent;
+    color: transparent;
+    caret-color: var(--color-ks-text);
+
+    &::selection {
+        background-color: var(--purple-alpha-30);
+        color: transparent;
+    }
+}
