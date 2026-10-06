@@ -13,8 +13,11 @@ import {
     viewChild,
     viewChildren,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import {
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     ConfirmationDialogService,
     ConfirmationResult,
     FetchErrorStateComponent,
@@ -57,6 +60,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly destroyRef = inject(DestroyRef);
 
     private readonly recentSection = viewChild<ElementRef<HTMLElement>>('recentSection');
@@ -219,6 +223,10 @@ export class MyFlowsComponent implements AfterViewChecked {
                 this.exportFlow(flow);
                 break;
 
+            case 'viewDetails':
+                this.openFlowDetails(flow, event.trigger);
+                break;
+
             default:
                 console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
@@ -313,6 +321,40 @@ export class MyFlowsComponent implements AfterViewChecked {
                 this.toastService.error(`Error running flow "${flow.name}": ${errorMessage}`);
             },
         });
+    }
+
+    /**
+     * A subflow row builds its light graph client-side, without authorship, so the flow is resolved by
+     * id: the loaded list entry carries the author and last edit, and a subflow the label filter hides
+     * is fetched from graph-light.
+     */
+    private openFlowDetails(flow: GetGraphLightRequest, trigger: HTMLElement | undefined): void {
+        const listedFlow = this.flowsService.flows().find((candidate) => candidate.id === flow.id);
+        if (listedFlow) {
+            this.showFlowDetails(listedFlow, trigger);
+            return;
+        }
+        this.flowApiService
+            .getGraphLightById(flow.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (fetchedFlow) => this.showFlowDetails(fetchedFlow, trigger),
+                error: () => this.toastService.error(`Failed to load details of flow "${flow.name}"`),
+            });
+    }
+
+    private showFlowDetails(flow: GetGraphLightRequest, trigger: HTMLElement | undefined): void {
+        this.authorshipDetailsDialog.open('Flow Details', this.toAuthorshipSource(flow), trigger);
+    }
+
+    // The list's light graphs leave authorship optional; any field absent renders as the dialog's "unknown".
+    private toAuthorshipSource(flow: GetGraphLightRequest): AuthorshipDetailsSource {
+        return {
+            created_by: flow.created_by ?? null,
+            created_at: flow.created_at ?? null,
+            last_edited_by: flow.last_edited_by ?? null,
+            last_edited_at: flow.last_edited_at ?? null,
+        };
     }
 
     private exportFlow(flow: GetGraphLightRequest): void {

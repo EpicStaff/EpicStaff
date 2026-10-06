@@ -86,6 +86,10 @@ export class FlowsApiService {
             .pipe(map((response) => response.results));
     }
 
+    getGraphLightById(id: number): Observable<GetGraphLightRequest> {
+        return this.http.get<GetGraphLightRequest>(`${this.configService.apiUrl}graph-light/${id}/`);
+    }
+
     getGraphById(id: number, forceRefresh = false): Observable<GraphDto> {
         const params = forceRefresh ? new HttpParams().set('_ts', Date.now().toString()) : undefined;
         return this.http.get<GraphDto>(`${this.apiUrl}${id}/`, { params });
