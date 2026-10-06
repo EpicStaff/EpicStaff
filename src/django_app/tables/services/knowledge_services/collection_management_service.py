@@ -8,6 +8,7 @@ from src.shared.models.search_config_suggestion import SuggestedCollectionMetric
 from tables.clients import KnowledgeClient
 from tables.clients.errors import (
     ClientBadGatewayError,
+    ClientError,
     ClientNotAvailableError,
     ClientTimeoutError,
 )
@@ -20,13 +21,15 @@ from tables.exceptions import (
     NoNaiveRagForCollectionException,
 )
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
-from tables.models.knowledge_models import GraphRag, NaiveRag
+from tables.models.knowledge_models import GraphRag, GraphRagIndexConfig, NaiveRag
 from tables.models.knowledge_models.naive_rag_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
+
+_GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 
 class CollectionManagementService:
@@ -224,12 +227,11 @@ class CollectionManagementService:
     @transaction.atomic
     def purge_collection(collection: SourceCollection) -> dict[str, Any]:
         """
-        Delete a collection for good: its documents (binned ones included) and
-        the DocumentContent no other document references any more.
-
-        TODO(EST-821): also remove GraphRAG leftovers: GraphRagIndexConfig rows
-        (a SET_NULL forward link, out of the Collector's reach) and the index
-        held by the knowledge service.
+        Delete a collection for good: its documents (binned ones included), the
+        DocumentContent no other document references any more, and its GraphRAG
+        data: the GraphRagIndexConfig rows (a forward link the Collector doesn't
+        follow) and, once the transaction commits, the indexes the knowledge
+        service holds.
 
         Args:
             collection: A collection in the recycle bin.
@@ -252,7 +254,20 @@ class CollectionManagementService:
             )
         )
 
+        # all_objects: the collection's GraphRAGs are binned with it.
+        graph_rags = GraphRag.all_objects.filter(base_rag_type__source_collection=collection)
+        graph_rag_ids = list(graph_rags.values_list("graph_rag_id", flat=True))
+        index_config_ids = list(
+            graph_rags.exclude(index_config__isnull=True).values_list("index_config_id", flat=True)
+        )
+
         collection.purge()
+
+        GraphRagIndexConfig.objects.filter(pk__in=index_config_ids).delete()
+        if graph_rag_ids:
+            transaction.on_commit(
+                lambda: CollectionManagementService._delete_graph_rag_indexes(graph_rag_ids)
+            )
 
         unreferenced_count = 0
         if content_ids:
@@ -275,6 +290,25 @@ class CollectionManagementService:
             "deleted_documents": document_count,
             "deleted_content": unreferenced_count,
         }
+
+    @staticmethod
+    def _delete_graph_rag_indexes(graph_rag_ids: list[int]) -> None:
+        """Drop the knowledge service's GraphRAG indexes of a purged collection.
+
+        Runs after the purge commits, so a failure can't bring the rows back;
+        it's logged, and the index stays behind on the knowledge service. The
+        purge response waits for these calls, hence the short timeout.
+        """
+        with KnowledgeClient(timeout=_GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS) as client:
+            for graph_rag_id in graph_rag_ids:
+                try:
+                    client.delete(strategy=RAGStrategy.GRAPH, rag_id=graph_rag_id)
+                except ClientError as error:
+                    logger.warning(
+                        "Could not delete GraphRAG index {graph_rag_id} of a purged collection: {error}",
+                        graph_rag_id=graph_rag_id,
+                        error=error,
+                    )
 
     @staticmethod
     @transaction.atomic

@@ -10,6 +10,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 
 from agents.models.surface_models import Surface
 from agents.serializers.surface_serializers import (
@@ -21,10 +22,11 @@ from agents.serializers.surface_serializers import (
 from agents.services.surface_combine_service import SurfaceCombineService
 
 
-class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+class SurfaceViewSet(OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.SURFACES
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "combine": Permission.READ}
+    recycle_bin_resource_key = "surface"
     queryset = Surface.objects.select_related(
         "organization",
         "owner_agent",

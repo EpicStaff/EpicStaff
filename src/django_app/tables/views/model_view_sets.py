@@ -231,6 +231,7 @@ from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
 )
+from tables.serializers.recycle_bin_serializers import FlowRecycleBinEntrySerializer
 from tables.serializers.serializers import (
     BulkExportSerializer,
     GraphNodesPartialExportSerializer,
@@ -249,6 +250,7 @@ from tables.services.copy_services import (
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
+from tables.services.recycle_bin.flow_bin_service import FlowBinService, FlowRecycleBinEntry
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.tools_usage_service import (
@@ -311,6 +313,7 @@ from tables.views.mixins import (
     InspectActionMixin,
     ToolUsageActionsMixin,
 )
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -494,6 +497,7 @@ class PythonCodeToolViewSet(
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    RecycleBinActionsMixin,
     viewsets.ModelViewSet,
 ):
     """
@@ -506,6 +510,7 @@ class PythonCodeToolViewSet(
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
@@ -516,6 +521,7 @@ class PythonCodeToolViewSet(
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
+    recycle_bin_resource_key = "python_tool"
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -673,13 +679,21 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
+@extend_schema_view(
+    recycle_bin=extend_schema(request=None, responses=FlowRecycleBinEntrySerializer(many=True))
+)
 class GraphViewSet(
-    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
@@ -691,6 +705,8 @@ class GraphViewSet(
         "delete_by_uuid": Permission.DELETE,
         "subflow_usage": Permission.READ,
     }
+    recycle_bin_resource_key = "flow"
+    recycle_bin_entry_serializer_class = FlowRecycleBinEntrySerializer
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
 
@@ -703,6 +719,9 @@ class GraphViewSet(
             entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
         )
         self._partial_export_service = GraphPartialExportService(entity_registry)
+
+    def recycle_bin_entries(self, org_id: int) -> list[FlowRecycleBinEntry]:
+        return FlowBinService.entries(self._bin_resource(), org_id)
 
     def get_queryset(self):
         qs = (
@@ -2115,12 +2134,15 @@ class McpToolViewSet(
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    RecycleBinActionsMixin,
     viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
+    recycle_bin_resource_key = "mcp_tool"
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
