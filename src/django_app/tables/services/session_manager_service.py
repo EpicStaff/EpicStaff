@@ -254,7 +254,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             storage_credentials = issue_for_session(
                 session_data=session_data,
                 session_orm=session,
-                org=graph.organization,
+                org=graph.org,
             )
             if storage_credentials:
                 session_data.storage_credentials = storage_credentials

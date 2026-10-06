@@ -100,13 +100,11 @@ class ToolRegistryBuilder:
         mcp_gateway: McpToolGateway | None = None,
         knowledge_client: KnowledgeClient | None = None,
         knowledge_sink: KnowledgeEventSink | None = None,
-        storage_credentials=None,
     ) -> None:
         self._sandbox = sandbox
         self._mcp_gateway = mcp_gateway
         self._knowledge_client = knowledge_client
         self._knowledge_sink = knowledge_sink
-        self._storage_credentials = storage_credentials
         self._registry = ToolRegistry()
         self._names: set[str] = set()
         self._built = False

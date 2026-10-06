@@ -4,6 +4,8 @@ from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
+from loguru import logger
+from pydantic import ValidationError
 from src.shared.models import CodeResultData, CodeTaskData
 from storage_credentials.services.session_credential_service import issue_for_test_run
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
@@ -97,28 +99,43 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         storage_org_prefix = f"org_{organization_id}" if use_storage else None
         storage_allowed_paths = [f"test-runs/{execution_id}/"] if use_storage else None
 
-        code_task_data = CodeTaskData(
-            venv_name=f"venv_{python_code_id}",
-            libraries=python_code.get_libraries_list(),
-            code=python_code.code,
-            entrypoint=python_code.entrypoint,
-            func_kwargs=varaibles,
-            execution_id=execution_id,
-            global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
-            use_storage=use_storage,
-            storage_org_prefix=storage_org_prefix,
-            storage_allowed_paths=storage_allowed_paths,
-            org_id=organization_id if use_storage else None,
-            secrets=secrets,
-        )
-
-        # If storage is needed, mint temporary credentials and persist them
+        storage_credentials = None
         if use_storage:
-            code_task_data.storage_credentials = issue_for_test_run(
+            storage_credentials = issue_for_test_run(
                 python_code_result=python_code_result,
                 storage_allowed_paths=storage_allowed_paths,
                 org_id=organization_id,
             )
+
+        try:
+            code_task_data = CodeTaskData(
+                venv_name=f"venv_{python_code_id}",
+                libraries=python_code.get_libraries_list(),
+                code=python_code.code,
+                entrypoint=python_code.entrypoint,
+                func_kwargs=varaibles,
+                execution_id=execution_id,
+                global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
+                use_storage=use_storage,
+                storage_org_prefix=storage_org_prefix,
+                storage_allowed_paths=storage_allowed_paths,
+                org_id=organization_id if use_storage else None,
+                secrets=secrets,
+                storage_credentials=storage_credentials,
+            )
+        except ValidationError:
+            # Never log the error itself: pydantic's ValidationError repr embeds
+            # the full constructor input, including `secrets` plaintext.
+            logger.error(
+                "Invalid storage scope for code execution (execution_id={})",
+                execution_id,
+            )
+            PythonCodeResult.objects.filter(execution_id=execution_id).update(
+                status=PythonCodeResult.Status.ERROR,
+                stderr="Invalid storage scope for code execution.",
+                finished_at=timezone.now(),
+            )
+            return execution_id
 
         channel = self.code_exec_task_channel
         self.redis_service.redis_client.publish(channel, code_task_data.model_dump_json())

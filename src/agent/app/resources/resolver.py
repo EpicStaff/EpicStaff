@@ -155,7 +155,6 @@ class AgentResolver:
             self._mcp_gateway,
             self._knowledge_client,
             knowledge_sink,
-            storage_credentials=storage_credentials,
         ).add_system_tools()
 
         for ref in agent.tool_refs:
