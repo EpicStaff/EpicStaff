@@ -24,6 +24,10 @@ const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     'key_value_mode_denied',
     // An upload over an existing file without FILES:UPDATE; the upload's own error handling shows it.
     'overwrite_not_permitted',
+    // A plugin install bundling a resource type the role can't create; the install dialog shows it.
+    'plugin_install_forbidden',
+    // A plugin delete removing a resource type the role can't delete; the delete dialog shows it.
+    'plugin_delete_forbidden',
 ]);
 
 /**

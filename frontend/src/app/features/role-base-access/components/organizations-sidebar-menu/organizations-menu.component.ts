@@ -84,6 +84,8 @@ export class OrganizationsMenuComponent {
     private getUrlForOrgSwitch(currentUrl: string): string {
         if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
         if (/^\/graph\//.test(currentUrl)) return '/sessions';
+        // A plugin page belongs to one organization; the default route picks a page of the new one.
+        if (/^\/plugins\//.test(currentUrl)) return '/';
         return currentUrl;
     }
 

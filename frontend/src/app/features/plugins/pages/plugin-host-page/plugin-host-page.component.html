@@ -1,0 +1,28 @@
+<div class="plugin-host">
+    @if (readyView(); as ready) {
+        <!-- sandbox / referrerpolicy / allow must stay literal: Angular refuses to bind them. -->
+        <iframe
+            #pluginFrame
+            class="plugin-host__frame"
+            sandbox="allow-scripts"
+            referrerpolicy="no-referrer"
+            allow="camera 'none'; microphone 'none'; geolocation 'none'"
+            [title]="ready.session.plugin.name"
+            [src]="ready.frameUrl"
+            (load)="onFrameLoad()"
+        ></iframe>
+    } @else if (messageView(); as message) {
+        <div class="plugin-host__state">
+            <app-fetch-error-state
+                [title]="message.title"
+                [message]="message.message"
+                [retryLabel]="message.retryLabel"
+                (retry)="reload()"
+            />
+        </div>
+    } @else {
+        <div class="plugin-host__state">
+            <app-loading-spinner message="Opening plugin..." />
+        </div>
+    }
+</div>

@@ -1,0 +1,141 @@
+<section class="plugins-section">
+    <header class="plugins-section__header">
+        <div class="plugins-section__header-left">
+            <h3 class="plugins-section__title">Plugins</h3>
+            <p class="plugins-section__subtitle">
+                Ready-made capabilities for this organization: flows, agents, knowledge and their own page, added from
+                one file.
+            </p>
+        </div>
+
+        <app-button
+            *appHasPermission="[ResourceCode.Plugins, ActionCode.Create]"
+            type="primary-white"
+            leftIcon="plus"
+            (click)="onAddPlugin()"
+        >
+            Add plugin
+        </app-button>
+    </header>
+
+    @if (isInitialLoading()) {
+        <app-loading-spinner message="Loading plugins..." />
+    } @else if (loadFailed()) {
+        <app-fetch-error-state
+            title="Failed to load plugins"
+            (retry)="reload()"
+        />
+    } @else if (isEmpty()) {
+        <div class="plugins-section__empty">
+            <i
+                class="plugins-section__empty-icon ti ti-puzzle"
+                aria-hidden="true"
+            ></i>
+            <p class="plugins-section__empty-title">No plugins yet</p>
+            <p class="plugins-section__empty-text">
+                A plugin adds a working bundle to this organization in one step. Drop its .zip file with
+                <strong>Add plugin</strong> to get started.
+            </p>
+        </div>
+    } @else {
+        <ul class="plugins-section__list">
+            @for (row of rows(); track row.plugin.id) {
+                <li class="plugins-section__item">
+                    <div class="plugins-section__icon">
+                        @if (row.iconUrl) {
+                            <img
+                                [src]="row.iconUrl"
+                                alt=""
+                                width="32"
+                                height="32"
+                            />
+                        } @else {
+                            <i
+                                class="ti ti-puzzle"
+                                aria-hidden="true"
+                            ></i>
+                        }
+                    </div>
+
+                    <div class="plugins-section__info">
+                        <div class="plugins-section__name-line">
+                            <span class="plugins-section__name">{{ row.plugin.name }}</span>
+                            <span class="plugins-section__version">v{{ row.plugin.version }}</span>
+                        </div>
+                        @if (row.plugin.description) {
+                            <p
+                                class="plugins-section__description"
+                                [title]="row.plugin.description"
+                            >
+                                {{ row.plugin.description }}
+                            </p>
+                        }
+                    </div>
+
+                    <span
+                        class="plugins-section__status"
+                        [class]="row.statusClass"
+                        [title]="row.statusLabel"
+                        >{{ row.statusLabel }}</span
+                    >
+
+                    <div class="plugins-section__actions">
+                        <!-- First, so it sits right before Retry: fix the secret, then retry. -->
+                        @if (row.hasSecretSlots) {
+                            <!-- The secrets endpoint also requires secrets:create; without it the save is refused. -->
+                            <ng-container *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]">
+                                <app-button
+                                    *appHasPermission="[ResourceCode.Secrets, ActionCode.Create]"
+                                    type="outline-secondary"
+                                    mod="small"
+                                    [disabled]="isBusy(row.plugin.id)"
+                                    (click)="onEditSecrets(row.plugin)"
+                                >
+                                    Secrets
+                                </app-button>
+                            </ng-container>
+                        }
+                        @if (row.plugin.status === 'needs_attention') {
+                            <app-button
+                                *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]"
+                                type="outline-primary"
+                                mod="small"
+                                [disabled]="isBusy(row.plugin.id)"
+                                (click)="onRetry(row.plugin)"
+                            >
+                                Retry
+                            </app-button>
+                        }
+                        @if (row.plugin.suspended) {
+                            <app-button
+                                *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]"
+                                type="outline-secondary"
+                                mod="small"
+                                [disabled]="isBusy(row.plugin.id)"
+                                (click)="onResume(row.plugin)"
+                            >
+                                Resume
+                            </app-button>
+                        } @else {
+                            <app-button
+                                *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]"
+                                type="outline-secondary"
+                                mod="small"
+                                [disabled]="isBusy(row.plugin.id)"
+                                (click)="onSuspend(row.plugin)"
+                            >
+                                Suspend
+                            </app-button>
+                        }
+                        <app-delete-button
+                            *appHasPermission="[ResourceCode.Plugins, ActionCode.Delete]"
+                            tooltip="Delete plugin"
+                            [disabled]="isBusy(row.plugin.id)"
+                            (triggered)="onDelete(row.plugin)"
+                        />
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</section>

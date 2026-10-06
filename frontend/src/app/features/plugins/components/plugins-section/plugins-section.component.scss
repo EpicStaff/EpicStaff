@@ -1,0 +1,196 @@
+// Fills the 100% height .configure-models-dialog__panel offers, so the list can scroll inside it.
+:host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.plugins-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 24px;
+    color: var(--color-text-primary);
+
+    &__header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        flex-wrap: wrap;
+    }
+
+    &__header-left {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    &__title {
+        margin: 0;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
+    }
+
+    &__subtitle {
+        margin: 0;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-secondary);
+    }
+
+    &__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 40px 24px;
+        text-align: center;
+        border: 1px dashed var(--color-divider-regular);
+        border-radius: 10px;
+    }
+
+    &__empty-icon {
+        font-size: 2rem;
+        color: var(--color-text-tertiary);
+    }
+
+    &__empty-title {
+        margin: 0;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
+        line-height: var(--text-h4-line-height);
+    }
+
+    &__empty-text {
+        margin: 0;
+        max-width: 420px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-secondary);
+    }
+
+    &__list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        overflow-y: auto;
+        min-height: 0;
+    }
+
+    &__item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        background-color: var(--color-surface-card);
+        border: 1px solid var(--color-divider-subtle);
+        border-radius: 8px;
+    }
+
+    &__icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background-color: var(--color-input-background);
+        color: var(--color-text-secondary);
+        font-size: 1.25rem;
+
+        img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+    }
+
+    &__info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__name-line {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    &__name {
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__version,
+    &__description {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-text-secondary);
+    }
+
+    &__description {
+        margin: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__status {
+        flex-shrink: 1;
+        max-width: 320px;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        line-height: var(--text-body-small-large-line-height);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--preparing {
+            color: var(--color-ks-status-processing);
+            background-color: var(--transparent-orange-8);
+        }
+
+        &--ready {
+            color: var(--color-ks-status-new);
+            background-color: var(--transparent-green-8);
+        }
+
+        &--needs_attention {
+            color: var(--color-ks-status-failed);
+            background-color: var(--color-ks-transparent-red);
+        }
+
+        &--suspended {
+            color: var(--color-text-secondary);
+            background-color: var(--transparent-white-8);
+        }
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+}

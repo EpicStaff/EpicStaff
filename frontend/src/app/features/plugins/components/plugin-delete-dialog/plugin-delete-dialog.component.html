@@ -1,0 +1,143 @@
+<div class="plugin-delete-dialog">
+    <header class="plugin-delete-dialog__header">
+        <h2 class="plugin-delete-dialog__title">Delete plugin</h2>
+        <button
+            type="button"
+            class="plugin-delete-dialog__close-btn"
+            aria-label="Close"
+            matTooltip="Close"
+            matTooltipPosition="above"
+            [disabled]="deleting()"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    <div class="plugin-delete-dialog__body">
+        @if (previewFailed()) {
+            <app-fetch-error-state
+                title="Couldn't load what would be deleted"
+                mod="small"
+                (retry)="loadPreview()"
+            />
+        } @else if (preview(); as report) {
+            <p class="plugin-delete-dialog__message">
+                Delete <strong>{{ pluginLabel() }}</strong
+                >? This removes everything it added, including your edits to those items and the run history of its
+                flows. This can't be undone.
+            </p>
+
+            @if (blockers().length) {
+                <div
+                    class="plugin-delete-dialog__blocked"
+                    role="alert"
+                >
+                    <p class="plugin-delete-dialog__blocked-title">You can't delete this plugin</p>
+                    <ul class="plugin-delete-dialog__list">
+                        @for (blocker of blockers(); track $index) {
+                            <li>{{ blocker }}</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (report.live_session_count > 0 || externalUsageLines().length) {
+                <div
+                    class="plugin-delete-dialog__caution"
+                    role="alert"
+                >
+                    @if (report.live_session_count > 0) {
+                        <p>
+                            {{ report.live_session_count }} running
+                            {{ report.live_session_count === 1 ? 'session' : 'sessions' }} will be stopped first.
+                        </p>
+                    }
+                    @if (externalUsageLines().length) {
+                        <p>Your own resources that use parts of this plugin will lose them:</p>
+                        <ul class="plugin-delete-dialog__list">
+                            @for (line of externalUsageLines(); track $index) {
+                                <li>{{ line }}</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+
+            @if (breakdown().length) {
+                <section class="plugin-delete-dialog__section">
+                    <h3 class="plugin-delete-dialog__section-title">Resources to delete</h3>
+                    <ul class="plugin-delete-dialog__breakdown">
+                        @for (item of breakdown(); track item.label) {
+                            <li>
+                                <span>{{ item.label }}</span>
+                                <span class="plugin-delete-dialog__count">{{ item.count }}</span>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+
+            @if (resourceGroups().length) {
+                <section class="plugin-delete-dialog__section">
+                    <h3 class="plugin-delete-dialog__section-title">Items</h3>
+                    <dl class="plugin-delete-dialog__items">
+                        @for (group of resourceGroups(); track group.type) {
+                            <dt>{{ group.label }}</dt>
+                            <dd>{{ group.names.join(', ') }}</dd>
+                        }
+                    </dl>
+                </section>
+            }
+
+            @if (alreadyDeletedCount() > 0) {
+                <p class="plugin-delete-dialog__muted">
+                    {{ alreadyDeletedCount() }} {{ alreadyDeletedCount() === 1 ? 'item was' : 'items were' }} already
+                    deleted and will be skipped.
+                </p>
+            }
+
+            @if (deleteError(); as error) {
+                <div
+                    class="plugin-delete-dialog__blocked"
+                    role="alert"
+                >
+                    <p class="plugin-delete-dialog__blocked-title">{{ error.message }}</p>
+                    @if (error.details.length) {
+                        <ul class="plugin-delete-dialog__list">
+                            @for (detail of error.details; track $index) {
+                                <li>{{ detail }}</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+        } @else {
+            <app-loading-spinner message="Checking what will be deleted..." />
+        }
+    </div>
+
+    <footer class="plugin-delete-dialog__footer">
+        <app-button
+            type="outline-primary"
+            [disabled]="deleting()"
+            (click)="close()"
+        >
+            Cancel
+        </app-button>
+        <button
+            type="button"
+            class="plugin-delete-dialog__delete-btn"
+            [disabled]="!canDelete()"
+            (click)="confirmDelete()"
+        >
+            @if (deleting()) {
+                <app-spinner2 [size]="16" />
+            }
+            Delete
+        </button>
+    </footer>
+</div>

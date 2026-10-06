@@ -108,7 +108,8 @@ export class PermissionsService implements StorageService {
             this.can(ResourceCode.LlmConfigs, ActionCode.Read) ||
             this.can(ResourceCode.Voice, ActionCode.Read) ||
             this.can(ResourceCode.Webhooks, ActionCode.Read) ||
-            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])
+            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]) ||
+            this.can(ResourceCode.Plugins, ActionCode.Read)
         );
     }
 

@@ -5,4 +5,5 @@ export enum ConfigureModelsTabId {
     WEBHOOK_TRIGGERS = 'webhook_triggers',
     VOICE_SETTINGS = 'voice_settings',
     SECRETS = 'secrets',
+    PLUGINS = 'plugins',
 }

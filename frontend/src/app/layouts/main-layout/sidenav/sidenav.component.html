@@ -72,7 +72,7 @@
             }
         }
 
-        @for (item of topNavItems; track item.id) {
+        @for (item of topNavItems(); track item.id) {
             @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
@@ -89,7 +89,13 @@
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >
                             <div class="sidenav-link-icon">
-                                @if (item.icon) {
+                                @if (item.iconUrl) {
+                                    <img
+                                        class="sidenav-link-image"
+                                        [src]="item.iconUrl"
+                                        alt=""
+                                    />
+                                } @else if (item.icon) {
                                     <app-svg-icon
                                         [icon]="item.icon"
                                         size="1.4rem"

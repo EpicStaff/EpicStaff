@@ -1,0 +1,335 @@
+<div class="plugin-install-dialog">
+    <header class="plugin-install-dialog__header">
+        <h2 class="plugin-install-dialog__title">{{ title() }}</h2>
+        <button
+            type="button"
+            class="plugin-install-dialog__close-btn"
+            aria-label="Close"
+            [matTooltip]="closeBlocked() ? 'Wait until the plugin is added' : 'Close'"
+            matTooltipPosition="above"
+            [disabled]="closeBlocked()"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    <ol class="plugin-install-dialog__steps">
+        @for (item of steps; track item.id; let index = $index) {
+            <li
+                class="plugin-install-dialog__step"
+                [class.plugin-install-dialog__step--active]="index === stepIndex()"
+                [class.plugin-install-dialog__step--complete]="index < stepIndex()"
+            >
+                <span class="plugin-install-dialog__step-number">{{ index + 1 }}</span>
+                {{ item.label }}
+            </li>
+        }
+    </ol>
+
+    <div class="plugin-install-dialog__body">
+        @switch (step()) {
+            @case ('drop') {
+                @if (inspecting()) {
+                    <div class="plugin-install-dialog__checking">
+                        <app-spinner2 [size]="24" />
+                        <span>Checking {{ file()?.name }}…</span>
+                    </div>
+                } @else {
+                    @if (file(); as selected) {
+                        <app-drag-drop-area
+                            class="plugin-install-dialog__drop-wrapper"
+                            [allowedTypes]="['zip']"
+                            (filesDropped)="onFilesChosen($event)"
+                        >
+                            <div class="plugin-install-dialog__file">
+                                <app-svg-icon
+                                    icon="file-flat"
+                                    size="16px"
+                                />
+                                <span
+                                    class="plugin-install-dialog__file-name"
+                                    [title]="selected.name"
+                                    >{{ selected.name }}</span
+                                >
+                                <span class="plugin-install-dialog__muted">{{ selected.size | fileSize: 'auto' }}</span>
+                            </div>
+                        </app-drag-drop-area>
+                    } @else {
+                        <app-file-uploader
+                            accept=".zip"
+                            [multiple]="false"
+                            label="Drop a plugin file here or click to choose one"
+                            hint="One .zip file, up to 20 MB"
+                            (filesUploaded)="onFilesChosen($event)"
+                            (filesRejected)="onFilesRejected()"
+                        />
+                    }
+
+                    @if (fileError(); as error) {
+                        <div
+                            class="plugin-install-dialog__alert plugin-install-dialog__alert--danger"
+                            role="alert"
+                        >
+                            <p class="plugin-install-dialog__alert-title">{{ error.message }}</p>
+                            @if (error.details.length) {
+                                <ul class="plugin-install-dialog__alert-list">
+                                    @for (detail of error.details; track $index) {
+                                        <li>{{ detail }}</li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+                }
+            }
+
+            @case ('review') {
+                @if (inspection(); as review) {
+                    <div class="plugin-install-dialog__plugin">
+                        <div class="plugin-install-dialog__icon">
+                            @if (iconUrl(); as icon) {
+                                <img
+                                    [src]="icon"
+                                    alt=""
+                                    width="40"
+                                    height="40"
+                                />
+                            } @else {
+                                <i
+                                    class="ti ti-puzzle"
+                                    aria-hidden="true"
+                                ></i>
+                            }
+                        </div>
+                        <div class="plugin-install-dialog__plugin-info">
+                            <div class="plugin-install-dialog__plugin-name">
+                                {{ review.plugin.name }}
+                                <span class="plugin-install-dialog__muted">v{{ review.plugin.version }}</span>
+                            </div>
+                            @if (review.plugin.description) {
+                                <p class="plugin-install-dialog__muted">{{ review.plugin.description }}</p>
+                            }
+                        </div>
+                    </div>
+
+                    @if (isBlocked()) {
+                        <div
+                            class="plugin-install-dialog__alert plugin-install-dialog__alert--danger"
+                            role="alert"
+                        >
+                            <p class="plugin-install-dialog__alert-title">You can't add this plugin</p>
+                            <ul class="plugin-install-dialog__alert-list">
+                                @for (blocker of blockers(); track $index) {
+                                    <li>{{ blocker }}</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    @if (review.warnings.length) {
+                        <div class="plugin-install-dialog__alert plugin-install-dialog__alert--info">
+                            <ul class="plugin-install-dialog__alert-list">
+                                @for (warning of review.warnings; track $index) {
+                                    <li>{{ warning }}</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    <section class="plugin-install-dialog__section">
+                        <h3 class="plugin-install-dialog__section-title">What it adds</h3>
+                        <dl class="plugin-install-dialog__contents">
+                            @for (group of contentGroups(); track group.type) {
+                                <dt>{{ group.label }}</dt>
+                                <dd>
+                                    @for (item of group.items; track $index) {
+                                        <div>
+                                            {{ item.name }}
+                                            @if (item.detail) {
+                                                <span class="plugin-install-dialog__muted">({{ item.detail }})</span>
+                                            }
+                                        </div>
+                                    }
+                                </dd>
+                            }
+                        </dl>
+                    </section>
+
+                    @if (accessLines().length) {
+                        <section class="plugin-install-dialog__section">
+                            <h3 class="plugin-install-dialog__section-title">What its page can do</h3>
+                            <ul class="plugin-install-dialog__list">
+                                @for (line of accessLines(); track $index) {
+                                    <li>{{ line }}</li>
+                                }
+                            </ul>
+                        </section>
+                    }
+
+                    @if (codeReviewLines().length) {
+                        <section class="plugin-install-dialog__section">
+                            <h3 class="plugin-install-dialog__section-title">Code it runs in EpicStaff</h3>
+                            <ul class="plugin-install-dialog__list">
+                                @for (line of codeReviewLines(); track $index) {
+                                    <li>{{ line }}</li>
+                                }
+                            </ul>
+                        </section>
+                    }
+
+                    @if (review.secret_slots.length) {
+                        <section class="plugin-install-dialog__section">
+                            <h3 class="plugin-install-dialog__section-title">Secrets</h3>
+                            <form
+                                class="plugin-install-dialog__secrets"
+                                [formGroup]="secretsForm()"
+                            >
+                                @for (slot of review.secret_slots; track slot.name) {
+                                    <div class="plugin-install-dialog__secret">
+                                        <app-custom-input
+                                            type="password"
+                                            autocomplete="new-password"
+                                            placeholder="Paste the value"
+                                            [label]="slot.name"
+                                            [required]="true"
+                                            [formControlName]="slot.name"
+                                        />
+                                        @if (slot.description) {
+                                            <p class="plugin-install-dialog__muted">{{ slot.description }}</p>
+                                        }
+                                        <app-plugin-secret-destinations [destinations]="slot.destinations" />
+                                        <p class="plugin-install-dialog__hint">
+                                            Saved as the secret {{ slot.secret_name }}. At most
+                                            {{ secretValueMaxLength }} characters.
+                                        </p>
+                                    </div>
+                                }
+                            </form>
+                        </section>
+                    }
+
+                    <label class="plugin-install-dialog__acknowledge">
+                        <app-checkbox
+                            [checked]="acknowledged()"
+                            [disabled]="isBlocked()"
+                            (changed)="acknowledged.set($event)"
+                        />
+                        <span>{{ acknowledgement() }}</span>
+                    </label>
+
+                    @if (installError(); as error) {
+                        <div
+                            class="plugin-install-dialog__alert plugin-install-dialog__alert--danger"
+                            role="alert"
+                        >
+                            <p class="plugin-install-dialog__alert-title">{{ error.message }}</p>
+                            @if (error.details.length) {
+                                <ul class="plugin-install-dialog__alert-list">
+                                    @for (detail of error.details; track $index) {
+                                        <li>{{ detail }}</li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+                }
+            }
+
+            @case ('progress') {
+                <div class="plugin-install-dialog__progress">
+                    <p class="plugin-install-dialog__progress-label">
+                        @if (isUploadComplete()) {
+                            Setting up flows, agents, secrets and knowledge…
+                        } @else {
+                            Uploading {{ uploadPercent() }}%
+                        }
+                    </p>
+                    <div
+                        class="plugin-install-dialog__bar"
+                        role="progressbar"
+                        aria-label="Plugin install progress"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        [attr.aria-valuenow]="isUploadComplete() ? null : uploadPercent()"
+                        [class.plugin-install-dialog__bar--indeterminate]="isUploadComplete()"
+                    >
+                        <div
+                            class="plugin-install-dialog__bar-fill"
+                            [style.width.%]="isUploadComplete() ? null : uploadPercent()"
+                        ></div>
+                    </div>
+                    <p class="plugin-install-dialog__muted">Keep this window open until the plugin is added.</p>
+                </div>
+            }
+
+            @case ('done') {
+                <div class="plugin-install-dialog__done">
+                    <app-svg-icon
+                        class="plugin-install-dialog__done-icon"
+                        icon="circle-check"
+                        size="40px"
+                    />
+                    <p class="plugin-install-dialog__done-title">
+                        Plugin added successfully
+                        @if (installedPlugin()?.status === 'preparing') {
+                            — preparing knowledge
+                        }
+                    </p>
+                    @if (installedPlugin()?.status === 'preparing') {
+                        <p class="plugin-install-dialog__muted">
+                            Knowledge is indexed in the background. The plugin's page becomes available when it's ready.
+                        </p>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <footer class="plugin-install-dialog__footer">
+        @switch (step()) {
+            @case ('drop') {
+                @if (file() && !inspecting()) {
+                    <app-button
+                        type="outline-secondary"
+                        (click)="chooseAnotherFile()"
+                    >
+                        Choose another file
+                    </app-button>
+                }
+                <app-button
+                    type="outline-primary"
+                    (click)="close()"
+                >
+                    Cancel
+                </app-button>
+            }
+            @case ('review') {
+                <app-button
+                    type="outline-secondary"
+                    (click)="chooseAnotherFile()"
+                >
+                    Choose another file
+                </app-button>
+                <app-button
+                    type="primary-white"
+                    [disabled]="!canInstall()"
+                    (click)="install()"
+                >
+                    Add plugin
+                </app-button>
+            }
+            @case ('done') {
+                <app-button
+                    type="primary-white"
+                    (click)="close()"
+                >
+                    Done
+                </app-button>
+            }
+        }
+    </footer>
+</div>

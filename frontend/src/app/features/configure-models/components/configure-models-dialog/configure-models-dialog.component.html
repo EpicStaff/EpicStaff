@@ -76,6 +76,11 @@
                     <app-secrets-section></app-secrets-section>
                 </section>
             }
+            @case (tabIds.PLUGINS) {
+                <section class="configure-models-dialog__panel">
+                    <app-plugins-section />
+                </section>
+            }
         }
     </main>
 </div>

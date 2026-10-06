@@ -4,7 +4,7 @@ export enum ActionCode {
     Update = 'update',
     Delete = 'delete',
     Export = 'export',
-    Use = 'use', // for 'secrets' management only
+    Use = 'use', // secrets: bind to a resource; plugins: open the plugin's page
     List = 'list', // unused for now
 }
 
@@ -24,6 +24,7 @@ export enum ResourceCode {
     Voice = 'voice',
     Webhooks = 'webhooks',
     KeyValueTables = 'key_value_tables',
+    Plugins = 'plugins',
 }
 
 export interface ActivePermissions {

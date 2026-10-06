@@ -193,6 +193,15 @@ export const routes: Routes = [
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
+                        path: 'plugins/:id',
+                        loadComponent: () =>
+                            import('./features/plugins/pages/plugin-host-page/plugin-host-page.component').then(
+                                (m) => m.PluginHostPageComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Plugins, ActionCode.Use] },
+                    },
+                    {
                         path: 'graph/:graphId/session/:sessionId',
                         loadComponent: () =>
                             import('./pages/running-graph/pages/running-graph-page/running-graph-page.component').then(

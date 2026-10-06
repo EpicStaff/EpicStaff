@@ -21,6 +21,9 @@ import { filter, map } from 'rxjs/operators';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { PluginNavItem } from '../../../features/plugins/models/plugin.model';
+import { PluginsStoreService } from '../../../features/plugins/services/plugins-store.service';
+import { isPluginIconUrl } from '../../../features/plugins/utils/plugin-display.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
@@ -33,10 +36,15 @@ import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
+/** Sprite icon for a plugin button whose own icon is missing or not a PNG / SVG data URL. */
+const PLUGIN_FALLBACK_ICON = 'diamond-grid';
+
 interface NavItem {
     id: string;
     routeLink?: string | (() => string | null);
     icon?: string;
+    /** Image shown instead of `icon`. Only a PNG / SVG data URL, rendered with `<img [src]>`. */
+    iconUrl?: string;
     label: string;
     showTooltip: boolean;
     /** Function (not boolean) so signal reads inside happen at template-eval time.
@@ -70,8 +78,14 @@ export class LeftSidebarComponent implements AfterViewInit {
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
+    private readonly pluginsStore = inject(PluginsStoreService);
 
-    public topNavItems: NavItem[];
+    private readonly staticTopNavItems: NavItem[];
+    /** One button per plugin page the user may open, after the built-in items. */
+    private readonly pluginNavItems = computed(() =>
+        this.pluginsStore.navPlugins().map((plugin) => this.toPluginNavItem(plugin))
+    );
+    public readonly topNavItems = computed<NavItem[]>(() => [...this.staticTopNavItems, ...this.pluginNavItems()]);
     public bottomNavItems: NavItem[];
     public isEpicChatEnabled: boolean;
     public apiBaseUrl: string;
@@ -187,7 +201,7 @@ export class LeftSidebarComponent implements AfterViewInit {
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;
-        this.topNavItems = [
+        this.staticTopNavItems = [
             {
                 id: 'agents',
                 routeLink: 'agents',
@@ -296,5 +310,18 @@ export class LeftSidebarComponent implements AfterViewInit {
     public resolveRouteLink(item: NavItem): string | null {
         if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
+    }
+
+    private toPluginNavItem(plugin: PluginNavItem): NavItem {
+        const iconUrl = isPluginIconUrl(plugin.icon_data_url) ? (plugin.icon_data_url ?? undefined) : undefined;
+        return {
+            id: `plugin-${plugin.id}`,
+            routeLink: `/plugins/${plugin.id}`,
+            icon: iconUrl ? undefined : PLUGIN_FALLBACK_ICON,
+            iconUrl,
+            label: plugin.name,
+            isPermitted: () => this.permissionService.can(ResourceCode.Plugins, ActionCode.Use),
+            showTooltip: false,
+        };
     }
 }

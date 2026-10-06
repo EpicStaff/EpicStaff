@@ -6,6 +6,7 @@ import { AppSvgIconComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { PluginsSectionComponent } from '../../../plugins/components/plugins-section/plugins-section.component';
 import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { ConfigureModelsTab } from '../../interfaces/configure-models-tab.interface';
 import { DefaultLlmsSectionComponent } from '../default-llms-section/default-llms-section.component';
@@ -25,6 +26,7 @@ import { WebhookTriggersSectionComponent } from '../webhook-triggers-section/web
         WebhookTriggersSectionComponent,
         VoiceSettingsSectionComponent,
         SecretsSectionComponent,
+        PluginsSectionComponent,
         AppSvgIconComponent,
         MatTooltipModule,
     ],
@@ -74,6 +76,12 @@ export class ConfigureModelsDialogComponent implements OnInit {
             svgIcon: 'secrets',
             isPermitted: () =>
                 this.permissionService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
+        },
+        {
+            id: ConfigureModelsTabId.PLUGINS,
+            label: 'Plugins',
+            iconClass: 'ti ti-puzzle',
+            isPermitted: () => this.permissionService.can(ResourceCode.Plugins, ActionCode.Read),
         },
     ];
 
