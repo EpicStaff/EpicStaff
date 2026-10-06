@@ -1,0 +1,149 @@
+<div class="bindings-dialog">
+    <header class="bindings-dialog__header">
+        <span class="bindings-dialog__title">{{ editing() ? formTitle() : 'Chat bindings' }}</span>
+        <app-svg-icon
+            class="bindings-dialog__close-btn"
+            icon="close"
+            size="16px"
+            (click)="close()"
+        />
+    </header>
+
+    @if (editing()) {
+        <form
+            class="bindings-dialog__form"
+            [formGroup]="form"
+            (ngSubmit)="submit()"
+        >
+            @if (errorMessage()) {
+                <div class="bindings-dialog__error-message">{{ errorMessage() }}</div>
+            }
+            <app-custom-input
+                label="Name"
+                formControlName="name"
+                [required]="true"
+                placeholder="e.g. Support bot"
+            />
+            <app-select
+                label="Flow"
+                formControlName="graph"
+                [items]="flowItems()"
+                [required]="true"
+                [showSearch]="true"
+                placeholder="Select a flow"
+                tooltipText="The flow stays a plain flow; the binding adds all chat behaviour."
+            />
+            <div class="bindings-dialog__row">
+                <app-select
+                    label="Channel"
+                    formControlName="channel"
+                    [items]="channelItems"
+                />
+                <app-select
+                    label="Concurrency policy"
+                    formControlName="concurrency_policy"
+                    [items]="policyItems"
+                    tooltipText="What happens when the user writes again while the flow is still answering."
+                />
+            </div>
+            <div class="bindings-dialog__row">
+                <app-input-number
+                    label="History window"
+                    formControlName="history_window"
+                    [min]="0"
+                    tooltipText="The last N messages passed to the flow as history."
+                />
+                <app-input-number
+                    label="Token budget per conversation"
+                    formControlName="token_budget_per_conversation"
+                    [min]="0"
+                    [stepSize]="1000"
+                    placeholder="Unlimited"
+                    tooltipText="Empty = unlimited."
+                />
+            </div>
+            <app-select
+                label="When the budget is exhausted"
+                formControlName="on_budget_exhausted"
+                [items]="onExhaustedItems"
+            />
+            @if (form.controls.on_budget_exhausted.value === 'reply') {
+                <app-textarea
+                    label="Budget exhausted message"
+                    formControlName="budget_exhausted_message"
+                    placeholder="Sorry, this conversation has reached its limit."
+                    [rows]="2"
+                />
+            }
+            <app-toggle-switch
+                label="Human handoff enabled"
+                formControlName="handoff_enabled"
+                tooltipText="The flow (or an error) can hand the conversation to an operator."
+            />
+            <app-toggle-switch
+                label="Active"
+                formControlName="is_active"
+            />
+        </form>
+
+        <div class="bindings-dialog__actions">
+            <app-button
+                type="outline-primary"
+                (click)="backToList()"
+            >
+                Back
+            </app-button>
+            <app-button
+                type="primary-white"
+                [disabled]="form.invalid || isSubmitting()"
+                (click)="submit()"
+            >
+                {{ isSubmitting() ? 'Saving...' : 'Save' }}
+            </app-button>
+        </div>
+    } @else {
+        <div class="bindings-dialog__list">
+            @for (binding of bindings(); track binding.id) {
+                <div class="bindings-dialog__item">
+                    <div class="bindings-dialog__item-main">
+                        <span class="bindings-dialog__item-name">
+                            {{ binding.name }}
+                            @if (!binding.is_active) {
+                                <span class="bindings-dialog__inactive">inactive</span>
+                            }
+                        </span>
+                        <span class="bindings-dialog__item-meta">
+                            {{ binding.graph_name }} · {{ binding.channel }} · {{ binding.concurrency_policy }} · budget
+                            {{ binding.token_budget_per_conversation ?? '∞' }} · handoff
+                            {{ binding.handoff_enabled ? 'on' : 'off' }}
+                        </span>
+                    </div>
+                    <app-svg-icon
+                        class="bindings-dialog__icon-btn"
+                        icon="edit"
+                        size="16px"
+                        (click)="startEdit(binding)"
+                    />
+                    <app-svg-icon
+                        class="bindings-dialog__icon-btn"
+                        icon="trash"
+                        size="16px"
+                        (click)="delete(binding)"
+                    />
+                </div>
+            } @empty {
+                <p class="bindings-dialog__empty">No chat bindings yet. A flow becomes a chat once it has one.</p>
+            }
+        </div>
+
+        <div class="bindings-dialog__actions">
+            <app-button
+                type="primary-white"
+                leftIcon="plus"
+                (click)="startCreate()"
+            >
+                New binding
+            </app-button>
+        </div>
+    }
+</div>

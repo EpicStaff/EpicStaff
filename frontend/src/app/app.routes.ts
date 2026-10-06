@@ -261,6 +261,16 @@ export const routes: Routes = [
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),
                     },
                     {
+                        path: 'chat-inbox',
+                        loadComponent: () =>
+                            import('./features/chat-inbox/pages/chat-inbox-page/chat-inbox-page.component').then(
+                                (m) => m.ChatInboxPageComponent
+                            ),
+                        // The chat layer reuses the Flows resource for RBAC.
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
+                    },
+                    {
                         path: 'sessions',
                         loadComponent: () =>
                             import('./features/flows/pages/global-sessions-list/global-sessions-list.component').then(

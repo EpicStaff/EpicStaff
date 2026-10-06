@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from tables.views.chat_views import ChatBindingViewSet, ChatConversationViewSet
 from tables.views.default_config import (
     DefaultModelsAPIView,
 )
@@ -188,6 +189,8 @@ router.register(
     r"key-value-table-entries", KeyValueTableEntryViewSet, basename="key-value-table-entries"
 )
 router.register(r"storage", StorageAPIView, basename="storage")
+router.register(r"chat-bindings", ChatBindingViewSet, basename="chat-bindings")
+router.register(r"chat-conversations", ChatConversationViewSet, basename="chat-conversations")
 
 urlpatterns = [
     path(

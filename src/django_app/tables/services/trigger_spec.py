@@ -17,7 +17,7 @@ class TriggerSpec:
 
     `trigger_type` always agrees with whichever node id is populated, because
     the only intended way to build one is through the named constructors below
-    (`manual`, `schedule`, `webhook`, `telegram`, `parent_flow`). There is no
+    (`manual`, `schedule`, `webhook`, `telegram`, `parent_flow`, `chat`). There is no
     check constraint on `SessionTrigger` enforcing this — the invariant holds
     by construction instead.
     """
@@ -75,6 +75,15 @@ class TriggerSpec:
         return cls(
             trigger_type=SessionTrigger.TriggerType.PARENT_FLOW,
             triggered_by_session_id=parent_session_id,
+        )
+
+    @classmethod
+    def chat(cls, conversation_id: int, binding_id: int) -> "TriggerSpec":
+        """A run started by the chat layer. `extra.conversation_id` is how the
+        session-end hook finds the conversation, so it must be committed with the session."""
+        return cls(
+            trigger_type=SessionTrigger.TriggerType.CHAT,
+            extra={"conversation_id": conversation_id, "binding_id": binding_id},
         )
 
     @staticmethod

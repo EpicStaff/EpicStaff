@@ -274,12 +274,29 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         except Exception:
             return {"ok": False, "description": "Unregistration failed"}
 
+    def send_message(self, telegram_bot_api_key: str, chat_id: str, text: str) -> dict:
+        """Send a text message to a Telegram chat.
+
+        Raises:
+            TelegramApiError: The call failed; the message never contains the bot token.
+        """
+        # PROTO: texts over Telegram's 4096-char limit are rejected; the real version splits them.
+        return self._call_telegram_api(
+            method="POST",
+            api_key=telegram_bot_api_key,
+            endpoint="sendMessage",
+            params={"chat_id": chat_id, "text": text},
+        )
+
     def handle_telegram_trigger(
         self,
         path: str,
         payload: dict,
         config_id: str | None = None,
     ) -> None:
+        # Imported here: the chat package imports this module for outbound delivery.
+        from tables.services.chat.conversation_service import ConversationService
+
         filters = self.webhook_trigger_service.get_trigger_filters(path=path, config_id=config_id)
         if filters is None:
             return
@@ -287,6 +304,12 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 
         for telegram_trigger_node in telegram_trigger_node_list:
+            # A graph exposed as a telegram chat gets its messages through the chat layer,
+            # which owns history, concurrency and reply delivery.
+            if ConversationService().submit_telegram_update(
+                graph_id=telegram_trigger_node.graph_id, payload=payload
+            ):
+                continue
             # Persistent-variable merging is owned by run_session.
             self.session_manager_service.run_session(
                 graph_id=telegram_trigger_node.graph.pk,

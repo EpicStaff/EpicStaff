@@ -1,0 +1,72 @@
+.simulate {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px dashed var(--color-divider-regular);
+    background-color: var(--color-sidenav-background);
+
+    &__title {
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--color-ks-status-warning);
+    }
+
+    &__form {
+        display: grid;
+        grid-template-columns: 160px 180px 1fr auto;
+        gap: 8px;
+        align-items: center;
+    }
+
+    &__log {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    &__log-entry {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+    }
+
+    &__log-text {
+        color: var(--color-text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__action {
+        flex-shrink: 0;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+        --action-color: var(--color-ks-status-new);
+        color: var(--action-color);
+        background-color: color-mix(in srgb, var(--action-color) 15%, transparent);
+
+        &--interrupted_and_restarted {
+            --action-color: var(--color-ks-status-processing);
+        }
+
+        &--queued {
+            --action-color: var(--color-ks-status-blue);
+        }
+
+        &--forwarded_to_operator {
+            --action-color: var(--color-ks-status-warning);
+        }
+
+        &--budget_exhausted {
+            --action-color: var(--color-ks-status-failed);
+        }
+    }
+}

@@ -1,0 +1,49 @@
+<section class="simulate">
+    <header class="simulate__title">Simulate end user</header>
+    <form
+        class="simulate__form"
+        [formGroup]="form"
+        (ngSubmit)="send()"
+    >
+        <app-select
+            mod="small"
+            formControlName="binding"
+            [items]="bindingItems()"
+            placeholder="Binding"
+        />
+        <app-custom-input
+            formControlName="external_id"
+            placeholder="external_id (visitor / chat id)"
+        />
+        <!-- app-button renders type="button" and the form has two text fields, so neither submits it natively. -->
+        <app-custom-input
+            formControlName="content"
+            placeholder="Message as the end user, Enter to send"
+            (keydown.enter)="send()"
+        />
+        <app-button
+            type="primary-white"
+            mod="small"
+            [disabled]="form.invalid || isSending()"
+            (click)="send()"
+        >
+            Send as user
+        </app-button>
+    </form>
+
+    @if (log().length) {
+        <ul class="simulate__log">
+            @for (entry of log(); track entry.id) {
+                <li class="simulate__log-entry">
+                    <span
+                        class="simulate__action"
+                        [class]="'simulate__action--' + entry.action"
+                    >
+                        {{ actionLabel(entry.action) }}
+                    </span>
+                    <span class="simulate__log-text">{{ entry.externalId }}: {{ entry.content }}</span>
+                </li>
+            }
+        </ul>
+    }
+</section>

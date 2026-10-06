@@ -19,6 +19,7 @@ from .base_models import (
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
+from .chat_models import ChatBinding, ChatConversation, ChatMessage
 from .crew_models import (
     Agent,
     AgentMcpTools,
@@ -179,6 +180,9 @@ __all__ = [
     "BasePersistentEntity",
     "BaseRagType",
     "BaseSessionMessage",
+    "ChatBinding",
+    "ChatConversation",
+    "ChatMessage",
     "ClassificationConditionGroup",
     "ClassificationDecisionTableNode",
     "ClassificationDecisionTablePrompt",

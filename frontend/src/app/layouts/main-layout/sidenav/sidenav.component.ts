@@ -228,6 +228,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 label: 'Chats',
                 showTooltip: false,
             },
+            {
+                id: 'chat-inbox',
+                routeLink: 'chat-inbox',
+                icon: 'message-circle',
+                label: 'Chat inbox',
+                isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
+                showTooltip: false,
+            },
         ];
 
         this.bottomNavItems = [];

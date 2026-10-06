@@ -23,12 +23,19 @@ from tables.models import (
     StorageFile,
 )
 from tables.models.session_models import SessionPrincipal, SessionTrigger
+from tables.services.chat.conversation_service import ConversationService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
+
+_CHAT_FINISH_STATUSES = (
+    Session.SessionStatus.ERROR,
+    Session.SessionStatus.STOP,
+    Session.SessionStatus.EXPIRED,
+)
 
 
 class RedisPubSub:
@@ -118,6 +125,14 @@ class RedisPubSub:
                             final_variables=data.get("status_data", {}).get("variables"),
                         )
                         self._save_session_storage_files(session=session)
+
+            # END reaches the chat layer through graph_end, which carries end_node_result.
+            # Called outside the transaction above: it may start the next run, whose
+            # Session row must be committed before crew is told about it.
+            if data["status"] in _CHAT_FINISH_STATUSES:
+                ConversationService().on_session_finished(
+                    session_id=data["session_id"], status=data["status"]
+                )
 
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
@@ -404,6 +419,13 @@ class RedisPubSub:
             if message_type == "graph_end":
                 self._flush_buffer()
                 self._create_subgraph_sessions(root_session_id=session_id)
+                # graph_end, not the later `end` status, is where the chat layer takes the
+                # reply: it is the only message that carries end_node_result itself.
+                ConversationService().on_session_finished(
+                    session_id=session_id,
+                    status=Session.SessionStatus.END,
+                    end_node_result=graph_session_message_data.message_data.get("end_node_result"),
+                )
 
         except Exception as e:
             logger.error(f"Error handling graph_session_message: {e}")

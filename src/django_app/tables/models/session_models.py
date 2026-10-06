@@ -110,6 +110,7 @@ class SessionTrigger(models.Model):
         WEBHOOK = "webhook"
         TELEGRAM = "telegram"
         PARENT_FLOW = "parent_flow"
+        CHAT = "chat"
 
     session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name="trigger")
     trigger_type = models.CharField(max_length=32, choices=TriggerType.choices, db_index=True)

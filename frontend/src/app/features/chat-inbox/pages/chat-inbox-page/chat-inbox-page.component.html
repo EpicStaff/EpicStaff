@@ -1,0 +1,195 @@
+<div class="inbox">
+    <aside class="inbox__sidebar">
+        <div class="inbox__toolbar">
+            <app-select
+                class="inbox__filter"
+                mod="small"
+                [items]="bindingFilterItems()"
+                [selectedValue]="bindingFilter()"
+                (changed)="onBindingFilterChange($event)"
+            />
+            <app-button
+                type="outline-primary"
+                mod="small"
+                leftIcon="settings"
+                (click)="openBindingsDialog()"
+            >
+                Chat bindings
+            </app-button>
+        </div>
+
+        <ul class="inbox__list">
+            @for (conversation of conversations(); track conversation.id) {
+                <li
+                    class="conversation"
+                    [class.conversation--selected]="conversation.id === selectedConversationId()"
+                    [class.conversation--awaiting]="conversation.mode === 'awaiting_human'"
+                    (click)="selectConversation(conversation.id)"
+                >
+                    <div class="conversation__top">
+                        <span class="conversation__external-id">{{ conversation.external_id }}</span>
+                        <span
+                            class="mode-badge"
+                            [class]="'mode-badge--' + conversation.mode"
+                        >
+                            {{ modeLabels[conversation.mode] }}
+                        </span>
+                    </div>
+                    <div class="conversation__preview">{{ conversation.last_message_preview ?? '—' }}</div>
+                    <div class="conversation__meta">
+                        <span>{{ conversation.binding_name }} · {{ conversation.channel }}</span>
+                        <span>
+                            {{ conversation.tokens_used | number }} /
+                            {{ (conversation.token_budget | number) ?? '∞' }} ·
+                            {{ conversation.last_message_at | date: 'shortTime' }}
+                        </span>
+                    </div>
+                </li>
+            } @empty {
+                <li class="inbox__empty">
+                    No conversations yet. Create a chat binding, then use "Simulate end user" below.
+                </li>
+            }
+        </ul>
+    </aside>
+
+    <main class="inbox__thread">
+        @if (selected(); as conversation) {
+            <header class="thread-header">
+                <div class="thread-header__info">
+                    <div class="thread-header__title">
+                        <span>{{ conversation.external_id }}</span>
+                        <span
+                            class="mode-badge"
+                            [class]="'mode-badge--' + conversation.mode"
+                        >
+                            {{ modeLabels[conversation.mode] }}
+                        </span>
+                        @if (conversation.handoff_reason && conversation.mode === 'awaiting_human') {
+                            <span class="thread-header__reason">reason: {{ conversation.handoff_reason }}</span>
+                        }
+                    </div>
+                    <div class="thread-header__meta">
+                        <span>{{ conversation.binding_name }} · {{ conversation.channel }}</span>
+                        <span>Operator: {{ conversation.assigned_operator_name ?? '—' }}</span>
+                        @if (conversation.active_session) {
+                            <a
+                                class="thread-header__session"
+                                [routerLink]="['/graph', conversation.graph, 'session', conversation.active_session]"
+                            >
+                                Session #{{ conversation.active_session }} ({{ conversation.active_session_status }})
+                            </a>
+                        } @else {
+                            <span>No active run</span>
+                        }
+                    </div>
+                    <div class="token-bar">
+                        <div class="token-bar__track">
+                            <div
+                                class="token-bar__fill"
+                                [class.token-bar__fill--full]="tokenPercent() >= 100"
+                                [style.width.%]="conversation.token_budget ? tokenPercent() : 0"
+                            ></div>
+                        </div>
+                        <span class="token-bar__label">
+                            {{ conversation.tokens_used | number }} /
+                            {{ conversation.token_budget ? (conversation.token_budget | number) : 'unlimited' }} tokens
+                        </span>
+                    </div>
+                </div>
+                <div class="thread-header__actions">
+                    @if (conversation.mode === 'bot' || conversation.mode === 'awaiting_human') {
+                        <app-button
+                            type="primary-white"
+                            mod="small"
+                            [disabled]="isActionPending()"
+                            (click)="claim(conversation)"
+                        >
+                            Claim
+                        </app-button>
+                    }
+                    @if (conversation.mode === 'human') {
+                        <app-button
+                            type="outline-primary"
+                            mod="small"
+                            [disabled]="isActionPending()"
+                            (click)="release(conversation)"
+                        >
+                            Release to bot
+                        </app-button>
+                    }
+                    @if (conversation.mode !== 'closed') {
+                        <app-button
+                            type="outline-secondary"
+                            mod="small"
+                            [disabled]="isActionPending()"
+                            (click)="close(conversation)"
+                        >
+                            Close
+                        </app-button>
+                    }
+                </div>
+            </header>
+
+            <div class="thread">
+                <div class="thread__messages">
+                    @for (message of messages(); track message.id) {
+                        <div
+                            class="message"
+                            [class]="'message--' + message.role"
+                            [class.message--interrupted]="message.interrupted"
+                        >
+                            @if (message.role !== 'system') {
+                                <div class="message__author">
+                                    {{ messageAuthor(message) }}
+                                    @if (message.interrupted) {
+                                        <span class="message__tag">interrupted</span>
+                                    }
+                                </div>
+                            }
+                            <div class="message__content">{{ message.content }}</div>
+                            <div class="message__time">
+                                {{ message.created_at | date: 'mediumTime' }}
+                                @if (message.session) {
+                                    · run #{{ message.session }}
+                                }
+                            </div>
+                        </div>
+                    } @empty {
+                        <div class="inbox__empty">No messages.</div>
+                    }
+                </div>
+            </div>
+
+            <form
+                class="composer"
+                (ngSubmit)="sendOperatorReply(conversation)"
+            >
+                <app-custom-input
+                    class="composer__input"
+                    [formControl]="operatorReply"
+                    [placeholder]="
+                        isClaimedByMe() ? 'Reply as operator, Enter to send' : 'Claim the conversation to reply'
+                    "
+                />
+                <app-button
+                    type="primary-white"
+                    mod="small"
+                    leftIcon="send"
+                    [disabled]="!isClaimedByMe() || operatorReply.invalid || isActionPending()"
+                    (click)="sendOperatorReply(conversation)"
+                >
+                    Send
+                </app-button>
+            </form>
+        } @else {
+            <div class="inbox__placeholder">Select a conversation</div>
+        }
+    </main>
+
+    <app-simulate-end-user-panel
+        class="inbox__simulate"
+        [bindings]="bindings()"
+        (conversationTouched)="onSimulatedMessage($event)"
+    />
+</div>

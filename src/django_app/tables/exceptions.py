@@ -683,3 +683,17 @@ class KeyValueTableNotFoundError(CustomAPIExeption):
 
     def __init__(self, table_id: int):
         super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)
+
+
+class ChatBindingInactiveError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "This chat binding is not active."
+    default_code = "chat_binding_inactive"
+
+
+class ChatOperatorMessageNotAllowedError(CustomAPIExeption):
+    status_code = 400
+    default_detail = (
+        "Only the assigned operator can reply, and only while the conversation is in human mode."
+    )
+    default_code = "chat_operator_message_not_allowed"
