@@ -82,6 +82,10 @@ class TablesConfig(AppConfig):
 
             start_litellm_refresh_if_owner()
 
+            from tables.utils.recycle_bin_scheduler import start_recycle_bin_purge_if_owner
+
+            start_recycle_bin_purge_if_owner()
+
         redis_service = RedisService()
         converter_service = ConverterService()
         session_manager_service = SessionManagerService(
