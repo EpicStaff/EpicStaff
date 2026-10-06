@@ -2,8 +2,8 @@ import { UserSummary } from '@shared/models';
 
 import {
     AUTHORSHIP_EMPTY_VALUE,
-    AUTHORSHIP_UNKNOWN_OWNER,
     AUTHORSHIP_UNNAMED_USER,
+    AuthorshipColumn,
     buildAuthorshipColumns,
     formatAuthorshipTimestamp,
     resolveUserName,
@@ -17,19 +17,12 @@ const LOCAL_MOMENT = new Date(2026, 2, 12, 13, 28, 23).toISOString();
 
 describe('resolveUserName', () => {
     it('returns the display name', () => {
-        expect(resolveUserName(IVAN, AUTHORSHIP_UNKNOWN_OWNER)).toBe('Ivan Bohun');
+        expect(resolveUserName(IVAN)).toBe('Ivan Bohun');
     });
 
     it('falls back to "Unnamed user" for a user without a display name', () => {
-        expect(resolveUserName(UNNAMED, AUTHORSHIP_UNKNOWN_OWNER)).toBe(AUTHORSHIP_UNNAMED_USER);
-        expect(resolveUserName({ ...IVAN, display_name: '   ' }, AUTHORSHIP_UNKNOWN_OWNER)).toBe(
-            AUTHORSHIP_UNNAMED_USER
-        );
-    });
-
-    it('falls back to the given label when there is no user', () => {
-        expect(resolveUserName(null, AUTHORSHIP_UNKNOWN_OWNER)).toBe('Unknown');
-        expect(resolveUserName(null, AUTHORSHIP_EMPTY_VALUE)).toBe('—');
+        expect(resolveUserName(UNNAMED)).toBe(AUTHORSHIP_UNNAMED_USER);
+        expect(resolveUserName({ ...IVAN, display_name: '   ' })).toBe(AUTHORSHIP_UNNAMED_USER);
     });
 });
 
@@ -45,66 +38,80 @@ describe('formatAuthorshipTimestamp', () => {
     });
 });
 
+const TIMESTAMP = { date: 'Mar 12, 2026', time: '13:28:23' };
+
+/** Builds both columns with the same user and moment, so every case is checked for Owner and Last editor alike. */
+function columns(user: UserSummary | null, moment: string | null): AuthorshipColumn[] {
+    return buildAuthorshipColumns({ owner: user, createdAt: moment, lastEditor: user, lastEditedAt: moment });
+}
+
 describe('buildAuthorshipColumns', () => {
-    it('renders the owner and the last editor with their avatars and timestamps', () => {
+    it('labels the columns "Owner" and "Last editor", from created_* and last_edited_* respectively', () => {
         const [owner, lastEditor] = buildAuthorshipColumns({
             owner: IVAN,
             createdAt: LOCAL_MOMENT,
             lastEditor: UNNAMED,
-            lastEditedAt: LOCAL_MOMENT,
-        });
-
-        expect(owner).toEqual({
-            label: 'Owner',
-            userName: 'Ivan Bohun',
-            showAvatar: true,
-            avatarName: 'Ivan Bohun',
-            avatarUrl: null,
-            timestamp: { date: 'Mar 12, 2026', time: '13:28:23' },
-        });
-        expect(lastEditor).toEqual({
-            label: 'Last editor',
-            userName: 'Unnamed user',
-            showAvatar: true,
-            avatarName: null,
-            avatarUrl: 'https://cdn.example/avatar.png',
-            timestamp: { date: 'Mar 12, 2026', time: '13:28:23' },
-        });
-    });
-
-    it('shows an unknown owner with a placeholder avatar and no timestamp for a config without created_at', () => {
-        const [owner] = buildAuthorshipColumns({
-            owner: null,
-            createdAt: null,
-            lastEditor: null,
             lastEditedAt: null,
         });
 
-        expect(owner).toEqual({
-            label: 'Owner',
-            userName: 'Unknown',
-            showAvatar: true,
-            avatarName: null,
-            avatarUrl: null,
-            timestamp: null,
-        });
+        expect(owner.label).toBe('Owner');
+        expect(owner.userName).toBe('Ivan Bohun');
+        expect(owner.timestamp).toEqual(TIMESTAMP);
+        expect(lastEditor.label).toBe('Last editor');
+        expect(lastEditor.userName).toBe(AUTHORSHIP_UNNAMED_USER);
+        expect(lastEditor.timestamp).toBeNull();
     });
 
-    it('shows a never-edited resource as an empty last editor without an avatar', () => {
-        const [, lastEditor] = buildAuthorshipColumns({
-            owner: IVAN,
-            createdAt: LOCAL_MOMENT,
-            lastEditor: null,
-            lastEditedAt: null,
+    describe.each([0, 1])('column %i', (index) => {
+        it('shows a user with their name, avatar and moment', () => {
+            expect(columns(IVAN, LOCAL_MOMENT)[index]).toMatchObject({
+                userName: 'Ivan Bohun',
+                showAvatar: true,
+                avatarName: 'Ivan Bohun',
+                avatarUrl: null,
+                timestamp: TIMESTAMP,
+            });
+            expect(columns(UNNAMED, LOCAL_MOMENT)[index]).toMatchObject({
+                userName: AUTHORSHIP_UNNAMED_USER,
+                showAvatar: true,
+                avatarName: null,
+                avatarUrl: 'https://cdn.example/avatar.png',
+            });
         });
 
-        expect(lastEditor).toEqual({
-            label: 'Last editor',
-            userName: '—',
-            showAvatar: false,
-            avatarName: null,
-            avatarUrl: null,
-            timestamp: null,
+        it('shows a user without a recorded moment (legacy rows) with their name and an empty date', () => {
+            expect(columns(IVAN, null)[index]).toMatchObject({
+                userName: 'Ivan Bohun',
+                showAvatar: true,
+                timestamp: null,
+            });
+        });
+
+        it('shows a missing user with a known moment as a dash without an avatar, keeping the moment', () => {
+            expect(columns(null, LOCAL_MOMENT)[index]).toEqual({
+                label: index === 0 ? 'Owner' : 'Last editor',
+                userName: AUTHORSHIP_EMPTY_VALUE,
+                showAvatar: false,
+                avatarName: null,
+                avatarUrl: null,
+                timestamp: TIMESTAMP,
+            });
+        });
+
+        it('shows a missing user without a moment as an empty value, without an avatar', () => {
+            expect(columns(null, null)[index]).toMatchObject({
+                userName: AUTHORSHIP_EMPTY_VALUE,
+                showAvatar: false,
+                timestamp: null,
+            });
+        });
+
+        it('treats an unparseable moment as missing', () => {
+            expect(columns(null, 'not a date')[index]).toMatchObject({
+                userName: AUTHORSHIP_EMPTY_VALUE,
+                showAvatar: false,
+                timestamp: null,
+            });
         });
     });
 });

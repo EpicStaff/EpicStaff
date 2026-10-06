@@ -4,6 +4,7 @@ import { inject, Injectable } from '@angular/core';
 import {
     AuthorshipDetailsDialogComponent,
     AuthorshipDetailsDialogData,
+    AuthorshipDetailsExtraContent,
     AuthorshipDetailsSource,
 } from './authorship-details-dialog.component';
 
@@ -22,11 +23,14 @@ export class AuthorshipDetailsDialogService {
      * for a menu is an item destroyed with the menu. Focus moves there only on close, so a trigger
      * that is disabled now but enabled by then still gets it; if it is still disabled, focus falls
      * back to the document body. Omit it to keep the default (the element focused on open).
+     *
+     * Pass `extraContent` to show resource-specific details below the authorship block.
      */
-    open(
+    open<C>(
         title: string,
         resource: AuthorshipDetailsSource,
-        restoreFocusTo?: HTMLElement
+        restoreFocusTo?: HTMLElement,
+        extraContent?: AuthorshipDetailsExtraContent<C>
     ): DialogRef<void, AuthorshipDetailsDialogComponent> {
         const titleId = `authorship-details-dialog-title-${++this.openedCount}`;
         // Only the authorship fields travel into the dialog, never the whole resource.
@@ -42,6 +46,7 @@ export class AuthorshipDetailsDialogService {
                     created_at: resource.created_at,
                     last_edited_by: resource.last_edited_by,
                     last_edited_at: resource.last_edited_at,
+                    ...(extraContent ? { extraContent } : {}),
                 },
             }
         );

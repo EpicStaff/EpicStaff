@@ -1,10 +1,12 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { Component, input } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { UserSummary } from '@shared/models';
 
 import {
     AuthorshipDetailsDialogComponent,
     AuthorshipDetailsDialogData,
+    AuthorshipDetailsExtraContent,
     AuthorshipDetailsSource,
 } from './authorship-details-dialog.component';
 import { AuthorshipDetailsDialogService } from './authorship-details-dialog.service';
@@ -17,6 +19,19 @@ const SOURCE: AuthorshipDetailsSource = {
     created_at: '2026-03-12T13:28:23Z',
     last_edited_by: EDITOR,
     last_edited_at: '2026-03-13T09:00:00Z',
+};
+
+@Component({
+    selector: 'app-test-extra-details',
+    template: `<p class="extra-details">{{ fileCount() }} files</p>`,
+})
+class ExtraDetailsComponent {
+    readonly fileCount = input.required<number>();
+}
+
+const EXTRA_CONTENT: AuthorshipDetailsExtraContent<ExtraDetailsComponent> = {
+    component: ExtraDetailsComponent,
+    inputs: { fileCount: 6 },
 };
 
 describe('AuthorshipDetailsDialogComponent', () => {
@@ -55,6 +70,20 @@ describe('AuthorshipDetailsDialogComponent', () => {
 
         expect(text(fixture, '.authorship-details__label')).toEqual(['Owner', 'Last editor']);
         expect(text(fixture, '.authorship-details__name')).toEqual(['Ivan Bohun', 'Olga Mageria']);
+    });
+
+    it('renders the extra content, with its inputs, below the authorship block', () => {
+        const fixture = render({ ...SOURCE, title: 'Collection Details', titleId: 'id', extraContent: EXTRA_CONTENT });
+        const host = fixture.nativeElement as HTMLElement;
+
+        expect(text(fixture, '.authorship-details-dialog__extra .extra-details')).toEqual(['6 files']);
+        expect(host.querySelector('app-authorship-details + .authorship-details-dialog__extra')).not.toBeNull();
+    });
+
+    it('renders no extra section without extra content', () => {
+        const fixture = render({ ...SOURCE, title: 'Tool Details', titleId: 'details-title-1' });
+
+        expect((fixture.nativeElement as HTMLElement).querySelector('.authorship-details-dialog__extra')).toBeNull();
     });
 
     it('closes when the close button is clicked', () => {
@@ -98,6 +127,41 @@ describe('AuthorshipDetailsDialogService', () => {
             AuthorshipDetailsDialogComponent,
             expect.objectContaining({ restoreFocus: trigger })
         );
+    });
+
+    it('passes the extra content into the dialog', () => {
+        const { dialog, service } = openDialog();
+        const trigger = document.createElement('button');
+
+        service.open('Collection Details', SOURCE, trigger, EXTRA_CONTENT);
+
+        expect(dialog.open).toHaveBeenCalledWith(AuthorshipDetailsDialogComponent, {
+            ariaLabelledBy: expect.any(String),
+            restoreFocus: trigger,
+            data: { ...SOURCE, title: 'Collection Details', titleId: expect.any(String), extraContent: EXTRA_CONTENT },
+        });
+    });
+
+    // Compile-time checks: the build fails if any `@ts-expect-error` below stops being an error.
+    it('type-checks the extra content inputs against the signal inputs of the component', () => {
+        const { dialog, service } = openDialog();
+        const rejected: AuthorshipDetailsExtraContent<ExtraDetailsComponent>[] = [
+            // @ts-expect-error -- wrong value type
+            { component: ExtraDetailsComponent, inputs: { fileCount: '6' } },
+            // @ts-expect-error -- unknown input
+            { component: ExtraDetailsComponent, inputs: { fileCount: 6, fileTypes: [] } },
+            // @ts-expect-error -- missing input
+            { component: ExtraDetailsComponent, inputs: {} },
+        ];
+
+        service.open('Collection Details', SOURCE, undefined, {
+            component: ExtraDetailsComponent,
+            // @ts-expect-error -- the service infers the component from `component` and checks `inputs` against it
+            inputs: { count: 6 },
+        });
+
+        expect(rejected).toHaveLength(3);
+        expect(dialog.open).toHaveBeenCalledOnce();
     });
 
     it('names the dialog by its heading, with a fresh heading id on every open', () => {

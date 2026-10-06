@@ -1,0 +1,43 @@
+<section class="collection-summary__section">
+    <h3 class="collection-summary__heading">Quantitative parameters</h3>
+    <dl class="collection-summary__grid">
+        <div class="collection-summary__item">
+            <dt class="collection-summary__label">Number of files</dt>
+            <dd class="collection-summary__value">{{ stats().fileCount }}</dd>
+        </div>
+        <div class="collection-summary__item">
+            <dt class="collection-summary__label">File types</dt>
+            <dd class="collection-summary__value">{{ fileTypes() }}</dd>
+        </div>
+    </dl>
+</section>
+
+<section class="collection-summary__section">
+    <h3 class="collection-summary__heading">Memory capacity</h3>
+    <dl class="collection-summary__grid">
+        <div class="collection-summary__item">
+            <dt class="collection-summary__label">Size of collection</dt>
+            <dd class="collection-summary__value">{{ stats().totalSize }}</dd>
+        </div>
+        <div class="collection-summary__item">
+            <dt class="collection-summary__label">Largest file</dt>
+            <dd class="collection-summary__value">{{ stats().largestFileSize }}</dd>
+        </div>
+        <div class="collection-summary__item">
+            <dt class="collection-summary__label">Smallest file</dt>
+            <dd class="collection-summary__value">{{ stats().smallestFileSize }}</dd>
+        </div>
+    </dl>
+</section>
+
+<section class="collection-summary__section">
+    <h3 class="collection-summary__heading">Knowledge source path</h3>
+    <div class="collection-summary__path">
+        <span class="collection-summary__path-value">{{ collectionIdText() }}</span>
+        <app-copy-button
+            class="collection-summary__copy"
+            ariaLabel="Copy collection ID"
+            [text]="collectionIdText()"
+        />
+    </div>
+</section>

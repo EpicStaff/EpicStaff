@@ -6,61 +6,63 @@ import {
     DestroyRef,
     effect,
     inject,
-    OnInit,
+    linkedSignal,
     signal,
     untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ConfirmationDialogService,
     DragDropAreaComponent,
+    SelectComponent,
+    SelectItem,
     SpinnerComponent,
-    ValidationErrorsComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { EMPTY, filter, Subject, throwError } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
+import { filter, switchMap, throwError } from 'rxjs';
+import { catchError, finalize } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
 import { FILE_TYPES } from '../../../../constants/constants';
+import { collectFileTypes, isStoredDocument } from '../../../../helpers/collection-stats.util';
 import { CreateCollectionDtoResponse } from '../../../../models/collection.model';
 import { DisplayedListDocument } from '../../../../models/document.model';
+import { CollectionDetailsDialogService } from '../../../../services/collection-details-dialog.service';
 import { CollectionsStorageService } from '../../../../services/collections-storage.service';
 import { DocumentsApiService } from '../../../../services/documents-api.service';
 import { DocumentsStorageService } from '../../../../services/documents-storage.service';
 import { FileListService } from '../../../../services/files-list.service';
+import { CollectionBasicsComponent } from './collection-basics/collection-basics.component';
 import { CollectionFilesComponent } from './collection-files/collection-files.component';
-import { CollectionInfoComponent } from './collection-info/collection-info.component';
 import { CollectionRagsComponent } from './collection-rags/collection-rags.component';
+
+/** The "Filter by type" option that shows every type; selecting it brings the placeholder back. */
+const ALL_FILE_TYPES_ITEM: SelectItem<string | null> = { name: 'All types', value: null };
 
 @Component({
     selector: 'app-collection-details',
     styleUrls: ['./collection-details.component.scss'],
     templateUrl: './collection-details.component.html',
     imports: [
-        FormsModule,
-        ReactiveFormsModule,
         DragDropAreaComponent,
+        CollectionBasicsComponent,
         CollectionFilesComponent,
         CollectionRagsComponent,
-        CollectionInfoComponent,
+        SelectComponent,
         SpinnerComponent,
-        ValidationErrorsComponent,
         AppSvgIconComponent,
         MatTooltipModule,
         HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CollectionDetailsComponent implements OnInit {
+export class CollectionDetailsComponent {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private collectionsStorageService = inject(CollectionsStorageService);
     private documentsStorageService = inject(DocumentsStorageService);
@@ -68,6 +70,7 @@ export class CollectionDetailsComponent implements OnInit {
     private fileListService = inject(FileListService);
     private toastService = inject(ToastService);
     private permissionsService = inject(PermissionsService);
+    private collectionDetailsDialog = inject(CollectionDetailsDialogService);
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
 
@@ -77,44 +80,19 @@ export class CollectionDetailsComponent implements OnInit {
     documents = signal<DisplayedListDocument[]>([]);
     selectedCollectionId = this.collectionsStorageService.selectedCollectionId;
 
-    readonly descriptionSaveFailedTick = signal<number>(0);
-
-    collectionName: FormControl = new FormControl('', [
-        Validators.required,
-        notWhitespaceValidator(),
-        Validators.maxLength(255),
+    private readonly fileTypes = computed(() => collectFileTypes(this.documents()));
+    /** The "Filter by type" choice; cleared once the collection has no files of that type any more. */
+    protected readonly activeFileType = linkedSignal<string[], string | null>({
+        source: this.fileTypes,
+        computation: (fileTypes, previous) =>
+            previous?.value && fileTypes.includes(previous.value) ? previous.value : null,
+    });
+    protected readonly fileTypeItems = computed<SelectItem<string | null>[]>(() => [
+        ALL_FILE_TYPES_ITEM,
+        ...this.fileTypes().map((fileType) => ({ name: `.${fileType}`, value: fileType })),
     ]);
 
-    private lastInitializedCollectionId: number | null = null;
-
-    private readonly nameSave$ = new Subject<{ id: number; collection_name: string }>();
-
-    canEditKnowledge = computed(() => this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update));
-
     constructor() {
-        this.nameSave$
-            .pipe(
-                switchMap(({ id, collection_name }) =>
-                    this.collectionsStorageService.updateCollectionById(id, { collection_name }).pipe(
-                        catchError(() => {
-                            this.toastService.error('Collection Update failed');
-                            return EMPTY;
-                        })
-                    )
-                )
-            )
-            .subscribe(() => {
-                this.toastService.success('Collection Updated');
-                this.collectionName.markAsPristine();
-            });
-
-        // Structural *appHasPermission would remove the input (and the name it
-        // displays) entirely for view-only users — disable it instead so the name
-        // stays visible, just not editable.
-        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update)) {
-            this.collectionName.disable();
-        }
-
         effect(() => {
             const selectedId = this.selectedCollectionId();
             const collection = this.collectionsStorageService
@@ -123,21 +101,6 @@ export class CollectionDetailsComponent implements OnInit {
 
             if (collection) {
                 this.fullCollection.set(collection);
-                const isNewSelection = this.lastInitializedCollectionId !== collection.collection_id;
-                // Re-sync whenever this field isn't being actively typed into, not just on
-                // first selection — the name can also change via the create-collection
-                // wizard's own (separate) name field writing into the same cache entry,
-                // and without this the write-once guard used to freeze this panel on the
-                // placeholder default forever (EST-3988).
-                if (isNewSelection || !this.collectionName.dirty) {
-                    this.collectionName.setValue(collection.collection_name, { emitEvent: false });
-                    this.collectionName.markAsPristine();
-                }
-                if (isNewSelection) {
-                    this.lastInitializedCollectionId = collection.collection_id;
-                }
-            } else {
-                this.lastInitializedCollectionId = null;
             }
         });
 
@@ -168,41 +131,22 @@ export class CollectionDetailsComponent implements OnInit {
             const id = this.selectedCollectionId();
             if (!id) return;
             untracked(() => {
+                // Types differ per collection, so every collection opens unfiltered.
+                this.activeFileType.set(null);
                 this.getCollectionData(id);
                 this.getCollectionDocuments(id);
             });
         });
     }
 
-    ngOnInit() {
-        this.collectionName.valueChanges
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                debounceTime(600),
-                distinctUntilChanged(),
-                filter(() => this.collectionName.valid),
-                filter(() => !!this.fullCollection())
-            )
-            .subscribe((collection_name: string) => {
-                const id = this.fullCollection()!.collection_id;
-                this.nameSave$.next({ id, collection_name });
-            });
+    protected onFileTypeChange(fileType: unknown): void {
+        this.activeFileType.set(typeof fileType === 'string' ? fileType : null);
     }
 
-    onDescriptionSave(description: string): void {
+    protected openDetails(trigger: HTMLElement): void {
         const collection = this.fullCollection();
         if (!collection) return;
-        this.collectionsStorageService
-            .updateCollectionById(collection.collection_id, { description })
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                catchError(() => {
-                    this.toastService.error('Collection Update failed');
-                    this.descriptionSaveFailedTick.update((n) => n + 1);
-                    return EMPTY;
-                })
-            )
-            .subscribe(() => this.toastService.success('Collection Updated'));
+        this.collectionDetailsDialog.open(collection, this.documents(), trigger);
     }
 
     private getCollectionData(id: number): void {
@@ -319,12 +263,13 @@ export class CollectionDetailsComponent implements OnInit {
         this.downloadDocuments([id], doc.file_name);
     }
 
+    /** Every stored file of the collection, whatever "Filter by type" shows — as the tooltip says. */
     downloadAllFiles(): void {
-        const documents = this.documents();
-        const ids = documents.filter((d) => d.document_id).map((d) => d.document_id!);
+        const stored = this.documents().filter(isStoredDocument);
+        const ids = stored.map((d) => d.document_id);
         if (!ids.length) return;
 
-        const fileName = ids.length === 1 ? documents[0].file_name : 'documents.zip';
+        const fileName = ids.length === 1 ? stored[0].file_name : 'documents.zip';
 
         this.downloadDocuments(ids, fileName);
     }

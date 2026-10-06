@@ -5,8 +5,6 @@ import { UserSummary } from '@shared/models';
 export const AUTHORSHIP_EMPTY_VALUE = '—';
 /** Shown for a user that exists but never set a display name (the API never sends an email fallback). */
 export const AUTHORSHIP_UNNAMED_USER = 'Unnamed user';
-/** Shown when the owner is unknown or has left the organization. */
-export const AUTHORSHIP_UNKNOWN_OWNER = 'Unknown';
 
 const TIMESTAMP_LOCALE = 'en-US';
 const TIMESTAMP_DATE_FORMAT = 'MMM d, y';
@@ -42,31 +40,47 @@ export interface AuthorshipColumnsSource {
 
 export function buildAuthorshipColumns(source: AuthorshipColumnsSource): AuthorshipColumn[] {
     return [
-        {
-            label: 'Owner',
-            userName: resolveUserName(source.owner, AUTHORSHIP_UNKNOWN_OWNER),
-            // An unknown owner still is a person, so it keeps the placeholder avatar.
-            showAvatar: true,
-            avatarName: source.owner?.display_name ?? null,
-            avatarUrl: source.owner?.avatar_url ?? null,
-            timestamp: formatAuthorshipTimestamp(source.createdAt),
-        },
-        {
-            label: 'Last editor',
-            userName: resolveUserName(source.lastEditor, AUTHORSHIP_EMPTY_VALUE),
-            showAvatar: source.lastEditor !== null,
-            avatarName: source.lastEditor?.display_name ?? null,
-            avatarUrl: source.lastEditor?.avatar_url ?? null,
-            timestamp: formatAuthorshipTimestamp(source.lastEditedAt),
-        },
+        buildAuthorshipColumn('Owner', source.owner, source.createdAt),
+        buildAuthorshipColumn('Last editor', source.lastEditor, source.lastEditedAt),
     ];
 }
 
-/** The user's display name, or a fallback when the user or their display name is missing. */
-export function resolveUserName(user: UserSummary | null, missingUserLabel: string): string {
+/**
+ * One column, with the same fallbacks for "Owner" and "Last editor":
+ * - a user: their name (or {@link AUTHORSHIP_UNNAMED_USER}) and avatar;
+ * - no user (never recorded, or cleared when they left the organization): {@link AUTHORSHIP_EMPTY_VALUE}
+ *   without an avatar.
+ * The moment shows whenever it is known, independently of the user; a missing or unparseable one (e.g. rows
+ * older than the timestamp column) renders as the empty value.
+ */
+export function buildAuthorshipColumn(
+    label: string,
+    user: UserSummary | null,
+    moment: string | null
+): AuthorshipColumn {
+    const timestamp = formatAuthorshipTimestamp(moment);
     if (user === null) {
-        return missingUserLabel;
+        return {
+            label,
+            userName: AUTHORSHIP_EMPTY_VALUE,
+            showAvatar: false,
+            avatarName: null,
+            avatarUrl: null,
+            timestamp,
+        };
     }
+    return {
+        label,
+        userName: resolveUserName(user),
+        showAvatar: true,
+        avatarName: user.display_name,
+        avatarUrl: user.avatar_url,
+        timestamp,
+    };
+}
+
+/** The user's display name, or {@link AUTHORSHIP_UNNAMED_USER} when they never set one. */
+export function resolveUserName(user: UserSummary): string {
     return user.display_name?.trim() || AUTHORSHIP_UNNAMED_USER;
 }
 

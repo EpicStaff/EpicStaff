@@ -28,5 +28,14 @@
             [lastEditor]="data.last_edited_by"
             [lastEditedAt]="data.last_edited_at"
         />
+
+        @if (data.extraContent; as extraContent) {
+            <div class="authorship-details-dialog__extra">
+                <ng-container
+                    [ngComponentOutlet]="extraContent.component"
+                    [ngComponentOutletInputs]="extraContentInputs"
+                />
+            </div>
+        }
     </div>
 </div>
