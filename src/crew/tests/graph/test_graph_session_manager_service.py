@@ -122,6 +122,7 @@ def _patch_builder(monkeypatch, compiled_graph, end_node_result=None):
     class FakeSessionGraphBuilder:
         def __init__(self, *args, **kwargs):
             self.end_node_result = end_node_result or {}
+            self.remembered_outputs_store = Mock(clear=AsyncMock())
 
         def compile_from_schema(self, session_data):
             return compiled_graph

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.tools.executors.python_code import PythonCodeToolExecutor
 from shared.models.agent_service import ToolResult
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,
@@ -193,7 +194,11 @@ async def test_storage_config_read_from_tool_data():
             "org_id": 77,
         }
     )
-    executor = PythonCodeToolExecutor(sandbox, data)
+    executor = PythonCodeToolExecutor(
+        sandbox,
+        data,
+        storage_credentials=StorageCredentials(access_key="test-access", secret_key="test-secret"),
+    )
     await executor({})
 
     task = sandbox.submit.call_args[0][0]

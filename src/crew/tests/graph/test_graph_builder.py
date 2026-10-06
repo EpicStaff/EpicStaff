@@ -45,6 +45,7 @@ class FakePythonCodeExecutorService:
         inputs: dict | None = None,
         additional_global_kwargs: dict | None = None,
         stop_event=None,
+        storage_credentials=None,
     ) -> dict:
         namespace: dict = {"DotDict": DotDict}
         namespace.update(python_code_data.global_kwargs or {})

@@ -26,15 +26,26 @@ class TestSessionStatusHandlerRevoke(TestCase):
     outer transaction, so on_commit callbacks never fire on their own; every
     call to session_status_handler() below is wrapped in
     self.captureOnCommitCallbacks(execute=True) to force them to run.
+
+    session_status_handler() also calls close_old_connections() for real --
+    harmless in production, but under TestCase it closes the connection the
+    test's own (always-rolled-back) transaction depends on. Mocked out here,
+    mirroring the same pattern already used for code_results_handler() in
+    test_run_code_storage_credentials.py.
     """
 
     def setUp(self):
         self.org = Organization.objects.create(name="Test Org")
         self.graph = Graph.objects.create(org=self.org, name="Test Graph")
         self.session = Session.objects.create(
-            graph=self.graph, status=Session.SessionStatus.RUNNING
+            graph=self.graph, status=Session.SessionStatus.RUN
         )
         self.redis_pubsub = RedisPubSub()
+        close_old_connections_patcher = mock.patch(
+            "tables.services.redis_pubsub.close_old_connections"
+        )
+        close_old_connections_patcher.start()
+        self.addCleanup(close_old_connections_patcher.stop)
 
     def test_session_status_handler_revokes_on_terminal_status_end(self):
         """Verify revoke and opportunistic delete on 'end' status."""
@@ -233,7 +244,7 @@ class TestSessionStatusHandlerRevoke(TestCase):
                 "data": json.dumps(
                     {
                         "session_id": self.session.id,
-                        "status": Session.SessionStatus.RUNNING,
+                        "status": Session.SessionStatus.RUN,
                         "status_data": {},
                     }
                 )

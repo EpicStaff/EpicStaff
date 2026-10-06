@@ -11,17 +11,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from django.utils import timezone
 
+from agents.models import AgentDefinition
 from rbac.models import Organization
 from tables.models import (
     RealtimeAgentChat,
     RealtimeAgentDefinition,
-    AgentDefinition,
     OpenAIRealtimeConfig,
     Secret,
 )
 from tables.views.model_view_sets import RealtimeAgentChatViewSet
 from storage_credentials.models import TemporaryStorageAccount
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 from rest_framework import status
 
@@ -49,18 +50,19 @@ def rt_agent_definition(agent_definition):
 
 
 @pytest.fixture
-def realtime_agent_chat(rt_agent_definition, db):
+def realtime_agent_chat(rt_agent_definition, org, db):
     """Create a minimal RealtimeAgentChat with connection_key"""
     from tables.models import OpenAIRealtimeConfig
     from tables.models import Secret
 
     secret = Secret.objects.create(
-        name="openai_api_key", value="encrypted_key"
+        name="openai_api_key", value="encrypted_key", org=org
     )
     openai_config = OpenAIRealtimeConfig.objects.create(
-        name="openai_test",
+        custom_name="openai_test",
         model_name="gpt-4-realtime-preview",
         api_key_secret=secret,
+        org=org,
     )
 
     chat = RealtimeAgentChat.objects.create(
@@ -113,7 +115,7 @@ class TestRealtimeAgentChatViewSetEnd:
             },
             format="json",
         )
-        request = Request(django_request)
+        request = Request(django_request, parsers=[JSONParser()])
 
         with patch(
             "storage_credentials.services.session_credential_service.org_credential_store.get",
@@ -154,7 +156,7 @@ class TestRealtimeAgentChatViewSetEnd:
             },
             format="json",
         )
-        request = Request(django_request)
+        request = Request(django_request, parsers=[JSONParser()])
 
         # Must not raise or fail, even though no temp account exists
         response = viewset.end(request)
@@ -178,7 +180,7 @@ class TestRealtimeAgentChatViewSetEnd:
             },
             format="json",
         )
-        request = Request(django_request)
+        request = Request(django_request, parsers=[JSONParser()])
 
         response = viewset.end(request)
 
@@ -196,7 +198,7 @@ class TestRealtimeAgentChatViewSetEnd:
             },
             format="json",
         )
-        request = Request(django_request)
+        request = Request(django_request, parsers=[JSONParser()])
 
         response = viewset.end(request)
 
@@ -235,7 +237,7 @@ class TestRealtimeAgentChatViewSetEnd:
             },
             format="json",
         )
-        request = Request(django_request)
+        request = Request(django_request, parsers=[JSONParser()])
 
         with patch(
             "storage_credentials.services.session_credential_service.org_credential_store.get",

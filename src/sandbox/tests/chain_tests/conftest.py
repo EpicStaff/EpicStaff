@@ -76,7 +76,9 @@ def _ensure_src_shared_stub() -> None:
     src_shared_mod.__package__ = "src.shared"
 
     src_shared_models_mod = types.ModuleType("src.shared.models")
-    src_shared_models_mod.__path__ = []
+    # __path__ makes real submodules (storage_scope) importable while this stub
+    # keeps the heavyweight package __init__.py from executing.
+    src_shared_models_mod.__path__ = [str(shared_dir / "models")]
     src_shared_models_mod.__package__ = "src.shared.models"
     src_shared_models_mod.CodeResultData = CodeResultData
     src_shared_models_mod.CodeTaskData = CodeTaskData

@@ -11,11 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agents.models import AgentDefinition
 from rbac.models import Organization
 from tables.models import (
     RealtimeAgentChat,
     RealtimeAgentDefinition,
-    AgentDefinition,
     OpenAIRealtimeConfig,
     Secret,
 )
@@ -53,20 +53,21 @@ def rt_agent_definition(agent_definition):
 
 
 @pytest.fixture
-def realtime_agent_chat_with_openai_config(rt_agent_definition, db):
+def realtime_agent_chat_with_openai_config(rt_agent_definition, org, db):
     """Create a minimal RealtimeAgentChat with OpenAI config"""
     from tables.models import OpenAIRealtimeConfig
     from tables.models import Secret
 
     # Create a secret for API key
     secret = Secret.objects.create(
-        name="openai_api_key", value="encrypted_key"
+        name="openai_api_key", value="encrypted_key", org=org
     )
 
     openai_config = OpenAIRealtimeConfig.objects.create(
-        name="openai_test",
+        custom_name="openai_test",
         model_name="gpt-4-realtime-preview",
         api_key_secret=secret,
+        org=org,
     )
 
     chat = RealtimeAgentChat.objects.create(
@@ -136,7 +137,7 @@ class TestConverterRTAgentStorageCredentials:
             return_value=mock_org_creds,
         ):
             # Mock the surface resolution to return a tool with use_storage=True
-            from src.shared.models import PythonCodeToolData, PythonCodeData
+            from src.shared.models import BaseToolData, PythonCodeToolData, PythonCodeData
 
             python_code_data = PythonCodeData(
                 venv_name="venv_1",
@@ -149,8 +150,9 @@ class TestConverterRTAgentStorageCredentials:
             tool_data = PythonCodeToolData(
                 id=1, name="Storage Tool", description="", python_code=python_code_data
             )
-            mock_tool = MagicMock()
-            mock_tool.data = tool_data
+            mock_tool = BaseToolData(
+                unique_name=f"python-code-tool:{tool_data.id}", data=tool_data
+            )
 
             with patch.object(
                 converter.realtime_surface_service,
@@ -189,10 +191,10 @@ class TestConverterRTAgentStorageCredentials:
 
         python_code = PythonCode.objects.create(code="def main(**kw): return kw")
         tool1 = PythonCodeTool.objects.create(
-            python_code=python_code, use_storage=True, org_id=org.id
+            python_code=python_code, use_storage=True, org_id=org.id, name="Tool 1"
         )
         tool2 = PythonCodeTool.objects.create(
-            python_code=python_code, use_storage=True, org_id=org.id
+            python_code=python_code, use_storage=True, org_id=org.id, name="Tool 2"
         )
 
         mock_gateway_instance = AsyncMock()
@@ -211,7 +213,7 @@ class TestConverterRTAgentStorageCredentials:
             return_value=mock_org_creds,
         ):
             # Mock multiple tools
-            from src.shared.models import PythonCodeToolData, PythonCodeData
+            from src.shared.models import BaseToolData, PythonCodeToolData, PythonCodeData
 
             python_code_data1 = PythonCodeData(
                 venv_name="venv_1",
@@ -224,8 +226,9 @@ class TestConverterRTAgentStorageCredentials:
             tool_data1 = PythonCodeToolData(
                 id=1, name="Tool 1", description="", python_code=python_code_data1
             )
-            mock_tool1 = MagicMock()
-            mock_tool1.data = tool_data1
+            mock_tool1 = BaseToolData(
+                unique_name=f"python-code-tool:{tool_data1.id}", data=tool_data1
+            )
 
             python_code_data2 = PythonCodeData(
                 venv_name="venv_2",
@@ -238,8 +241,9 @@ class TestConverterRTAgentStorageCredentials:
             tool_data2 = PythonCodeToolData(
                 id=2, name="Tool 2", description="", python_code=python_code_data2
             )
-            mock_tool2 = MagicMock()
-            mock_tool2.data = tool_data2
+            mock_tool2 = BaseToolData(
+                unique_name=f"python-code-tool:{tool_data2.id}", data=tool_data2
+            )
 
             with patch.object(
                 converter.realtime_surface_service,
@@ -277,8 +281,12 @@ class TestConverterRTAgentStorageCredentials:
         from tables.models import PythonCodeTool, PythonCode
 
         python_code = PythonCode.objects.create(code="def main(**kw): return kw")
-        PythonCodeTool.objects.create(python_code=python_code, use_storage=True, org_id=org.id)
-        PythonCodeTool.objects.create(python_code=python_code, use_storage=False, org_id=org.id)
+        PythonCodeTool.objects.create(
+            python_code=python_code, use_storage=True, org_id=org.id, name="With Storage"
+        )
+        PythonCodeTool.objects.create(
+            python_code=python_code, use_storage=False, org_id=org.id, name="Without Storage"
+        )
 
         mock_gateway_instance = AsyncMock()
         mock_gateway_class.return_value = mock_gateway_instance
@@ -295,7 +303,7 @@ class TestConverterRTAgentStorageCredentials:
             "storage_credentials.services.session_credential_service.org_credential_store.get",
             return_value=mock_org_creds,
         ):
-            from src.shared.models import PythonCodeToolData, PythonCodeData
+            from src.shared.models import BaseToolData, PythonCodeToolData, PythonCodeData
 
             python_code_data_with = PythonCodeData(
                 venv_name="venv_with",
@@ -308,8 +316,9 @@ class TestConverterRTAgentStorageCredentials:
             tool_data_with = PythonCodeToolData(
                 id=1, name="With Storage", description="", python_code=python_code_data_with
             )
-            mock_tool_with = MagicMock()
-            mock_tool_with.data = tool_data_with
+            mock_tool_with = BaseToolData(
+                unique_name=f"python-code-tool:{tool_data_with.id}", data=tool_data_with
+            )
 
             python_code_data_without = PythonCodeData(
                 venv_name="venv_without",
@@ -321,8 +330,9 @@ class TestConverterRTAgentStorageCredentials:
             tool_data_without = PythonCodeToolData(
                 id=2, name="Without Storage", description="", python_code=python_code_data_without
             )
-            mock_tool_without = MagicMock()
-            mock_tool_without.data = tool_data_without
+            mock_tool_without = BaseToolData(
+                unique_name=f"python-code-tool:{tool_data_without.id}", data=tool_data_without
+            )
 
             with patch.object(
                 converter.realtime_surface_service,

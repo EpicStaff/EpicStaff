@@ -91,7 +91,12 @@ async def test_use_storage_forwards_all_three_scoping_fields(monkeypatch):
     )
 
     await asyncio.wait_for(
-        service.run_code(python_code_data=python_code_data, inputs={}), timeout=5
+        service.run_code(
+            python_code_data=python_code_data,
+            inputs={},
+            storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
+        ),
+        timeout=5,
     )
 
     assert redis.published is not None

@@ -77,7 +77,10 @@ async def test_execute_returns_result_dict(task_node_data):
         "tool_invocations": 1,
     }
     agent_task_service.run_task.assert_awaited_once_with(
-        task_node_data, node.stop_event, on_event=mock.ANY
+        task_node_data,
+        node.stop_event,
+        on_event=mock.ANY,
+        storage_credentials=None,
     )
 
 
@@ -85,7 +88,7 @@ async def test_execute_returns_result_dict(task_node_data):
 async def test_execute_forwards_live_agent_events_as_task_node_stream(task_node_data):
     agent_task_service = AsyncMock()
 
-    async def fake_run_task(node_data, stop_event, on_event=None):
+    async def fake_run_task(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.tool_call",
@@ -146,7 +149,7 @@ async def test_execute_forwards_task_lifecycle_events_as_task_node_stream(
     to prove the mapping isn't tool-event-only."""
     agent_task_service = AsyncMock()
 
-    async def fake_run_task(node_data, stop_event, on_event=None):
+    async def fake_run_task(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.task_start",
@@ -209,7 +212,7 @@ async def test_execute_forwards_knowledge_search_envelope_as_extracted_chunks(
         "token_usage": {"total_tokens": 15},
     }
 
-    async def fake_run_task(node_data, stop_event, on_event=None):
+    async def fake_run_task(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.knowledge_search",
@@ -253,7 +256,7 @@ async def test_execute_knowledge_search_envelope_does_not_shift_stream_step_id(
 ):
     agent_task_service = AsyncMock()
 
-    async def fake_run_task(node_data, stop_event, on_event=None):
+    async def fake_run_task(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.task_start",
@@ -331,7 +334,7 @@ async def test_execute_drops_unknown_envelope_type_and_writes_no_message(
 ):
     agent_task_service = AsyncMock()
 
-    async def fake_run_task(node_data, stop_event, on_event=None):
+    async def fake_run_task(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.heartbeat",

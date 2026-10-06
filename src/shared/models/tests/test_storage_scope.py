@@ -126,6 +126,9 @@ class TestCodeTaskData:
             storage_org_prefix="org_42",
             session_id=10,
             org_id=3,
+            storage_credentials=StorageCredentials(
+                access_key="access", secret_key="secret"
+            ),
         )
         assert task.use_storage is True
         assert task.storage_allowed_paths == ["/data"]
@@ -246,6 +249,9 @@ class TestCodeTaskData:
             storage_allowed_paths=["/data"],
             storage_org_prefix="org_42",
             org_id=5,
+            storage_credentials=StorageCredentials(
+                access_key="access", secret_key="secret"
+            ),
         )
         assert task.use_storage is True
 
