@@ -20,6 +20,7 @@ import {
     TemplateRef,
     untracked,
     ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -31,7 +32,7 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
-import { AgGridModule } from 'ag-grid-angular';
+import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
     BodyScrollEvent,
@@ -665,6 +666,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     @ViewChild('groupMenuTemplate') groupMenuTemplate!: TemplateRef<unknown>;
     @ViewChild('hiddenBadgeMenuTemplate') hiddenBadgeMenuTemplate!: TemplateRef<unknown>;
 
+    private readonly gridElementRef = viewChild(AgGridAngular, { read: ElementRef<HTMLElement> });
+
     public exprAddPos = signal<{ x: number; y: number } | null>(null);
     public manipAddPos = signal<{ x: number; y: number } | null>(null);
     private positionResizeObserver: ResizeObserver | null = null;
@@ -922,6 +925,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         onColumnResized: (event: ColumnResizedEvent) => {
             if (event.finished) {
                 this.saveGridState();
+                if (event.source !== 'sizeColumnsToFit') {
+                    this.ensureColumnsFillViewport();
+                }
                 setTimeout(() => this.updateAddButtonPositions(), 0);
             }
         },
@@ -1009,6 +1015,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: [{ colId, hide: true }],
         });
         this.saveGridState();
+        this.ensureColumnsFillViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1126,6 +1133,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: colIds.map((colId) => ({ colId, hide: true })),
         });
         this.saveGridState();
+        this.ensureColumnsFillViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1144,6 +1152,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: colIds.map((colId) => ({ colId, hide: true })),
         });
         this.saveGridState();
+        this.ensureColumnsFillViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1777,7 +1786,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerComponentParams: this.makeMenuHeaderParams('route_code', 'Route Code'),
             field: 'route_code',
             editable: true,
-            width: 150,
+            flex: 1,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
@@ -2116,6 +2125,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.movableColumnOrder.set(this.movableColumnOrder().filter((id) => id !== colId));
         this.dropRowField('field_expressions', fieldName);
         this.saveGridState();
+        this.ensureColumnsFillViewport();
     }
 
     onExprSelectionChange(values: unknown[]): void {
@@ -2158,6 +2168,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.manipColumnOrder.set(this.manipColumnOrder().filter((id) => id !== colId));
         this.dropRowField('field_manipulations', fieldName);
         this.saveGridState();
+        this.ensureColumnsFillViewport();
     }
 
     private dropRowField(key: 'field_expressions' | 'field_manipulations', fieldName: string): void {
@@ -2898,5 +2909,20 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    private ensureColumnsFillViewport(): void {
+        if (!this.gridApi) return;
+        setTimeout(() => {
+            const columnState = this.gridApi?.getColumnState();
+            if (!columnState) return;
+            const totalColWidth = columnState.filter((s) => !s.hide).reduce((sum, s) => sum + (s.width ?? 0), 0);
+            const gridEl = this.gridElementRef();
+            if (!gridEl) return;
+            const viewportWidth = gridEl.nativeElement.clientWidth;
+            if (totalColWidth < viewportWidth - 4) {
+                this.gridApi.sizeColumnsToFit();
+            }
+        }, 0);
     }
 }
