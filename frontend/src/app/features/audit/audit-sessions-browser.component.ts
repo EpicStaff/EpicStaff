@@ -11,11 +11,17 @@ import {
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent } from '@shared/components';
+import { ActionDropdownButtonComponent, ActionDropdownItem, AppSvgIconComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { downloadBlob } from '@shared/utils';
 import {
     catchError,
     debounceTime,
+    exhaustMap,
     filter,
+    finalize,
+    first,
     forkJoin,
     fromEvent,
     interval,
@@ -23,8 +29,13 @@ import {
     of,
     Subject,
     Subscription,
+    switchMap,
+    timeout,
+    timer,
 } from 'rxjs';
 
+import { ExportFormat } from '../../core/services/import-export.service';
+import { ToastService } from '../../services/notifications';
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
 import { CustomToolsService } from '../tools/services/custom-tools/custom-tools.service';
@@ -33,7 +44,7 @@ import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
-import { AuditSessionEvent } from './models/audit-session.models';
+import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
 import { buildAuditRows } from './utils/build-audit-rows.util';
@@ -44,6 +55,8 @@ import { sanitizeToolName } from './utils/sanitize-tool-name.util';
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
+const EXPORT_POLL_INTERVAL_MS = 1_000;
+const EXPORT_TIMEOUT_MS = 5 * 60_000;
 
 @Component({
     selector: 'app-audit-sessions-browser',
@@ -55,6 +68,8 @@ const SEARCH_DEBOUNCE_MS = 400;
         AuditFilterChipsComponent,
         AuditHighlightComponent,
         AuditJsonPipe,
+        ActionDropdownButtonComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
@@ -68,6 +83,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private mcpToolsService = inject(McpToolsService);
     private destroyRef = inject(DestroyRef);
     private document = inject(DOCUMENT);
+    private toastService = inject(ToastService);
     private searchSubscription: Subscription | null = null;
     private searchInput = new Subject<string>();
     public readonly timeZoneLabel = buildTimeZoneLabel();
@@ -86,10 +102,21 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
     private collapsedIds = signal<ReadonlySet<string>>(new Set());
     public flowNames = signal<string[]>([]);
+    public exportingFormat = signal<ExportFormat | null>(null);
     public allRows = computed(() => buildAuditRows(this.rawEvents()));
     public isRowCollapsed(id: string): boolean {
         return this.collapsedIds().has(id);
     }
+    protected exportLabel = computed(() => {
+        const format = this.exportingFormat();
+        return format ? `Generating ${format.toUpperCase()}...` : 'Export';
+    });
+    protected readonly exportItems: ActionDropdownItem[] = [
+        { label: 'Export as JSON', value: 'json' },
+        { label: 'Export as CSV', value: 'csv' },
+    ];
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
     public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
@@ -366,6 +393,38 @@ export class AuditSessionsBrowserComponent implements OnInit {
             !this.loadError() &&
             (this.searchSubscription?.closed ?? true)
         );
+    }
+
+    public exportFiltered(format: ExportFormat): void {
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        const request: AuditExportRequest = { format, filters, query, match_scope: matchScope };
+        this.exportingFormat.set(format);
+
+        this.auditApiService
+            .startExport(request)
+            .pipe(
+                switchMap(({ job_id }) =>
+                    timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
+                        exhaustMap(() => this.auditApiService.getExportFile(job_id)),
+                        first((response) => response.status === 200)
+                    )
+                ),
+                timeout({ first: EXPORT_TIMEOUT_MS }),
+                finalize(() => this.exportingFormat.set(null)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (response) => {
+                    if (response.body) {
+                        downloadBlob(response.body, `audit_export_${Date.now()}.${format}`);
+                    }
+                },
+                error: () => this.toastService.error('Failed to export audit records'),
+            });
+    }
+
+    public onExportItemSelected(item: ActionDropdownItem): void {
+        this.exportFiltered(item.value as ExportFormat);
     }
 }
 

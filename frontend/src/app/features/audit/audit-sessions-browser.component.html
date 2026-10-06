@@ -45,13 +45,16 @@
             {{ areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree' }}
         </button>
         <span class="audit-browser__toolbar-spacer"></span>
-        <button
-            class="audit-browser__tool-btn"
-            type="button"
-            disabled
-        >
-            Export
-        </button>
+        <app-action-dropdown-button
+            *appHasPermission="[ResourceCode.Audit, ActionCode.Export]"
+            [label]="exportLabel()"
+            [buttonWidth]="null"
+            [items]="exportItems"
+            [loading]="exportingFormat() !== null"
+            [disabled]="isLoading() || loadError() || counts().rows === 0"
+            (mainClick)="exportFiltered('json')"
+            (itemClick)="onExportItemSelected($event)"
+        />
     </div>
 
     @if (appliedChips().length > 0) {

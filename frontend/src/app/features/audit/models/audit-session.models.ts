@@ -1,3 +1,4 @@
+import { ExportFormat } from '../../../core/services/import-export.service';
 import { AuditFilterNode } from './audit-filter.models';
 
 export type AuditEventKind = 'session' | 'node' | 'event';
@@ -74,4 +75,11 @@ export interface AuditSessionRow {
     error: string | null;
     details: Record<string, unknown> | null;
     children: AuditSessionEvent[];
+}
+
+export interface AuditExportRequest {
+    format: ExportFormat;
+    filters?: AuditFilterNode;
+    query?: string;
+    match_scope?: AuditMatchScope;
 }
