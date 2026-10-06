@@ -25,6 +25,7 @@ urlpatterns = [
     path("", include("rbac.urls")),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),
+    path("api/", include("plugins.urls")),
     path("ht/", include("health_check.urls")),
 ]
 

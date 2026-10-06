@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat Bot</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="chat">
+      <header class="chat__header">
+        <img class="chat__icon" src="icon.svg" alt="" />
+        <div>
+          <h1 class="chat__title">Chat Bot</h1>
+          <p class="chat__subtitle">Ask anything about Acme Notes.</p>
+        </div>
+      </header>
+
+      <div id="messages" class="chat__messages" aria-live="polite"></div>
+
+      <div class="chat__composer">
+        <textarea
+          id="question"
+          class="chat__input"
+          rows="2"
+          maxlength="4000"
+          placeholder="Type a question and press Enter"
+          aria-label="Your question"
+        ></textarea>
+        <button id="send" class="chat__send" type="button">Send</button>
+      </div>
+      <p id="status" class="chat__status" role="status"></p>
+    </main>
+
+    <script src="bridge-client.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

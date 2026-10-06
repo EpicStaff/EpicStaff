@@ -15,7 +15,7 @@ import pytest
 from rbac.models import Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from rbac.access.effective import EffectivePermissions
-from rbac.access.catalog import grantable_bits_for
+from rbac.access.catalog import applicable_actions_for, grantable_bits_for
 
 DELEGATED = [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER]
 
@@ -64,8 +64,7 @@ def test_org_admin_can_assign_the_lesser_built_ins(target_name):
 
 @pytest.mark.django_db
 def test_secrets_use_is_held_by_org_admin_only():
-    """`use` is an action of `secrets` alone, and among the built-ins only the
-    Org Admin is trusted with it."""
+    """Among the built-ins only the Org Admin is trusted with `secrets: use`."""
     holders = {
         name
         for name in DELEGATED
@@ -79,17 +78,16 @@ def test_secrets_use_is_held_by_org_admin_only():
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("role_name", DELEGATED)
-def test_no_built_in_holds_use_outside_secrets(role_name):
-    """`use` is enforced only by SecretReferenceGuard, so it means nothing on
-    any other resource."""
+def test_no_built_in_holds_use_where_it_is_not_an_action(role_name):
+    """`use` is enforced only for the resources whose catalog entry lists it
+    (secrets, plugins), so it means nothing on any other resource."""
     role = _builtin(role_name)
 
     elsewhere = [
         row.resource_type
-        for row in RolePermission.objects.filter(role=role).exclude(
-            resource_type=ResourceType.SECRETS.value
-        )
+        for row in RolePermission.objects.filter(role=role)
         if row.permissions & int(Permission.USE)
+        and "use" not in applicable_actions_for(row.resource_type)
     ]
 
     assert elsewhere == []

@@ -46,12 +46,12 @@ class TestUseIsReportedToTheFrontend:
             "delete",
         ]
 
-    def test_catalog_lists_use_as_applicable_to_secrets_only(self, admin_client):
+    def test_catalog_lists_use_as_applicable_to_secrets_and_plugins_only(self, admin_client):
         catalog = admin_client.get("/api/permissions/catalog/").json()
 
         assert any(action["code"] == "use" for action in catalog["actions"])
         for entry in catalog["resource_types"]:
-            if entry["code"] == "secrets":
+            if entry["code"] in {"secrets", "plugins"}:
                 assert "use" in entry["applicable_actions"]
             else:
                 assert "use" not in entry["applicable_actions"]

@@ -1,0 +1,139 @@
+/* The plugin's own stylesheet: the host app's CSS variables do not reach a sandboxed page. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #1b1b1f;
+  color: #d9d9de;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  max-width: 820px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  gap: 16px;
+}
+
+.chat__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat__icon {
+  width: 32px;
+  height: 32px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #685fff;
+}
+
+.chat__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.chat__subtitle {
+  margin: 0;
+  color: rgba(217, 217, 222, 0.6);
+}
+
+.chat__messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.message {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message--user {
+  align-self: flex-end;
+  background: #685fff;
+  color: #ffffff;
+}
+
+.message--bot {
+  align-self: flex-start;
+  background: #2b2d30;
+}
+
+.message--pending {
+  align-self: flex-start;
+  background: #2b2d30;
+  color: rgba(217, 217, 222, 0.6);
+  font-style: italic;
+}
+
+.message--error {
+  align-self: flex-start;
+  background: rgba(220, 91, 96, 0.15);
+  color: #dc5b60;
+}
+
+.chat__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.chat__input {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border: 1px solid rgba(200, 206, 218, 0.14);
+  border-radius: 8px;
+  background: #27272b;
+  color: inherit;
+  font: inherit;
+}
+
+.chat__input:focus {
+  outline: none;
+  border-color: #685fff;
+}
+
+.chat__send {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #685fff;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat__send:disabled,
+.chat__input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat__status {
+  min-height: 1.5em;
+  margin: 0;
+  color: rgba(217, 217, 222, 0.6);
+  font-size: 12px;
+}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from agents.models import AgentDefinition
 from loguru import logger
+from plugins.services.guard import plugin_guard
 from src.shared.models import (
     AgentDefinitionData,
     BaseToolData,
@@ -44,6 +45,7 @@ class BaseNodePayloadService:
         if agent_definition is None:
             return None
 
+        plugin_guard.check_agent_definition(agent_definition.pk)
         agent_definition.fill_with_defaults()
 
         return AgentDefinitionData(

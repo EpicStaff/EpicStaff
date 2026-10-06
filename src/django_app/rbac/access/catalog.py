@@ -162,6 +162,16 @@ RESOURCE_TYPE_METADATA = [
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
+    {
+        "code": ResourceType.PLUGINS.value,
+        "label": "Plugins",
+        "group": "workspace",
+        # create = install, update = suspend/resume/re-enter secrets,
+        # delete = uninstall, use = open the plugin's own page.
+        "description": "Installed plugins: bundled flows, agents and configs plus their own page",
+        "applicable_actions": ["create", "read", "update", "delete", "use"],
+        "platform_actions": [],
+    },
 ]
 
 
@@ -289,13 +299,45 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("key_value_tables", "read"),),
         "delete": (("key_value_tables", "read"),),
     },
+    ResourceType.PLUGINS.value: {
+        # Installing creates every resource the plugin bundles, and the install
+        # service refuses unless the installer could create each one directly.
+        "create": (
+            ("plugins", "read"),
+            ("flows", "create"),
+            ("agents", "create"),
+            ("surfaces", "create"),
+            ("tools", "create"),
+            ("knowledge_sources", "create"),
+            ("files", "create"),
+            ("llm_configs", "create"),
+            ("secrets", "create"),
+            ("webhooks", "create"),
+        ),
+        "update": (("plugins", "read"),),
+        # Uninstalling removes every resource the plugin installed, and the
+        # lifecycle service refuses unless the caller could delete each one directly.
+        "delete": (
+            ("plugins", "read"),
+            ("flows", "delete"),
+            ("agents", "delete"),
+            ("surfaces", "delete"),
+            ("tools", "delete"),
+            ("knowledge_sources", "delete"),
+            ("files", "delete"),
+            ("llm_configs", "delete"),
+            ("secrets", "delete"),
+            ("webhooks", "delete"),
+        ),
+        "use": (("plugins", "read"),),
+    },
 }
 
 
 _ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
 
 # The bits a role can actually be granted, **per resource**. Grantability is a
-# per-resource property -- `use` is an action of `secrets` and of nothing else --
+# per-resource property -- `use` is an action of `secrets` and `plugins` only --
 # so a global union over ACTION_METADATA is the wrong granularity: enabling an
 # action for one resource would admit its bit on every other resource, where it
 # is neither applicable nor enforced. A code that is not a rendered action

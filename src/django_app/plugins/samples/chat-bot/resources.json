@@ -1,0 +1,200 @@
+{
+  "Flow": [
+    {
+      "id": 1,
+      "edge_list": [
+        {
+          "id": 1,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 1,
+          "end_node_id": 2
+        },
+        {
+          "id": 2,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 2,
+          "end_node_id": 3
+        }
+      ],
+      "conditional_edge_list": [],
+      "uuid": "c2b88d8e-32a7-4d15-b2a3-c2224607406c",
+      "name": "Chat Bot",
+      "description": "Answers a customer question using the Acme Notes knowledge.",
+      "metadata": {},
+      "time_to_live": 3600,
+      "enable_persistent_variables": false,
+      "epicchat_enabled": false,
+      "org": 2,
+      "nodes": [
+        {
+          "id": 1,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 0,
+              "y": 0
+            }
+          },
+          "variables": {
+            "variables": {
+              "history": "",
+              "question": ""
+            }
+          },
+          "node_type": "StartNode"
+        },
+        {
+          "id": 3,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 840,
+              "y": 0
+            }
+          },
+          "output_map": {
+            "answer": "variables.answer"
+          },
+          "node_type": "EndNode"
+        },
+        {
+          "id": 2,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 420,
+              "y": 0
+            }
+          },
+          "node_name": "Answer question",
+          "input_map": {
+            "history": "variables.history",
+            "question": "variables.question"
+          },
+          "output_variable_path": "variables.answer",
+          "instructions": "Conversation so far:\n{history}\n\nCustomer question:\n{question}\n\nSearch the Acme Notes knowledge before answering, then reply in a few short paragraphs.",
+          "output_schema": {},
+          "remember_output": false,
+          "agent_definition": 1,
+          "surface_list": [],
+          "inline_surface": null,
+          "node_type": "TaskNode"
+        }
+      ],
+      "labels": []
+    }
+  ],
+  "AgentDefinition": [
+    {
+      "id": 1,
+      "name": "Chat Bot Agent",
+      "description": "Answers customer questions about Acme Notes.",
+      "instructions": "You are the support assistant for Acme Notes. Answer only from the Acme Notes knowledge you can search and the files you can read. Follow the tone guide in your storage files. If the knowledge does not cover a question, say so plainly and suggest contacting support@acme-notes.example.",
+      "metadata": {},
+      "max_iter": null,
+      "max_rpm": null,
+      "max_execution_time": null,
+      "cache": null,
+      "max_retry_limit": null,
+      "default_temperature": null,
+      "max_tool_calls": null,
+      "tool_timeout": null,
+      "max_consecutive_failures": null,
+      "schema_max_retries": null,
+      "llm_config": 1,
+      "fcm_llm_config": null,
+      "owned_surfaces": [
+        1
+      ],
+      "default_surfaces": []
+    }
+  ],
+  "LLMConfig": [
+    {
+      "id": 1,
+      "model": 2,
+      "custom_name": "Chat Bot GPT-4o mini",
+      "temperature": 0.3,
+      "top_p": 1.0,
+      "stop": null,
+      "max_tokens": 4096,
+      "context_window": 16000,
+      "presence_penalty": 0.0,
+      "frequency_penalty": 0.0,
+      "logit_bias": null,
+      "seed": null,
+      "logprobs": null,
+      "top_logprobs": null,
+      "base_url": null,
+      "api_version": null,
+      "extra_headers": {},
+      "timeout": 120.0,
+      "is_visible": true,
+      "org": 2,
+      "tags": []
+    }
+  ],
+  "LLMModel": [
+    {
+      "id": 2,
+      "tags": [],
+      "name": "gpt-4o-mini",
+      "predefined": false,
+      "description": null,
+      "deployment_id": null,
+      "api_version": null,
+      "base_url": null,
+      "is_visible": true,
+      "is_custom": false,
+      "org": null,
+      "provider_name": "openai"
+    }
+  ],
+  "Surface": [
+    {
+      "id": 1,
+      "created_at": "2026-10-06T21:19:44.407611Z",
+      "updated_at": "2026-10-06T21:19:44.407636Z",
+      "name": "Chat Bot Agent knowledge",
+      "instructions": "Use the Acme Notes knowledge and the tone guide when you answer.",
+      "tools": {
+        "PythonCodeTool": [],
+        "MCPTool": []
+      }
+    }
+  ],
+  "main_entity": "Flow",
+  "version": 3,
+  "EmbeddingModel": [
+    {
+      "id": 1,
+      "tags": [],
+      "name": "text-embedding-3-small",
+      "predefined": false,
+      "deployment": null,
+      "base_url": null,
+      "is_visible": true,
+      "is_custom": false,
+      "org": null,
+      "provider_name": "openai"
+    }
+  ],
+  "EmbeddingConfig": [
+    {
+      "id": 1,
+      "custom_name": "Chat Bot embeddings",
+      "task_type": "retrieval_document",
+      "is_visible": true,
+      "org": 2,
+      "model": 1,
+      "tags": []
+    }
+  ]
+}

@@ -63,7 +63,8 @@ class EntityImportExportStrategy(ABC):
 
         settings_kwargs = vars(settings) if settings is not None else {}
         create_kwargs = {**settings_kwargs, **kwargs}
-        if is_main:
+        force_create = settings is not None and self.entity_type in settings.force_create_types
+        if is_main or force_create:
             instance = self.create_entity(data, id_mapper, **create_kwargs)
         else:
             existing = self.find_existing(data, id_mapper, org_id=kwargs.get("org_id"))

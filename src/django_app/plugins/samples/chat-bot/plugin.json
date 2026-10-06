@@ -1,0 +1,65 @@
+{
+  "format_version": 1,
+  "bridge": 1,
+  "id": "chat-bot",
+  "version": "0.1.0",
+  "name": "Chat Bot",
+  "description": "A ready-made support assistant that answers questions about Acme Notes from its own knowledge base.",
+  "icon": "ui/icon.svg",
+  "ui": {
+    "entry": "ui/index.html"
+  },
+  "secret_slots": [
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "OpenAI API key used by the chat model and by the knowledge embeddings."
+    }
+  ],
+  "secret_bindings": [
+    {
+      "entity": "LLMConfig",
+      "ref": 1,
+      "field": "api_key_secret",
+      "slot": "OPENAI_API_KEY"
+    },
+    {
+      "entity": "EmbeddingConfig",
+      "ref": 1,
+      "field": "api_key_secret",
+      "slot": "OPENAI_API_KEY"
+    }
+  ],
+  "knowledge": [
+    {
+      "name": "Acme Notes knowledge",
+      "description": "Product overview and frequently asked questions about Acme Notes.",
+      "embedder": 1,
+      "documents": [
+        "knowledge/product-overview.md",
+        "knowledge/faq.md"
+      ],
+      "attach_to_surfaces": [1]
+    }
+  ],
+  "storage_files": [
+    {
+      "path": "files/tone-guide.md",
+      "surfaces": [
+        {
+          "surface": 1,
+          "can_list": "allow",
+          "can_view": "allow"
+        }
+      ],
+      "attach_to_flows": [1]
+    }
+  ],
+  "access": [
+    {
+      "alias": "chat",
+      "type": "flow",
+      "ref": 1,
+      "actions": ["run", "sessions.read", "sessions.stop"]
+    }
+  ]
+}

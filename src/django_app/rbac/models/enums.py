@@ -20,6 +20,8 @@ class ResourceType(models.TextChoices):
     SURFACES = "surfaces", "Surfaces"
     WEBHOOKS = "webhooks", "Webhooks"
     KEY_VALUE_TABLES = "key_value_tables", "Key-Value Tables"
+    # Never rename: role rows store this value, and installed plugins outlive upgrades.
+    PLUGINS = "plugins", "Plugins"
 
 
 class Permission(IntFlag):

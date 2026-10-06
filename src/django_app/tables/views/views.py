@@ -12,6 +12,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema_view,
 )
+from plugins.exceptions import PluginSuspendedError
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
@@ -458,6 +459,9 @@ class RunSession(APIView):
                 token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
+        except PluginSuspendedError:
+            # Its own 409 envelope, so the plugin bridge can tell "suspended" apart.
+            raise
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})

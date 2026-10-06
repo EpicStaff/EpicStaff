@@ -1,4 +1,6 @@
 from django.core.exceptions import ValidationError
+from plugins.resource_types import PluginResourceType
+from plugins.services.guard import plugin_guard
 from src.shared.models import (
     ArgsSchema,
     AudioTranscriptionNodeData,
@@ -221,6 +223,7 @@ class ConverterService(metaclass=SingletonMeta):
         storage_org_prefix_override: str | None = None,
         org_id_override: int | None = None,
     ) -> BaseToolData:
+        self._refuse_suspended_plugin_tool(tool)
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
             data = self.convert_python_code_tool_to_pydantic(
@@ -246,6 +249,17 @@ class ConverterService(metaclass=SingletonMeta):
             raise TypeError(f"Tool type of {type(tool)} is not supported")
 
         return BaseToolData(unique_name=unique_name, data=data)
+
+    @staticmethod
+    def _refuse_suspended_plugin_tool(
+        tool: PythonCodeTool | McpTool | PythonCodeToolConfig,
+    ) -> None:
+        if isinstance(tool, McpTool):
+            plugin_guard.check_tool(PluginResourceType.MCP_TOOL, tool.pk)
+        elif isinstance(tool, PythonCodeToolConfig):
+            plugin_guard.check_tool(PluginResourceType.PYTHON_CODE_TOOL, tool.tool_id)
+        elif isinstance(tool, PythonCodeTool):
+            plugin_guard.check_tool(PluginResourceType.PYTHON_CODE_TOOL, tool.pk)
 
     def convert_rt_agent_definition_chat_to_pydantic(
         self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None

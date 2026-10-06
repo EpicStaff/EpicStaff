@@ -103,8 +103,8 @@ def test_from_role_and_bits_of_agree(db):
 
 # ---- ungrantable bits are excluded from the comparison ----
 #
-# Grantability is per-resource: `use` is an action of `secrets` and of nothing
-# else, `list` of nothing at all. The database nonetheless holds bits that are
+# Grantability is per-resource: `use` is an action of `secrets` and `plugins`
+# only, `list` of nothing at all. The database nonetheless holds bits that are
 # not actions of their own resource (Viewer `flows: 66` carries USE), seeded
 # before the catalog settled. Comparing those lets dead data refuse a
 # legitimate grant, which is exactly what broke Org Admin -> Viewer once `use`

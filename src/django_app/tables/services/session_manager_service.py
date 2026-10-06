@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from django.db import transaction
+from plugins.services.guard import plugin_guard
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.models import (
     AgentNodeData,
@@ -218,6 +219,8 @@ class SessionManagerService(metaclass=SingletonMeta):
         logger.info("'run_session' got variables: {}", variables)
 
         graph = Graph.objects.get(pk=graph_id)
+        # Before create_session, so a refused run leaves no ERROR session behind.
+        plugin_guard.check_flow(graph)
         run_vars = self.persistent_variables_service.build_run_variables(
             graph=graph, user=user, payload=variables
         )

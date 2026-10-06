@@ -65,7 +65,7 @@ class EffectivePermissions:
 
         Only the bits grantable **on that resource** are compared
         (`grantable_bits_for`). Grantability is per-resource -- `use` is an
-        action of `secrets` and of nothing else -- and a row written before
+        action of `secrets` and `plugins` only -- and a row written before
         the catalog settled (an older custom role, say) can still hold a bit
         that is not an action of its own resource. Comparing those lets dead
         data refuse a legitimate grant: historically, Org Admin (`flows: 31`)

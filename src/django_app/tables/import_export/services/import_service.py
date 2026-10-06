@@ -98,8 +98,9 @@ class ImportService:
     ):
         old_id = entity_data["id"]
 
+        force_create = settings is not None and entity_type in settings.force_create_types
         existing = None
-        if not is_main:
+        if not is_main and not force_create:
             existing = strategy.find_existing(entity_data, id_mapper, org_id=org_id)
 
         was_created = existing is None
