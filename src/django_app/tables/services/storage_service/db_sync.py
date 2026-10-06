@@ -1,9 +1,13 @@
+import uuid
+from dataclasses import dataclass
+
 from django.db import transaction
-from django.db.models import Value
+from django.db.models import QuerySet, Value
 from django.db.models.functions import Concat, Substr
 from django.utils import timezone
 from rbac.models import Organization
 from tables.models import StorageFile
+from tables.services.storage_service.path_utils import is_trash_path
 
 
 def _name_of(path: str) -> str:
@@ -45,6 +49,14 @@ def _ancestor_paths(path: str) -> list[str]:
 _BULK_BATCH = 1000
 
 
+@dataclass(frozen=True)
+class SoftDeletedSubtree:
+    """What a soft delete binned: one batch, rooted at a file path or a folder path ending in "/"."""
+
+    batch: uuid.UUID
+    root_path: str
+
+
 class StorageFileSync:
     """
     Keeps the StorageFile DB table in sync with storage mutations.
@@ -58,6 +70,8 @@ class StorageFileSync:
         size: int | None = None,
         s3_modified=None,
     ) -> None:
+        if is_trash_path(path):
+            return  # recycle-bin objects are never live files
         org = Organization.objects.get(id=org_id)
         file_row, created = StorageFile.objects.get_or_create(
             org=org,
@@ -138,7 +152,6 @@ class StorageFileSync:
             ["name", "item_type", "parent_path", "size", "updated_at"],
             batch_size=_BULK_BATCH,
         )
-        existing_paths = {row.path for row in existing}
         StorageFile.objects.bulk_create(
             [
                 StorageFile(
@@ -150,9 +163,9 @@ class StorageFileSync:
                     size=size,
                 )
                 for path, size in files
-                if path not in existing_paths
             ],
-            # A runtime write (on_upload) racing this one may have made the row.
+            # Every path, not only the new ones: a row binned since the read
+            # above needs a new live row. Live rows conflict and are skipped.
             ignore_conflicts=True,
             batch_size=_BULK_BATCH,
         )
@@ -186,6 +199,36 @@ class StorageFileSync:
                     "s3_modified": None,
                 },
             )
+
+    @staticmethod
+    def on_soft_delete(org_id: int, path: str) -> SoftDeletedSubtree | None:
+        """Bin the live file at `path`, or the folder at `path` with everything under it, as one batch.
+
+        Same lookup as on_delete: an exact live file path wins, otherwise `path`
+        is a folder. Every row pointing at a binned row (flow attachments,
+        session outputs, surface grants) is hard-deleted: a binned file is
+        linked to nothing, and a restore brings it back without its links.
+        Returns None when nothing live sits at `path`.
+        """
+        clean_path = path.rstrip("/")
+        live_rows = StorageFile.objects.filter(org_id=org_id)
+        if not path.endswith("/") and live_rows.filter(path=clean_path, item_type="file").exists():
+            root_path = clean_path
+            rows = live_rows.filter(path=clean_path)
+        else:
+            root_path = clean_path + "/"
+            rows = live_rows.filter(path__startswith=root_path)
+        if not rows.exists():
+            return None
+
+        batch = uuid.uuid4()
+        binned = rows.update(active=False, soft_deleted_at=timezone.now(), soft_delete_batch=batch)
+        if not binned:
+            # A concurrent delete binned these rows first (the UPDATE waited for
+            # its locks, then re-checked active=True). Its objects are its to move.
+            return None
+        _delete_links_to(StorageFile.all_objects.filter(soft_delete_batch=batch))
+        return SoftDeletedSubtree(batch=batch, root_path=root_path)
 
     @staticmethod
     def on_delete(org_id: int, path: str) -> None:
@@ -237,3 +280,32 @@ class StorageFileSync:
                     row.name = _name_of(row.path)
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
+
+
+def _delete_links_to(rows: QuerySet) -> None:
+    """Hard-delete every row that points at one of `rows`: a binned file is linked to nothing.
+
+    The base manager reaches binned link rows too, such as a binned flow's
+    attachment. Listed by hand rather than found by reflection, so a new link
+    model is a deliberate choice (see test_every_storage_file_link_is_listed).
+    """
+    for model in storage_file_link_models():
+        model._base_manager.filter(storage_file__in=rows).delete()
+
+
+def storage_file_link_models() -> tuple[type, ...]:
+    """Every model with a foreign key to StorageFile."""
+    from agents.models import (
+        AgentInlineSurfaceStorageItem,
+        InlineSurfaceStorageItem,
+        SurfaceStorageItem,
+    )
+    from tables.models import GraphStorageFile, SessionStorageFile
+
+    return (
+        GraphStorageFile,
+        SessionStorageFile,
+        SurfaceStorageItem,
+        InlineSurfaceStorageItem,
+        AgentInlineSurfaceStorageItem,
+    )

@@ -8,7 +8,11 @@ from botocore.exceptions import ClientError, HTTPClientError
 from botocore.exceptions import ConnectionError as SdkConnectionError
 from django.conf import settings
 from tables.exceptions import RangeNotSatisfiable
-from tables.services.storage_service.base import AbstractStorageBackend, StorageUnreachable
+from tables.services.storage_service.base import (
+    AbstractStorageBackend,
+    SourceCleanupError,
+    StorageUnreachable,
+)
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
@@ -437,7 +441,10 @@ class S3StorageBackend(AbstractStorageBackend):
                 Bucket=self.bucket_name,
                 Key=full_destination,
             )
-            self.client.delete_object(Bucket=self.bucket_name, Key=full_source)
+            try:
+                self.client.delete_object(Bucket=self.bucket_name, Key=full_source)
+            except Exception as error:
+                raise SourceCleanupError([full_source]) from error
             logger.info("Renamed S3 object {} to {}", full_source, full_destination)
             return
 
@@ -457,13 +464,20 @@ class S3StorageBackend(AbstractStorageBackend):
                     Bucket=self.bucket_name,
                     Key=dest_key,
                 )
-                keys_to_delete.append({"Key": obj["Key"]})
+                keys_to_delete.append(obj["Key"])
                 found = True
 
         if not found:
             raise FileNotFoundError(f"Source path does not exist: {source_path}")
 
-        self.client.delete_objects(Bucket=self.bucket_name, Delete={"Objects": keys_to_delete})
+        # Sources go only after every copy landed; delete_keys sends them in
+        # batches of 1000 (the DeleteObjects limit) and raises on per-key errors.
+        # From here on the destination is complete, so a failure is reported
+        # apart from a failed copy: some sources may already be gone.
+        try:
+            self.delete_keys(keys_to_delete)
+        except Exception as error:
+            raise SourceCleanupError(keys_to_delete) from error
         logger.info("Renamed S3 prefix {} to {}", source_prefix, dest_prefix)
 
     def _key_exists(self, key: str, is_folder: bool) -> bool:

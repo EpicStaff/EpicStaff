@@ -214,7 +214,10 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         serializer.is_valid(raise_exception=True)
 
         for path in serializer.validated_data["paths"]:
-            self.manager.delete(org_id, path)
+            try:
+                self.manager.delete(org_id, path)
+            except ValueError as e:
+                raise ValidationError({"detail": str(e)}) from e
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

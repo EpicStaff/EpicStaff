@@ -13,6 +13,17 @@ class StorageUnreachable(Exception):  # noqa: N818
     """The object store is unreachable, timed out or failed on its side."""
 
 
+class SourceCleanupError(Exception):
+    """rename copied every object to its destination, then failed to delete some sources.
+
+    The destination is complete; the sources it lists may still exist as duplicates.
+    """
+
+    def __init__(self, source_keys: list[str]):
+        super().__init__(f"Could not delete the sources of a rename ({len(source_keys)} keys)")
+        self.source_keys = source_keys
+
+
 class AbstractStorageBackend(ABC):
     """Object storage of flat keys, where a key ending in "/" is a folder marker.
     Only the streaming-upload methods raise StorageUnreachable on an outage."""

@@ -1,14 +1,16 @@
 import io
 import mimetypes
 import re
+import uuid
 import zipfile
 from collections.abc import Iterator
 
+from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Sum, Value, When
 from django.db.models.functions import Lower
 from django.utils.dateparse import parse_datetime
 from tables.models import StorageFile
-from tables.services.storage_service.base import AbstractStorageBackend
+from tables.services.storage_service.base import AbstractStorageBackend, SourceCleanupError
 from tables.services.storage_service.dataclasses import (
     FileDownload,
     FileInfo,
@@ -17,11 +19,17 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.path_utils import (
+    sanitize_storage_path,
+    storage_key,
+    trash_batch_prefix,
+    trash_storage_key,
+)
 from tables.services.storage_service.quota import (
     ensure_fits_quota,
     record_files_within_quota,
 )
+from utils.logger import logger
 
 # Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
 _BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
@@ -139,9 +147,64 @@ class StorageManager:
             return FileDownload(self._backend.download(key))
         return FileDownload(*self._backend.download_range(key, *byte_range))
 
-    def delete(self, org_id: int, path: str) -> None:
-        self._backend.delete(self._build_storage_key(org_id, path))
-        StorageFileSync.on_delete(org_id, path)
+    def delete(self, org_id: int, path: str) -> uuid.UUID | None:
+        """Move a file, or a folder with everything under it, to the recycle bin.
+
+        The rows are binned first and the objects moved second, inside one
+        transaction. If copying to the trash fails, the rows stay live and the
+        partial trash copies are removed. If only deleting the originals fails,
+        every object is already in the trash, so the rows stay binned and the
+        leftover originals get one more delete. Returns the batch, or None when
+        nothing live sits at `path` (unindexed objects there are left alone).
+
+        Raises:
+            ValueError: the path is unsafe or inside the reserved recycle-bin folder.
+        """
+        live_key = self._build_storage_key(org_id, path)  # validates before any DB work
+        with transaction.atomic():
+            subtree = StorageFileSync.on_soft_delete(org_id, path)
+            if subtree is None:
+                return None
+            trash_key = trash_storage_key(org_id, subtree.batch, subtree.root_path)
+            try:
+                self._backend.rename(live_key, trash_key)
+            except FileNotFoundError:
+                # A folder made only by an upload's ancestors has no marker,
+                # and index drift can leave a row without an object.
+                logger.warning("Storage key {} has no objects; only its rows were binned", live_key)
+            except SourceCleanupError as error:
+                # Every object reached the trash, and some sources may already be
+                # gone: the trash is now the copy that counts, so the rows stay
+                # binned. The leftover sources are duplicates.
+                self._delete_leftover_sources(error.source_keys)
+            except Exception:
+                # The copy failed, so no source was deleted yet: the live
+                # objects are intact. Drop the partial trash copies.
+                self._discard_trash_batch(org_id, subtree.batch)
+                raise
+        return subtree.batch
+
+    def _delete_leftover_sources(self, source_keys: list[str]) -> None:
+        try:
+            self._backend.delete_keys(source_keys)
+        except Exception:
+            # Left in place, the reconciler would index them as live files again.
+            logger.exception(
+                "Could not delete {count} leftover source objects (first: {first}); "
+                "they are duplicates of objects already moved",
+                count=len(source_keys),
+                first=source_keys[:5],
+            )
+
+    def _discard_trash_batch(self, org_id: int, batch: uuid.UUID) -> None:
+        try:
+            self._backend.delete_prefix(trash_batch_prefix(org_id, batch))
+        except Exception:
+            logger.exception(
+                "Could not remove the partial trash copies of batch {batch} in org {org_id}",
+                batch=batch,
+                org_id=org_id,
+            )
 
     def mkdir(self, org_id: int, path: str) -> None:
         self._backend.mkdir(self._build_storage_key(org_id, path))
@@ -163,10 +226,15 @@ class StorageManager:
         if destination_exists:
             raise FileExistsError(f"Destination already exists: {destination_path}")
 
-        self._backend.rename(
-            self._build_storage_key(org_id, source_path),
-            self._build_storage_key(org_id, destination_path),
-        )
+        try:
+            self._backend.rename(
+                self._build_storage_key(org_id, source_path),
+                self._build_storage_key(org_id, destination_path),
+            )
+        except SourceCleanupError as error:
+            # Every object reached the destination: record the move, and the
+            # sources left behind are duplicates.
+            self._delete_leftover_sources(error.source_keys)
         # rename never dedupes — the guard above confirmed this exact path was
         # free, so destination_path IS the actual path (unlike move).
         StorageFileSync.on_move(org_id, source_path, destination_path)

@@ -11,7 +11,7 @@ import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
 
 from tables.services.storage_service import s3_backend as s3_backend_module
-from tables.services.storage_service.base import StorageUnreachable
+from tables.services.storage_service.base import SourceCleanupError, StorageUnreachable
 from tables.services.storage_service.dataclasses import FileInfo
 from tables.services.storage_service.s3_backend import S3StorageBackend
 from tests.storage_tests.in_memory_backend import (
@@ -310,3 +310,31 @@ def test_head_file_client_is_short_and_not_retried_while_the_main_client_is_unch
     assert head_file_config.connect_timeout <= 5
     assert head_file_config.read_timeout <= 5
     assert head_file_config.retries == {"mode": "standard", "total_max_attempts": 1}
+
+
+class TestFolderRename:
+    def test_a_large_folder_deletes_its_sources_in_batches_of_1000(self, backend, client):
+        # DeleteObjects takes at most 1000 keys: one call for the whole folder
+        # failed above that and left the copies behind.
+        client.objects.update({f"docs/f{index}.txt": b"x" for index in range(2500)})
+
+        backend.rename("docs", "archive/docs")
+
+        assert [len(batch) for batch in client.delete_batches] == [1000, 1000, 500]
+        assert not any(key.startswith("docs/") for key in client.objects)
+        assert sum(key.startswith("archive/docs/") for key in client.objects) == 2500
+
+    def test_a_failed_source_delete_is_reported_apart_from_a_failed_copy(self, backend, client, monkeypatch):
+        # The destination is complete by then; the caller must not discard it.
+        _folder_source(client)
+        monkeypatch.setattr(
+            client,
+            "delete_objects",
+            lambda **_kwargs: {"Errors": [{"Key": "docs/a.txt", "Code": "AccessDenied"}]},
+        )
+
+        with pytest.raises(SourceCleanupError) as raised:
+            backend.rename("docs", "archive/docs")
+
+        assert "docs/a.txt" in raised.value.source_keys
+        assert {"archive/docs/a.txt", "archive/docs/b.txt", "archive/docs/sub/c.txt"} <= set(client.objects)
