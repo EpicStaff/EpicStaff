@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models import Value
 from django.db.models.functions import Concat, Substr
+from django.utils import timezone
 from rbac.models import Organization
 from tables.models import StorageFile
 
@@ -120,6 +121,24 @@ class StorageFileSync:
             ignore_conflicts=True,
             batch_size=_BULK_BATCH,
         )
+        # Update the live rows that exist, insert the rest. An upsert can't do
+        # it: the unique (org, path) index only covers live rows, and Django
+        # can't name a partial index as the ON CONFLICT target.
+        size_by_path = dict(files)
+        now = timezone.now()
+        existing = list(StorageFile.objects.filter(org_id=org_id, path__in=size_by_path))
+        for row in existing:
+            row.name = _name_of(row.path)
+            row.item_type = "file"
+            row.parent_path = _parent_of(row.path)
+            row.size = size_by_path[row.path]
+            row.updated_at = now
+        StorageFile.objects.bulk_update(
+            existing,
+            ["name", "item_type", "parent_path", "size", "updated_at"],
+            batch_size=_BULK_BATCH,
+        )
+        existing_paths = {row.path for row in existing}
         StorageFile.objects.bulk_create(
             [
                 StorageFile(
@@ -131,10 +150,10 @@ class StorageFileSync:
                     size=size,
                 )
                 for path, size in files
+                if path not in existing_paths
             ],
-            update_conflicts=True,
-            unique_fields=["org", "path"],
-            update_fields=["name", "item_type", "parent_path", "size", "updated_at"],
+            # A runtime write (on_upload) racing this one may have made the row.
+            ignore_conflicts=True,
             batch_size=_BULK_BATCH,
         )
 

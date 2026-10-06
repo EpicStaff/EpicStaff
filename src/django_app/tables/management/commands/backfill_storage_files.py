@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from rbac.models import Organization
 from tables.services.storage_service import get_storage_manager
+from tables.services.storage_service.path_utils import is_trash_path
 from tables.services.storage_service.reconciler import StorageReconciler
 
 
@@ -33,7 +34,11 @@ class Command(BaseCommand):
         for org in orgs:
             if dry_run:
                 org_prefix = f"org_{org.id}/"
-                objects = backend.list_all_objects(org_prefix)
+                objects = [
+                    obj
+                    for obj in backend.list_all_objects(org_prefix)
+                    if not is_trash_path(obj[0][len(org_prefix) :])
+                ]
                 self.stdout.write(f"[org={org.id}] dry-run: {len(objects)} objects found")
                 continue
 

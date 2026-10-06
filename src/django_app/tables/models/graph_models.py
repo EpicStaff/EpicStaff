@@ -962,7 +962,7 @@ class GraphVersion(SoftDeleteMixin):
         ordering = ["-created_at"]
 
 
-class StorageFile(models.Model):
+class StorageFile(SoftDeleteFields):
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
 
     org = models.ForeignKey(
@@ -1011,8 +1011,17 @@ class StorageFile(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
-            models.UniqueConstraint(fields=["org", "path"], name="unique_storage_file_per_org")
+            soft_delete_consistency_constraint(),
+            # A binned row keeps its path, so a new upload to the same path must
+            # not clash with it. Two binned rows may share a path too.
+            models.UniqueConstraint(
+                fields=["org", "path"],
+                condition=models.Q(active=True),
+                name="unique_active_storage_file_per_org",
+            ),
         ]
         indexes = [
             models.Index(fields=["org", "path"]),

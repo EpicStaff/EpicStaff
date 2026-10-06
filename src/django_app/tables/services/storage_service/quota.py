@@ -12,8 +12,13 @@ def _total_size(rows) -> int:
 
 
 def org_used_bytes(org_id: int) -> int:
-    """How many bytes the org's files take, summed from StorageFile rows."""
-    return _total_size(StorageFile.objects.filter(org_id=org_id))
+    """How many bytes the org's files take, summed from StorageFile rows.
+
+    Files in the recycle bin count too: their bytes are still stored, and
+    leaving them out would let an org go past its quota by deleting and
+    uploading again.
+    """
+    return _total_size(StorageFile.all_objects.filter(org_id=org_id))
 
 
 def size_of_paths(org_id: int, paths) -> int:

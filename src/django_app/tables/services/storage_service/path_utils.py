@@ -74,3 +74,14 @@ def storage_key(org_id: int, path: str) -> str:
     """Storage key of path in the org's root ("" gives "org_<id>/"); ValueError if it escapes."""
     safe_path = sanitize_storage_path(path, allow_empty=True, allow_leading_slash=True)
     return f"org_{org_id}/{safe_path}"
+
+
+# Org-root folder holding recycle-bin objects: org_<id>/.recycle-bin/<batch>/<path>.
+# Reserved: users and runtime code can't create, read or list anything under it.
+TRASH_DIRECTORY = ".recycle-bin"
+
+
+def is_trash_path(relative_path: str) -> bool:
+    """True for the reserved recycle-bin folder and anything under it (org-relative path)."""
+    first_segment = relative_path.lstrip("/").split("/", 1)[0]
+    return first_segment == TRASH_DIRECTORY
