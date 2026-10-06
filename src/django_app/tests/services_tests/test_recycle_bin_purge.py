@@ -28,14 +28,14 @@ class TestPurge:
         node = TaskNode.objects.create(graph=graph, node_name="task")
         graph.delete()
 
-        PurgeService.purge(Graph.all_objects.get(pk=graph.pk))
+        PurgeService.purge(Graph.all_objects.get(pk=graph.pk), actor="test")
 
         assert not Graph.all_objects.filter(pk=graph.pk).exists()
         assert not TaskNode.all_objects.filter(pk=node.pk).exists()
 
     def test_purge_refuses_a_live_row(self, graph):
         with pytest.raises(NotInRecycleBinError):
-            PurgeService.purge(graph)
+            PurgeService.purge(graph, actor="test")
 
         assert Graph.objects.filter(pk=graph.pk).exists()
 
@@ -51,7 +51,7 @@ class TestPurge:
         )
         collection.delete()
 
-        PurgeService.purge(SourceCollection.all_objects.get(collection_id=collection.collection_id))
+        PurgeService.purge(SourceCollection.all_objects.get(collection_id=collection.collection_id), actor="test")
 
         assert not SourceCollection.all_objects.filter(collection_id=collection.collection_id).exists()
         assert not DocumentContent.objects.filter(id=content.id).exists()
@@ -68,7 +68,7 @@ class TestPurgeCollectionGraphRag:
         collection.delete()
 
         with mock.patch(KNOWLEDGE_DELETE) as knowledge_delete, django_capture_on_commit_callbacks(execute=True):
-            PurgeService.purge(SourceCollection.all_objects.get(pk=collection.pk))
+            PurgeService.purge(SourceCollection.all_objects.get(pk=collection.pk), actor="test")
 
         assert not GraphRag.all_objects.filter(pk=graph_rag.pk).exists()
         assert not GraphRagIndexConfig.objects.filter(pk=index_config.pk).exists()
@@ -82,7 +82,7 @@ class TestPurgeCollectionGraphRag:
         collection.delete()
 
         with mock.patch(KNOWLEDGE_DELETE, side_effect=error), django_capture_on_commit_callbacks(execute=True):
-            PurgeService.purge(SourceCollection.all_objects.get(pk=collection.pk))
+            PurgeService.purge(SourceCollection.all_objects.get(pk=collection.pk), actor="test")
 
         assert not SourceCollection.all_objects.filter(pk=collection.pk).exists()
         assert not GraphRag.all_objects.filter(pk=graph_rag.pk).exists()
@@ -95,7 +95,7 @@ class TestPurgeCollectionGraphRag:
             django_capture_on_commit_callbacks(execute=True) as callbacks,
             pytest.raises(NotInRecycleBinError),
         ):
-            PurgeService.purge(collection)
+            PurgeService.purge(collection, actor="test")
 
         assert callbacks == []
         knowledge_delete.assert_not_called()

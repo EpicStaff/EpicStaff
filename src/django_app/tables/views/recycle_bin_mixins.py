@@ -1,6 +1,7 @@
 """Recycle-bin actions for every viewset whose items can be restored."""
 
 from drf_spectacular.utils import extend_schema
+from rbac.models.api_key import ApiKey
 from rbac.models.enums import Permission
 from rest_framework import status
 from rest_framework.decorators import action
@@ -73,5 +74,15 @@ class RecycleBinActionsMixin:
     @extend_schema(request=None, responses={204: None})
     @action(detail=True, methods=["delete"], url_path="purge")
     def purge(self, request, pk=None):
-        PurgeService.purge(self._get_binned_or_404(pk))
+        PurgeService.purge(self._get_binned_or_404(pk), actor=_actor(request))
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _actor(request) -> str:
+    """Who made the request, for the purge log: the user, and the API key if one was used."""
+    # A system API key acts as SystemServicePrincipal, which has no pk.
+    user_pk = getattr(request.user, "pk", None)
+    who = f"user {user_pk}" if user_pk is not None else str(request.user)
+    if isinstance(request.auth, ApiKey):
+        return f"{who} via API key {request.auth.pk}"
+    return who

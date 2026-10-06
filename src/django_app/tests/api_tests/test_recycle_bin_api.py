@@ -3,6 +3,7 @@ READ lists, CREATE restores, DELETE purges."""
 
 import uuid
 from collections.abc import Callable
+from types import SimpleNamespace
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -18,7 +19,8 @@ from rest_framework.test import APIClient
 from agents.models import AgentDefinition, Surface
 from agents.views.agent_definition_views import AgentDefinitionViewSet
 from agents.views.surface_views import SurfaceViewSet
-from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.identity.api_keys.principals import SystemServicePrincipal
+from rbac.models import ApiKey, Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.models import (
     AgentNode,
@@ -37,8 +39,9 @@ from tables.services.recycle_bin.flow_bin_service import FLOW_BIN_NODE_TYPES
 from tables.services.recycle_bin.registry import bin_resources
 from tables.views.knowledge_views.collection_management_views import SourceCollectionViewSet
 from tables.views.model_view_sets import GraphViewSet, McpToolViewSet, PythonCodeToolViewSet
-from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin, _actor
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from utils.logger import logger
 
 FLOWS_URL = "/api/graphs/"
 PYTHON_TOOLS_URL = "/api/python-code-tool/"
@@ -208,9 +211,41 @@ class TestFlowRecycleBin:
         assert admin_client.delete(f"{FLOWS_URL}{legacy.pk}/purge/").status_code == 404
         assert Graph.deleted_objects.filter(pk=legacy.pk).exists()
 
+    def test_purge_is_logged_with_the_acting_user_and_ids_only(self, admin_client, admin_acme, acme):
+        graph = Graph.objects.create(org=acme, name="Secret plan")
+        graph.delete()
+        batch = Graph.all_objects.get(pk=graph.pk).soft_delete_batch
+        messages: list[str] = []
+        sink_id = logger.add(messages.append, level="INFO", format="{message}")
+        try:
+            assert admin_client.delete(f"{FLOWS_URL}{graph.pk}/purge/").status_code == 204
+        finally:
+            logger.remove(sink_id)
+
+        purge_lines = [message for message in messages if message.startswith("Purged ")]
+        assert purge_lines == [f"Purged Graph {graph.pk} of org {acme.id} (batch {batch}) by user {admin_acme.pk}\n"]
+        assert "Secret plan" not in "".join(messages)
+
     def test_non_numeric_id_is_404(self, admin_client):
         assert admin_client.post(f"{FLOWS_URL}not-a-number/restore/").status_code == 404
         assert admin_client.delete(f"{FLOWS_URL}not-a-number/purge/").status_code == 404
+
+
+class TestPurgeActor:
+    def test_a_signed_in_user(self):
+        request = SimpleNamespace(user=SimpleNamespace(pk=7), auth=None)
+
+        assert _actor(request) == "user 7"
+
+    def test_a_user_api_key(self):
+        request = SimpleNamespace(user=SimpleNamespace(pk=7), auth=ApiKey(pk=3))
+
+        assert _actor(request) == "user 7 via API key 3"
+
+    def test_a_system_api_key_has_no_user_pk(self):
+        request = SimpleNamespace(user=SystemServicePrincipal(), auth=ApiKey(pk=4))
+
+        assert _actor(request) == "system-service via API key 4"
 
 
 @pytest.fixture
