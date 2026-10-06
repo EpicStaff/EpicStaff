@@ -51,6 +51,7 @@ class TestBuildIpv4Rules:
             "-A SANDBOX_EGRESS -d 198.18.0.0/15 -j REJECT --reject-with icmp-admin-prohibited\n"
             "-A SANDBOX_EGRESS -d 224.0.0.0/4 -j REJECT --reject-with icmp-admin-prohibited\n"
             "-A SANDBOX_EGRESS -d 240.0.0.0/4 -j REJECT --reject-with icmp-admin-prohibited\n"
+            "-A SANDBOX_EGRESS -d 168.63.129.16/32 -j REJECT --reject-with icmp-admin-prohibited\n"
             "COMMIT\n"
         )
 

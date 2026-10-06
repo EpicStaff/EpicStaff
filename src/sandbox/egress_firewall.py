@@ -13,7 +13,8 @@ The rules match the socket owner's uid (`-m owner --uid-owner`), so only the
 dropped-privilege user-code child is filtered: the root supervisor's Redis
 connection and pip's package downloads are unaffected, and user code keeps
 plain internet access. Only private, link-local, shared, reserved and
-multicast destinations are rejected, with carve-outs for DNS and storage.
+multicast destinations (plus Azure's host endpoint) are rejected, with
+carve-outs for DNS and storage.
 
 Applied once at startup via `iptables-restore`. Needs the iptables binary
 (Dockerfile.sandbox), CAP_NET_ADMIN, and a kernel with the xt_owner match.
@@ -55,6 +56,9 @@ BLOCKED_IPV4_RANGES: tuple[str, ...] = (
     "198.18.0.0/15",
     "224.0.0.0/4",
     "240.0.0.0/4",
+    # Azure's host endpoint (WireServer) is a public address, so no range above
+    # covers it; it hands out VM extension settings, which often hold secrets.
+    "168.63.129.16/32",
 )
 
 
