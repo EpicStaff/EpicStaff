@@ -237,7 +237,9 @@ def summarize_step(step_rate, records, checkpoints, node_spans, llm_spans, exec_
         first_p95, last_p95 = distribution(first)["p95"], distribution(last)["p95"]
         if first and last:
             queue_growing = last_p95 > max(QUEUE_GROWTH_RATIO * first_p95, first_p95 + QUEUE_GROWTH_FLOOR_S)
-    sustained = queue_growing is False and failure_rate < MAX_FAILURE_RATE
+    # Sessions still queued at the end never got a slot, so they are missing from queue_waits:
+    # without this guard a hopelessly overloaded step can look flat.
+    sustained = queue_growing is False and failure_rate < MAX_FAILURE_RATE and unfinished == 0
 
     node_types = defaultdict(list)
     node_failures = Counter()
