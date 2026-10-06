@@ -19,6 +19,7 @@ from agents.models.surface_models import SurfacePythonTool, SurfaceStorageItem, 
 from tables.models.graph_models import StorageFile
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
+from storage_credentials.exceptions import CredentialScopeValidationError
 from tables.services.converter_service import ConverterService
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 
@@ -54,6 +55,17 @@ def storage_py_tool(db):
         description="test",
         python_code=code,
         use_storage=True,
+    )
+
+
+@pytest.fixture
+def plain_py_tool(db):
+    code = PythonCode.objects.create(code="def main(**kw): return kw")
+    return PythonCodeTool.objects.create(
+        name="realtime-surface-plain-py-tool",
+        description="test",
+        python_code=code,
+        use_storage=False,
     )
 
 
@@ -176,13 +188,16 @@ class TestResolveEndToEnd:
         assert python_code.storage_org_prefix == f"org_{org.pk}"
         assert python_code.org_id == org.pk
 
-    def test_realtime_agent_definition_tool_without_storage_grant_gets_none(
-        self, agent_definition, surface, storage_py_tool
+    def test_non_storage_tool_without_storage_grant_gets_none(
+        self, agent_definition, surface, plain_py_tool
     ):
-        """No storage grant on the surface -> the tool gets an explicit empty
-        allow-list (deny-by-default), not an unresolved/unrestricted None."""
+        """A tool with use_storage=False never has its storage scope resolved
+        at all (convert_python_code_tool_to_pydantic gates that whole block on
+        use_storage) -- storage_allowed_paths stays unset regardless of what
+        the surface grants, which is correct: the field is never consulted
+        unless use_storage=True."""
         SurfacePythonTool.objects.create(
-            surface=surface, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+            surface=surface, python_tool=plain_py_tool, mode=ToolMode.ALLOW
         )
         _attach_default_surface(agent_definition, surface)
 
@@ -192,26 +207,28 @@ class TestResolveEndToEnd:
 
         assert len(resolution.tools) == 1
         python_code = resolution.tools[0].data.python_code
-        assert python_code.storage_allowed_paths == []
+        assert python_code.storage_allowed_paths is None
         assert python_code.storage_org_prefix is None
         # org_id is unconditional (not gated on use_storage/grants) -- always
         # the agent-definition's own authoritative org.
         assert python_code.org_id == agent_definition.organization_id
 
-    def test_realtime_agent_definition_storage_tool_not_registered_without_grant(
+    def test_storage_tool_without_grant_raises(
         self, agent_definition, surface, storage_py_tool
     ):
-        """A tool with use_storage=True must be skipped (fail-closed) when
-        storage_org_prefix cannot be resolved (no ALLOW grant exists).
-        This prevents unguarded access to storage."""
+        """A tool with use_storage=True must fail closed when
+        storage_org_prefix cannot be resolved (no ALLOW grant exists): the
+        realtime agent must not start missing a capability its surface grants.
+        """
         SurfacePythonTool.objects.create(
             surface=surface, python_tool=storage_py_tool, mode=ToolMode.ALLOW
         )
         # No storage grant on the surface
         _attach_default_surface(agent_definition, surface)
 
-        resolution = RealtimeSurfaceService(
-            converter_service=ConverterService()
-        ).resolve(agent_definition)
+        with pytest.raises(CredentialScopeValidationError) as error:
+            RealtimeSurfaceService(converter_service=ConverterService()).resolve(
+                agent_definition
+            )
 
-        assert len(resolution.tools) == 0
+        assert storage_py_tool.name in str(error.value)

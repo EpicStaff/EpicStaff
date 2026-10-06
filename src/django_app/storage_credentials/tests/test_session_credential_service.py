@@ -3,10 +3,11 @@
 Tests the issuance and persistence of temporary storage credentials for sessions.
 """
 
+from datetime import timedelta
 from unittest import mock
 
 import pytest
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from django.conf import settings
 
@@ -15,9 +16,14 @@ from src.shared.models.graph_nodes import EndNodeData, GraphData, PythonNodeData
 from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.tools import PythonCodeData
+from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.models import TemporaryStorageAccount
-from storage_credentials.services.session_credential_service import issue_for_session
-from tables.models import Graph, Session
+from storage_credentials.services.session_credential_service import (
+    issue_for_realtime_chat,
+    issue_for_session,
+    issue_for_test_run,
+)
+from tables.models import Graph, PythonCodeResult, RealtimeAgentChat, Session
 
 
 def _make_graph(python_node_list: list[PythonNodeData] | None = None) -> GraphData:
@@ -56,6 +62,36 @@ def _make_storage_python_node(
 
 def _make_session_data(session_id: int, graph: GraphData) -> SessionData:
     return SessionData(id=session_id, graph=graph, unique_subgraph_list=[])
+
+
+def _stub_gateway(mock_gateway_class, access_key: str = "minted_key") -> mock.AsyncMock:
+    """Make the patched StorageAdminGateway class hand back one AsyncMock whose
+    `create_service_account` call can be inspected. `asyncio.run` is left alone
+    so the real coroutine executes and the real policy dict reaches the mock."""
+    instance = mock.AsyncMock()
+    instance.create_service_account.return_value = (access_key, f"{access_key}_secret")
+    mock_gateway_class.return_value = instance
+    return instance
+
+
+def _minted_policy(gateway: mock.AsyncMock) -> dict:
+    gateway.create_service_account.assert_awaited_once()
+    return gateway.create_service_account.await_args.kwargs["policy"]
+
+
+def _minted_expiration(gateway: mock.AsyncMock) -> timedelta | None:
+    gateway.create_service_account.assert_awaited_once()
+    return gateway.create_service_account.await_args.kwargs["expiration"]
+
+
+def _object_resources(policy: dict) -> list[str]:
+    """Resources of the policy statement granting object-level S3 access."""
+    return [
+        resource
+        for statement in policy["Statement"]
+        if statement["Effect"] == "Allow" and "s3:GetObject" in statement["Action"]
+        for resource in statement["Resource"]
+    ]
 
 
 def _asyncio_run_stub(*credentials: tuple[str, str]):
@@ -161,7 +197,8 @@ class TestIssueForSessionWithStorage(TestCase):
         self, mock_org_store, mock_asyncio_run, mock_build_policy
     ):
         """Scope policy must cover the union of allowed_paths across every
-        storage-demanding node, not just the first/last one seen."""
+        storage-demanding node, not just the first/last one seen -- each one
+        namespaced under the minting org's prefix."""
         mock_asyncio_run.side_effect = _asyncio_run_stub(("test_access", "test_secret"))
         self._stub_org_credentials(mock_org_store)
         mock_build_policy.return_value = {}
@@ -185,7 +222,11 @@ class TestIssueForSessionWithStorage(TestCase):
         issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
         mock_build_policy.assert_called_once_with(
-            bucket=settings.STORAGE_BUCKET_NAME, allowed_folders={"path_a/", "path_b/"}
+            bucket=settings.STORAGE_BUCKET_NAME,
+            allowed_folders={
+                f"org_{self.org.id}/path_a/",
+                f"org_{self.org.id}/path_b/",
+            },
         )
 
     @mock.patch("storage_credentials.services.session_credential_service.asyncio.run")
@@ -256,3 +297,246 @@ class TestIssueForSessionWithStorage(TestCase):
             assert second_result.access_key == "access2"
 
             assert mock_gateway_class.call_count == 2
+
+
+@mock.patch("storage_credentials.services.session_credential_service.org_credential_store")
+@mock.patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
+class TestMintedPolicyIsOrgPrefixed(TestCase):
+    """Every path must scope the minted account under the prefix of the org
+    whose credentials do the minting -- never under a prefix carried by the
+    graph/tool data, which an attacker controlling a node could point at
+    another organization."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name="Minting Org")
+        self.graph = Graph.objects.create(org=self.org, name="Test Graph")
+        self.session = Session.objects.create(
+            graph=self.graph, status=Session.SessionStatus.PENDING
+        )
+
+    @staticmethod
+    def _stub_org_credentials(mock_org_store) -> None:
+        org_creds = mock.MagicMock()
+        org_creds.access_key = "org_access_key"
+        org_creds.secret_key = "org_secret_key"
+        mock_org_store.get.return_value = org_creds
+
+    def test_session_policy_is_scoped_under_minting_org_prefix(
+        self, mock_gateway_class, mock_org_store
+    ):
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "session_key")
+
+        session_data = _make_session_data(
+            self.session.id,
+            _make_graph(
+                [
+                    _make_storage_python_node(
+                        storage_allowed_paths=["flow_files/"], org_id=self.org.id
+                    )
+                ]
+            ),
+        )
+
+        issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+
+        assert _object_resources(_minted_policy(gateway)) == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/flow_files/*"
+        ]
+
+    def test_session_policy_ignores_node_declared_org_prefix_of_another_org(
+        self, mock_gateway_class, mock_org_store
+    ):
+        """A node claiming `storage_org_prefix="org_999"` must not widen the
+        minted account beyond the minting org's own prefix."""
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "hostile_prefix_key")
+
+        session_data = _make_session_data(
+            self.session.id,
+            _make_graph(
+                [
+                    _make_storage_python_node(
+                        storage_allowed_paths=["victim_files/"],
+                        storage_org_prefix="org_999",
+                        org_id=self.org.id,
+                    )
+                ]
+            ),
+        )
+
+        issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+
+        resources = _object_resources(_minted_policy(gateway))
+        assert resources == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/victim_files/*"
+        ]
+        assert not any("org_999" in resource for resource in resources)
+
+    def test_test_run_policy_is_scoped_under_minting_org_prefix(
+        self, mock_gateway_class, mock_org_store
+    ):
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "test_run_key")
+        python_code_result = PythonCodeResult.objects.create(
+            execution_id="exec-org-prefix", org=self.org
+        )
+
+        credentials = issue_for_test_run(
+            python_code_result=python_code_result,
+            storage_allowed_paths=["test-runs/exec-org-prefix/"],
+            org_id=self.org.id,
+        )
+
+        assert credentials.access_key == "test_run_key"
+        assert _object_resources(_minted_policy(gateway)) == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}"
+            f"/org_{self.org.id}/test-runs/exec-org-prefix/*"
+        ]
+        assert TemporaryStorageAccount.objects.filter(
+            python_code_result=python_code_result, access_key="test_run_key"
+        ).exists()
+
+    def test_realtime_chat_policy_is_scoped_under_minting_org_prefix(
+        self, mock_gateway_class, mock_org_store
+    ):
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "realtime_key")
+        chat = RealtimeAgentChat.objects.create(connection_key="conn-org-prefix")
+
+        credentials = issue_for_realtime_chat(
+            realtime_agent_chat=chat,
+            storage_allowed_paths=["shared/notes.txt"],
+            org_id=self.org.id,
+        )
+
+        assert credentials.access_key == "realtime_key"
+        assert _object_resources(_minted_policy(gateway)) == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/shared/notes.txt"
+        ]
+        assert TemporaryStorageAccount.objects.filter(
+            realtime_agent_chat=chat, access_key="realtime_key"
+        ).exists()
+
+
+@mock.patch("storage_credentials.services.session_credential_service.org_credential_store")
+@mock.patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
+class TestTemporaryCredentialExpiration(TestCase):
+    """`STORAGE_TEMP_CREDENTIALS_TTL_HOURS <= 0` means "no expiration", which
+    the storage backend expresses as an omitted `expiration` field -- not as a
+    ~100-year timedelta, which the backend rejects outright."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name="TTL Org")
+        self.python_code_result = PythonCodeResult.objects.create(
+            execution_id="exec-ttl", org=self.org
+        )
+
+    @staticmethod
+    def _stub_org_credentials(mock_org_store) -> None:
+        org_creds = mock.MagicMock()
+        org_creds.access_key = "org_access_key"
+        org_creds.secret_key = "org_secret_key"
+        mock_org_store.get.return_value = org_creds
+
+    def _issue(self) -> None:
+        issue_for_test_run(
+            python_code_result=self.python_code_result,
+            storage_allowed_paths=["test-runs/exec-ttl/"],
+            org_id=self.org.id,
+        )
+
+    @override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=0)
+    def test_zero_ttl_mints_without_expiration(self, mock_gateway_class, mock_org_store):
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "no_expiry_key")
+
+        self._issue()
+
+        assert _minted_expiration(gateway) is None
+
+    @override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=-1)
+    def test_negative_ttl_mints_without_expiration(self, mock_gateway_class, mock_org_store):
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "negative_ttl_key")
+
+        self._issue()
+
+        assert _minted_expiration(gateway) is None
+
+    @override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=6)
+    def test_positive_ttl_mints_with_that_lifetime(self, mock_gateway_class, mock_org_store):
+        self._stub_org_credentials(mock_org_store)
+        gateway = _stub_gateway(mock_gateway_class, "six_hour_key")
+
+        self._issue()
+
+        assert _minted_expiration(gateway) == timedelta(hours=6)
+
+
+@mock.patch("storage_credentials.services.session_credential_service.org_credential_store")
+@mock.patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
+class TestScopeValidationRejectsBadPaths(TestCase):
+    """A path that escapes the org prefix, or no path at all, must stop the
+    mint before the storage backend is contacted and before any
+    TemporaryStorageAccount row exists."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name="Scope Org")
+        self.python_code_result = PythonCodeResult.objects.create(
+            execution_id="exec-scope", org=self.org
+        )
+
+    def _issue(self, storage_allowed_paths: list[str]) -> None:
+        issue_for_test_run(
+            python_code_result=self.python_code_result,
+            storage_allowed_paths=storage_allowed_paths,
+            org_id=self.org.id,
+        )
+
+    def test_parent_traversal_path_is_rejected(self, mock_gateway_class, mock_org_store):
+        with pytest.raises(CredentialScopeValidationError, match="Path traversal"):
+            self._issue(["../org_999/secrets/"])
+
+        mock_gateway_class.assert_not_called()
+        assert not TemporaryStorageAccount.objects.filter(
+            python_code_result=self.python_code_result
+        ).exists()
+
+    def test_nested_traversal_segment_is_rejected(self, mock_gateway_class, mock_org_store):
+        with pytest.raises(CredentialScopeValidationError, match="Path traversal"):
+            self._issue(["reports/../../org_999/"])
+
+        mock_gateway_class.assert_not_called()
+
+    def test_empty_allowed_paths_is_rejected(self, mock_gateway_class, mock_org_store):
+        with pytest.raises(CredentialScopeValidationError, match="refusing to scope"):
+            self._issue([])
+
+        mock_gateway_class.assert_not_called()
+        assert not TemporaryStorageAccount.objects.filter(
+            python_code_result=self.python_code_result
+        ).exists()
+
+    def test_blank_path_entry_is_rejected(self, mock_gateway_class, mock_org_store):
+        with pytest.raises(CredentialScopeValidationError, match="empty path"):
+            self._issue(["   "])
+
+        mock_gateway_class.assert_not_called()
+
+    def test_absolute_path_is_confined_to_the_org_prefix(
+        self, mock_gateway_class, mock_org_store
+    ):
+        """A leading "/" must not produce a bucket-root resource: the
+        validator strips it and the path stays under the org prefix."""
+        org_creds = mock.MagicMock()
+        org_creds.access_key = "org_access_key"
+        org_creds.secret_key = "org_secret_key"
+        mock_org_store.get.return_value = org_creds
+        gateway = _stub_gateway(mock_gateway_class, "absolute_path_key")
+
+        self._issue(["/escaped/"])
+
+        assert _object_resources(_minted_policy(gateway)) == [
+            f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/escaped/*"
+        ]

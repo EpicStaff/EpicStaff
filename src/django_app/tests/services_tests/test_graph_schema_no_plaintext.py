@@ -13,6 +13,7 @@ from tables.models import (
 )
 from tables.models.graph_models import AgentNode, Edge, StartNode
 from rbac.models import Organization
+from src.shared.models.storage_scope import StorageCredentials
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -144,6 +145,96 @@ class TestGraphSchemaNeverHoldsPlaintext:
             assert "secret_key" not in stored or "storage_credentials" not in stored, (
                 "graph_schema must never contain storage_credentials"
             )
+
+    def test_run_session_forwards_issued_credentials_to_the_wire(
+        self, graph_with_secret_backed_llm, monkeypatch
+    ):
+        from unittest.mock import patch
+
+        graph, _ = graph_with_secret_backed_llm
+        published = []
+        service = SessionManagerService()
+        monkeypatch.setattr(
+            service.redis_service.redis_client,
+            "publish",
+            lambda channel, message: published.append(message) or 2,
+        )
+
+        with patch(
+            "storage_credentials.services.session_credential_service.issue_for_session",
+            return_value=StorageCredentials(
+                access_key="AK-run-session", secret_key="SK-run-session"
+            ),
+        ):
+            session_id = service.run_session(
+                graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            )
+
+        assert json.loads(published[0])["storage_credentials"] == {
+            "access_key": "AK-run-session",
+            "secret_key": "SK-run-session",
+        }
+        session = Session.objects.get(pk=session_id)
+        assert "SK-run-session" not in json.dumps(session.graph_schema)
+
+    def test_storage_credentials_live_only_on_the_published_copy(
+        self, graph_with_secret_backed_llm, monkeypatch
+    ):
+        graph, _ = graph_with_secret_backed_llm
+        published = []
+        service = SessionManagerService()
+        monkeypatch.setattr(
+            service.redis_service.redis_client,
+            "publish",
+            lambda channel, message: published.append(message) or 2,
+        )
+
+        session = service.create_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
+        session_data = service.create_session_data(session=session)
+        credentials = StorageCredentials(
+            access_key="AK-published-only", secret_key="SK-published-only"
+        )
+
+        service.redis_service.publish_session_data(
+            session_data=session_data,
+            org_id=graph.org_id,
+            storage_credentials=credentials,
+        )
+
+        assert session_data.storage_credentials is None, (
+            "publish_session_data mutated the caller's object; those credentials "
+            "would be persisted with the session"
+        )
+        payload = json.loads(published[0])
+        assert payload["storage_credentials"] == {
+            "access_key": "AK-published-only",
+            "secret_key": "SK-published-only",
+        }
+
+    def test_published_copy_carries_no_credentials_when_none_were_issued(
+        self, graph_with_secret_backed_llm, monkeypatch
+    ):
+        graph, _ = graph_with_secret_backed_llm
+        published = []
+        service = SessionManagerService()
+        monkeypatch.setattr(
+            service.redis_service.redis_client,
+            "publish",
+            lambda channel, message: published.append(message) or 2,
+        )
+
+        session = service.create_session(
+            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+        )
+        session_data = service.create_session_data(session=session)
+
+        service.redis_service.publish_session_data(
+            session_data=session_data, org_id=graph.org_id
+        )
+
+        assert json.loads(published[0])["storage_credentials"] is None
 
 
 @pytest.mark.django_db

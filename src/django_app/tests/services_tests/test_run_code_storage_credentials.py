@@ -11,6 +11,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from rbac.models import Organization
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
@@ -203,6 +204,76 @@ class TestRunCodeStorageCredentials:
         message_data = json.loads(published_message)
         assert message_data["use_storage"] is False
         assert message_data["storage_credentials"] is None
+
+
+@pytest.mark.django_db
+class TestRunCodeInvalidScopeRevocation:
+    """An invalid CodeTaskData means nothing is ever published for this
+    execution, so the code_results handler never runs -- run_code itself has to
+    revoke the credentials it just minted."""
+
+    @staticmethod
+    def _validation_error() -> ValidationError:
+        class _Probe(BaseModel):
+            value: int
+
+        try:
+            _Probe(value="not-an-int")
+        except ValidationError as error:
+            return error
+        raise AssertionError("expected a ValidationError")
+
+    @patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
+    def test_invalid_task_data_revokes_minted_credentials(
+        self, mock_gateway_class, org, user, python_code
+    ):
+        PythonCodeTool.objects.create(
+            python_code=python_code, org_id=org.id, use_storage=True
+        )
+
+        mock_gateway_instance = AsyncMock()
+        mock_gateway_class.return_value = mock_gateway_instance
+        mock_gateway_instance.create_service_account = AsyncMock(
+            return_value=("invalid-scope-access-key", "invalid-scope-secret-key")
+        )
+        mock_gateway_instance.delete_service_account = AsyncMock()
+        mock_gateway_instance.close = AsyncMock()
+
+        mock_org_creds = MagicMock()
+        mock_org_creds.access_key = "org-access"
+        mock_org_creds.secret_key = "org-secret"
+
+        service = RunPythonCodeService(redis_service=MagicMock())
+
+        with patch(
+            "storage_credentials.services.session_credential_service.org_credential_store.get",
+            return_value=mock_org_creds,
+        ):
+            with patch(
+                "tables.services.run_python_code_service.CodeTaskData",
+                side_effect=self._validation_error(),
+            ):
+                with patch.object(
+                    service.redis_service.redis_client, "publish"
+                ) as publish_mock:
+                    execution_id = service.run_code(
+                        python_code_id=python_code.pk,
+                        varaibles={},
+                        organization_id=org.id,
+                        user=user,
+                    )
+
+        assert not publish_mock.called
+
+        result = PythonCodeResult.objects.get(execution_id=execution_id)
+        assert result.status == PythonCodeResult.Status.ERROR
+
+        mock_gateway_instance.delete_service_account.assert_called_once_with(
+            "invalid-scope-access-key"
+        )
+        assert not TemporaryStorageAccount.objects.filter(
+            python_code_result__execution_id=execution_id
+        ).exists()
 
 
 @pytest.mark.django_db

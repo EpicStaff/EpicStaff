@@ -209,9 +209,9 @@ async def test_storage_config_read_from_tool_data():
 
 
 async def test_secrets_are_forwarded_to_sandbox_task():
-    """A tool's resolved secrets must reach the sandbox — this is EST-4043:
-    the executor was silently dropping them, so get_secret() in the sandbox
-    always saw an empty declaration regardless of what the tool declared."""
+    """A tool's resolved secrets must reach the sandbox: the executor was
+    silently dropping them, so get_secret() in the sandbox always saw an
+    empty declaration regardless of what the tool declared."""
     sandbox = MagicMock()
     sandbox.submit = AsyncMock(return_value=_make_success_result())
 
@@ -262,6 +262,41 @@ async def test_org_id_is_injected_into_global_kwargs_when_none_declared():
 
     task = sandbox.submit.call_args[0][0]
     assert task.global_kwargs == {"org_id": 77}
+
+
+async def test_invalid_storage_scope_returns_fixed_error_without_secrets():
+    """pydantic's ValidationError repr embeds `input_value` -- the whole dict
+    handed to CodeTaskData, carrying `secrets` plaintext and
+    `storage_credentials.secret_key`. ToolResult.content goes straight into the
+    LLM transcript, so it must carry none of it."""
+    secret_value = "sk-live-SUPERSECRET-0123456789"
+    storage_secret_key = "SK-MINIO-SUPERSECRET-9876543210"
+
+    sandbox = MagicMock()
+    sandbox.submit = AsyncMock(return_value=_make_success_result())
+
+    data = _make_tool_data(
+        python_code_overrides={
+            "use_storage": True,
+            "storage_org_prefix": None,
+            "org_id": None,
+            "secrets": {"MY_SECRET": secret_value},
+        }
+    )
+    executor = PythonCodeToolExecutor(
+        sandbox,
+        data,
+        storage_credentials=StorageCredentials(
+            access_key="AK-PUBLIC", secret_key=storage_secret_key
+        ),
+    )
+    result = await executor({})
+
+    assert result.is_error is True
+    assert result.content == "Invalid storage scope for code execution."
+    for forbidden in (secret_value, storage_secret_key, "MY_SECRET", "input_value"):
+        assert forbidden not in result.content
+    sandbox.submit.assert_not_called()
 
 
 async def test_org_id_is_not_invented_when_the_payload_has_none():

@@ -1199,7 +1199,7 @@ class TestCrossTypeTriggerNodeConflictValidation:
             sm, "create_session_data", lambda session: _FakeSessionData()
         )
         monkeypatch.setattr(
-            sm.redis_service, "publish_session_data", lambda session_data: 2
+            sm.redis_service, "publish_session_data", lambda **kwargs: 2
         )
 
         class _FakeRedis:

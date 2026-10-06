@@ -39,6 +39,37 @@ def test_redact_none_secret_not_masked():
     assert result["name"] == "visible"
 
 
+def test_redact_masks_storage_credentials():
+    data = {
+        "storage_credentials": {
+            "access_key": "AKIAEXAMPLE",
+            "secret_key": "super-secret-value",
+            "endpoint": "http://minio:9000",
+        },
+        "storage_scope": "org-1",
+    }
+    result = redact(data)
+
+    assert result["storage_credentials"]["access_key"] == "***"
+    assert result["storage_credentials"]["secret_key"] == "***"
+    assert result["storage_credentials"]["endpoint"] == "http://minio:9000"
+    assert result["storage_scope"] == "org-1"
+
+
+def test_redacted_dump_masks_storage_credentials_on_agent_request():
+    blob = copy.deepcopy(EXAMPLE_BLOB)
+    blob["storage_credentials"] = {
+        "access_key": "AKIAEXAMPLE",
+        "secret_key": "super-secret-value",
+    }
+
+    request = AgentRequest(correlation_id="x", **blob)
+    dumped = redacted_dump(request)
+
+    assert dumped["storage_credentials"]["secret_key"] == "***"
+    assert dumped["storage_credentials"]["access_key"] == "***"
+
+
 def test_redacted_dump_masks_agent_request():
     blob = copy.deepcopy(EXAMPLE_BLOB)
     blob["agents"][0]["llm"]["config"]["api_key"] = "sk-real-secret"

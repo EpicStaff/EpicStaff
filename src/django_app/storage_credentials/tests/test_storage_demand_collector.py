@@ -5,6 +5,8 @@ all nodes with StorageScopedData.use_storage=True and aggregating their scope
 information (storage_allowed_paths, storage_org_prefix).
 """
 
+import typing
+
 import pytest
 
 from src.shared.models.graph_nodes import (
@@ -19,6 +21,7 @@ from src.shared.models.graph_nodes import (
     PythonNodeData,
     SubGraphData,
     TaskNodeData,
+    WebhookTriggerNodeData,
 )
 from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageCredentials
@@ -268,6 +271,228 @@ def test_conditional_edge_python_code_with_storage_is_found():
     assert needs_storage is True
     assert "edge/code" in union_paths
     assert org_prefix == "org_8"
+
+
+def test_webhook_trigger_node_with_storage_is_found():
+    """WebhookTriggerNodeData.python_code is checked."""
+    graph = _make_empty_graph()
+    graph.webhook_trigger_node_data_list = [
+        WebhookTriggerNodeData(
+            node_name="webhook",
+            python_code=_make_python_code_data(
+                use_storage=True,
+                storage_allowed_paths=["webhook/payload"],
+                storage_org_prefix="org_9",
+            ),
+        )
+    ]
+    session = _make_session_data(graph)
+
+    needs_storage, union_paths, org_prefix = collect_storage_demand(session)
+
+    assert needs_storage is True
+    assert "webhook/payload" in union_paths
+    assert org_prefix == "org_9"
+
+
+def test_webhook_trigger_node_without_storage_is_ignored():
+    """WebhookTriggerNodeData with use_storage=False does not contribute to demand."""
+    graph = _make_empty_graph()
+    graph.webhook_trigger_node_data_list = [
+        WebhookTriggerNodeData(
+            node_name="webhook",
+            python_code=_make_python_code_data(
+                use_storage=False,
+                storage_allowed_paths=["should/be/ignored"],
+                storage_org_prefix="org_9",
+            ),
+        )
+    ]
+    session = _make_session_data(graph)
+
+    needs_storage, union_paths, org_prefix = collect_storage_demand(session)
+
+    assert needs_storage is False
+    assert union_paths == []
+    assert org_prefix is None
+
+
+def test_webhook_trigger_node_in_subgraph_is_found():
+    """Webhook trigger nodes inside subgraphs are traversed."""
+    subgraph_data = GraphData(
+        graph_id=2,
+        name="subgraph",
+        entrypoint="start",
+        end_node=EndNodeData(node_name="end", output_map={}),
+        webhook_trigger_node_data_list=[
+            WebhookTriggerNodeData(
+                node_name="sub_webhook",
+                python_code=_make_python_code_data(
+                    use_storage=True,
+                    storage_allowed_paths=["subgraph/webhook"],
+                    storage_org_prefix="org_9",
+                ),
+            )
+        ],
+    )
+
+    session = SessionData(
+        id=1,
+        graph=_make_empty_graph(),
+        unique_subgraph_list=[SubGraphData(id=2, data=subgraph_data)],
+    )
+
+    needs_storage, union_paths, org_prefix = collect_storage_demand(session)
+
+    assert needs_storage is True
+    assert "subgraph/webhook" in union_paths
+    assert org_prefix == "org_9"
+
+
+def test_every_storage_capable_node_list_is_collected():
+    """Every GraphData list that can reach StorageScopedData contributes to the demand.
+
+    Regression guard: a node list dropped from the collector's traversal silently
+    stops its storage demand from being issued credentials.
+    """
+    graph = _make_empty_graph()
+    graph.webhook_trigger_node_data_list = [
+        WebhookTriggerNodeData(
+            node_name="webhook",
+            python_code=_make_python_code_data(
+                use_storage=True, storage_allowed_paths=["p/webhook"]
+            ),
+        )
+    ]
+    graph.python_node_list = [
+        PythonNodeData(
+            node_name="py",
+            python_code=_make_python_code_data(
+                use_storage=True, storage_allowed_paths=["p/python"]
+            ),
+            input_map={},
+        )
+    ]
+    graph.file_extractor_node_list = [
+        FileExtractorNodeData(
+            node_name="extractor", input_map={}, storage_allowed_paths=["p/extractor"]
+        )
+    ]
+    graph.audio_transcription_node_list = [
+        AudioTranscriptionNodeData(
+            node_name="audio", input_map={}, storage_allowed_paths=["p/audio"]
+        )
+    ]
+    graph.classification_decision_table_node_list = [
+        ClassificationDecisionTableNodeData(
+            node_name="classify",
+            pre_python_code=_make_python_code_data(
+                use_storage=True, storage_allowed_paths=["p/classify_pre"]
+            ),
+            post_python_code=_make_python_code_data(
+                use_storage=True, storage_allowed_paths=["p/classify_post"]
+            ),
+        )
+    ]
+    graph.agent_node_list = [
+        AgentNodeData(
+            node_name="agent",
+            input_map={},
+            tools=[
+                BaseToolData(
+                    unique_name="python-code-tool:1",
+                    data=PythonCodeToolData(
+                        id=1,
+                        name="tool",
+                        description="",
+                        python_code=_make_python_code_data(
+                            use_storage=True, storage_allowed_paths=["p/agent_tool"]
+                        ),
+                    ),
+                )
+            ],
+        )
+    ]
+    graph.task_node_list = [
+        TaskNodeData(
+            node_name="task",
+            input_map={},
+            tools=[
+                BaseToolData(
+                    unique_name="python-code-tool:2",
+                    data=PythonCodeToolData(
+                        id=2,
+                        name="tool",
+                        description="",
+                        python_code=_make_python_code_data(
+                            use_storage=True, storage_allowed_paths=["p/task_tool"]
+                        ),
+                    ),
+                )
+            ],
+        )
+    ]
+    graph.conditional_edge_list = [
+        ConditionalEdgeData(
+            source="node1",
+            python_code=_make_python_code_data(
+                use_storage=True, storage_allowed_paths=["p/conditional_edge"]
+            ),
+            input_map={},
+        )
+    ]
+    session = _make_session_data(graph)
+
+    needs_storage, union_paths, _ = collect_storage_demand(session)
+
+    assert needs_storage is True
+    assert set(union_paths) == {
+        "p/webhook",
+        "p/python",
+        "p/extractor",
+        "p/audio",
+        "p/classify_pre",
+        "p/classify_post",
+        "p/agent_tool",
+        "p/task_tool",
+        "p/conditional_edge",
+    }
+
+
+def test_graph_data_has_no_untriaged_node_lists():
+    """Every GraphData list field is triaged as storage-capable or not.
+
+    Tripwire: adding a list to GraphData fails here until its storage reachability
+    is decided, so a new node type carrying PythonCodeData cannot be added without
+    also being added to the collector.
+    """
+    storage_capable = {
+        "webhook_trigger_node_data_list",
+        "python_node_list",
+        "file_extractor_node_list",
+        "audio_transcription_node_list",
+        "classification_decision_table_node_list",
+        "agent_node_list",
+        "task_node_list",
+        "conditional_edge_list",
+    }
+    no_storage_fields = {
+        "knowledge_node_list",
+        "key_value_node_list",
+        "subgraph_node_list",
+        "edge_list",
+        "decision_table_node_list",
+        "telegram_trigger_node_data_list",
+        "schedule_trigger_node_data_list",
+    }
+
+    actual_list_fields = {
+        name
+        for name, field in GraphData.model_fields.items()
+        if typing.get_origin(field.annotation) is list
+    }
+
+    assert actual_list_fields == storage_capable | no_storage_fields
 
 
 def test_multiple_storage_nodes_union_paths():
