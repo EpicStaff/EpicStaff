@@ -63,11 +63,33 @@ def test_build_policy_get_bucket_location_statement():
     assert "arn:aws:s3:::b" in location_statement["Resource"]
 
 
-def test_build_policy_exactly_three_statements():
+def test_build_policy_exactly_five_statements():
     manager = make_manager()
     policy = manager.build_policy("b", "org_1", ["f1", "f2"])
 
-    assert len(policy["Statement"]) == 3
+    assert len(policy["Statement"]) == 5
+
+
+@pytest.mark.parametrize("allowed_paths", [None, [], ["/"], ["f1"]], ids=["unset", "empty", "root", "folder"])
+def test_build_policy_always_denies_the_recycle_bin(allowed_paths):
+    # User code holds these credentials and can call S3 directly, so the
+    # policy itself must keep it out of deleted files.
+    policy = make_manager().build_policy("b", "org_1", allowed_paths)
+
+    denies = [statement for statement in policy["Statement"] if statement["Effect"] == "Deny"]
+    assert denies == [
+        {
+            "Effect": "Deny",
+            "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+            "Resource": ["arn:aws:s3:::b/org_1/.recycle-bin", "arn:aws:s3:::b/org_1/.recycle-bin/*"],
+        },
+        {
+            "Effect": "Deny",
+            "Action": ["s3:ListBucket"],
+            "Resource": ["arn:aws:s3:::b"],
+            "Condition": {"StringLike": {"s3:prefix": ["org_1/.recycle-bin*"]}},
+        },
+    ]
 
 
 def test_build_policy_version():

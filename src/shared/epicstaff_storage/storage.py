@@ -23,6 +23,11 @@ class StorageLineEditMismatchError(ValueError):
 
 MAX_LINE_READ_BYTES = 50 * 1024 * 1024
 
+# The org-root folder Django keeps deleted files in (a copy of django_app's
+# path_utils.TRASH_DIRECTORY: this library can't import django_app). Runtime
+# code never reads, writes or lists it, whatever its allowed paths say.
+RESERVED_DIRECTORY = ".recycle-bin"
+
 
 def split_lines(content: str) -> list[str]:
     """Split ``content`` into logical lines using wc-with-final-fragment
@@ -90,7 +95,16 @@ def __format_allowed_paths(allowed: list[str]) -> str:
     return shown
 
 
+def is_reserved_path(relative_path: str) -> bool:
+    """True for the recycle-bin folder and anything under it (org-relative path)."""
+    return relative_path.lstrip("/").split("/", 1)[0] == RESERVED_DIRECTORY
+
+
 def check_storage_permission(operation: str, path: str) -> None:
+    if is_reserved_path(posixpath.normpath(path.lstrip("/"))):
+        raise StoragePermissionError(
+            f"Access denied: '{RESERVED_DIRECTORY}' holds deleted files and is not available to flows."
+        )
     allowed = __get_allowed_paths()
     if allowed is None:
         return
@@ -225,6 +239,8 @@ class EpicStaffStorage:
 
         for common_prefix in response.get("CommonPrefixes") or []:
             folder_key = common_prefix["Prefix"]
+            if is_reserved_path(self._strip_org_prefix(folder_key)):
+                continue
             folder_name = folder_key.rstrip("/").split("/")[-1]
             entries.append({"name": folder_name, "type": "folder", "size": 0, "modified": None})
 
@@ -284,12 +300,13 @@ class EpicStaffStorage:
             for obj in response.get("Contents") or []:
                 object_key = obj["Key"]
                 object_name = object_key.split("/")[-1]
-                if object_name == ".keep":
+                relative_path = self._strip_org_prefix(object_key)
+                if object_name == ".keep" or is_reserved_path(relative_path):
                     continue
                 modified = obj.get("LastModified")
                 entries.append(
                     {
-                        "path": self._strip_org_prefix(object_key),
+                        "path": relative_path,
                         "size": obj.get("Size", 0),
                         "modified": modified.isoformat() if modified else None,
                     }

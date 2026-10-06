@@ -11,6 +11,10 @@ from miniopy_async.credentials import StaticProvider
 from miniopy_async.error import MinioAdminException
 from utils.logger import logger
 
+# The org-root folder Django keeps deleted files in (a copy of django_app's
+# path_utils.TRASH_DIRECTORY). Every scoped grant explicitly denies it.
+_RESERVED_DIRECTORY = ".recycle-bin"
+
 _ACCESS_KEY_ALPHABET = string.ascii_uppercase + string.digits
 _SECRET_KEY_ALPHABET = string.ascii_letters + string.digits
 
@@ -126,6 +130,29 @@ class StorageCredentialManager:
                     "Effect": "Allow",
                     "Action": ["s3:GetBucketLocation"],
                     "Resource": [bucket],
+                },
+                # Deleted files: user code holds these credentials and can call
+                # S3 directly, so the policy is the guard, not the storage
+                # library. A Deny wins over any Allow above, the whole-org one
+                # included. Listing the org root still returns trash key names;
+                # S3 checks the requested prefix, not the keys it returns.
+                {
+                    "Effect": "Deny",
+                    "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+                    # The bare key too: a file named .recycle-bin would block
+                    # every key under it on filesystem-backed stores.
+                    "Resource": [
+                        f"{bucket}/{prefix}/{_RESERVED_DIRECTORY}",
+                        f"{bucket}/{prefix}/{_RESERVED_DIRECTORY}/*",
+                    ],
+                },
+                {
+                    "Effect": "Deny",
+                    "Action": ["s3:ListBucket"],
+                    "Resource": [bucket],
+                    "Condition": {
+                        "StringLike": {"s3:prefix": [f"{prefix}/{_RESERVED_DIRECTORY}*"]}
+                    },
                 },
             ],
         }

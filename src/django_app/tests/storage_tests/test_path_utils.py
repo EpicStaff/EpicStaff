@@ -41,3 +41,21 @@ class TestSanitizeStoragePath:
     def test_bare_parent_segment_raises(self):
         with pytest.raises(ValueError, match="escapes the target folder"):
             sanitize_storage_path("..", allow_empty=True)
+
+
+def test_every_copy_of_the_trash_folder_name_matches():
+    # The sandbox and the shared storage library can't import django_app, so
+    # each keeps its own copy; a renamed folder must change all three.
+    import re
+    from pathlib import Path
+
+    from tables.services.storage_service.path_utils import TRASH_DIRECTORY
+
+    repository_root = Path(__file__).resolve().parents[4]
+    copies = {
+        "src/shared/epicstaff_storage/storage.py": r'^RESERVED_DIRECTORY = "([^"]+)"',
+        "src/sandbox/services/storage_credential_manager.py": r'^_RESERVED_DIRECTORY = "([^"]+)"',
+    }
+    for relative_path, pattern in copies.items():
+        source = (repository_root / relative_path).read_text(encoding="utf-8")
+        assert re.search(pattern, source, re.MULTILINE).group(1) == TRASH_DIRECTORY, relative_path
