@@ -1,3 +1,5 @@
+from datetime import tzinfo
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from helpers.logger import logger
@@ -16,7 +18,7 @@ class StorageAccountCleanupService:
     def __init__(
         self,
         repository: TempStorageAccountRepository,
-        timezone,
+        timezone: tzinfo,
         hour: int = 3,
         minute: int = 0,
     ):
@@ -45,11 +47,11 @@ class StorageAccountCleanupService:
             deleted = await self.repository.delete_finished_accounts()
             total = sum(deleted.values())
             if total:
-                logger.info(f"StorageAccountCleanup: deleted {total} row(s) ({deleted})")
+                logger.info("StorageAccountCleanup: deleted {} row(s) ({})", total, deleted)
             else:
                 logger.debug("StorageAccountCleanup: nothing to delete")
-        except Exception as e:
-            logger.error(f"StorageAccountCleanup: error during cleanup: {e}")
+        except Exception as error:
+            logger.error("StorageAccountCleanup: error during cleanup: {}", error)
 
     def stop(self) -> None:
         if self.scheduler.running:

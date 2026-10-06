@@ -194,15 +194,16 @@ async def run(code_task_data: CodeTaskData):
                 secrets=code_task_data.secrets,
             )
         except asyncio.CancelledError:
-            # A temporary storage credential may already have been minted
-            # for this execution_id (dynamic_venv_executor_chain.py acquires
-            # it before running the chain). Cancellation must still reach
-            # the code_results publish below, or django_app's result_listener
-            # never revokes it and it leaks until the TTL sweep. Publish the
-            # same way the two error paths below do, then re-raise so the
-            # task correctly reports as cancelled.
+            # A temporary storage credential may already have been minted for
+            # this execution_id by django_app and handed over in the task
+            # payload. Cancellation must still reach the code_results publish
+            # below, or django_app's code_results handler never revokes it and
+            # it leaks until the TTL sweep. Publish the same way the two error
+            # paths below do, then re-raise so the task correctly reports as
+            # cancelled.
             logger.warning(
-                "Execution cancelled (execution_id={}); revoking any minted storage credential",
+                "Execution cancelled (execution_id={}); publishing result so any minted "
+                "storage credential is revoked",
                 code_task_data.execution_id,
             )
             await redis_service.async_publish(
@@ -222,7 +223,7 @@ async def run(code_task_data: CodeTaskData):
             # something still escapes uncaught, we must still publish a
             # code_results message so callers waiting on this execution_id
             # don't hang, and so any temporary storage credential minted for
-            # it is revoked by django_app's result_listener.
+            # it is revoked by django_app's code_results handler.
             logger.exception(
                 "Unhandled exception running execution chain (execution_id={})",
                 code_task_data.execution_id,

@@ -39,6 +39,7 @@ from shared.models.agent_service import (
     ContextAttachment,
     S3FileSpec,
 )
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
 
 
@@ -146,7 +147,7 @@ class AgentResolver:
         tool_pool: dict[str, BaseToolData],
         collection_pool: dict[str, CollectionSpec],
         knowledge_sink: KnowledgeEventSink | None = None,
-        storage_credentials=None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> ToolRegistry:
         # System tools go onto every agent unconditionally, by design — see
         # the contract on _system_registry in app/tools/system_registry.py.

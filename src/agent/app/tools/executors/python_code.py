@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import uuid
 
+from loguru import logger
 from pydantic import ValidationError
 
 from app.sandbox.client import SandboxClient
 from shared.models.agent_service import ToolResult
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import CodeTaskData, PythonCodeToolData
 
 
@@ -18,7 +20,10 @@ class PythonCodeToolExecutor:
     """
 
     def __init__(
-        self, sandbox: SandboxClient, data: PythonCodeToolData, storage_credentials=None
+        self,
+        sandbox: SandboxClient,
+        data: PythonCodeToolData,
+        storage_credentials: StorageCredentials | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._data = data
@@ -35,12 +40,13 @@ class PythonCodeToolExecutor:
         if python_code.org_id is not None:
             global_kwargs = {**(global_kwargs or {}), "org_id": python_code.org_id}
 
+        execution_id = str(uuid.uuid4())
         try:
             task = CodeTaskData(
                 venv_name=python_code.venv_name,
                 libraries=python_code.libraries,
                 code=python_code.code,
-                execution_id=str(uuid.uuid4()),
+                execution_id=execution_id,
                 entrypoint=python_code.entrypoint,
                 func_kwargs=args,
                 global_kwargs=global_kwargs,
@@ -52,10 +58,16 @@ class PythonCodeToolExecutor:
                 secrets=python_code.secrets,
                 storage_credentials=self._storage_credentials,
             )
-        except ValidationError as error:
+        except ValidationError:
+            # Never log or return `error` itself: ValidationError's repr embeds
+            # the constructor input, including `secrets` and `storage_credentials`.
+            logger.error(
+                "Invalid storage scope for code execution (execution_id={})",
+                execution_id,
+            )
             return ToolResult(
                 tool_call_id="",
-                content=f"Invalid storage scope for code execution: {error}",
+                content="Invalid storage scope for code execution.",
                 is_error=True,
             )
 

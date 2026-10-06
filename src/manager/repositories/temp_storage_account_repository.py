@@ -75,11 +75,11 @@ class TempStorageAccountRepository:
                 return result
             except SQLAlchemyError as e:
                 await session.rollback()
-                logger.error(f"DB error: {e}")
+                logger.error("DB error: {}", e)
                 raise
             except Exception as e:
                 await session.rollback()
-                logger.error(f"Unexpected error: {e}")
+                logger.error("Unexpected error: {}", e)
                 raise
 
     async def _delete_batch(self, owner: str, batch_size: int) -> int:

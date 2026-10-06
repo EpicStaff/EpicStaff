@@ -21,6 +21,8 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
+from storage_credentials.exceptions import CredentialScopeValidationError
+from storage_credentials.resource_names import org_storage_prefix
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
@@ -121,11 +123,16 @@ class RealtimeSurfaceService:
         tools = []
         for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids):
             if python_tool.use_storage and storage_org_prefix is None:
-                logger.warning(
-                    "Python tool {} skipped for realtime agent — storage scope not resolved.",
-                    python_tool.name,
+                # Fail closed, like converter_service: silently dropping the tool
+                # would start the realtime agent without a capability its surface
+                # grants, which reads as a broken tool rather than a scope problem.
+                # This is a resolvable configuration issue, not an infra/mint
+                # failure (nothing has attempted to mint yet) -- same exception
+                # CredentialScopeValidator raises, same 400.
+                raise CredentialScopeValidationError(
+                    f"Python tool {python_tool.name} requires storage but scope not resolved "
+                    f"for realtime agent (org {org_id})"
                 )
-                continue
 
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
@@ -165,7 +172,7 @@ class RealtimeSurfaceService:
             return [], None
 
         allowed_paths = [storage_file.path for storage_file in storage_files]
-        storage_org_prefix = f"org_{org_id}"
+        storage_org_prefix = org_storage_prefix(org_id)
         return allowed_paths, storage_org_prefix
 
     def _warn_on_mcp_tools(self, mcp_tool_entries: list[dict]) -> None:

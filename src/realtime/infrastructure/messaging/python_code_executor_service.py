@@ -54,7 +54,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 storage_credentials=storage_credentials,
                 secrets=python_code_data.secrets,
             )
-        except (ValidationError, ValueError):
+        except ValidationError:
             # Never log or return `error` itself: pydantic's ValidationError
             # repr embeds the full constructor input, including `secrets`
             # plaintext (see CodeTaskData.log_summary(), which exists for

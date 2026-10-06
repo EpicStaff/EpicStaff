@@ -22,9 +22,9 @@ BASE_VENV_PATH = env.path("SANDBOX_BASE_VENV_PATH")
 
 # Non-secret object storage connection details only. Deliberately no
 # STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here: sandbox never holds the admin
-# storage credential (finding #38). Temporary, session-scoped credentials
-# are minted by django_app and passed in via CodeTaskData.storage_credentials
-# -- see dynamic_venv_executor_chain.py.
+# storage credential. Temporary, session-scoped credentials are minted by
+# django_app and passed in via CodeTaskData.storage_credentials -- see
+# dynamic_venv_executor_chain.py.
 STORAGE_HOST = env.str("STORAGE_HOST")
 STORAGE_PORT = env.str("STORAGE_PORT")
 http = "https" if env.bool("STORAGE_SSL") else "http"

@@ -16,6 +16,7 @@ from src.shared.models import (
     RealtimeAgentChatData,
     SessionData,
     StopSessionMessage,
+    StorageCredentials,
 )
 from tables.services.secrets import secret_resolver
 from utils.logger import logger
@@ -75,17 +76,25 @@ class RedisService(metaclass=SingletonMeta):
             self._initialize_async()
         return self._async_redis_client
 
-    def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
-        # Resolve here, not upstream: the caller's object is what gets persisted
-        # to Session.graph_schema, so plaintext must exist only on this copy.
-        from copy import deepcopy
+    def publish_session_data(
+        self,
+        *,
+        session_data: SessionData,
+        org_id: int,
+        storage_credentials: StorageCredentials | None = None,
+    ) -> int:
+        """Publish session data to crew, with every secret resolved on a copy.
 
-        resolved = deepcopy(session_data)
-        resolved = secret_resolver.resolve_payload(payload=resolved, org_id=org_id)
+        The caller's `session_data` is what gets persisted to `Session.graph_schema`,
+        so neither resolved plaintext nor `storage_credentials` may touch it:
+        `resolve_payload` returns a deep copy and both live only on that copy.
 
-        # Preserve storage credentials from original (not resolved by secret_resolver)
-        if session_data.storage_credentials:
-            resolved.storage_credentials = session_data.storage_credentials
+        `storage_credentials` is authoritative and unconditionally overwrites
+        whatever the copy carries -- `session_data.storage_credentials` is never
+        read here, by design (it must never reach the original object at all).
+        """
+        resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
+        resolved.storage_credentials = storage_credentials
 
         return self.redis_client.publish(
             settings.SESSION_SCHEMA_CHANNEL,

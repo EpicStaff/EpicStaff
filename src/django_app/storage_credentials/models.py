@@ -11,21 +11,18 @@ class TemporaryStorageAccount(models.Model):
     session = models.OneToOneField(
         Session,
         on_delete=models.CASCADE,
-        unique=True,
         null=True,
         blank=True,
     )
     python_code_result = models.OneToOneField(
         PythonCodeResult,
         on_delete=models.CASCADE,
-        unique=True,
         null=True,
         blank=True,
     )
     realtime_agent_chat = models.OneToOneField(
         RealtimeAgentChat,
         on_delete=models.CASCADE,
-        unique=True,
         null=True,
         blank=True,
     )

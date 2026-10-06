@@ -56,6 +56,9 @@ class _StorageDemandWalker:
 
     def visit_graph(self, graph: GraphData) -> None:
         """Traverse all node lists in a graph."""
+        for node in graph.webhook_trigger_node_data_list:
+            self._check_storage_scoped(node.python_code)
+
         for node in graph.python_node_list:
             self._check_storage_scoped(node.python_code)
 

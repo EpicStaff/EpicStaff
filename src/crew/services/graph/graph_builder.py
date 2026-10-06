@@ -39,6 +39,7 @@ from src.shared.models import (
     SessionData,
     SubGraphData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 from utils import map_variables_to_input
 
 
@@ -87,6 +88,7 @@ class SessionGraphBuilder:
         python_code_data: PythonCodeData,
         then: str | None = None,
         input_map: dict | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         """
         Adds a conditional edge to the graph from the given from_node to the then node,
@@ -97,6 +99,8 @@ class SessionGraphBuilder:
             python_code_data (PythonCodeData): The condition to evaluate.
             input_map (dict | None): A mapping of input variables to be passed to the condition
                 (defaults to an empty dictionary if not provided).
+            storage_credentials (StorageCredentials | None): Temporary storage credentials
+                forwarded to the condition code when it requires storage access.
 
         Returns:
             None
@@ -122,6 +126,7 @@ class SessionGraphBuilder:
                 inputs=input_,
                 stop_event=self.stop_event,
                 additional_global_kwargs=additional_global_kwargs,
+                storage_credentials=storage_credentials,
             )
 
             result = json.loads(python_code_execution_data["result_data"])
@@ -150,7 +155,7 @@ class SessionGraphBuilder:
     def add_decision_table_node(
         self,
         decision_table_node_data: DecisionTableNodeData,
-        storage_credentials=None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
         """
         Adds a decision table node to the graph builder.
@@ -181,7 +186,7 @@ class SessionGraphBuilder:
     def add_classification_decision_table_node(
         self,
         node_data: ClassificationDecisionTableNodeData,
-        storage_credentials=None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
         subgraph_builder = StateGraph(State)
         builder = ClassificationDecisionTableNodeSubgraph(
@@ -213,9 +218,14 @@ class SessionGraphBuilder:
         subgraph_node_data: SubGraphNode,
         unique_subgraph_list: list[SubGraphData],
         stop_event,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
         """
         Adds a subgraph node to the graph builder.
+
+        Args:
+            storage_credentials: Temporary storage credentials forwarded into the
+                subgraph so nodes nested inside it can reach storage.
         """
         builder = SubGraphNode(
             session_id=self.session_id,
@@ -224,6 +234,7 @@ class SessionGraphBuilder:
             graph_builder=StateGraph(State),
             session_graph_builder=self,
             stop_event=stop_event,
+            storage_credentials=storage_credentials,
         )
 
         async def inner(state: State, writer: StreamWriter):
@@ -390,6 +401,7 @@ class SessionGraphBuilder:
                 python_code_data=conditional_edge_data.python_code,
                 then=conditional_edge_data.then,
                 input_map=conditional_edge_data.input_map,
+                storage_credentials=session_data.storage_credentials,
             )
 
         for decision_table_node_data in schema.decision_table_node_list:
@@ -408,6 +420,7 @@ class SessionGraphBuilder:
                 subgraph_node_data=subgraph_node_data,
                 unique_subgraph_list=session_data.unique_subgraph_list,
                 stop_event=self.stop_event,
+                storage_credentials=session_data.storage_credentials,
             )
 
         for webhook_trigger_node_data in schema.webhook_trigger_node_data_list:

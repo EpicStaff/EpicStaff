@@ -256,13 +256,12 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_orm=session,
                 org=graph.org,
             )
-            if storage_credentials:
-                session_data.storage_credentials = storage_credentials
 
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
+                storage_credentials=storage_credentials,
             )
             required_listeners = 2
             if received_n != required_listeners:

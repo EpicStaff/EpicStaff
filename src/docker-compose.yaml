@@ -316,10 +316,10 @@ services:
     init: true
     environment:
       # Deliberately no *storage-env here: sandbox must never hold the admin
-      # STORAGE_USER/STORAGE_PASSWORD credential (finding #38). Only the
-      # non-secret endpoint/bucket connection details are passed explicitly
-      # below; per-execution credentials are requested at runtime from the
-      # issuer in django_app.
+      # STORAGE_USER/STORAGE_PASSWORD credential. Only the non-secret
+      # endpoint/bucket connection details are passed explicitly below;
+      # per-execution credentials arrive inside the task payload, already
+      # minted and scoped by django_app.
       <<: [*docker-env, *redis-env, *communication-env]
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}

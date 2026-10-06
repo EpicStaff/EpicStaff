@@ -1,5 +1,7 @@
 import posixpath
 
+from storage_credentials.resource_names import org_storage_prefix
+
 
 def sanitize_storage_path(
     path: str, *, allow_empty: bool, allow_leading_slash: bool = False
@@ -73,4 +75,4 @@ def check_path_length(org_id: int, path: str, *, is_folder: bool = False) -> Non
 def storage_key(org_id: int, path: str) -> str:
     """Storage key of path in the org's root ("" gives "org_<id>/"); ValueError if it escapes."""
     safe_path = sanitize_storage_path(path, allow_empty=True, allow_leading_slash=True)
-    return f"org_{org_id}/{safe_path}"
+    return f"{org_storage_prefix(org_id)}/{safe_path}"

@@ -21,22 +21,10 @@ from loguru import logger
 from rbac.models import Organization
 
 from storage_credentials.clients.minio_admin_client import StorageAdminGateway
-from storage_credentials.constants import ORG_USER_POLICY_NAME_PREFIX
 from storage_credentials.exceptions import OrgStorageProvisioningError
 from storage_credentials.policies import build_org_user_policy
+from storage_credentials.resource_names import _org_access_key, _org_policy_name, org_storage_prefix
 from storage_credentials.services.org_credential_store import org_credential_store
-
-
-def _org_prefix(org_id: int) -> str:
-    return f"org_{org_id}"
-
-
-def _org_access_key(org_id: int) -> str:
-    return f"org{org_id}storageuser"
-
-
-def _org_policy_name(org_id: int) -> str:
-    return f"{ORG_USER_POLICY_NAME_PREFIX}_{org_id}"
 
 
 class OrgStorageProvisioningService:
@@ -108,7 +96,9 @@ class OrgStorageProvisioningService:
         )
         try:
             await gateway.add_user(access_key, secret_key)
-            policy = build_org_user_policy(bucket=self._bucket, org_prefix=_org_prefix(org_id))
+            policy = build_org_user_policy(
+                bucket=self._bucket, org_prefix=org_storage_prefix(org_id)
+            )
             await gateway.create_named_policy(_org_policy_name(org_id), policy)
             await gateway.attach_named_policy(_org_policy_name(org_id), access_key)
         finally:

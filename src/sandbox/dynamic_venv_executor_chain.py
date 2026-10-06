@@ -20,6 +20,7 @@ from network_policy import NetworkPolicy, decide_network_policy
 from secret_scrubber import build_masking_values, masking_enabled, scrub
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
+from src.shared.models.storage_scope import StorageCredentials
 from utils.environment import build_base_env
 from utils.logger import logger
 
@@ -827,7 +828,7 @@ class DynamicVenvExecutorChain:
         use_storage: bool = False,
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
-        storage_credentials=None,
+        storage_credentials: StorageCredentials | None = None,
         secrets: dict[str, str] | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""

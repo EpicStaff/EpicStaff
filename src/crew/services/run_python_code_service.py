@@ -57,11 +57,15 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 org_id=python_code_data.org_id,
                 storage_credentials=storage_credentials,
             )
-        except ValidationError as error:
-            logger.error("Invalid storage scope for code execution: {}", error)
+        except ValidationError:
+            # Never log or return `error` itself: ValidationError's repr embeds the
+            # constructor input, including `secrets` and `storage_credentials`.
+            logger.error(
+                "Invalid storage scope for code execution (execution_id={})", unique_task_id
+            )
             return CodeResultData(
                 execution_id=unique_task_id,
-                stderr=f"Invalid storage scope for code execution: {error}",
+                stderr="Invalid storage scope for code execution.",
                 stdout="",
                 returncode=1,
             ).model_dump()

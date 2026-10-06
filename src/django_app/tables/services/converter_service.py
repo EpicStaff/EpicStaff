@@ -37,7 +37,11 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
-from storage_credentials.exceptions import TemporaryCredentialIssueError
+from storage_credentials.exceptions import (
+    CredentialScopeValidationError,
+    TemporaryCredentialIssueError,
+)
+from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import issue_for_realtime_chat
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingConfig
@@ -200,7 +204,7 @@ class ConverterService(metaclass=SingletonMeta):
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
         org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
         if org_id is not None:
-            return f"org_{org_id}"
+            return org_storage_prefix(org_id)
         return None
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
@@ -339,7 +343,10 @@ class ConverterService(metaclass=SingletonMeta):
 
             if needs_storage:
                 if not union_allowed_paths:
-                    raise TemporaryCredentialIssueError(
+                    # Resolved before any mint attempt -- same class of
+                    # problem as RealtimeSurfaceService's fail-closed check,
+                    # same exception type and status code (400, not 500).
+                    raise CredentialScopeValidationError(
                         f"Storage needed but no paths found in realtime agent tools for org {ad.organization_id}"
                     )
                 rt_agent_chat_data.storage_credentials = issue_for_realtime_chat(
@@ -347,7 +354,7 @@ class ConverterService(metaclass=SingletonMeta):
                     storage_allowed_paths=list(union_allowed_paths),
                     org_id=ad.organization_id,
                 )
-        except TemporaryCredentialIssueError:
+        except (TemporaryCredentialIssueError, CredentialScopeValidationError):
             raise
         except Exception as error:
             raise TemporaryCredentialIssueError(

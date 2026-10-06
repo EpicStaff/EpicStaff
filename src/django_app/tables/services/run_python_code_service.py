@@ -7,7 +7,11 @@ from django.utils import timezone
 from loguru import logger
 from pydantic import ValidationError
 from src.shared.models import CodeResultData, CodeTaskData
-from storage_credentials.services.session_credential_service import issue_for_test_run
+from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.session_credential_service import (
+    issue_for_test_run,
+    revoke_for_test_run,
+)
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
@@ -96,7 +100,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         use_storage = PythonCodeTool.objects.filter(
             python_code=python_code, use_storage=True, org_id=organization_id
         ).exists()
-        storage_org_prefix = f"org_{organization_id}" if use_storage else None
+        storage_org_prefix = org_storage_prefix(organization_id) if use_storage else None
         storage_allowed_paths = [f"test-runs/{execution_id}/"] if use_storage else None
 
         storage_credentials = None
@@ -135,6 +139,12 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 stderr="Invalid storage scope for code execution.",
                 finished_at=timezone.now(),
             )
+            # If credentials were minted above, nothing will ever be published
+            # for them, so the sandbox result path that normally revokes them
+            # never runs. Best-effort by contract: the helper swallows its own
+            # errors (and is a no-op when nothing was minted), so the ERROR
+            # result is still returned either way.
+            revoke_for_test_run(execution_id=execution_id)
             return execution_id
 
         channel = self.code_exec_task_channel
