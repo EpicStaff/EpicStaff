@@ -96,6 +96,7 @@ from .sessions import (
     StopSessionMessage,
     StorageMutation,
     StorageMutationEvent,
+    TokenUsage,
     WebhookEventData,
 )
 from .surfaces import (
@@ -260,6 +261,7 @@ __all__ = [
     "TelegramTriggerNodeData",
     "TelegramTriggerNodeFieldData",
     # surfaces
+    "TokenUsage",
     "ToolModeLiteral",
     "ToolResult",
     # knowledge_rag (cross-service pub/sub contract)

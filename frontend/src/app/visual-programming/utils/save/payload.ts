@@ -1,4 +1,5 @@
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
@@ -210,6 +211,7 @@ function buildCdtNodePayload(
                   },
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
+        pre_use_storage: tableData.pre_use_storage ?? false,
         post_python_code:
             postCodeValue.trim() === '' && !postSecretIds.length
                 ? null
@@ -222,6 +224,7 @@ function buildCdtNodePayload(
                   },
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
+        post_use_storage: tableData.post_use_storage ?? false,
         prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
                 ({
@@ -239,6 +242,11 @@ function buildCdtNodePayload(
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
         ...(errorRef.tempId != null ? { next_error_node_temp_id: errorRef.tempId } : {}),
         condition_groups: conditionGroups,
+        sections: ((tableData.sections ?? []) as CdtSection[]).map((s) => ({
+            id: s.id,
+            name: s.name,
+            metadata: { color: normalizeCdtSectionColor(s.metadata?.color) },
+        })),
         metadata: toNodeMetadata(node),
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
 }

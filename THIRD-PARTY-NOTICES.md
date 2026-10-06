@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 09 Sep 2026 08:04:40 GMT -->
-<!-- commit: f57360c59cee64f00000be8ebaab7df7837e6565 -->
-<!-- package-lock.json sha256: a8a01bce84252414 -->
+<!-- generated: Mon, 05 Oct 2026 16:24:17 GMT -->
+<!-- commit: 360b38e5f5baa2015e1f6a5d665135c2c3ed0642 -->
+<!-- package-lock.json sha256: 63bbfa2440bac456 -->
 
 ## Frontend license summary
 
@@ -25,26 +25,26 @@ Production npm dependencies of the Angular frontend. Assets embedded in the preb
 | MIT | 47 |
 | Apache-2.0 | 2 |
 | ISC | 2 |
-| (MIT AND Zlib) | 1 |
-| (MIT OR GPL-3.0-or-later) | 1 |
-| (MPL-2.0 OR Apache-2.0) | 1 |
-| 0BSD | 1 |
-| BSD-2-Clause | 1 |
 | OFL-1.1 | 1 |
+| (MPL-2.0 OR Apache-2.0) | 1 |
+| BSD-2-Clause | 1 |
+| (MIT OR GPL-3.0-or-later) | 1 |
+| (MIT AND Zlib) | 1 |
+| 0BSD | 1 |
 | **Total** | **57** |
 
 ## Package index
 
 | Package | Version | License |
 |---|---|---|
-| `@angular/cdk` | 22.1.3 | MIT |
-| `@angular/common` | 22.1.2 | MIT |
-| `@angular/compiler` | 22.1.2 | MIT |
-| `@angular/core` | 22.1.2 | MIT |
-| `@angular/forms` | 22.1.2 | MIT |
-| `@angular/material` | 22.1.3 | MIT |
-| `@angular/platform-browser` | 22.1.2 | MIT |
-| `@angular/router` | 22.1.2 | MIT |
+| `@angular/cdk` | 22.2.1 | MIT |
+| `@angular/common` | 22.2.1 | MIT |
+| `@angular/compiler` | 22.2.1 | MIT |
+| `@angular/core` | 22.2.1 | MIT |
+| `@angular/forms` | 22.2.1 | MIT |
+| `@angular/material` | 22.2.1 | MIT |
+| `@angular/platform-browser` | 22.2.1 | MIT |
+| `@angular/router` | 22.2.1 | MIT |
 | `@astral-sh/ruff-wasm-web` | 0.15.2 | MIT |
 | `@foblex/2d` | 1.2.2 | MIT |
 | `@foblex/flow` | 19.1.6 | MIT |
@@ -61,7 +61,7 @@ Production npm dependencies of the Angular frontend. Assets embedded in the preb
 | `ag-stack` | 36.1.0 | MIT |
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
-| `dompurify` | 3.4.14 | (MPL-2.0 OR Apache-2.0) |
+| `dompurify` | 3.4.16 | (MPL-2.0 OR Apache-2.0) |
 | `entities` | 8.0.0 | BSD-2-Clause |
 | `fflate` | 0.8.3 | MIT |
 | `graceful-fs` | 4.2.11 | ISC |
@@ -92,7 +92,7 @@ Production npm dependencies of the Angular frontend. Assets embedded in the preb
 | `unzipper-esm` | 0.13.3 | MIT |
 | `util-deprecate` | 1.0.2 | MIT |
 | `wavtools` | 0.1.5 | MIT |
-| `zod` | 4.4.3 | MIT |
+| `zod` | 4.6.5 | MIT |
 | `zone.js` | 0.16.2 | MIT |
 
 ---
@@ -101,7 +101,7 @@ Production npm dependencies of the Angular frontend. Assets embedded in the preb
 
 Per-package copyright notices and license texts. License text is included verbatim when the upstream package ships a LICENSE/COPYING/NOTICE file; otherwise the SPDX identifier and any available publisher / repository metadata are recorded.
 
-### @angular/cdk@22.1.3
+### @angular/cdk@22.2.1
 
 - **License:** MIT
 - **Repository:** https://github.com/angular/components
@@ -134,7 +134,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/common@22.1.2
+### @angular/common@22.2.1
 
 - **License:** MIT
 - **Publisher:** angular
@@ -168,7 +168,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/compiler@22.1.2
+### @angular/compiler@22.2.1
 
 - **License:** MIT
 - **Publisher:** angular
@@ -202,7 +202,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/core@22.1.2
+### @angular/core@22.2.1
 
 - **License:** MIT
 - **Publisher:** angular
@@ -236,7 +236,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/forms@22.1.2
+### @angular/forms@22.2.1
 
 - **License:** MIT
 - **Publisher:** angular
@@ -270,7 +270,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/material@22.1.3
+### @angular/material@22.2.1
 
 - **License:** MIT
 - **Repository:** https://github.com/angular/components
@@ -303,7 +303,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/platform-browser@22.1.2
+### @angular/platform-browser@22.2.1
 
 - **License:** MIT
 - **Publisher:** angular
@@ -337,7 +337,7 @@ THE SOFTWARE.
 
 </details>
 
-### @angular/router@22.1.2
+### @angular/router@22.2.1
 
 - **License:** MIT
 - **Publisher:** angular
@@ -1557,7 +1557,7 @@ Apache License
 
 </details>
 
-### dompurify@3.4.14
+### dompurify@3.4.16
 
 - **License:** (MPL-2.0 OR Apache-2.0)
 - **Publisher:** Dr.-Ing. Mario Heiderich, Cure53 <mario@cure53.de>
@@ -3593,7 +3593,7 @@ SOFTWARE.
 
 </details>
 
-### zod@4.4.3
+### zod@4.6.5
 
 - **License:** MIT
 - **Publisher:** Colin McDonnell <zod@colinhacks.com>

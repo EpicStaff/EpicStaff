@@ -46,6 +46,8 @@ def custom_exception_handler(exc, context):
         errors = getattr(exc, "errors", None)
         if isinstance(errors, list):
             response.data["errors"] = errors
+        for name, value in getattr(exc, "headers", {}).items():
+            response[name] = value
         extra_response_data = getattr(exc, "extra_response_data", None)
         if isinstance(extra_response_data, dict):
             # Extra keys never replace the envelope's own.

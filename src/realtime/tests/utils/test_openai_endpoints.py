@@ -2,6 +2,8 @@ import pytest
 
 from utils.openai_endpoints import derive_chat_http_url, derive_realtime_ws_url
 
+INVALID_BASE_URLS = ["my-proxy.internal", "ftp://my-proxy.internal", "https://"]
+
 
 class TestDeriveRealtimeWsUrl:
     def test_none_falls_back_to_hardcoded_default(self):
@@ -28,9 +30,10 @@ class TestDeriveRealtimeWsUrl:
             == "wss://my-proxy.internal/v1/realtime"
         )
 
-    def test_missing_scheme_raises(self):
+    @pytest.mark.parametrize("base_url", INVALID_BASE_URLS)
+    def test_invalid_scheme_raises(self, base_url):
         with pytest.raises(ValueError):
-            derive_realtime_ws_url("my-proxy.internal")
+            derive_realtime_ws_url(base_url)
 
 
 class TestDeriveChatHttpUrl:
@@ -48,3 +51,8 @@ class TestDeriveChatHttpUrl:
 
     def test_keeps_http_scheme_as_is(self):
         assert derive_chat_http_url("http://localhost:8080") == "http://localhost:8080/v1"
+
+    @pytest.mark.parametrize("base_url", INVALID_BASE_URLS)
+    def test_invalid_scheme_raises(self, base_url):
+        with pytest.raises(ValueError):
+            derive_chat_http_url(base_url)

@@ -15,7 +15,7 @@ from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
 from tables.services.redis_service import RedisService
-from tables.services.session_access import assert_session_org_access
+from tables.services.session_access import get_accessible_session
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
 from tables.utils.mixins import SSEMixin
 
@@ -174,24 +174,15 @@ class RunSessionSSEView(SSEMixin):
         """The SSE ticket only proves identity; gate the stream by the org that
         owns the session's graph (org membership + FLOWS READ). Superadmin
         passes. Returns a JSON error response on denial, else None."""
-        session_id = self.kwargs.get("session_id")
-        session = await sync_to_async(
-            Session.objects.select_related("graph").filter(pk=session_id).first
-        )()
-        if session is None:
-            return JsonResponse(
-                {
-                    "status_code": 404,
-                    "code": "session_not_found",
-                    "message": "Session not found.",
-                },
-                status=404,
-            )
         try:
-            await sync_to_async(assert_session_org_access)(self.user, session)
+            await sync_to_async(get_accessible_session)(self.user, self.kwargs.get("session_id"))
         except APIException as exc:
             return JsonResponse(
-                {"status_code": exc.status_code, "message": str(exc.detail)},
+                {
+                    "status_code": exc.status_code,
+                    "code": exc.default_code,
+                    "message": str(exc.detail),
+                },
                 status=exc.status_code,
             )
         return None

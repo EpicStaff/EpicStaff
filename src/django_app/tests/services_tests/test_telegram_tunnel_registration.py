@@ -784,7 +784,7 @@ class TestUserProvidedTelegramSecretRegistration:
         a `WebhookTriggerAuth` row created directly through the ORM --
         `WebhookTriggerService.set_trigger_auth_secret` (the API-facing path)
         now refuses to set `kind=webhook` on a trigger already driving a
-        `TelegramTriggerNode` in the first place (EST-3939), so this
+        `TelegramTriggerNode` in the first place, so this
         conflicting state can no longer be reached through that service
         method; it's still reachable via a direct write, e.g. a stale row
         from before a node was attached."""

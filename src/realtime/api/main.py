@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from xml.sax.saxutils import quoteattr
@@ -8,6 +9,7 @@ from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from application.voice_call_service import VoiceCallService
 from core import config
+from core.logging_config import configure_logging
 from fastapi import (
     Depends,
     FastAPI,
@@ -43,6 +45,10 @@ from src.shared.models import RealtimeAgentChatData
 from utils.auth import introspect_token
 from utils.instructions_concatenator import generate_instruction
 from utils.twilio_signature import validate_twilio_signature
+
+# Uvicorn worker and reload subprocesses import this module directly and never run
+# run_server.main(), so logging must also be configured here.
+configure_logging()
 
 app = FastAPI()
 redis_service = RedisService(
@@ -131,6 +137,11 @@ async def _run_forever(coro_fn, name: str, restart_delay: float = 2.0):
         await asyncio.sleep(restart_delay)
 
 
+def _token_fingerprint(token: str) -> str:
+    """Return a short, non-reversible identifier for a credential token, safe to log."""
+    return hashlib.sha256(token.encode()).hexdigest()[:8]
+
+
 def _handle_channel_invalidation_message(raw_data: str) -> None:
     """Evict a single stale `_channel_cache` entry (see `get_channel_config()`).
 
@@ -142,9 +153,11 @@ def _handle_channel_invalidation_message(raw_data: str) -> None:
         data = json.loads(raw_data)
         token = data["token"]
         _channel_cache.pop(token, None)
-        logger.info(f"Invalidated cached channel config for token={token}")
+        logger.info(
+            "Invalidated cached channel config for token_sha256={}", _token_fingerprint(token)
+        )
     except Exception as e:
-        logger.error(f"Error processing channel invalidation: {e}")
+        logger.error("Error processing channel invalidation: {}", e)
 
 
 def _handle_agent_chat_message(raw_data: str) -> None:
@@ -210,12 +223,19 @@ async def startup_event():
     await init_db()
     await knowledge_client.start()
 
-    asyncio.create_task(_run_forever(redis_listener, "redis_listener"))  # noqa: RUF006
+    # The event loop keeps only a weak reference to tasks, so the supervisor task
+    # must be held here or it can be garbage-collected and nothing restarts the listener.
+    app.state.redis_listener_task = asyncio.create_task(
+        _run_forever(redis_listener, "redis_listener")
+    )
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Close the knowledge_new HTTP client on FastAPI shutdown."""
+    """Stop the Redis listener supervisor and close the knowledge_new HTTP client."""
+    redis_listener_task = app.state.redis_listener_task
+    redis_listener_task.cancel()
+    await asyncio.gather(redis_listener_task, return_exceptions=True)
     await knowledge_client.stop()
 
 
@@ -296,10 +316,15 @@ async def root(
         backstory=realtime_agent_chat_data.backstory,
     )
 
-    summ_client = OpenaiSummarizationClient(
-        api_key=realtime_agent_chat_data.rt_api_key,
-        base_url=realtime_agent_chat_data.rt_base_url,
-    )
+    try:
+        summ_client = OpenaiSummarizationClient(
+            api_key=realtime_agent_chat_data.rt_api_key,
+            base_url=realtime_agent_chat_data.rt_base_url,
+        )
+    except ValueError as exc:
+        logger.error("Invalid rt_base_url for connection {}: {}", connection_key, exc)
+        await websocket.close(code=1011)
+        return
     service = ConversationService(
         client_websocket=websocket,
         realtime_agent_chat_data=realtime_agent_chat_data,
@@ -595,7 +620,7 @@ async def _voice_stream_handler(
     await service.execute()
 
 
-# The channel token is deliberately a URL path segment (see EST-4312). Twilio
+# The channel token is deliberately a URL path segment. Twilio
 # addresses a webhook by URL alone, so the channel has to be identifiable from it.
 # Knowing the token by itself grants nothing:
 #   - POST /voice/{channel_token} fails closed (403/503) unless the request carries
