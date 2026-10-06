@@ -84,11 +84,11 @@ export interface ExtractedChunk {
 }
 
 // Graph RAG returns a single synthesized answer string rather than a list of
-// chunks (EST-3985) — sent as a bare string inside `chunks` (crew service path)
+// chunks — sent as a bare string inside `chunks` (crew service path)
 // or in a separate `answer` field (redis agent-service path).
 export type RawExtractedChunk = ExtractedChunk | string;
 
-// Two backend paths emit this with different shapes (EST-3985):
+// Two backend paths emit this with different shapes:
 //   - redis-agent/TaskNode (shared/models/knowledge.py): `rag_type`, graph
 //     params nested under `search_params.search_method`.
 //   - CrewAI/Project-node (shared/models/knowledge_new.py via

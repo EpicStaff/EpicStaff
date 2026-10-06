@@ -17,6 +17,7 @@ from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
+from savefiles_ownership import ensure_savefiles_writable
 from secret_scrubber import scrub
 from services.storage_credential_manager import StorageCredentialManager
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
@@ -839,6 +840,7 @@ class DynamicVenvExecutorChain:
         os.makedirs(home_path, exist_ok=True)
         tmp_path = output_path / "tmp"
         os.makedirs(tmp_path, exist_ok=True)
+        work_dir = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
 
         if _can_drop_privileges():
             """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and
@@ -859,6 +861,10 @@ class DynamicVenvExecutorChain:
                     stdout="",
                     returncode=1,
                 )
+            # TEMPORARY: remove with the savefiles feature (see savefiles_ownership.py).
+            # Unlike the execution dirs above, a failure here only warns: code that
+            # does not write to savefiles still runs.
+            ensure_savefiles_writable(work_dir, SANDBOX_UID, SANDBOX_GID)
 
         context = {
             "base_venv_path": self.base_venv_path,
@@ -872,7 +878,7 @@ class DynamicVenvExecutorChain:
             "global_kwargs": global_kwargs,
             "home_path": str(home_path),
             "tmp_path": str(tmp_path),
-            "work_dir": os.environ.get("CONTAINER_SAVEFILES_PATH", "."),
+            "work_dir": work_dir,
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,

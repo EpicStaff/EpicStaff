@@ -160,6 +160,7 @@ services:
       REALTIME_HOST: ${REALTIME_HOST:?}
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
+      REALTIME_PERSIST_RAW_AUDIO: ${REALTIME_PERSIST_RAW_AUDIO:-false}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_URL: ${DJANGO_API_URL:?}
@@ -500,6 +501,8 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
+    stop_grace_period: 5m
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       BENCH_SERVICE: agent
@@ -510,6 +513,7 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_STREAM_TTL: ${AGENT_RESULT_STREAM_TTL:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
+      AGENT_MAX_CONCURRENT_RUNS: ${AGENT_MAX_CONCURRENT_RUNS:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
