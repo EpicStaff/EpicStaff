@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from shared.models.agent_service import ToolResult
 
 
