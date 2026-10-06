@@ -15,6 +15,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppSvgIconComponent,
+    ButtonComponent,
     CheckboxComponent,
     IconButtonComponent,
     LoadingSpinnerComponent,
@@ -53,6 +54,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         MatTooltipModule,
         DatePickerDropdownComponent,
         TriggerFilterDropdownComponent,
+        ButtonComponent,
     ],
     template: `
         <div
@@ -205,13 +207,14 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                 </td>
                                 <td class="col-actions">
                                     <div class="actions-container">
-                                        <button
+                                        <app-button
+                                            mod="small"
                                             class="view-btn"
-                                            [class.view-btn--active]="expandedSessionId() === session.id"
+                                            [type]="expandedSessionId() === session.id ? 'primary' : 'outline-primary'"
                                             (click)="togglePreview(session.id)"
                                         >
                                             {{ expandedSessionId() === session.id ? 'Hide' : 'Preview' }}
-                                        </button>
+                                        </app-button>
                                         <button
                                             type="button"
                                             class="icon-img-btn"

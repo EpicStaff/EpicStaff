@@ -84,12 +84,14 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
     styles: [
         `
             .start-container {
+                --message-accent-color: var(--amber-400);
+
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
                 padding: var(--message-padding, 0.5rem 1rem);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #d29922;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--message-accent-color);
             }
 
             .start-header {
@@ -108,7 +110,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 flex-shrink: 0;
 
                 app-svg-icon {
-                    color: #d29922;
+                    color: var(--message-accent-color);
                 }
             }
 
@@ -116,7 +118,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                 width: 28px;
                 height: 28px;
                 border-radius: 50%;
-                background-color: #d29922;
+                background-color: var(--message-accent-color);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -137,7 +139,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             .node-name {
-                color: #d29922;
+                color: var(--message-accent-color);
                 font-weight: 400;
             }
 
@@ -173,7 +175,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
 
             .section-heading app-svg-icon {
                 margin-right: 8px;
-                color: #d29922;
+                color: var(--message-accent-color);
                 margin-left: -3px;
             }
 
