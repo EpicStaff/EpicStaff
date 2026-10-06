@@ -77,6 +77,7 @@ import {
 import {
     CDT_COLUMN_KIND,
     CDT_FIELD_PREFIX,
+    CDT_GRID_HEADER_HEIGHT,
     CDT_GRID_ROW_HEIGHT,
     CDT_GROUP_TOGGLE_ANIMATION_MS,
     CDT_MANIP_PREFIX,
@@ -877,7 +878,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public gridOptions: GridOptions = {
         theme: this.myTheme,
         rowHeight: CDT_GRID_ROW_HEIGHT,
-        headerHeight: 45,
+        headerHeight: CDT_GRID_HEADER_HEIGHT,
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,

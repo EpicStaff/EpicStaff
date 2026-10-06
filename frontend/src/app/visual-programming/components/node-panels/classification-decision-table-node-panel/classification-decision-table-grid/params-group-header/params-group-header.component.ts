@@ -138,7 +138,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 background: none;
                 border: none;
                 padding: 0 2px;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 flex-shrink: 0;
                 display: flex;
                 align-items: center;
@@ -149,7 +149,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-label {
                 flex: 1;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 white-space: nowrap;

@@ -226,7 +226,7 @@
         color: var(--white-alpha-80);
 
         i {
-            font-size: 0.85rem;
+            font-size: 0.875rem;
             color: var(--white-alpha-35);
             cursor: help;
         }
@@ -240,8 +240,8 @@
         color: var(--white);
         border: none;
         border-radius: 6px;
-        padding: 0.4rem 0.85rem;
-        font-size: 0.82rem;
+        padding: 0.5rem 0.875rem;
+        font-size: 0.875rem;
         font-weight: 500;
         cursor: pointer;
         white-space: nowrap;
@@ -462,8 +462,7 @@
         inset: 0;
         padding: 0.75rem;
         font-family: 'Courier New', monospace;
-        font-size: 0.85rem;
-        line-height: 1.5;
+        font-size: 0.875rem;
         color: transparent;
         white-space: pre-wrap;
         word-break: break-word;
@@ -484,8 +483,7 @@
         color: var(--white);
         padding: 0.75rem;
         font-family: 'Courier New', monospace;
-        font-size: 0.85rem;
-        line-height: 1.5;
+        font-size: 0.875rem;
         resize: vertical;
         min-height: 120px;
         outline: none;

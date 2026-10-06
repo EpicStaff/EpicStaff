@@ -1,6 +1,6 @@
 $grid-header-height: 40px;
 $grid-header-gap: 1rem;
-$grid-above-btns-height: 44px;
+$grid-above-btns-height: 24px;
 
 :host {
     display: flex;
@@ -135,8 +135,8 @@ $grid-above-btns-height: 44px;
     color: var(--white);
     border: none;
     border-radius: 6px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.82rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
@@ -533,8 +533,8 @@ $group-gutter-width: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.65rem;
-    z-index: 20;
+    font-size: 0.625rem;
+    z-index: 30;
     padding: 0;
     box-sizing: border-box;
     transform: translateX(-50%);
@@ -550,7 +550,7 @@ $group-gutter-width: 28px;
     }
 
     i {
-        font-size: 0.85rem;
+        font-size: 0.875rem;
         line-height: 1;
     }
 }

@@ -30,6 +30,7 @@
                             formControlName="node_name"
                             placeholder="Node name"
                             [readonly]="isReadOnly()"
+                            [transparent]="true"
                         ></app-custom-input>
 
                         <app-select
@@ -39,6 +40,7 @@
                             formControlName="default_next_node"
                             [items]="availableNodeItems()"
                             [readonly]="isReadOnly()"
+                            [transparent]="true"
                         />
 
                         <app-select
@@ -48,6 +50,7 @@
                             formControlName="next_error_node"
                             [items]="availableNodeItems()"
                             [readonly]="isReadOnly()"
+                            [transparent]="true"
                         />
                     </div>
 

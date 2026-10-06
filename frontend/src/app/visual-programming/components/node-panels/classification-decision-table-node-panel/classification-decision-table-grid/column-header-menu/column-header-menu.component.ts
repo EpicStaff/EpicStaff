@@ -121,7 +121,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
 
             .chm-label {
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 flex: 1;
