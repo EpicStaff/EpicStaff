@@ -3,13 +3,11 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
-import { TestRunChipComponent } from '../../../../features/flows/components/flow-sessions-dialog/test-run-chip.component';
-import { isTestRunTrigger } from '../../../../features/flows/components/flow-sessions-dialog/trigger-display.constants';
 import { GraphSessionLight } from '../../../../features/flows/services/flows-sessions.service';
 
 @Component({
     selector: 'app-session-id-switcher',
-    imports: [FormsModule, MatTooltipModule, AppSvgIconComponent, TestRunChipComponent],
+    imports: [FormsModule, MatTooltipModule, AppSvgIconComponent],
     templateUrl: './session-id-switcher.component.html',
     styleUrls: ['./session-id-switcher.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,17 +43,9 @@ export class SessionIdSwitcherComponent {
         return this.sessions.filter((s) => s.id.toString().includes(this.searchQuery));
     }
 
-    public get selectedSession(): GraphSessionLight | null {
-        return this.sessions.find((s) => s.id.toString() === this.selectedSessionId) ?? null;
-    }
-
     public get selectedSessionLabel(): string {
-        const session = this.selectedSession;
+        const session = this.sessions.find((s) => s.id.toString() === this.selectedSessionId);
         return session ? `ID ${session.id}` : `ID -`;
-    }
-
-    public isTestRun(session: GraphSessionLight | null): boolean {
-        return isTestRunTrigger(session?.trigger);
     }
 
     // `sessions` is sorted newest-first, so the previous (older) session is the next index down the list.
