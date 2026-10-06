@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 
 from tables.graph_collab.ws_auth import TicketAuthMiddleware
-from rbac.identity.tickets import TicketService
+from rbac.identity.tickets import TicketService, sse_ticket_service, ws_ticket_service
 
 
 def make_ws_service():
@@ -108,6 +108,20 @@ def test_consume_deleted_user_returns_none(fake_redis):
 
     result = service.consume(token)
     assert result is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "service", [sse_ticket_service, ws_ticket_service], ids=["sse", "ws"]
+)
+def test_consume_ticket_of_user_deactivated_after_issue_returns_none(fake_redis, service):
+    User = get_user_model()
+    user = User.objects.create_user(email="ticket-inactive@example.com", password="Pass123!")
+
+    token, _ = service.issue(user)
+    User.objects.filter(pk=user.pk).update(is_active=False)
+
+    assert service.consume(token) is None
 
 
 @pytest.mark.django_db

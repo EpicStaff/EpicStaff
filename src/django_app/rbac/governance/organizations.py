@@ -26,6 +26,7 @@ from rbac.governance.organization_deletion import (
 )
 from rbac.models import Organization, OrganizationUser
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.signals import send_org_access_changed_on_commit
 
 
 @dataclass
@@ -156,6 +157,9 @@ class OrganizationManagementService(CrossOrgResourceService):
         if target.is_active:
             target.is_active = False
             target.save(update_fields=["is_active", "updated_at"])
+            send_org_access_changed_on_commit(
+                OrganizationManagementService, target.pk, self._member_user_ids(target.pk)
+            )
 
         return self._get_organization_with_member_count(target.pk)
 
@@ -245,6 +249,9 @@ class OrganizationManagementService(CrossOrgResourceService):
         # Narrower, lock-scoped re-check of the same last-active-org invariant `_assert_deletable_org` enforces unlocked above -- not a full re-implementation, so don't assume edits to one mirror the other.
         if instance.pk in locked and not set(locked) - {instance.pk}:
             raise LastOrganizationError()
+        # Read before the sweeps and the cascade below remove the memberships.
+        member_user_ids = self._member_user_ids(instance.pk)
+        deleted_org_id = instance.pk
 
         # Each participant counts non-destructively immediately before its
         # sweep, under the same locks, so this agrees with the preview. The
@@ -266,6 +273,9 @@ class OrganizationManagementService(CrossOrgResourceService):
                 # robust: a failing cleanup is logged and never undoes the
                 # committed delete or skips another participant's cleanup.
                 transaction.on_commit(cleanup, robust=True)
+        send_org_access_changed_on_commit(
+            OrganizationManagementService, deleted_org_id, member_user_ids
+        )
 
         logger.info(
             "OrganizationManagementService.delete_organization actor={actor} target={target} resources={resources}",
@@ -303,6 +313,12 @@ class OrganizationManagementService(CrossOrgResourceService):
         swept_labels = {row.model for row in sweep_counts}
         kept = [row for row in collector_by_model if row.model not in swept_labels]
         return kept + sweep_counts
+
+    @staticmethod
+    def _member_user_ids(org_id: int) -> list[int]:
+        return list(
+            OrganizationUser.objects.filter(org_id=org_id).values_list("user_id", flat=True)
+        )
 
     def _get_organization_with_member_count(self, org_id: int) -> Organization:
         try:

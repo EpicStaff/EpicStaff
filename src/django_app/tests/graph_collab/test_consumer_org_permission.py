@@ -54,6 +54,23 @@ for the graph's org, not just per-graph attach/detach events.
     sent to that org's group is relayed to the connection.
 17. A broadcast sent to a DIFFERENT org's group does not reach the connection.
 18. Disconnecting discards the connection's org group membership.
+
+User-wide access changes reach the socket through the per-user
+`graph_edit_user_{user_id}` group, so they work even when the user holds no membership:
+19. A revoked superadmin with NO memberships is closed with 4403.
+20. `set_user_active(False)` closes the socket with 4403.
+21. `delete_user` closes the socket with 4403.
+22. A custom-role `update_role` that drops flows UPDATE sends
+    `edit_rights_changed{can_edit: false}` and keeps the socket open.
+23. Connecting joins the user group; disconnecting discards it.
+
+More live-session access changes:
+24. `change_role` upgrading a connected Viewer to Member sends
+    `edit_rights_changed{can_edit: true}`, and the next write is applied.
+25. One user with sessions in two orgs: deactivating org A, or removing the
+    user's membership in A, closes the A session with 4403 and does not
+    re-check the B session at all.
+26. `delete_user` closes that user's sessions in both orgs with 4403.
 """
 
 import asyncio
@@ -67,15 +84,19 @@ from django.contrib.auth import get_user_model
 from tables.graph_collab import graph_state_service as _gss_module
 from tables.graph_collab import lock_service as _ls_module
 from tables.graph_collab.constants import CURSOR_FLUSH_INTERVAL_SECONDS
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from tables.models import Graph
 from rbac.governance.memberships import MembershipManagementService
 from rbac.governance.organizations import OrganizationManagementService
+from rbac.governance.roles import RoleManagementService
 from rbac.governance.users import UserManagementService
+from tables.graph_collab.groups import org_group_name, user_group_name
+from rbac.models.enums import Permission, ResourceType
 
 from tests.graph_collab.conftest import (
     _make_communicator,
     _drain_connect,
+    apply_create_op,
     editor_payload,
     connect_pair,
 )
@@ -98,6 +119,15 @@ async def _receive_close(communicator, timeout: float = 1.0) -> dict:
     """Wait for the server to close the socket and return the raw
     ``websocket.close`` ASGI message (code + optional reason)."""
     return await communicator.receive_output(timeout)
+
+
+async def _connect_session(graph_id: int, user):
+    """Open a live editor session and drain its connect-time messages."""
+    communicator = _make_communicator(graph_id, user)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+    return communicator
 
 
 @pytest.fixture
@@ -369,6 +399,31 @@ async def test_change_role_preserving_update_does_not_disconnect(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_change_role_upgrade_grants_edit_rights_to_live_session(
+    org_graph, default_org, viewer_member, member_role, superadmin_user
+):
+    """A connected Viewer upgraded to Member (gains flows UPDATE) is told it
+    can edit now, and its next write is applied, not rejected."""
+    communicator = await _connect_session(org_graph.pk, viewer_member)
+
+    await sync_to_async(MembershipManagementService().change_role)(
+        actor=superadmin_user,
+        membership_id=await _membership_id(viewer_member, default_org),
+        role_id=member_role.id,
+    )
+
+    rights_changed = await communicator.receive_json_from()
+    assert rights_changed["type"] == "edit_rights_changed"
+    assert rights_changed["can_edit"] is True
+
+    await apply_create_op(communicator, org_graph.pk, viewer_member, "upgraded-viewer-node")
+    assert await communicator.receive_nothing(timeout=0.3)
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_remove_membership_disconnects_live_session(
     org_graph, default_org, member_member, superadmin_user
 ):
@@ -490,8 +545,9 @@ async def test_permission_changed_for_other_user_leaves_socket_untouched(
 
 # ---------------------------------------------------------------------------
 # Live-session revocation: organization deactivation must also disconnect
-# every already-open socket belonging to a member of that org, mirroring the
-# per-mutation notify_permission_changed wiring above.
+# every already-open socket belonging to a member of that org. The service
+# sends one `org_access_changed` signal per member after commit; the tables
+# receiver forwards each one to the org group as `permission_changed`.
 # ---------------------------------------------------------------------------
 
 
@@ -1107,3 +1163,224 @@ async def test_disconnect_discards_org_group_membership(
     channel_layer = get_channel_layer()
     org_group_channels = channel_layer.groups.get(f"org_{org.id}", {})
     assert org_group_channels == {}
+
+
+# ---------------------------------------------------------------------------
+# User-wide access changes: sent to the per-user `graph_edit_user_{user_id}` group, so
+# they reach the socket even when the user has no membership in any org.
+# ---------------------------------------------------------------------------
+
+
+_ACCESS_CHANGED_REASON = "Your access to this flow has changed. Please reconnect."
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_revoke_superadmin_without_memberships_closes_socket(org_graph, superadmin_user):
+    """The real superadmin case: no membership row anywhere, so no org group
+    names this user. Only the user group can deliver the recheck, and with
+    the bypass gone the user has no access at all."""
+    target = await sync_to_async(get_user_model().objects.create_superuser)(
+        email="membershipless-superadmin@example.com",
+        password="TestPass123!",
+    )
+    communicator = _connect_session(org_graph.pk, target)
+
+    await sync_to_async(UserManagementService().revoke_superadmin)(
+        actor=superadmin_user, target_user_id=target.id
+    )
+
+    response = await _receive_close(communicator)
+    assert response["type"] == "websocket.close"
+    assert response["code"] == 4403
+    assert response["reason"] == _ACCESS_CHANGED_REASON
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_deactivate_user_closes_socket(org_graph, member_member, superadmin_user):
+
+    communicator = _connect_session(org_graph.pk, member_member)
+
+    await sync_to_async(UserManagementService().set_user_active)(
+        actor=superadmin_user, target_user_id=member_member.id, value=False
+    )
+
+    response = await _receive_close(communicator)
+    assert response["type"] == "websocket.close"
+    assert response["code"] == 4403
+    assert response["reason"] == _ACCESS_CHANGED_REASON
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_delete_user_closes_socket(org_graph, member_member, superadmin_user):
+
+    communicator = _connect_session(org_graph.pk, member_member)
+
+    await sync_to_async(UserManagementService().delete_user)(
+        actor=superadmin_user,
+        target_user_id=member_member.id,
+        verification_phrase=f"delete-{member_member.email}",
+    )
+
+    response = await _receive_close(communicator)
+    assert response["type"] == "websocket.close"
+    assert response["code"] == 4403
+    assert response["reason"] == _ACCESS_CHANGED_REASON
+    await communicator.disconnect()
+
+
+@sync_to_async
+def _custom_role_holder(org, email, bitmask):
+    role = Role.objects.create(name=f"custom-{email}", org=org, is_built_in=False)
+    RolePermission.objects.create(
+        role=role, resource_type=ResourceType.FLOWS, permissions=bitmask
+    )
+    user = get_user_model().objects.create_user(email=email, password="TestPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return role, user
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_custom_role_update_dropping_update_sends_edit_rights_changed(
+    org_graph, default_org, superadmin_user
+):
+    role, holder = await _custom_role_holder(
+        default_org, "custom-role-holder@example.com", Permission.READ | Permission.UPDATE
+    )
+    communicator = _connect_session(org_graph.pk, holder)
+   
+
+    await sync_to_async(RoleManagementService().update_role)(
+        actor=superadmin_user,
+        role_id=role.id,
+        changes={
+            "permissions": [
+                {"resource_type": ResourceType.FLOWS.value, "bitmask": int(Permission.READ)}
+            ]
+        },
+    )
+
+    rights_changed = await communicator.receive_json_from()
+    assert rights_changed["type"] == "edit_rights_changed"
+    assert rights_changed["can_edit"] is False
+    assert await communicator.receive_nothing(timeout=0.3)
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_connect_joins_and_disconnect_discards_user_group(org_graph, member_member):
+    communicator = _connect_session(org_graph.pk, member_member)
+
+    channel_layer = get_channel_layer()
+    user_group = user_group_name(member_member.id)
+    assert len(channel_layer.groups.get(user_group, {})) == 1
+
+    await communicator.disconnect()
+
+    assert channel_layer.groups.get(user_group, {}) == {}
+
+
+# ---------------------------------------------------------------------------
+# One user with live sessions in two orgs: a per-org change reaches only the
+# session in that org; a user-wide change reaches both.
+# ---------------------------------------------------------------------------
+
+
+@sync_to_async
+def _member_of_two_orgs(org_a, org_b, role):
+    """A user holding `role` in both orgs, plus one graph in each org."""
+    user = get_user_model().objects.create_user(
+        email="two-org-member@example.com", password="TestPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_a, role=role)
+    OrganizationUser.objects.create(user=user, org=org_b, role=role)
+    graph_a = Graph.objects.create(name="two-org-graph-a", org=org_a)
+    graph_b = Graph.objects.create(name="two-org-graph-b", org=org_b)
+    return user, graph_a, graph_b
+
+
+async def _deactivate_organization(actor, user, org):
+    await sync_to_async(OrganizationManagementService().deactivate_organization)(org_id=org.id)
+
+
+async def _remove_membership(actor, user, org):
+    await sync_to_async(MembershipManagementService().remove_member)(
+        actor=actor, membership_id=await _membership_id(user, org)
+    )
+
+
+@pytest.mark.parametrize(
+    "remove_access_in_org",
+    [
+        pytest.param(_deactivate_organization, id="deactivate-org"),
+        pytest.param(_remove_membership, id="remove-membership"),
+    ],
+)
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_access_loss_in_one_org_closes_only_that_orgs_session(
+    remove_access_in_org, org, other_org, member_role, viewer_role, superadmin_user
+):
+    """`org` (A) loses the user; `other_org` (B) keeps them. `other_org`
+    stays active, so deactivating A never hits the last-active-org guard.
+
+    A recheck of an unchanged session sends nothing, so `receive_nothing` on
+    B alone could not tell "not rechecked" from "rechecked, no change". The
+    user is therefore demoted in B with a raw update (no signal) first: any
+    recheck of B would now send `edit_rights_changed`. The final
+    group_send shows that this probe does fire when B really is rechecked."""
+    user, graph_a, graph_b = await _member_of_two_orgs(org, other_org, member_role)
+    session_a = await _connect_session(graph_a.pk, user)
+    session_b = await _connect_session(graph_b.pk, user)
+    await sync_to_async(
+        OrganizationUser.objects.filter(user=user, org=other_org).update
+    )(role=viewer_role)
+
+    await remove_access_in_org(superadmin_user, user, org)
+
+    response = await _receive_close(session_a)
+    assert response["type"] == "websocket.close"
+    assert response["code"] == 4403
+    assert response["reason"] == _ACCESS_CHANGED_REASON
+    assert await session_b.receive_nothing(timeout=0.3)
+
+    await get_channel_layer().group_send(
+        org_group_name(other_org.id), {"type": "permission_changed", "user_id": user.id}
+    )
+    rights_changed = await session_b.receive_json_from()
+    assert rights_changed["type"] == "edit_rights_changed"
+    assert rights_changed["can_edit"] is False
+
+    await session_a.disconnect()
+    await session_b.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_delete_user_closes_sessions_in_every_org(
+    org, other_org, member_role, superadmin_user
+):
+    user, graph_a, graph_b = await _member_of_two_orgs(org, other_org, member_role)
+    sessions = [
+        await _connect_session(graph_a.pk, user),
+        await _connect_session(graph_b.pk, user),
+    ]
+
+    await sync_to_async(UserManagementService().delete_user)(
+        actor=superadmin_user,
+        target_user_id=user.id,
+        verification_phrase=f"delete-{user.email}",
+    )
+
+    for session in sessions:
+        response = await _receive_close(session)
+        assert response["type"] == "websocket.close"
+        assert response["code"] == 4403
+        assert response["reason"] == _ACCESS_CHANGED_REASON
+        await session.disconnect()

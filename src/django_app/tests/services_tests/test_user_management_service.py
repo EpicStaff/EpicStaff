@@ -519,6 +519,10 @@ def test_delete_user_registers_cleanup_via_on_commit_not_synchronously(
     actor, target_user, mocker
 ):
     """delete_user's real on_commit(...) call is what defers _cleanup_user_delete_external, not a direct call."""
+    mock_cleanup = mocker.patch.object(UserManagementService, "_cleanup_user_delete_external")
+    # delete_user also registers the user_access_changed signal; keep its
+    # receiver off the channel layer when the callbacks are run below.
+    mocker.patch("tables.signals.org_access_signals.GraphEditNotifier")
     mock_on_commit = mocker.patch(
         "rbac.governance.users.transaction.on_commit"
     )
@@ -527,7 +531,11 @@ def test_delete_user_registers_cleanup_via_on_commit_not_synchronously(
         target_user_id=target_user.pk,
         verification_phrase=f"delete-{target_user.email}",
     )
-    mock_on_commit.assert_called_once()
+    mock_cleanup.assert_not_called()
+
+    for registered in mock_on_commit.call_args_list:
+        registered.args[0]()
+    mock_cleanup.assert_called_once()
 
 
 @pytest.mark.django_db(transaction=True)

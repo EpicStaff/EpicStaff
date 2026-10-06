@@ -20,6 +20,7 @@ from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
+from rbac.signals import send_org_access_changed_on_commit
 
 
 class MembershipManagementService(CrossOrgResourceService):
@@ -175,6 +176,9 @@ class MembershipManagementService(CrossOrgResourceService):
         if membership.role_id != new_role.pk:
             membership.role = new_role
             membership.save(update_fields=["role"])
+            send_org_access_changed_on_commit(
+                MembershipManagementService, membership.org_id, [membership.user_id]
+            )
         logger.info(
             "MembershipManagementService.change_role actor={a} membership={m} role={r}",
             a=getattr(actor, "email", "system"),
@@ -198,7 +202,9 @@ class MembershipManagementService(CrossOrgResourceService):
         )  # no-leak 404
         self._assert_not_self(actor, membership)
         self.assert_can(effective, Permission.DELETE)
+        user_id, org_id = membership.user_id, membership.org_id
         membership.delete()
+        send_org_access_changed_on_commit(MembershipManagementService, org_id, [user_id])
         logger.info(
             "MembershipManagementService.remove_member actor={a} membership={m}",
             a=getattr(actor, "email", "system"),

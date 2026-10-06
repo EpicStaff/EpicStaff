@@ -24,7 +24,7 @@ from tables.graph_collab.constants import (
 )
 from tables.graph_collab.flush_service import flush_service
 from tables.graph_collab.graph_state_service import graph_state_service
-from tables.graph_collab.groups import graph_group_name, org_group_name
+from tables.graph_collab.groups import graph_group_name, org_group_name, user_group_name
 from tables.graph_collab.lock_service import lock_service
 from tables.graph_collab.notifications import _SYSTEM_EDITOR, anotify_graph_saved
 from tables.graph_collab.presence_service import presence_service
@@ -148,6 +148,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         self.org_id = org_id
         self.group = graph_group_name(self.graph_id)
         self.org_group = org_group_name(org_id)
+        self.user_group = user_group_name(user.pk)
 
         # Per-field asyncio timer handles; keyed by "{node_id}:{field}".
         self._lock_timers: dict[str, asyncio.Task] = {}
@@ -165,6 +166,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.channel_layer.group_add(self.org_group, self.channel_name)
+        await self.channel_layer.group_add(self.user_group, self.channel_name)
         await self.accept()
         logger.info("User {} connected to graph {} edit channel", user.pk, self.graph_id)
 
@@ -290,6 +292,10 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         org_group = getattr(self, "org_group", None)
         if org_group:
             await self.channel_layer.group_discard(org_group, self.channel_name)
+
+        user_group = getattr(self, "user_group", None)
+        if user_group:
+            await self.channel_layer.group_discard(user_group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         """Handler for messages that sended from FE"""
@@ -576,10 +582,12 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def permission_changed(self, event: dict) -> None:
-        """Org-wide broadcast fired after a role change, membership removal,
-        or superadmin revocation that may have changed a connected user's
-        flows access. Filters on user_id — only the affected user's own
-        connections re-check.
+        """Broadcast fired after a change that may have reduced a connected
+        user's flows access: on the org group for a per-org change (role,
+        membership, role permissions, org deactivated or deleted), on the
+        user group for a user-wide one (superadmin revoked, account
+        deactivated or deleted). Filters on user_id — only the affected
+        user's own connections re-check.
 
         Re-fetches the user row from the DB rather than reusing
         ``self.scope["user"]`` — that object was resolved once by the auth
@@ -599,8 +607,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         permissions for this connection's org.
 
         Closes with 4403 only on a genuine loss of ALL access — the user no
-        longer exists, has no membership in the org at all, or the org was
-        deactivated (all surfaced as `None` by ``_resolve_flows_permissions``),
+        longer exists or was deactivated, has no membership in the org at
+        all, or the org was deactivated or deleted (all surfaced as `None` by
+        ``_get_user_by_id`` or ``_resolve_flows_permissions``),
         or the resolved permissions no longer include READ. Any connection
         that still holds at least READ stays open, with the cached edit flag
         refreshed in place — this single branch covers both a downgrade (e.g.
@@ -633,7 +642,8 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     def _get_user_by_id(user_id: int):
         from django.contrib.auth import get_user_model
 
-        return get_user_model().objects.filter(pk=user_id).first()
+        # A deactivated account counts as gone: it closes like a deleted one.
+        return get_user_model().objects.filter(pk=user_id, is_active=True).first()
 
     # --- Cursor pub/sub (Redis, lossy) ---
 

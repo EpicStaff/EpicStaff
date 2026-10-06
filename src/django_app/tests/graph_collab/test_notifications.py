@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+from tables.graph_collab.groups import user_group_name
 from tables.graph_collab.notifications import GraphEditNotifier, anotify_graph_saved
 from tables.graph_collab.protocol import GraphSavedMessage, EditorInfo
 
@@ -315,3 +316,42 @@ async def test_anotify_graph_saved_without_temp_id_map(mocker):
     layer.group_send.assert_awaited_once()
     _, message = layer.group_send.call_args.args
     assert message["temp_id_map"] == {}
+
+
+# ---------------------------------------------------------------------------
+# notify_user_access_changed — user-group broadcast
+# ---------------------------------------------------------------------------
+
+
+def test_notify_user_access_changed_sends_permission_changed_to_the_user_group():
+    channel_layer = get_channel_layer()
+    user_channel = async_to_sync(channel_layer.new_channel)()
+    async_to_sync(channel_layer.group_add)(user_group_name(17), user_channel)
+
+    GraphEditNotifier.notify_user_access_changed(user_id=17)
+
+    message = async_to_sync(channel_layer.receive)(user_channel)
+    assert message == {"type": "permission_changed", "user_id": 17}
+
+
+def test_notify_user_access_changed_with_no_channel_layer_logs_and_does_not_raise(mocker):
+    mocker.patch("tables.graph_collab.notifications.get_channel_layer", return_value=None)
+    logger = mocker.patch("tables.graph_collab.notifications.logger")
+
+    GraphEditNotifier.notify_user_access_changed(user_id=5)
+
+    logger.warning.assert_called_once()
+
+
+def test_notify_user_access_changed_swallows_group_send_error(mocker):
+    layer = mocker.MagicMock()
+    layer.group_send = AsyncMock(side_effect=Exception("boom"))
+    mocker.patch("tables.graph_collab.notifications.get_channel_layer", return_value=layer)
+    logger = mocker.patch("tables.graph_collab.notifications.logger")
+
+    GraphEditNotifier.notify_user_access_changed(user_id=6)
+
+    layer.group_send.assert_awaited_once_with(
+        user_group_name(6), {"type": "permission_changed", "user_id": 6}
+    )
+    logger.error.assert_called_once()

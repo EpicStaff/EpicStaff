@@ -27,6 +27,7 @@ from rbac.identity.session_invalidation import (
 )
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, ResourceType
+from rbac.signals import send_user_access_changed_on_commit
 
 
 @dataclass
@@ -215,6 +216,7 @@ class UserManagementService(CrossOrgResourceService):
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
             target.refresh_from_db()
+            send_user_access_changed_on_commit(UserManagementService, target.pk)
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t}",
@@ -251,6 +253,8 @@ class UserManagementService(CrossOrgResourceService):
             target.is_active = value
             target.save(update_fields=["is_active", "updated_at"])
             target.refresh_from_db()
+            if not value:
+                send_user_access_changed_on_commit(UserManagementService, target.pk)
 
         logger.info(
             "UserManagementService.set_user_active actor={a} target={t} active={v}",
@@ -319,8 +323,10 @@ class UserManagementService(CrossOrgResourceService):
         # locks taken below are held (this check is a no-op here, but the same
         # shape on the organization side does real MinIO network I/O).
         external = self._user_external_artifacts(instance)
-        # Captured before the delete: after it, the row these read from is gone.
+        # Captured before the delete: after it, the row these read from is gone
+        # and the collector has reset `instance.pk` to None.
         snapshot = self._user_delete_snapshot(instance)
+        deleted_user_id = instance.pk
 
         # Re-fetch under lock and re-check the last-active-superadmin guard
         # against current state. Locks the active-superadmin set FIRST, in pk
@@ -354,6 +360,7 @@ class UserManagementService(CrossOrgResourceService):
         payload = UserDeleteReport(user_id=instance.pk, affected_resources=affected)
         collector.delete()
         transaction.on_commit(lambda: self._cleanup_user_delete_external(snapshot))
+        send_user_access_changed_on_commit(UserManagementService, deleted_user_id)
 
         logger.info(
             "UserManagementService.delete_user actor={a} target={t} resources={r}",

@@ -23,6 +23,7 @@ from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.signals import send_org_access_changed_on_commit
 
 
 class RoleManagementService(CrossOrgResourceService):
@@ -107,6 +108,9 @@ class RoleManagementService(CrossOrgResourceService):
             if "permissions" in changes:
                 role.permissions_set.all().delete()
                 self._write_permission_rows(role=role, permissions=changes["permissions"])
+                send_org_access_changed_on_commit(
+                    RoleManagementService, role.org_id, self._holder_user_ids(role_id=role.id)
+                )
         return self._build_role_response(role_id=role.id)
 
     def preview_delete(self, actor, role_id) -> dict:
@@ -150,10 +154,14 @@ class RoleManagementService(CrossOrgResourceService):
             viewer_role = Role.objects.get(
                 name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
             )
+            # Read before the reassign below moves every holder off this role.
+            holder_user_ids = self._holder_user_ids(role_id=role.id)
+            org_id = role.org_id
             reassigned = OrganizationUser.objects.filter(role_id=role.id).update(
                 role_id=viewer_role.id
             )
             role.delete()
+            send_org_access_changed_on_commit(RoleManagementService, org_id, holder_user_ids)
         return reassigned
 
     # ---- read authorization ----
@@ -452,6 +460,12 @@ class RoleManagementService(CrossOrgResourceService):
             user_id=getattr(actor, "id", None), role_id=role.id
         ).exists():
             raise SelfRoleDeletionError()
+
+    @staticmethod
+    def _holder_user_ids(role_id) -> list[int]:
+        return list(
+            OrganizationUser.objects.filter(role_id=role_id).values_list("user_id", flat=True)
+        )
 
     @staticmethod
     def _assert_name_available(org_id, name, exclude_role_id) -> None:

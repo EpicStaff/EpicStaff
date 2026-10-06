@@ -5,7 +5,7 @@ from channels.layers import get_channel_layer
 from utils.logger import logger
 
 from tables.graph_collab.graph_state_service import graph_state_service
-from tables.graph_collab.groups import graph_group_name, org_group_name
+from tables.graph_collab.groups import graph_group_name, org_group_name, user_group_name
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     EditorInfo,
@@ -183,8 +183,9 @@ class GraphEditNotifier:
     @staticmethod
     def notify_permission_changed(user_id: int, org_id: int) -> None:
         """Broadcast permission_changed org-wide after a mutation that may have
-        revoked or downgraded a user's access to that org (role change,
-        membership removal, or global superadmin revocation).
+        revoked or downgraded a user's access to that org (role change or
+        role permission edit, membership removal, organization deactivation
+        or deletion).
 
         Every consumer connected to org_id's group receives this event and
         re-checks its own permission (see GraphEditConsumer.permission_changed),
@@ -192,6 +193,19 @@ class GraphEditNotifier:
         """
         message = {"type": "permission_changed", "user_id": user_id}
         GraphEditNotifier._send_to_org(org_id, message)
+
+    @staticmethod
+    def notify_user_access_changed(user_id: int) -> None:
+        """Broadcast permission_changed to every connection of user_id, in
+        every org, after a user-wide change (superadmin revoked, account
+        deactivated or deleted).
+
+        Sent to the user's own group rather than to org groups: a revoked
+        superadmin may hold no membership at all, so there is no org group to
+        address. Each connection re-checks against its own org.
+        """
+        message = {"type": "permission_changed", "user_id": user_id}
+        GraphEditNotifier._send_to_user(user_id, message)
 
     @staticmethod
     def notify_profile_updated(user) -> None:
@@ -230,6 +244,20 @@ class GraphEditNotifier:
             async_to_sync(layer.group_send)(org_group_name(org_id), message)
         except Exception as exc:
             logger.error("Failed to broadcast to org {} group: {}", org_id, exc)
+
+    @staticmethod
+    def _send_to_user(user_id: int, message: dict) -> None:
+        layer = get_channel_layer()
+        if layer is None:
+            logger.warning(
+                "Channel layer is not configured — skipping broadcast for user {}",
+                user_id,
+            )
+            return
+        try:
+            async_to_sync(layer.group_send)(user_group_name(user_id), message)
+        except Exception as exc:
+            logger.error("Failed to broadcast to user {} group: {}", user_id, exc)
 
 
 async def anotify_graph_saved(

@@ -49,7 +49,8 @@ class TicketService:
             user_id = int(raw)
         except (TypeError, ValueError):
             return None
-        return get_user_model().objects.filter(pk=user_id).first()
+        # A ticket issued just before the account was deactivated must not open a connection.
+        return get_user_model().objects.filter(pk=user_id, is_active=True).first()
 
 
 ws_ticket_service = TicketService(
