@@ -123,7 +123,7 @@
                             chat-icon-size="32"
                             message-timeout="180000"
                             [apiBaseUrl]="apiBaseUrl"
-                            [accessToken]="accessToken"
+                            [accessToken]="accessToken()"
                             [canReadFlows]="canReadFlows()"
                             [syncAgentsFromApi]="false"
                             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"

@@ -43,6 +43,7 @@ export class ValidationErrorsComponent {
         emailLength: () => 'Must be at most 254 characters, with at most 64 before the @.',
         emailCharacters: () => 'Use only letters, digits and . _ - + before the @.',
         emailEdges: () => 'The part before @ must start and end with a letter or digit.',
+        httpUrl: () => 'Must be an http:// or https:// URL.',
         numericOnly: () => 'Password cannot be entirely numeric.',
         whitespace: () => 'Value cannot be blank string.',
         uniqueName: () => 'A tool with this name already exists.',

@@ -1,11 +1,6 @@
 import asyncio
 from typing import Literal
 
-from litestar import Controller, delete, get, post, status_codes
-from litestar.connection import ASGIConnection
-from litestar.exceptions import HTTPException
-from litestar.handlers.base import BaseRouteHandler
-
 from application import commands
 from application.commands import GetMetrics, RemoveRag
 from application.orchestrators.indexing import build_indexer
@@ -19,6 +14,10 @@ from common.utils import make_key
 from domain.enums import RAGStrategy
 from domain.errors import NotRunningOperationError
 from infrastructure.graphrag.availability import is_graphrag_available
+from litestar import Controller, delete, get, post, status_codes
+from litestar.connection import ASGIConnection
+from litestar.exceptions import HTTPException
+from litestar.handlers.base import BaseRouteHandler
 from presentation.rest import schemas
 
 
@@ -136,9 +135,7 @@ class RagController(Controller):
             raise NotRunningOperationError(operation=operation, rag_id=rag_id)
 
     @delete(path="{rag_id:int}/", summary="Delete a RAG and its result storage.")
-    async def remove(
-        self, strategy: RAGStrategy, rag_id: int, uow: AbstractUnitOfWork
-    ) -> None:
+    async def remove(self, strategy: RAGStrategy, rag_id: int, uow: AbstractUnitOfWork) -> None:
         command = RemoveRag(rag_id=rag_id)
         orchestrator = build_remover(strategy, uow)
         await orchestrator.execute(command)

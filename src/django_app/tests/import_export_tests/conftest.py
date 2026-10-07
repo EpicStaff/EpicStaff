@@ -205,7 +205,7 @@ def exportable_agent_definition(rich_seeded_db, default_org):
         organization=default_org,
         name="agent_def_1",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         llm_config=rich_seeded_db["llm_config"],
     )
 
