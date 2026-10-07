@@ -19,7 +19,7 @@ class Session(models.Model):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, null=True)
     parent_session = models.ForeignKey(
         "self",
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         default=None,
         related_name="subgraph_sessions",
@@ -153,8 +153,10 @@ class SessionTrigger(models.Model):
         related_name="+",
     )
 
-    # non-relational bits: telegram chat_id, webhook path, ngrok config name
+    # non-relational bits: telegram chat_id, webhook path, ngrok config name, test-run flag
     extra = models.JSONField(default=dict)
+
+    TEST_RUN_EXTRA_KEY = "test_run"
 
     _TRIGGER_ID_ATTNAME = {
         TriggerType.SCHEDULE: "schedule_trigger_node_id",
@@ -170,6 +172,11 @@ class SessionTrigger(models.Model):
         if attname is None:
             return None
         return getattr(self, attname, None)
+
+    @property
+    def is_test_run(self) -> bool:
+        """True when a designer started the session from the editor with a hand-written payload."""
+        return self.extra.get(self.TEST_RUN_EXTRA_KEY) is True
 
 
 class SessionPrincipal(models.Model):

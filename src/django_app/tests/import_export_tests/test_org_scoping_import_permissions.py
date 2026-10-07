@@ -66,10 +66,13 @@ class TestImportPermissionEnforcement:
         export_data = _graph_export_forcing_config_create(
             export_service, exportable_graph_with_agent_node
         )
+        # The agent definition points at the newly created LLM config, so its
+        # reuse lookup misses too and it is created as well (AGENTS).
         ep = _ep(
             {
                 ResourceType.FLOWS: int(Permission.CREATE | Permission.READ),
                 ResourceType.LLM_CONFIGS: int(Permission.CREATE | Permission.READ),
+                ResourceType.AGENTS: int(Permission.CREATE | Permission.READ),
             }
         )
 

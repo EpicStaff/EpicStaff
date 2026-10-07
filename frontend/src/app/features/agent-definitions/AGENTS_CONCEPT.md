@@ -1,4 +1,4 @@
-# Agents & Surfaces — Concept & Behavior (EST-2946)
+# Agents & Surfaces — Concept & Behavior
 
 Consolidated reference for the **Agents** feature on EpicStaff. This gathers the
 decisions made across several iterations of the concept.

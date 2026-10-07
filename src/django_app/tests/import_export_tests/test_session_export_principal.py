@@ -34,7 +34,9 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     don't need a fully built graph or a live Redis connection."""
     sm = session_manager or SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, token_budget=None: _FakeSessionData()
+        sm,
+        "create_session_data",
+        lambda session, token_budget=None, run_type="": _FakeSessionData(),
     )
     monkeypatch.setattr(
         sm.redis_service,
@@ -161,7 +163,7 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
 def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
     default_org, regular_user, monkeypatch
 ):
-    # EST-4126 regression: subflow (subgraph) child sessions had no
+    # Regression: subflow (subgraph) child sessions had no
     # SessionPrincipal at all, so "principal" exported as null and the CSV
     # export crashed with AttributeError on `None.get(...)`.
     root_graph = Graph.objects.create(name="export-subflow-root", org=default_org)
