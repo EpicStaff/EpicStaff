@@ -44,6 +44,7 @@ class RealtimeAgentChatData(BaseModel):
     backstory: str
     org_id: int
     user_id: int | None = None
+    rt_agent_definition_id: int | None = None
     knowledge_collection_id: int | None
     rag_type_id: str | None = None
     rag_search_config: RagSearchConfig | None = None

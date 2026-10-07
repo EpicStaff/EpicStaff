@@ -101,6 +101,21 @@ export class CollectionDetailsComponent {
 
             if (collection) {
                 this.fullCollection.set(collection);
+                const isNewSelection = this.lastInitializedCollectionId !== collection.collection_id;
+                // Re-sync whenever this field isn't being actively typed into, not just on
+                // first selection — the name can also change via the create-collection
+                // wizard's own (separate) name field writing into the same cache entry,
+                // and without this the write-once guard used to freeze this panel on the
+                // placeholder default forever.
+                if (isNewSelection || !this.collectionName.dirty) {
+                    this.collectionName.setValue(collection.collection_name, { emitEvent: false });
+                    this.collectionName.markAsPristine();
+                }
+                if (isNewSelection) {
+                    this.lastInitializedCollectionId = collection.collection_id;
+                }
+            } else {
+                this.lastInitializedCollectionId = null;
             }
         });
 
@@ -277,7 +292,7 @@ export class CollectionDetailsComponent {
     private downloadDocuments(ids: number[], fileName: string): void {
         this.documentsApiService
             .downloadDocuments(ids)
-            // do not destroy the subscription to keep downloading on page switching (EST-3085)
+            // do not destroy the subscription to keep downloading on page switching
             .subscribe((blob) => this.triggerDownload(blob, fileName));
     }
 

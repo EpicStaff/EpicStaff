@@ -25,6 +25,7 @@ from tables.models.webhook_models import (
     WebhookTrigger,
     WebhookTriggerAuthKind,
 )
+from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_resolver
@@ -104,7 +105,9 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
 
 
 class OpenAIRealtimeConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin, 
+    OpenAIRealtimeModelNameValidationMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+
 ):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 

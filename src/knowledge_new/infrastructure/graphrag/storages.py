@@ -50,20 +50,27 @@ class S3Storage(Storage):
         self._access_key = access_key
         self._secret_key = secret_key
 
+    @asynccontextmanager
+    async def _client_manager(self):
+        """Yield a client owned by one operation and close its session afterwards.
+
+        A client per operation keeps the session's lifetime equal to the operation's,
+        so closing in `finally` never pulls the session out from under another call
+        and a failed operation cannot leak it.
+        """
         secure, endpoint = self._parse_endpoint(self._endpoint)
-        self._client: Minio = Minio(
+        client = Minio(
             endpoint=endpoint,
             secure=secure,
             access_key=self._access_key,
             secret_key=self._secret_key,
         )
-
-    @asynccontextmanager
-    async def _client_manager(self):
-        if not await self._client.bucket_exists(self._bucket):
-            await self._client.make_bucket(self._bucket)
-        yield self._client
-        await self._client.close_session()
+        try:
+            if not await client.bucket_exists(self._bucket):
+                await client.make_bucket(self._bucket)
+            yield client
+        finally:
+            await client.close_session()
 
     def _full_key(self, key: str) -> str:
         return f"{self._prefix}/{key}"

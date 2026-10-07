@@ -12,6 +12,13 @@ class McpTool(OrgScopedModel, LastEditTrackedModel, TimestampMixin, models.Model
 
     name = models.CharField(max_length=255, help_text="Unique name for mcp configuration")
 
+    # Deliberately unvalidated -- no scheme restriction, no private/loopback/link-local
+    # range check. Won't Fix: the backend cannot validate an MCP endpoint on the
+    # user's/operator's behalf; pointing this at an address is the intended shape of
+    # the feature, and what it points at is their responsibility. Covers the SSRF
+    # reading of this field (backend connects wherever the caller points it, including
+    # internal services) -- it does NOT cover trusting the remote server's own
+    # description/inputSchema once connected; that is separate, already-tracked work.
     transport = models.CharField(
         max_length=2048, help_text="URL of the remote MCP server (SSE). Required."
     )

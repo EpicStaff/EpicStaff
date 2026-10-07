@@ -6,6 +6,7 @@ from rbac.scoping.fields import (
 from rest_framework import serializers
 from tables.models.graph_models import (
     ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     Condition,
@@ -187,10 +188,16 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     # prompt (pk) is back-compat. Both resolve node-locally.
     prompt = serializers.IntegerField(source="prompt_id", required=False, allow_null=True)
     prompt_key = serializers.CharField(required=False, allow_null=True, write_only=True)
+    # section links a same-payload ClassificationConditionGroupSection by its
+    # client-generated id; resolved node-locally in the sync service, same
+    # reason prompt_key can't be a PrimaryKeyRelatedField (see docstring on
+    # _resolve_group_section()).
+    section = serializers.CharField(required=False, allow_null=True, write_only=True)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["prompt_key"] = instance.prompt.prompt_key if instance.prompt_id else None
+        data["section"] = str(instance.section_id) if instance.section_id else None
         return data
 
     def validate_group_name(self, value):
@@ -222,6 +229,12 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
         ]
 
 
+class ClassificationConditionGroupSectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClassificationConditionGroupSection
+        fields = ["id", "name", "metadata"]
+
+
 class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
@@ -244,6 +257,7 @@ class ClassificationDecisionTableNodeSerializer(
     AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
 ):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
+    sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)
     prompt_configs = ClassificationDecisionTablePromptSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     pre_python_code = PythonCodeSerializer(required=False, allow_null=True)
@@ -264,6 +278,8 @@ class ClassificationDecisionTableNodeSerializer(
             "post_python_code",
             "post_input_map",
             "post_output_variable_path",
+            "pre_use_storage",
+            "post_use_storage",
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",
@@ -272,6 +288,7 @@ class ClassificationDecisionTableNodeSerializer(
             "updated_at",
             "metadata",
             "condition_groups",
+            "sections",
             "prompt_configs",
         ]
 
@@ -284,6 +301,7 @@ class ClassificationDecisionTableNodeSerializer(
 
     def create(self, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
+        sections_data = validated_data.pop("sections", None)
         prompt_configs_data = validated_data.pop("prompt_configs", None)
         pre_python_code_data = validated_data.pop("pre_python_code", None)
         post_python_code_data = validated_data.pop("post_python_code", None)
@@ -306,6 +324,7 @@ class ClassificationDecisionTableNodeSerializer(
             node,
             prompt_configs_data=prompt_configs_data,
             condition_groups_data=condition_groups_data,
+            sections_data=sections_data,
         )
 
         return node
@@ -313,6 +332,7 @@ class ClassificationDecisionTableNodeSerializer(
     @transaction.atomic
     def update(self, instance, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
+        sections_data = validated_data.pop("sections", None)
         prompt_configs_data = validated_data.pop("prompt_configs", None)
         detached_python_code_ids: set[int] = set()
 
@@ -364,6 +384,7 @@ class ClassificationDecisionTableNodeSerializer(
             instance,
             prompt_configs_data=prompt_configs_data,
             condition_groups_data=condition_groups_data,
+            sections_data=sections_data,
         )
 
         return instance

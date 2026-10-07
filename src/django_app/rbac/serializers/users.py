@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from tables.models.user import User
+from tables.models.user import DISPLAY_NAME_MAX_LENGTH, User
 
 from rbac.profile.avatar import build_avatar_url
 
@@ -61,5 +61,11 @@ class UserCreateRequestSerializer(serializers.Serializer):
 
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    display_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        max_length=DISPLAY_NAME_MAX_LENGTH,
+        help_text="Trimmed. Omit or send null to derive it from the email.",
+    )
     organization_id = serializers.IntegerField(required=False)
     role_id = serializers.IntegerField(required=False)

@@ -27,7 +27,7 @@ export interface BranchAgentNode {
     children: BranchTreeNode[];
 }
 
-// TODO(EST-2946): backend doc storage
+// TODO: backend doc storage
 export interface BranchAgentDocNode {
     kind: 'agent-doc';
     agentId: number;

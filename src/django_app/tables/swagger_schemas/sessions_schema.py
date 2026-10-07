@@ -7,9 +7,6 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers as drf_serializers
 
-from tables.serializers.model_serializers import (
-    SessionSerializer,
-)
 from tables.serializers.serializers import RunSessionSerializer
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
@@ -96,11 +93,18 @@ RUN_SESSION_POST = {
         ),
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="No flow exists for the provided `graph_id` or `graph_uuid`.",
+            description=(
+                "No flow exists for the provided `graph_id` or `graph_uuid`, or it belongs "
+                "to an organization the caller is not a member of."
+            ),
             examples=[
                 OpenApiExample(
                     "Graph not found",
-                    value={"message": "Provided graph does not exist"},
+                    value={
+                        "status_code": 404,
+                        "code": "graph_not_found",
+                        "message": "Provided graph does not exist",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -314,7 +318,55 @@ SESSION_RETRIEVE_GET = {
     "summary": "Retrieve a session",
     "description": "Returns full details of a single session by its ID.",
     "responses": {
-        200: SessionSerializer,
+        200: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Session details.",
+            examples=[
+                OpenApiExample(
+                    "Session details",
+                    value={
+                        "id": 0,
+                        "status": "string",
+                        "status_updated_at": "2024-01-01T00:00:00Z",
+                        "time_to_live": 0,
+                        "finished_at": "2024-01-01T00:00:00Z",
+                        "status_data": {},
+                        "variables": {},
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "graph_schema": {
+                            "name": "string",
+                            "end_node": None,
+                            "graph_id": 0,
+                            "edge_list": [],
+                            "entrypoint": "string",
+                            "llm_node_list": [],
+                            "crew_node_list": [],
+                            "python_node_list": [],
+                            "subgraph_node_list": [],
+                            "code_agent_node_list": [],
+                            "conditional_edge_list": [],
+                            "decision_table_node_list": [],
+                            "file_extractor_node_list": [],
+                            "audio_transcription_node_list": [],
+                            "webhook_trigger_node_data_list": [],
+                            "telegram_trigger_node_data_list": [],
+                        },
+                        "entrypoint": None,
+                        "token_usage": {
+                            "total_tokens": 0,
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "successful_requests": 0,
+                            "cached_prompt_tokens": 0,
+                            "total_cost_usd": 0.0,
+                        },
+                        "graph": 0,
+                        "parent_session": None,
+                        "graph_user": None,
+                    },
+                ),
+            ],
+        ),
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -381,9 +433,10 @@ SESSION_STATUSES_GET = {
 SESSION_BULK_DELETE_POST = {
     "summary": "Bulk delete sessions",
     "description": (
-        "Deletes the given sessions within the active organization in a single atomic transaction. "
-        "`ids` echoes the requested IDs verbatim, while `deleted` counts only the sessions actually removed — "
-        "requested IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`."
+        "Deletes the requested sessions that belong to the active organization in a single atomic transaction. "
+        "`ids` echoes the requested IDs verbatim, while `deleted` counts the requested IDs that were deleted — "
+        "IDs that don't exist or belong to another organization are silently skipped, so `deleted` may be less than `len(ids)`. "
+        "Sub-sessions of a deleted session are deleted with it; they count toward `deleted` only when their own ID was requested."
     ),
     "request": inline_serializer(
         name="SessionBulkDeleteRequest",
@@ -483,17 +536,18 @@ STOP_SESSION_POST = {
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Session not found or session ID missing.",
+            description=(
+                "No session with this ID, or it belongs to an organization the caller "
+                "is not a member of."
+            ),
             examples=[
                 OpenApiExample(
-                    "Session ID missing",
-                    value="Session id is missing",
-                    response_only=True,
-                    status_codes=["404"],
-                ),
-                OpenApiExample(
                     "Session not found",
-                    value="Session not found",
+                    value={
+                        "status_code": 404,
+                        "code": "session_not_found",
+                        "message": "Session not found.",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -521,17 +575,18 @@ GET_UPDATES_GET = {
         401: UNAUTHORIZED_401_RESPONSE,
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Session not found or session ID missing.",
+            description=(
+                "No session with this ID, or it belongs to an organization the caller "
+                "is not a member of."
+            ),
             examples=[
                 OpenApiExample(
-                    "Session ID missing",
-                    value="Session id not found",
-                    response_only=True,
-                    status_codes=["404"],
-                ),
-                OpenApiExample(
                     "Session not found",
-                    value="Session not found",
+                    value={
+                        "status_code": 404,
+                        "code": "session_not_found",
+                        "message": "Session not found.",
+                    },
                     response_only=True,
                     status_codes=["404"],
                 ),

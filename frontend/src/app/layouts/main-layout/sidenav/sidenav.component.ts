@@ -74,7 +74,8 @@ export class LeftSidebarComponent implements AfterViewInit {
     public bottomNavItems: NavItem[];
     public isEpicChatEnabled: boolean;
     public apiBaseUrl: string;
-    public accessToken: string;
+    /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
+    protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
     public showLogoTooltip = false;
     public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
@@ -185,7 +186,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;
-        this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
                 id: 'agents',

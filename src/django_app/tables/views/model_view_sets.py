@@ -706,6 +706,7 @@ class GraphViewSet(
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
         "delete_by_uuid": Permission.DELETE,
+        "subflow_usage": Permission.READ,
     }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
@@ -827,7 +828,9 @@ class GraphViewSet(
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
     def bulk_export(self, request):
@@ -844,7 +847,7 @@ class GraphViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids)
+        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
@@ -861,6 +864,7 @@ class GraphViewSet(
 
         result = self._partial_export_service.export(
             node_refs,
+            org_id=graph.org_id,
             edge_ids=serializer.validated_data.get("edge_list", []),
         )
 
@@ -974,6 +978,17 @@ class GraphViewSet(
             GraphSerializer(refreshed, context=self.get_serializer_context()).data,
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=["get"], url_path="subflow-usage")
+    def subflow_usage(self, request, pk=None):
+        """Return the IDs of flows that reference this flow as a subgraph node."""
+        graph = self.get_object()
+        parent_flow_ids = list(
+            SubGraphNode.objects.filter(subgraph=graph, graph__org_id=self.get_active_org_id())
+            .values_list("graph_id", flat=True)
+            .distinct()
+        )
+        return Response({"parent_flow_ids": parent_flow_ids})
 
     @extend_schema(**GRAPH_DELETE_BY_UUID_DELETE)
     @action(
@@ -1352,12 +1367,6 @@ class TaskNodeViewSet(
     )
     serializer_class = TaskNodeSerializer
 
-    def perform_update(self, serializer):
-        # The serializer allows writing `graph`; without this check a PATCH
-        # could move the node into another org's graph.
-        self._assert_parent_in_active_org(serializer)
-        super().perform_update(serializer)
-
     @extend_schema(
         responses={
             200: OpenApiResponse(
@@ -1401,12 +1410,6 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = AgentNodeSerializer
-
-    def perform_update(self, serializer):
-        # The serializer allows writing `graph`; without this check a PATCH
-        # could move the node into another org's graph.
-        self._assert_parent_in_active_org(serializer)
-        super().perform_update(serializer)
 
     @extend_schema(
         responses={
@@ -2399,17 +2402,6 @@ class WebhookTriggerNodeViewSet(
         if self.action in ["list", "retrieve"]:
             return WebhookTriggerNodeReadSerializer
         return WebhookTriggerNodeSerializer
-
-    def create(self, request, *args, **kwargs):
-        logger.info(f"[WebhookTriggerNode] CREATE payload: {request.data}")
-        try:
-            return super().create(request, *args, **kwargs)
-        except DRFValidationError as e:
-            logger.error(f"[WebhookTriggerNode] validation error: {e.detail}")
-            raise
-        except Exception as e:
-            logger.error(f"[WebhookTriggerNode] unexpected error: {e}")
-            raise
 
 
 @extend_schema_view(

@@ -90,6 +90,9 @@ def _create_missing_folders(
     return created_rows
 
 
+_BULK_BATCH = 1000
+
+
 class StorageFileSync:
     """
     Keeps the StorageFile DB table in sync with storage mutations.
@@ -144,6 +147,80 @@ class StorageFileSync:
 
         created_folders = _create_missing_folders(org, _ancestor_paths(path), author)
         record_last_edits([file_row, *created_folders], user)
+
+        for ancestor_path in _ancestor_paths(path):
+            StorageFile.objects.get_or_create(
+                org=org,
+                path=ancestor_path,
+                defaults={
+                    "name": _name_of(ancestor_path),
+                    "item_type": "folder",
+                    "parent_path": _parent_of(ancestor_path),
+                    "size": None,
+                    "s3_modified": None,
+                },
+            )
+
+    @staticmethod
+    def on_bulk_upload(
+        org_id: int, files: list[tuple[str, int]], folders=(), *, user: object | None = None
+    ) -> None:
+        """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs."""
+        folder_paths = {folder.rstrip("/") + "/" for folder in folders}
+        for path in [*(path for path, _ in files), *folder_paths]:
+            folder_paths.update(_ancestor_paths(path))
+
+        # `user` authors the rows created here and last edits the files and the new folders;
+        # folders that already existed are left as they are.
+        author = resolve_author(user)
+        existing_folder_paths = (
+            set(
+                StorageFile.objects.filter(org_id=org_id, path__in=folder_paths).values_list(
+                    "path", flat=True
+                )
+            )
+            if user is not None
+            else set()
+        )
+
+        StorageFile.objects.bulk_create(
+            [
+                StorageFile(
+                    org_id=org_id,
+                    path=path,
+                    name=_name_of(path),
+                    item_type="folder",
+                    parent_path=_parent_of(path),
+                    created_by=author,
+                )
+                for path in sorted(folder_paths)
+            ],
+            ignore_conflicts=True,
+            batch_size=_BULK_BATCH,
+        )
+        StorageFile.objects.bulk_create(
+            [
+                StorageFile(
+                    org_id=org_id,
+                    path=path,
+                    name=_name_of(path),
+                    item_type="file",
+                    parent_path=_parent_of(path),
+                    size=size,
+                    created_by=author,
+                )
+                for path, size in files
+            ],
+            update_conflicts=True,
+            unique_fields=["org", "path"],
+            update_fields=["name", "item_type", "parent_path", "size", "updated_at"],
+            batch_size=_BULK_BATCH,
+        )
+        if user is not None:
+            edited_paths = [*(path for path, _ in files), *(folder_paths - existing_folder_paths)]
+            record_last_edits(
+                StorageFile.objects.filter(org_id=org_id, path__in=edited_paths), user
+            )
 
     @staticmethod
     def on_mkdir(org_id: int, path: str, *, user: object | None = None) -> None:

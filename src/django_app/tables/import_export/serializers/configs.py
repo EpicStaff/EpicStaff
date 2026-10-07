@@ -15,6 +15,7 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -95,7 +96,9 @@ class RealtimeTranscriptionConfigImportSerializer(BaseConfigImportSerializer):
         model = RealtimeTranscriptionConfig
 
 
-class OpenAIRealtimeConfigImportSerializer(serializers.ModelSerializer):
+class OpenAIRealtimeConfigImportSerializer(
+    OpenAIRealtimeModelNameValidationMixin, serializers.ModelSerializer
+):
     """Secrets never travel through import/export -- same convention as
     BaseConfigImportSerializer's `exclude = [..., "api_key_secret"]` for
     LLMConfig/EmbeddingConfig. The imported config lands with no key; the

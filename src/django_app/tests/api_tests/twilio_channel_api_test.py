@@ -177,7 +177,7 @@ class TestTwilioChannelWebhookTrigger:
     def test_create_twilio_channel_rejected_when_trigger_already_kind_webhook(
         self, auth_client, db, default_org
     ):
-        """EST-3939: a trigger already claimed by `kind=webhook` auth cannot
+        """A trigger already claimed by `kind=webhook` auth cannot
         be repointed to by a TwilioChannel -- claiming it would silently
         collide with the Twilio-kind auth sync."""
         from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
@@ -427,6 +427,59 @@ class TestTwilioChannelCrossOrgCreateGuard:
             == "auth_test"
         )
         assert tc_b.phone_number == "+10000000000"
+
+
+@pytest.mark.django_db
+class TestTwilioChannelUpdateCannotMoveToOtherOrgChannel:
+    """`channel` is the model's primary key and its serializer field is not
+    org-scoped. An update that rewrites it makes Django INSERT a new row, so
+    without a parent-org check on update a caller would create a Twilio config
+    under another org's realtime channel (which then blocks that org's own)."""
+
+    @pytest.mark.parametrize("method", ["put", "patch"])
+    def test_update_rejects_moving_config_to_other_org_channel(
+        self, method, auth_client, db, default_org
+    ):
+        org_b = Organization.objects.create(name="Org B")
+        victim_channel = _make_realtime_channel(db, org_b)
+        own_channel = _make_realtime_channel(db, default_org)
+        own_twilio = _make_twilio_channel(own_channel, default_org)
+        secret = _make_secret(default_org, "attacker-token")
+
+        response = getattr(auth_client, method)(
+            reverse("twiliochannel-detail", args=[own_channel.pk]),
+            {
+                "channel": victim_channel.pk,
+                "account_sid": "AC_attacker",
+                "auth_token_secret_id": secret.id,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 404, response.content
+        assert not TwilioChannel.objects.filter(channel=victim_channel).exists()
+        own_twilio.refresh_from_db()
+        assert own_twilio.account_sid == "AC_test"
+
+    def test_update_still_works_within_the_active_org(
+        self, auth_client, db, default_org
+    ):
+        own_channel = _make_realtime_channel(db, default_org)
+        _make_twilio_channel(own_channel, default_org)
+        secret = _make_secret(default_org, "new-token")
+
+        response = auth_client.put(
+            reverse("twiliochannel-detail", args=[own_channel.pk]),
+            {
+                "channel": own_channel.pk,
+                "account_sid": "AC_renamed",
+                "auth_token_secret_id": secret.id,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        assert TwilioChannel.objects.get(channel=own_channel).account_sid == "AC_renamed"
 
 
 @pytest.mark.django_db

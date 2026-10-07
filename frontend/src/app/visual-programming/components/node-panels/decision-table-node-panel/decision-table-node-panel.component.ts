@@ -2,12 +2,11 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+    ButtonComponent,
     ConfirmationDialogService,
     CustomInputComponent,
-    HelpTooltipComponent,
     SelectComponent,
     SelectItem,
-    ToggleSwitchComponent,
 } from '@shared/components';
 import { NodeType } from '@shared/models';
 
@@ -29,8 +28,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         DecisionTableGridComponent,
         MatTooltipModule,
         SelectComponent,
-        HelpTooltipComponent,
-        ToggleSwitchComponent,
+        ButtonComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],

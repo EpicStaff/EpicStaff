@@ -1,6 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+from rest_framework.exceptions import NotFound
+
+import pytest
+from rest_framework.exceptions import NotFound
+
 from django.contrib.auth import get_user_model
 
 from rbac.identity.api_keys.principals import SystemServicePrincipal
@@ -18,6 +24,9 @@ class _Base:
 
     def get_queryset(self):
         return self._base_qs
+
+    def perform_update(self, serializer):
+        serializer.save()
 
 
 class _TopView(OrgScopedViewSetMixin, _Base):
@@ -71,3 +80,32 @@ def test_active_org_id_is_cached_per_request():
     view.get_active_org_id()
     view.get_active_org_id()
     assert view._org_context.resolve.call_count == 1
+
+
+def _serializer_with_parent_in_org(org_id):
+    serializer = MagicMock()
+    serializer.validated_data = {"graph": SimpleNamespace(org_id=org_id)}
+    return serializer
+
+
+def test_child_perform_update_saves_when_parent_is_in_active_org():
+    view = _make(_ChildView(MagicMock()), org_id=7)
+    serializer = _serializer_with_parent_in_org(7)
+    view.perform_update(serializer)
+    serializer.save.assert_called_once_with()
+
+
+def test_child_perform_update_rejects_parent_in_other_org():
+    view = _make(_ChildView(MagicMock()), org_id=7)
+    serializer = _serializer_with_parent_in_org(8)
+    with pytest.raises(NotFound):
+        view.perform_update(serializer)
+    serializer.save.assert_not_called()
+
+
+def test_child_perform_update_without_parent_in_payload_saves():
+    view = _make(_ChildView(MagicMock()), org_id=7)
+    serializer = MagicMock()
+    serializer.validated_data = {}
+    view.perform_update(serializer)
+    serializer.save.assert_called_once_with()

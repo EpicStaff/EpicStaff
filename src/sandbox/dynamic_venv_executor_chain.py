@@ -12,11 +12,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import egress_firewall
 import settings
 from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
+from savefiles_ownership import ensure_savefiles_writable
 from secret_scrubber import scrub
 from services.storage_credential_manager import StorageCredentialManager
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
@@ -340,6 +342,20 @@ class InstallLibrariesHandler(AbstractHandler):
                     )
 
             # Install libraries
+            #
+            # Deliberately NOT passing _privilege_drop_kwargs() here, unlike the
+            # code-execution subprocess below -- pip for a caller-supplied specifier
+            # (which can run setup.py/PEP 517 build code at install time) runs as this
+            # container's own user, not sandboxuser. Accepted risk (Igor Polishchuk /
+            # Volodymyr Panchyshyn, 2026-09-07/08): the install subprocess gets the same
+            # curated, minimal env as user code (build_base_env -- no os.environ
+            # inheritance, no credentials), the container has cap_drop: ALL and
+            # no-new-privileges, and no Docker socket is mounted, so install-time root
+            # has no path off this container and no secret to reach. This is a real,
+            # accepted asymmetry with the code-execution path below, not an oversight
+            # left uncommented -- don't "fix" it by adding drop_kwargs without checking
+            # whether pip still needs root for its own reasons (writing into root-owned
+            # venv directories) first.
             for library in context["libraries"]:
                 logger.info(f"Installing {library}...")
                 process = await asyncio.create_subprocess_exec(
@@ -615,6 +631,23 @@ except Exception:
                 returncode=1,
             )
 
+        if settings.BLOCK_PRIVATE_NETWORK and not egress_firewall.is_active():
+            logger.error(
+                "Sandbox private-network isolation unavailable (egress firewall not "
+                "installed); refusing to execute {}.",
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=(
+                    "Sandbox private-network isolation unavailable: the egress firewall could "
+                    "not be installed at startup; refusing to execute. "
+                    f"Set {settings.BLOCK_PRIVATE_NETWORK_ENV_VAR}=false to run without it."
+                ),
+                stdout="",
+                returncode=1,
+            )
+
         use_launcher = isolation_abi >= 1 or network_decision.policy is NetworkPolicy.BLOCK_ALL
         if use_launcher:
             jail = None
@@ -825,6 +858,7 @@ class DynamicVenvExecutorChain:
         os.makedirs(home_path, exist_ok=True)
         tmp_path = output_path / "tmp"
         os.makedirs(tmp_path, exist_ok=True)
+        work_dir = os.environ.get("CONTAINER_SAVEFILES_PATH", ".")
 
         if _can_drop_privileges():
             """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and
@@ -845,6 +879,10 @@ class DynamicVenvExecutorChain:
                     stdout="",
                     returncode=1,
                 )
+            # TEMPORARY: remove with the savefiles feature (see savefiles_ownership.py).
+            # Unlike the execution dirs above, a failure here only warns: code that
+            # does not write to savefiles still runs.
+            ensure_savefiles_writable(work_dir, SANDBOX_UID, SANDBOX_GID)
 
         context = {
             "base_venv_path": self.base_venv_path,
@@ -858,7 +896,7 @@ class DynamicVenvExecutorChain:
             "global_kwargs": global_kwargs,
             "home_path": str(home_path),
             "tmp_path": str(tmp_path),
-            "work_dir": os.environ.get("CONTAINER_SAVEFILES_PATH", "."),
+            "work_dir": work_dir,
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,

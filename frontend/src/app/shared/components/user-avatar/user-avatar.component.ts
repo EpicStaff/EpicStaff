@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import { getUserInitials } from './user-initials.util';
 
 /**
  * Round user avatar: the avatar image when there is one, otherwise the initials of `name`,
@@ -63,5 +62,17 @@ export class UserAvatarComponent {
     readonly name = input.required<string | null>();
     readonly avatarUrl = input<string | null>(null);
 
-    protected readonly initials = computed(() => getUserInitials(this.name()));
+    // Letters first ("j0hn" -> "JH"); no letters falls back to raw characters ("007" -> "00").
+    readonly initials = computed(() => {
+        const name = (this.name() ?? '').trim();
+        const visibleName = (name.includes('@') && name.slice(0, name.lastIndexOf('@'))) || name;
+        const letterWords = visibleName.split(/\P{L}+/u).filter(Boolean);
+        if (letterWords.length >= 2) {
+            return (letterWords[0][0] + letterWords[1][0]).toUpperCase();
+        }
+        if (letterWords.length === 1) {
+            return letterWords[0].substring(0, 2).toUpperCase();
+        }
+        return visibleName.replace(/\s/g, '').substring(0, 2).toUpperCase();
+    });
 }

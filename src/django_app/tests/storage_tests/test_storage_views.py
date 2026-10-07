@@ -1,15 +1,15 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 
+from tables.exceptions import RangeNotSatisfiable
 from rbac.models import Organization
 from tables.models import Graph, GraphStorageFile, StorageFile
 from tables.services.storage_service.dataclasses import (
+    FileDownload,
     FileInfo,
     FileListItem,
-    FileUploadResult,
     FolderInfo,
     TreeNode,
 )
@@ -73,13 +73,36 @@ class TestInfo:
 
 class TestDownload:
     def test_download_returns_octet_stream(self, auth_client, mock_manager):
-        mock_manager.download.return_value = b"file content"
+        mock_manager.download.return_value = FileDownload(b"file content")
 
         resp = auth_client.get("/api/storage/download/", {"path": "f.txt"})
 
         assert resp.status_code == status.HTTP_200_OK
         assert resp["Content-Type"] == "application/octet-stream"
+        assert resp["Accept-Ranges"] == "bytes"
         assert resp.content == b"file content"
+
+    def test_download_range_returns_partial_content(self, auth_client, mock_manager):
+        mock_manager.download.return_value = FileDownload(b"file", "bytes 0-3/12")
+
+        resp = auth_client.get(
+            "/api/storage/download/", {"path": "f.txt"}, HTTP_RANGE="bytes=0-3"
+        )
+
+        assert resp.status_code == status.HTTP_206_PARTIAL_CONTENT
+        assert resp["Content-Range"] == "bytes 0-3/12"
+        assert resp.content == b"file"
+        assert mock_manager.download.call_args.args[2] == "bytes=0-3"
+
+    def test_download_range_past_end_returns_416(self, auth_client, mock_manager):
+        mock_manager.download.side_effect = RangeNotSatisfiable(12)
+
+        resp = auth_client.get(
+            "/api/storage/download/", {"path": "f.txt"}, HTTP_RANGE="bytes=99-"
+        )
+
+        assert resp.status_code == status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE
+        assert resp["Content-Range"] == "bytes */12"
 
     def test_download_returns_error_for_missing_file(self, auth_client, mock_manager):
         mock_manager.download.side_effect = FileNotFoundError("gone")
@@ -88,32 +111,6 @@ class TestDownload:
 
         assert resp.status_code == status.HTTP_404_NOT_FOUND
 
-
-class TestUpload:
-    def test_upload_returns_201_with_results(self, auth_client, mock_manager):
-        mock_manager.upload_file.return_value = FileUploadResult(
-            type="file", path="notes.txt", size=5
-        )
-        uploaded_file = SimpleUploadedFile(
-            "notes.txt", b"hello", content_type="text/plain"
-        )
-
-        resp = auth_client.post("/api/storage/upload/", {"files": uploaded_file})
-
-        assert resp.status_code == status.HTTP_201_CREATED, resp.data
-        assert len(resp.data["uploaded"]) == 1
-
-    def test_upload_converts_value_error_to_validation_error(
-        self, auth_client, mock_manager
-    ):
-        mock_manager.upload_file.side_effect = ValueError("password protected")
-        uploaded_file = SimpleUploadedFile(
-            "bad.zip", b"data", content_type="application/zip"
-        )
-
-        resp = auth_client.post("/api/storage/upload/", {"files": uploaded_file})
-
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 class TestDownloadZip:

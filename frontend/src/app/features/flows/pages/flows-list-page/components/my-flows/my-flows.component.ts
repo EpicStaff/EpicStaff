@@ -273,7 +273,8 @@ export class MyFlowsComponent implements AfterViewChecked {
 
     private openCopyDialog(flow: GetGraphLightRequest): void {
         const dialogRef = this.dialog.open<string>(FlowRenameDialogComponent, {
-            data: { flowName: `${flow.name} Copy`, title: 'Copy Flow' },
+            // The backend appends " #N" when the name is taken, so the source name is the default.
+            data: { flowName: flow.name, title: 'Copy Flow' },
             providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 

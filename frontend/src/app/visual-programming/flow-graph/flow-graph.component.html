@@ -120,7 +120,6 @@
             @for (node of flowService.nodes(); track node.id) {
                 <app-flow-base-node
                     [node]="node"
-                    [showVariables]="flowSettings.showInputsOutputs()"
                     [multiSelectActive]="multiSelectActive()"
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
@@ -133,27 +132,22 @@
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
                     (portMouseenter)="hoveredNodeId.set(node.id)"
-                    (portMouseleave)="hoveredNodeId.set(null)"
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
                     (deleteClicked)="onDeleteNode($event)"
+                    (unpackClicked)="onUnpackSubflow(node)"
                 >
                 </app-flow-base-node>
             }
 
             @for (
                 connection of sortedConnections();
-                track connection.id +
-                    '-' +
-                    (connectionRenderVersions()[connection.id] ?? 0) +
-                    '-' +
-                    (backwardConnectionIds().has(connection.id) ? 'b' : 'f')
+                track connection.id + '-' + (connectionRenderVersions()[connection.id] ?? 0)
             ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
-                    [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
-                    [fOffset]="connection.userAdjustedWaypoints ? 0 : 30"
+                    fType="orthogonal"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
@@ -258,6 +252,23 @@
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
 
+    <div
+        #ioOverlayLayer
+        class="node-overlays-layer"
+    >
+        @for (node of flowService.nodes(); track node.id) {
+            <app-flow-node-variables-overlay
+                [node]="node"
+                [showVariables]="flowSettings.showInputsOutputs()"
+                [attr.data-overlay-node-id]="node.id"
+                [style.width.px]="node.size.width"
+                [style.height.px]="node.size.height"
+                [style.z-index]="node.id === hoveredNodeId() ? 1 : 0"
+                [class.is-active]="node.id === hoveredNodeId()"
+            ></app-flow-node-variables-overlay>
+        }
+    </div>
+
     <div class="canvas-toolbar-row">
         <div class="top-left-actions">
             <div class="top-left-actions__column">
@@ -301,6 +312,16 @@
 
         <div class="top-right-controls">
             <div class="top-right-actions">
+                @if (selectedNodeCount() > 0 && !isPreview) {
+                    <button
+                        class="arrange-btn extract-subflow-btn"
+                        matTooltip="Extract to Subflow"
+                        matTooltipPosition="below"
+                        (click)="onExtractToSubflow()"
+                    >
+                        <i class="ti ti-package"></i>
+                    </button>
+                }
                 @if (!isPreview) {
                     <app-flow-export-import-button
                         [selectedCount]="selectedNodeCount()"

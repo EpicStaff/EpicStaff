@@ -43,6 +43,16 @@ class ToolUsageDetailSerializer(serializers.Serializer):
 class RunSessionSerializer(serializers.Serializer):
     graph_id = serializers.IntegerField(required=False)
     graph_uuid = serializers.UUIDField(required=False)
+    # Deliberately unvalidated passthrough -- whatever the caller nests in here
+    # (e.g. a client-supplied context.chat_history, including fabricated
+    # assistant turns) rides through untouched. Closed as Won't Fix: today only
+    # the EpicChat widget's chatMessage key is actually read downstream, so a
+    # visitor editing their own browser storage only rewrites their own
+    # conversation context. That is a fact about today's flow configuration,
+    # not a guarantee this field enforces -- nothing here rejects chat_history,
+    # it is simply unused. Re-read this decision before ever adding a flow or
+    # tool that reads chat_history (or any other key under this blob) as trusted
+    # prior-turn history, authorization, or a stored record.
     variables = serializers.JSONField(required=False)
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict

@@ -1,58 +1,43 @@
 import io
 import mimetypes
-import os
-import tarfile
+import re
 import zipfile
 from collections.abc import Iterator
 
-from django.db.models import Case, F, IntegerField, QuerySet, Value, When
+from django.db.models import Case, F, IntegerField, Q, QuerySet, Sum, Value, When
 from django.db.models.functions import Lower
+from django.utils.dateparse import parse_datetime
 from rbac.authorship import represent_authorship_time
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
-    ArchiveUploadResult,
+    FileDownload,
     FileInfo,
     FileListItem,
-    FileUploadResult,
     FolderInfo,
     TreeNode,
-    UploadFileResult,
-    UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.path_utils import sanitize_storage_path
-
-_DOCUMENT_EXTENSIONS = frozenset(
-    {
-        # Microsoft Office (OOXML)
-        ".xlsx",
-        ".xlsm",
-        ".xltx",
-        ".docx",
-        ".docm",
-        ".dotx",
-        ".pptx",
-        ".pptm",
-        ".ppsx",
-        ".potx",
-        # OpenDocument
-        ".ods",
-        ".odt",
-        ".odp",
-        ".odg",
-        ".odf",
-        ".ots",
-        ".ott",
-        ".otp",
-        # Other ZIP-based formats that should not be extracted
-        ".epub",
-        ".apk",
-        ".jar",
-        ".war",
-        ".xpi",
-    }
+from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.quota import (
+    ensure_fits_quota,
+    record_files_within_quota,
 )
+
+# Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
+_BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
+
+
+def _parse_byte_range(header: str | None) -> tuple[int, int | None] | None:
+    """Parse a single "bytes=first-[last]" Range into (first, last); None = send the whole file."""
+    match = _BYTE_RANGE.fullmatch(header.strip()) if header else None
+    if not match:
+        return None
+    first = int(match[1])
+    last = int(match[2]) if match[2] else None
+    if last is not None and last < first:
+        return None
+    return first, last
 
 
 def _with_last_edit(rows: QuerySet[StorageFile]) -> QuerySet[StorageFile]:
@@ -111,19 +96,15 @@ class StorageManager:
     @staticmethod
     def organization_prefix(org_id: int) -> str:
         """Return the storage key prefix under which every object of an organization lives."""
-        return f"org_{org_id}/"
+        return storage_key(org_id, "")
 
     def _build_storage_key(self, org_id: int, relative_path: str) -> str:
         """Return the full storage key for a relative path inside an org."""
-        safe_path = sanitize_storage_path(relative_path, allow_empty=True, allow_leading_slash=True)
-        return f"{self.organization_prefix(org_id)}{safe_path}"
+        return storage_key(org_id, relative_path)
 
-    def _strip_org_prefix(self, org_id: int, storage_key: str) -> str:
+    def _strip_org_prefix(self, org_id: int, full_key: str) -> str:
         """Convert a full storage key back to a relative path by removing the org prefix."""
-        prefix = self.organization_prefix(org_id)
-        if storage_key.startswith(prefix):
-            return storage_key[len(prefix) :]
-        return storage_key
+        return full_key.removeprefix(self.organization_prefix(org_id))
 
     # --- Single-org operations ---
 
@@ -179,22 +160,20 @@ class StorageManager:
 
         return items
 
-    def upload(
-        self, org_id: int, path: str, file_object, *, user: object | None = None
-    ) -> UploadResult:
-        result = self._backend.upload(self._build_storage_key(org_id, path), file_object)
-        relative_path = self._strip_org_prefix(org_id, result.path)
-        StorageFileSync.on_upload(org_id, relative_path, size=result.size, user=user)
-        return UploadResult(path=relative_path, size=result.size)
-
-    def download(self, org_id: int, path: str) -> bytes:
+    def download(self, org_id: int, path: str, range_header: str | None = None) -> FileDownload:
         clean_path = path.rstrip("/")
         file_exists = StorageFile.objects.filter(
             org_id=org_id, path=clean_path, item_type="file"
         ).exists()
         if not file_exists:
             raise FileNotFoundError(f"File does not exist: {path}")
-        return self._backend.download(self._build_storage_key(org_id, path))
+        key = self._build_storage_key(org_id, path)
+
+        # Offsets come from the object, not StorageFile.size: agent writes can skip the row.
+        byte_range = _parse_byte_range(range_header)
+        if byte_range is None:
+            return FileDownload(self._backend.download(key))
+        return FileDownload(*self._backend.download_range(key, *byte_range))
 
     def delete(self, org_id: int, path: str) -> None:
         self._backend.delete(self._build_storage_key(org_id, path))
@@ -250,12 +229,58 @@ class StorageManager:
         *,
         user: object | None = None,
     ) -> None:
-        actual_keys = self._backend.copy(
-            self._build_storage_key(org_id, source_path),
-            self._build_storage_key(org_id, destination_path),
+        self._copy_within_quota(org_id, source_path, org_id, destination_path, user=user)
+
+    def _copy_within_quota(
+        self,
+        src_org_id: int,
+        source_path: str,
+        dst_org_id: int,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
+        """Copy source into the destination folder and record the copies within its org's quota.
+        Over quota the copies are deleted again; the org lock is never held across the S3 copy."""
+        # Early reject only: rows of files that predate size tracking count as 0 here.
+        ensure_fits_quota(dst_org_id, self._recorded_size(src_org_id, source_path))
+
+        copied = self._backend.copy(
+            self._build_storage_key(src_org_id, source_path),
+            self._build_storage_key(dst_org_id, destination_path),
         )
-        actual_paths = [self._strip_org_prefix(org_id, k) for k in actual_keys]
-        StorageFileSync.on_copy(org_id, actual_paths, user=user)
+
+        files, folders = [], []
+        for key, size in copied:
+            path = self._strip_org_prefix(dst_org_id, key)
+            if key.endswith("/"):
+                folders.append(path)
+            else:
+                files.append((path, size))
+
+        try:
+            record_files_within_quota(dst_org_id, files, folders, user=user)
+        except BaseException:
+            self._backend.discard_keys([key for key, _ in copied])
+            raise
+
+    @staticmethod
+    def _recorded_size(org_id: int, source_path: str) -> int:
+        """Sum of the source's file row sizes; a missing size counts as 0."""
+        source = sanitize_storage_path(source_path, allow_empty=True, allow_leading_slash=True)
+        rows = StorageFile.objects.filter(org_id=org_id, item_type="file").filter(
+            Q(path=source) | Q(path__startswith=source + "/")
+        )
+        return rows.aggregate(total=Sum("size"))["total"] or 0
+
+    def record_external_write(self, org_id: int, path: str) -> None:
+        """Record a file an agent or sandbox already wrote, at its stored size; no quota check."""
+        stored = self._backend.head_file(self._build_storage_key(org_id, path))
+        if stored is None:
+            raise FileNotFoundError(f"No file at {path}")
+        StorageFileSync.on_upload(
+            org_id, path, size=stored.size, s3_modified=parse_datetime(stored.modified)
+        )
 
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
@@ -347,52 +372,6 @@ class StorageManager:
                 archive.writestr(arcname, file_bytes)
         buffer.seek(0)
         yield buffer.read()
-
-    def _upload_archive(self, org_id: int, prefix: str, archive_file) -> list[str]:
-        """Extract archive into prefix. Returns relative paths (no org prefix)."""
-        full_paths = self._backend.upload_archive(
-            self._build_storage_key(org_id, prefix), archive_file, archive_file.name
-        )
-        return [self._strip_org_prefix(org_id, p) for p in full_paths]
-
-    @staticmethod
-    def _is_archive(file_object, filename: str = "") -> bool:
-        ext = os.path.splitext(filename)[1].lower()
-        if ext in _DOCUMENT_EXTENSIONS:
-            return False
-        pos = file_object.tell()
-        result = zipfile.is_zipfile(file_object)
-        if not result:
-            file_object.seek(pos)
-            try:
-                result = tarfile.is_tarfile(file_object)
-            except Exception:
-                result = False
-        file_object.seek(pos)
-        return result
-
-    def upload_file(
-        self, org_id: int, path: str, file_object, *, user: object | None = None
-    ) -> UploadFileResult:
-        """
-        Upload a file, auto-extracting archives (ZIP/TAR).
-        Returns FileUploadResult or ArchiveUploadResult.
-        """
-        is_archive = self._is_archive(file_object, filename=file_object.name)
-
-        if is_archive:
-            extracted = self._upload_archive(org_id, path, file_object)
-
-            for p in extracted:
-                StorageFileSync.on_upload(org_id, p, user=user)
-
-            return ArchiveUploadResult(type="archive", extracted=extracted)
-
-        destination = f"{path.rstrip('/')}/{file_object.name}" if path else file_object.name
-        result = self._backend.upload(self._build_storage_key(org_id, destination), file_object)
-        relative_path = self._strip_org_prefix(org_id, result.path)
-        StorageFileSync.on_upload(org_id, relative_path, size=result.size, user=user)
-        return FileUploadResult(type="file", path=relative_path, size=result.size)
 
     def list_tree(
         self,
@@ -584,16 +563,11 @@ class StorageManager:
         user: object | None = None,
     ) -> None:
         """
-        Copy a file from one org to another. Caller authorization (superadmin)
-        is enforced at the API layer. Uses a server-side S3 copy — no data
-        streams through the app.
+        Copy a file or folder from one org to another, within the destination
+        org's quota. Caller authorization (superadmin) is enforced at the API
+        layer. Uses a server-side S3 copy — no data streams through the app.
         """
-        actual_keys = self._backend.copy(
-            self._build_storage_key(src_org_id, src_path),
-            self._build_storage_key(dst_org_id, dst_path),
-        )
-        actual_dst_paths = [self._strip_org_prefix(dst_org_id, k) for k in actual_keys]
-        StorageFileSync.on_copy(dst_org_id, actual_dst_paths, user=user)
+        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path, user=user)
 
     def move_cross_org(
         self,
@@ -605,15 +579,11 @@ class StorageManager:
         user: object | None = None,
     ) -> None:
         """
-        Move a file from one org to another. Caller authorization (superadmin)
-        is enforced at the API layer. Non-atomic: if the delete step fails after
-        a successful copy, the file will exist in both orgs.
+        Move a file or folder from one org to another, within the destination
+        org's quota; over quota the source stays untouched. Caller authorization
+        (superadmin) is enforced at the API layer. Non-atomic: if the delete step
+        fails after a successful copy, the file will exist in both orgs.
         """
-        actual_key = self._backend.move(
-            self._build_storage_key(src_org_id, src_path),
-            self._build_storage_key(dst_org_id, dst_path),
-        )
-        actual_dst_path = self._strip_org_prefix(dst_org_id, actual_key)
-        StorageFileSync.on_move_cross_org(
-            src_org_id, src_path, dst_org_id, actual_dst_path, user=user
-        )
+        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path, user=user)
+        self._backend.delete(self._build_storage_key(src_org_id, src_path))
+        StorageFileSync.on_delete(src_org_id, src_path.rstrip("/"))

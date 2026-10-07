@@ -86,6 +86,9 @@ class LiteLLMClient(BaseLLMClient):
 
         # All other providers: "<provider>/<model>" — litellm understands this format
         # for Anthropic, Gemini, Mistral, Cohere, Bedrock, Together, etc.
+        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
+        if model_name.startswith(f"{provider_name}/"):
+            return model_name
         return f"{provider_name}/{model_name}"
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
@@ -111,6 +114,7 @@ class LiteLLMClient(BaseLLMClient):
             "model": self._model,
             "messages": messages,
             "stream": True,
+            "drop_params": True,
         }
 
         if self._api_key:

@@ -471,7 +471,7 @@ class TestLLMConfigStrategy:
         new_config.refresh_from_db()
         assert new_config.created_at is not None
 
-    @pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
+    @pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service
     ):

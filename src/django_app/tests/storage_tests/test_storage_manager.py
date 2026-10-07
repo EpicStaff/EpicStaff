@@ -1,17 +1,9 @@
-import tarfile
-import zipfile
-from io import BytesIO
-
 import pytest
 
 from tables.models import StorageFile
 from tables.services.storage_service.dataclasses import (
-    ArchiveUploadResult,
     FileInfo,
     FolderInfo,
-    FileUploadResult,
-    TreeNode,
-    UploadResult,
 )
 from tables.services.storage_service.manager import StorageManager
 
