@@ -1,6 +1,8 @@
 import pytest
 from copy import deepcopy
 
+from rest_framework.exceptions import ValidationError
+
 from rbac.models import Organization
 from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
 from agents.models import (
@@ -91,7 +93,7 @@ class TestAgentDefinitionStrategy:
             ("description", "different description"),
             ("instructions", "different instructions"),
             ("metadata", {"different": "value"}),
-            ("max_iter", 99),
+            ("max_iter", 42),
         ],
     )
     def test_find_existing_miss_on_scalar_field(
@@ -171,6 +173,144 @@ class TestAgentDefinitionStrategy:
             )
             is not None
         )
+
+
+LEGACY_NULL_EXECUTION_FIELDS = {
+    "max_iter": None,
+    "max_rpm": None,
+    "max_execution_time": None,
+    "cache": None,
+    "max_retry_limit": None,
+    "max_tool_calls": None,
+    "tool_timeout": None,
+    "max_consecutive_failures": None,
+    "schema_max_retries": None,
+}
+
+
+LEGACY_SINGLETON_VALUES = {
+    "max_iter": 25,
+    "max_rpm": 10,
+    "max_execution_time": 60,
+    "cache": False,
+    "max_retry_limit": 3,
+    "max_tool_calls": 15,
+    "tool_timeout": 300,
+    "max_consecutive_failures": 3,
+    "schema_max_retries": 2,
+}
+
+
+def _legacy_agent_definition_payload(export_service, agent_definition, **overrides):
+    export_data = export_service.export_entities(
+        EntityType.AGENT_DEFINITION, [agent_definition.id]
+    )
+    data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+    data.update(overrides)
+    return data, _build_identity_mapper(export_data)
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionStrategyLegacyExecutionFields:
+    def test_create_entity_replaces_nulls_with_legacy_singleton_values(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, **LEGACY_NULL_EXECUTION_FIELDS
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        for field_name, value in LEGACY_SINGLETON_VALUES.items():
+            assert getattr(created, field_name) == value, field_name
+
+    def test_create_entity_clamps_out_of_range_values(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service,
+            agent_definition,
+            max_iter=500,
+            max_execution_time=5,
+            max_retry_limit=-3,
+            tool_timeout=99_999,
+            default_temperature=3.5,
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.max_iter == 90
+        assert created.max_execution_time == 60
+        assert created.max_retry_limit == 0
+        assert created.tool_timeout == 1800
+        assert created.default_temperature == 2.0
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_create_entity_turns_non_finite_temperature_into_null(
+        self, agent_definition, export_service, default_org, value
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, default_temperature=value
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.default_temperature is None
+
+    def test_find_existing_reuses_row_created_from_null_payload(
+        self, agent_definition, export_service, default_org
+    ):
+        AgentDefinition.objects.filter(pk=agent_definition.pk).update(
+            **LEGACY_SINGLETON_VALUES
+        )
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, **LEGACY_NULL_EXECUTION_FIELDS
+        )
+
+        found = _get_strategy(EntityType.AGENT_DEFINITION).find_existing(
+            data, mapper, org_id=default_org.id
+        )
+
+        assert found is not None
+        assert found.id == agent_definition.id
+        assert data["max_iter"] is None
+
+    def test_numeric_string_is_left_to_the_serializer(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, max_iter="25"
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.max_iter == 25
+
+    def test_out_of_range_string_is_rejected_not_clamped(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, max_iter="500"
+        )
+
+        with pytest.raises(ValidationError) as error:
+            _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+                data, mapper, org_id=default_org.id
+            )
+
+        assert "max_iter" in error.value.detail
 
 
 # ──────────────────────────────────────────

@@ -1,6 +1,8 @@
+import math
 from copy import deepcopy
 
 from agents.models import AgentDefaultSurface, AgentDefinition, Surface
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Q
 
 from tables.import_export.enums import EntityType
@@ -35,6 +37,52 @@ COMPARED_FIELDS = (
     "max_consecutive_failures",
     "schema_max_retries",
 )
+
+# Frozen copy of the singleton values that migration 0010 backfilled NULLs with, so an
+# old export keeps the limits it ran with and matches rows migrated from the same data.
+_LEGACY_NULL_REPLACEMENTS = {
+    "max_iter": 25,
+    "max_rpm": 10,
+    "max_execution_time": 60,
+    "cache": False,
+    "max_retry_limit": 3,
+    "max_tool_calls": 15,
+    "tool_timeout": 300,
+    "max_consecutive_failures": 3,
+    "schema_max_retries": 2,
+}
+_CLAMPED_FIELDS = (*_LEGACY_NULL_REPLACEMENTS, "default_temperature")
+
+
+def _clamp_to_field_validators(field_name: str, value):
+    for validator in AgentDefinition._meta.get_field(field_name).validators:
+        if isinstance(validator, MinValueValidator):
+            value = max(value, validator.limit_value)
+        elif isinstance(validator, MaxValueValidator):
+            value = min(value, validator.limit_value)
+    return value
+
+
+def _normalize_execution_fields(data: dict) -> None:
+    """Make older export files importable under the current field rules, in place.
+
+    Older exports carry null for the execution fields and values outside today's
+    bounds; nulls take the legacy singleton values and numbers are clamped into range.
+    A non-finite default_temperature becomes null, as in agents migration 0010.
+    Non-numeric values are left for the serializer to reject.
+    """
+    for field_name, replacement in _LEGACY_NULL_REPLACEMENTS.items():
+        if data.get(field_name) is None:
+            data[field_name] = replacement
+
+    temperature = data.get("default_temperature")
+    if isinstance(temperature, float) and not math.isfinite(temperature):
+        data["default_temperature"] = None
+
+    for field_name in _CLAMPED_FIELDS:
+        value = data.get(field_name)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            data[field_name] = _clamp_to_field_validators(field_name, value)
 
 
 class AgentDefinitionStrategy(EntityImportExportStrategy):
@@ -72,6 +120,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         old_llm_config_id = data.pop("llm_config", None)
         old_fcm_llm_config_id = data.pop("fcm_llm_config", None)
         data.pop("id", None)
+        _normalize_execution_fields(data)
 
         organization = resolve_import_organization(kwargs.get("org_id"))
 
@@ -100,6 +149,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> AgentDefinition:
         data_copy = deepcopy(data)
+        _normalize_execution_fields(data_copy)
         projected = {field: data_copy.get(field) for field in COMPARED_FIELDS}
         filters, null_filters = create_filters(projected)
 
