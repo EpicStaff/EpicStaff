@@ -64,7 +64,7 @@ SERVICES = [
     "src/realtime",
     "src/sandbox",
     "src/webhook",
-    "src/voice_app",
+    "src/auditor",
 ]
 
 BOOTSTRAP_PACKAGES = {
@@ -168,7 +168,7 @@ def dev_group_names(svc_dir: Path) -> list[str]:
 
 def project_name(svc_dir: Path) -> str | None:
     """The service's own root/self package name, e.g. "webhook",
-    "epicstaff-graph" for crew, "realtime", "knowledge", "voice-app". Used to
+    "epicstaff-graph" for crew, "realtime", "knowledge", "auditor". Used to
     exclude a service's own first-party package from the notices even if it
     ended up installed in the venv (stale venv predating
     `--no-install-project`, or a developer running a plain `uv sync
@@ -479,7 +479,7 @@ def build_markdown(
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
         "(`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, "
-        "`src/sandbox`, `src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "`src/sandbox`, `src/webhook`, `src/auditor`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")
