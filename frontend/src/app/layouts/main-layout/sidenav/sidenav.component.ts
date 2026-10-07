@@ -206,10 +206,10 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: () => this.permissionService.resolveFilesTab(),
+                routeLink: () => this.permissionService.resolveStorageTab(),
                 icon: 'sources',
-                label: 'Files',
-                isPermitted: () => this.permissionService.resolveFilesTab() !== null,
+                label: 'Storage',
+                isPermitted: () => this.permissionService.resolveStorageTab() !== null,
                 showTooltip: false,
             },
             {
