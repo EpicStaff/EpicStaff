@@ -6,6 +6,7 @@ export * from './app-svg-icon/app-svg-icon.component';
 export * from './app-validation-errors/validation-errors.component';
 export * from './authorship-details/authorship-details.component';
 export * from './authorship-details-dialog';
+export * from './authorship-footer/authorship-footer.component';
 export * from './avatar-upload/avatar-upload.component';
 export * from './blob-preview/blob-preview.component';
 export * from './button-round/button-round.component';
