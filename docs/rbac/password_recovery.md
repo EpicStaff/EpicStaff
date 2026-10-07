@@ -22,7 +22,7 @@ View  ──▶  AuthValidationService.validate_*()  (shape + strength)
              ├── SmtpConfigService              (is SMTP configured?)
              ├── PasswordResetTokenRepository   (generate/hash, lookup, delete)
              ├── PasswordResetEmailSender       (render + send, fail-silent)
-             ├── PasswordWriter                 (set_password + save)
+             ├── PasswordWriter                 (validate against the account, set_password + save)
              └── CredentialRevocationService    (blacklist refresh tokens, revoke API keys)
 ```
 
@@ -74,7 +74,10 @@ Body: `{ "token": "<opaque string>", "new_password": "<pw>" }`.
   body does not distinguish the three cases.
 * Runs the same `AUTH_PASSWORD_VALIDATORS` as first-setup. Weak
   passwords return 400 with per-field errors in the standard
-  `FormValidationError` shape.
+  `FormValidationError` shape. The account is known only once the token
+  is looked up, so the not-too-similar-to-email check runs at that point
+  (in `PasswordWriter`), with the same 400 on `new_password`. A rejected
+  password leaves the token unspent, so the same link can be retried.
 * On success: password is written, token is marked used, and **every
   personal API key of that user is revoked** — all in one transaction.
   Every access and refresh token issued before the change stops working
@@ -224,7 +227,13 @@ we tell the user an email is coming?" — inspect it, not `EMAIL_BACKEND`.
   connect time. Only new connections are refused.
 * **Strength enforced uniformly.** Every entry point runs Django's
   `AUTH_PASSWORD_VALIDATORS`, via the same
-  `AuthValidationService._validate_password_field`.
+  `AuthValidationService._validate_password_field`. Request validators
+  run before the account is resolved, so they cannot compare the password
+  with the account's email; `PasswordWriter.set` repeats the check
+  against the real account before writing, for reset confirm, admin
+  reset, CLI reset and self-service change alike. A rejection there
+  raises before anything is written: the password, reset tokens and
+  credentials are left as they were.
 * **Alphabet restricted.** Passwords must consist only of printable
   ASCII excluding whitespace (bytes 0x21–0x7E): Latin letters, digits,
   and standard symbols `!"#$%&'()*+,-./:;<=>?@[\]^_` `` ` `` `{|}~`.

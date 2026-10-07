@@ -42,6 +42,9 @@ class PasswordRecoveryService:
         password binding (`CHECK_REVOKE_TOKEN`); the blacklisting is
         defence in depth.
       - Admin reset is gated on `actor.is_superadmin`.
+      - Every flow checks the new password against the target account
+        (`PasswordWriter.set`) before writing anything; a rejection raises
+        FormValidationError and the transaction changes nothing.
     """
 
     def __init__(
@@ -79,6 +82,8 @@ class PasswordRecoveryService:
             raise InvalidOrExpiredTokenError()
         user = token_row.user
         with transaction.atomic():
+            # The writer validates against the account before any write, so a
+            # rejected password leaves the token unspent for a retry.
             self._password_writer.set(user, new_password)
             self._token_repo.consume(token_row)
             self._credential_revoker.revoke_all_credentials_for_user(user)

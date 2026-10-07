@@ -158,8 +158,13 @@ class UserProfileService:
         Dual binding: ticket must exist AND must belong to the calling
         actor. Mismatch surfaces as the same generic
         InvalidPasswordChangeTicketError so a third party cannot probe
-        whether a ticket exists for another user.
+        whether a ticket exists for another user. A rejected password raises
+        FormValidationError and leaves the ticket unconsumed.
         """
+        # Consuming the ticket is a Redis GETDEL the transaction below cannot
+        # roll back, so the account-aware check runs first, against the actor
+        # the ticket must belong to.
+        self._password_writer.validate(actor, new_password)
         target = self._password_change_ticket.consume(ticket)
         if target is None or actor is None or target.id != actor.id:
             logger.info(

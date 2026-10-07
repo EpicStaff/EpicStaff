@@ -85,7 +85,7 @@ Errors:
 
 Errors and recovery:
 - `400 invalid_password_change_ticket` → the ticket is unknown, expired (default 5 min), already used, or doesn't belong to this user. UI: "Session timed out, please re-enter your current password." Drop the user back to step 1.
-- `400 invalid` with FieldError envelope → weak new password. Keep on step 2. Render messages from `errors[]`.
+- `400 invalid` with FieldError envelope → weak new password (including one too similar to the account's email). The ticket is not consumed: keep on step 2 and retry with it. Render messages from `errors[]`.
 
 Submitted password values are redacted (`"value": "***"`) in error responses.
 

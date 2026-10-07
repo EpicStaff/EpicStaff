@@ -32,7 +32,7 @@ class UserValidationService(BaseRBACValidator):
 
         errors: list[FieldError] = []
         errors.extend(self._validate_new_account_email(email))
-        errors.extend(self._validate_password_field(password, user_hints={"email": email}))
+        errors.extend(self._validate_password_field(password, user=self._prospective_user(email)))
         display_name, display_name_errors = self._clean_display_name(data.get("display_name"))
         errors.extend(display_name_errors)
         if organization_id is not None:
@@ -239,6 +239,8 @@ class UserValidationService(BaseRBACValidator):
         new_password = data.get("new_password")
         errors: list[FieldError] = []
         errors.extend(self._require_nonblank_string("ticket", ticket))
-        errors.extend(self._validate_password_field(new_password, field_name="new_password"))
+        errors.extend(
+            self._validate_password_field(new_password, user=None, field_name="new_password")
+        )
         self._raise_if_any(errors)
         return {"ticket": ticket, "new_password": new_password}
