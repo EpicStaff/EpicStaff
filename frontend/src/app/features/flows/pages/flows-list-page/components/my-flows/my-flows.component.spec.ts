@@ -1,9 +1,5 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { signal } from '@angular/core';
-
-import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
-import { FlowsStorageService } from '../../../../services/flows-storage.service';
-
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
@@ -13,8 +9,10 @@ import { Observable, of, throwError } from 'rxjs';
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
+import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { GetGraphLightRequest } from '../../../../models/graph.model';
 import { FlowsApiService } from '../../../../services/flows-api.service';
+import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
 import { RunGraphService } from '../../../../services/run-graph-session.service';
 import { MyFlowsComponent } from './my-flows.component';
@@ -84,7 +82,6 @@ describe('MyFlowsComponent copy action', () => {
         expect(toastSuccess).toHaveBeenCalledWith('Flow copied and saved as "Support Flow #2"');
     });
 });
-
 
 const OWNER: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: null };
 const EDITOR: UserSummary = { id: 2, display_name: 'Olena Petrenko', avatar_url: null };
