@@ -55,7 +55,7 @@ npm test -- --filter clearStale  # run a subset by test name
 ```
 
 Runs through the [`@angular/build:unit-test`](./angular.json) builder on **Vitest**, in Node
-with jsdom — no browser needed. Karma was removed in EST-3802: it is deprecated upstream, its
+with jsdom — no browser needed. Karma was removed: it is deprecated upstream, its
 config here had been fully commented out, and the builder only exists from Angular 22.
 
 Spec files are `src/**/*.spec.ts`. That glob is set explicitly in [angular.json](./angular.json)
@@ -100,7 +100,7 @@ node ../scripts/check-undeclared-imports.mjs      # run from frontend/ or the re
 Fails when `src/` imports a package that `package.json` does not declare. Such an import may
 still resolve through a transitive dependency or a stale lockfile entry, and then break on a
 clean install — which is exactly what happened with `uuid`, `jsonc-parser` and
-`@types/json-schema` before EST-3802.
+`@types/json-schema` before the npm-audit remediation.
 
 **Dependency advisories:**
 ```powershell

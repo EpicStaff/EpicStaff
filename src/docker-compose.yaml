@@ -12,13 +12,13 @@ x-redis-env: &redis-env
   REDIS_HOST: ${REDIS_HOST:?}
   REDIS_PORT: ${REDIS_PORT:?}
 
-x-minio-env: &minio-env
-  MINIO_USER: ${MINIO_USER:?}
-  MINIO_PASSWORD: ${MINIO_PASSWORD:?}
-  MINIO_SSL: ${MINIO_SSL:?}
-  MINIO_HOST: ${MINIO_HOST:?}
-  MINIO_PORT: ${MINIO_PORT:?}
-  MINIO_BUCKET: ${MINIO_BUCKET}
+x-storage-env: &storage-env
+  STORAGE_USER: ${STORAGE_USER:?}
+  STORAGE_PASSWORD: ${STORAGE_PASSWORD:?}
+  STORAGE_SSL: ${STORAGE_SSL:?}
+  STORAGE_HOST: ${STORAGE_HOST:?}
+  STORAGE_PORT: ${STORAGE_PORT:?}
+  STORAGE_BUCKET: ${STORAGE_BUCKET}
 
 x-communication-env: &communication-env
   CODE_RESULT_CHANNEL: ${CODE_RESULT_CHANNEL:?}
@@ -67,7 +67,7 @@ services:
     container_name: django_app
     command: ./entrypoint.sh
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -110,6 +110,16 @@ services:
       DJANGO_MAX_UPLOAD_TOTAL_SIZE: ${DJANGO_MAX_UPLOAD_TOTAL_SIZE:?}
       DJANGO_MAX_ARCHIVE_ENTRIES: ${DJANGO_MAX_ARCHIVE_ENTRIES:?}
       DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE: ${DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE:?}
+      DJANGO_ORG_STORAGE_QUOTA: ${DJANGO_ORG_STORAGE_QUOTA:?}
+      DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE: ${DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE:?}
+      DJANGO_MAX_ARCHIVE_FILE_SIZE: ${DJANGO_MAX_ARCHIVE_FILE_SIZE:?}
+      DJANGO_UPLOAD_PART_SIZE: ${DJANGO_UPLOAD_PART_SIZE:?}
+      DJANGO_UPLOAD_MAX_CONCURRENCY: ${DJANGO_UPLOAD_MAX_CONCURRENCY:?}
+      DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG: ${DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG:?}
+      DJANGO_UPLOAD_SLOT_TIMEOUT: ${DJANGO_UPLOAD_SLOT_TIMEOUT:?}
+      DJANGO_UPLOAD_IDLE_TIMEOUT: ${DJANGO_UPLOAD_IDLE_TIMEOUT:?}
+      DJANGO_UPLOAD_MAX_DURATION: ${DJANGO_UPLOAD_MAX_DURATION:?}
+      DJANGO_ARCHIVE_UPLOAD_CONCURRENCY: ${DJANGO_ARCHIVE_UPLOAD_CONCURRENCY:?}
       DJANGO_MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
       DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
 
@@ -129,7 +139,7 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-      minio:
+      storage:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${DJANGO_PORT}/ht/')\""]
@@ -148,6 +158,7 @@ services:
       REALTIME_HOST: ${REALTIME_HOST:?}
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
+      REALTIME_PERSIST_RAW_AUDIO: ${REALTIME_PERSIST_RAW_AUDIO:-false}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_URL: ${DJANGO_API_URL:?}
@@ -280,6 +291,10 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
+      CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
+      DJANGO_API_KEY: ${DJANGO_API_KEY:?}
     networks:
       - backend-network
     tty: true
@@ -300,18 +315,19 @@ services:
     container_name: sandbox
     init: true
     environment:
-      <<: [*docker-env, *redis-env, *minio-env, *communication-env]
+      <<: [*docker-env, *redis-env, *storage-env, *communication-env]
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
       SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+      SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:-true}
+      SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
+      SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - sandbox-network
     tty: true
@@ -333,44 +349,49 @@ services:
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
       - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
+      - NET_ADMIN  # install the per-uid egress firewall at startup. User code drops to sandboxuser and never holds it; root pip does (same accepted risk as pip itself).
     depends_on:
       redis:
         condition: service_healthy
+      # The egress firewall resolves the storage IP once at startup for its carve-out.
+      storage:
+        condition: service_started
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    container_name: minio
-    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+  storage:
+    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    container_name: storage
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:?}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?}
+      RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
+      RUSTFS_SECRET_KEY: ${STORAGE_PASSWORD:?}
+      RUSTFS_ADDRESS: ":${STORAGE_PORT}"
+      RUSTFS_CONSOLE_ENABLE: "false"
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data
     networks:
       - backend-network
       - sandbox-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${MINIO_PORT}/minio/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:${STORAGE_PORT}/minio/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
 
-  minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
-    container_name: minio-init
+  storage-init:
+    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    container_name: storage-init
     networks:
       - backend-network
     depends_on:
-      minio:
+      storage:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:${MINIO_PORT} ${MINIO_USER} ${MINIO_PASSWORD} &&
-      mc mb --ignore-existing local/${MINIO_BUCKET} &&
-      echo 'Bucket ready.' &&
-      exit 0
+      status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
+      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER}:${STORAGE_PASSWORD}'
+      http://${STORAGE_HOST}:${STORAGE_PORT}/${STORAGE_BUCKET}) &&
+      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac
       "
     restart: on-failure
 
@@ -394,7 +415,7 @@ services:
       context: .
       dockerfile: ./webhook/Dockerfile
     environment:
-      <<: [*docker-env, *database-env, *redis-env, *minio-env, *communication-env]
+      <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
 
@@ -476,6 +497,8 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
+    stop_grace_period: 5m
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
@@ -485,6 +508,7 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_STREAM_TTL: ${AGENT_RESULT_STREAM_TTL:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
+      AGENT_MAX_CONCURRENT_RUNS: ${AGENT_MAX_CONCURRENT_RUNS:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
@@ -511,17 +535,17 @@ services:
         condition: service_healthy
       django_app:
         condition: service_healthy
-      minio:
+      storage:
         condition: service_healthy
     environment:
-      <<: [*docker-env, *database-env, *minio-env, *communication-env]
+      <<: [*docker-env, *database-env, *storage-env, *communication-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
       KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}
-      KNOWLEDGE_MINIO_BUCKET: ${KNOWLEDGE_MINIO_BUCKET:?}
+      KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
       KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
       KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
 
@@ -534,7 +558,7 @@ volumes:
     external: true
   redis_data: {}
   code_instances: {}
-  minio_data: {}
+  rustfs_data: {}
 
 networks:
   backend-network:

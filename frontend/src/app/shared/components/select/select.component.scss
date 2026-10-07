@@ -6,6 +6,17 @@
     overflow: hidden;
 }
 
+.selector__readonly-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    word-break: break-word;
+    white-space: pre-wrap;
+    min-width: 0;
+}
+
 .selector {
     position: relative;
     display: flex;
@@ -160,6 +171,10 @@
         &--boxed {
             gap: 0.5rem;
         }
+    }
+
+    &__dropdown--boxed &__list {
+        scrollbar-gutter: stable;
     }
 
     &__option-body {

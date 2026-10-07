@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-
-export type StopButtonVariant = 'pause' | 'stop';
+import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-stop-button',
-    imports: [MatTooltipModule],
+    imports: [MatTooltipModule, AppSvgIconComponent],
     templateUrl: './stop-button.component.html',
     styleUrls: ['./stop-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -13,7 +12,7 @@ export type StopButtonVariant = 'pause' | 'stop';
 export class StopButtonComponent {
     tooltip = input('Stop');
     disabled = input(false);
-    variant = input<StopButtonVariant>('pause');
+    variant = input<'stop' | 'pause'>('stop');
 
     triggered = output<void>();
 }

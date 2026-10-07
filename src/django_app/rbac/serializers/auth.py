@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from tables.models.user import DISPLAY_NAME_MAX_LENGTH
 
 # ---- First-setup ----
 
@@ -15,6 +16,12 @@ class FirstSetupRequestSerializer(serializers.Serializer):
     # aggregated and formatted uniformly.
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    display_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        max_length=DISPLAY_NAME_MAX_LENGTH,
+        help_text="Trimmed. Omit or send null to derive it from the email.",
+    )
 
 
 class _SetupUserPayload(serializers.Serializer):
@@ -65,6 +72,12 @@ class ResetUserRequestSerializer(serializers.Serializer):
     # `AuthValidationService.validate_reset_user`.
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    display_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        max_length=DISPLAY_NAME_MAX_LENGTH,
+        help_text="Trimmed. Omit or send null to derive it from the email.",
+    )
 
 
 class ResetUserResponseSerializer(serializers.Serializer):

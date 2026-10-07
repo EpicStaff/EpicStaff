@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, Input, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { Subject } from 'rxjs';
 
 import { GraphNoteModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { ResizeHandleComponent } from '../../resize-handle/resize-handle.component';
 
 @Component({
@@ -16,9 +17,11 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
             [style.background-color]="node.data.backgroundColor || '#ffffd1'"
         >
             <div class="content-container">
-                {{ node.data.content || 'Add note text...' }}
+                {{ node.data.content || (isReadOnly() ? '' : 'Add note text...') }}
             </div>
-            <app-resize-handle [handleType]="eResizeHandleType.RIGHT_BOTTOM"></app-resize-handle>
+            @if (!isReadOnly()) {
+                <app-resize-handle [handleType]="eResizeHandleType.RIGHT_BOTTOM"></app-resize-handle>
+            }
         </div>
     `,
     styles: [
@@ -54,6 +57,7 @@ export class GraphNoteComponent implements OnDestroy {
     private destroy$ = new Subject<void>();
 
     public eResizeHandleType = EFResizeHandleType;
+    public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     constructor(
         private flowService: FlowService,

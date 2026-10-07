@@ -30,6 +30,7 @@ import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
+import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
@@ -68,12 +69,14 @@ interface NavItem {
 export class LeftSidebarComponent implements AfterViewInit {
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
+    private readonly easterEggTrigger = inject(EasterEggTriggerService);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
     public isEpicChatEnabled: boolean;
     public apiBaseUrl: string;
-    public accessToken: string;
+    /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
+    protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
     public showLogoTooltip = false;
     public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
@@ -184,7 +187,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;
-        this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
                 id: 'agents',
@@ -204,10 +206,10 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: () => this.resolveFilesRoute(),
+                routeLink: () => this.permissionService.resolveFilesTab(),
                 icon: 'sources',
                 label: 'Files',
-                isPermitted: () => this.resolveFilesRoute() !== null,
+                isPermitted: () => this.permissionService.resolveFilesTab() !== null,
                 showTooltip: false,
             },
             {
@@ -250,6 +252,10 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.configureModelsDialogService.open();
     }
 
+    public onLogoClick(): void {
+        this.easterEggTrigger.registerLogoClick();
+    }
+
     public toggleEpicChat(): void {
         this.epicChatService.toggleChat(this.epicChat?.nativeElement);
     }
@@ -290,13 +296,5 @@ export class LeftSidebarComponent implements AfterViewInit {
     public resolveRouteLink(item: NavItem): string | null {
         if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
-    }
-
-    /** Route to whichever `/files/*` sub-tab the user has read access to in the current org, or `null` if none. */
-    private resolveFilesRoute(): string | null {
-        if (this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read))
-            return '/files/knowledge-sources';
-        if (this.permissionService.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
-        return null;
     }
 }

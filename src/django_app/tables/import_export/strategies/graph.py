@@ -1,5 +1,6 @@
 import re
 import uuid
+from collections import defaultdict
 from copy import deepcopy
 
 from agents.models import (
@@ -9,8 +10,12 @@ from agents.models import (
     InlineSurfacePythonTool,
     Surface,
 )
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
 from loguru import logger
 
+from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -30,9 +35,13 @@ from tables.import_export.utils import ensure_unique_identifier
 from tables.models import (
     Graph,
     GraphOrganization,
+    TelegramTriggerNode,
 )
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
+
+# Every reverse relation on Graph that holds its content (nodes, notes, edges).
+GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list", "conditional_edge_list")
 
 
 class GraphStrategy(EntityImportExportStrategy):
@@ -123,24 +132,49 @@ class GraphStrategy(EntityImportExportStrategy):
         import_data = data.copy()
         import_data["metadata"] = self.update_metadata(import_data["metadata"], id_mapper)
 
+        imported_uuid = import_data.pop("uuid", None)
+        replaced_graph = None
+        if preserve_uuids and imported_uuid:
+            # Graph.uuid is unique across all orgs and soft-deleted rows, so at most one
+            # holder. It is locked so a concurrent delete cannot land between the
+            # active check below and the replace; another org's flow is never written,
+            # so it is never locked either.
+            uuid_holder = (
+                Graph.all_objects.select_for_update()
+                .filter(uuid=imported_uuid, org_id=org_id)
+                .first()
+            )
+            holder_is_active = uuid_holder is not None and not uuid_holder.is_soft_deleted
+            if uuid_holder is None and Graph.all_objects.filter(uuid=imported_uuid).exists():
+                logger.warning(
+                    "Graph uuid {} is held by a flow in another organization; "
+                    "importing it with a new uuid instead",
+                    imported_uuid,
+                )
+            elif holder_is_active and not replace_existing:
+                # Sessions and delete_by_uuid resolve flows by uuid, so taking a live
+                # flow's uuid would redirect them to the copy without an UPDATE check.
+                logger.warning(
+                    "Graph uuid {} is held by an active flow and replace is off; "
+                    "importing it with a new uuid instead",
+                    imported_uuid,
+                )
+            elif holder_is_active:
+                replaced_graph = uuid_holder
+            else:
+                if uuid_holder:
+                    # A soft-deleted flow of this org hands its uuid over to the import.
+                    Graph.all_objects.filter(pk=uuid_holder.pk).update(uuid=uuid.uuid4())
+                import_data["uuid"] = imported_uuid
+
         if "name" in import_data:
-            existing_names = Graph.objects.filter(org_id=org_id).values_list("name", flat=True)
+            other_flows = Graph.objects.filter(org_id=org_id)
+            if replaced_graph is not None:
+                other_flows = other_flows.exclude(pk=replaced_graph.pk)
             import_data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
-                existing_names=existing_names,
+                existing_names=other_flows.values_list("name", flat=True),
             )
-
-        imported_uuid = import_data.pop("uuid", None)
-        if preserve_uuids and imported_uuid:
-            if replace_existing:
-                # Queryset .delete() bypasses Model.delete() entirely (Django never
-                # calls instance delete() for queryset-level deletes), so it always
-                # hard-deletes regardless of settings.SOFT_DELETE. Delete per-instance
-                # instead so SoftDeleteMixin.delete() (and thus DeleteService) fires.
-                for existing_graph in Graph.objects.filter(uuid=imported_uuid):
-                    existing_graph.delete()
-            Graph.all_objects.filter(uuid=imported_uuid).update(uuid=uuid.uuid4())
-            import_data["uuid"] = imported_uuid
 
         nodes_data = import_data.pop("nodes", [])
         edges_data = import_data.pop("edge_list", [])
@@ -148,8 +182,11 @@ class GraphStrategy(EntityImportExportStrategy):
         labels_data = import_data.pop("labels", [])
 
         import_data["org"] = org_id
-        serializer = self.serializer_class(data=import_data)
+        serializer = self.serializer_class(instance=replaced_graph, data=import_data)
         serializer.is_valid(raise_exception=True)
+        replaced_telegram_keys = []
+        if replaced_graph is not None:
+            replaced_telegram_keys = self._prepare_in_place_replace(replaced_graph)
         graph = serializer.save()
 
         # Register this graph's own GRAPH mapping immediately, keyed by its
@@ -169,12 +206,121 @@ class GraphStrategy(EntityImportExportStrategy):
             },
             id_mapper,
             old_graph_id=old_id,
+            user=kwargs.get("user"),
         )
+        if replaced_telegram_keys:
+            self._restore_telegram_bot_keys(graph, replaced_telegram_keys)
 
-        if import_labels and labels_data:
-            self._attach_labels(graph, id_mapper, labels_data)
+        if import_labels:
+            self._set_labels(graph, id_mapper, labels_data)
+
+        if replaced_graph is not None:
+            self._notify_editors_after_commit(graph, kwargs.get("user"))
 
         return graph
+
+    def _notify_editors_after_commit(self, graph: Graph, user) -> None:
+        """Tell editors open on a replaced flow that it changed, once the import commits.
+
+        Same message version restore sends after its transaction; a rolled-back
+        import sends nothing.
+        """
+        # The message names who saved; an internal call without a user has no one to name.
+        if user is None:
+            return
+        graph_id, new_save_version = graph.pk, graph.save_version
+        transaction.on_commit(
+            lambda: GraphEditNotifier.notify_graph_saved(
+                graph_id=graph_id,
+                new_save_version=new_save_version,
+                user=user,
+                saved_at=timezone.now().isoformat(),
+            ),
+            # The import is already committed; a failed broadcast must not turn it into a 500.
+            robust=True,
+        )
+
+    def _prepare_in_place_replace(self, graph: Graph) -> list[tuple[int | None, int | None]]:
+        """Back up a flow an import replaces, then empty it for the imported content.
+
+        The Graph row itself is kept, so its sessions, versions, variables,
+        storage links, flow assistant and the SubGraphNodes embedding it survive.
+
+        Returns:
+            (webhook trigger id, bot key id or None) of each Telegram trigger node the
+            wipe removed. Export files never carry the bot key.
+        """
+        # Deferred: graph_versioning imports this module.
+        from tables.graph_versioning.services import GraphVersioningService
+
+        # The import carries no expected save_version, so bump unconditionally: an
+        # editor still holding the old content then gets a conflict on its next save.
+        Graph.objects.filter(pk=graph.pk).update(save_version=F("save_version") + 1)
+        # The serializer's full save() would otherwise write the stale counter back.
+        graph.refresh_from_db()
+        GraphVersioningService().save_version(
+            graph=graph,
+            name="Before import",
+            description="Auto-backup created before an import replaced this flow",
+        )
+        replaced_telegram_keys = list(
+            graph.telegram_trigger_node_list.values_list(
+                "webhook_trigger_id", "telegram_bot_api_key_secret_id"
+            )
+        )
+        self.wipe_graph_children(graph)
+        return replaced_telegram_keys
+
+    def _restore_telegram_bot_keys(
+        self, graph: Graph, replaced_keys: list[tuple[int | None, int | None]]
+    ) -> None:
+        """Give each recreated Telegram trigger node the bot key of the node it replaced.
+
+        Old and new nodes pair up by webhook trigger: a bot is registered on its
+        trigger's path, and the wipe keeps the trigger, so the recreated node lands
+        on the same one. A key is carried only when exactly one old node (holding
+        the key) and exactly one new node sit on the trigger. Otherwise (no trigger,
+        or a shared one) the key is dropped with a warning; it is still in the
+        "Before import" backup version, whose secret declarations re-link it when
+        that version is restored.
+        """
+        old_keys_by_trigger: dict[int | None, list[int | None]] = defaultdict(list)
+        for trigger_id, secret_id in replaced_keys:
+            old_keys_by_trigger[trigger_id].append(secret_id)
+        new_nodes_by_trigger: dict[int | None, list[TelegramTriggerNode]] = defaultdict(list)
+        for node in graph.telegram_trigger_node_list.all():
+            new_nodes_by_trigger[node.webhook_trigger_id].append(node)
+
+        for trigger_id, secret_ids in old_keys_by_trigger.items():
+            if not any(secret_ids):
+                continue
+            new_nodes = new_nodes_by_trigger.get(trigger_id, [])
+            if trigger_id is None or len(secret_ids) > 1 or len(new_nodes) > 1:
+                logger.warning(
+                    "Graph {}: cannot tell which Telegram trigger node on webhook trigger {} "
+                    "a bot key belongs to, so it was not carried over the import; set it "
+                    "again or restore the 'Before import' version",
+                    graph.id,
+                    trigger_id,
+                )
+                continue
+            for node in new_nodes:
+                node.telegram_bot_api_key_secret_id = secret_ids[0]
+                # A real save, so the post_save signal registers the bot again.
+                node.save(update_fields=["telegram_bot_api_key_secret"])
+
+    def wipe_graph_children(self, graph: Graph) -> None:
+        """Delete every node, note and edge of a graph, keeping the Graph row.
+
+        Orphaned PythonCode rows are reclaimed by the post_delete signal cleanup
+        in tables.signals.python_code_signals. Intentionally hard-deletes and is
+        NOT routed through the soft-delete cascade (DeleteService): this replaces
+        a graph's content (version restore, import replace), it does not delete
+        the graph itself, so soft-delete semantics don't apply here. Do not "fix"
+        this to go through .delete().
+        """
+        for relation_name in GRAPH_CHILD_RELATIONS:
+            getattr(graph, relation_name).all().delete()
 
     def recreate_graph_children(
         self,
@@ -183,7 +329,14 @@ class GraphStrategy(EntityImportExportStrategy):
         id_mapper: IDMapper,
         is_partial: bool = False,
         old_graph_id: int | None = None,
+        user=None,
     ) -> IDMapper:
+        """Create a graph's nodes and edges from exported data.
+
+        `user` is the acting user, handed to every node strategy so references that
+        need a permission check (e.g. a key-value table) can gate on it. `None` means
+        there is no acting user.
+        """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
         conditional_edges_data = data.get("conditional_edge_list", [])
@@ -191,7 +344,7 @@ class GraphStrategy(EntityImportExportStrategy):
         node_mapper = IDMapper()
 
         # Pass 1: create all nodes and build the old→new node ID mapping
-        self._create_nodes(nodes_data, graph, node_mapper, id_mapper, old_graph_id)
+        self._create_nodes(nodes_data, graph, node_mapper, id_mapper, old_graph_id, user)
 
         # Pass 2: create edges/conditional-edges with remapped node IDs,
         # then fix stale node-ID references in decision tables and metadata
@@ -199,15 +352,6 @@ class GraphStrategy(EntityImportExportStrategy):
         self._create_conditional_edges(conditional_edges_data, graph, node_mapper)
         self._remap_decision_table_references(graph, node_mapper)
         self._remap_classification_decision_table_references(graph, node_mapper)
-
-        # Metadata remapping is only correct for full-graph imports/versioning,
-        # where graph.metadata was rebuilt from the import and its node ids are
-        # old export ids. In a partial import the metadata belongs to the
-        # pre-existing graph; its node ids are real, current ids that collide
-        # with the old export ids in node_mapper, so remapping them would
-        # silently re-point existing nodes at the freshly imported duplicates.
-        if not is_partial:
-            self._update_metadata_node_ids(graph, node_mapper)
 
         # need only for versioning system
         return node_mapper
@@ -235,6 +379,7 @@ class GraphStrategy(EntityImportExportStrategy):
         node_mapper: IDMapper,
         id_mapper: IDMapper,
         old_graph_id: int | None = None,
+        user=None,
     ) -> None:
         # Mirror the frontend's node numbering: a single graph-wide counter that
         # starts above the highest metadata["nodeNumber"] already present in the
@@ -283,7 +428,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
             strategy = entity_registry.get_strategy(entity_type)
-            node = strategy.create_entity(node_data, id_mapper)
+            node = strategy.create_entity(node_data, id_mapper, user=user)
 
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
@@ -425,31 +570,9 @@ class GraphStrategy(EntityImportExportStrategy):
                     group.next_node_id = new_id
                     group.save(update_fields=["next_node_id"])
 
-    def _update_metadata_node_ids(self, graph: Graph, id_mapper: IDMapper):
-        metadata = graph.metadata
-        if not metadata:
-            return
-
-        nodes = metadata.get("nodes", [])
-        changed = False
-
-        for node in nodes:
-            data = node.get("data") or {}
-            node_id = data.get("id")
-            if node_id is not None:
-                new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, node_id)
-                if new_id and new_id != node_id:
-                    data["id"] = new_id
-                    changed = True
-
-        if changed:
-            graph.metadata = metadata
-            graph.save(update_fields=["metadata"])
-
-    def _attach_labels(self, graph: Graph, id_mapper: IDMapper, label_ids: list) -> None:
+    def _set_labels(self, graph: Graph, id_mapper: IDMapper, label_ids: list) -> None:
         new_label_ids = [id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids]
-        if new_label_ids:
-            graph.labels.add(*Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.FLOW))
+        graph.labels.set(Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.FLOW))
 
     def update_metadata(self, metadata: dict, id_mapper: IDMapper) -> dict:
         # TODO: Remove metadata when save functionality reworked
@@ -457,22 +580,7 @@ class GraphStrategy(EntityImportExportStrategy):
 
         nodes = metadata_copy.get("nodes", [])
         for node in nodes:
-            if node["type"] == "webhook-trigger":
-                old_id = node["data"]["webhook_trigger"]
-
-                node["data"]["webhook_trigger"] = id_mapper.get_or_none(
-                    EntityType.WEBHOOK_TRIGGER, old_id
-                )
-            if node["type"] == "subgraph":
-                old_id = node["data"]["id"]
-                new_id = id_mapper.get_or_none(EntityType.GRAPH, old_id)
-
-                subgraph = Graph.objects.get(id=new_id)
-
-                node["data"]["id"] = new_id
-                node["data"]["name"] = subgraph.name
-                node["data"]["description"] = subgraph.description
-            if node["type"] == "telegram-trigger":
+            if node.get("type") == "telegram-trigger":
                 node["data"]["telegram_bot_api_key"] = None
 
         return metadata_copy

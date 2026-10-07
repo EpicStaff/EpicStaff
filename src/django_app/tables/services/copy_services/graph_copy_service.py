@@ -1,8 +1,8 @@
-from tables.import_export.utils import ensure_unique_identifier
+from django.db import transaction
 from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
-from tables.services.copy_services.helpers import copy_python_code
+from tables.services.copy_services.helpers import copy_python_code, next_copy_name
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
 from tables.services.persistent_variables_service import PersistentVariablesService
 
@@ -12,26 +12,29 @@ class GraphCopyService(BaseCopyService):
 
     Duplicates all scalar fields, then clones every node via NODE_COPY_HANDLERS,
     building a node_id_map. Edges and conditional edges are cloned with remapped
-    node IDs. Two post-processing passes fix internal node ID references in
-    DecisionTableNode fields and graph metadata JSON.
+    node IDs. Post-processing passes fix internal node ID references in
+    DecisionTableNode and ClassificationDecisionTableNode fields.
     """
 
-    def copy(self, graph: Graph, name: str | None = None, org_id: int | None = None) -> Graph:
-        existing_names = Graph.objects.values_list("name", flat=True)
-        new_name = ensure_unique_identifier(
-            base_name=name if name else graph.name,
-            existing_names=existing_names,
-        )
-
+    def copy(
+        self,
+        graph: Graph,
+        name: str | None = None,
+        org_id: int | None = None,
+        user=None,
+    ) -> Graph:
         target_org_id = org_id if org_id is not None else graph.org_id
-        new_graph = Graph.objects.create(
-            name=new_name,
-            description=graph.description,
-            metadata=graph.metadata,
-            time_to_live=graph.time_to_live,
-            enable_persistent_variables=graph.enable_persistent_variables,
-            org_id=target_org_id,
-        )
+        base_name = name if name else graph.name
+
+        with transaction.atomic():
+            new_graph = Graph.objects.create(
+                name=next_copy_name(Graph, org_id=target_org_id, base_name=base_name),
+                description=graph.description,
+                metadata=graph.metadata,
+                time_to_live=graph.time_to_live,
+                enable_persistent_variables=graph.enable_persistent_variables,
+                org_id=target_org_id,
+            )
         new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(
@@ -41,7 +44,7 @@ class GraphCopyService(BaseCopyService):
         node_id_map: dict[int, int] = {}
         for relation_name, handler in NODE_COPY_HANDLERS.values():
             for node in getattr(graph, relation_name).all():
-                new_node = handler(new_graph, node)
+                new_node = handler(new_graph, node, user=user)
                 node_id_map[node.id] = new_node.id
 
         for edge in graph.edge_list.all():
@@ -64,7 +67,6 @@ class GraphCopyService(BaseCopyService):
 
         self._remap_decision_table_references(new_graph, node_id_map)
         self._remap_classification_decision_table_references(new_graph, node_id_map)
-        self._remap_metadata_node_ids(new_graph, node_id_map)
 
         return new_graph
 
@@ -109,22 +111,3 @@ class GraphCopyService(BaseCopyService):
                 if group.next_node_id and group.next_node_id in node_id_map:
                     group.next_node_id = node_id_map[group.next_node_id]
                     group.save(update_fields=["next_node_id"])
-
-    def _remap_metadata_node_ids(self, graph: Graph, node_id_map: dict[int, int]) -> None:
-        metadata = graph.metadata
-        if not metadata:
-            return
-
-        nodes = metadata.get("nodes", [])
-        changed = False
-
-        for node in nodes:
-            data = node.get("data") or {}
-            node_id = data.get("id")
-            if node_id is not None and node_id in node_id_map:
-                data["id"] = node_id_map[node_id]
-                changed = True
-
-        if changed:
-            graph.metadata = metadata
-            graph.save(update_fields=["metadata"])

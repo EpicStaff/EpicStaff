@@ -8,6 +8,11 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from utils.openai_endpoints import derive_realtime_ws_url
+from utils.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.openai.event_handlers.agent_client_event_handler import (
@@ -217,13 +222,23 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         await self.send_server(event)
 
     async def call_tool(self, call_id: str, tool_name: str, tool_arguments: dict[str, Any]) -> None:
-        tool_result = await self.tool_manager_service.execute(
-            connection_key=self.connection_key,
-            tool_name=tool_name,
-            call_arguments=tool_arguments,
-        )
+        try:
+            tool_result = await self.tool_manager_service.execute(
+                connection_key=self.connection_key,
+                tool_name=tool_name,
+                call_arguments=tool_arguments,
+            )
+            output = str(tool_result)
+        except Exception as e:
+            correlation_id = new_error_correlation_id()
+            logger.exception(
+                f"OpenAI: Tool execution failed [correlation_id={correlation_id}]: {e}"
+            )
+            output = build_public_error_message(
+                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+            )
 
-        await self.send_function_result(call_id, str(tool_result))
+        await self.send_function_result(call_id, output)
 
         if self.is_twilio:
             # Appending a function_call_output item does NOT by itself make the

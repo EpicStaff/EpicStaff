@@ -74,6 +74,35 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
+    it('does not force a session refresh or toast for a key_value_mode_denied 403', () =>
+        new Promise<void>((resolve, reject) => {
+            httpClient.post('/api/graphs/1/save-flow/', {}).subscribe({
+                next: () => reject(new Error('expected the request to error')),
+                error: (err: HttpErrorResponse) => {
+                    try {
+                        expect(err.status).toBe(403);
+                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
+                        expect(router.navigateByUrl).not.toHaveBeenCalled();
+                        expect(toastService.error).not.toHaveBeenCalled();
+                        resolve();
+                    } catch (e) {
+                        reject(e as Error);
+                    }
+                },
+            });
+
+            const req = httpMock.expectOne('/api/graphs/1/save-flow/');
+            req.flush(
+                {
+                    status_code: 403,
+                    code: 'key_value_mode_denied',
+                    message:
+                        "You need Key-Value Tables Create and Edit permission to configure a write node on the table 'profiles'.",
+                },
+                { status: 403, statusText: 'Forbidden' }
+            );
+        }));
+
     it('still forces a session refresh for an unrelated 403 (e.g. stale permissions)', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.get('/api/llm-models/1/').subscribe({

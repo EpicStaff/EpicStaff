@@ -1,11 +1,13 @@
 import json
 import uuid
+from dataclasses import asdict
 
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.node_surface_service import NodeSurfaceService
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import NOT_PROVIDED, Exists, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q
+from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.utils import timezone
 from django_filters import rest_framework as filters
@@ -23,6 +25,7 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rbac.access.action_map import DEFAULT_ACTION_MAP
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
     DenyApiKeyAuth,
     HasOrgPermission,
@@ -57,6 +60,7 @@ from rest_framework.exceptions import (
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
 )
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -67,6 +71,7 @@ from tables.exceptions import (
 )
 from tables.filters import (
     EmbeddingModelFilter,
+    KeyValueTableEntryOrderingFilter,
     LabelFilterBackend,
     LLMModelFilter,
     McpToolFilter,
@@ -103,6 +108,9 @@ from tables.models import (
     Graph,
     GraphSessionMessage,
     GraphVersion,
+    KeyValueNode,
+    KeyValueTable,
+    KeyValueTableEntry,
     LLMConfig,
     LLMModel,
     Provider,
@@ -213,6 +221,12 @@ from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
     EmbeddingModelSerializer,
 )
+from tables.serializers.model_serializers.key_value_serializers import (
+    KeyValueKeysSerializer,
+    KeyValueTableEntryListSerializer,
+    KeyValueTableEntrySerializer,
+    KeyValueTableSerializer,
+)
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
@@ -234,6 +248,7 @@ from tables.services.copy_services import (
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.tools_usage_service import (
@@ -245,6 +260,7 @@ from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
     GRAPH_DELETE_BY_UUID_DELETE,
 )
+from tables.swagger_schemas.key_value_schemas import KEY_VALUE_TABLE_USAGE_GET
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
@@ -673,6 +689,7 @@ class GraphViewSet(
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
         "delete_by_uuid": Permission.DELETE,
+        "subflow_usage": Permission.READ,
     }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
@@ -698,6 +715,7 @@ class GraphViewSet(
                     ),
                 ),
                 Prefetch("file_extractor_node_list", queryset=FileExtractorNode.objects.all()),
+                Prefetch("key_value_node_list", queryset=KeyValueNode.objects.all()),
                 Prefetch(
                     "audio_transcription_node_list",
                     queryset=AudioTranscriptionNode.objects.all(),
@@ -792,7 +810,9 @@ class GraphViewSet(
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
     def bulk_export(self, request):
@@ -809,7 +829,7 @@ class GraphViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids)
+        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
@@ -826,6 +846,7 @@ class GraphViewSet(
 
         result = self._partial_export_service.export(
             node_refs,
+            org_id=graph.org_id,
             edge_ids=serializer.validated_data.get("edge_list", []),
         )
 
@@ -849,6 +870,12 @@ class GraphViewSet(
         file_serializer.is_valid(raise_exception=True)
 
         vd = file_serializer.validated_data
+        org_id = self.get_active_org_id()
+        if vd["replace_existing"]:
+            # Replacing overwrites existing flows in place, like partial_import and
+            # save_flow; the action map only gates CREATE.
+            assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.UPDATE)
+
         data = self.import_export_service.import_entity(
             vd["file"],
             user=request.user,
@@ -857,7 +884,7 @@ class GraphViewSet(
                 replace_existing=vd["replace_existing"],
                 import_labels=vd["import_labels"],
             ),
-            org_id=self.get_active_org_id(),
+            org_id=org_id,
         )
         return Response(data, status=status.HTTP_200_OK)
 
@@ -925,6 +952,17 @@ class GraphViewSet(
         )
 
         return Response(GraphSerializer(refreshed).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="subflow-usage")
+    def subflow_usage(self, request, pk=None):
+        """Return the IDs of flows that reference this flow as a subgraph node."""
+        graph = self.get_object()
+        parent_flow_ids = list(
+            SubGraphNode.objects.filter(subgraph=graph, graph__org_id=self.get_active_org_id())
+            .values_list("graph_id", flat=True)
+            .distinct()
+        )
+        return Response({"parent_flow_ids": parent_flow_ids})
 
     @extend_schema(**GRAPH_DELETE_BY_UUID_DELETE)
     @action(
@@ -1040,6 +1078,31 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             )
         },
     ),
+    preview=extend_schema(
+        summary="Preview the snapshot that restoring this version would apply.",
+        description=(
+            "Read-only: runs the same conversion and dependency filtering as restore and "
+            "create-graph, then returns the result without persisting anything. Missing "
+            "dependencies are nulled or dropped and reported in `warnings`, keyed by the "
+            "version's original node ids. Credential-named fields in the snapshot's "
+            "graph-level `metadata` are returned as null. A Key-Value node's "
+            "`key_value_table` is the id of the flow organization's table a restore by the "
+            "caller would bind (same id and name, else same name), or null when none matches "
+            "or the caller lacks the node mode's Key-Value table permissions; "
+            "`key_value_table_name` is the name stored in the version."
+        ),
+        responses={
+            200: inline_serializer(
+                name="GraphVersionPreviewResponse",
+                fields={
+                    "snapshot": serializers.DictField(),
+                    "warnings": serializers.ListField(child=serializers.DictField()),
+                },
+            ),
+            403: OpenApiResponse(description="The caller has no FLOWS READ permission."),
+            404: OpenApiResponse(description="No such version in the caller's organization."),
+        },
+    ),
     all=extend_schema(
         summary="List all graph versions including soft-deleted ones.",
         description=(
@@ -1067,6 +1130,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         "all": Permission.READ,
         "restore": Permission.UPDATE,
         "create_graph": Permission.CREATE,
+        "preview": Permission.READ,
     }
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph_id"]
@@ -1122,6 +1186,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             version,
             expected_save_version=expected_save_version,
             backup=backup,
+            user=request.user,
         )
 
         graph_id = result["graph_id"]
@@ -1139,8 +1204,14 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="create-graph")
     def create_graph(self, request, *args, **kwargs):
         version = self.get_object()
-        result = GraphVersioningService().create_graph_from_version(version)
+        result = GraphVersioningService().create_graph_from_version(version, user=request.user)
         return Response(result, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        version = self.get_object()
+        result = GraphVersioningService().preview_version(version, user=request.user)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class IdempotentNodeCreateMixin:
@@ -1264,12 +1335,6 @@ class TaskNodeViewSet(
     )
     serializer_class = TaskNodeSerializer
 
-    def perform_update(self, serializer):
-        # The serializer allows writing `graph`; without this check a PATCH
-        # could move the node into another org's graph.
-        self._assert_parent_in_active_org(serializer)
-        super().perform_update(serializer)
-
     @extend_schema(
         responses={
             200: OpenApiResponse(
@@ -1311,12 +1376,6 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = AgentNodeSerializer
-
-    def perform_update(self, serializer):
-        # The serializer allows writing `graph`; without this check a PATCH
-        # could move the node into another org's graph.
-        self._assert_parent_in_active_org(serializer)
-        super().perform_update(serializer)
 
     @extend_schema(
         responses={
@@ -2252,17 +2311,6 @@ class WebhookTriggerNodeViewSet(
             return WebhookTriggerNodeReadSerializer
         return WebhookTriggerNodeSerializer
 
-    def create(self, request, *args, **kwargs):
-        logger.info(f"[WebhookTriggerNode] CREATE payload: {request.data}")
-        try:
-            return super().create(request, *args, **kwargs)
-        except DRFValidationError as e:
-            logger.error(f"[WebhookTriggerNode] validation error: {e.detail}")
-            raise
-        except Exception as e:
-            logger.error(f"[WebhookTriggerNode] unexpected error: {e}")
-            raise
-
 
 @extend_schema_view(
     create=extend_schema(**WEBHOOK_TRIGGER_CREATE),
@@ -2462,6 +2510,102 @@ class SecretViewSet(
         secret = self.get_object()
         effective = PermissionResolver().resolve(user=request.user, org_id=self.get_active_org_id())
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
+
+
+class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KEY_VALUE_TABLES
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "lookup_entries": Permission.READ,
+        "usage": Permission.READ,
+    }
+    queryset = KeyValueTable.objects.order_by(Lower("name"))
+    serializer_class = KeyValueTableSerializer
+    # These actions never serialize a table, so they skip counting its entries.
+    _actions_without_entry_count = frozenset({"usage", "lookup_entries", "destroy"})
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action in self._actions_without_entry_count:
+            return queryset
+        return queryset.annotate(entry_count=Count("entries"))
+
+    def perform_destroy(self, instance: KeyValueTable) -> None:
+        KeyValueTableService().delete_table(instance)
+
+    @extend_schema(**KEY_VALUE_TABLE_USAGE_GET)
+    @action(detail=True, methods=["get"], url_path="usage")
+    def usage(self, request, pk=None):
+        """How many nodes and flows use this table, for the deletion confirmation dialog."""
+        return Response(KeyValueTableService().usage(self.get_object()))
+
+    @action(detail=True, methods=["post"], url_path="entries/lookup")
+    def lookup_entries(self, request, pk=None):
+        table = self.get_object()
+        serializer = KeyValueKeysSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = KeyValueTableService().lookup(table, serializer.validated_data["keys"])
+        return Response({key: asdict(item) for key, item in result.items()})
+
+
+class KeyValueTableEntryPagination(LimitOffsetPagination):
+    """Caps `?limit=` so one request can't force a worker to load every entry of a table."""
+
+    max_limit = 100
+
+
+class KeyValueTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KEY_VALUE_TABLES
+    org_filter_path = "table__org_id"
+    pagination_class = KeyValueTableEntryPagination
+    queryset = KeyValueTableEntry.objects.annotate(
+        updated_by_graph_id=F("updated_by_session__graph_id"),
+        updated_by_graph_name=F("updated_by_session__graph__name"),
+    )
+    serializer_class = KeyValueTableEntrySerializer
+    filter_backends = [
+        DjangoFilterBackend,
+        drf_filters.SearchFilter,
+        KeyValueTableEntryOrderingFilter,
+    ]
+    search_fields = ["key"]
+    ordering_fields = ["key", "updated_at", "session"]
+    ordering = ["key"]
+
+    class KeyValueTableEntryFilter(FilterSet):
+        # Plain number, not ModelChoiceFilter: that validates against every org's
+        # tables, so a foreign id (200, empty) would be distinguishable from a missing one (400).
+        table = NumberFilter(field_name="table_id")
+
+    filterset_class = KeyValueTableEntryFilter
+
+    def list(self, request, *args, **kwargs):
+        # Page ids first, previews second: Postgres evaluates cheap select-list
+        # expressions below the Sort, so previewing the sorted query would render every
+        # matching row's value to text, not just the page's.
+        page_ids = self.paginate_queryset(
+            self.filter_queryset(self.get_queryset()).values_list("pk", flat=True)
+        )
+        entries = KeyValueTableService().with_value_preview(
+            self.get_queryset().filter(pk__in=page_ids)
+        )
+        entry_by_id = {entry.pk: entry for entry in entries}
+        # An entry deleted between the two queries is skipped, not a KeyError.
+        page = [entry_by_id[entry_id] for entry_id in page_ids if entry_id in entry_by_id]
+        return self.get_paginated_response(self.get_serializer(page, many=True).data)
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return KeyValueTableEntryListSerializer
+        return KeyValueTableEntrySerializer
+
+    def perform_update(self, serializer) -> None:
+        # A hand edit is no longer "written by run N". The instance still carries the
+        # queryset's annotations from before the save, so clear them for the response.
+        entry = serializer.save(updated_by_session=None)
+        entry.updated_by_graph_id = entry.updated_by_graph_name = None
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):

@@ -8,6 +8,7 @@ import { ConditionalEdgeNodePanelComponent } from '../../components/node-panels/
 import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
 import { EndNodePanelComponent } from '../../components/node-panels/end-node-panel/end-node-panel.component';
 import { FileExtractorNodePanelComponent } from '../../components/node-panels/file-extractor-node-panel/file-extractor-node-panel.component';
+import { KeyValueNodePanelComponent } from '../../components/node-panels/key-value-node-panel/key-value-node-panel.component';
 import { KnowledgeRetrieverNodePanelComponent } from '../../components/node-panels/knowledge-retriever-node-panel/knowledge-retriever-node-panel.component';
 import { PythonNodePanelComponent } from '../../components/node-panels/python-node-panel/python-node-panel.component';
 import { ScheduleTriggerNodePanelComponent } from '../../components/node-panels/schedule-trigger-node-panel/schedule-trigger-node-panel.component';
@@ -36,4 +37,5 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     [NodeType.TASK]: asNodePanelComponent(TaskNodePanelComponent),
     [NodeType.AGENT]: asNodePanelComponent(AgentNodePanelComponent),
     [NodeType.KNOWLEDGE_RETRIEVER]: asNodePanelComponent(KnowledgeRetrieverNodePanelComponent),
+    [NodeType.KEY_VALUE]: asNodePanelComponent(KeyValueNodePanelComponent),
 };

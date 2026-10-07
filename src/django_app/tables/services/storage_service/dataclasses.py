@@ -48,40 +48,11 @@ class FolderInfo:
 
 
 @dataclass(frozen=True, slots=True)
-class UploadResult:
-    """Raw result from a backend upload() call."""
+class FileDownload:
+    """Result of download(); content_range is set only when a part of the file was read."""
 
-    path: str
-    size: int
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass(frozen=True, slots=True)
-class FileUploadResult:
-    """Result of uploading a single file (non-archive)."""
-
-    type: Literal["file"]
-    path: str
-    size: int
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass(frozen=True, slots=True)
-class ArchiveUploadResult:
-    """Result of uploading and extracting an archive."""
-
-    type: Literal["archive"]
-    extracted: list[str]
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-UploadFileResult = FileUploadResult | ArchiveUploadResult
+    content: bytes
+    content_range: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

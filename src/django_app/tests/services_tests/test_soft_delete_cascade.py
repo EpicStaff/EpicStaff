@@ -155,7 +155,7 @@ class TestFullCascadePerRoot:
         assert python_code_tool_config.soft_deleted_at is not None
 
     def test_graph_cascades_through_knowledge_node(self, graph):
-        """EST-3788 review item 6: KnowledgeNode previously lacked
+        """KnowledgeNode previously lacked
         SoftDeleteFields entirely, so its sole reverse-CASCADE handling
         fell through to `_hard_delete` — a graph soft-delete would
         permanently destroy its KnowledgeNode children while every other
@@ -346,7 +346,7 @@ class TestScheduleTriggerNodeIsActiveUntouched:
 
 @pytest.mark.django_db
 class TestHiddenReverseRelationSetNull:
-    """Item 9 (EST-3788 review): related_name="+" reverse relations are
+    """related_name="+" reverse relations are
     hidden from Model._meta.get_fields() by default, so
     SessionTrigger.schedule_trigger_node (SET_NULL) was previously invisible
     to the cascade walker — the FK never got nulled out when its
@@ -535,16 +535,16 @@ class TestPostSaveListenerModelsBypassBatching:
     still triggers the signal."""
 
     def test_schedule_trigger_node_post_save_signal_fires_on_cascaded_soft_delete(
-        self, graph, redis_client_mock
+        self, graph, redis_client_mock, django_capture_on_commit_callbacks
     ):
+        # The "create" publish from objects.create() is queued for a commit that
+        # never comes; only the cascade's own publish runs inside the capture below.
         node = ScheduleTriggerNode.objects.create(
             graph=graph, node_name="trigger_node", is_active=True
         )
-        # Drop the "create" publish call triggered by objects.create() above,
-        # so only the cascade's own publish call is asserted below.
-        redis_client_mock.publish.reset_mock()
 
-        graph.delete()
+        with django_capture_on_commit_callbacks(execute=True):
+            graph.delete()
 
         node.refresh_from_db()
         assert node.is_soft_deleted is True
