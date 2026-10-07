@@ -50,8 +50,9 @@ async def main() -> None:
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         password=settings.REDIS_PASSWORD,
-        request_channel=settings.CODE_EXEC_CHANNEL,
         result_channel=settings.CODE_RESULT_CHANNEL,
+        sandbox_base_url=f"http://{settings.SANDBOX_HOST}:{settings.SANDBOX_PORT}",
+        sandbox_timeout=settings.AGENT_SANDBOX_TIMEOUT,
     )
     await sandbox_client.start()
 

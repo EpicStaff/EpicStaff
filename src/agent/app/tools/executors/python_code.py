@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.sandbox.client import SandboxClient
 from shared.models.agent_service import ToolResult
 from shared.models.tools import CodeTaskData, PythonCodeToolData
-
-from app.sandbox.client import SandboxClient
 
 
 class PythonCodeToolExecutor:
@@ -26,6 +25,7 @@ class PythonCodeToolExecutor:
         task = CodeTaskData(
             venv_name=python_code.venv_name,
             libraries=python_code.libraries,
+            venv_id=python_code.venv_id,
             code=python_code.code,
             execution_id=str(uuid.uuid4()),
             entrypoint=python_code.entrypoint,
