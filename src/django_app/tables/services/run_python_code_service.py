@@ -8,10 +8,7 @@ from loguru import logger
 from pydantic import ValidationError
 from src.shared.models import CodeResultData, CodeTaskData
 from storage_credentials.resource_names import org_storage_prefix
-from storage_credentials.services.session_credential_service import (
-    issue_for_test_run,
-    revoke_for_test_run,
-)
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
@@ -105,7 +102,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         storage_credentials = None
         if use_storage:
-            storage_credentials = issue_for_test_run(
+            storage_credentials = session_credential_service.issue_for_test_run(
                 python_code_result=python_code_result,
                 storage_allowed_paths=storage_allowed_paths,
                 org_id=organization_id,
@@ -144,7 +141,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             # never runs. Best-effort by contract: the helper swallows its own
             # errors (and is a no-op when nothing was minted), so the ERROR
             # result is still returned either way.
-            revoke_for_test_run(execution_id=execution_id)
+            session_credential_service.revoke_for_test_run(execution_id=execution_id)
             return execution_id
 
         channel = self.code_exec_task_channel

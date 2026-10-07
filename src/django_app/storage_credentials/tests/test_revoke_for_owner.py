@@ -12,11 +12,7 @@ from loguru import logger
 from agents.models import AgentDefinition
 from rbac.models import Organization
 from storage_credentials.models import TemporaryStorageAccount
-from storage_credentials.services.session_credential_service import (
-    revoke_for_realtime_chat,
-    revoke_for_session,
-    revoke_for_test_run,
-)
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import (
     Graph,
     OpenAIRealtimeConfig,
@@ -100,7 +96,7 @@ class TestRevokeForSession:
             session=session, access_key="session-key"
         )
 
-        revoke_for_session(session.id)
+        session_credential_service.revoke_for_session(session.id)
 
         gateway.delete_service_account.assert_awaited_once_with("session-key")
         gateway.store_get.assert_called_once_with(org_id=org.id)
@@ -114,7 +110,7 @@ class TestRevokeForSession:
             session=session, access_key="orphan-key"
         )
 
-        revoke_for_session(session.id)
+        session_credential_service.revoke_for_session(session.id)
 
         gateway.delete_service_account.assert_not_awaited()
         assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
@@ -124,7 +120,7 @@ class TestRevokeForSession:
         graph = Graph.objects.create(org=org, name="Revoke Graph")
         session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
 
-        revoke_for_session(session.id)
+        session_credential_service.revoke_for_session(session.id)
 
         gateway.delete_service_account.assert_not_awaited()
 
@@ -136,7 +132,7 @@ class TestRevokeForSession:
         )
         gateway.delete_service_account.side_effect = Exception("backend down")
 
-        revoke_for_session(session.id)
+        session_credential_service.revoke_for_session(session.id)
 
         assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
 
@@ -153,14 +149,14 @@ class TestRevokeForTestRun:
             python_code_result=result, access_key="test-run-key"
         )
 
-        revoke_for_test_run(result.execution_id)
+        session_credential_service.revoke_for_test_run(result.execution_id)
 
         gateway.delete_service_account.assert_awaited_once_with("test-run-key")
         gateway.store_get.assert_called_once_with(org_id=org.id)
         assert not TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
 
     def test_missing_account_is_noop(self, gateway):
-        revoke_for_test_run("exec-that-never-stored-anything")
+        session_credential_service.revoke_for_test_run("exec-that-never-stored-anything")
 
         gateway.delete_service_account.assert_not_awaited()
 
@@ -172,13 +168,13 @@ class TestRevokeForRealtimeChat:
             realtime_agent_chat=realtime_chat, access_key="realtime-key"
         )
 
-        revoke_for_realtime_chat(realtime_chat.id)
+        session_credential_service.revoke_for_realtime_chat(realtime_chat.id)
 
         gateway.delete_service_account.assert_awaited_once_with("realtime-key")
         gateway.store_get.assert_called_once_with(org_id=org.id)
         assert not TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
 
     def test_missing_account_is_noop(self, realtime_chat, gateway):
-        revoke_for_realtime_chat(realtime_chat.id)
+        session_credential_service.revoke_for_realtime_chat(realtime_chat.id)
 
         gateway.delete_service_account.assert_not_awaited()

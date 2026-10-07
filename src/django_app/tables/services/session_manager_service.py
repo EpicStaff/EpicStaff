@@ -249,9 +249,11 @@ class SessionManagerService(metaclass=SingletonMeta):
             # TODO: add ping or waiting for crew to accept connections
 
             # Issue temporary storage credentials if needed
-            from storage_credentials.services.session_credential_service import issue_for_session
+            from storage_credentials.services.session_credential_service import (
+                session_credential_service,
+            )
 
-            storage_credentials = issue_for_session(
+            storage_credentials = session_credential_service.issue_for_session(
                 session_data=session_data,
                 session_orm=session,
                 org=graph.org,

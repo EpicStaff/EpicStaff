@@ -65,7 +65,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from storage_credentials.services import session_credential_service
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,

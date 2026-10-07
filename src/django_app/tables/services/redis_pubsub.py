@@ -16,7 +16,7 @@ from src.shared.models import (
     StorageMutationEvent,
     WebhookEventData,
 )
-from storage_credentials.services import session_credential_service
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import (
     GraphSessionMessage,
     Session,

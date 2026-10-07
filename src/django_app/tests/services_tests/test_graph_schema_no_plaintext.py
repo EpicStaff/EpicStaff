@@ -125,7 +125,8 @@ class TestGraphSchemaNeverHoldsPlaintext:
         from unittest.mock import patch
         mock_creds = {"access_key": "test_access", "secret_key": "SHOULD_NOT_BE_STORED"}
         with patch(
-            "storage_credentials.services.session_credential_service.issue_for_session"
+            "storage_credentials.services.session_credential_service."
+            "session_credential_service.issue_for_session"
         ) as mock_issue:
             from src.shared.models.storage_scope import StorageCredentials
             mock_issue.return_value = StorageCredentials(
@@ -161,7 +162,8 @@ class TestGraphSchemaNeverHoldsPlaintext:
         )
 
         with patch(
-            "storage_credentials.services.session_credential_service.issue_for_session",
+            "storage_credentials.services.session_credential_service."
+            "session_credential_service.issue_for_session",
             return_value=StorageCredentials(
                 access_key="AK-run-session", secret_key="SK-run-session"
             ),

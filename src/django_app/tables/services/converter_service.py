@@ -42,7 +42,7 @@ from storage_credentials.exceptions import (
     TemporaryCredentialIssueError,
 )
 from storage_credentials.resource_names import org_storage_prefix
-from storage_credentials.services.session_credential_service import issue_for_realtime_chat
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -349,10 +349,12 @@ class ConverterService(metaclass=SingletonMeta):
                     raise CredentialScopeValidationError(
                         f"Storage needed but no paths found in realtime agent tools for org {ad.organization_id}"
                     )
-                rt_agent_chat_data.storage_credentials = issue_for_realtime_chat(
-                    realtime_agent_chat=rt_agent_chat,
-                    storage_allowed_paths=list(union_allowed_paths),
-                    org_id=ad.organization_id,
+                rt_agent_chat_data.storage_credentials = (
+                    session_credential_service.issue_for_realtime_chat(
+                        realtime_agent_chat=rt_agent_chat,
+                        storage_allowed_paths=list(union_allowed_paths),
+                        org_id=ad.organization_id,
+                    )
                 )
         except (TemporaryCredentialIssueError, CredentialScopeValidationError):
             raise

@@ -18,11 +18,7 @@ from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.tools import PythonCodeData
 from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.models import TemporaryStorageAccount
-from storage_credentials.services.session_credential_service import (
-    issue_for_realtime_chat,
-    issue_for_session,
-    issue_for_test_run,
-)
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import Graph, PythonCodeResult, RealtimeAgentChat, Session
 
 
@@ -124,7 +120,7 @@ class TestIssueForSessionNoStorage(TestCase):
         """Session without storage-demanding nodes should return None."""
         session_data = _make_session_data(self.session.id, _make_graph())
 
-        result = issue_for_session(
+        result = session_credential_service.issue_for_session(
             session_data=session_data, session_orm=self.session, org=self.org
         )
 
@@ -134,7 +130,7 @@ class TestIssueForSessionNoStorage(TestCase):
         """Verify no TemporaryStorageAccount row is created for sessions without storage."""
         session_data = _make_session_data(self.session.id, _make_graph())
 
-        issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
         assert not TemporaryStorageAccount.objects.filter(session=self.session).exists()
 
@@ -175,7 +171,7 @@ class TestIssueForSessionWithStorage(TestCase):
         )
         self._stub_org_credentials(mock_org_store)
 
-        result = issue_for_session(
+        result = session_credential_service.issue_for_session(
             session_data=self._storage_session_data(self.session.id),
             session_orm=self.session,
             org=self.org,
@@ -219,7 +215,7 @@ class TestIssueForSessionWithStorage(TestCase):
         )
         session_data = _make_session_data(self.session.id, graph)
 
-        issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
         mock_build_policy.assert_called_once_with(
             bucket=settings.STORAGE_BUCKET_NAME,
@@ -243,7 +239,7 @@ class TestIssueForSessionWithStorage(TestCase):
             side_effect=Exception("DB write failed"),
         ):
             with pytest.raises(Exception, match="Failed to persist temporary storage account"):
-                issue_for_session(
+                session_credential_service.issue_for_session(
                     session_data=session_data, session_orm=self.session, org=self.org
                 )
 
@@ -280,7 +276,7 @@ class TestIssueForSessionWithStorage(TestCase):
         ) as mock_org_store:
             self._stub_org_credentials(mock_org_store)
 
-            first_result = issue_for_session(
+            first_result = session_credential_service.issue_for_session(
                 session_data=self._storage_session_data(self.session.id),
                 session_orm=self.session,
                 org=self.org,
@@ -288,7 +284,7 @@ class TestIssueForSessionWithStorage(TestCase):
             assert first_result is not None
             assert first_result.access_key == "access1"
 
-            second_result = issue_for_session(
+            second_result = session_credential_service.issue_for_session(
                 session_data=self._storage_session_data(second_session.id),
                 session_orm=second_session,
                 org=self.org,
@@ -338,7 +334,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             ),
         )
 
-        issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
         assert _object_resources(_minted_policy(gateway)) == [
             f"arn:aws:s3:::{settings.STORAGE_BUCKET_NAME}/org_{self.org.id}/flow_files/*"
@@ -365,7 +361,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             ),
         )
 
-        issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
+        session_credential_service.issue_for_session(session_data=session_data, session_orm=self.session, org=self.org)
 
         resources = _object_resources(_minted_policy(gateway))
         assert resources == [
@@ -382,7 +378,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
             execution_id="exec-org-prefix", org=self.org
         )
 
-        credentials = issue_for_test_run(
+        credentials = session_credential_service.issue_for_test_run(
             python_code_result=python_code_result,
             storage_allowed_paths=["test-runs/exec-org-prefix/"],
             org_id=self.org.id,
@@ -404,7 +400,7 @@ class TestMintedPolicyIsOrgPrefixed(TestCase):
         gateway = _stub_gateway(mock_gateway_class, "realtime_key")
         chat = RealtimeAgentChat.objects.create(connection_key="conn-org-prefix")
 
-        credentials = issue_for_realtime_chat(
+        credentials = session_credential_service.issue_for_realtime_chat(
             realtime_agent_chat=chat,
             storage_allowed_paths=["shared/notes.txt"],
             org_id=self.org.id,
@@ -440,7 +436,7 @@ class TestTemporaryCredentialExpiration(TestCase):
         mock_org_store.get.return_value = org_creds
 
     def _issue(self) -> None:
-        issue_for_test_run(
+        session_credential_service.issue_for_test_run(
             python_code_result=self.python_code_result,
             storage_allowed_paths=["test-runs/exec-ttl/"],
             org_id=self.org.id,
@@ -488,7 +484,7 @@ class TestScopeValidationRejectsBadPaths(TestCase):
         )
 
     def _issue(self, storage_allowed_paths: list[str]) -> None:
-        issue_for_test_run(
+        session_credential_service.issue_for_test_run(
             python_code_result=self.python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=self.org.id,
