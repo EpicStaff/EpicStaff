@@ -68,7 +68,8 @@ class Controller:
                 if session_id in self._in_flight:
                     self._running.add(session_id)
                 else:
-                    self._early_running.add(session_id)  # slot_acquired beat the HTTP answer
+                    # slot_acquired beat the HTTP answer
+                    self._early_running.add(session_id)
             elif event.get("checkpoint") == "session_end":
                 self._finish(
                     session_id,
@@ -169,6 +170,9 @@ class Controller:
     def recent_error_rate(
         self, now: float, window_s: float = 30, min_done: int = 20
     ) -> float | None:
+        if self.external_in_flight is not None:
+            # fallback mode only completes http_error records: the rate would read 1.0
+            return None
         with self._lock:
             done = [
                 record
@@ -215,11 +219,13 @@ class Controller:
 
     def drain(self, timeout_s: float) -> int:
         """Wait for in-flight sessions; stop the ones still running after `timeout_s`.
-        Returns the number of sessions it stopped (0 in fallback mode)."""
+        Returns the number of sessions it stopped (0 in fallback mode). Can block up to
+        `timeout_s` + 35 s + 60 s."""
         deadline = time.monotonic() + timeout_s
         while self.in_flight_count() > 0 and time.monotonic() < deadline:
             time.sleep(0.25)
-        pending_deadline = time.monotonic() + 35  # let unanswered start requests finish
+        # let unanswered start requests finish; 35 s covers the API client's 30 s HTTP timeout
+        pending_deadline = time.monotonic() + 35
         while time.monotonic() < pending_deadline:
             with self._lock:
                 if self._pending_http == 0:
@@ -231,4 +237,5 @@ class Controller:
 
     def close(self) -> None:
         self._pool.shutdown(wait=True, cancel_futures=True)
-        self._stop_pool.shutdown(wait=True)  # never cancel stops
+        # never cancel stops
+        self._stop_pool.shutdown(wait=True)

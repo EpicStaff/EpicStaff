@@ -361,6 +361,7 @@ class FakeStack:
         return 200, session_id
 
     def stop(self, session_id):
+        time_module.sleep(0.05)
         self.stopped.append(session_id)
 
 
@@ -489,6 +490,27 @@ class ControllerTest(unittest.TestCase):
         record = controller.records[0]
         self.assertEqual(record.end_status, "unknown")
         self.assertFalse(record.ok)
+        controller.close()
+
+    def test_drain_waits_for_unanswered_starts_and_stops_them(self):
+        class SlowStartStack(FakeStack):
+            def start(self):
+                time_module.sleep(0.4)
+                return 200, next(self.ids)
+
+        fake = SlowStartStack(duration_s=None)
+        controller = make_controller(fake)
+        controller.hold(
+            target=2, duration_s=0.01, timeout_s=10, abort_check=lambda: None, tick_s=0.01
+        )
+        self.assertEqual(controller.drain(timeout_s=0), 2)
+        self.assertEqual(sorted(fake.stopped), [1, 2])
+        controller.close()
+
+    def test_recent_error_rate_is_none_in_fallback_mode(self):
+        controller = make_controller(FakeStack())
+        controller.external_in_flight = lambda: 0
+        self.assertIsNone(controller.recent_error_rate(time_module.time(), min_done=0))
         controller.close()
 
 
