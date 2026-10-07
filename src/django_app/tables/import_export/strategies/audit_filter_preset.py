@@ -9,6 +9,7 @@ from tables.import_export.serializers.audit_filter_preset import (
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.services.copy_services.audit_filter_preset_copy_service import next_free_preset_name
 
 
 class AuditFilterPresetStrategy(EntityImportExportStrategy):
@@ -36,27 +37,6 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
             return Q()
         return Q(org_id=org_id)
 
-    def find_existing(
-        self,
-        data: dict,
-        id_mapper: IDMapper,
-        org_id: int | None = None,
-        created_by=None,
-    ):
-        name = data.get("name")
-        if not name:
-            raise ValidationError({"name": "This field is required."})
-        # Presets are owner-only: without an owner there is nothing to reuse, and
-        # an org-wide match would reveal another user's preset names to the caller.
-        if created_by is None:
-            return None
-
-        return (
-            AuditFilterPreset.objects.filter(name=name, created_by=created_by)
-            .filter(self.get_org_scope_q(org_id))
-            .first()
-        )
-
     def import_entity(
         self,
         data: dict,
@@ -70,25 +50,25 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
             existing_id = id_mapper.get(self.entity_type, old_id)
             return self.get_instance(existing_id)
 
-        org_id = kwargs.get("org_id")
-        created_by = kwargs.get("user")
-
-        existing = self.find_existing(data, id_mapper, org_id=org_id, created_by=created_by)
-        if existing is not None:
-            instance, was_created = existing, False
-        else:
-            instance = self.create_entity(data, id_mapper, org_id=org_id, created_by=created_by)
-            was_created = True
-
+        instance = self.create_entity(
+            data, id_mapper, org_id=kwargs.get("org_id"), created_by=kwargs.get("user")
+        )
         if old_id is not None:
-            id_mapper.map(self.entity_type, old_id, instance.id, was_created)
+            id_mapper.map(self.entity_type, old_id, instance.id, True)
 
         return instance
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> AuditFilterPreset:
-        serializer = self.serializer_class(data=data)
-        serializer.is_valid(raise_exception=True)
-        return serializer.save(
-            org_id=kwargs.get("org_id"),
-            created_by=kwargs.get("created_by"),
+        """Always create, never reuse: a name taken in the org gets the copy numbering."""
+        name = data.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError({"name": "This field is required."})
+        # Strip like the serializer's CharField does, so the collision check sees the stored name.
+        name = name.strip()
+        org_id = kwargs.get("org_id")
+
+        serializer = self.serializer_class(
+            data={**data, "name": next_free_preset_name(org_id, name)}
         )
+        serializer.is_valid(raise_exception=True)
+        return serializer.save(org_id=org_id, created_by=kwargs.get("created_by"))

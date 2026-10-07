@@ -17,10 +17,11 @@ _PRESET_EXAMPLE = {
 AUDIT_FILTER_PRESET_COPY = {
     "summary": "Copy a saved preset",
     "description": (
-        "Clones the preset's `filter_body` under a new row. `name` is "
+        "Clones any preset of the active org into a new row owned by the "
+        "caller. `name` is "
         "optional - if omitted, the original's own name is reused, "
-        "auto-numbered (`My Filter` -> `My Filter #2`) the same way "
-        "Crew/Agent/Graph copy already works if that name is taken."
+        "auto-numbered (`My Filter` -> `My Filter (2)`, the first free "
+        "number in the org) if that name is taken."
     ),
     "request": AuditFilterPresetCopySerializer,
     "responses": {
@@ -30,7 +31,7 @@ AUDIT_FILTER_PRESET_COPY = {
             examples=[
                 OpenApiExample(
                     "Copied",
-                    value={**_PRESET_EXAMPLE, "id": 2, "name": "My Filter #2"},
+                    value={**_PRESET_EXAMPLE, "id": 2, "name": "My Filter (2)", "is_owner": True},
                     response_only=True,
                 ),
             ],
@@ -57,13 +58,13 @@ AUDIT_FILTER_PRESET_EXPORT_ONE = {
 }
 
 AUDIT_FILTER_PRESET_EXPORT_ALL = {
-    "summary": "Export a selection of the caller's own saved presets",
+    "summary": "Export a selection of the active org's saved presets",
     "description": (
         "Bulk counterpart to the single-preset export above - always "
         'returns the `{"presets": [...]}` batch shape (even for one id), '
         "matching what `import`'s batch mode accepts. `ids` is required "
         "and non-empty (same `BulkExportSerializer` GraphViewSet.bulk_export "
-        "uses) - an id that isn't the caller's own, or doesn't exist, 400s "
+        "uses) - an id outside the active org, or one that doesn't exist, 400s "
         "the whole request rather than being silently dropped."
     ),
     "request": BulkExportSerializer,
@@ -79,7 +80,7 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = {
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
-            description="One or more requested ids don't exist (or aren't the caller's own).",
+            description="One or more requested ids don't exist in the active org.",
             examples=[
                 OpenApiExample(
                     "Unknown id",
@@ -102,8 +103,8 @@ AUDIT_FILTER_PRESET_IMPORT = {
         'produced - either the single-object shape or a `{"presets": '
         "[...]}` batch. `org`/`created_by` always come from the caller's "
         "own request, regardless of anything the imported file itself "
-        "claims. A name collision with an existing preset is reused rather "
-        "than failing the whole batch - see `reused` below. Same raw "
+        "claims. Every preset is created for the caller; a name already taken in "
+        "the org is auto-numbered like `copy` (`My Filter (2)`), never reused. Same raw "
         "`IDMapper.get_detailed_summary()` shape `GraphViewSet.partial_import` "
         "returns, keyed by entity type (`AuditFilterPreset`, since presets "
         "are always a single-entity-type import)."
@@ -134,12 +135,15 @@ AUDIT_FILTER_PRESET_IMPORT = {
                     response_only=True,
                 ),
                 OpenApiExample(
-                    "Duplicate reused",
+                    "Name already taken in the org",
                     value={
                         EntityType.AUDIT_FILTER_PRESET: {
                             "total": 1,
-                            "created": {"count": 0, "items": []},
-                            "reused": {"count": 1, "items": [_PRESET_EXAMPLE]},
+                            "created": {
+                                "count": 1,
+                                "items": [{**_PRESET_EXAMPLE, "name": "My Filter (2)"}],
+                            },
+                            "reused": {"count": 0, "items": []},
                         },
                     },
                     response_only=True,

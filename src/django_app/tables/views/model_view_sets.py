@@ -2523,17 +2523,17 @@ class SecretViewSet(
 
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     """
-    A user's own saved audit-search filters - owner-only (see get_queryset):
-    every action, including an Org Admin's, is scoped to `created_by=request.
-    user` on top of the usual org scoping, so another user's preset id 404s
-    rather than 403s (it isn't visible enough to even name as "forbidden").
+    Saved audit-search filters, shared within the active org: anyone with
+    AUDIT:read can list, retrieve, export and copy any preset of the org (a
+    copy belongs to whoever made it). Only the author can update or delete -
+    for those actions get_queryset adds `created_by=request.user`, so another
+    user's preset 404s there, as does a preset of another org.
 
     Gated entirely on AUDIT:read, same as browsing itself - presets are a
-    personal convenience over audit data, not audit data or an org-wide
-    setting, so every action (including create/update/destroy/duplicate/
-    overwrite/export/import) maps to READ rather than the CREATE/UPDATE/
-    DELETE bits DEFAULT_ACTION_MAP would otherwise require - which were
-    never granted for the `audit` resource type (see
+    convenience over audit data, not audit data itself, so every action
+    (including create/update/destroy/copy/export/import) maps to READ rather
+    than the CREATE/UPDATE/DELETE bits DEFAULT_ACTION_MAP would otherwise
+    require - which were never granted for the `audit` resource type (see
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
@@ -2567,8 +2567,13 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             filename_attr="name",
         )
 
+    _author_only_actions = frozenset({"update", "partial_update", "destroy"})
+
     def get_queryset(self):
-        return super().get_queryset().filter(created_by=self.request.user)
+        queryset = super().get_queryset()
+        if self.action in self._author_only_actions:
+            return queryset.filter(created_by=self.request.user)
+        return queryset
 
     @extend_schema(**AUDIT_FILTER_PRESET_COPY)
     @action(detail=True, methods=["post"])
@@ -2582,7 +2587,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             org_id=self.get_active_org_id(),
             created_by=request.user,
         )
-        return Response(AuditFilterPresetSerializer(clone).data, status=201)
+        return Response(self.get_serializer(clone).data, status=201)
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
     @action(detail=True, methods=["get"])
