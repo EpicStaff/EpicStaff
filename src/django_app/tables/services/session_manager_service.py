@@ -183,6 +183,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         session: Session,
         token_budget: int | None = None,
+        run_type: str = "",
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
@@ -198,9 +199,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return SessionData(
             id=session.pk,
+            org_id=session.graph.org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
+            run_type=run_type,
         )
 
     def run_session(
@@ -246,7 +249,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
 
             session_data: SessionData = self.create_session_data(
-                session=session, token_budget=token_budget
+                session=session,
+                token_budget=token_budget,
+                run_type=trigger.trigger_type,
             )
             # TODO: add ping or waiting for crew to accept connections
 
@@ -289,7 +294,9 @@ class SessionManagerService(metaclass=SingletonMeta):
     def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
-            session = Session.objects.get(id=graph_session_message_data.session_id)
+            session = Session.objects.select_related("graph").get(
+                id=graph_session_message_data.session_id
+            )
             GraphSessionMessage.objects.create(
                 session=session,
                 name=graph_session_message_data.name,
@@ -347,10 +354,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph=graph.pk
         ).prefetch_related("condition_groups__conditions")
         subgraph_node_list = SubGraphNode.objects.filter(graph=graph.pk).select_related("subgraph")
-        webhook_trigger_node_list = WebhookTriggerNode.objects.filter(
-            graph=graph.pk
-        ).select_related("python_code")
-        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
+        webhook_trigger_node_list = (
+            WebhookTriggerNode.objects.filter(graph=graph.pk)
+            .defer("test_payload")
+            .select_related("python_code")
+        )
+        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
+            "test_payload"
+        )
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = ClassificationDecisionTableNode.objects.filter(
             graph=graph.pk
