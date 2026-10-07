@@ -1,6 +1,37 @@
 <div class="plugin-host">
     @if (readyView(); as ready) {
+        @if (ready.devUrl) {
+            <div
+                class="plugin-host__dev-banner"
+                role="status"
+            >
+                <span class="plugin-host__dev-badge">DEV</span>
+                <div class="plugin-host__dev-text">
+                    <span class="plugin-host__dev-line">
+                        Loaded from
+                        <span
+                            class="plugin-host__dev-url"
+                            [title]="ready.devUrl"
+                            >{{ ready.devUrl }}</span
+                        >
+                        — only you see this.
+                    </span>
+                    <span class="plugin-host__dev-line plugin-host__dev-line--caution">
+                        In dev mode any page loaded in this frame gets the bridge with your permissions, so point it
+                        only at your own dev server.
+                    </span>
+                </div>
+                <app-button
+                    type="outline-secondary"
+                    mod="small"
+                    (click)="reload()"
+                >
+                    Reload
+                </app-button>
+            </div>
+        }
         <!-- sandbox / referrerpolicy / allow must stay literal: Angular refuses to bind them. -->
+        <!-- No [src]: the component sets the validated address after the bridge is attached. -->
         <iframe
             #pluginFrame
             class="plugin-host__frame"
@@ -8,7 +39,6 @@
             referrerpolicy="no-referrer"
             allow="camera 'none'; microphone 'none'; geolocation 'none'"
             [title]="ready.session.plugin.name"
-            [src]="ready.frameUrl"
             (load)="onFrameLoad()"
         ></iframe>
     } @else if (messageView(); as message) {

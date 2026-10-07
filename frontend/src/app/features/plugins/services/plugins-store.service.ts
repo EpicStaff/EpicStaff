@@ -122,6 +122,14 @@ export class PluginsStoreService implements StorageService {
         return this.applyDetail(this.pluginsApiService.updateSecrets(id, request));
     }
 
+    setDevUi(id: number, url: string): Observable<PluginDetail> {
+        return this.applyDetail(this.pluginsApiService.setDevUi(id, url));
+    }
+
+    clearDevUi(id: number): Observable<PluginDetail> {
+        return this.applyDetail(this.pluginsApiService.clearDevUi(id));
+    }
+
     delete(id: number): Observable<void> {
         const generation = this.generation;
         return this.pluginsApiService.delete(id).pipe(

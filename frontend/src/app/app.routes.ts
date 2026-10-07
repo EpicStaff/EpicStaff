@@ -14,6 +14,7 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { pluginPageMatcher } from './features/plugins/pages/plugin-host-page/plugin-page.matcher';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -193,7 +194,8 @@ export const routes: Routes = [
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
-                        path: 'plugins/:id',
+                        // `plugins/<id>` and every deep link below it: the rest is the plugin page's own path.
+                        matcher: pluginPageMatcher,
                         loadComponent: () =>
                             import('./features/plugins/pages/plugin-host-page/plugin-host-page.component').then(
                                 (m) => m.PluginHostPageComponent

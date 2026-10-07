@@ -103,9 +103,24 @@ export function buildUiSession(overrides: Partial<PluginUiSession> = {}): Plugin
         url: '/api/plugin-ui/token-1/index.html',
         token: 'token-1',
         expires_in: 600,
+        dev_mode: false,
         bridge_version: 1,
         plugin: { id: 7, plugin_id: 'chat-bot', name: 'Chat Bot', version: '0.1.0' },
         access: [{ alias: 'chat', type: 'flow', actions: ['run', 'sessions.read', 'sessions.stop'], resource_id: 42 }],
         ...overrides,
     };
+}
+
+/** A bridge v2 session of the Chat Admin sample: its flow and its key-value table. */
+export function buildUiSessionV2(overrides: Partial<PluginUiSession> = {}): PluginUiSession {
+    return buildUiSession({
+        bridge_version: 2,
+        expires_in: 43200,
+        plugin: { id: 8, plugin_id: 'chat-admin', name: 'Chat Admin', version: '0.2.0' },
+        access: [
+            { alias: 'chat', type: 'flow', actions: ['run', 'sessions.read', 'sessions.stop'], resource_id: 42 },
+            { alias: 'conversations', type: 'key_value_table', actions: ['read'], resource_id: 5 },
+        ],
+        ...overrides,
+    });
 }

@@ -6,6 +6,7 @@ import {
     groupPluginContents,
     isPluginIconUrl,
     pluginStatusLabel,
+    resourceTypeLabel,
 } from './plugin-display.util';
 import { toPluginErrorView } from './plugin-error.util';
 
@@ -20,6 +21,27 @@ describe('plugin display helpers', () => {
         expect(describePluginAccess({ resource_name: 'Chat Bot', actions: ['sessions.read'] })).toBe(
             "Read the sessions of flow 'Chat Bot'"
         );
+    });
+
+    it('describes read access to a key-value table, and one that no longer exists', () => {
+        expect(
+            describePluginAccess({
+                type: 'key_value_table',
+                resource_name: 'chat_admin__conversations',
+                actions: ['read'],
+            })
+        ).toBe("Read key-value table 'chat_admin__conversations'");
+        expect(describePluginAccess({ type: 'key_value_table', resource_name: null, actions: ['read'] })).toBe(
+            'Read a key-value table that no longer exists'
+        );
+        expect(describePluginAccess({ type: 'flow', resource_name: 'Chat', actions: ['run'] })).toBe("Run flow 'Chat'");
+    });
+
+    it('labels key-value tables and the model types a plugin can create', () => {
+        expect(resourceTypeLabel('key_value_table', 1)).toBe('Key-value table');
+        expect(resourceTypeLabel('key_value_table', 2)).toBe('Key-value tables');
+        expect(resourceTypeLabel('llm_model', 1)).toBe('LLM model');
+        expect(resourceTypeLabel('embedding_model', 2)).toBe('Embedding models');
     });
 
     it('labels each status, with the reason when it needs attention', () => {
@@ -68,12 +90,18 @@ describe('plugin display helpers', () => {
     it('groups contents by type in display order', () => {
         const groups = groupPluginContents([
             { type: 'secret', ref: 'KEY', name: 'CHAT_BOT__KEY' },
+            { type: 'key_value_table', ref: '1', name: 'chat_admin__conversations' },
             { type: 'flow', ref: '1', name: 'Chat Bot' },
             { type: 'source_collection', ref: 'Docs', name: 'Docs', documents: ['a.md', 'b.md'] },
         ]);
 
-        expect(groups.map((group) => group.label)).toEqual(['Flow', 'Knowledge collection', 'Secret']);
-        expect(groups[1].items[0].detail).toBe('2 documents: a.md, b.md');
+        expect(groups.map((group) => group.label)).toEqual([
+            'Flow',
+            'Key-value table',
+            'Knowledge collection',
+            'Secret',
+        ]);
+        expect(groups[2].items[0].detail).toBe('2 documents: a.md, b.md');
     });
 
     it('turns the 409 already-installed envelope into a clear message', () => {

@@ -9,6 +9,13 @@ const CHAT: PluginUiSessionAccessEntry = {
     resource_id: 42,
 };
 
+const CONVERSATIONS: PluginUiSessionAccessEntry = {
+    alias: 'conversations',
+    type: 'key_value_table',
+    actions: ['read'],
+    resource_id: 5,
+};
+
 function expectBridgeError(action: () => unknown, code: string): void {
     let thrown: unknown = null;
     try {
@@ -87,5 +94,65 @@ describe('access policy', () => {
         expect(describeAccess(buildAccessPolicy([CHAT]))).toEqual([
             { alias: 'chat', type: 'flow', actions: ['run', 'sessions.read'] },
         ]);
+    });
+
+    describe('per bridge version', () => {
+        it('drops a key-value table entry for a bridge v1 page, with or without the version given', () => {
+            for (const policy of [
+                buildAccessPolicy([CHAT, CONVERSATIONS]),
+                buildAccessPolicy([CHAT, CONVERSATIONS], 1),
+            ]) {
+                expect(describeAccess(policy)).toEqual([
+                    { alias: 'chat', type: 'flow', actions: ['run', 'sessions.read'] },
+                ]);
+                expectBridgeError(() => resolveAlias(policy, 'conversations', 'key_value_table', 'read'), 'forbidden');
+            }
+        });
+
+        it('grants read on a key-value table to a bridge v2 page', () => {
+            const policy = buildAccessPolicy([CHAT, CONVERSATIONS], 2);
+
+            expect(resolveAlias(policy, 'conversations', 'key_value_table', 'read')).toBe(5);
+            expect(resolveAlias(policy, 'chat', 'flow', 'run')).toBe(42);
+            expect(describeAccess(policy)).toEqual([
+                { alias: 'chat', type: 'flow', actions: ['run', 'sessions.read'] },
+                { alias: 'conversations', type: 'key_value_table', actions: ['read'] },
+            ]);
+        });
+
+        it('keeps only the actions that fit the entry type', () => {
+            const policy = buildAccessPolicy(
+                [
+                    { ...CHAT, actions: ['run', 'read'] },
+                    { ...CONVERSATIONS, actions: ['read', 'run', 'sessions.read'] },
+                ],
+                2
+            );
+
+            expect(describeAccess(policy)).toEqual([
+                { alias: 'chat', type: 'flow', actions: ['run'] },
+                { alias: 'conversations', type: 'key_value_table', actions: ['read'] },
+            ]);
+            expectBridgeError(() => resolveAlias(policy, 'chat', 'flow', 'read'), 'forbidden');
+            expectBridgeError(() => resolveAlias(policy, 'conversations', 'key_value_table', 'run'), 'forbidden');
+        });
+
+        it('never resolves an alias as another type than its own', () => {
+            const policy = buildAccessPolicy([CHAT, CONVERSATIONS], 2);
+
+            expectBridgeError(() => resolveAlias(policy, 'chat', 'key_value_table', 'read'), 'forbidden');
+            expectBridgeError(() => resolveAlias(policy, 'conversations', 'flow', 'run'), 'forbidden');
+        });
+
+        it('grants nothing for a bridge version it does not know, or an unknown entry type', () => {
+            expect(describeAccess(buildAccessPolicy([CHAT, CONVERSATIONS], 99))).toEqual([]);
+            expect(describeAccess(buildAccessPolicy([{ ...CHAT, type: 'agent' as never }], 2))).toEqual([]);
+        });
+
+        it('treats a key-value table that was deleted as forbidden', () => {
+            const policy = buildAccessPolicy([{ ...CONVERSATIONS, resource_id: null }], 2);
+
+            expectBridgeError(() => resolveAlias(policy, 'conversations', 'key_value_table', 'read'), 'forbidden');
+        });
     });
 });

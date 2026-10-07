@@ -61,6 +61,13 @@
                         <div class="plugins-section__name-line">
                             <span class="plugins-section__name">{{ row.plugin.name }}</span>
                             <span class="plugins-section__version">v{{ row.plugin.version }}</span>
+                            @if (row.devBadgeTitle) {
+                                <span
+                                    class="plugins-section__dev-badge"
+                                    [title]="row.devBadgeTitle"
+                                    >DEV</span
+                                >
+                            }
                         </div>
                         @if (row.plugin.description) {
                             <p
@@ -80,7 +87,29 @@
                     >
 
                     <div class="plugins-section__actions">
-                        <!-- First, so it sits right before Retry: fix the secret, then retry. -->
+                        @if (row.offersDevMode) {
+                            <app-button
+                                *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]"
+                                type="outline-secondary"
+                                mod="small"
+                                [disabled]="isBusy(row.plugin.id)"
+                                (click)="onDevMode(row.plugin)"
+                            >
+                                Dev mode
+                            </app-button>
+                        }
+                        @if (row.offersDevModeOff) {
+                            <app-button
+                                *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]"
+                                type="outline-secondary"
+                                mod="small"
+                                [disabled]="isBusy(row.plugin.id)"
+                                (click)="onTurnOffDevMode(row.plugin)"
+                            >
+                                Turn off dev mode
+                            </app-button>
+                        }
+                        <!-- Right before Retry: fix the secret, then retry. -->
                         @if (row.hasSecretSlots) {
                             <!-- The secrets endpoint also requires secrets:create; without it the save is refused. -->
                             <ng-container *appHasPermission="[ResourceCode.Plugins, ActionCode.Update]">

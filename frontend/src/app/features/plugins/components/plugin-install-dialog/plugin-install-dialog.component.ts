@@ -36,7 +36,8 @@ type InstallStep = 'drop' | 'review' | 'progress' | 'done';
 type SecretsForm = FormGroup<Record<string, FormControl<string>>>;
 
 /** The server refuses larger plugin files; checked here too so nothing is uploaded in vain. */
-export const PLUGIN_MAX_FILE_BYTES = 20 * 1024 * 1024;
+export const PLUGIN_MAX_FILE_MEGABYTES = 30;
+export const PLUGIN_MAX_FILE_BYTES = PLUGIN_MAX_FILE_MEGABYTES * 1024 * 1024;
 
 const UI_ACKNOWLEDGEMENT =
     "This plugin runs its own code in a sandboxed page. It can use what's listed above with your permissions, and anything it can see could be sent to the plugin's author.";
@@ -134,6 +135,7 @@ export class PluginInstallDialogComponent implements OnInit {
 
     protected readonly steps = STEPS;
     protected readonly secretValueMaxLength = PLUGIN_SECRET_VALUE_MAX_LENGTH;
+    protected readonly fileHint = `One .zip file, up to ${PLUGIN_MAX_FILE_MEGABYTES} MB`;
 
     private readonly dialogRef = inject(DialogRef<PluginDetail | undefined>);
     private readonly pluginsApiService = inject(PluginsApiService);
@@ -278,6 +280,6 @@ function describeFileProblem(files: File[]): string | null {
     const [file] = files;
     if (!file.name.toLowerCase().endsWith('.zip')) return 'A plugin is a single .zip file.';
     if (file.size === 0) return 'The file is empty.';
-    if (file.size > PLUGIN_MAX_FILE_BYTES) return 'The plugin file is larger than 20 MB.';
+    if (file.size > PLUGIN_MAX_FILE_BYTES) return `The plugin file is larger than ${PLUGIN_MAX_FILE_MEGABYTES} MB.`;
     return null;
 }

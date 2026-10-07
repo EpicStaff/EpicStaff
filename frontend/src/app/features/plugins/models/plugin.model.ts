@@ -18,12 +18,16 @@ export type PluginResourceType =
     | 'webhook_trigger'
     | 'secret'
     | 'source_collection'
-    | 'storage_file';
+    | 'storage_file'
+    | 'key_value_table'
+    | 'llm_model'
+    | 'embedding_model';
 
-export type PluginAccessAction = 'run' | 'sessions.read' | 'sessions.stop';
+/** `run`, `sessions.read`, `sessions.stop` apply to a flow; `read` to a key-value table. */
+export type PluginAccessAction = 'run' | 'sessions.read' | 'sessions.stop' | 'read';
 
-/** Plugins may only be granted access to flows in format version 1. */
-export type PluginAccessTargetType = 'flow';
+/** What an access entry may point at. A `key_value_table` entry needs bridge version 2. */
+export type PluginAccessTargetType = 'flow' | 'key_value_table';
 
 export type PluginContentCounts = Partial<Record<PluginResourceType, number>>;
 
@@ -31,7 +35,7 @@ export interface PluginAccessEntry {
     alias: string;
     type: PluginAccessTargetType;
     actions: PluginAccessAction[];
-    /** `null` when the org deleted that flow. */
+    /** `null` when the org deleted that flow or table. */
     resource_id: number | null;
     resource_name: string | null;
 }
@@ -80,6 +84,12 @@ export interface PluginSummary {
     access: PluginAccessEntry[];
     secret_slots: PluginSecretSlot[];
     contents: PluginContentCounts;
+    /** The instance runs with plugin dev mode on; only then can a dev URL be set or used. */
+    dev_mode_available: boolean;
+    /** Where the plugin's page loads from in dev mode, for `dev_ui_user` only; `null` when unset. */
+    dev_ui_url: string | null;
+    /** The user who set `dev_ui_url`; the only one who gets the dev page. */
+    dev_ui_user: number | null;
     created_by: number | null;
     created_at: string;
     updated_at: string;
@@ -127,7 +137,10 @@ export interface PluginInspectContentItem {
     type: PluginResourceType;
     /** Where the item comes from in the plugin file. */
     ref: string;
-    /** For a secret: the org secret that will be created; for a storage file: the org storage path. */
+    /**
+     * For a secret: the org secret that will be created; for a storage file: the org storage path;
+     * for a key-value table: the table name with the plugin prefix (`chat_admin__conversations`).
+     */
     name: string;
     /** Only on `source_collection`. */
     documents?: string[];
@@ -136,7 +149,7 @@ export interface PluginInspectContentItem {
 export interface PluginInspectAccessEntry {
     alias: string;
     type: PluginAccessTargetType;
-    /** The flow's id inside the plugin file, not a database id. */
+    /** The flow's or table's id inside the plugin file, not a database id. */
     ref: number;
     resource_name: string;
     actions: PluginAccessAction[];
@@ -158,7 +171,7 @@ export interface PluginMissingPermission {
 }
 
 export interface PluginResourceConflict {
-    type: 'secret' | 'storage_file';
+    type: 'secret' | 'storage_file' | 'key_value_table';
     name: string;
     message: string;
 }
@@ -255,18 +268,34 @@ export interface PluginUiSessionAccessEntry {
     alias: string;
     type: PluginAccessTargetType;
     actions: PluginAccessAction[];
-    /** `null` when the flow was deleted; treat as forbidden. */
+    /** `null` when the flow or table was deleted; treat as forbidden. */
     resource_id: number | null;
 }
 
 export interface PluginUiSession {
-    /** Relative; always starts with `/api/plugin-ui/`. The host must refuse anything else. */
+    /**
+     * Production: relative, always starts with `/api/plugin-ui/`. Dev mode: the author's
+     * `http://localhost` / `http://127.0.0.1` dev server. The host must refuse anything else.
+     */
     url: string;
+    /** `""` in dev mode. */
     token: string;
-    expires_in: number;
+    /** Seconds the page link stays valid; `null` in dev mode. */
+    expires_in: number | null;
+    /** True only for the user who set the plugin's dev URL, while the instance runs in dev mode. */
+    dev_mode: boolean;
     bridge_version: number;
     plugin: PluginReference;
     access: PluginUiSessionAccessEntry[];
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/plugins/{id}/dev-ui/
+// ---------------------------------------------------------------------------
+
+export interface PluginDevUiRequest {
+    /** `http://localhost[:port][/path]` or `http://127.0.0.1[:port][/path]`. */
+    url: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +317,8 @@ export type PluginErrorCode =
     | 'plugin_suspended'
     | 'plugin_not_ready'
     | 'plugin_has_no_ui'
-    | 'plugin_not_retryable';
+    | 'plugin_not_retryable'
+    | 'plugin_dev_mode_disabled';
 
 export interface PluginApiErrorBody {
     status_code: number;

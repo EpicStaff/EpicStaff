@@ -24,15 +24,25 @@ export interface BridgeMethodContext {
     isOwnSession(sessionId: number): boolean;
 }
 
+/** What a bridge v2 method may use on top of v1. The host builds this full context for every page. */
+export interface BridgeMethodContextV2 extends BridgeMethodContext {
+    /** Counts one `nav.changed`; throws `rate_limited` past the per-minute cap. */
+    consumeNavigation(): void;
+    /** Hands a validated, canonical page path to EpicStaff's router; no reply reaches the page. */
+    reportNavigation(path: string, replace: boolean): void;
+}
+
 /**
  * One bridge method. `paramKeys` lists every accepted param (the host answers `bad_request` for
  * any other key before calling `invoke`); `resultKeys` lists the keys of the result object.
  * `invoke` may throw a `BridgeError` synchronously or emit it as an error.
  */
-export interface BridgeMethodDefinition {
+export interface BridgeMethodDefinition<Context extends BridgeMethodContext = BridgeMethodContext> {
     readonly paramKeys: readonly string[];
     readonly resultKeys: readonly string[];
-    invoke(context: BridgeMethodContext, params: BridgeParams): Observable<unknown>;
+    invoke(context: Context, params: BridgeParams): Observable<unknown>;
 }
 
-export type BridgeMethodTable = Readonly<Record<string, BridgeMethodDefinition>>;
+export type BridgeMethodTable<Context extends BridgeMethodContext = BridgeMethodContext> = Readonly<
+    Record<string, BridgeMethodDefinition<Context>>
+>;

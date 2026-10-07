@@ -1,7 +1,25 @@
 import { PluginAccessAction, PluginAccessTargetType, PluginUiSessionAccessEntry } from '../models/plugin.model';
 import { BridgeAccessDescription, BridgeError } from './bridge-protocol';
 
-const KNOWN_ACTIONS: ReadonlySet<string> = new Set<PluginAccessAction>(['run', 'sessions.read', 'sessions.stop']);
+type AccessTypeTable = Readonly<Partial<Record<PluginAccessTargetType, readonly PluginAccessAction[]>>>;
+
+const FLOW_ACTIONS: readonly PluginAccessAction[] = ['run', 'sessions.read', 'sessions.stop'];
+
+/**
+ * Which access types, and which actions on each, a bridge version serves. An entry of a type the
+ * plugin's bridge version doesn't know is dropped, and so is an action that doesn't fit the type:
+ * a bridge v1 page never gets a key-value table, even if the access list names one. Only ever add.
+ */
+export const ACCESS_TYPES_BY_VERSION: Readonly<Record<number, AccessTypeTable>> = Object.freeze({
+    1: Object.freeze({ flow: FLOW_ACTIONS }),
+    2: Object.freeze({ flow: FLOW_ACTIONS, key_value_table: ['read'] as const }),
+});
+
+/** How an error message names an access type. */
+const TYPE_LABELS: Readonly<Record<PluginAccessTargetType, string>> = {
+    flow: 'flow',
+    key_value_table: 'key-value table',
+};
 
 /** One usable access entry: an alias the plugin names, and the database row it stands for. */
 export interface AccessGrant {
@@ -24,22 +42,26 @@ export interface AccessPolicy {
 /**
  * The single mapping from the `ui-session` response's `access` list to the policy.
  *
- * An entry whose flow was deleted (`resource_id: null`) or that is malformed is left out, so any
- * call naming it is `forbidden`. A duplicate alias keeps its first entry. A `Map` (not an object)
- * holds the grants so an alias such as `__proto__` or `constructor` can never hit a prototype key.
+ * An entry whose flow or table was deleted (`resource_id: null`), whose type `bridgeVersion` does
+ * not serve, or that is malformed is left out, so any call naming it is `forbidden`. A duplicate
+ * alias keeps its first entry. A `Map` (not an object) holds the grants so an alias such as
+ * `__proto__` or `constructor` can never hit a prototype key. An unknown version grants nothing.
  */
-export function buildAccessPolicy(entries: readonly PluginUiSessionAccessEntry[]): AccessPolicy {
+export function buildAccessPolicy(entries: readonly PluginUiSessionAccessEntry[], bridgeVersion = 1): AccessPolicy {
+    const types = Object.hasOwn(ACCESS_TYPES_BY_VERSION, bridgeVersion) ? ACCESS_TYPES_BY_VERSION[bridgeVersion] : {};
     const grants = new Map<string, AccessGrant>();
     for (const entry of entries) {
         if (typeof entry.alias !== 'string' || entry.alias === '' || grants.has(entry.alias)) continue;
-        if (entry.type !== 'flow') continue;
+        const allowedActions =
+            typeof entry.type === 'string' && Object.hasOwn(types, entry.type) ? types[entry.type] : undefined;
+        if (!allowedActions) continue;
         if (typeof entry.resource_id !== 'number' || !Number.isSafeInteger(entry.resource_id)) continue;
         if (!Array.isArray(entry.actions)) continue;
         grants.set(entry.alias, {
             alias: entry.alias,
             type: entry.type,
             resourceId: entry.resource_id,
-            actions: new Set(entry.actions.filter((action) => KNOWN_ACTIONS.has(action))),
+            actions: new Set(entry.actions.filter((action) => allowedActions.includes(action))),
         });
     }
     return { grants };
@@ -53,12 +75,13 @@ export function resolveAlias(
     action: PluginAccessAction
 ): number {
     const grant = typeof alias === 'string' ? policy.grants.get(alias) : undefined;
+    const label = TYPE_LABELS[type];
     if (!grant || grant.type !== type) {
         const name = typeof alias === 'string' ? `"${alias.slice(0, 64)}"` : 'with that alias';
-        throw new BridgeError('forbidden', `This plugin has no access to a ${type} ${name}.`);
+        throw new BridgeError('forbidden', `This plugin has no access to a ${label} ${name}.`);
     }
     if (!grant.actions.has(action)) {
-        throw new BridgeError('forbidden', `This plugin may not "${action}" the ${type} "${grant.alias}".`);
+        throw new BridgeError('forbidden', `This plugin may not "${action}" the ${label} "${grant.alias}".`);
     }
     return grant.resourceId;
 }

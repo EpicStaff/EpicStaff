@@ -1,0 +1,112 @@
+.plugin-dev-mode-dialog {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 4rem);
+    background-color: var(--color-modals-background);
+    border-radius: 10px;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--color-divider-regular);
+    }
+
+    &__title {
+        margin: 0;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
+    }
+
+    &__close-btn {
+        display: inline-flex;
+        padding: 4px;
+        border: none;
+        background: transparent;
+        color: var(--color-text-primary);
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            opacity: 0.8;
+        }
+
+        &:disabled {
+            color: var(--color-text-disabled);
+            cursor: not-allowed;
+        }
+    }
+
+    &__body {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px;
+        overflow-y: auto;
+        min-height: 0;
+    }
+
+    &__text,
+    &__current {
+        margin: 0;
+    }
+
+    &__current {
+        padding: 12px 16px;
+        border-radius: 8px;
+        background-color: var(--transparent-orange-8);
+        overflow-wrap: anywhere;
+    }
+
+    &__url {
+        font-family: monospace;
+    }
+
+    &__field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    &__hint {
+        margin: 0;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-text-tertiary);
+    }
+
+    &__alert {
+        padding: 12px 16px;
+        border-radius: 8px;
+        background-color: var(--color-status-error-subtle);
+        color: var(--color-error);
+    }
+
+    &__alert-title {
+        margin: 0;
+        font-weight: var(--text-body-medium-weight);
+    }
+
+    &__alert-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 4px 0 0;
+        padding-left: 16px;
+        overflow-wrap: anywhere;
+    }
+
+    &__footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 16px 24px;
+        border-top: 1px solid var(--color-divider-subtle);
+    }
+}

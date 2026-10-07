@@ -8,6 +8,7 @@ import { ConfigService } from '../../../services/config';
 import {
     PluginDeletePreview,
     PluginDetail,
+    PluginDevUiRequest,
     PluginInspectResult,
     PluginInstallEvent,
     PluginNavItem,
@@ -105,5 +106,16 @@ export class PluginsApiService {
 
     createUiSession(id: number): Observable<PluginUiSession> {
         return this.http.post<PluginUiSession>(`${this.baseUrl}${id}/ui-session/`, null);
+    }
+
+    /** Dev mode: loads this plugin's page from `url` (a localhost dev server), for the caller only. */
+    setDevUi(id: number, url: string): Observable<PluginDetail> {
+        const body: PluginDevUiRequest = { url };
+        return this.http.post<PluginDetail>(`${this.baseUrl}${id}/dev-ui/`, body);
+    }
+
+    /** Dev mode off for this plugin: everyone gets the installed page again. */
+    clearDevUi(id: number): Observable<PluginDetail> {
+        return this.http.delete<PluginDetail>(`${this.baseUrl}${id}/dev-ui/`);
     }
 }

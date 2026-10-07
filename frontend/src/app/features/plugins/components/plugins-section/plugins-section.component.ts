@@ -23,6 +23,10 @@ import {
     PluginDeleteDialogComponent,
     PluginDeleteDialogData,
 } from '../plugin-delete-dialog/plugin-delete-dialog.component';
+import {
+    PluginDevModeDialogComponent,
+    PluginDevModeDialogData,
+} from '../plugin-dev-mode-dialog/plugin-dev-mode-dialog.component';
 import { PluginInstallDialogComponent } from '../plugin-install-dialog/plugin-install-dialog.component';
 import {
     PluginSecretsDialogComponent,
@@ -35,6 +39,15 @@ interface PluginRow {
     statusLabel: string;
     statusClass: string;
     hasSecretSlots: boolean;
+    /** Setting a dev URL: the instance runs in plugin dev mode and the plugin has a page. */
+    offersDevMode: boolean;
+    /**
+     * Clearing a dev URL: whenever one is set, also while the instance is not in dev mode (the
+     * server allows the clear then), so a stale URL never needs the flag turned back on.
+     */
+    offersDevModeOff: boolean;
+    /** Tooltip of the DEV badge; `null` when no dev URL is set. */
+    devBadgeTitle: string | null;
 }
 
 @Component({
@@ -60,6 +73,9 @@ export class PluginsSectionComponent implements OnInit {
             statusLabel: pluginStatusLabel(plugin),
             statusClass: `plugins-section__status--${plugin.status}`,
             hasSecretSlots: plugin.secret_slots.length > 0,
+            offersDevMode: plugin.dev_mode_available && plugin.has_ui,
+            offersDevModeOff: !!plugin.dev_ui_url,
+            devBadgeTitle: describeDevUrl(plugin),
         }))
     );
     protected readonly isInitialLoading = computed(() => this.pluginsStore.loading() && !this.pluginsStore.loaded());
@@ -130,6 +146,19 @@ export class PluginsSectionComponent implements OnInit {
         });
     }
 
+    onDevMode(plugin: PluginSummary): void {
+        const data: PluginDevModeDialogData = { plugin };
+        this.dialog.open<PluginDetail | undefined>(PluginDevModeDialogComponent, {
+            width: '560px',
+            maxWidth: 'calc(100vw - 2rem)',
+            data,
+        });
+    }
+
+    onTurnOffDevMode(plugin: PluginSummary): void {
+        this.runAction(plugin.id, this.pluginsStore.clearDevUi(plugin.id), `Dev mode off for ${plugin.name}`);
+    }
+
     onDelete(plugin: PluginSummary): void {
         const data: PluginDeleteDialogData = { pluginId: plugin.id, pluginName: plugin.name };
         this.dialog.open<boolean>(PluginDeleteDialogComponent, {
@@ -161,4 +190,13 @@ export class PluginsSectionComponent implements OnInit {
             return next;
         });
     }
+}
+
+/** Tooltip of the DEV badge: where the dev page loads from, and who gets it. */
+function describeDevUrl(plugin: PluginSummary): string | null {
+    if (!plugin.dev_ui_url) return null;
+    const scope = plugin.dev_mode_available
+        ? 'Only the admin who set it gets it.'
+        : "Inactive: this EpicStaff isn't running in dev mode, so everyone gets the installed page.";
+    return `Dev page: ${plugin.dev_ui_url}. ${scope}`;
 }

@@ -8,10 +8,11 @@ import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { SseTicketService } from '../../../services/auth/sse-ticket.service';
 import { ConfigService } from '../../../services/config';
 import { BRIDGE_LIMITS } from './bridge-protocol';
-import { PluginBridgeHost, toBridgeError } from './plugin-bridge-host.service';
+import { PluginBridgeAttachOptions, PluginBridgeHost, toBridgeError } from './plugin-bridge-host.service';
 import { PLUGIN_EVENT_SOURCE_FACTORY } from './plugin-session-stream';
 import {
     buildUiSession,
+    buildUiSessionV2,
     createPluginFrame,
     FakeEventSource,
     FakeMessageChannel,
@@ -60,9 +61,14 @@ describe('PluginBridgeHost', () => {
     });
 
     /** Attaches, completes the handshake and returns the plugin's end of the port. */
-    function connect(session = buildUiSession()): FakeMessagePort {
-        host.attach(pluginFrame.frame, session);
-        postFromWindow(pluginFrame.frameWindow, { v: session.bridge_version, kind: 'ready' });
+    function connect(session = buildUiSession(), options: PluginBridgeAttachOptions = {}): FakeMessagePort {
+        host.attach(pluginFrame.frame, session, options);
+        return handshake(session.bridge_version);
+    }
+
+    /** Posts `ready` from the frame and returns the port the host transferred in its answer. */
+    function handshake(version: number): FakeMessagePort {
+        postFromWindow(pluginFrame.frameWindow, { v: version, kind: 'ready' });
         const init = pluginFrame.posted.at(-1);
         const port = init?.transfer[0];
         if (!(port instanceof FakeMessagePort)) throw new Error('no port was transferred');
@@ -424,6 +430,16 @@ describe('PluginBridgeHost', () => {
             expect(pluginFrame.frame.isConnected).toBe(false);
         });
 
+        it('in production, a second load still stops a bridge v2 page', () => {
+            connect(buildUiSessionV2());
+            host.onFrameLoad();
+
+            host.onFrameLoad();
+
+            expect(host.stopped()).toBe('navigated');
+            expect(pluginFrame.frame.isConnected).toBe(false);
+        });
+
         it('relays a final status, then closes the subscription after the grace period', async () => {
             vi.useFakeTimers();
             const port = connect();
@@ -449,6 +465,126 @@ describe('PluginBridgeHost', () => {
             ]);
             expect(port.received.at(-1)).toMatchObject({ data: { reason: 'ended' } });
             expect(stream.closed).toBe(true);
+        });
+    });
+
+    describe('dev mode', () => {
+        it('ignores every load after the first, so a reload in place does not stop the page', () => {
+            connect(buildUiSession(), { devMode: true });
+            host.onFrameLoad();
+
+            host.onFrameLoad();
+            host.onFrameLoad();
+
+            expect(host.stopped()).toBeNull();
+            expect(pluginFrame.frame.isConnected).toBe(true);
+        });
+
+        it('on a second ready drops the old connection and everything it reached, then handshakes again', async () => {
+            const oldPort = connect(buildUiSession(), { devMode: true });
+            host.onFrameLoad();
+            startSession(oldPort, 9);
+            subscribe(oldPort, 1, 9);
+            await Promise.resolve();
+            const stream = FakeEventSource.instances[0];
+            oldPort.postMessage({ v: 1, kind: 'request', id: 2, method: 'sessions.get', params: { session_id: 9 } });
+            const pending = httpMock.expectOne('/api/sessions/9/');
+
+            const newPort = handshake(1);
+
+            expect(pluginFrame.posted).toHaveLength(2);
+            expect(pluginFrame.posted[1].message).toMatchObject({ v: 1, kind: 'init' });
+            expect(newPort).not.toBe(oldPort);
+            expect(oldPort.partner?.closed).toBe(true);
+            expect(stream.closed).toBe(true);
+            expect(pending.cancelled).toBe(true);
+            expect(host.connected()).toBe(true);
+            expect(host.stopped()).toBeNull();
+
+            // The reloaded page starts with no sessions of its own.
+            newPort.postMessage({ v: 1, kind: 'request', id: 3, method: 'sessions.get', params: { session_id: 9 } });
+            expect(lastError(newPort)).toMatchObject({ id: 3, error: { code: 'not_found' } });
+            httpMock.expectNone('/api/sessions/9/');
+            newPort.postMessage({ v: 1, kind: 'request', id: 4, method: 'bridge.hello' });
+            expect(newPort.received.at(-1)).toMatchObject({ id: 4, ok: true });
+        });
+
+        it('still ignores a ready from anywhere but the plugin frame', () => {
+            connect(buildUiSession(), { devMode: true });
+
+            postFromWindow(createPluginFrame().frameWindow, { v: 1, kind: 'ready' });
+            postFromWindow(pluginFrame.frameWindow, { v: 1, kind: 'ready' }, 'https://evil.example');
+
+            expect(pluginFrame.posted).toHaveLength(1);
+            expect(host.connected()).toBe(true);
+        });
+    });
+
+    describe('bridge v2 navigation', () => {
+        it('opens the page at the initial path, or at / when it is invalid', () => {
+            connect(buildUiSessionV2(), { initialPath: '/conversations/c_1?sort=key' });
+            expect(pluginFrame.posted[0].message).toMatchObject({
+                context: { nav: { path: '/conversations/c_1?sort=key' } },
+            });
+
+            host.detach();
+            pluginFrame = createPluginFrame();
+            connect(buildUiSessionV2(), { initialPath: '/../etc' });
+            expect(pluginFrame.posted[0].message).toMatchObject({ context: { nav: { path: '/' } } });
+        });
+
+        it('carries an address change made before the handshake in init, with no event', () => {
+            host.attach(pluginFrame.frame, buildUiSessionV2(), { initialPath: '/a' });
+            host.notifyNavigation('/b');
+            const port = handshake(2);
+
+            expect(pluginFrame.posted[0].message).toMatchObject({ context: { nav: { path: '/b' } } });
+            expect(port.received).toEqual([]);
+        });
+
+        it('sends a bridge v1 page no navigation or theme, in init or as events', async () => {
+            const port = connect(buildUiSession(), { initialPath: '/a' });
+
+            host.notifyNavigation('/b');
+            document.body.classList.add('my-app-light');
+            await Promise.resolve();
+            TestBed.tick();
+
+            expect(Object.keys((pluginFrame.posted[0].message as { context: object }).context).sort()).toEqual([
+                'access',
+                'plugin',
+            ]);
+            expect(port.received).toEqual([]);
+            document.body.classList.remove('my-app-light');
+        });
+
+        it('sends a bridge v2 page theme.changed when EpicStaff switches to light mode', async () => {
+            const port = connect(buildUiSessionV2());
+
+            document.body.classList.add('my-app-light');
+            // The theme service hears the class change from its MutationObserver (a microtask).
+            await Promise.resolve();
+            TestBed.tick();
+
+            expect(port.received).toEqual([
+                expect.objectContaining({
+                    kind: 'event',
+                    topic: 'theme.changed',
+                    subscription: null,
+                    data: expect.objectContaining({ mode: 'light' }),
+                }),
+            ]);
+            document.body.classList.remove('my-app-light');
+        });
+
+        it('stops reporting navigation once detached', () => {
+            const onNavChanged = vi.fn();
+            const port = connect(buildUiSessionV2(), { onNavChanged });
+            host.detach();
+
+            port.postMessage({ v: 2, kind: 'request', id: 1, method: 'nav.changed', params: { path: '/x' } });
+
+            expect(onNavChanged).not.toHaveBeenCalled();
         });
     });
 });

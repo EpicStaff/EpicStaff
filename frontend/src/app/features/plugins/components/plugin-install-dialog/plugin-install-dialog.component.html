@@ -63,7 +63,7 @@
                             accept=".zip"
                             [multiple]="false"
                             label="Drop a plugin file here or click to choose one"
-                            hint="One .zip file, up to 20 MB"
+                            [hint]="fileHint"
                             (filesUploaded)="onFilesChosen($event)"
                             (filesRejected)="onFilesRejected()"
                         />

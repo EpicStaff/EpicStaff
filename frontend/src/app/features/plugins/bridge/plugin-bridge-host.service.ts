@@ -6,32 +6,53 @@ import { defer, Subscription } from 'rxjs';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { SseTicketService } from '../../../services/auth/sse-ticket.service';
 import { PluginUiSession } from '../models/plugin.model';
+import { PluginHostThemeService } from '../services/plugin-host-theme.service';
 import { AccessPolicy, buildAccessPolicy, describeAccess } from './access-policy';
-import { BridgeMethodContext } from './bridge-method';
+import { BridgeMethodContextV2 } from './bridge-method';
 import {
     BRIDGE_LIMITS,
+    BRIDGE_V2_LIMITS,
     BridgeError,
     BridgeEvent,
     BridgeEventTopic,
     BridgeHandshakeErrorMessage,
+    BridgeHostEvent,
+    BridgeHostEventTopic,
     BridgeInitContext,
+    BridgeInitContextV2,
     BridgeInitMessage,
     BridgeParams,
     BridgeRequestId,
     BridgeResponse,
+    BridgeTheme,
     isBridgeRequestId,
     isReadyMessage,
     isRecord,
+    supportsHostEvents,
 } from './bridge-protocol';
 import { findBridgeMethod, isSupportedBridgeVersion } from './bridge-tables';
 import { PluginBridgeApiService } from './plugin-bridge-api.service';
+import { canonicalNavPath, PLUGIN_ROOT_NAV_PATH } from './plugin-nav-path.util';
 import { PLUGIN_EVENT_SOURCE_FACTORY, PluginSessionStream } from './plugin-session-stream';
 
 /** Why the host tore a plugin page down. */
 export type PluginBridgeStopReason = 'navigated' | 'org_changed';
 
+/** How the host page serves one plugin page beyond its `ui-session`. */
+export interface PluginBridgeAttachOptions {
+    /** Bridge v2: the page's path at open (canonical, from EpicStaff's address); `/` when absent or invalid. */
+    initialPath?: string;
+    /**
+     * The page loads from its author's dev server: a reload in place re-handshakes instead of
+     * tearing the page down. Only for a `ui-session` that answered `dev_mode: true`.
+     */
+    devMode?: boolean;
+    /** Bridge v2: the page reported a new path of its own (canonical); EpicStaff mirrors it in its address. */
+    onNavChanged?: (path: string, replace: boolean) => void;
+}
+
 const REQUEST_KEYS: ReadonlySet<string> = new Set(['v', 'kind', 'id', 'method', 'params']);
-const RUN_WINDOW_MS = 60_000;
+const RATE_WINDOW_MS = 60_000;
 
 /** Everything that belongs to one attached plugin page; dropped as a whole on detach. */
 interface Attachment {
@@ -39,22 +60,30 @@ interface Attachment {
     readonly frameWindow: Window;
     readonly orgId: number | null;
     readonly bridgeVersion: number;
+    /** The v1 init context; v2 adds `nav` and `theme` at handshake time. */
     readonly initContext: BridgeInitContext;
     readonly policy: AccessPolicy;
+    readonly devMode: boolean;
+    readonly onNavChanged: ((path: string, replace: boolean) => void) | null;
     readonly requests: Set<Subscription>;
     readonly streams: Map<string, PluginSessionStream>;
     /**
      * Sessions this page started with a successful `flows.run`. The page can read, subscribe to and
      * stop only these, so it never reaches another user's session of the same flow, nor a session
-     * of an organization flow that embeds the plugin's flow. Dropped with the attachment, so a
-     * reloaded page starts empty.
+     * of an organization flow that embeds the plugin's flow. Dropped with the attachment (and on a
+     * dev-mode re-handshake), so a reloaded page starts empty.
      */
     readonly ownSessionIds: Set<number>;
     port: MessagePort | null;
     ownLoadSeen: boolean;
     runTimestamps: number[];
+    navTimestamps: number[];
+    /** Bridge v2: the path the page is known to show; a host address change to it sends nothing. */
+    navPath: string;
+    /** Bridge v2: the theme the page last got, in `init` or `theme.changed`. */
+    sentTheme: BridgeTheme | null;
     subscriptionCounter: number;
-    methodContext: BridgeMethodContext | null;
+    methodContext: BridgeMethodContextV2 | null;
 }
 
 /**
@@ -68,9 +97,17 @@ interface Attachment {
  *
  * Sessions are page-scoped: a page reaches only the sessions it started itself with `flows.run`.
  *
+ * Bridge v2 adds navigation and theme: `init` carries the page's path and EpicStaff's theme,
+ * `nav.changed` from the page goes to {@link PluginBridgeAttachOptions.onNavChanged}, and the host
+ * pushes `nav.navigate` ({@link notifyNavigation}) and `theme.changed` events (`subscription: null`).
+ *
  * Teardown: a second `load` of the iframe means the page navigated (possibly off-site), so the
  * port and every stream are closed, the iframe is removed and {@link stopped} is set. The same
  * happens when the active organization changes. Destroying the page closes everything.
+ *
+ * Dev mode (the author's own dev server, for the author only): a dev server reloads its page in
+ * place, so later `load` events are ignored, and a new `ready` replaces the connection — the old
+ * port, streams, pending requests and remembered sessions are dropped — instead of being ignored.
  */
 @Injectable()
 export class PluginBridgeHost implements OnDestroy {
@@ -89,7 +126,18 @@ export class PluginBridgeHost implements OnDestroy {
         });
     });
 
+    private readonly themeEffect = effect(() => {
+        const theme = this.themeService.theme();
+        untracked(() => {
+            const attachment = this.attachment;
+            if (!attachment?.port || !hasHostEvents(attachment) || attachment.sentTheme === theme) return;
+            attachment.sentTheme = theme;
+            this.postHostEvent(attachment, 'theme.changed', theme);
+        });
+    });
+
     private readonly api = inject(PluginBridgeApiService);
+    private readonly themeService = inject(PluginHostThemeService);
     private readonly sseTicketService = inject(SseTicketService);
     private readonly createEventSource = inject(PLUGIN_EVENT_SOURCE_FACTORY);
     private readonly activeOrgService = inject(ActiveOrgService);
@@ -102,16 +150,16 @@ export class PluginBridgeHost implements OnDestroy {
     }
 
     /**
-     * Starts serving the plugin page in `frame` (rendered with the session's URL). Call it before
-     * the page can post `ready`: in the same change detection pass that set the iframe's `src`.
+     * Starts serving the plugin page in `frame`. Call it before the page can post `ready`: before
+     * setting the iframe's `src`, or in the same change detection pass.
      */
-    attach(frame: HTMLIFrameElement, session: PluginUiSession): void {
+    attach(frame: HTMLIFrameElement, session: PluginUiSession, options: PluginBridgeAttachOptions = {}): void {
         this.detach();
         this.stoppedSignal.set(null);
         const frameWindow = frame.contentWindow;
         if (!frameWindow || !this.hostWindow) return;
 
-        const policy = buildAccessPolicy(session.access);
+        const policy = buildAccessPolicy(session.access, session.bridge_version);
         this.attachment = {
             frame,
             frameWindow,
@@ -122,12 +170,17 @@ export class PluginBridgeHost implements OnDestroy {
                 access: describeAccess(policy),
             },
             policy,
+            devMode: options.devMode === true,
+            onNavChanged: options.onNavChanged ?? null,
             requests: new Set(),
             streams: new Map(),
             ownSessionIds: new Set(),
             port: null,
             ownLoadSeen: false,
             runTimestamps: [],
+            navTimestamps: [],
+            navPath: canonicalNavPath(options.initialPath) ?? PLUGIN_ROOT_NAV_PATH,
+            sentTheme: null,
             subscriptionCounter: 0,
             methodContext: null,
         };
@@ -135,9 +188,24 @@ export class PluginBridgeHost implements OnDestroy {
     }
 
     /**
+     * Bridge v2: EpicStaff's address now names `path` below the plugin (back/forward, a sidenav
+     * click). Tells the page with a `nav.navigate` event, unless it already shows that path; before
+     * the handshake, `init` carries it instead. Does nothing for a bridge v1 page.
+     */
+    notifyNavigation(path: string): void {
+        const attachment = this.attachment;
+        if (!attachment || !hasHostEvents(attachment)) return;
+        const canonical = canonicalNavPath(path) ?? PLUGIN_ROOT_NAV_PATH;
+        if (canonical === attachment.navPath) return;
+        attachment.navPath = canonical;
+        this.postHostEvent(attachment, 'nav.navigate', { path: canonical });
+    }
+
+    /**
      * Forward every `load` of the iframe. The first after `attach` is the plugin page itself; any
-     * later one is a navigation, which stops the page. (An initial `about:blank` load fired while
-     * the iframe was inserted, before `attach`, is not counted.)
+     * later one is a navigation, which stops the page — except in dev mode, where it is the dev
+     * server reloading the page in place. (An initial `about:blank` load fired while the iframe was
+     * inserted, before `attach`, is not counted.)
      *
      * This teardown is cleanup only, NOT a security boundary. Some ways for a page to send data out
      * never fire a `load` here: navigating to a URL that answers 204 (the navigation is dropped and
@@ -153,6 +221,8 @@ export class PluginBridgeHost implements OnDestroy {
             attachment.ownLoadSeen = true;
             return;
         }
+        // A dev server reloads its page in place; the new page's `ready` re-handshakes.
+        if (attachment.devMode) return;
         this.stop('navigated');
     }
 
@@ -162,15 +232,7 @@ export class PluginBridgeHost implements OnDestroy {
         if (!attachment) return;
         this.attachment = null;
         this.hostWindow?.removeEventListener('message', this.windowMessageListener);
-        attachment.requests.forEach((request) => request.unsubscribe());
-        attachment.requests.clear();
-        attachment.streams.forEach((stream) => stream.close());
-        attachment.streams.clear();
-        if (attachment.port) {
-            attachment.port.onmessage = null;
-            attachment.port.close();
-            attachment.port = null;
-        }
+        closeConnection(attachment);
         this.connectedSignal.set(false);
     }
 
@@ -185,10 +247,16 @@ export class PluginBridgeHost implements OnDestroy {
 
     private handleWindowMessage(event: MessageEvent): void {
         const attachment = this.attachment;
-        if (!attachment || attachment.port) return;
+        if (!attachment) return;
         if (event.source !== attachment.frameWindow || event.origin !== 'null') return;
         const data: unknown = event.data;
         if (!isReadyMessage(data)) return;
+        if (attachment.port) {
+            // One handshake per page: a second `ready` is ignored. In dev mode it comes from the
+            // page the dev server just reloaded in place, which replaces the old one entirely.
+            if (!attachment.devMode) return;
+            this.resetConnection(attachment);
+        }
 
         if (data.v !== attachment.bridgeVersion || !isSupportedBridgeVersion(attachment.bridgeVersion)) {
             const message: BridgeHandshakeErrorMessage = {
@@ -206,10 +274,35 @@ export class PluginBridgeHost implements OnDestroy {
         const channel = new MessageChannel();
         attachment.port = channel.port1;
         attachment.port.onmessage = (portEvent: MessageEvent) => this.handleRequest(attachment, portEvent.data);
-        const init: BridgeInitMessage = { v: attachment.bridgeVersion, kind: 'init', context: attachment.initContext };
+        const init: BridgeInitMessage = {
+            v: attachment.bridgeVersion,
+            kind: 'init',
+            context: this.initContextFor(attachment),
+        };
         // An opaque-origin frame can only be addressed with '*'; `event.source` above pins the target.
         attachment.frameWindow.postMessage(init, '*', [channel.port2]);
         this.connectedSignal.set(true);
+    }
+
+    /** v1: plugin and access, exactly. v2 adds the page's path and the current theme. */
+    private initContextFor(attachment: Attachment): BridgeInitContext | BridgeInitContextV2 {
+        if (!hasHostEvents(attachment)) return attachment.initContext;
+        const theme = this.themeService.theme();
+        attachment.sentTheme = theme;
+        return { ...attachment.initContext, nav: { path: attachment.navPath }, theme };
+    }
+
+    /**
+     * Dev mode only: drops the old page's connection and everything it reached, keeping the frame.
+     *
+     * The rate-limit windows (`runTimestamps`, `navTimestamps`) deliberately carry over: a reload in
+     * place is the same page to its limits, so posting `ready` again can't be used to reset a cap.
+     */
+    private resetConnection(attachment: Attachment): void {
+        closeConnection(attachment);
+        attachment.ownSessionIds.clear();
+        attachment.sentTheme = null;
+        this.connectedSignal.set(false);
     }
 
     private handleRequest(attachment: Attachment, data: unknown): void {
@@ -285,7 +378,7 @@ export class PluginBridgeHost implements OnDestroy {
         if (!request.closed) attachment.requests.add(request);
     }
 
-    private methodContextFor(attachment: Attachment): BridgeMethodContext {
+    private methodContextFor(attachment: Attachment): BridgeMethodContextV2 {
         attachment.methodContext ??= {
             bridgeVersion: attachment.bridgeVersion,
             plugin: attachment.initContext.plugin,
@@ -299,17 +392,33 @@ export class PluginBridgeHost implements OnDestroy {
                 attachment.ownSessionIds.add(sessionId);
             },
             isOwnSession: (sessionId) => attachment.ownSessionIds.has(sessionId),
+            consumeNavigation: () => this.consumeNavigation(attachment),
+            reportNavigation: (path, replace) => this.reportNavigation(attachment, path, replace),
         };
         return attachment.methodContext;
     }
 
     private consumeRun(attachment: Attachment): void {
-        const now = Date.now();
-        attachment.runTimestamps = attachment.runTimestamps.filter((time) => now - time < RUN_WINDOW_MS);
-        if (attachment.runTimestamps.length >= BRIDGE_LIMITS.maxRunsPerMinute) {
-            throw new BridgeError('rate_limited', `At most ${BRIDGE_LIMITS.maxRunsPerMinute} flow runs per minute.`);
-        }
-        attachment.runTimestamps.push(now);
+        attachment.runTimestamps = consumeWithinWindow(
+            attachment.runTimestamps,
+            BRIDGE_LIMITS.maxRunsPerMinute,
+            `At most ${BRIDGE_LIMITS.maxRunsPerMinute} flow runs per minute.`
+        );
+    }
+
+    private consumeNavigation(attachment: Attachment): void {
+        attachment.navTimestamps = consumeWithinWindow(
+            attachment.navTimestamps,
+            BRIDGE_V2_LIMITS.maxNavChangesPerMinute,
+            `At most ${BRIDGE_V2_LIMITS.maxNavChangesPerMinute} navigation reports per minute.`
+        );
+    }
+
+    /** The page now shows `path` (already canonical): remember it, then let EpicStaff's router follow. */
+    private reportNavigation(attachment: Attachment, path: string, replace: boolean): void {
+        if (this.attachment !== attachment) return;
+        attachment.navPath = path;
+        attachment.onNavChanged?.(path, replace);
     }
 
     private openSubscription(attachment: Attachment, sessionId: number): string {
@@ -350,6 +459,13 @@ export class PluginBridgeHost implements OnDestroy {
         attachment.port.postMessage(event);
     }
 
+    /** An event the host sends on its own (bridge v2): `subscription` is `null`. */
+    private postHostEvent(attachment: Attachment, topic: BridgeHostEventTopic, data: unknown): void {
+        if (this.attachment !== attachment || !attachment.port) return;
+        const event: BridgeHostEvent = { v: attachment.bridgeVersion, kind: 'event', topic, subscription: null, data };
+        attachment.port.postMessage(event);
+    }
+
     private respond(attachment: Attachment, response: BridgeResponse): void {
         if (this.attachment !== attachment || !attachment.port) return;
         attachment.port.postMessage(response);
@@ -359,6 +475,32 @@ export class PluginBridgeHost implements OnDestroy {
         const body = toBridgeError(error).toBody();
         this.respond(attachment, { v: attachment.bridgeVersion, kind: 'response', id, ok: false, error: body });
     }
+}
+
+function hasHostEvents(attachment: Attachment): boolean {
+    return supportsHostEvents(attachment.bridgeVersion);
+}
+
+/** Closes the port, every stream and every pending request of a page. */
+function closeConnection(attachment: Attachment): void {
+    attachment.requests.forEach((request) => request.unsubscribe());
+    attachment.requests.clear();
+    attachment.streams.forEach((stream) => stream.close());
+    attachment.streams.clear();
+    if (attachment.port) {
+        attachment.port.onmessage = null;
+        attachment.port.close();
+        attachment.port = null;
+    }
+}
+
+/** Counts one call in a sliding 60-second window; throws `rate_limited` once `max` calls are in it. */
+function consumeWithinWindow(timestamps: number[], max: number, message: string): number[] {
+    const now = Date.now();
+    const recent = timestamps.filter((time) => now - time < RATE_WINDOW_MS);
+    if (recent.length >= max) throw new BridgeError('rate_limited', message);
+    recent.push(now);
+    return recent;
 }
 
 function assertSubscriptionCapacity(attachment: Attachment): void {

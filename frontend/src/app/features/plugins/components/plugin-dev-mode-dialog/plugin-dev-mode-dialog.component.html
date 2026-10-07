@@ -1,0 +1,90 @@
+<div class="plugin-dev-mode-dialog">
+    <header class="plugin-dev-mode-dialog__header">
+        <h2 class="plugin-dev-mode-dialog__title">Dev mode</h2>
+        <button
+            type="button"
+            class="plugin-dev-mode-dialog__close-btn"
+            aria-label="Close"
+            [matTooltip]="saving() ? 'Wait until the change is saved' : 'Close'"
+            matTooltipPosition="above"
+            [disabled]="saving()"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    <div class="plugin-dev-mode-dialog__body">
+        <p class="plugin-dev-mode-dialog__text">
+            Load the page of <strong>{{ data.plugin.name }}</strong> from your own dev server, with live reload, real
+            data and the real bridge. Only you get it, with a DEV banner; everyone else keeps the installed page.
+        </p>
+
+        @if (data.plugin.dev_ui_url; as current) {
+            <p class="plugin-dev-mode-dialog__current">
+                Now loading from <span class="plugin-dev-mode-dialog__url">{{ current }}</span> for the admin who set
+                it.
+            </p>
+        }
+
+        <div class="plugin-dev-mode-dialog__field">
+            <app-custom-input
+                [id]="urlInputId"
+                label="Dev server address"
+                placeholder="http://localhost:4300/"
+                autocomplete="off"
+                [formControl]="urlControl"
+                [errorMessage]="urlError()"
+            />
+            <p class="plugin-dev-mode-dialog__hint">
+                Plain http on localhost or 127.0.0.1, an optional port and path, no query or fragment. At most
+                {{ maxLength }} characters.
+            </p>
+        </div>
+
+        @if (error(); as failure) {
+            <div
+                class="plugin-dev-mode-dialog__alert"
+                role="alert"
+            >
+                <p class="plugin-dev-mode-dialog__alert-title">{{ failure.message }}</p>
+                @if (failure.details.length) {
+                    <ul class="plugin-dev-mode-dialog__alert-list">
+                        @for (detail of failure.details; track $index) {
+                            <li>{{ detail }}</li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+    </div>
+
+    <footer class="plugin-dev-mode-dialog__footer">
+        <app-button
+            type="outline-primary"
+            [disabled]="saving()"
+            (click)="close()"
+        >
+            Cancel
+        </app-button>
+        @if (data.plugin.dev_ui_url) {
+            <app-button
+                type="outline-secondary"
+                [disabled]="saving()"
+                (click)="turnOff()"
+            >
+                Turn off
+            </app-button>
+        }
+        <app-button
+            type="primary-white"
+            [disabled]="!canSave()"
+            (click)="save()"
+        >
+            {{ saving() ? 'Saving…' : 'Use this address' }}
+        </app-button>
+    </footer>
+</div>

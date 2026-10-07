@@ -137,4 +137,14 @@ describe('PluginsApiService', () => {
         service.createUiSession(7).subscribe();
         httpMock.expectOne({ method: 'POST', url: '/api/plugins/7/ui-session/' }).flush({});
     });
+
+    it('sets the dev URL with POST {url} and clears it with DELETE, both on /dev-ui/', () => {
+        service.setDevUi(7, 'http://localhost:4300/').subscribe();
+        const set = httpMock.expectOne({ method: 'POST', url: '/api/plugins/7/dev-ui/' });
+        expect(set.request.body).toEqual({ url: 'http://localhost:4300/' });
+        set.flush(PLUGIN);
+
+        service.clearDevUi(7).subscribe();
+        httpMock.expectOne({ method: 'DELETE', url: '/api/plugins/7/dev-ui/' }).flush(PLUGIN);
+    });
 });
