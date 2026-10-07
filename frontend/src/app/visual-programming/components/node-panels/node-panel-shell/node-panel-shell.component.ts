@@ -13,15 +13,17 @@ import {
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
 import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
@@ -73,6 +75,22 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                     size="1.25rem"
                                 ></app-svg-icon>
                                 <span class="btn-label">Save</span>
+                            </button>
+                        }
+                        @if (showDetailsButton()) {
+                            <button
+                                #detailsButton
+                                class="details-btn"
+                                type="button"
+                                aria-label="Node details"
+                                matTooltip="Node details"
+                                matTooltipPosition="below"
+                                (click)="openNodeDetails(detailsButton)"
+                            >
+                                <app-svg-icon
+                                    icon="alert-circle"
+                                    size="1.25rem"
+                                ></app-svg-icon>
                             </button>
                         }
                         @if (shouldShowExpandButton()) {
@@ -149,6 +167,12 @@ export class NodePanelShellComponent {
         );
     });
 
+    /** Viewing details needs only flow read access, so read-only and preview modes show it too. */
+    protected readonly showDetailsButton = computed(() => {
+        const node = this.node();
+        return !!node && hasNodeDetails(node.type);
+    });
+
     protected readonly outlet = viewChild(NgComponentOutlet);
     protected readonly componentInputs = computed(() => {
         const node = this.node();
@@ -189,6 +213,8 @@ export class NodePanelShellComponent {
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
 
     constructor() {
         effect(() => {
@@ -259,6 +285,13 @@ export class NodePanelShellComponent {
 
     protected onHeaderSaveClick(): void {
         this.panelInstanceSig()?.onSaveClick?.();
+    }
+
+    protected openNodeDetails(trigger: HTMLElement): void {
+        const node = this.node();
+        if (!node) return;
+        // Read at click time, so the dialog shows what the latest graph response said.
+        this.authorshipDetailsDialog.open('Node Details', this.nodeAuthorshipStore.authorshipOf(node), trigger);
     }
 
     protected onCloseClick(): void {

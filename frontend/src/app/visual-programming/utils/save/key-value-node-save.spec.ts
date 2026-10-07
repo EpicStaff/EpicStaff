@@ -19,6 +19,7 @@ const dto: GetKeyValueNodeRequest = {
     input_map: {},
     output_variable_path: 'variables.saved',
     metadata: {},
+    created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
     last_edited_at: null,

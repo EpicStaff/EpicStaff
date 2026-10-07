@@ -3,6 +3,7 @@ import { Provider } from '@angular/core';
 import { ClipboardService } from '../../services/clipboard.service';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../../services/node-authorship.store';
 import { NodeFactoryService } from '../../services/node-factory.service';
 import { NodeNameValidatorService } from '../../services/node-name-validator.service';
 import { SidePanelService } from '../../services/side-panel.service';
@@ -21,6 +22,9 @@ import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.
  *
  * FlowReadOnlyService is listed because it reads FLOW_EDITOR_PREVIEW: the root instance would
  * only ever see the root value (false), and the preview would be editable.
+ *
+ * NodeAuthorshipStore is the exception to `providedIn: 'root'`: the flow page provides the live
+ * instance and replaces its contents on every graph load; this list keeps the preview off it.
  */
 export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     FlowService,
@@ -31,4 +35,5 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     NodeFactoryService,
     NodeNameValidatorService,
     UniqueNodeNameValidatorService,
+    NodeAuthorshipStore,
 ];

@@ -70,6 +70,7 @@ const nodeBase = { metadata: {}, input_map: {}, output_variable_path: null };
 export const liveStart: StartNode = {
     ...authored,
     id: ID.start,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: '__start__',
     variables: { topic: '' },
@@ -78,6 +79,7 @@ export const liveStart: StartNode = {
 export const liveEnd: EndNode = {
     ...authored,
     id: ID.end,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: '__end_node__',
     output_map: { answer: 'a' },
@@ -86,6 +88,7 @@ export const liveEnd: EndNode = {
 export const liveNote: GraphNote = {
     ...authored,
     id: ID.note,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Note',
     content: 'hello',
@@ -96,6 +99,7 @@ export const livePython: PythonNode = {
     ...authored,
     id: ID.python,
     graph: 1,
+    created_at: persisted.created_at,
     node_name: 'Python',
     test_input: {},
     // The export has no python-code id; the preview uses 0.
@@ -130,6 +134,7 @@ export const liveAgent: AgentNode = {
     ...nodeBase,
     ...authored,
     id: ID.agent,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Agent',
     agent_definition: null, // FK nulled by the backend for a missing dependency: node kept
@@ -141,6 +146,7 @@ export const liveFileExtractor: GetFileExtractorNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.fileExtractor,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Files',
 };
@@ -148,6 +154,7 @@ export const liveAudio: GetAudioToTextNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.audio,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Audio',
 };
@@ -155,6 +162,7 @@ export const liveSubgraph: SubGraphNode = {
     ...nodeBase,
     ...authored,
     id: ID.subgraph,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Sub',
     subgraph: 99,
@@ -163,6 +171,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.webhook,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Webhook',
     webhook_trigger_path: '',
@@ -172,6 +181,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
 export const liveTelegram: GetTelegramTriggerNodeRequest = {
     ...authored,
     id: ID.telegram,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Telegram',
     metadata: {},
@@ -200,6 +210,7 @@ const liveSchedule: GetScheduleTriggerNodeRequest = {
 export const liveDecisionTable: GetDecisionTableNodeRequest = {
     ...authored,
     id: ID.decisionTable,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Decide',
     metadata: {},
@@ -222,6 +233,7 @@ export const liveDecisionTable: GetDecisionTableNodeRequest = {
 export const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
     ...authored,
     id: ID.classificationTable,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Classify',
     metadata: {},
@@ -277,6 +289,7 @@ export const liveKeyValue: GetKeyValueNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.keyValue,
+    created_at: persisted.created_at,
     graph: 1,
     node_name: 'Remember',
     key_value_table: 61,

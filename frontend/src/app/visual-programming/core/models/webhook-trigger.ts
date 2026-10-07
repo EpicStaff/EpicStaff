@@ -2,6 +2,7 @@ import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest } from 
 
 export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     id: number;
+    created_at: string;
     node_name: string;
     graph: number;
     python_code: GetPythonCodeRequest;

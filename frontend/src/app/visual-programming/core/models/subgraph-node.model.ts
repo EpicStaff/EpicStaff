@@ -4,6 +4,7 @@ import { GetGraphLightRequest } from '../../../features/flows/models/graph.model
 
 export interface SubGraphNode extends AuthorshipFields {
     id: number;
+    created_at: string;
     node_name: string;
     graph: number;
     /** Null when the referenced flow was deleted (`on_delete=SET_NULL`). */

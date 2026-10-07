@@ -82,12 +82,12 @@ const NOT_PERSISTED = { graph: 0, created_at: '', updated_at: '' } as const;
 const NO_AUTHORSHIP: AuthorshipFields = { created_by: null, last_edited_by: null, last_edited_at: null };
 
 const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
-    StartNode: (node) => ({ ...node, graph: 0 }),
-    EndNode: (node) => ({ ...node, graph: 0 }),
-    GraphNote: (node) => ({ ...node, graph: 0 }),
+    StartNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    EndNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    GraphNote: (node) => ({ ...node, ...NOT_PERSISTED }),
     PythonNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TaskNode: (node) => ({
@@ -97,22 +97,22 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     }),
     AgentNode: (node) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         inline_surface: toLiveInlineSurface(node.inline_surface),
     }),
-    FileExtractorNode: (node) => ({ ...node, graph: 0 }),
-    AudioTranscriptionNode: (node) => ({ ...node, graph: 0 }),
-    SubgraphNode: (node) => ({ ...node, graph: 0 }),
+    FileExtractorNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    AudioTranscriptionNode: (node) => ({ ...node, ...NOT_PERSISTED }),
+    SubgraphNode: (node) => ({ ...node, ...NOT_PERSISTED }),
     WebhookTriggerNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         webhook_trigger_path: '',
         webhook_trigger: node.webhook_trigger,
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TelegramTriggerNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         webhook_trigger: node.webhook_trigger,
         telegram_bot_api_key_secret_id: resolveSecretIdByName(
             context.secretDeclarations?.telegram?.[String(node.id)],
@@ -129,10 +129,10 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         schedule: buildScheduleBlock(node),
         ...NOT_PERSISTED,
     }),
-    DecisionTableNode: (node) => ({ ...node, graph: 0 }),
+    DecisionTableNode: (node) => ({ ...node, ...NOT_PERSISTED }),
     ClassificationDecisionTableNode: (node, context) => ({
         ...node,
-        graph: 0,
+        ...NOT_PERSISTED,
         pre_python_code: toLiveClassificationPythonCode(
             node.pre_python_code,
             declaredSecrets(node.id, 'pre_python_code', context)
@@ -161,7 +161,6 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     // `key_value_table_name`, the stored name it re-bound from, is not part of the live shape.
     KeyValueNode: (node) => ({
         id: node.id,
-        graph: 0,
         node_name: node.node_name,
         metadata: node.metadata,
         input_map: node.input_map,
@@ -169,6 +168,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         key_value_table: node.key_value_table,
         mode: node.mode,
         entries: node.entries,
+        ...NOT_PERSISTED,
     }),
 };
 

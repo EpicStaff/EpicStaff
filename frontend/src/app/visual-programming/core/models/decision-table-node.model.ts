@@ -36,6 +36,7 @@ export interface CreateConditionRequest {
 
 export interface GetDecisionTableNodeRequest extends AuthorshipFields {
     id: number;
+    created_at: string;
     graph: number;
     node_name: string;
     condition_groups: ConditionGroupBackend[];

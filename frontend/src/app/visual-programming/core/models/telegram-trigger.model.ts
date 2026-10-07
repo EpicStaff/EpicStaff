@@ -43,6 +43,7 @@ export interface TelegramTriggerNodeField {
 
 export interface GetTelegramTriggerNodeRequest extends AuthorshipFields {
     id: number;
+    created_at: string;
     node_name: string;
     graph: number;
     telegram_bot_api_key_secret_id: number | null;

@@ -26,6 +26,7 @@ const KEY_VALUE_NODE = mapKeyValueNodeToModel({
     input_map: {},
     output_variable_path: null,
     metadata: {},
+    created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
     last_edited_at: null,
@@ -118,6 +119,7 @@ describe('FlowBaseNodeComponent key-value caption', () => {
         render({
             ...mapStartNodeToModel({
                 id: 1,
+                created_at: '2026-01-01T00:00:00Z',
                 graph: 1,
                 node_name: '__start__',
                 variables: {},

@@ -2,6 +2,7 @@ import { AuthorshipFields } from '@shared/models';
 
 export interface EndNode extends AuthorshipFields {
     id: number;
+    created_at: string;
     graph: number;
     output_map: Record<string, unknown>;
     metadata: Record<string, unknown>;

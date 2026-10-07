@@ -66,6 +66,7 @@ export interface CDTPythonCodeBlock {
 
 export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields {
     id: number;
+    created_at: string;
     graph: number;
     node_name: string;
     pre_python_code: CDTPythonCodeBlock | null;

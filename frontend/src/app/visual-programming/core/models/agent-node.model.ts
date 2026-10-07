@@ -34,7 +34,7 @@ export interface AgentNodeTaskWrite {
 
 export interface AgentNode extends AuthorshipFields {
     id: number;
-    created_at?: string;
+    created_at: string;
     updated_at?: string;
     metadata: Record<string, unknown>;
     node_name: string;

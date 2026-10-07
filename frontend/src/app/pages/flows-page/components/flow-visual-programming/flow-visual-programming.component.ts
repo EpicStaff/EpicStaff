@@ -84,6 +84,7 @@ import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/fl
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { buildFlowModelFromGraphDto, normalizeFlowPorts } from '../../../../visual-programming/utils/load';
@@ -122,6 +123,8 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    // The page's own store (not root), replaced on every graph load, including when the route switches flows.
+    providers: [NodeAuthorshipStore],
 })
 export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     private readonly destroyRef = inject(DestroyRef);
@@ -140,6 +143,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -358,7 +362,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 tap(({ graph, flows }) => {
                     // Update graphState and availableFlowLights so loadedFlowState()
                     // recomputes via buildFlowModelFromGraphDto (the shared post-load pipeline).
-                    this.graphState.set(graph);
+                    this.setGraphState(graph);
                     this.availableFlowLights.set(flows);
 
                     const serverFlow = this.loadedFlowState();
@@ -670,7 +674,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         nodeDiff: ReturnType<typeof getNodeDiff>,
         showSuccessToast: boolean
     ): void {
-        this.graphState.set(graph);
+        this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         let patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
         patchedFlow = patchCdtPromptBackendIds(patchedFlow, graph);
@@ -734,7 +738,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         return this.flowApiService.bulkSaveGraph(graphId, payload).pipe(
             tap((responseGraph) => {
-                this.graphState.set(responseGraph);
+                this.setGraphState(responseGraph);
                 const patchedFlow = patchFlowStateWithBackendIds(
                     this.currentFlowState(),
                     previous,
@@ -1043,8 +1047,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.isSnakeGameActive.set(true);
     }
 
-    private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
+    /**
+     * The only way to set `graphState`: every graph the API returns here is the full graph, and the node
+     * authorship store takes it in the same step, so it always mirrors `graphState`.
+     */
+    private setGraphState(graph: GraphDto): void {
         this.graphState.set(graph);
+        this.nodeAuthorshipStore.replaceFromGraph(graph);
+    }
+
+    private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
+        this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
@@ -1175,7 +1188,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public onFlowEdited(updatedFlow: GraphDto): void {
-        this.graphState.set(updatedFlow);
+        this.setGraphState(updatedFlow);
         this.cdr.markForCheck();
     }
 

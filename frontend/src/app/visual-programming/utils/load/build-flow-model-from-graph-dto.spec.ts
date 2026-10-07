@@ -7,6 +7,7 @@ import { buildFlowModelFromGraphDto } from './build-flow-model-from-graph-dto';
 function subgraphNode(id: number, subgraph: number): SubGraphNode {
     return {
         id,
+        created_at: '2026-01-01T00:00:00Z',
         node_name: `Subflow #${id}`,
         graph: 1,
         subgraph,

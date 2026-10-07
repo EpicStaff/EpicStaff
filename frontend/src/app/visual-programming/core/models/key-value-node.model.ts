@@ -27,6 +27,7 @@ export interface KeyValueNodeData {
 
 export interface GetKeyValueNodeRequest extends KeyValueNodeData, AuthorshipFields {
     id: number;
+    created_at: string;
     graph: number;
     node_name: string;
     input_map: Record<string, unknown>;

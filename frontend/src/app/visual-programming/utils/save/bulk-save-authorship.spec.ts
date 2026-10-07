@@ -1,8 +1,10 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { NODE_DETAILS_LIST_KEY, NODE_TYPES_WITH_DETAILS } from '../../core/helpers/node-details.util';
 import { FlowModel } from '../../core/models/flow.model';
 import { GetLLMNodeRequest } from '../../core/models/llm-node.model';
+import { NodeModel } from '../../core/models/node.model';
 import { buildFlowModelFromGraphDto } from '../load/build-flow-model-from-graph-dto';
 import { LIVE_AUTHORSHIP, LIVE_WEBHOOK_TRIGGER_ID, liveGraph } from '../testing/live-graph.fixture';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from './diff';
@@ -146,5 +148,50 @@ describe('bulk-save payload of nodes loaded from the API', () => {
         ]);
 
         expect(changes).toEqual([]);
+    });
+});
+
+describe('bulk-save payload of nodes whose details the editor shows', () => {
+    // The details dialog reads authorship from the graph response, never from the canvas, so none of it may be saved.
+    const readOnlyKeys = ['authorship', 'created_at', ...AUTHORSHIP_KEYS];
+
+    function readOnlyKeyPaths(value: unknown, path = '$'): string[] {
+        if (Array.isArray(value)) return value.flatMap((item, index) => readOnlyKeyPaths(item, `${path}[${index}]`));
+        if (value === null || typeof value !== 'object') return [];
+        return Object.entries(value).flatMap(([key, child]) => [
+            ...(readOnlyKeys.includes(key) ? [`${path}.${key}`] : []),
+            ...readOnlyKeyPaths(child, `${path}.${key}`),
+        ]);
+    }
+
+    function loadedNodeOf(type: NodeType): NodeModel {
+        const node = loadedFlow.nodes.find((candidate) => candidate.type === type);
+        if (!node) throw new Error(`The fixture graph has no ${type} node`);
+        return node;
+    }
+
+    it('keeps authorship off the canvas nodes it loads', () => {
+        expect(loadedFlow.nodes.filter((node) => 'authorship' in node)).toEqual([]);
+    });
+
+    it.each([...NODE_TYPES_WITH_DETAILS])('sends no authorship for a %s node, whether created or updated', (type) => {
+        const loaded = loadedNodeOf(type);
+        // The bulk save takes each node type under the same list key the graph response returns it in.
+        const listKey = NODE_DETAILS_LIST_KEY[type as keyof typeof NODE_DETAILS_LIST_KEY];
+        // Moving a node is an edit for every node type (its metadata is saved).
+        const moved: FlowModel = {
+            ...loadedFlow,
+            nodes: loadedFlow.nodes.map((node) =>
+                node.id === loaded.id ? { ...node, position: { x: node.position.x + 10, y: node.position.y } } : node
+            ),
+        };
+
+        const created = bulkSavePayload(emptyFlow, loadedFlow)[listKey];
+        const updated = bulkSavePayload(loadedFlow, moved)[listKey];
+
+        expect(created).toHaveLength(1);
+        expect(updated).toEqual([expect.objectContaining({ id: loaded.backendId })]);
+        expect(readOnlyKeyPaths(created)).toEqual([]);
+        expect(readOnlyKeyPaths(updated)).toEqual([]);
     });
 });
