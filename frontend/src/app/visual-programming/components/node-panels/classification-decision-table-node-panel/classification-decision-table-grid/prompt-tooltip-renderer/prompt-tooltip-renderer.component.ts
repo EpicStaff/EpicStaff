@@ -71,7 +71,7 @@ interface PromptTooltipParams extends ICellRendererParams {
             }
             .chip-id {
                 color: var(--color-text-primary);
-                font-size: 0.875rem;
+                font-size: 0.75rem;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;

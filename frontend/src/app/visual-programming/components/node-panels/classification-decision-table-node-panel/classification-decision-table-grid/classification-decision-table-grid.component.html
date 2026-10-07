@@ -193,7 +193,7 @@
         }
 
         <!-- Hidden-column restore badges -->
-        @for (badge of hiddenColumnBadges(); track badge.x) {
+        @for (badge of hiddenColumnBadges(); track badge.entries[0].colId) {
             <button
                 class="hidden-col-badge"
                 [style.left.px]="badge.x"

@@ -189,6 +189,14 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private exprParamsAfter = signal<string>(CDT_COLUMN_KIND.EXPRESSION);
     private manipParamsAfter = signal<string>(CDT_COLUMN_KIND.MANIPULATION);
     private manipParamsFirst = signal(false);
+    // User-reorderable fixed columns. Columns not in this list keep their default position.
+    private static readonly DEFAULT_FIXED_COL_ORDER: readonly string[] = [
+        CDT_COLUMN_KIND.EXPRESSION,
+        'prompt_id',
+        CDT_COLUMN_KIND.MANIPULATION,
+        'route_code',
+    ];
+    private fixedColumnOrder = signal<string[]>([...ClassificationDecisionTableGridComponent.DEFAULT_FIXED_COL_ORDER]);
     private columnMovedDuringDrag = false;
     private preDragExprAnchor: string | null = null;
     private preDragManipAnchor: string | null = null;
@@ -691,6 +699,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         effect(() => {
             this.movableColumnOrder();
             this.manipColumnOrder();
+            this.fixedColumnOrder();
             untracked(() => {
                 this.rebuildColumnDefs();
                 this.syncRowsFromExpression();
@@ -757,7 +766,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         headerColumnResizeHandleColor: 'transparent',
         pinnedColumnBorder: { style: 'solid', width: 4, color: '#3f4144' },
         cellHorizontalPadding: 8,
-        fontSize: 12,
+        fontSize: 14,
     });
 
     public defaultColDef: ColDef = {
@@ -799,6 +808,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 exprParamsAfter: this.exprParamsAfter(),
                 manipParamsAfter: this.manipParamsAfter(),
                 manipParamsFirst: this.manipParamsFirst(),
+                fixedColumnOrder: this.fixedColumnOrder(),
             };
             try {
                 localStorage.setItem(this.storageKey, JSON.stringify(state));
@@ -848,6 +858,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
             if (typeof state.manipParamsFirst === 'boolean') {
                 this.manipParamsFirst.set(state.manipParamsFirst);
+            }
+            if (Array.isArray(state.fixedColumnOrder) && state.fixedColumnOrder.length > 0) {
+                this.fixedColumnOrder.set(state.fixedColumnOrder);
             }
             if (typeof state.freezeAnchor === 'string') {
                 this.freezeAnchorColId.set(state.freezeAnchor);
@@ -1083,9 +1096,35 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     public handleExpandAllBadgeEntries(): void {
         this.hiddenBadgeMenuCtrl.close();
-        for (const entry of this.activeBadgeEntries) {
-            this.unhideColumn(entry.colId);
+        const entries = this.activeBadgeEntries;
+        if (entries.length === 0) return;
+
+        const groups = this.hiddenColumnGroups();
+        const currentHidden = new Set(this.hiddenColIds());
+        const nextGroups = new Map(groups);
+        const allColIdsToUnhide: string[] = [];
+
+        for (const entry of entries) {
+            if (groups.has(entry.colId)) {
+                const info = groups.get(entry.colId)!;
+                info.colIds.forEach((id) => {
+                    currentHidden.delete(id);
+                    allColIdsToUnhide.push(id);
+                });
+                nextGroups.delete(entry.colId);
+            } else {
+                currentHidden.delete(entry.colId);
+                allColIdsToUnhide.push(entry.colId);
+            }
         }
+
+        this.hiddenColIds.set(currentHidden);
+        this.hiddenColumnGroups.set(nextGroups);
+        this.applyUnhideState(allColIdsToUnhide);
+        this.saveGridState();
+        this.ensureColumnsFitViewport();
+        setTimeout(() => this.updateAddButtonPositions(), 50);
+        this.cdr.markForCheck();
     }
 
     /** Freeze all columns from index 0 through the last colId in childColIds. */
@@ -1241,6 +1280,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         if (firstExprParam !== -1 && firstManipParam !== -1) {
             this.manipParamsFirst.set(firstManipParam < firstExprParam);
         }
+
+        // Track the user-reorderable fixed columns in the order they appear in the grid
+        const reorderableSet = new Set(ClassificationDecisionTableGridComponent.DEFAULT_FIXED_COL_ORDER);
+        const newFixedOrder = allVisible.filter((id) => reorderableSet.has(id));
+        this.fixedColumnOrder.set(newFixedOrder);
 
         this.saveGridState();
         setTimeout(() => this.updateAddButtonPositions(), 0);
@@ -1496,7 +1540,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             colId: CDT_COLUMN_KIND.MANIPULATION,
             field: CDT_COLUMN_KIND.MANIPULATION,
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams(CDT_COLUMN_KIND.MANIPULATION, 'Manipulation'),
+            headerComponentParams: {
+                ...this.makeMenuHeaderParams(CDT_COLUMN_KIND.MANIPULATION, 'Manipulation'),
+                showDragGrip: true,
+            },
             editable: true,
             flex: 1,
             cellRenderer: MonacoCellRendererComponent,
@@ -1525,7 +1572,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             colId: CDT_COLUMN_KIND.EXPRESSION,
             field: CDT_COLUMN_KIND.EXPRESSION,
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams(CDT_COLUMN_KIND.EXPRESSION, 'Expression'),
+            headerComponentParams: {
+                ...this.makeMenuHeaderParams(CDT_COLUMN_KIND.EXPRESSION, 'Expression'),
+                showDragGrip: true,
+            },
             editable: true,
             flex: 1,
             cellRenderer: MonacoCellRendererComponent,
@@ -1685,9 +1735,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const promptIdCol: ColDef = {
             colId: 'prompt_id',
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams('prompt_id', 'Prompt ID'),
+            headerComponentParams: { ...this.makeMenuHeaderParams('prompt_id', 'Prompt ID'), showDragGrip: true },
             field: 'prompt_id',
-            suppressMovable: true,
             editable: true,
             singleClickEdit: true,
             width: 150,
@@ -1778,12 +1827,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const routeCodeCol: ColDef = {
             colId: 'route_code',
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams('route_code', 'Route Code'),
+            headerComponentParams: { ...this.makeMenuHeaderParams('route_code', 'Route Code'), showDragGrip: true },
             field: 'route_code',
             minWidth: 150,
             editable: true,
             flex: 1,
-            suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
             },
@@ -1833,19 +1881,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         };
 
         const readOnly = this.readonly();
+
+        // Map draggable columns by colId so we can reorder them
+        const draggableMap = new Map<string, ColDef>([
+            [CDT_COLUMN_KIND.EXPRESSION, expressionCol],
+            ['prompt_id', promptIdCol],
+            [CDT_COLUMN_KIND.MANIPULATION, manipCol],
+            ['route_code', routeCodeCol],
+        ]);
+        const orderedDraggable = this.fixedColumnOrder()
+            .filter((id) => draggableMap.has(id))
+            .map((id) => draggableMap.get(id)!);
+
         const fixedCols: ColDef[] = readOnly
-            ? [enabledCol, groupNameCol, expressionCol, promptIdCol, manipCol, routeCodeCol, skipCol]
-            : [
-                  selectionCol,
-                  enabledCol,
-                  groupNameCol,
-                  expressionCol,
-                  promptIdCol,
-                  manipCol,
-                  routeCodeCol,
-                  skipCol,
-                  deleteCol,
-              ];
+            ? [enabledCol, groupNameCol, ...orderedDraggable, skipCol]
+            : [selectionCol, enabledCol, groupNameCol, ...orderedDraggable, skipCol, deleteCol];
 
         const exprAnchor = this.clampParamsAnchor(this.exprParamsAfter());
         const manipAnchor = this.clampParamsAnchor(this.manipParamsAfter());

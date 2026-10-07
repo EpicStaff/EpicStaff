@@ -65,9 +65,6 @@ function ensureMonacoLoaded(): Promise<void> {
             class="code-cell"
             #codeContainer
         >
-            @if (!value) {
-                <span class="placeholder">—</span>
-            }
             @if (value && !colorized) {
                 <span class="plain-text">{{ displayText }}</span>
             }
@@ -98,9 +95,6 @@ function ensureMonacoLoaded(): Promise<void> {
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-            }
-            .placeholder {
-                color: rgba(255, 255, 255, 0.2);
             }
             .colorized-code {
                 white-space: nowrap;

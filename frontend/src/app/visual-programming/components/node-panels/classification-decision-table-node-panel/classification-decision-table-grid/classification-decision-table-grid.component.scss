@@ -807,6 +807,10 @@ $group-gutter-width: 28px;
     cursor: grabbing;
 }
 
+:host ::ng-deep .ag-header-cell > .ag-header-cell-comp-wrapper {
+    justify-content: center;
+}
+
 :host ::ng-deep .ag-header-cell-moving,
 :host ::ng-deep .ag-header-group-cell.ag-header-cell-moving,
 :host ::ng-deep .ag-cell.col-drag-lifted {
