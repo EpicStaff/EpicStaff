@@ -1053,10 +1053,6 @@ class PushTest(unittest.TestCase):
         self.assertNotIn("node p50 123.0", text)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PreflightTest(unittest.TestCase):
     def test_host_errors_and_ok(self):
         facts = {
@@ -1123,3 +1119,65 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(
             name, "2026-10-07_1432_host_feat-EST-4430-x_a1b2c3d_server-capacity-default"
         )
+
+
+class SmokeJudgementTest(unittest.TestCase):
+    def test_cold_session_ended_by_crew_event_after_fallback_switch_passes(self):
+        controller = load.Controller(lambda: (200, 7), lambda session_id: None)
+        try:
+            controller.external_in_flight = lambda: 0
+            controller.set_context("payload", 0, "cold", 1)
+            controller.hold(1, 5, 5, lambda: None, max_starts=1, tick_s=0.01)
+            controller.external_in_flight = None  # BENCH lines are flowing: switch modes
+            end = {"session_id": 7, "checkpoint": "session_end", "status": "end", "ts": 1.0}
+            controller.on_event(end)
+            events = [
+                {**end, "service": "crew"},
+                {"session_id": 7, "checkpoint": "received", "ts": 0.1, "service": "crew"},
+                {"session_id": 7, "checkpoint": "slot_acquired", "ts": 0.2, "service": "crew"},
+                {
+                    "session_id": 7,
+                    "checkpoint": "request_received",
+                    "ts": 0.0,
+                    "service": "django_app",
+                },
+            ]
+            self.assertIsNone(controller.records[0].end_status)
+            rows = analyze.build_rows(controller.records, events)
+        finally:
+            controller.close()
+        self.assertEqual(runner._smoke_failures(rows, events), [])
+
+    def test_failed_and_missing_checkpoints_are_reported(self):
+        rows = [{"status": "end"}, {"status": None}]
+        events = [{"service": "crew", "checkpoint": "received"}]
+        problems = runner._smoke_failures(rows, events)
+        self.assertTrue(any("did not end cleanly" in problem for problem in problems))
+        self.assertTrue(any("crew: missing checkpoints" in problem for problem in problems))
+
+
+class WorktreeCertsTest(unittest.TestCase):
+    def test_certs_are_copied_into_the_worktree(self):
+        repo = Path(tempfile.mkdtemp())
+        certs = repo / "src" / "nginx" / "certs"
+        certs.mkdir(parents=True)
+        (certs / "server.crt").write_text("cert")
+        (certs / ".gitkeep").write_text("")
+
+        def fake_run(args, **kwargs):
+            Path(args[6]).mkdir(parents=True)  # `git worktree add --detach <path> <ref>`
+
+        with mock.patch.object(stack, "run", side_effect=fake_run):
+            worktree = stack.Worktree(repo, "main")
+            path = worktree.__enter__()
+            try:
+                copied = sorted(item.name for item in (path / "src" / "nginx" / "certs").iterdir())
+            finally:
+                import shutil
+
+                shutil.rmtree(worktree._temp_root, ignore_errors=True)
+        self.assertEqual(copied, ["server.crt"])
+
+
+if __name__ == "__main__":
+    unittest.main()

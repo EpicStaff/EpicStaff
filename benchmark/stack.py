@@ -201,6 +201,14 @@ class Worktree:
         except StackError:
             shutil.rmtree(self._temp_root, ignore_errors=True)
             raise
+        # gitignored bind-mount source the worktree would otherwise lack
+        certs = self.repo / "src" / "nginx" / "certs"
+        if certs.is_dir():
+            target = self.path / "src" / "nginx" / "certs"
+            target.mkdir(parents=True, exist_ok=True)
+            for item in certs.iterdir():
+                if item.is_file() and item.name != ".gitkeep":
+                    shutil.copy2(item, target / item.name)
         return self.path
 
     def __exit__(self, *exc_info):
