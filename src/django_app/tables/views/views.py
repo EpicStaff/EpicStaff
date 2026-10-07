@@ -1,4 +1,5 @@
 import base64
+import time
 from collections import defaultdict
 from typing import ClassVar
 
@@ -28,6 +29,7 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from src.shared.bench import bench_mark
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
@@ -407,6 +409,7 @@ class SessionViewSet(
 class RunSession(APIView):
     @extend_schema(**RUN_SESSION_POST)
     def post(self, request):
+        request_received_ts = time.time()
         logger.info("Received POST request to start a new session.")
 
         total_size = sum(f.size for f in request.FILES.values())
@@ -463,6 +466,9 @@ class RunSession(APIView):
                 token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
+            # session_id only exists after run_session, so the line is written late
+            # with the real arrival time.
+            bench_mark(session_id, "request_received", ts=request_received_ts)
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})

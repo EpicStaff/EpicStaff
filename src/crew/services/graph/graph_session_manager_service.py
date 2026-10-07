@@ -29,6 +29,7 @@ from src.crew.services.graph.session_audit_provider import (
     register_session_org,
     track_audit_task,
 )
+from src.shared.bench import bench_mark, bench_session_id
 from src.shared.models import SessionData, StopSessionMessage
 from utils.singleton_meta import SingletonMeta
 
@@ -137,6 +138,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
         try:
             session_id = session_data.id
+            # run_session owns its asyncio task (see _session_worker), so this does
+            # not leak into other sessions.
+            bench_session_id.set(session_id)
             register_session_org(session_id, session_data.org_id)
             register_session_flow_name(session_id, session_data.graph.name)
             _dispatch_session_audit(
@@ -177,6 +181,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
+            bench_mark(session_id, "compiled")
 
             state = {
                 "state_history": [],
@@ -296,10 +301,12 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)
+            bench_mark(session_id, "session_end", status="end", reason=None)
 
         except asyncio.CancelledError:
             # Status updated in _handle_session_timeout
             logger.warning(f"Session {session_id} was cancelled")
+            bench_mark(session_id, "session_end", status="cancelled", reason=None)
             org_id = get_session_org(session_id)
             if org_id is not None:
                 _dispatch_session_audit(
@@ -317,6 +324,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
         except StopSession as e:
+            bench_mark(session_id, "session_end", status=stop_event.status, reason=e.reason)
             status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status=stop_event.status, **status_kwargs
@@ -341,6 +349,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
+            bench_mark(
+                session_data.id, "session_end", status="error", reason=f"{type(e).__name__}: {e}"
+            )
 
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
@@ -403,6 +414,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             coro = self.session_runner(session_data, stop_event)
             coro_item = SessionCoroItem(coro, stop_event)
             self.session_graph_pool[session_data.id] = coro_item
+            bench_mark(session_data.id, "received")
             await self.session_queue.put(session_data.id)
 
         except Exception as e:
@@ -467,6 +479,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
     async def session_runner(self, data: SessionData, stop_event: StopEvent):
         async with self._semaphore:
+            bench_mark(data.id, "slot_acquired")
             logger.info(f"Acquired semaphore for session {data.id}")
             await self.run_session(data, stop_event)
             self.counter += 1
@@ -490,6 +503,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_coro_item: SessionCoroItem = self.session_graph_pool.get(session_id)
             if session_coro_item is None:
                 logger.warning(f"Session {session_id} was removed before it started")
+                bench_mark(
+                    session_id, "session_end", status="stop", reason="removed before start"
+                )
                 continue
 
             logger.info(f"Dequeued session {session_id}")

@@ -7,6 +7,7 @@ import uuid
 import redis.asyncio as aioredis
 from loguru import logger
 
+from shared.bench import bench_correlation_id, bench_mark
 from shared.models.tools import CodeResultData, CodeTaskData
 
 
@@ -84,6 +85,12 @@ class SandboxClient:
 
         try:
             await self._redis.publish(self._request_channel, task.model_dump_json())
+            bench_mark(
+                task.session_id,
+                "sandbox_dispatched",
+                correlation_id=bench_correlation_id.get(),
+                execution_id=execution_id,
+            )
 
             if timeout is not None:
                 return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
