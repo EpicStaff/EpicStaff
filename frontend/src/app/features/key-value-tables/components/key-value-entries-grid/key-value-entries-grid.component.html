@@ -25,12 +25,15 @@
     >
         <ag-grid-angular
             class="entries-grid__grid"
+            [style.--entries-grid-columns-min-width]="columnsMinWidth() + 'px'"
             [gridOptions]="gridOptions"
             [rowData]="gridRows()"
             [columnDefs]="columnDefs()"
             [loading]="loading()"
             [overlayNoRowsTemplate]="noRowsTemplate()"
             (gridReady)="onGridReady($event)"
+            (displayedColumnsChanged)="onColumnsChanged($event)"
+            (columnResized)="onColumnsChanged($event)"
             (sortChanged)="onSortChanged($event)"
             (cellEditingStopped)="onCellEditingStopped($event)"
             (cellKeyDown)="onCellKeyDown($event)"
@@ -105,8 +108,13 @@
                 class="entries-grid__session-link"
                 [title]="label"
                 [routerLink]="row.sessionLink"
-                >{{ label }}</a
             >
+                <span class="entries-grid__text">{{ label }}</span>
+                <app-svg-icon
+                    icon="arrow-up-right"
+                    size="16px"
+                />
+            </a>
         } @else {
             <span
                 class="entries-grid__manual-edit"

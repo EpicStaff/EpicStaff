@@ -12,17 +12,6 @@
     </div>
 }
 
-<!-- Key-Value summary under the node, shown on hover; the #N label above stays clear. -->
-@if (keyValueSummary; as summary) {
-    <div
-        class="key-value-caption"
-        aria-hidden="true"
-        [title]="summary.full"
-    >
-        {{ summary.caption }}
-    </div>
-}
-
 <!-- Control buttons positioned above the node: only NOTE/EDGE still use this outside bar, since they have no header row. Other types render actions inside .header below. -->
 @if (
     node.type !== NodeType.TABLE &&
@@ -99,6 +88,7 @@
 }
 <ng-template #interactiveNode>
     @let keyValueStripeColor = keyValueModeStripeColor;
+    @let keyValueSummaryValue = keyValueSummary;
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
@@ -114,12 +104,12 @@
             <div class="header">
                 <div class="icon-wrapper">
                     @if (keyValueHeader; as header) {
-                        <!-- The caption under the node shows the summary on hover; this names it for screen readers. -->
+                        <!-- Screen readers get the summary here, with the table name in full; the #N tab's cut-short copy is aria-hidden. -->
                         <i
                             [class]="header.icon"
                             [style.color]="header.color"
                             role="img"
-                            [attr.aria-label]="keyValueSummary?.full"
+                            [attr.aria-label]="keyValueSummaryValue?.full"
                         ></i>
                     } @else {
                         <i
@@ -194,11 +184,31 @@
                     </div>
                 }
             </div>
-            <!-- Action bar above the node box, hover/selected-only: #N chip at left, delete chip at right -->
+            <!-- Action bar above the node box, hover/selected-only: #N chip (plus a Key-Value node's summary) at left, delete chip at right -->
             @if (hasNumberChip || hasDeleteChip) {
                 <div class="node-action-bar">
                     @if (hasNumberChip) {
-                        <div class="node-number-badge">#{{ node.nodeNumber }}</div>
+                        <div
+                            class="node-number-badge"
+                            [class.has-summary]="keyValueSummaryValue"
+                            [attr.title]="keyValueSummaryValue?.full"
+                        >
+                            <span class="node-number">#{{ node.nodeNumber }}</span>
+                            @if (keyValueSummaryValue) {
+                                <span
+                                    class="summary"
+                                    aria-hidden="true"
+                                >
+                                    <span class="summary-separator summary-separator--number">-</span>
+                                    @for (part of keyValueSummaryValue.captionParts; track $index) {
+                                        @if (!$first) {
+                                            <span class="summary-separator">/</span>
+                                        }
+                                        <span>{{ part }}</span>
+                                    }
+                                </span>
+                            }
+                        </div>
                     }
                     @if (node.type === NodeType.SUBGRAPH && !isReadOnly()) {
                         <div
