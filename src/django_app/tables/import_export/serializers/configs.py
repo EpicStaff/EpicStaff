@@ -96,6 +96,9 @@ class RealtimeTranscriptionConfigImportSerializer(BaseConfigImportSerializer):
         model = RealtimeTranscriptionConfig
 
 
+# The provider realtime config serializers below keep created_at out of the export, as
+# LLMConfig does: the import never writes it (it is auto_now_add), so exporting it would
+# only carry the source config's creation time into the file.
 class OpenAIRealtimeConfigImportSerializer(
     OpenAIRealtimeModelNameValidationMixin, serializers.ModelSerializer
 ):
@@ -106,16 +109,21 @@ class OpenAIRealtimeConfigImportSerializer(
 
     class Meta:
         model = OpenAIRealtimeConfig
-        exclude = ["created_by", "api_key_secret", "transcription_api_key_secret"]
+        exclude = [
+            "created_by",
+            "created_at",
+            "api_key_secret",
+            "transcription_api_key_secret",
+        ]
 
 
 class ElevenLabsRealtimeConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = ElevenLabsRealtimeConfig
-        exclude = ["created_by", "api_key_secret"]
+        exclude = ["created_by", "created_at", "api_key_secret"]
 
 
 class GeminiRealtimeConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = GeminiRealtimeConfig
-        exclude = ["created_by", "api_key_secret"]
+        exclude = ["created_by", "created_at", "api_key_secret"]

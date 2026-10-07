@@ -17,12 +17,24 @@ class CreatedAtMigration:
 
 TABLES_PREVIOUS = ("tables", "0258_sourcecollection_drop_user_id")
 TABLES_CREATED_AT = ("tables", "0259_created_at_on_authored_configs")
+TABLES_REALTIME_PREVIOUS = ("tables", "0260_merge_20261007_0846")
+TABLES_REALTIME_CREATED_AT = ("tables", "0261_created_at_on_realtime_provider_configs")
 
 CASES = [
     CreatedAtMigration("tables.LLMConfig", "custom_name", TABLES_PREVIOUS, TABLES_CREATED_AT),
     CreatedAtMigration("tables.EmbeddingConfig", "custom_name", TABLES_PREVIOUS, TABLES_CREATED_AT),
     CreatedAtMigration("tables.RealtimeChannel", "name", TABLES_PREVIOUS, TABLES_CREATED_AT),
     CreatedAtMigration("tables.WebhookTrigger", "path", TABLES_PREVIOUS, TABLES_CREATED_AT),
+    *(
+        CreatedAtMigration(
+            model_label, "custom_name", TABLES_REALTIME_PREVIOUS, TABLES_REALTIME_CREATED_AT
+        )
+        for model_label in (
+            "tables.OpenAIRealtimeConfig",
+            "tables.ElevenLabsRealtimeConfig",
+            "tables.GeminiRealtimeConfig",
+        )
+    ),
     CreatedAtMigration(
         "agents.AgentDefinition",
         "name",

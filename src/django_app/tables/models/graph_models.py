@@ -876,6 +876,9 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
 
 
 class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
+    # A child row of its classification decision table, with no `graph` of its own.
+    last_edit_owner_field = None
+
     id = models.UUIDField(primary_key=True)  # client-generated id — and the Django PK
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",

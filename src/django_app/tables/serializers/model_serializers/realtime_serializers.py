@@ -105,9 +105,11 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
 
 
 class OpenAIRealtimeConfigSerializer(
-    AuthorSummarySerializerMixin, 
-    OpenAIRealtimeModelNameValidationMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
-
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    OpenAIRealtimeModelNameValidationMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
@@ -137,12 +139,16 @@ class OpenAIRealtimeConfigSerializer(
             "voice_recognition_prompt",
             "org",
             "created_by",
+            "created_at",
         ]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
 class ElevenLabsRealtimeConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
@@ -163,12 +169,16 @@ class ElevenLabsRealtimeConfigSerializer(
             "language",
             "org",
             "created_by",
+            "created_at",
         ]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
 class GeminiRealtimeConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
@@ -189,8 +199,9 @@ class GeminiRealtimeConfigSerializer(
             "voice_recognition_prompt",
             "org",
             "created_by",
+            "created_at",
         ]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
 class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):

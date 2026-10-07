@@ -350,15 +350,15 @@ LIST_CASES = [
     ),
     ListCase(
         "openairealtimeconfig",
-        _owned(OpenAIRealtimeConfig, "custom_name", "query-count-openai", edited=False),
+        _owned(OpenAIRealtimeConfig, "custom_name", "query-count-openai"),
     ),
     ListCase(
         "elevenlabsrealtimeconfig",
-        _owned(ElevenLabsRealtimeConfig, "custom_name", "query-count-elevenlabs", edited=False),
+        _owned(ElevenLabsRealtimeConfig, "custom_name", "query-count-elevenlabs"),
     ),
     ListCase(
         "geminirealtimeconfig",
-        _owned(GeminiRealtimeConfig, "custom_name", "query-count-gemini", edited=False),
+        _owned(GeminiRealtimeConfig, "custom_name", "query-count-gemini"),
     ),
     ListCase(
         "realtimechannel",

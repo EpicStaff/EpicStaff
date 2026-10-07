@@ -16,10 +16,13 @@ from rbac.authorship import record_last_edit, record_last_edits
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import Organization, OrganizationUser, ResourceLastEdit
 from tables.models import (
+    ElevenLabsRealtimeConfig,
     EmbeddingConfig,
+    GeminiRealtimeConfig,
     Graph,
     GraphNote,
     Label,
+    OpenAIRealtimeConfig,
     RealtimeChannel,
     StorageFile,
     WebhookTrigger,
@@ -314,11 +317,22 @@ def test_python_code_tool_patch_without_change_records_nothing(
     ("basename", "model", "name_field"),
     [
         ("embeddingconfig", EmbeddingConfig, "custom_name"),
+        ("openairealtimeconfig", OpenAIRealtimeConfig, "custom_name"),
+        ("elevenlabsrealtimeconfig", ElevenLabsRealtimeConfig, "custom_name"),
+        ("geminirealtimeconfig", GeminiRealtimeConfig, "custom_name"),
         ("realtimechannel", RealtimeChannel, "name"),
         ("webhooktrigger", WebhookTrigger, "path"),
         ("agentdefinition", AgentDefinition, "name"),
     ],
-    ids=["embedding-config", "realtime-channel", "webhook-trigger", "agent-definition"],
+    ids=[
+        "embedding-config",
+        "openai-realtime-config",
+        "elevenlabs-realtime-config",
+        "gemini-realtime-config",
+        "realtime-channel",
+        "webhook-trigger",
+        "agent-definition",
+    ],
 )
 def test_patch_resending_unchanged_values_and_created_at_records_nothing(
     colleague_client, regular_user, default_org, basename, model, name_field

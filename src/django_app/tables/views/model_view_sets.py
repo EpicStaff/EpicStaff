@@ -1677,9 +1677,7 @@ class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = OpenAIRealtimeConfig.objects.prefetch_related(
-        *authorship_prefetches(last_edit=False)
-    )
+    queryset = OpenAIRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = OpenAIRealtimeConfigSerializer
 
 
@@ -1687,9 +1685,7 @@ class ElevenLabsRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewS
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = ElevenLabsRealtimeConfig.objects.prefetch_related(
-        *authorship_prefetches(last_edit=False)
-    )
+    queryset = ElevenLabsRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = ElevenLabsRealtimeConfigSerializer
 
 
@@ -1697,9 +1693,7 @@ class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = GeminiRealtimeConfig.objects.prefetch_related(
-        *authorship_prefetches(last_edit=False)
-    )
+    queryset = GeminiRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = GeminiRealtimeConfigSerializer
 
 

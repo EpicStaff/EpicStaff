@@ -33,6 +33,11 @@ from tables.models import Graph
 from tables.models.graph_models import GraphNote
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.realtime_models import (
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+    OpenAIRealtimeConfig,
+)
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyService
 from tables.services.copy_services.python_code_tool_copy_service import (
@@ -215,6 +220,35 @@ def test_import_of_main_entity_records_importer(beta, acme, admin_acme):
     )
 
     assert _last_edit_of(McpTool.objects.get(org=acme)).edited_by_id == admin_acme.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("entity_type", "model"),
+    [
+        (EntityType.OPENAI_REALTIME_CONFIG, OpenAIRealtimeConfig),
+        (EntityType.ELEVENLABS_REALTIME_CONFIG, ElevenLabsRealtimeConfig),
+        (EntityType.GEMINI_REALTIME_CONFIG, GeminiRealtimeConfig),
+    ],
+    ids=["openai", "elevenlabs", "gemini"],
+)
+def test_import_of_realtime_provider_config_records_importer_with_a_fresh_creation_time(
+    entity_type, model, beta, acme, admin_acme, openai_realtime_builtin_model
+):
+    source = model.objects.create(custom_name="exported-voice", org=beta)
+    model._base_manager.filter(pk=source.pk).update(created_at=PREVIOUS_EDIT_AT)
+    exported = ExportService(entity_registry).export_entities(entity_type, [source.id])
+    import_started_at = timezone.now()
+
+    ImportService(entity_registry).import_data(
+        exported, main_entity=entity_type, org_id=acme.id, user=admin_acme
+    )
+
+    assert "created_at" not in exported[entity_type][0]
+    imported = model.objects.get(org=acme)
+    assert imported.created_by_id == admin_acme.id
+    assert imported.created_at >= import_started_at
+    _assert_last_edited_by([imported], admin_acme, since=import_started_at)
 
 
 @pytest.mark.django_db

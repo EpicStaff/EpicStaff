@@ -92,13 +92,18 @@ class QuickstartService(metaclass=SingletonMeta):
                     author=author,
                 )
 
+                realtime_configs = []
                 if provider == "openai":
-                    self._create_openai_realtime_config(
-                        bundle_secret, config_name, org_id=org_id, author=author
+                    realtime_configs.append(
+                        self._create_openai_realtime_config(
+                            bundle_secret, config_name, org_id=org_id, author=author
+                        )
                     )
                 elif provider == "gemini":
-                    self._create_gemini_realtime_config(
-                        bundle_secret, config_name, org_id=org_id, author=author
+                    realtime_configs.append(
+                        self._create_gemini_realtime_config(
+                            bundle_secret, config_name, org_id=org_id, author=author
+                        )
                     )
 
                 self._apply_quickstart_tag(
@@ -106,7 +111,7 @@ class QuickstartService(metaclass=SingletonMeta):
                     embedding_config=embedding_config,
                     org_id=org_id,
                 )
-                record_last_edits([llm_config, embedding_config], user)
+                record_last_edits([llm_config, embedding_config, *realtime_configs], user)
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {

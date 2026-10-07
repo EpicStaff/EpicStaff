@@ -15,12 +15,15 @@ from rest_framework import status
 
 from agents.models import AgentDefinition
 from tables.models import (
+    ElevenLabsRealtimeConfig,
     EmbeddingConfig,
     EmbeddingModel,
+    GeminiRealtimeConfig,
     Graph,
     Label,
     LLMConfig,
     LLMModel,
+    OpenAIRealtimeConfig,
     Provider,
     PythonCode,
     PythonCodeTool,
@@ -95,7 +98,7 @@ def acme_client(client_as, acme_admin, acme):
     return client
 
 
-# ---- created_at: LLMConfig, EmbeddingConfig, RealtimeChannel, WebhookTrigger, AgentDefinition ----
+# ---- created_at: LLM, embedding and voice configs, RealtimeChannel, WebhookTrigger, AgentDefinition ----
 
 
 @dataclass(frozen=True)
@@ -128,6 +131,18 @@ CREATED_AT_RESOURCES = [
         "custom_name",
         "renamed-embedding",
         extra_payload=lambda: {"model": _embedding_model().id},
+    ),
+    CreatedAtResource(
+        "/api/openai-realtime-configs/", OpenAIRealtimeConfig, "custom_name", "renamed-openai"
+    ),
+    CreatedAtResource(
+        "/api/elevenlabs-realtime-configs/",
+        ElevenLabsRealtimeConfig,
+        "custom_name",
+        "renamed-elevenlabs",
+    ),
+    CreatedAtResource(
+        "/api/gemini-realtime-configs/", GeminiRealtimeConfig, "custom_name", "renamed-gemini"
     ),
     CreatedAtResource("/api/realtime-channels/", RealtimeChannel, "name", "renamed-channel"),
     CreatedAtResource(
