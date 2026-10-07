@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -53,9 +54,20 @@ def read_env_file(path: Path) -> dict[str, str]:
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         name, separator, value = line.partition("=")
         if separator and not name.lstrip().startswith("#"):
-            values[name.strip().removeprefix("export ").strip()] = (
-                value.split("#", 1)[0].strip().strip("'\"")
-            )
+            value = value.strip()
+            # Handle quoted values: keep everything inside quotes (including #)
+            if value.startswith("'") and "'" in value[1:]:
+                # Single-quoted: extract content between first and second quote
+                end_quote = value.index("'", 1)
+                value = value[1:end_quote]
+            elif value.startswith('"') and '"' in value[1:]:
+                # Double-quoted: extract content between first and second quote
+                end_quote = value.index('"', 1)
+                value = value[1:end_quote]
+            else:
+                # Unquoted: strip inline comment (# preceded by whitespace)
+                value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
+            values[name.strip().removeprefix("export ").strip()] = value
     return values
 
 
@@ -73,8 +85,15 @@ class EnvOverride:
                 f"Check it, then: mv {self.backup_path} {self.env_path}"
             )
         shutil.copy2(self.env_path, self.backup_path)
-        original = self.env_path.read_text(encoding="utf-8")
-        self.env_path.write_text(apply_env_overrides(original, self.overrides), encoding="utf-8")
+        try:
+            original = self.env_path.read_text(encoding="utf-8")
+            self.env_path.write_text(
+                apply_env_overrides(original, self.overrides), encoding="utf-8"
+            )
+        except BaseException:
+            shutil.copy2(self.backup_path, self.env_path)
+            self.backup_path.unlink()
+            raise
         return self
 
     def __exit__(self, *exc_info):
@@ -157,24 +176,50 @@ def detect_project(container: str = "crew") -> str:
 
 
 class Worktree:
-    """Checks `ref` out next to the repo, so the runner's own files never change mid-run."""
+    """Checks `ref` out in a temporary directory, so the runner's own files never change mid-run."""
 
     def __init__(self, repo: Path, ref: str):
-        self.repo, self.ref, self.path = repo, ref, None
+        self.repo, self.ref, self.path, self._temp_root = repo, ref, None, None
 
     def __enter__(self) -> Path:
-        self.path = Path(tempfile.mkdtemp(prefix="bench-")) / "EpicStaff"
-        run(
-            ["git", "-C", str(self.repo), "worktree", "add", "--detach", str(self.path), self.ref],
-            timeout=300,
-        )
+        self._temp_root = Path(tempfile.mkdtemp(prefix="bench-"))
+        self.path = self._temp_root / "EpicStaff"
+        try:
+            run(
+                [
+                    "git",
+                    "-C",
+                    str(self.repo),
+                    "worktree",
+                    "add",
+                    "--detach",
+                    str(self.path),
+                    self.ref,
+                ],
+                timeout=300,
+            )
+        except StackError:
+            shutil.rmtree(self._temp_root, ignore_errors=True)
+            raise
         return self.path
 
     def __exit__(self, *exc_info):
-        run(
-            ["git", "-C", str(self.repo), "worktree", "remove", "--force", str(self.path)],
+        remove_result = run(
+            [
+                "git",
+                "-C",
+                str(self.repo),
+                "worktree",
+                "remove",
+                "--force",
+                str(self.path),
+            ],
             check=False,
         )
+        run(["git", "-C", str(self.repo), "worktree", "prune"], check=False)
+        shutil.rmtree(self._temp_root, ignore_errors=True)
+        if remove_result.returncode != 0:
+            print(f"warning: git worktree remove failed for {self.path}")
         return False
 
 

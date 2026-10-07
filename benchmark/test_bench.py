@@ -8,6 +8,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import api
 import config
@@ -169,6 +170,20 @@ class EnvOverrideTest(unittest.TestCase):
         ):
             pass
 
+    def test_restores_and_cleans_backup_on_write_failure(self):
+        folder = Path(tempfile.mkdtemp())
+        env_path = folder / ".env"
+        env_path.write_text("A=1\n", encoding="utf-8")
+        original_content = env_path.read_text(encoding="utf-8")
+        with (
+            self.assertRaises(RuntimeError),
+            mock.patch.object(stack, "apply_env_overrides", side_effect=RuntimeError("boom")),
+            stack.EnvOverride(env_path, {"A": "2"}),
+        ):
+            pass
+        self.assertEqual(env_path.read_text(encoding="utf-8"), original_content)
+        self.assertFalse((folder / ".env.bench-backup").exists())
+
 
 class ComposeParseTest(unittest.TestCase):
     def test_parse_ps_accepts_array_and_json_lines(self):
@@ -179,8 +194,14 @@ class ComposeParseTest(unittest.TestCase):
 
     def test_read_env_file_skips_comments(self):
         folder = Path(tempfile.mkdtemp())
-        (folder / ".env").write_text("# X=1\nA = 2 # note\nB='3'\n", encoding="utf-8")
-        self.assertEqual(stack.read_env_file(folder / ".env"), {"A": "2", "B": "3"})
+        (folder / ".env").write_text(
+            "# X=1\nA = 2 # note\nB='3'\nPASSWORD=ab#cd\nC=1 # note\nQ='x # y'\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            stack.read_env_file(folder / ".env"),
+            {"A": "2", "B": "3", "PASSWORD": "ab#cd", "C": "1", "Q": "x # y"},
+        )
 
 
 if __name__ == "__main__":
