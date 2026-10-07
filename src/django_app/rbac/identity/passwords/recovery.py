@@ -6,6 +6,9 @@ from rbac.exceptions import (
     SuperadminRequiredError,
     UserNotFoundError,
 )
+from rbac.identity.credential_revocation import (
+    CredentialRevocationService,
+)
 from rbac.identity.passwords.email_sender import (
     PasswordResetEmailSender,
 )
@@ -14,16 +17,13 @@ from rbac.identity.passwords.token_repository import (
     PasswordResetTokenRepository,
 )
 from rbac.identity.passwords.writer import PasswordWriter
-from rbac.identity.session_invalidation import (
-    SessionInvalidationService,
-)
 
 
 class PasswordRecoveryService:
     """Orchestrator for password-recovery flows.
 
     The only service view code talks to. Composes small single-purpose
-    collaborators (token repo, email sender, session invalidator,
+    collaborators (token repo, email sender, credential revoker,
     password writer, smtp detector) so each concern is swappable in
     tests and so the orchestrator itself stays short and auditable.
 
@@ -35,8 +35,12 @@ class PasswordRecoveryService:
       - Tokens are single-use and time-bound; the repo filters on both
         before handing a token back.
       - Any successful password change — via reset, self-service, admin
-        reset, or CLI — blacklists every outstanding refresh token for
-        the affected user.
+        reset, or CLI — blacklists every live refresh token and revokes
+        every personal API key the affected user holds at that moment, in
+        the same transaction as the password write. Every access and
+        refresh token minted before the change is rejected through the
+        password binding (`CHECK_REVOKE_TOKEN`); the blacklisting is
+        defence in depth.
       - Admin reset is gated on `actor.is_superadmin`.
     """
 
@@ -44,13 +48,13 @@ class PasswordRecoveryService:
         self,
         token_repo: PasswordResetTokenRepository | None = None,
         email_sender: PasswordResetEmailSender | None = None,
-        session_invalidator: SessionInvalidationService | None = None,
+        credential_revoker: CredentialRevocationService | None = None,
         password_writer: PasswordWriter | None = None,
         smtp_config: SmtpConfigService | None = None,
     ):
         self._token_repo = token_repo or PasswordResetTokenRepository()
         self._email_sender = email_sender or PasswordResetEmailSender()
-        self._session_invalidator = session_invalidator or SessionInvalidationService()
+        self._credential_revoker = credential_revoker or CredentialRevocationService()
         self._password_writer = password_writer or PasswordWriter()
         self._smtp_config = smtp_config or SmtpConfigService()
 
@@ -77,7 +81,7 @@ class PasswordRecoveryService:
         with transaction.atomic():
             self._password_writer.set(user, new_password)
             self._token_repo.consume(token_row)
-        self._session_invalidator.blacklist_all_for_user(user)
+            self._credential_revoker.revoke_all_credentials_for_user(user)
 
     # ---- admin flow ----
 
@@ -88,7 +92,7 @@ class PasswordRecoveryService:
         with transaction.atomic():
             self._password_writer.set(target, new_password)
             self._token_repo.invalidate_all_for_user(target)
-        self._session_invalidator.blacklist_all_for_user(target)
+            self._credential_revoker.revoke_all_credentials_for_user(target)
 
     # ---- CLI flow ----
 
@@ -99,7 +103,7 @@ class PasswordRecoveryService:
         with transaction.atomic():
             self._password_writer.set(user, new_password)
             self._token_repo.invalidate_all_for_user(user)
-        self._session_invalidator.blacklist_all_for_user(user)
+            self._credential_revoker.revoke_all_credentials_for_user(user)
 
     # ---- lookup helpers ----
 

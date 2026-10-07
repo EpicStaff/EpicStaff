@@ -1,13 +1,12 @@
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.serializers import TokenRefreshSerializer
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
@@ -45,6 +44,7 @@ from rbac.schemas.auth import (
 from rbac.serializers.auth import (
     AdminPasswordResetSerializer,
     LoginSerializer,
+    PasswordBoundTokenRefreshSerializer,
     PasswordResetConfirmResponseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestResponseSerializer,
@@ -218,25 +218,27 @@ class TokenIntrospectView(APIView):
         serializer.is_valid(raise_exception=True)
         token = serializer.validated_data["token"]
 
+        # The same rule as Bearer authentication: signature, expiry, token
+        # type, user exists and is active, and the password binding.
+        jwt_authentication = JwtAuthentication()
         try:
-            access = AccessToken(token)
-        except TokenError:
+            access = jwt_authentication.get_validated_token(token)
+            user = jwt_authentication.get_user(access)
+        except (InvalidToken, AuthenticationFailed, TokenError):
             return Response({"active": False}, status=status.HTTP_200_OK)
 
-        user_id = access.get("user_id")
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user_id).values_list("org_id", flat=True)
+            OrganizationUser.objects.filter(user_id=user.pk).values_list("org_id", flat=True)
         )
-        is_superadmin = get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
 
         return Response(
             {
                 "active": True,
-                "user_id": user_id,
+                "user_id": user.pk,
                 "email": access.get("email"),
                 "scopes": access.get("scopes", []),
                 "org_ids": org_ids,
-                "is_superadmin": is_superadmin,
+                "is_superadmin": user.is_superadmin,
             },
             status=status.HTTP_200_OK,
         )
@@ -409,10 +411,12 @@ class CookieTokenRefreshView(APIView):
         # Read persistence intent before rotation so it survives on the new token.
         remember_me = read_remember_me_claim(refresh_value)
 
-        serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
+        serializer = PasswordBoundTokenRefreshSerializer(data={"refresh": refresh_value})
         try:
             serializer.is_valid(raise_exception=True)
-        except TokenError:
+        # AuthenticationFailed: the token's user is deactivated. The cookie is
+        # as dead as an expired one, so it is cleared the same way.
+        except (TokenError, AuthenticationFailed):
             response = Response(
                 {"detail": "Token is invalid or expired."},
                 status=status.HTTP_401_UNAUTHORIZED,

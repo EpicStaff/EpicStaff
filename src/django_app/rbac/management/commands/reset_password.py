@@ -18,8 +18,8 @@ class Command(BaseCommand):
         "Usage: python manage.py reset_password <email> "
         "[--generate | --password <pw>]. Without a flag, prompts twice for the "
         "new password via getpass. Validates strength using the same "
-        "AUTH_PASSWORD_VALIDATORS the HTTP API uses. Invalidates all "
-        "outstanding JWT refresh tokens for the user on success."
+        "AUTH_PASSWORD_VALIDATORS the HTTP API uses. On success, blacklists all "
+        "outstanding JWT refresh tokens and revokes all personal API keys of the user."
     )
 
     _GENERATED_PASSWORD_BYTES = 16

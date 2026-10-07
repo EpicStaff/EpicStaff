@@ -1,6 +1,14 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import (
+    TokenObtainPairSerializer,
+    TokenRefreshSerializer,
+)
+from rest_framework_simplejwt.settings import api_settings
 from tables.models.user import DISPLAY_NAME_MAX_LENGTH
+
+from rbac.identity.tokens import is_bound_to_current_password
 
 # ---- First-setup ----
 
@@ -155,6 +163,30 @@ class LoginSerializer(TokenObtainPairSerializer):
         token["email"] = user.email
         token["is_superadmin"] = user.is_superadmin
         return token
+
+
+class PasswordBoundTokenRefreshSerializer(TokenRefreshSerializer):
+    """Refresh serializer that also rejects tokens from a previous password.
+
+    simplejwt's refresh serializer does not apply `CHECK_REVOKE_TOKEN`, so
+    without this a refresh token outlives the password it was minted under.
+    Rejections raise `TokenError`, the same signal as an expired or
+    malformed token, so the view answers 401 and clears the cookie.
+    """
+
+    def validate(self, attrs):
+        # simplejwt 5.4.0 offers no hook between its decode and its user
+        # lookup, so the token is decoded here and again in super().validate().
+        refresh = self.token_class(attrs["refresh"])
+        user_id = refresh.get(api_settings.USER_ID_CLAIM)
+        user = (
+            get_user_model().objects.filter(**{api_settings.USER_ID_FIELD: user_id}).first()
+            if user_id is not None
+            else None
+        )
+        if user is None or not is_bound_to_current_password(refresh, user):
+            raise TokenError("Token is not bound to the user's current password.")
+        return super().validate(attrs)
 
 
 class LoginResponseSerializer(serializers.Serializer):

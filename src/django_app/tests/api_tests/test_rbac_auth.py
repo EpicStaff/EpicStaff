@@ -983,6 +983,33 @@ def test_password_reset_confirm_happy_path(api_client, regular_user, jwt_tokens)
 
 
 @pytest.mark.django_db
+def test_password_reset_confirm_revokes_the_users_api_keys(
+    api_client, regular_user, superadmin_user, issue_api_key
+):
+    """A key minted during an account takeover must not survive the reset."""
+    raw_key, user_key = issue_api_key(user=regular_user)
+    _, other_users_key = issue_api_key(user=superadmin_user)
+    _, system_key = issue_api_key(user=None)
+    _token, raw_token = _issue_token(regular_user)
+
+    r = api_client.post(
+        reverse("password_reset_confirm"),
+        data={"token": raw_token, "new_password": "BrandNewPass123!"},
+        format="json",
+    )
+
+    assert r.status_code == 200
+    user_key.refresh_from_db()
+    other_users_key.refresh_from_db()
+    system_key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert other_users_key.revoked_at is None
+    assert system_key.revoked_at is None
+    api_client.credentials(HTTP_X_API_KEY=raw_key)
+    assert api_client.get("/api/profile/").status_code == 401
+
+
+@pytest.mark.django_db
 def test_password_reset_confirm_unknown_token_returns_opaque_400(api_client):
     r = api_client.post(
         reverse("password_reset_confirm"),
@@ -1141,6 +1168,32 @@ def test_admin_password_reset_superadmin_succeeds(
     regular_user.refresh_from_db()
     assert regular_user.check_password("AdminSet123!")
     assert BlacklistedToken.objects.filter(token__user=regular_user).exists()
+
+
+@pytest.mark.django_db
+def test_admin_password_reset_revokes_the_users_api_keys(
+    api_client, superadmin_user, regular_user, issue_api_key
+):
+    _, user_key = issue_api_key(user=regular_user)
+    _, other_users_key = issue_api_key(user=superadmin_user)
+    _, system_key = issue_api_key(user=None)
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
+    )
+
+    r = api_client.post(
+        reverse("admin_password_reset"),
+        data={"user_id": regular_user.id, "new_password": "AdminSet123!"},
+        format="json",
+    )
+
+    assert r.status_code == 204
+    user_key.refresh_from_db()
+    other_users_key.refresh_from_db()
+    system_key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert other_users_key.revoked_at is None
+    assert system_key.revoked_at is None
 
 
 @pytest.mark.django_db

@@ -27,6 +27,31 @@ def test_reset_password_sets_the_new_password(existing_user):
 
 
 @pytest.mark.django_db
+def test_reset_password_revokes_the_users_api_keys(existing_user, issue_api_key):
+    bystander = get_user_model().objects.create_user(
+        email="bystander@example.com", password="OriginalPass123!"
+    )
+    _, user_key = issue_api_key(user=existing_user)
+    _, other_users_key = issue_api_key(user=bystander)
+    _, system_key = issue_api_key(user=None)
+
+    call_command(
+        "reset_password",
+        "user@example.com",
+        "--password",
+        "BrandNewPass456!",
+        stdout=io.StringIO(),
+    )
+
+    user_key.refresh_from_db()
+    other_users_key.refresh_from_db()
+    system_key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert other_users_key.revoked_at is None
+    assert system_key.revoked_at is None
+
+
+@pytest.mark.django_db
 def test_reset_password_rejects_a_weak_password(existing_user):
     with pytest.raises(CommandError) as exc:
         call_command(

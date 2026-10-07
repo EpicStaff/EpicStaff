@@ -23,7 +23,7 @@ View  ──▶  AuthValidationService.validate_*()  (shape + strength)
              ├── PasswordResetTokenRepository   (generate/hash, lookup, delete)
              ├── PasswordResetEmailSender       (render + send, fail-silent)
              ├── PasswordWriter                 (set_password + save)
-             └── SessionInvalidationService     (blacklist refresh tokens)
+             └── CredentialRevocationService    (blacklist refresh tokens, revoke API keys)
 ```
 
 Every collaborator is injected via the orchestrator's constructor so
@@ -76,9 +76,10 @@ Body: `{ "token": "<opaque string>", "new_password": "<pw>" }`.
   passwords return 400 with per-field errors in the standard
   `FormValidationError` shape.
 * On success: password is written, token is marked used, and **every
-  outstanding JWT refresh token for that user is blacklisted**. Short-
-  lived access tokens still in circulation continue to work until they
-  expire (bounded by `JWT_ACCESS_MINUTES`, default 15).
+  personal API key of that user is revoked** — all in one transaction.
+  Every access and refresh token issued before the change stops working
+  at once, because tokens are bound to the password (see Security
+  invariants).
 
 ### Self-service password change — moved
 
@@ -104,7 +105,8 @@ Body: `{ "user_id": <int>, "new_password": "<pw>" }`.
 * Weak password → 400 (same validators as everywhere else).
 * On success: writes the new password, invalidates any pending reset
   tokens for the target, blacklists all of the target's refresh
-  tokens. Returns **204**. No password is echoed — the admin supplied
+  tokens and revokes all of the target's personal API keys, in one
+  transaction. Returns **204**. No password is echoed — the admin supplied
   it.
 
 ## CLI fallback
@@ -125,7 +127,7 @@ python manage.py reset_password <email> [--generate | --password <pw>]
   access to run `manage.py` is the authorization for this command.
 * Goes through `PasswordRecoveryService.cli_reset`, so the same
   post-conditions apply: password written, reset tokens invalidated,
-  refresh tokens blacklisted.
+  refresh tokens blacklisted, personal API keys revoked.
 
 Unknown email → non-zero exit with `CommandError`.
 
@@ -185,10 +187,41 @@ we tell the user an email is coming?" — inspect it, not `EMAIL_BACKEND`.
   Confirm: `10/hour` per **IP alone** — the only caller-supplied value on
   that request is the token itself, and keying on it would give an
   attacker a fresh bucket per guess.
-* **Session kill on every password change.** Reset, admin reset, CLI
+* **Credential kill on every password change.** Reset, admin reset, CLI
   reset (all here) and self-service change (via `UserProfileService`)
-  all blacklist every outstanding refresh token for the user. Access
-  tokens expire on their own (≤ `JWT_ACCESS_MINUTES`).
+  all go through `CredentialRevocationService`, which blacklists every
+  live refresh token for the user **and** revokes every personal (`USER`)
+  API key that exists at the moment the password is set — including
+  non-expiring ones. The `SYSTEM` key is never touched. The revocation
+  runs inside the same transaction as the password write: either both
+  commit or neither does.
+* **Every JWT is bound to the password.** With `CHECK_REVOKE_TOKEN`
+  enabled, each access and refresh token carries a `hash_password` claim
+  (an MD5 of the stored password hash). Bearer authentication,
+  `POST /api/auth/refresh/` and `POST /api/auth/introspect/` reject a
+  token whose claim does not match the user's current password, so every
+  token minted before a password set dies the moment the password
+  changes — including refresh tokens rotated since login, which have no
+  blacklist row. No access-token window remains in which a stolen session
+  could mint a new API key. The self-service change returns a fresh pair
+  minted under the new password, so only the caller's own session
+  continues. Blacklisting stays as defence in depth.
+  **Deploy note:** tokens issued before this binding was enabled carry
+  no claim and are rejected, so every user is forced to log in once
+  after the upgrade.
+  **Any rewrite of the stored password hash ends the user's sessions**,
+  not only a password change. In particular, after a Django upgrade that
+  changes the preferred hasher or its iteration count, the first
+  successful `check_password` (a login, or step 1 of the self-service
+  change) re-hashes the password. That invalidates every token minted
+  under the old hash — including the bearer token of the very caller who
+  just ran step 1 of the self-service change, whose step 2 then returns
+  `401` and who has to log in again.
+* **Open connections are not closed.** WebSocket and SSE connections
+  already open when the password changes stay open: the graph-collab
+  WebSocket and SSE streams authenticate once with a single-use ticket,
+  and the realtime service calls `POST /api/auth/introspect/` only at
+  connect time. Only new connections are refused.
 * **Strength enforced uniformly.** Every entry point runs Django's
   `AUTH_PASSWORD_VALIDATORS`, via the same
   `AuthValidationService._validate_password_field`.

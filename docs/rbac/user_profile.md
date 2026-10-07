@@ -192,7 +192,7 @@ Throttled by `LoginThrottle` (default 5/min, env `LOGIN_THROTTLE_RATE`).
 { "access": "...", "refresh": "..." }
 ```
 
-This pair is fresh. Every other refresh token for the user is now blacklisted; the previous access token continues working only until its own expiry (≤ `JWT_ACCESS_MINUTES`, default 15).
+This pair is fresh and bound to the new password. Every other access and refresh token for the user — including the caller's previous access token — stops working immediately, and every personal API key they own is revoked.
 
 ---
 

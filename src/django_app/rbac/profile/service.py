@@ -9,13 +9,13 @@ from rbac.exceptions import (
     InvalidPasswordChangeTicketError,
     OrgMembershipRequiredError,
 )
+from rbac.identity.credential_revocation import (
+    CredentialRevocationService,
+)
 from rbac.identity.passwords.change_ticket import (
     PasswordChangeTicketService,
 )
 from rbac.identity.passwords.writer import PasswordWriter
-from rbac.identity.session_invalidation import (
-    SessionInvalidationService,
-)
 from rbac.identity.tokens import TokenPair
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
@@ -28,8 +28,8 @@ class UserProfileService:
     """Single orchestrator for /api/profile/* endpoints.
 
     Composes single-purpose collaborators via constructor DI so each
-    seam (avatar storage, ticket service, password writer, session
-    invalidator) is swappable in tests.
+    seam (avatar storage, ticket service, password writer, credential
+    revoker) is swappable in tests.
     """
 
     def __init__(
@@ -37,13 +37,13 @@ class UserProfileService:
         avatar_storage: UserAvatarStorageService | None = None,
         password_change_ticket: PasswordChangeTicketService | None = None,
         password_writer: PasswordWriter | None = None,
-        session_invalidator: SessionInvalidationService | None = None,
+        credential_revoker: CredentialRevocationService | None = None,
         permission_resolver: PermissionResolver | None = None,
     ):
         self._avatar_storage = avatar_storage or UserAvatarStorageService()
         self._password_change_ticket = password_change_ticket or PasswordChangeTicketService()
         self._password_writer = password_writer or PasswordWriter()
-        self._session_invalidator = session_invalidator or SessionInvalidationService()
+        self._credential_revoker = credential_revoker or CredentialRevocationService()
         self._permission_resolver = permission_resolver or PermissionResolver()
 
     # ---- read ----
@@ -149,8 +149,11 @@ class UserProfileService:
         return ticket, expires_in
 
     def password_change_confirm(self, actor, ticket: str, new_password: str) -> TokenPair:
-        """Step 2: consume ticket, write new password, blacklist all
-        outstanding refresh tokens, mint a fresh pair.
+        """Step 2: consume ticket, write new password, revoke credentials, mint a fresh pair.
+
+        The password write and the revocation of every live refresh token
+        and existing personal API key share one transaction. The fresh pair is
+        minted after it commits, so it is the only refresh token that survives.
 
         Dual binding: ticket must exist AND must belong to the calling
         actor. Mismatch surfaces as the same generic
@@ -166,6 +169,6 @@ class UserProfileService:
             raise InvalidPasswordChangeTicketError()
         with transaction.atomic():
             self._password_writer.set(target, new_password)
-        self._session_invalidator.blacklist_all_for_user(target)
+            self._credential_revoker.revoke_all_credentials_for_user(target)
         logger.info("profile.password_change_confirmed user_id={}", target.id)
         return TokenPair.for_user(target)

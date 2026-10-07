@@ -62,9 +62,11 @@ ApiKeyAuthentication]`:
 
 - Header: `Authorization: Bearer <access_token>`
 - Obtain via `POST /api/auth/login/` with `{ "email", "password" }`.
-- Access token lifetime: `JWT_ACCESS_MINUTES` env (default 15).
-- Refresh token lifetime: `JWT_REFRESH_DAYS` env (default 7).
-- Token carries custom claims: `user_id`, `email`, `is_superadmin`.
+- Access token lifetime: `ACCESS_TOKEN_LIFETIME`, env `DJANGO_JWT_ACCESS_LIFETIME` (default `15m`).
+- Refresh token lifetime: `REFRESH_TOKEN_LIFETIME`, env `DJANGO_JWT_REFRESH_LIFETIME` (default `7d`).
+- Token carries custom claims: `user_id`, `email`, `is_superadmin`, and
+  `hash_password` (`CHECK_REVOKE_TOKEN=True`): every token is bound to the
+  user's password and is rejected with `401` once the password changes.
 
 ### API key (primary for internal services)
 
@@ -296,6 +298,11 @@ Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
   refresh token and blacklists the one you just sent.
 - Replaying an old refresh returns `401`. If your storage was tampered with
   or the network duplicated the request, re-login.
+- A refresh token minted under a previous password — or before password
+  binding was enabled, so it has no `hash_password` claim — returns `401`
+  `{"detail": "Token is invalid or expired."}` and clears the refresh
+  cookie, the same as an expired token. The same happens when the token's
+  user no longer exists. The client must send the user to login.
 
 ### POST `/api/auth/logout/`
 
@@ -318,7 +325,8 @@ Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
   not yours" from "garbage"). This stops a leaked refresh token from being
   weaponized to log the owner out.
 - The short-lived **access** token continues to work until its own expiry
-  (default 15 min). Keep access TTL short; consult `JWT_ACCESS_MINUTES`.
+  (`ACCESS_TOKEN_LIFETIME`, env `DJANGO_JWT_ACCESS_LIFETIME`, default `15m`).
+  Keep access TTL short.
 
 ---
 
@@ -431,8 +439,12 @@ Negative tests:
   `POST /api/profile/api-keys/`) → 403 `System API key required`.
 - Send a malformed token (`"token":"nope"`) → 200 with `active: false`.
 - Omit `token` → 400.
-- Wait `JWT_ACCESS_MINUTES` (default 15) and re-introspect the same token →
-  200 with `active: false` (expired).
+- Wait `ACCESS_TOKEN_LIFETIME` (env `DJANGO_JWT_ACCESS_LIFETIME`, default
+  `15m`) and re-introspect the same token → 200 with `active: false` (expired).
+- Introspect a token whose user was deactivated or deleted, or whose user's
+  password changed since it was minted, or a refresh token → 200 with
+  `active: false`. Introspection applies the same checks as Bearer
+  authentication.
 
 ---
 
