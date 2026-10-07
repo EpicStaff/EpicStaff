@@ -1,6 +1,7 @@
 import re
 
 from django.conf import settings
+from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
 from rbac.models import Organization
 
 from tables.import_export.enums import EntityType
@@ -47,6 +48,30 @@ def ensure_unique_identifier(base_name: str, existing_names: list[str]) -> str:
         i += 1
 
     return f"{clean_base} #{i}"
+
+
+def filter_by_name_or_renamed_copy(queryset: QuerySet, name: str | None) -> QuerySet:
+    """Narrow `queryset` to rows named `name` or renamed from it by an earlier import.
+
+    `create_entity` renames on a name collision via `ensure_unique_identifier`
+    ("surf" -> "surf #2"), so a reuse lookup by the exact exported name never
+    finds that copy again and every re-import mints the next number. Rows with
+    the exact name sort first, then by id, so the pick is deterministic --
+    `ImportService` and `import_entity` each call `find_existing` and must agree.
+    """
+    if name is None:
+        return queryset.none()
+
+    renamed_copy_pattern = rf"^{re.escape(clean_base_name(name))}\s*#\s*\d+$"
+    return (
+        queryset.filter(Q(name=name) | Q(name__regex=renamed_copy_pattern))
+        .annotate(
+            is_renamed_copy=Case(
+                When(name=name, then=Value(0)), default=Value(1), output_field=IntegerField()
+            )
+        )
+        .order_by("is_renamed_copy", "id")
+    )
 
 
 def create_filters(data: dict) -> tuple[dict, dict]:

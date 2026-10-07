@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from agents.models import AgentDefaultSurface, AgentDefinition, Surface
 from django.db.models import Q
 
@@ -12,15 +10,16 @@ from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
+    filter_by_name_or_renamed_copy,
     resolve_import_organization,
 )
 from tables.models import LLMConfig
 
-# Scalar fields compared for reuse. Explicit allowlist (not create_filters over
-# the whole dict) so the comparison stays self-documenting and immune to
-# serializer/field additions. default_surface_list is intentionally excluded.
+# Scalar fields compared for reuse, next to the rename-aware name match, the
+# llm configs and the owned/default surfaces. Explicit allowlist (not
+# create_filters over the whole dict) so the comparison stays self-documenting
+# and immune to serializer/field additions.
 COMPARED_FIELDS = (
-    "name",
     "description",
     "instructions",
     "metadata",
@@ -99,15 +98,12 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
     def find_existing(
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> AgentDefinition:
-        data_copy = deepcopy(data)
-        projected = {field: data_copy.get(field) for field in COMPARED_FIELDS}
+        projected = {field: data.get(field) for field in COMPARED_FIELDS}
         filters, null_filters = create_filters(projected)
 
-        new_llm_config_id = id_mapper.get_or_none(
-            EntityType.LLM_CONFIG, data_copy.get("llm_config")
-        )
+        new_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, data.get("llm_config"))
         new_fcm_llm_config_id = id_mapper.get_or_none(
-            EntityType.LLM_CONFIG, data_copy.get("fcm_llm_config")
+            EntityType.LLM_CONFIG, data.get("fcm_llm_config")
         )
 
         if new_llm_config_id is None:
@@ -120,11 +116,66 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         else:
             filters["fcm_llm_config_id"] = new_fcm_llm_config_id
 
-        return (
-            AgentDefinition.objects.filter(**filters, **null_filters)
-            .filter(self.get_org_scope_q(org_id))
-            .first()
-        )
+        # Surface ids the file references but this import did not map are
+        # dropped, exactly as create_entity drops them.
+        mapped_owned_ids = set()
+        created_owned_ids = set()
+        for old_surface_id in data.get("owned_surfaces", []):
+            new_surface_id = id_mapper.get_or_none(EntityType.SURFACE, old_surface_id)
+            if new_surface_id is None:
+                continue
+            mapped_owned_ids.add(new_surface_id)
+            if id_mapper.was_created(EntityType.SURFACE, old_surface_id):
+                created_owned_ids.add(new_surface_id)
+
+        # A reused agent is never modified, so a surface this import created
+        # that is still unowned can only go to a new agent.
+        if Surface.objects.filter(id__in=created_owned_ids, owner_agent__isnull=True).exists():
+            return None
+
+        expected_default_rows = {
+            (new_surface_id, row["place"])
+            for row in data.get("default_surfaces", [])
+            if (new_surface_id := id_mapper.get_or_none(EntityType.SURFACE, row["surface_id"]))
+            is not None
+        }
+        candidates = [
+            candidate
+            for candidate in filter_by_name_or_renamed_copy(
+                AgentDefinition.objects.filter(**filters, **null_filters).filter(
+                    self.get_org_scope_q(org_id)
+                ),
+                data.get("name"),
+            ).prefetch_related("owned_surfaces", "default_surfaces")
+            if {(row.surface_id, row.place) for row in candidate.default_surfaces.all()}
+            == expected_default_rows
+        ]
+        owned_ids_by_candidate = [
+            (candidate, {surface.id for surface in candidate.owned_surfaces.all()})
+            for candidate in candidates
+        ]
+
+        # An agent owning exactly the file's surfaces beats any subset match, in
+        # candidate order -- so when the file owns nothing, the exact name wins
+        # over a renamed copy.
+        for candidate, owned_ids in owned_ids_by_candidate:
+            if owned_ids == mapped_owned_ids:
+                return candidate
+        # A surface owned by another agent cannot be claimed, so an agent created
+        # without it must still be found. Newest wins: every copy an import mints
+        # is newer than the rows it shadows, so re-imports of the same file keep
+        # the first binding. Trade-off: on a first import with several
+        # pre-existing subset matches, the newest wins even if an older one owns
+        # more. Known limitation: importing a different file in between can mint
+        # a newer matching row; fixing that needs persisted import provenance.
+        subset_matches = [
+            candidate
+            for candidate, owned_ids in owned_ids_by_candidate
+            if owned_ids <= mapped_owned_ids
+        ]
+        if not subset_matches:
+            return None
+        return max(subset_matches, key=lambda candidate: candidate.id)
 
     def get_org_scope_q(self, org_id: int) -> Q:
         organization = resolve_import_organization(org_id)
@@ -153,7 +204,12 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
         for old_surface_id in owned_surfaces:
             new_surface_id = id_mapper.get_or_none(EntityType.SURFACE, old_surface_id)
-            if new_surface_id is None:
+            # A reused surface is never modified, so only surfaces this import
+            # created are claimed; the isnull guard keeps another agent created
+            # earlier in the same import from losing one.
+            if new_surface_id is None or not id_mapper.was_created(
+                EntityType.SURFACE, old_surface_id
+            ):
                 continue
 
             new_surface_ids.append(new_surface_id)

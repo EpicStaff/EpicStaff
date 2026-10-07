@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
 from django.db.models import Q
 
@@ -10,6 +8,7 @@ from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
+    filter_by_name_or_renamed_copy,
     resolve_import_organization,
 )
 
@@ -63,11 +62,9 @@ class SurfaceStrategy(EntityImportExportStrategy):
         return surface
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> Surface:
-        data_copy = deepcopy(data)
-        projected = {field: data_copy.get(field) for field in ("name", "instructions")}
-        filters, null_filters = create_filters(projected)
+        filters, null_filters = create_filters({"instructions": data.get("instructions")})
 
-        tools = data_copy.get("tools", {})
+        tools = data.get("tools", {})
         incoming_python_tools = self._remap_tool_set(
             tools.get(EntityType.PYTHON_CODE_TOOL, []),
             "python_tool_id",
@@ -81,23 +78,24 @@ class SurfaceStrategy(EntityImportExportStrategy):
             id_mapper,
         )
 
-        candidates = Surface.objects.filter(**filters, **null_filters).filter(
-            self.get_org_scope_q(org_id)
-        )
+        candidates = filter_by_name_or_renamed_copy(
+            Surface.objects.filter(**filters, **null_filters).filter(self.get_org_scope_q(org_id)),
+            data.get("name"),
+        ).prefetch_related("python_tools", "mcp_tools")
 
         # Ownership is not part of the export, so a candidate owned by a
-        # different agent definition is still reused. Combined with the
-        # owner_agent__isnull=True guard in AgentDefinitionStrategy, the
-        # worst case is a newly created agent definition without an owned
-        # surface — never cross-agent ownership theft.
+        # different agent definition is still reused. AgentDefinitionStrategy
+        # only claims surfaces the import created, so the worst case is a newly
+        # created agent definition without an owned surface — it runs without
+        # that surface — never cross-agent ownership theft.
         for candidate in candidates:
-            candidate_python_tools = set(
-                candidate.python_tools.values_list("python_tool_id", "mode")
-            )
+            candidate_python_tools = {
+                (row.python_tool_id, row.mode) for row in candidate.python_tools.all()
+            }
             if candidate_python_tools != incoming_python_tools:
                 continue
 
-            candidate_mcp_tools = set(candidate.mcp_tools.values_list("mcp_tool_id", "mode"))
+            candidate_mcp_tools = {(row.mcp_tool_id, row.mode) for row in candidate.mcp_tools.all()}
             if candidate_mcp_tools != incoming_mcp_tools:
                 continue
 

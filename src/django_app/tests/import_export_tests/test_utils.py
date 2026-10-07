@@ -1,9 +1,11 @@
 import pytest
 from types import SimpleNamespace
 
+from agents.models import Surface
 from tables.import_export.utils import (
     ensure_unique_identifier,
     create_filters,
+    filter_by_name_or_renamed_copy,
     python_code_equal,
 )
 
@@ -113,3 +115,30 @@ class TestPythonCodeEqual:
             "global_kwargs": None,
         }
         assert python_code_equal(instance, data) is False
+
+
+@pytest.mark.django_db
+class TestFilterByNameOrRenamedCopy:
+    @pytest.fixture
+    def surfaces(self, default_org):
+        names = ["Surf (beta) #3", "Surf (beta)", "Surf (beta)#2", "Surf (beta) #x", "Surf (beta)ing #2"]
+        return {
+            name: Surface.objects.create(organization=default_org, name=name) for name in names
+        }
+
+    def test_matches_exact_name_and_renamed_copies_exact_first(self, surfaces):
+        result = filter_by_name_or_renamed_copy(Surface.objects.all(), "Surf (beta)")
+
+        assert [surface.name for surface in result] == [
+            "Surf (beta)",
+            "Surf (beta) #3",
+            "Surf (beta)#2",
+        ]
+
+    def test_numbered_export_name_matches_its_base_copies(self, surfaces):
+        result = filter_by_name_or_renamed_copy(Surface.objects.all(), "Surf (beta)#2")
+
+        assert [surface.name for surface in result] == ["Surf (beta)#2", "Surf (beta) #3"]
+
+    def test_missing_name_matches_nothing(self, surfaces):
+        assert not filter_by_name_or_renamed_copy(Surface.objects.all(), None).exists()

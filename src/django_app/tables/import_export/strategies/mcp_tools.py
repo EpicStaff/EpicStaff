@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from django.db.models import Q
 
 from tables.import_export.enums import EntityType
@@ -10,8 +8,15 @@ from tables.import_export.utils import (
     attach_tool_labels,
     create_filters,
     ensure_unique_identifier,
+    filter_by_name_or_renamed_copy,
 )
 from tables.models import McpTool
+
+# Scalar fields compared for reuse, next to the rename-aware name match. An
+# explicit allowlist, not create_filters over the whole exported dict: legacy
+# files carry created_at/updated_at (and the source org), which a re-created
+# tool never matches.
+COMPARED_FIELDS = ("transport", "tool_name", "timeout", "init_timeout")
 
 
 class McpToolStrategy(EntityImportExportStrategy):
@@ -72,14 +77,17 @@ class McpToolStrategy(EntityImportExportStrategy):
         return mcp_tool
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> McpTool:
-        data_copy = deepcopy(data)
-        data_copy.pop("id", None)
-        data_copy.pop("labels", None)
-
-        filters, null_filters = create_filters(data_copy)
-        existing = (
-            McpTool.objects.filter(**filters, **null_filters)
-            .filter(self.get_org_scope_q(org_id))
-            .first()
-        )
-        return existing
+        # A key missing from an older file is compared against the model default,
+        # which is what create_entity would store; fields without one are skipped.
+        compared = {}
+        for field_name in COMPARED_FIELDS:
+            model_field = McpTool._meta.get_field(field_name)
+            if field_name in data:
+                compared[field_name] = data[field_name]
+            elif model_field.has_default():
+                compared[field_name] = model_field.get_default()
+        filters, null_filters = create_filters(compared)
+        return filter_by_name_or_renamed_copy(
+            McpTool.objects.filter(**filters, **null_filters).filter(self.get_org_scope_q(org_id)),
+            data.get("name"),
+        ).first()

@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from django.db.models import Q
 
 from tables.import_export.enums import EntityType
@@ -14,9 +12,18 @@ from tables.import_export.utils import (
     attach_tool_labels,
     create_filters,
     ensure_unique_identifier,
+    filter_by_name_or_renamed_copy,
     python_code_equal,
 )
 from tables.models import PythonCode, PythonCodeTool
+
+# Scalar fields compared for reuse, next to the rename-aware name match,
+# get_org_scope_q and python_code_equal. An explicit allowlist, not
+# create_filters over the whole exported dict: legacy files carry
+# created_at/updated_at (and the source org), which a re-created tool never
+# matches. built_in is left out because create_entity always stores False: a
+# built-in whose code changed would otherwise be copied again on every import.
+COMPARED_FIELDS = ("description", "variables", "use_storage")
 
 
 class PythonCodeToolStrategy(EntityImportExportStrategy):
@@ -93,26 +100,29 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int | None = None):
-        data_copy = deepcopy(data)
-        data_copy.pop("id", None)
-        data_copy.pop("python_code_tool_config", None)
-        data_copy.pop("labels", None)
+        # A key missing from an older file is compared against the model default,
+        # which is what create_entity would store; fields without one are skipped.
+        compared = {}
+        for field_name in COMPARED_FIELDS:
+            model_field = PythonCodeTool._meta.get_field(field_name)
+            if field_name in data:
+                compared[field_name] = data[field_name]
+            elif model_field.has_default():
+                compared[field_name] = model_field.get_default()
+        filters, null_filters = create_filters(compared)
+        candidates = filter_by_name_or_renamed_copy(
+            PythonCodeTool.objects.filter(**filters, **null_filters).filter(
+                self.get_org_scope_q(org_id)
+            ),
+            data.get("name"),
+        ).select_related("python_code")
 
-        python_code_data = data_copy.pop("python_code", None)
-
-        filters, null_filters = create_filters(data_copy)
-        existing_python_tool = (
-            PythonCodeTool.objects.filter(**filters, **null_filters)
-            .filter(self.get_org_scope_q(org_id))
-            .first()
-        )
-
-        if not existing_python_tool:
-            return None
-
-        code_equal = python_code_equal(existing_python_tool.python_code, python_code_data)
-        if code_equal:
-            return existing_python_tool
+        # Several candidates can share every compared field and differ only in
+        # code (that is why the import renamed one of them), so check each.
+        python_code_data = data.get("python_code")
+        for candidate in candidates:
+            if python_code_equal(candidate.python_code, python_code_data):
+                return candidate
         return None
 
     def _create_python_code(self, python_code_data: dict) -> PythonCode:
