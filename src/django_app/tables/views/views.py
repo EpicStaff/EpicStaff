@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from agents.models import AgentDefinition
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import (
@@ -30,6 +31,7 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
+from tables.exceptions import SessionNotFoundError
 from tables.filters import SessionFilter
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -69,6 +71,7 @@ from tables.serializers.serializers import (
     RunPythonCodeSerializer,
     RunSessionSerializer,
     SessionExportAllSerializer,
+    SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.services.converter_service import ConverterService
@@ -80,9 +83,15 @@ from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
-from tables.services.session_access import assert_session_org_access
+from tables.services.session_access import (
+    assert_parent_session_in_org,
+    get_accessible_session,
+    get_runnable_graph,
+)
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.services.trigger_test_run.service import SessionTestRunService
 from tables.swagger_schemas.default_config_schemas import (
     QUICKSTART_APPLY_POST,
     QUICKSTART_GET,
@@ -100,6 +109,7 @@ from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
     GET_UPDATES_GET,
     RUN_SESSION_POST,
+    RUN_SESSION_TEST_POST,
     SESSION_BULK_DELETE_POST,
     SESSION_DESTROY_DELETE,
     SESSION_LIST_GET,
@@ -124,6 +134,7 @@ redis_service = RedisService()
 # TODO: fix. Do we need init converter_service here? Instance is not used.
 converter_service = ConverterService()
 session_manager_service = SessionManagerService()
+session_test_run_service = SessionTestRunService(session_manager_service=session_manager_service)
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
@@ -357,12 +368,20 @@ class SessionViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        _, per_model = Session.objects.filter(
-            id__in=ids, graph__org_id=self.get_active_org_id()
-        ).delete()
-        deleted_count = per_model.get("tables.Session", 0)
+        # Count the requested sessions before deleting: delete() also counts the
+        # sub-sessions removed by the parent_session cascade. The row lock keeps a
+        # concurrent delete from removing a selected session before ours runs, so
+        # the count matches what this request deleted.
+        with transaction.atomic():
+            owned_session_ids = list(
+                Session.objects.select_for_update(of=("self",))
+                .filter(id__in=ids, graph__org_id=self.get_active_org_id())
+                .order_by("id")
+                .values_list("id", flat=True)
+            )
+            Session.objects.filter(id__in=owned_session_ids).delete()
 
-        return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
+        return Response({"deleted": len(owned_session_ids), "ids": ids}, status=status.HTTP_200_OK)
 
     @extend_schema(**SESSION_WARNINGS_GET)
     @action(detail=True, methods=["get"], url_path="warnings")
@@ -409,26 +428,12 @@ class RunSession(APIView):
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
 
-        if graph_id:
-            graph = Graph.objects.filter(id=graph_id).first()
-        else:
-            graph = Graph.objects.filter(uuid=graph_uuid).first()
-
-        if not graph:
-            return Response(
-                {"message": "Provided graph does not exist"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+        graph = get_runnable_graph(request.user, graph_id=graph_id, graph_uuid=graph_uuid)
         graph_id = graph.id
 
-        # Running the flow requires READ on flows within its org (superadmin bypasses).
-        assert_org_permission(
-            user=request.user,
-            org_id=graph.org_id,
-            resource_type=ResourceType.FLOWS,
-            action=Permission.READ,
-        )
+        parent_session_id = serializer.validated_data.get("parent_session_id")
+        if parent_session_id is not None:
+            assert_parent_session_in_org(parent_session_id, org_id=graph.org_id)
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
@@ -438,7 +443,6 @@ class RunSession(APIView):
             variables["files"] = files_dict
             logger.info(f"Added {len(files_dict)} files to variables.")
 
-        parent_session_id = serializer.validated_data.get("parent_session_id")
         # A sub-flow launched by the subflow_tool is triggered by its parent
         # session, not by a human hitting this endpoint.
         trigger = (
@@ -478,17 +482,50 @@ class RunSession(APIView):
         }
 
 
+class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
+    """Test-run a flow from one of its trigger nodes with a designer-written payload."""
+
+    _NODE_ORG_PATH = "graph__org_id"
+
+    @extend_schema(**RUN_SESSION_TEST_POST)
+    def post(self, request):
+        # Running a flow executes its stored code, a contributor-level action
+        # gated on FLOWS.UPDATE like RunPythonCodeAPIView. The gate runs before
+        # body validation and the node lookup, so a caller without it always
+        # gets the same 403 — whatever the body and whether or not the node
+        # exists — and never costs the payload size check.
+        assert_org_permission(
+            user=request.user,
+            org_id=self.get_active_org_id(),
+            resource_type=ResourceType.FLOWS,
+            action=Permission.UPDATE,
+        )
+        serializer = SessionTestRunSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        strategy = TEST_RUN_STRATEGIES[validated_data["node_type"]]
+
+        node = self.get_in_active_org_or_404(
+            strategy.node_model,
+            validated_data["node_id"],
+            org_path=self._NODE_ORG_PATH,
+            graph_id=validated_data["graph_id"],
+        )
+
+        session_id = session_test_run_service.run(
+            strategy=strategy,
+            node=node,
+            payload=validated_data["payload"],
+            user=request.user,
+            api_key=request.auth if isinstance(request.auth, ApiKey) else None,
+        )
+        return Response(data={"session_id": session_id}, status=status.HTTP_201_CREATED)
+
+
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
-        session_id = kwargs.get("session_id")
-        if session_id is None:
-            return Response("Session id not found", status=status.HTTP_404_NOT_FOUND)
-
-        session = Session.objects.select_related("graph").filter(pk=session_id).first()
-        if session is None:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-        assert_session_org_access(request.user, session)
+        session = get_accessible_session(request.user, kwargs["session_id"])
 
         return Response(
             data={"status": session.status},
@@ -499,14 +536,8 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs.get("session_id")
-        if session_id is None:
-            return Response("Session id is missing", status=status.HTTP_404_NOT_FOUND)
-
-        session = Session.objects.select_related("graph").filter(pk=session_id).first()
-        if session is None:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-        assert_session_org_access(request.user, session)
+        session_id = kwargs["session_id"]
+        get_accessible_session(request.user, session_id)
 
         try:
             required_listeners = 2  # manager and crew
@@ -521,7 +552,7 @@ class StopSession(APIView):
                 session.save()
 
         except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+            raise SessionNotFoundError() from None
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

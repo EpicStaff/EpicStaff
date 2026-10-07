@@ -291,7 +291,7 @@ def test_pythoncodetool_default_ordering_unaffected_by_favorites(client_a, org_a
 
     # Favoriting must not change default (no `ordering` param) order, and the
     # default order itself must be deterministic (-id) regardless of filters
-    # (e.g. is_favorite) being applied — see EST-3207.
+    # (e.g. is_favorite) being applied — see migration 0210.
     assert resp_before == [tool3.id, tool2.id, tool1.id]
 
     resp_filtered = [

@@ -183,16 +183,17 @@ Both are combined at runtime (see [Runtime resolution](#runtime-resolution)).
 | `/api/surfaces/` | `GET` | list, `SurfaceReadSerializer` |
 | `/api/surfaces/` | `POST` | create, atomic, returns `SurfaceReadSerializer` |
 | `/api/surfaces/{id}/` | `GET` | retrieve, `SurfaceReadSerializer` |
-| `/api/surfaces/{id}/` | `PUT` | full update, atomic, returns `SurfaceReadSerializer` |
 | `/api/surfaces/{id}/` | `PATCH` | partial update via `SurfacePatchWriteSerializer`, atomic, returns `SurfaceReadSerializer` |
 | `/api/surfaces/{id}/` | `DELETE` | standard `ModelViewSet` delete |
+
+`PUT` is not allowed (`http_method_names` omits it) and returns 405; use `PATCH`.
 | `/api/surfaces/combine/` | `POST` | merges N surfaces (by id) into one combined payload |
 
 Organization scoping is hardcoded: `get_queryset()` always filters
 `organization=Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)` — there
 is currently no multi-tenant org selection at this layer.
 
-`create`/`update`/`partial_update` are wrapped in `@transaction.atomic`, always
+`create`/`partial_update` are wrapped in `@transaction.atomic`, always
 build a write serializer, save it, `refresh_from_db()`, then re-serialize the
 instance through `SurfaceReadSerializer` for the response — write and read
 shapes are never conflated.

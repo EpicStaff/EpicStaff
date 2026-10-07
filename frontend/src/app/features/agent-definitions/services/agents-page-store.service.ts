@@ -720,10 +720,8 @@ export class AgentsPageStore {
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
-                description: src.description,
                 instructions: src.instructions,
                 owner_agent: src.owner_agent,
-                allow_creation: src.allow_creation,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -749,10 +747,8 @@ export class AgentsPageStore {
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
-                description: src.description,
                 instructions: src.instructions,
                 owner_agent: agentId,
-                allow_creation: src.allow_creation,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -1001,21 +997,11 @@ export class AgentsPageStore {
     }
 
     /** First message under `instruction_list` in a DRF error body (flat or nested per item), else null. */
+    /** The API envelope flattens field errors into `message` as "<field>: <text>". */
     private extractInstructionListError(err: unknown): string | null {
-        const body = (err as { error?: unknown })?.error;
-        if (!body || typeof body !== 'object') return null;
-        return this.firstMessage((body as Record<string, unknown>)['instruction_list']);
-    }
-
-    private firstMessage(value: unknown): string | null {
-        if (typeof value === 'string') return value;
-        if (value && typeof value === 'object') {
-            for (const nested of Object.values(value)) {
-                const message = this.firstMessage(nested);
-                if (message) return message;
-            }
-        }
-        return null;
+        const message = (err as { error?: { message?: unknown } })?.error?.message;
+        const prefix = 'instruction_list: ';
+        return typeof message === 'string' && message.startsWith(prefix) ? message.slice(prefix.length) : null;
     }
 
     private extractError(err: unknown, fallback: string): string {

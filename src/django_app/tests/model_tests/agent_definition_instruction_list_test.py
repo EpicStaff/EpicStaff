@@ -6,7 +6,7 @@ import pytest
 from agents.models import AgentDefinition
 
 instruction_list_migration = import_module(
-    "agents.migrations.0010_agentdefinition_instruction_list"
+    "agents.migrations.0013_agentdefinition_instruction_list"
 )
 
 # tests/conftest.py has an autouse fixture that queries the database; without the

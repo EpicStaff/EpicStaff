@@ -10,7 +10,6 @@ import {
     AgentDefinition,
     CreateAgentDefinitionRequest,
     PartialUpdateAgentDefinitionRequest,
-    UpdateAgentDefinitionRequest,
 } from '../models/agent-definition.model';
 
 @Injectable({ providedIn: 'root' })
@@ -53,10 +52,6 @@ export class AgentDefinitionsApiService {
 
     create(body: CreateAgentDefinitionRequest): Observable<AgentDefinition> {
         return this.http.post<AgentDefinition>(this.baseUrl, body, { headers: this.httpHeaders });
-    }
-
-    update(id: number, body: UpdateAgentDefinitionRequest): Observable<AgentDefinition> {
-        return this.http.put<AgentDefinition>(`${this.baseUrl}${id}/`, body, { headers: this.httpHeaders });
     }
 
     partialUpdate(id: number, body: PartialUpdateAgentDefinitionRequest): Observable<AgentDefinition> {

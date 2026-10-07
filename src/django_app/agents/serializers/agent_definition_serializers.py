@@ -3,12 +3,12 @@ from __future__ import annotations
 from django.db import IntegrityError
 from rbac.scoping.fields import (
     OrganizationScopedPrimaryKeyRelatedField,
+    OrganizationScopedUniqueValidator,
     OrgScopedPrimaryKeyRelatedField,
 )
 from rest_framework import serializers
 from tables.models.llm_models import LLMConfig
 
-from agents.exceptions import AgentDefinitionConflictError
 from agents.models.agent_models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -122,6 +122,9 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+DUPLICATE_NAME_MESSAGE = "An agent with this name already exists in the organization."
+
+
 class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
@@ -135,12 +138,15 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
     )
     default_surfaces = AgentDefaultSurfaceWriteSerializer(many=True, required=False)
     instruction_list = InstructionListField(required=False)
-    max_tool_calls = serializers.IntegerField(required=False, allow_null=True, min_value=1)
-    tool_timeout = serializers.IntegerField(required=False, allow_null=True, min_value=1)
-    max_consecutive_failures = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
+    name = serializers.CharField(
+        max_length=255,
+        validators=[
+            OrganizationScopedUniqueValidator(
+                queryset=AgentDefinition.objects.all(),
+                message=DUPLICATE_NAME_MESSAGE,
+            )
+        ],
     )
-    schema_max_retries = serializers.IntegerField(required=False, allow_null=True, min_value=0)
 
     class Meta:
         model = AgentDefinition
@@ -188,7 +194,8 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         try:
             instance = super().create(validated_data)
         except IntegrityError as exc:
-            raise AgentDefinitionConflictError() from exc
+            # Backstop for a concurrent insert that slipped past the unique validator.
+            raise serializers.ValidationError({"name": [DUPLICATE_NAME_MESSAGE]}) from exc
 
         AgentDefinitionSurfaceService.set_default_surfaces(
             agent_definition=instance,
@@ -202,7 +209,8 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         try:
             instance = super().update(instance, validated_data)
         except IntegrityError as exc:
-            raise AgentDefinitionConflictError() from exc
+            # Backstop for a concurrent insert that slipped past the unique validator.
+            raise serializers.ValidationError({"name": [DUPLICATE_NAME_MESSAGE]}) from exc
 
         if default_surfaces_data is not None:
             AgentDefinitionSurfaceService.set_default_surfaces(

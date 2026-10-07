@@ -297,6 +297,7 @@ class ConverterService(metaclass=SingletonMeta):
             backstory=ad.instructions or "You are a helpful voice assistant",
             org_id=ad.organization_id,
             user_id=user_id,
+            rt_agent_definition_id=rt_agent_chat.rt_agent_definition_id,
             knowledge_collection_id=surface_resolution.knowledge_collection_id,
             rag_type_id=surface_resolution.rag_type_id,
             rag_search_config=surface_resolution.rag_search_config,

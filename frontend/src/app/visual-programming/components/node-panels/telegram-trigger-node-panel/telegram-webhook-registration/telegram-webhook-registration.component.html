@@ -1,0 +1,191 @@
+<div class="telegram-registration">
+    <div class="telegram-registration__header">
+        <span class="telegram-registration__title">Telegram registration</span>
+        @if (canCheck()) {
+            <app-button
+                type="ghost"
+                mod="small"
+                leftIcon="refresh"
+                iconSize="0.875rem"
+                ariaLabel="Check which webhook Telegram has registered"
+                [disabled]="isBusy()"
+                (click)="refresh()"
+            >
+                Check
+            </app-button>
+        }
+    </div>
+
+    <!--
+        The only live region: a short summary in a node that always exists, so a status change is
+        announced once and briefly instead of re-reading the details below. No role="alert".
+    -->
+    <span
+        class="telegram-registration__announcement"
+        aria-live="polite"
+        >{{ announcement() }}</span
+    >
+
+    <div class="telegram-registration__status">
+        @if (hasUnsavedConnectionChanges()) {
+            <span class="telegram-registration__muted telegram-registration__unsaved-note">
+                The bot key or webhook trigger has unsaved changes. This status reflects the last saved configuration,
+                and Register is unavailable until the changes are saved.
+            </span>
+        }
+
+        @switch (check().state) {
+            @case ('not-saved') {
+                <span class="telegram-registration__muted">
+                    Save the flow to check which webhook Telegram has registered for this bot key.
+                </span>
+            }
+            @case ('no-bot-key') {
+                <span class="telegram-registration__muted">
+                    Select a bot key and save the flow to check which webhook Telegram has registered for it.
+                </span>
+            }
+            @case ('loading') {
+                <span class="telegram-registration__muted">Checking Telegram…</span>
+            }
+            @case ('telegram-unreachable') {
+                <span class="telegram-registration__muted telegram-registration__error">
+                    Couldn't reach Telegram to check the registered webhook.
+                </span>
+            }
+            @case ('bot-key-rejected') {
+                <span
+                    class="telegram-registration__muted telegram-registration__error telegram-registration__bot-key-rejected"
+                >
+                    {{ botKeyRejectedText }}
+                </span>
+            }
+            @case ('error') {
+                <span class="telegram-registration__muted telegram-registration__error">
+                    Couldn't check the registration.
+                </span>
+            }
+            @case ('loaded') {
+                @if (info(); as webhookInfo) {
+                    @if (webhookInfo.registered_url) {
+                        <div class="telegram-registration__url-row">
+                            <!-- Visible only next to this trigger's URL (mismatch); otherwise kept for screen readers. -->
+                            <span
+                                class="telegram-registration__label telegram-registration__registered-label"
+                                [class.telegram-registration__visually-hidden]="!isMismatch()"
+                                >Registered in Telegram:</span
+                            >
+                            <span class="telegram-registration__url telegram-registration__registered-url">{{
+                                webhookInfo.registered_url
+                            }}</span>
+                        </div>
+                    } @else {
+                        <span class="telegram-registration__muted telegram-registration__not-registered">
+                            No webhook registered for this bot key
+                        </span>
+                    }
+
+                    @if (blockerText(); as blockerDescription) {
+                        <div class="telegram-registration__warning telegram-registration__blocker">
+                            <app-svg-icon
+                                class="telegram-registration__warning-icon"
+                                icon="alert-triangle"
+                                size="1rem"
+                            />
+                            <span>{{ blockerDescription }}</span>
+                        </div>
+                    }
+
+                    @if (isMismatch()) {
+                        <div class="telegram-registration__warning telegram-registration__mismatch">
+                            <app-svg-icon
+                                class="telegram-registration__warning-icon"
+                                icon="alert-triangle"
+                                size="1rem"
+                            />
+                            <div class="telegram-registration__warning-body">
+                                <span>
+                                    This bot key is registered to a different URL. Telegram delivers messages only to
+                                    the last registered URL, so this trigger will not receive messages.
+                                </span>
+                                @if (showsRegister()) {
+                                    <span class="telegram-registration__takeover-hint">
+                                        Telegram keeps only one webhook per bot key. Press Register to point it at this
+                                        trigger instead (the other URL will stop receiving messages).
+                                    </span>
+                                }
+                                <div class="telegram-registration__url-row">
+                                    <span class="telegram-registration__label">This trigger's URL:</span>
+                                    <span class="telegram-registration__url telegram-registration__expected-url">{{
+                                        webhookInfo.expected_url
+                                    }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    } @else if (isUncomparable()) {
+                        <span class="telegram-registration__muted telegram-registration__uncomparable">
+                            This trigger's URL is unavailable, so it can't be compared with the registered one.
+                        </span>
+                    }
+
+                    @if (showsRegister()) {
+                        <div class="telegram-registration__register-row">
+                            <app-button
+                                class="telegram-registration__register"
+                                type="ghost"
+                                mod="small"
+                                ariaLabel="Register this trigger's webhook with Telegram"
+                                [disabled]="!canRegister()"
+                                (click)="registerWebhook()"
+                            >
+                                Register
+                            </app-button>
+                            @if (isRegistering()) {
+                                <span class="telegram-registration__muted">Registering…</span>
+                            }
+                        </div>
+                    }
+
+                    @switch (registerAttempt()) {
+                        @case ('failed-telegram') {
+                            <span class="telegram-registration__muted telegram-registration__register-error">
+                                Couldn't register the webhook: Telegram did not accept it. Press Check to see the
+                                current status, then try again.
+                            </span>
+                        }
+                        @case ('failed-tunnel') {
+                            <span class="telegram-registration__muted telegram-registration__register-error">
+                                Couldn't register the webhook: the trigger's tunnel is not available yet. Check the
+                                trigger's tunnel and try again.
+                            </span>
+                        }
+                        @case ('failed-bot-key-rejected') {
+                            <span class="telegram-registration__muted telegram-registration__register-error">
+                                {{ botKeyRejectedText }}
+                            </span>
+                        }
+                        @case ('registered-unread') {
+                            <span class="telegram-registration__muted telegram-registration__register-unread">
+                                Registered, but the status could not be read back - press Check.
+                            </span>
+                        }
+                        @case ('failed-other') {
+                            <span class="telegram-registration__muted telegram-registration__register-error">
+                                Couldn't register the webhook. Press Check to see the current status, then try again.
+                            </span>
+                        }
+                    }
+
+                    @if (webhookInfo.last_error_message) {
+                        <span class="telegram-registration__muted telegram-registration__last-error">
+                            Last delivery error: {{ webhookInfo.last_error_message }}
+                            @if (webhookInfo.last_error_date) {
+                                ({{ webhookInfo.last_error_date | date: 'medium' }})
+                            }
+                        </span>
+                    }
+                }
+            }
+        }
+    </div>
+</div>

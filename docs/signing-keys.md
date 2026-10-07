@@ -33,6 +33,14 @@ Two caveats worth knowing:
 openssl rand -base64 48 | tr -d '=+/'
 ```
 
+PowerShell (Windows):
+
+```powershell
+$bytes = [byte[]]::new(48); [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [Convert]::ToBase64String($bytes) -replace '[=+/]'
+```
+
+Don't use `Get-Random` for keys — it is not a cryptographic generator.
+
 Any random string of 50+ characters works. Avoid `$` (Docker Compose treats it as
 interpolation) and `#` (env files treat it as a comment).
 

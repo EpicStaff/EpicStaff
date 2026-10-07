@@ -1,4 +1,4 @@
-"""RBAC regression tests for EST-3962.
+"""RBAC regression tests for VOICE chat-recording permissions.
 
 `RealtimeAgentChatViewSet` and `ConversationRecordingViewSet` both declared
 `rbac_resource_type = ResourceType.VOICE` but only wired

@@ -2,16 +2,6 @@ export type AgentSurfacePlace = 'all' | 'flow' | 'chat' | 'realtime';
 
 export const FLOW_CONTEXT_PLACES: readonly AgentSurfacePlace[] = ['all', 'flow'];
 
-// UI fallbacks shown when the agent's value is null (backend null = inherit
-// DefaultAgentDefinitionConfig; these mirror those org-wide defaults). Saving a
-// value writes a number, i.e. it overrides the inherited default for this agent.
-export const AGENT_TOOL_DEFAULTS = {
-    max_tool_calls: 15,
-    tool_timeout: 300,
-    max_consecutive_failures: 3,
-    schema_max_retries: 2,
-} as const;
-
 export interface AgentDefaultSurface {
     surface: number;
     place: AgentSurfacePlace;
@@ -44,11 +34,11 @@ export interface AgentDefinition {
     max_execution_time: number;
     cache: boolean;
     max_retry_limit: number;
-    default_temperature: number;
-    max_tool_calls: number | null;
-    tool_timeout: number | null;
-    max_consecutive_failures: number | null;
-    schema_max_retries: number | null;
+    default_temperature: number | null;
+    max_tool_calls: number;
+    tool_timeout: number;
+    max_consecutive_failures: number;
+    schema_max_retries: number;
 }
 
 export interface CreateAgentDefinitionRequest {
@@ -64,12 +54,11 @@ export interface CreateAgentDefinitionRequest {
     max_execution_time?: number;
     cache?: boolean;
     max_retry_limit?: number;
-    default_temperature?: number;
-    max_tool_calls?: number | null;
-    tool_timeout?: number | null;
-    max_consecutive_failures?: number | null;
-    schema_max_retries?: number | null;
+    default_temperature?: number | null;
+    max_tool_calls?: number;
+    tool_timeout?: number;
+    max_consecutive_failures?: number;
+    schema_max_retries?: number;
 }
 
-export type UpdateAgentDefinitionRequest = CreateAgentDefinitionRequest;
 export type PartialUpdateAgentDefinitionRequest = Partial<CreateAgentDefinitionRequest>;
