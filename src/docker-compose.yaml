@@ -110,6 +110,16 @@ services:
       DJANGO_MAX_UPLOAD_TOTAL_SIZE: ${DJANGO_MAX_UPLOAD_TOTAL_SIZE:?}
       DJANGO_MAX_ARCHIVE_ENTRIES: ${DJANGO_MAX_ARCHIVE_ENTRIES:?}
       DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE: ${DJANGO_MAX_ARCHIVE_UNCOMPRESSED_SIZE:?}
+      DJANGO_ORG_STORAGE_QUOTA: ${DJANGO_ORG_STORAGE_QUOTA:?}
+      DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE: ${DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE:?}
+      DJANGO_MAX_ARCHIVE_FILE_SIZE: ${DJANGO_MAX_ARCHIVE_FILE_SIZE:?}
+      DJANGO_UPLOAD_PART_SIZE: ${DJANGO_UPLOAD_PART_SIZE:?}
+      DJANGO_UPLOAD_MAX_CONCURRENCY: ${DJANGO_UPLOAD_MAX_CONCURRENCY:?}
+      DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG: ${DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG:?}
+      DJANGO_UPLOAD_SLOT_TIMEOUT: ${DJANGO_UPLOAD_SLOT_TIMEOUT:?}
+      DJANGO_UPLOAD_IDLE_TIMEOUT: ${DJANGO_UPLOAD_IDLE_TIMEOUT:?}
+      DJANGO_UPLOAD_MAX_DURATION: ${DJANGO_UPLOAD_MAX_DURATION:?}
+      DJANGO_ARCHIVE_UPLOAD_CONCURRENCY: ${DJANGO_ARCHIVE_UPLOAD_CONCURRENCY:?}
       DJANGO_MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
       DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
 
@@ -117,6 +127,12 @@ services:
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
+
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      AUDITOR_URL: ${AUDITOR_URL:?}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
+      AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
+      AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
     volumes:
       - media_data:/app/media
     networks:
@@ -148,6 +164,7 @@ services:
       REALTIME_HOST: ${REALTIME_HOST:?}
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
+      REALTIME_PERSIST_RAW_AUDIO: ${REALTIME_PERSIST_RAW_AUDIO:-false}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_URL: ${DJANGO_API_URL:?}
@@ -181,8 +198,13 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
+      AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
+      AUDITOR_EXPORT_DATA_DIR: ${AUDITOR_EXPORT_DATA_DIR:?}
+      AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS: ${AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS:?}
     networks:
       - backend-network
+    volumes:
+      - auditor_data:/app/export_data
     tty: true
     stdin_open: true
     depends_on:
@@ -280,6 +302,13 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_TIMEOUT: ${AGENT_RESULT_TIMEOUT:?}
       CREW_TOKEN_BUDGET: ${CREW_TOKEN_BUDGET:?}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      AUDITOR_URL: ${AUDITOR_URL:?}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
+      CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
+      DJANGO_HOST: ${DJANGO_HOST:?}
+      DJANGO_PORT: ${DJANGO_PORT:?}
+      DJANGO_API_KEY: ${DJANGO_API_KEY:?}
     networks:
       - backend-network
     tty: true
@@ -306,13 +335,13 @@ services:
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
       SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
       SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
+      SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:-true}
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
+      SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - sandbox-network
     tty: true
@@ -334,9 +363,13 @@ services:
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
       - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
+      - NET_ADMIN  # install the per-uid egress firewall at startup. User code drops to sandboxuser and never holds it; root pip does (same accepted risk as pip itself).
     depends_on:
       redis:
         condition: service_healthy
+      # The egress firewall resolves the storage IP once at startup for its carve-out.
+      storage:
+        condition: service_started
 
   storage:
     image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
@@ -360,7 +393,7 @@ services:
     restart: unless-stopped
 
   storage-init:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     container_name: storage-init
     networks:
       - backend-network
@@ -386,6 +419,7 @@ services:
     environment:
       API_URL: ${API_URL:?}
       REALTIME_API_URL: ${REALTIME_API_URL:?}
+      AUDITOR_API_URL: ${AUDITOR_API_URL:?}
     networks:
       - frontend-network
 
@@ -424,7 +458,7 @@ services:
       start_period: 5s
 
   epicstaff-nginx:
-    image: nginx
+    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
     container_name: epicstaff-nginx
     ports:
       - "80:80"
@@ -440,6 +474,8 @@ services:
       REALTIME_PORT: ${REALTIME_PORT:?}
       WEBHOOK_HOST: ${WEBHOOK_HOST:?}
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
+      AUDITOR_HOST: ${AUDITOR_HOST:?}
+      AUDITOR_PORT: ${AUDITOR_PORT:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -453,6 +489,8 @@ services:
       frontend:
         condition: service_started
       realtime:
+        condition: service_started
+      auditor:
         condition: service_started
     restart: always
 
@@ -478,6 +516,8 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
+    stop_grace_period: 5m
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
@@ -487,6 +527,7 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:?}
       AGENT_RESULT_STREAM_TTL: ${AGENT_RESULT_STREAM_TTL:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
+      AGENT_MAX_CONCURRENT_RUNS: ${AGENT_MAX_CONCURRENT_RUNS:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
@@ -499,6 +540,77 @@ services:
         condition: service_healthy
     networks:
       - backend-network
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: opensearch
+    entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
+    environment:
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:?}
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:?}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - backend-network
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+      - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:${OPENSEARCH_PASSWORD:?} https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  auditor:
+    image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:-latest}
+    container_name: auditor
+    build:
+      context: .
+      dockerfile: ./auditor/Dockerfile.auditor
+    command: ./entrypoint.sh
+    environment:
+      <<: [*docker-env, *redis-env]
+      AUDITOR_DEBUG: ${AUDITOR_DEBUG:?}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      AUDITOR_PORT: ${AUDITOR_PORT:?}
+      AUDITOR_LOG_LEVEL: ${AUDITOR_LOG_LEVEL:?}
+      AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:?}
+      OPENSEARCH_HOST: ${OPENSEARCH_HOST:?}
+      OPENSEARCH_PORT: ${OPENSEARCH_PORT:?}
+      OPENSEARCH_USER: ${OPENSEARCH_USER:?}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:?}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
+      AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
+      CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?}
+      AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
+      AUDITOR_EXPORT_DATA_DIR: ${AUDITOR_EXPORT_DATA_DIR:?}
+      AUDITOR_EXPORT_FILE_TTL_SECONDS: ${AUDITOR_EXPORT_FILE_TTL_SECONDS:?}
+      AUDITOR_EXPORT_MAX_ROWS: ${AUDITOR_EXPORT_MAX_ROWS:?}
+    # No host port: the browser reaches the auditor through nginx at /auditor/.
+    networks:
+      - backend-network
+    volumes:
+      - auditor_data:/app/export_data
+    depends_on:
+      opensearch:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${AUDITOR_PORT}/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
 
   knowledge_new:
     container_name: knowledge_new
@@ -524,6 +636,8 @@ services:
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}
       KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
+      KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
+      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
 
 volumes:
   sandbox_venvs:
@@ -532,9 +646,12 @@ volumes:
     external: true
   media_data:
     external: true
+  opensearch_data:
+    external: true
   redis_data: {}
   code_instances: {}
   rustfs_data: {}
+  auditor_data: {}
 
 networks:
   backend-network:

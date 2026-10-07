@@ -22,6 +22,7 @@ class EntityType(StrEnum):
     GRAPH = "Flow"
     SESSION = "Session"
     LABEL = "Label"
+    AUDIT_FILTER_PRESET = "AuditFilterPreset"
     AGENT_DEFINITION = "AgentDefinition"
     SURFACE = "Surface"
 
@@ -37,6 +38,7 @@ class EntityType(StrEnum):
     PYTHON_NODE = "PythonNode"
     AUDIO_TRANSCRIPTION_NODE = "AudioTranscriptionNode"
     FILE_EXTRACTOR_NODE = "FileExtractorNode"
+    KEY_VALUE_NODE = "KeyValueNode"
     TELEGRAM_TRIGGER_NODE = "TelegramTriggerNode"
     WEBHOOK_TRIGGER_NODE = "WebhookTriggerNode"
     DECISION_TABLE_NODE = "DecisionTableNode"
@@ -56,6 +58,7 @@ class NodeType(StrEnum):
     PYTHON_NODE = "PythonNode"
     AUDIO_TRANSCRIPTION_NODE = "AudioTranscriptionNode"
     FILE_EXTRACTOR_NODE = "FileExtractorNode"
+    KEY_VALUE_NODE = "KeyValueNode"
     TELEGRAM_TRIGGER_NODE = "TelegramTriggerNode"
     WEBHOOK_TRIGGER_NODE = "WebhookTriggerNode"
     DECISION_TABLE_NODE = "DecisionTableNode"

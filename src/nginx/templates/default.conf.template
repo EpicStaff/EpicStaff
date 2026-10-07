@@ -19,6 +19,10 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
 }
 
+# Docker's embedded DNS, used by the /auditor/ location to resolve the auditor
+# at request time.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
 underscores_in_headers on;
 
 server {
@@ -88,6 +92,27 @@ server {
         proxy_read_timeout 86400;
     }
 
+    location = /api/storage/upload/stream {
+        proxy_pass http://backend_server;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size 0;
+        # Inactivity timers (between two reads/writes), not a cap on the upload's
+        # length: Django enforces that (DJANGO_UPLOAD_IDLE_TIMEOUT, DJANGO_UPLOAD_MAX_DURATION).
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        # Keep above DJANGO_UPLOAD_IDLE_TIMEOUT (default 120s), so a stalled client gets Django's JSON 408, not nginx's HTML one.
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
         proxy_set_header Authorization $http_authorization;
@@ -141,6 +166,27 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ~ ^/auditor/api/audit/[^/]+/events/?$ {
+        return 404;
+    }
+
+    location /auditor/ {
+        # The auditor exits on startup when AUDIT_TRAIL_ENABLED is not true, so
+        # its hostname may not exist. A static upstream would be resolved when
+        # nginx starts and a missing host stops nginx entirely; proxying to a
+        # variable resolves only when a request arrives, so /auditor/ returns
+        # 502 while the auditor is disabled and nothing else is affected.
+        set $auditor_upstream http://${AUDITOR_HOST}:${AUDITOR_PORT};
+        rewrite ^/auditor/(.*)$ /$1 break;
+        proxy_pass $auditor_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Authorization $http_authorization;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

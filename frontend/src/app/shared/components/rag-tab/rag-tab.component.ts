@@ -14,6 +14,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { RAG_MAX_PROMPT_LENGTH, RAG_MAX_TOKENS } from '@shared/constants';
+import { proportionSumValidator } from '@shared/form-validators';
 import { RAG_SUGGEST_API } from '@shared/services';
 import { Subscription } from 'rxjs';
 
@@ -45,6 +47,11 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 
 type SuggestKey = GraphSearchMethod | 'naive';
 
+interface TokenWarning {
+    max: number | null;
+    message: string;
+}
+
 const PROMPT_FIELDS: Record<SuggestKey, string[]> = {
     naive: [],
     basic: ['prompt'],
@@ -72,7 +79,7 @@ const ANCHOR_FIELD_NAME: Record<AnchorKey, string> = {
 // Drift's 4 advanced token caps (reduce_*, local_search_llm_max_gen_*) are
 // never recalculated from the anchor — the backend only clamps them as a
 // ceiling if they're ever sent above budget. They stay editable at all times,
-// capped in the UI by the live Data Max Tokens value, so they're exempt from
+// with a UI warning above the live Data Max Tokens value, so they're exempt from
 // the toggle-off diff for the same reason the anchor field itself is.
 const DRIFT_ALWAYS_EDITABLE_FIELDS = [
     'reduce_max_tokens',
@@ -185,7 +192,7 @@ export class RagTabComponent implements OnInit {
     hideSourceSelectors = input<boolean>(false);
     readOnly = input<boolean>(false);
     // Shared surfaces have no owning agent to source an LLM from — suggestions are
-    // out of scope for them by product decision (EST-3986): manual config only.
+    // out of scope for them by product decision: manual config only.
     suggestionsDisabled = input<boolean>(false);
 
     selectedRagType = signal<'naive' | 'graph' | null>(null);
@@ -198,7 +205,6 @@ export class RagTabComponent implements OnInit {
     useSuggestedParams = signal<boolean>(false);
     private searchConfigsValueChangesSub: Subscription | null = null;
     private dynamicCommunityToggleSub: Subscription | null = null;
-    private driftDataMaxTokensCapSub: Subscription | null = null;
     // Baseline the "did the user edit a non-prompt field" diff runs against.
     // Must be resynced after every programmatic patch (applyResponse) — otherwise
     // the very next value-change event, even one caused solely by typing in a
@@ -232,23 +238,17 @@ export class RagTabComponent implements OnInit {
         }
     }
 
-    tokenWarningMsg = computed<string>(() => {
-        const safe = this.safeTokenBudget();
-        return safe != null ? `Above recommended budget (${safe.toLocaleString()} tokens).` : '';
-    });
+    // The LLM context window is only a warning: the hard bounds are the static ones the
+    // backend enforces, so a value saved through the API always opens and saves here.
+    tokenWarning = computed<TokenWarning>(() => this.buildTokenWarning(this.safeTokenBudget()));
 
-    baselineTokenWarningMsg = computed<string>(() => {
-        const safe = this.baselineSafeTokenBudget();
-        return safe != null ? `Above recommended budget (${safe.toLocaleString()} tokens).` : '';
-    });
+    baselineTokenWarning = computed<TokenWarning>(() => this.buildTokenWarning(this.baselineSafeTokenBudget()));
 
-    // Paired with [min]="100" on every field that binds this message (the anchor
-    // field and its "Data Max Tokens" siblings) — isOutOfRange() in app-input-number
-    // fires this for either bound, so the text must describe both, not just the max.
-    tokenErrorMsg = computed<string>(() => {
-        const ctx = this.effectiveLlmContextWindow();
-        return ctx != null ? `Must be between 100 and ${ctx.toLocaleString()} tokens.` : '';
-    });
+    // isOutOfRange() in app-input-number fires these for either bound, so each text
+    // describes both; the 100 / 1 must match the [min] of the fields that bind it.
+    protected readonly tokenErrorMsg = `Must be between 100 and ${RAG_MAX_TOKENS.toLocaleString()} tokens.`;
+    protected readonly optionalTokenErrorMsg = `Must be between 1 and ${RAG_MAX_TOKENS.toLocaleString()} tokens.`;
+    protected readonly maxTokens = RAG_MAX_TOKENS;
 
     private tokenLimitsCache = new Map<string, { ctx: number | null }>();
     private suggestResponseCache = new Map<string, SuggestResponse>();
@@ -290,6 +290,17 @@ export class RagTabComponent implements OnInit {
     activeKey = computed<SuggestKey>(() => {
         if (this.selectedRagType() === 'naive') return 'naive';
         return (this.activeGraphMethodSignal() ?? 'basic') as SuggestKey;
+    });
+
+    // In readOnly mode, mirror the useSuggestedParams presentation: every
+    // editable control collapses to <app-suggested-value> so the user sees the
+    // effective values instead of disabled inputs.
+    displayValuesOnly = computed<boolean>(() => this.useSuggestedParams() || this.readOnly());
+
+    selectedSearchTypeLabel = computed<string>(() => {
+        const method = this.searchConfigsFormGroup?.get('search_method')?.value as GraphSearchMethod | null;
+        if (!method) return '';
+        return this.searchTypes().find((t) => t.value === method)?.name ?? String(method);
     });
 
     textUnitProportionControl!: FormControl;
@@ -378,7 +389,6 @@ export class RagTabComponent implements OnInit {
                 });
 
             this.wireDynamicCommunityToggle();
-            this.wireDriftDataMaxTokensCap();
         } else {
             this.activeGraphMethodSignal.set(null);
         }
@@ -440,11 +450,11 @@ export class RagTabComponent implements OnInit {
 
     private initGraphBasicSearchConfig(configs: GraphBasicSearchConfig | null | undefined): FormGroup {
         return this.fb.group({
-            prompt: [configs?.prompt ?? GRAPH_BASIC_DEFAULTS.prompt, [Validators.maxLength(1000)]],
+            prompt: [configs?.prompt ?? GRAPH_BASIC_DEFAULTS.prompt, [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)]],
             k: [configs?.k ?? GRAPH_BASIC_DEFAULTS.k, [Validators.required, Validators.min(1), Validators.max(100)]],
             max_context_tokens: [
                 configs?.max_context_tokens ?? GRAPH_BASIC_DEFAULTS.max_context_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
+                [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
             ],
             is_suggested: [!!configs?.is_suggested],
         });
@@ -461,42 +471,54 @@ export class RagTabComponent implements OnInit {
             [Validators.required, Validators.min(0), Validators.max(1)]
         );
 
-        return this.fb.group({
-            prompt: [configs?.prompt ?? GRAPH_LOCAL_DEFAULTS.prompt, [Validators.maxLength(1000)]],
-            text_unit_prop: this.textUnitProportionControl,
-            community_prop: this.communityProportionControl,
-            conversation_history_max_turns: [
-                configs?.conversation_history_max_turns ?? GRAPH_LOCAL_DEFAULTS.conversation_history_max_turns,
-                [Validators.required, Validators.min(1), Validators.max(50)],
-            ],
-            max_context_tokens: [
-                configs?.max_context_tokens ?? GRAPH_LOCAL_DEFAULTS.max_context_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
-            ],
-            top_k_entities: [
-                configs?.top_k_entities ?? GRAPH_LOCAL_DEFAULTS.top_k_entities,
-                [Validators.required, Validators.min(1), Validators.max(100)],
-            ],
-            top_k_relationships: [
-                configs?.top_k_relationships ?? GRAPH_LOCAL_DEFAULTS.top_k_relationships,
-                [Validators.required, Validators.min(1), Validators.max(100)],
-            ],
-            is_suggested: [!!configs?.is_suggested],
-        });
+        return this.fb.group(
+            {
+                prompt: [configs?.prompt ?? GRAPH_LOCAL_DEFAULTS.prompt, [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)]],
+                text_unit_prop: this.textUnitProportionControl,
+                community_prop: this.communityProportionControl,
+                conversation_history_max_turns: [
+                    configs?.conversation_history_max_turns ?? GRAPH_LOCAL_DEFAULTS.conversation_history_max_turns,
+                    [Validators.required, Validators.min(1), Validators.max(50)],
+                ],
+                max_context_tokens: [
+                    configs?.max_context_tokens ?? GRAPH_LOCAL_DEFAULTS.max_context_tokens,
+                    [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                top_k_entities: [
+                    configs?.top_k_entities ?? GRAPH_LOCAL_DEFAULTS.top_k_entities,
+                    [Validators.required, Validators.min(1), Validators.max(100)],
+                ],
+                top_k_relationships: [
+                    configs?.top_k_relationships ?? GRAPH_LOCAL_DEFAULTS.top_k_relationships,
+                    [Validators.required, Validators.min(1), Validators.max(100)],
+                ],
+                is_suggested: [!!configs?.is_suggested],
+            },
+            { validators: proportionSumValidator('text_unit_prop', 'community_prop') }
+        );
     }
 
     private initGraphGlobalSearchConfig(configs: GraphGlobalSearchConfig | null | undefined): FormGroup {
         return this.fb.group({
-            map_prompt: [configs?.map_prompt ?? GRAPH_GLOBAL_DEFAULTS.map_prompt],
-            reduce_prompt: [configs?.reduce_prompt ?? GRAPH_GLOBAL_DEFAULTS.reduce_prompt],
-            knowledge_prompt: [configs?.knowledge_prompt ?? GRAPH_GLOBAL_DEFAULTS.knowledge_prompt],
+            map_prompt: [
+                configs?.map_prompt ?? GRAPH_GLOBAL_DEFAULTS.map_prompt,
+                [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)],
+            ],
+            reduce_prompt: [
+                configs?.reduce_prompt ?? GRAPH_GLOBAL_DEFAULTS.reduce_prompt,
+                [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)],
+            ],
+            knowledge_prompt: [
+                configs?.knowledge_prompt ?? GRAPH_GLOBAL_DEFAULTS.knowledge_prompt,
+                [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)],
+            ],
             max_context_tokens: [
                 configs?.max_context_tokens ?? GRAPH_GLOBAL_DEFAULTS.max_context_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
+                [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
             ],
             data_max_tokens: [
                 configs?.data_max_tokens ?? GRAPH_GLOBAL_DEFAULTS.data_max_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
+                [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
             ],
             map_max_length: [
                 configs?.map_max_length ?? GRAPH_GLOBAL_DEFAULTS.map_max_length,
@@ -511,14 +533,14 @@ export class RagTabComponent implements OnInit {
             ],
             dynamic_search_threshold: [
                 configs?.dynamic_search_threshold ?? GRAPH_GLOBAL_DEFAULTS.dynamic_search_threshold,
-                [Validators.required, Validators.min(0)],
+                [Validators.required, Validators.min(0), Validators.max(5)],
             ],
             dynamic_search_keep_parent: [
                 configs?.dynamic_search_keep_parent ?? GRAPH_GLOBAL_DEFAULTS.dynamic_search_keep_parent,
             ],
             dynamic_search_num_repeats: [
                 configs?.dynamic_search_num_repeats ?? GRAPH_GLOBAL_DEFAULTS.dynamic_search_num_repeats,
-                [Validators.required, Validators.min(1)],
+                [Validators.required, Validators.min(1), Validators.max(5)],
             ],
             dynamic_search_use_summary: [
                 configs?.dynamic_search_use_summary ?? GRAPH_GLOBAL_DEFAULTS.dynamic_search_use_summary,
@@ -541,102 +563,93 @@ export class RagTabComponent implements OnInit {
             [Validators.required, Validators.min(0), Validators.max(1)]
         );
 
-        return this.fb.group({
-            prompt: [configs?.prompt ?? GRAPH_DRIFT_DEFAULTS.prompt],
-            reduce_prompt: [configs?.reduce_prompt ?? GRAPH_DRIFT_DEFAULTS.reduce_prompt],
-            data_max_tokens: [
-                configs?.data_max_tokens ?? GRAPH_DRIFT_DEFAULTS.data_max_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
-            ],
-            reduce_max_tokens: [
-                configs?.reduce_max_tokens ?? GRAPH_DRIFT_DEFAULTS.reduce_max_tokens,
-                [Validators.min(1), Validators.max(100000)],
-            ],
-            reduce_max_completion_tokens: [
-                configs?.reduce_max_completion_tokens ?? GRAPH_DRIFT_DEFAULTS.reduce_max_completion_tokens,
-                [Validators.min(1), Validators.max(100000)],
-            ],
-            concurrency: [
-                configs?.concurrency ?? GRAPH_DRIFT_DEFAULTS.concurrency,
-                [Validators.required, Validators.min(1), Validators.max(256)],
-            ],
-            drift_k_followups: [
-                configs?.drift_k_followups ?? GRAPH_DRIFT_DEFAULTS.drift_k_followups,
-                [Validators.required, Validators.min(1), Validators.max(100)],
-            ],
-            primer_folds: [
-                configs?.primer_folds ?? GRAPH_DRIFT_DEFAULTS.primer_folds,
-                [Validators.required, Validators.min(1), Validators.max(100)],
-            ],
-            primer_llm_max_tokens: [
-                configs?.primer_llm_max_tokens ?? GRAPH_DRIFT_DEFAULTS.primer_llm_max_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
-            ],
-            n_depth: [
-                configs?.n_depth ?? GRAPH_DRIFT_DEFAULTS.n_depth,
-                [Validators.required, Validators.min(1), Validators.max(10)],
-            ],
-            community_level: [
-                configs?.community_level ?? GRAPH_DRIFT_DEFAULTS.community_level,
-                [Validators.min(0), Validators.max(10)],
-            ],
-            local_search_text_unit_prop: this.driftLocalTextUnitPropControl,
-            local_search_community_prop: this.driftLocalCommunityPropControl,
-            local_search_top_k_mapped_entities: [
-                configs?.local_search_top_k_mapped_entities ?? GRAPH_DRIFT_DEFAULTS.local_search_top_k_mapped_entities,
-                [Validators.required, Validators.min(1), Validators.max(100)],
-            ],
-            local_search_top_k_relationships: [
-                configs?.local_search_top_k_relationships ?? GRAPH_DRIFT_DEFAULTS.local_search_top_k_relationships,
-                [Validators.required, Validators.min(1), Validators.max(100)],
-            ],
-            local_search_max_data_tokens: [
-                configs?.local_search_max_data_tokens ?? GRAPH_DRIFT_DEFAULTS.local_search_max_data_tokens,
-                [Validators.required, Validators.min(100), Validators.max(100000)],
-            ],
-            local_search_top_p: [
-                configs?.local_search_top_p ?? GRAPH_DRIFT_DEFAULTS.local_search_top_p,
-                [Validators.required, Validators.min(0), Validators.max(1)],
-            ],
-            local_search_n: [
-                configs?.local_search_n ?? GRAPH_DRIFT_DEFAULTS.local_search_n,
-                [Validators.required, Validators.min(1), Validators.max(10)],
-            ],
-            local_search_llm_max_gen_tokens: [
-                configs?.local_search_llm_max_gen_tokens ?? GRAPH_DRIFT_DEFAULTS.local_search_llm_max_gen_tokens,
-                [Validators.min(1), Validators.max(100000)],
-            ],
-            local_search_llm_max_gen_completion_tokens: [
-                configs?.local_search_llm_max_gen_completion_tokens ??
-                    GRAPH_DRIFT_DEFAULTS.local_search_llm_max_gen_completion_tokens,
-                [Validators.min(1), Validators.max(100000)],
-            ],
-            is_suggested: [!!configs?.is_suggested],
-        });
+        return this.fb.group(
+            {
+                prompt: [configs?.prompt ?? GRAPH_DRIFT_DEFAULTS.prompt, [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)]],
+                reduce_prompt: [
+                    configs?.reduce_prompt ?? GRAPH_DRIFT_DEFAULTS.reduce_prompt,
+                    [Validators.maxLength(RAG_MAX_PROMPT_LENGTH)],
+                ],
+                data_max_tokens: [
+                    configs?.data_max_tokens ?? GRAPH_DRIFT_DEFAULTS.data_max_tokens,
+                    [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                reduce_max_tokens: [
+                    configs?.reduce_max_tokens ?? GRAPH_DRIFT_DEFAULTS.reduce_max_tokens,
+                    [Validators.min(1), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                reduce_max_completion_tokens: [
+                    configs?.reduce_max_completion_tokens ?? GRAPH_DRIFT_DEFAULTS.reduce_max_completion_tokens,
+                    [Validators.min(1), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                concurrency: [
+                    configs?.concurrency ?? GRAPH_DRIFT_DEFAULTS.concurrency,
+                    [Validators.required, Validators.min(1), Validators.max(256)],
+                ],
+                drift_k_followups: [
+                    configs?.drift_k_followups ?? GRAPH_DRIFT_DEFAULTS.drift_k_followups,
+                    [Validators.required, Validators.min(1), Validators.max(100)],
+                ],
+                primer_folds: [
+                    configs?.primer_folds ?? GRAPH_DRIFT_DEFAULTS.primer_folds,
+                    [Validators.required, Validators.min(1), Validators.max(100)],
+                ],
+                primer_llm_max_tokens: [
+                    configs?.primer_llm_max_tokens ?? GRAPH_DRIFT_DEFAULTS.primer_llm_max_tokens,
+                    [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                n_depth: [
+                    configs?.n_depth ?? GRAPH_DRIFT_DEFAULTS.n_depth,
+                    [Validators.required, Validators.min(1), Validators.max(10)],
+                ],
+                community_level: [
+                    configs?.community_level ?? GRAPH_DRIFT_DEFAULTS.community_level,
+                    [Validators.required, Validators.min(0), Validators.max(10)],
+                ],
+                local_search_text_unit_prop: this.driftLocalTextUnitPropControl,
+                local_search_community_prop: this.driftLocalCommunityPropControl,
+                local_search_top_k_mapped_entities: [
+                    configs?.local_search_top_k_mapped_entities ??
+                        GRAPH_DRIFT_DEFAULTS.local_search_top_k_mapped_entities,
+                    [Validators.required, Validators.min(1), Validators.max(100)],
+                ],
+                local_search_top_k_relationships: [
+                    configs?.local_search_top_k_relationships ?? GRAPH_DRIFT_DEFAULTS.local_search_top_k_relationships,
+                    [Validators.required, Validators.min(1), Validators.max(100)],
+                ],
+                local_search_max_data_tokens: [
+                    configs?.local_search_max_data_tokens ?? GRAPH_DRIFT_DEFAULTS.local_search_max_data_tokens,
+                    [Validators.required, Validators.min(100), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                local_search_top_p: [
+                    configs?.local_search_top_p ?? GRAPH_DRIFT_DEFAULTS.local_search_top_p,
+                    [Validators.required, Validators.min(0), Validators.max(1)],
+                ],
+                local_search_n: [
+                    configs?.local_search_n ?? GRAPH_DRIFT_DEFAULTS.local_search_n,
+                    [Validators.required, Validators.min(1), Validators.max(10)],
+                ],
+                local_search_llm_max_gen_tokens: [
+                    configs?.local_search_llm_max_gen_tokens ?? GRAPH_DRIFT_DEFAULTS.local_search_llm_max_gen_tokens,
+                    [Validators.min(1), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                local_search_llm_max_gen_completion_tokens: [
+                    configs?.local_search_llm_max_gen_completion_tokens ??
+                        GRAPH_DRIFT_DEFAULTS.local_search_llm_max_gen_completion_tokens,
+                    [Validators.min(1), Validators.max(RAG_MAX_TOKENS)],
+                ],
+                is_suggested: [!!configs?.is_suggested],
+            },
+            { validators: proportionSumValidator('local_search_text_unit_prop', 'local_search_community_prop') }
+        );
     }
 
-    // Reduce Max Tokens / Reduce Max Completion Tokens / Local LLM Max Gen (Completion)
-    // Tokens are capped by the live Data Max Tokens value (see refreshTokenValidators).
-    // Their real Validators.max only gets recomputed on suggest responses (applyResponse
-    // calls refreshTokenValidators) — this covers the user typing into Data Max Tokens
-    // directly, without ever touching "Use Suggested Params".
-    private wireDriftDataMaxTokensCap(): void {
+    private wireDynamicCommunityToggle(): void {
         // initSearchConfigsFormGroup() rebuilds searchConfigsFormGroup (and this
         // control) on every rag-kind/search_method switch — unsubscribe the
         // previous wiring first, or takeUntilDestroyed(this.destroyRef) would keep
         // it alive (subscribed to an abandoned form) until the component itself
         // is destroyed, accumulating one leaked subscription per switch.
-        this.driftDataMaxTokensCapSub?.unsubscribe();
-        const driftGroup = this.searchConfigsFormGroup?.get('drift') as FormGroup | null;
-        const dataMaxTokensControl = driftGroup?.get('data_max_tokens');
-        if (!dataMaxTokensControl) return;
-        this.driftDataMaxTokensCapSub = dataMaxTokensControl.valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.refreshTokenValidators());
-    }
-
-    private wireDynamicCommunityToggle(): void {
-        // Same reason as wireDriftDataMaxTokensCap above.
         this.dynamicCommunityToggleSub?.unsubscribe();
         const globalGroup = this.searchConfigsFormGroup?.get('global') as FormGroup | null;
         if (!globalGroup) return;
@@ -722,9 +735,14 @@ export class RagTabComponent implements OnInit {
         return (this.searchConfigsFormGroup?.get('drift') as FormGroup | null) ?? null;
     }
 
-    get driftDataMaxTokensCapMessage(): string {
-        const cap = this.driftGroup?.get('data_max_tokens')?.value;
-        return typeof cap === 'number' ? `Can't exceed Data Max Tokens (${cap.toLocaleString()}).` : '';
+    get driftTokenCapWarning(): TokenWarning {
+        const dataMaxTokens = this.driftGroup?.get('data_max_tokens')?.value;
+        const ctx = this.effectiveLlmContextWindow();
+        const hasDataMax = typeof dataMaxTokens === 'number';
+        if (hasDataMax && (ctx == null || dataMaxTokens <= ctx)) {
+            return { max: dataMaxTokens, message: `Above Data Max Tokens (${dataMaxTokens.toLocaleString()}).` };
+        }
+        return this.contextWindowWarning(ctx);
     }
 
     get anchorFieldLabel(): string {
@@ -920,9 +938,6 @@ export class RagTabComponent implements OnInit {
         if (key === 'global') {
             this.syncDynamicCommunityDependents(!!this.globalGroup?.get('dynamic_community_selection')?.value);
         }
-        // Drift's always-editable fields are capped by the live data_max_tokens
-        // value (see refreshTokenValidators) — that value just changed above.
-        this.refreshTokenValidators();
         // The patch above never emits, so the next value-change event (even a
         // harmless prompt edit) would otherwise diff against a pre-patch
         // baseline and see this patch's own field changes as a user edit.
@@ -967,7 +982,6 @@ export class RagTabComponent implements OnInit {
             if (cachedResponse) this.setSafeTokenBudget(suggestKey, cachedResponse.safe_token_budget);
             this.tokenLimitsLoading.set(false);
             this.tokenLimitsError.set(null);
-            this.refreshTokenValidators();
         }
 
         if (this.lastRecommendationKey === key) return;
@@ -1004,7 +1018,6 @@ export class RagTabComponent implements OnInit {
                 if (ragType === 'graph' && response.recommended_search_method) {
                     this.recommendedSearchMethod.set(response.recommended_search_method);
                 }
-                this.refreshTokenValidators();
             },
             error: () => {
                 if (token !== this.fetchToken) return;
@@ -1015,54 +1028,18 @@ export class RagTabComponent implements OnInit {
         });
     }
 
-    private refreshTokenValidators(): void {
+    private buildTokenWarning(safeBudget: number | null): TokenWarning {
         const ctx = this.effectiveLlmContextWindow();
-        const group = this.searchConfigsFormGroup;
-        if (ctx == null || !group) return;
-
-        const tokenFieldsByMethod: Record<
-            string,
-            { name: string; min: number; required: boolean; cappedByDataMaxTokens?: boolean }[]
-        > = {
-            basic: [{ name: 'max_context_tokens', min: 100, required: true }],
-            local: [{ name: 'max_context_tokens', min: 100, required: true }],
-            global: [
-                { name: 'max_context_tokens', min: 100, required: true },
-                { name: 'data_max_tokens', min: 100, required: true },
-            ],
-            drift: [
-                { name: 'data_max_tokens', min: 100, required: true },
-                { name: 'primer_llm_max_tokens', min: 100, required: true },
-                { name: 'local_search_max_data_tokens', min: 100, required: true },
-                { name: 'reduce_max_tokens', min: 1, required: false, cappedByDataMaxTokens: true },
-                { name: 'reduce_max_completion_tokens', min: 1, required: false, cappedByDataMaxTokens: true },
-                { name: 'local_search_llm_max_gen_tokens', min: 1, required: false, cappedByDataMaxTokens: true },
-                {
-                    name: 'local_search_llm_max_gen_completion_tokens',
-                    min: 1,
-                    required: false,
-                    cappedByDataMaxTokens: true,
-                },
-            ],
-        };
-
-        for (const method of ['basic', 'local', 'global', 'drift']) {
-            const methodGroup = group.get(method) as FormGroup | null;
-            if (!methodGroup) continue;
-            for (const field of tokenFieldsByMethod[method]) {
-                const ctrl = methodGroup.get(field.name);
-                if (!ctrl) continue;
-                // These are never derived from the anchor — the UI caps them to
-                // Data Max Tokens (see driftDataMaxTokensCapMessage), so the real
-                // validator must match that, not the LLM's full context window.
-                const dataMaxTokens = field.cappedByDataMaxTokens ? methodGroup.get('data_max_tokens')?.value : null;
-                const max = typeof dataMaxTokens === 'number' ? Math.min(ctx, dataMaxTokens) : ctx;
-                const validators = [Validators.min(field.min), Validators.max(max)];
-                if (field.required) validators.unshift(Validators.required);
-                ctrl.setValidators(validators);
-                ctrl.updateValueAndValidity({ emitEvent: false });
-            }
+        if (safeBudget != null && (ctx == null || safeBudget <= ctx)) {
+            return { max: safeBudget, message: `Above recommended budget (${safeBudget.toLocaleString()} tokens).` };
         }
+        return this.contextWindowWarning(ctx);
+    }
+
+    private contextWindowWarning(ctx: number | null): TokenWarning {
+        return ctx != null
+            ? { max: ctx, message: `Exceeds the LLM context window (${ctx.toLocaleString()} tokens).` }
+            : { max: null, message: '' };
     }
 
     private resetSuggestState(): void {

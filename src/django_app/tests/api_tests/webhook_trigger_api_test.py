@@ -12,9 +12,11 @@ from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,
     WebhookTrigger,
+    WebhookTriggerAuthKind,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.secrets import secret_service
+from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.views.model_view_sets import WebhookTriggerViewSet
 from rest_framework.test import APIClient
 
@@ -1413,6 +1415,7 @@ class TestWebhookTriggerAuthAPI:
         assert response.status_code == 201, response.json()
         assert response.json()["auth"] == {
             "kind": "webhook",
+            "secret_id": secret.id,
             "secret_tail": secret.tail,
         }
 
@@ -1432,6 +1435,51 @@ class TestWebhookTriggerAuthAPI:
 
         assert response.status_code == 201, response.json()
         assert response.json()["auth"] is None
+
+    def test_detail_returns_the_auth_secret_id_without_the_secret_name_or_value(
+        self, auth_client, default_org
+    ):
+        secret_value = "detail-secret-id-value-long-enough-123"
+        secret = _make_secret(default_org, secret_value)
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "auth-detail-secret-id-path", "provider_type": None, "auth_secret_id": secret.id},
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+
+        detail = auth_client.get(reverse("webhooktrigger-detail", args=[create.json()["id"]]))
+
+        assert detail.status_code == 200, detail.json()
+        assert detail.json()["auth"]["secret_id"] == secret.id
+        assert "auth_secret_id" not in detail.json()
+        body = detail.content.decode()
+        assert secret.name not in body
+        assert secret_value not in body
+
+    def test_node_read_nests_the_trigger_auth_secret_id(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        secret = _make_secret(default_org, "TelegramNestedSecretIdLongEnoughValue")
+        trigger = WebhookTrigger.objects.create(
+            path="auth-nested-secret-id-path", provider_type=None, org=default_org
+        )
+        with mock.patch.object(WebhookTriggerService, "register_webhooks", return_value=True):
+            WebhookTriggerService().set_trigger_auth_secret(
+                trigger, secret=secret, kind=WebhookTriggerAuthKind.TELEGRAM
+            )
+            node = TelegramTriggerNode.objects.create(
+                node_name="nested-secret-id-node", graph=graph, webhook_trigger=trigger
+            )
+
+            response = auth_client.get(reverse("telegramtriggernode-detail", args=[node.id]))
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["webhook_trigger"]["auth"] == {
+            "kind": "telegram",
+            "secret_id": secret.id,
+            "secret_tail": secret.tail,
+        }
 
     def test_update_sets_and_replaces_auth_secret(self, auth_client, default_org):
         create = auth_client.post(
@@ -1479,6 +1527,7 @@ class TestWebhookTriggerAuthAPI:
         assert response.status_code == 201, response.json()
         assert response.json()["auth"] == {
             "kind": "telegram",
+            "secret_id": secret.id,
             "secret_tail": secret.tail,
         }
 
@@ -1520,6 +1569,7 @@ class TestWebhookTriggerAuthAPI:
         assert update.status_code == 200, update.json()
         assert update.json()["auth"] == {
             "kind": "telegram",
+            "secret_id": second_secret.id,
             "secret_tail": second_secret.tail,
         }
 
@@ -1648,7 +1698,7 @@ class TestWebhookTriggerAuthAPI:
     def test_updating_telegram_auth_secret_with_registration_failure_still_saves_secret(
         self, auth_client, graph: Graph, default_org, mock_telegram_service
     ):
-        """Critical review fix (EST-3939): `register_telegram_trigger` runs
+        """Regression: `register_telegram_trigger` runs
         AFTER `set_trigger_auth_secret` has already committed the new secret
         to the DB. If it raises (tunnel unavailable, Telegram API error,
         network failure), the new secret must NOT be rolled back -- the
@@ -1805,7 +1855,11 @@ class TestWebhookTriggerAuthAPI:
         )
 
         assert response.status_code == 201, response.json()
-        assert response.json()["auth"] == {"kind": "twilio", "secret_tail": None}
+        assert response.json()["auth"] == {
+            "kind": "twilio",
+            "secret_id": None,
+            "secret_tail": None,
+        }
 
     def test_auth_kind_twilio_with_secret_is_rejected(self, auth_client, default_org):
         """`kind=twilio` is a bare reservation -- it must not accept a

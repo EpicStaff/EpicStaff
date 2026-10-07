@@ -22,15 +22,17 @@
         padding: 2px 6px;
         border-radius: 3px;
         white-space: nowrap;
+        opacity: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        opacity: 0;
     }
 
-    // Control buttons wrapper - positioned above the node
+    // Outside-the-box bar, only used by NOTE/EDGE (no header row to embed into).
+    // Header-based node types reuse this class inside .node-action-bar (see below).
     .actions {
         display: flex;
         opacity: 0;
+        pointer-events: none;
         position: absolute;
         right: 0;
         top: -45px;
@@ -50,6 +52,7 @@
             bottom: -20px;
             background: transparent;
             z-index: -1;
+            pointer-events: none;
         }
 
         // Additional transparent zone for smoother transitions
@@ -62,6 +65,7 @@
             bottom: 0;
             background: transparent;
             z-index: -2;
+            pointer-events: none;
         }
     }
 
@@ -110,6 +114,20 @@
             font-size: 1rem;
         }
 
+        &.unpack-button i {
+            color: var(--gray-450);
+            font-size: 1rem;
+        }
+
+        &.unpack-button.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+
+            &:hover {
+                background-color: var(--graphite-780);
+            }
+        }
+
         &.delete-button i {
             color: var(--gray-450);
             font-size: 1rem;
@@ -141,6 +159,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                flex-shrink: 0;
 
                 i {
                     color: var(--python-node-accent-color);
@@ -159,6 +178,8 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
+                flex: 1 1 auto;
+                min-width: 0;
 
                 .active-dot {
                     display: inline-block;
@@ -196,12 +217,83 @@
             }
         }
 
+        .node-action-bar {
+            @include mixins.node-action-bar-base;
+            left: -2px;
+            right: -2px;
+            bottom: calc(100% - 1px);
+
+            .node-number-badge {
+                @include mixins.node-action-bar-number-badge(var(--color-divider-regular));
+                // The tab continues the node's outline, so its corners match the node's.
+                border-radius: 16px 16px 0 0;
+
+                // A Key-Value node's summary rides in the tab: it stops short of the delete chip
+                // (26px + 4px gap) and ends in "…"; block, since ellipsis skips flex text.
+                &.has-summary {
+                    display: block;
+                    max-width: calc(100% - 30px);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    line-height: 26px;
+                    // Carries the node's mode stripe up through the tab, so it reads as one line.
+                    box-shadow: inset 3px 0 0 0 var(--key-value-accent);
+
+                    // "#N - Mode / Table / N keys": the parts keep the chip's text colour, the number
+                    // and the separators step down so the summary reads first.
+                    .node-number {
+                        color: var(--color-text-secondary);
+                    }
+
+                    .summary-separator {
+                        color: var(--color-text-tertiary);
+                        margin: 0 4px;
+                    }
+
+                    .summary-separator--number {
+                        margin: 0 8px;
+                    }
+                }
+            }
+
+            .actions {
+                @include mixins.node-action-bar-delete-chip(var(--color-divider-regular), 4px);
+                right: 0;
+
+                &:has(.unpack-button) {
+                    right: 30px;
+                }
+            }
+        }
+
         .node-details {
             margin-top: 1rem;
         }
 
         &.is-blocked-llm {
             box-shadow: 0 0 0 1px var(--color-error);
+        }
+
+        // Left accent strip showing the Key-Value node's mode. An inset box-shadow (not
+        // border-color) so it never fights the selected/error border-color rules below.
+        &.has-key-value-accent {
+            box-shadow: inset 3px 0 0 0 var(--key-value-accent);
+        }
+    }
+
+    .node-action-bar--table {
+        @include mixins.node-action-bar-base;
+        left: 0;
+        right: 0;
+        bottom: calc(100% - 3px);
+
+        .node-number-badge {
+            @include mixins.node-action-bar-number-badge(var(--color-divider-subtle));
+        }
+
+        .actions {
+            @include mixins.node-action-bar-delete-chip(var(--color-divider-subtle), 4px);
+            right: 0;
         }
     }
 
@@ -224,6 +316,21 @@
 
         .actions {
             opacity: 1;
+            pointer-events: auto;
+        }
+
+        .interactive-node-body .node-action-bar,
+        .node-action-bar--table {
+            opacity: 1;
+        }
+
+        // Only while shown, so the hidden tab is no hit zone; the pointer is what lets its title appear.
+        .node-number-badge.has-summary {
+            pointer-events: auto;
+        }
+
+        .interactive-node-body.has-number-chip {
+            border-top-left-radius: 0;
         }
     }
 
@@ -240,6 +347,8 @@
     }
 
     &.f-selected {
+        z-index: 1000 !important;
+
         .node-name-label {
             opacity: 1;
         }
@@ -256,6 +365,29 @@
 
         .actions {
             opacity: 1;
+            pointer-events: auto;
+        }
+
+        .interactive-node-body .node-action-bar,
+        .node-action-bar--table {
+            opacity: 1;
+
+            .node-number-badge {
+                border-color: var(--vp-selected-node-border-color);
+                border-bottom: none;
+
+                &.has-summary {
+                    pointer-events: auto;
+                }
+            }
+
+            .actions {
+                border: 2px solid var(--vp-selected-node-border-color);
+            }
+        }
+
+        .interactive-node-body.has-number-chip {
+            border-top-left-radius: 0;
         }
     }
 
@@ -386,6 +518,7 @@
     &:hover {
         .actions {
             opacity: 1;
+            pointer-events: auto;
         }
     }
 
@@ -393,6 +526,7 @@
     &.f-selected {
         .actions {
             opacity: 1;
+            pointer-events: auto;
         }
     }
 }

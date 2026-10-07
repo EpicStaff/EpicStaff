@@ -9,19 +9,14 @@ import {
 } from '@shared/components';
 import { ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { Subject, switchMap } from 'rxjs';
+import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import {
-    PollEvent,
-    PythonCodeResult,
-    PythonCodeRunService,
-    RunPythonCodeRequest,
-} from '../../../services/python-code-run.service';
+import { RunPythonCodeRequest } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
@@ -32,8 +27,8 @@ import {
     initializeInputMap,
     parseCommaSeparatedList,
 } from '../node-panel-form.utils';
-import { PythonTerminalComponent, TerminalStatus } from './python-terminal/python-terminal.component';
-import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-log.model';
+import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
+import { PythonTerminalComponent } from './python-terminal/python-terminal.component';
 
 @Component({
     selector: 'app-python-node-panel',
@@ -58,11 +53,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
 
-    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
+    public readonly canEditSecrets = computed(
+        () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
+    );
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
             ? "Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-            : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
+            : this.isReadOnly()
+              ? 'Secrets assigned to this Python code.'
+              : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
     );
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>
@@ -79,19 +79,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
 
     isOpenTestMode = signal(false);
-    testResult = signal<PythonCodeResult | null>(null);
-    testError = signal<string | null>(null);
-    testRunning = signal(false);
-    terminalLogs = signal<TerminalLogEntry[]>([]);
-    terminalHeight = signal<number>(150);
-
-    terminalStatus = computed<TerminalStatus>(() => {
-        if (this.testRunning()) return 'processing';
-        if (this.testError()) return 'error';
-        const r = this.testResult();
-        if (r) return r.status === 'completed' ? 'done' : 'error';
-        return 'idle';
-    });
+    /** The Test mode run of the stored code and its terminal. */
+    protected readonly codeTestRun = new PythonCodeTestRun();
 
     pythonCode: string = '';
     initialPythonCode: string = '';
@@ -120,7 +109,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     constructor(
         private readonly sidePanelService: SidePanelService,
-        private readonly pythonCodeRunService: PythonCodeRunService,
         private readonly secretsStorageService: SecretsStorageService,
         private readonly permissionsService: PermissionsService
     ) {
@@ -230,7 +218,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     initializeForm(): FormGroup {
-        this.terminalLogs.set([]);
+        this.codeTestRun.reset();
 
         this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
@@ -342,90 +330,14 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
 
-    onTerminalHeightChange(height: number): void {
-        this.terminalHeight.set(height);
-    }
-
-    onClearLogs(): void {
-        this.terminalLogs.set([]);
-    }
-
-    private addLog(type: TerminalLogType, message: string): void {
-        this.terminalLogs.update((logs) => [...logs, { timestamp: new Date(), type, message }]);
-    }
-
-    private parseVariableValue(raw: string): unknown {
-        try {
-            return JSON.parse(raw);
-        } catch {
-            return raw;
-        }
-    }
-
     onRunTest(variables: Record<string, string>): void {
-        this.testRunning.set(true);
-        this.testResult.set(null);
-        this.testError.set(null);
-        this.terminalLogs.set([]);
-
-        this.addLog('info', 'Starting function main()...');
-
-        const libraries = this.form.value.libraries
-            ? this.form.value.libraries
-                  .split(',')
-                  .map((lib: string) => lib.trim())
-                  .filter((lib: string) => lib.length > 0)
-            : [];
-
-        const parsedVariables = Object.fromEntries(
-            Object.entries(variables).map(([k, v]) => [k, this.parseVariableValue(v)])
-        );
-
         const payload: RunPythonCodeRequest = {
             python_code_id: this.node().python_code_id ?? null,
             code: this.pythonCode,
             entrypoint: 'main',
-            libraries,
-            variables: parsedVariables,
+            libraries: parseCommaSeparatedList(this.form.value.libraries),
+            variables: parseTestInputValues(variables),
         };
-
-        this.addLog('info', `Parameters: ${JSON.stringify(parsedVariables)}`);
-
-        this.pythonCodeRunService
-            .runPythonCode(payload)
-            .pipe(
-                switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe({
-                next: (event: PollEvent) => {
-                    if (event.type === 'polling') {
-                        if (event.attempt === 1) {
-                            this.addLog('polling', 'Processing...');
-                        }
-                    } else if (event.type === 'result') {
-                        const result = event.data;
-                        this.testResult.set(result);
-                        this.testRunning.set(false);
-
-                        if (result.stdout) {
-                            this.addLog('stdout', result.stdout);
-                        }
-                        if (result.stderr) {
-                            this.addLog('stderr', result.stderr);
-                        }
-                        if (result.status === 'completed') {
-                            this.addLog('result', result.result_data || '(empty result)');
-                        } else {
-                            this.addLog('error', `Execution failed (return code: ${result.returncode})`);
-                        }
-                    }
-                },
-                error: (err: Error) => {
-                    this.testError.set(err.message || 'Unknown error');
-                    this.testRunning.set(false);
-                    this.addLog('error', `Error: ${err.message || 'Unknown error'}`);
-                },
-            });
+        this.codeTestRun.run(payload);
     }
 }

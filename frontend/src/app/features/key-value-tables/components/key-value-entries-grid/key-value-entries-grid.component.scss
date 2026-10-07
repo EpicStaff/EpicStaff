@@ -1,0 +1,227 @@
+// As tall as its content: the grid takes its rows' full height and the page around it scrolls.
+:host {
+    display: block;
+}
+
+.entries-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 24px;
+    color: var(--color-text-primary);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+
+    &__title {
+        margin: 0;
+        min-width: 0;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__actions-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-left: auto;
+    }
+
+    &__search {
+        width: 240px;
+    }
+
+    &__body {
+        display: flex;
+
+        // A page, sort or search on its way: the rows stay, dimmed, under the grid's loading overlay.
+        &[aria-busy='true'] ::ng-deep .ag-row {
+            opacity: 0.5;
+            transition: opacity 0.15s ease;
+        }
+    }
+
+    &__grid {
+        flex: 1;
+        min-width: 0;
+    }
+
+    // Fills the cell renderer. Not selectable for everyone, read-only users included, on purpose: the copy button
+    // covers copying.
+    &__cell {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 100%;
+        min-width: 0;
+        user-select: none;
+    }
+
+    &__text {
+        flex: 1 1 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--secondary {
+            color: var(--color-text-secondary);
+        }
+    }
+
+    // Why the last commit of the cell failed, kept until it is saved, cancelled or leaves the page.
+    &__cell-error {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        color: var(--color-status-error);
+    }
+
+    &__placeholder {
+        color: var(--color-input-text-placeholder);
+        font-style: italic;
+    }
+
+    // app-copy-button floats over a card by default; here it sits inline at the end of the cell.
+    &__copy {
+        position: static;
+        flex-shrink: 0;
+        --copy-btn-size: 24px;
+
+        // No hover on touch screens, so the button would never appear.
+        @media (hover: none) {
+            opacity: 1;
+        }
+    }
+
+    // Fills the cell, taking over its padding, so all of the hover tint is the link. The label ellipsizes; the arrow
+    // stays at the right end of the cell.
+    &__session-link {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 100%;
+        min-width: 0;
+        padding: 0 calc(var(--ag-cell-horizontal-padding) - 1px);
+        color: var(--accent-color);
+        text-decoration: none;
+    }
+
+    // No session wrote the entry: muted, as secondary text is elsewhere, but still readable.
+    &__manual-edit {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    // The CDT grid's delete cross.
+    &__delete {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-text-secondary);
+        font-size: 1rem;
+        cursor: pointer;
+        transition: color 0.15s ease;
+
+        &:hover,
+        &:focus-visible {
+            color: var(--color-text-primary);
+        }
+    }
+}
+
+:host ::ng-deep {
+    .ag-cell:hover .entries-grid__copy,
+    .ag-cell:focus-within .entries-grid__copy {
+        opacity: 1;
+    }
+
+    // Sticky column header. The header row sits in .ag-grid-pinned-top-rows, already `position: sticky; top: 0`
+    // inside AG Grid's own scroll container, .ag-grid-viewport. As tall as its rows (autoHeight), that never scrolls,
+    // so the header would never stick: no wrapper may be a scroll container, and the header sticks to the page's
+    // scrolling content area instead. `clip` still clips to the rounded corners without being one.
+    // ponytail: overrides AG Grid 36.1 internals (.ag-grid-viewport, .ag-root.ag-layout-auto-height, the sticky
+    // .ag-grid-pinned-top-rows); recheck the sticky header on every AG Grid upgrade, and if its DOM moved, put the
+    // header outside the grid (a page-level sticky row driven by the grid's column API) instead of chasing class names.
+    .ag-root-wrapper,
+    .ag-root.ag-layout-auto-height {
+        overflow: clip;
+    }
+
+    .ag-grid-viewport {
+        overflow: visible;
+    }
+
+    // Wide enough for every column, so the grid has nothing to scroll sideways (the page does it).
+    .ag-root-wrapper {
+        box-sizing: content-box;
+        min-width: var(--entries-grid-columns-min-width, 0px);
+    }
+
+    // Edge to edge: the grid cell itself takes the tint, not a padded box inside it. Editable cells (double-click to
+    // edit) and session links (click to open the session).
+    .ag-cell.entries-grid__cell--editable:not(.ag-cell-inline-editing):hover,
+    .ag-cell.entries-grid__cell--link:hover {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    // Its padding moves onto the link, which fills it.
+    .ag-cell.entries-grid__cell--link {
+        padding: 0;
+    }
+
+    .ag-cell.entries-grid__cell--saving {
+        opacity: 0.6;
+        cursor: progress;
+    }
+
+    .ag-cell.entries-grid__updated {
+        color: var(--color-text-secondary);
+    }
+
+    .ag-cell.entries-grid__actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+
+    // The CDT grid's focus ring: one accent border on the focused cell, no second ring. Only while the cell holds DOM
+    // focus, as in AG Grid's own theme: the grid keeps `.ag-cell-focus` on its last focused cell after focus leaves.
+    .ag-cell-focus:not(.ag-cell-inline-editing):focus-within {
+        border: 1px solid var(--accent-color) !important;
+        box-shadow: none !important;
+    }
+
+    // While editing, the editor draws the ring (the key input's focus border, or the value popup over the cell).
+    .ag-cell-inline-editing {
+        padding: 0;
+        border: 1px solid transparent !important;
+        box-shadow: none !important;
+    }
+
+    .entries-grid__empty {
+        font-size: var(--text-body-size);
+        color: var(--color-text-secondary);
+    }
+}

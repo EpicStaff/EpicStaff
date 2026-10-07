@@ -36,7 +36,7 @@ from tables.models import (
     TaskNode,
 )
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from rbac.models import Organization
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 
 
@@ -45,7 +45,7 @@ def agent_definition(default_org):
     return AgentDefinition.objects.create(
         organization=default_org,
         name="copy-test-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 

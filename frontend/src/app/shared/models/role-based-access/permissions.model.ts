@@ -21,8 +21,10 @@ export enum ResourceCode {
     LlmConfigs = 'llm_configs',
     ApiKeys = 'api_keys',
     Secrets = 'secrets',
+    Audit = 'audit',
     Voice = 'voice',
     Webhooks = 'webhooks',
+    KeyValueTables = 'key_value_tables',
 }
 
 export interface ActivePermissions {

@@ -4,6 +4,7 @@ from .basic_node_serializers import (
     AudioTranscriptionNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
+    KeyValueNodeSerializer,
     KnowledgeNodeReadSerializer,
     KnowledgeNodeSerializer,
     KnowledgeNodeWriteSerializer,
@@ -28,6 +29,7 @@ from .trigger_serializers import (
     TelegramTriggerNodeFieldSerializer,
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramWebhookInfoSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
@@ -46,6 +48,7 @@ __all__ = [
     "EdgeSerializer",
     "EndNodeSerializer",
     "FileExtractorNodeSerializer",
+    "KeyValueNodeSerializer",
     "KnowledgeNodeReadSerializer",
     "KnowledgeNodeSerializer",
     "KnowledgeNodeWriteSerializer",
@@ -58,6 +61,7 @@ __all__ = [
     "TelegramTriggerNodeFieldSerializer",
     "TelegramTriggerNodeReadSerializer",
     "TelegramTriggerNodeSerializer",
+    "TelegramWebhookInfoSerializer",
     "WebhookTriggerNodeReadSerializer",
     "WebhookTriggerNodeSerializer",
 ]

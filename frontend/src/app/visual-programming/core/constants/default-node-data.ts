@@ -1,6 +1,7 @@
 import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { AgentNodeData } from '../models/agent-node.model';
+import { KeyValueNodeData } from '../models/key-value-node.model';
 import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
 import { TaskNodeData } from '../models/task-node.model';
 
@@ -105,10 +106,12 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
                 "#       return ...  # updated values applied to the flow's domain variables\n",
             entrypoint: 'main',
         },
+        test_payload: {},
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
         telegram_bot_api_key_secret_id: null,
         fields: [],
+        test_payload: {},
     }),
     [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => {
         const rawTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -136,4 +139,5 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         search_method: null,
         search_configs: null,
     }),
+    [NodeType.KEY_VALUE]: (): KeyValueNodeData => ({ key_value_table: null, mode: 'read', entries: [] }),
 };

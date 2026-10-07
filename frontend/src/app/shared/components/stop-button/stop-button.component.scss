@@ -1,16 +1,24 @@
 .stop-btn {
+    --stop-btn-color: var(--red);
+
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
     width: 28px;
     height: 28px;
-    border: 1px solid var(--red);
+    padding: 0;
+    border: 1px solid var(--stop-btn-color);
     border-radius: 4px;
     background: transparent;
+    color: var(--stop-btn-color);
     opacity: 1;
     cursor: pointer;
+    flex-shrink: 0;
     transition: background-color 0.15s ease;
+
+    &--pause {
+        --stop-btn-color: var(--orange-500);
+    }
 
     &:hover:not(:disabled) {
         background: var(--transparent-white-8);
@@ -20,11 +28,11 @@
         opacity: 0.4;
         cursor: not-allowed;
     }
-}
 
-.stop-bar {
-    width: 4px;
-    height: 12px;
-    border-radius: 1px;
-    background: var(--red);
+    &__square {
+        width: 10px;
+        height: 10px;
+        border-radius: 1px;
+        background: currentColor;
+    }
 }

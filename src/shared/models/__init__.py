@@ -26,6 +26,12 @@ from .ai_providers import (
     WebhookConfigData,
     WebhookTriggerAuthData,
 )
+from .audit.base import (
+    BaseAuditEvent,
+)
+from .audit.session_audit import (
+    SessionAuditEvent,
+)
 from .base import ValueObject
 from .graph_nodes import (
     AgentDefinitionData,
@@ -42,6 +48,7 @@ from .graph_nodes import (
     EndNodeData,
     FileExtractorNodeData,
     GraphData,
+    KeyValueNodeData,
     KnowledgeNodeData,
     PromptConfigData,
     PythonNodeData,
@@ -95,6 +102,7 @@ from .sessions import (
     StopSessionMessage,
     StorageMutation,
     StorageMutationEvent,
+    TokenUsage,
     WebhookEventData,
 )
 from .surfaces import (
@@ -156,6 +164,8 @@ __all__ = [
     "ArrayNestedVariable",
     "ArrayVariable",
     "AudioTranscriptionNodeData",
+    # session_audit
+    "BaseAuditEvent",
     "BaseKnowledgeSearchMessage",
     "BaseKnowledgeSearchMessageResponse",
     "BaseRagSearchConfig",
@@ -196,6 +206,7 @@ __all__ = [
     "GraphSearchConfig",
     "GraphSessionMessageData",
     "IndexRequest",
+    "KeyValueNodeData",
     "KnowledgeChunkResponse",
     "KnowledgeNodeData",
     "KnowledgeSearchMessage",
@@ -240,6 +251,7 @@ __all__ = [
     "SearchConfigEntry",
     "SearchRequest",
     "SearchResponse",
+    "SessionAuditEvent",
     # sessions
     "SessionData",
     "StopSessionMessage",
@@ -258,6 +270,7 @@ __all__ = [
     "TelegramTriggerNodeData",
     "TelegramTriggerNodeFieldData",
     # surfaces
+    "TokenUsage",
     "ToolModeLiteral",
     "ToolResult",
     # knowledge_rag (cross-service pub/sub contract)

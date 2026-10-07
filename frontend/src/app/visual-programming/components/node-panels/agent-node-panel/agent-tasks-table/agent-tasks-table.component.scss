@@ -103,6 +103,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     &--name {
         flex: 0 0 $col-name;
         width: $col-name;
+        align-items: flex-start;
     }
 
     &--instructions {
@@ -125,10 +126,19 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     &--context {
         flex: 0 0 $col-context;
         width: $col-context;
+        align-items: flex-start;
         cursor: pointer;
 
         &:hover {
             background: var(--white-alpha-3-flat);
+        }
+
+        &.att-cell--readonly {
+            cursor: default;
+
+            &:hover {
+                background: transparent;
+            }
         }
     }
 
@@ -216,6 +226,10 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     padding-right: 1.5rem;
 }
 
+.att-cell--name .att-input {
+    height: auto;
+}
+
 .att-textarea-highlight {
     display: block;
     width: 100%;
@@ -279,6 +293,7 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
 .att-context-placeholder {
     color: var(--fog-alpha-60);
     font-size: 0.75rem;
+    padding: 4px;
 }
 
 .att-context-chips {

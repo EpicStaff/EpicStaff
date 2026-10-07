@@ -6,7 +6,7 @@
                 appHideInlineSubtitleOnOverflow
             >
                 <h1 class="title">
-                    Files
+                    Storage
                     <span class="subtitle-inline"> Organize files centrally or enable RAG for AI-powered search. </span>
                 </h1>
             </div>
@@ -53,33 +53,35 @@
                 }
             </div>
             <div class="tabs-right">
-                <div class="search-container">
-                    <app-svg-icon
-                        icon="search"
-                        class="search-icon"
-                        size="1rem"
-                    ></app-svg-icon>
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search collections, folders, files..."
-                        [ngModel]="searchTerm()"
-                        (ngModelChange)="filesSearchService.setSearchTerm($event)"
-                    />
-                    @if (searchTerm()) {
-                        <button
-                            type="button"
-                            class="clear-btn"
-                            aria-label="Clear"
-                            (click)="filesSearchService.clear()"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="1.1rem"
-                            ></app-svg-icon>
-                        </button>
-                    }
-                </div>
+                @if (showSearch()) {
+                    <div class="search-container">
+                        <app-svg-icon
+                            icon="search"
+                            class="search-icon"
+                            size="1rem"
+                        ></app-svg-icon>
+                        <input
+                            type="text"
+                            class="search-input"
+                            placeholder="Search collections, folders, files..."
+                            [ngModel]="searchTerm()"
+                            (ngModelChange)="filesSearchService.setSearchTerm($event)"
+                        />
+                        @if (searchTerm()) {
+                            <button
+                                type="button"
+                                class="clear-btn"
+                                aria-label="Clear"
+                                (click)="filesSearchService.clear()"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="1.1rem"
+                                ></app-svg-icon>
+                            </button>
+                        }
+                    </div>
+                }
             </div>
         </nav>
     </div>
@@ -119,6 +121,18 @@
             <div class="tab-page tab-page__loading">
                 <app-spinner
                     text="Loading storage..."
+                    [isOverlay]="false"
+                />
+            </div>
+        }
+        @defer (when isKeyValueTablesActive()) {
+            @if (isKeyValueTablesActive()) {
+                <app-key-value-tables-page class="tab-page" />
+            }
+        } @loading (minimum 200ms) {
+            <div class="tab-page tab-page__loading">
+                <app-spinner
+                    text="Loading key-value tables..."
                     [isOverlay]="false"
                 />
             </div>

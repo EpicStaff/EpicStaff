@@ -1,3 +1,5 @@
+import copy
+import uuid
 from collections.abc import Callable
 
 from agents.models.surface_models import AgentInlineSurface, InlineSurface
@@ -11,6 +13,7 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     Condition,
@@ -19,6 +22,7 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
@@ -35,9 +39,10 @@ from tables.services.copy_services.inline_surface_copy_helpers import (
     copy_agent_node_tasks,
     copy_node_inline_surface,
 )
+from tables.services.key_value_table_service import KeyValueTableService
 
 
-def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
+def copy_start_node(graph: Graph, node: StartNode, **kwargs) -> StartNode:
     return StartNode.objects.create(
         graph=graph,
         variables=node.variables,
@@ -45,7 +50,7 @@ def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
     )
 
 
-def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
+def copy_end_node(graph: Graph, node: EndNode, **kwargs) -> EndNode:
     return EndNode.objects.create(
         graph=graph,
         output_map=node.output_map,
@@ -53,19 +58,37 @@ def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
     )
 
 
-def copy_graph_note(graph: Graph, node: GraphNote) -> GraphNote:
+def copy_graph_note(graph: Graph, node: GraphNote, **kwargs) -> GraphNote:
     return GraphNote.objects.create(graph=graph, content=node.content, metadata=node.metadata)
 
 
-def copy_file_extractor_node(graph: Graph, node: FileExtractorNode) -> FileExtractorNode:
+def copy_file_extractor_node(graph: Graph, node: FileExtractorNode, **kwargs) -> FileExtractorNode:
     return FileExtractorNode.objects.create(
         graph=graph,
         **get_base_node_fields(node),
     )
 
 
+def copy_key_value_node(graph: Graph, node: KeyValueNode, user=None) -> KeyValueNode:
+    # A cross-org copy must re-bind by name in the target org, never keep the source id.
+    table = node.key_value_table
+    return KeyValueNode.objects.create(
+        graph=graph,
+        key_value_table=KeyValueTableService().resolve_reference(
+            graph.org_id,
+            node.key_value_table_id,
+            table.name if table else None,
+            mode=node.mode,
+            user=user,
+        ),
+        mode=node.mode,
+        entries=copy.deepcopy(node.entries),
+        **get_base_node_fields(node),
+    )
+
+
 def copy_audio_transcription_node(
-    graph: Graph, node: AudioTranscriptionNode
+    graph: Graph, node: AudioTranscriptionNode, **kwargs
 ) -> AudioTranscriptionNode:
     return AudioTranscriptionNode.objects.create(
         graph=graph,
@@ -73,7 +96,7 @@ def copy_audio_transcription_node(
     )
 
 
-def copy_subgraph_node(graph: Graph, node: SubGraphNode) -> SubGraphNode:
+def copy_subgraph_node(graph: Graph, node: SubGraphNode, **kwargs) -> SubGraphNode:
     return SubGraphNode.objects.create(
         graph=graph,
         subgraph=node.subgraph,
@@ -81,7 +104,7 @@ def copy_subgraph_node(graph: Graph, node: SubGraphNode) -> SubGraphNode:
     )
 
 
-def copy_python_node(graph: Graph, node: PythonNode) -> PythonNode:
+def copy_python_node(graph: Graph, node: PythonNode, **kwargs) -> PythonNode:
     new_code = copy_python_code(node.python_code)
     return PythonNode.objects.create(
         graph=graph,
@@ -90,7 +113,9 @@ def copy_python_node(graph: Graph, node: PythonNode) -> PythonNode:
     )
 
 
-def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode) -> WebhookTriggerNode:
+def copy_webhook_trigger_node(
+    graph: Graph, node: WebhookTriggerNode, **kwargs
+) -> WebhookTriggerNode:
     new_code = copy_python_code(node.python_code)
     return WebhookTriggerNode.objects.create(
         graph=graph,
@@ -98,16 +123,20 @@ def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode) -> Webhook
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
         metadata=node.metadata,
+        test_payload=node.test_payload,
     )
 
 
-def copy_telegram_trigger_node(graph: Graph, node: TelegramTriggerNode) -> TelegramTriggerNode:
+def copy_telegram_trigger_node(
+    graph: Graph, node: TelegramTriggerNode, **kwargs
+) -> TelegramTriggerNode:
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
         node_name=node.node_name,
         telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
         webhook_trigger=node.webhook_trigger,
         metadata=node.metadata,
+        test_payload=node.test_payload,
     )
     for field in node.fields.all():
         TelegramTriggerNodeField.objects.create(
@@ -119,7 +148,7 @@ def copy_telegram_trigger_node(graph: Graph, node: TelegramTriggerNode) -> Teleg
     return new_node
 
 
-def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
+def copy_knowledge_node(graph: Graph, node: KnowledgeNode, **kwargs) -> KnowledgeNode:
     new_node = KnowledgeNode.objects.create(
         graph=graph,
         source_collection=node.source_collection,
@@ -144,7 +173,9 @@ def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
     return new_node
 
 
-def copy_schedule_trigger_node(graph: Graph, node: ScheduleTriggerNode) -> ScheduleTriggerNode:
+def copy_schedule_trigger_node(
+    graph: Graph, node: ScheduleTriggerNode, **kwargs
+) -> ScheduleTriggerNode:
     # Schedule config is preserved verbatim; activation state is reset so the
     # copy does not start firing on its own — user must enable it explicitly.
     return ScheduleTriggerNode.objects.create(
@@ -166,7 +197,7 @@ def copy_schedule_trigger_node(graph: Graph, node: ScheduleTriggerNode) -> Sched
     )
 
 
-def copy_decision_table_node(graph: Graph, node: DecisionTableNode) -> DecisionTableNode:
+def copy_decision_table_node(graph: Graph, node: DecisionTableNode, **kwargs) -> DecisionTableNode:
     new_node = DecisionTableNode.objects.create(
         graph=graph,
         node_name=node.node_name,
@@ -195,7 +226,7 @@ def copy_decision_table_node(graph: Graph, node: DecisionTableNode) -> DecisionT
 
 
 def copy_classification_decision_table_node(
-    graph: Graph, node: ClassificationDecisionTableNode
+    graph: Graph, node: ClassificationDecisionTableNode, **kwargs
 ) -> ClassificationDecisionTableNode:
     new_pre_code = copy_python_code(node.pre_python_code) if node.pre_python_code else None
     new_post_code = copy_python_code(node.post_python_code) if node.post_python_code else None
@@ -213,6 +244,8 @@ def copy_classification_decision_table_node(
         default_next_node_id=node.default_next_node_id,
         next_error_node_id=node.next_error_node_id,
         metadata=node.metadata,
+        pre_use_storage=node.pre_use_storage,
+        post_use_storage=node.post_use_storage,
     )
 
     new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
@@ -231,6 +264,16 @@ def copy_classification_decision_table_node(
     )
     new_prompt_map = {p.prompt_key: p for p in new_prompts}
 
+    new_section_map = {}
+    for section in node.sections.all():
+        new_section = ClassificationConditionGroupSection.objects.create(
+            id=uuid.uuid4(),
+            classification_decision_table_node=new_node,
+            name=section.name,
+            metadata=section.metadata,
+        )
+        new_section_map[section.id] = new_section
+
     for group in node.condition_groups.all():
         ClassificationConditionGroup.objects.create(
             classification_decision_table_node=new_node,
@@ -238,17 +281,21 @@ def copy_classification_decision_table_node(
             order=group.order,
             expression=group.expression,
             prompt=new_prompt_map.get(group.prompt.prompt_key) if group.prompt else None,
+            section=new_section_map.get(group.section_id),
             manipulation=group.manipulation,
             continue_flag=group.continue_flag,
             dock_visible=group.dock_visible,
             field_expressions=group.field_expressions,
             field_manipulations=group.field_manipulations,
+            next_node_id=group.next_node_id,
+            route_code=group.route_code,
+            metadata=group.metadata,
         )
 
     return new_node
 
 
-def copy_task_node(graph: Graph, node: TaskNode) -> TaskNode:
+def copy_task_node(graph: Graph, node: TaskNode, **kwargs) -> TaskNode:
     new_node = TaskNode.objects.create(
         graph=graph,
         agent_definition=node.agent_definition,
@@ -262,7 +309,7 @@ def copy_task_node(graph: Graph, node: TaskNode) -> TaskNode:
     return new_node
 
 
-def copy_agent_node(graph: Graph, node: AgentNode) -> AgentNode:
+def copy_agent_node(graph: Graph, node: AgentNode, **kwargs) -> AgentNode:
     new_node = AgentNode.objects.create(
         graph=graph,
         agent_definition=node.agent_definition,
@@ -278,6 +325,8 @@ def copy_agent_node(graph: Graph, node: AgentNode) -> AgentNode:
 
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
+# Handlers are called as handler(new_graph, node, user=<acting user or None>); a handler
+# that needs no context absorbs it in **kwargs.
 # To add a new node type: write a copy_<name> function above and add one entry here.
 NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.START_NODE: ("start_node_list", copy_start_node),
@@ -286,6 +335,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.FILE_EXTRACTOR_NODE: (
         "file_extractor_node_list",
         copy_file_extractor_node,
+    ),
+    NodeType.KEY_VALUE_NODE: (
+        "key_value_node_list",
+        copy_key_value_node,
     ),
     NodeType.AUDIO_TRANSCRIPTION_NODE: (
         "audio_transcription_node_list",

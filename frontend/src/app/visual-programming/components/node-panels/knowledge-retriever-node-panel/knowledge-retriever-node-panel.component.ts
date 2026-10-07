@@ -25,12 +25,14 @@ import {
 } from '../../../../features/knowledge-sources/models/collection.model';
 import { CollectionsApiService } from '../../../../features/knowledge-sources/services/collections-api.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
+import { buildGraphSearchConfig } from './knowledge-retriever-search-configs.util';
 
 type RagKind = 'naive' | 'graph';
 
@@ -54,6 +56,7 @@ interface RagChoice {
         RagTabComponent,
         InputsYouCanUseComponent,
         ValidationErrorsComponent,
+        IfFlowEditableDirective,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
@@ -189,7 +192,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         if (kind === 'naive' && rawConfigs) {
             searchConfigs = { naive: rawConfigs };
         } else if (kind === 'graph' && rawConfigs) {
-            searchConfigs = { graph: rawConfigs };
+            searchConfigs = { graph: buildGraphSearchConfig(rawConfigs, node.data.search_configs?.graph) };
             graphMethod = rawConfigs.search_method ?? null;
         }
 

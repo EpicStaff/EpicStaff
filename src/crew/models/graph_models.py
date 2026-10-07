@@ -15,6 +15,7 @@ class GraphMessage:
     execution_order: int
     message_data: dict
     timestamp: str = field(default_factory=iso_utc_timestamp)
+    node_type: str = ""
 
 
 @dataclass
@@ -152,3 +153,29 @@ class ClassificationPromptMessageData:
     result_variable: str
     usage: dict
     message_type: str = "classification_prompt"
+
+
+@dataclass
+class KeyValueMessageEntry:
+    key: str
+    # read: target path; write: source path (raw, incl. |default); delete: None
+    path: str | None = None
+    # read: key in values (a stored null counts as found); delete: key existed and was
+    # deleted; write: None
+    found: bool | None = None
+    # write only
+    created: bool | None = None
+    # read: stored value; write: value written; delete: deleted value. None when not found.
+    value: Any = None
+    # True when the value did not fit the message budget; `value` is then a JSON-text preview
+    truncated: bool = False
+
+
+@dataclass
+class KeyValueMessageData:
+    mode: str  # "read" | "write" | "delete"
+    table_id: int
+    table_name: str
+    entries: list[KeyValueMessageEntry]
+    deleted_count: int | None = None  # delete only
+    message_type: str = "key_value"

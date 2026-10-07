@@ -57,7 +57,7 @@ pip install uv==0.11.21
 
 Create required Docker volumes:
 ```powershell
-docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker volume create graph_data; docker network create mcp-network
+docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker volume create graph_data; docker volume create opensearch_data; docker network create mcp-network
 ```
 
 Start the core infrastructure containers:
@@ -103,6 +103,7 @@ Get-Content ..\.env | Where-Object { $_ -and $_ -notmatch '^#' } | ForEach-Objec
 $env:PYTHONPATH = "$(Resolve-Path ..\..)"
 
 python manage.py migrate
+python manage.py seed_builtin_roles
 python manage.py upload_models
 uvicorn django_app.asgi:application --reload --port 8000
 ```

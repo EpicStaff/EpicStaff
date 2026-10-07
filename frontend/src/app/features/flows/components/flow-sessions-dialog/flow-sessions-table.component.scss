@@ -37,7 +37,7 @@
 }
 
 .sessions-table-wrapper.has-flow-name table {
-    min-width: 1165px;
+    min-width: 1265px;
 
     .col-flow {
         width: auto;
@@ -52,7 +52,7 @@
 
 table {
     width: 100%;
-    min-width: 990px;
+    min-width: 1090px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
@@ -76,6 +76,21 @@ table {
     td.col-id {
         width: 70px;
         min-width: 70px;
+    }
+
+    th.col-type,
+    td.col-type {
+        width: 100px;
+        min-width: 100px;
+    }
+
+    td.col-type {
+        color: var(--color-text-secondary);
+    }
+
+    td.col-type--live {
+        color: var(--color-text-primary);
+        font-weight: 600;
     }
 
     th.col-status,
@@ -126,9 +141,9 @@ table {
         text-align: left;
     }
 
-    td[colspan='6'],
     td[colspan='7'],
-    td[colspan='8'] {
+    td[colspan='8'],
+    td[colspan='9'] {
         border-bottom: none;
     }
 
@@ -165,9 +180,9 @@ table {
         display: table-row;
     }
 
-    td[colspan='6'],
     td[colspan='7'],
-    td[colspan='8'] {
+    td[colspan='8'],
+    td[colspan='9'] {
         padding: 40px;
         vertical-align: middle;
     }
@@ -318,30 +333,6 @@ table {
 }
 .session-search-input:focus {
     border-color: var(--accent-color);
-}
-
-.stop-btn {
-    background: var(--red-580);
-    color: var(--white);
-    border: none;
-    outline: none;
-    padding: 6px 14px;
-    margin-right: 8px;
-    border-radius: 6px;
-    font-size: 0.95em;
-    font-weight: 500;
-    cursor: pointer;
-    transition:
-        background 0.18s,
-        color 0.18s;
-    white-space: nowrap;
-    flex-shrink: 0;
-    min-width: 70px;
-    max-width: 80px;
-}
-.stop-btn:hover {
-    background: var(--red-700);
-    color: var(--white);
 }
 
 .no-sessions-message {

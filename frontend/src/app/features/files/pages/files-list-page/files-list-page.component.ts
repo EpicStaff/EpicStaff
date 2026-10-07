@@ -1,5 +1,14 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, linkedSignal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    linkedSignal,
+    untracked,
+} from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
@@ -11,6 +20,7 @@ import { switchMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
@@ -34,7 +44,7 @@ interface FilesTabConfig {
 }
 
 /**
- * Tab shell for `/files`. It renders the tab pages itself instead of through a
+ * Tab shell for `/storage`. It renders the tab pages itself instead of through a
  * `<router-outlet>` (the child routes are component-less and only own URL + guards), so the
  * Storage page — the source of a storage drag — can stay mounted, visually hidden, while the
  * user drags onto Knowledge Sources. A router outlet would destroy it and lose the drag.
@@ -53,6 +63,7 @@ interface FilesTabConfig {
         SpinnerComponent,
         CollectionsListPageComponent,
         StoragePageComponent,
+        KeyValueTablesPageComponent,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],
@@ -78,9 +89,14 @@ export class FilesListPageComponent {
             isPermitted: () => this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read),
         },
         {
-            label: 'Storage',
+            label: 'Files',
             link: FILES_TAB.Storage,
             isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+        },
+        {
+            label: 'Key-Value Tables',
+            link: FILES_TAB.KeyValueTables,
+            isPermitted: () => this.permissionService.can(ResourceCode.KeyValueTables, ActionCode.Read),
         },
     ];
 
@@ -98,6 +114,10 @@ export class FilesListPageComponent {
 
     protected readonly isKnowledgeSourcesActive = computed(() => this.activeTab() === FILES_TAB.KnowledgeSources);
     protected readonly isStorageActive = computed(() => this.activeTab() === FILES_TAB.Storage);
+    protected readonly isKeyValueTablesActive = computed(() => this.activeTab() === FILES_TAB.KeyValueTables);
+
+    /** Key-Value Tables searches keys in its own grid header, next to "Add entry". */
+    protected readonly showSearch = computed(() => !this.isKeyValueTablesActive());
 
     /**
      * The Storage page is rendered while its tab is active, and kept mounted after a tab switch
@@ -110,6 +130,12 @@ export class FilesListPageComponent {
     });
 
     protected readonly tabSpringLoadDelay = TAB_SPRING_LOAD_DELAY_MS;
+
+    /** The one search box means something different on each tab, so a term never carries over a tab switch. */
+    private readonly clearSearchOnTabChange = effect(() => {
+        this.activeTab();
+        untracked(() => this.filesSearchService.clear());
+    });
 
     readonly activeTabBtn = computed(() => {
         const activeTab = this.activeTab();

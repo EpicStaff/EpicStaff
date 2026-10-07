@@ -1,9 +1,4 @@
-import {
-    CreatePythonCodeRequest,
-    GetPythonCodeRequest,
-    WebhookTriggerModel,
-    WebhookTriggerWrite,
-} from '@shared/models';
+import { CreatePythonCodeRequest, GetPythonCodeRequest, WebhookTriggerWrite } from '@shared/models';
 
 export interface GetWebhookTriggerNodeRequest {
     id: number;
@@ -14,7 +9,10 @@ export interface GetWebhookTriggerNodeRequest {
     output_variable_path: string | null;
     webhook_trigger_path: string;
     metadata: Record<string, unknown>;
-    webhook_trigger: WebhookTriggerModel | null;
+    /** Nested object from the live API; a bare id when built from a version snapshot. */
+    webhook_trigger: WebhookTriggerWrite | null;
+    /** Payload used by "Run with test payload"; a JSON object, `{}` when unset. */
+    test_payload: Record<string, unknown>;
 }
 
 export interface CreateWebhookTriggerNodeRequest {
@@ -26,4 +24,5 @@ export interface CreateWebhookTriggerNodeRequest {
     webhook_trigger_path: string;
     metadata?: Record<string, unknown>;
     webhook_trigger: WebhookTriggerWrite | null;
+    test_payload: Record<string, unknown>;
 }

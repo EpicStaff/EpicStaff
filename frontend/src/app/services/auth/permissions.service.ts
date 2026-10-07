@@ -96,7 +96,11 @@ export class PermissionsService implements StorageService {
     }
 
     canEditSecrets(subjectResource: ResourceCode): boolean {
-        return this.can(subjectResource, ActionCode.Read) && this.can(ResourceCode.Secrets, ActionCode.Use);
+        return (
+            this.can(subjectResource, ActionCode.Read) &&
+            this.can(subjectResource, ActionCode.Update) &&
+            this.can(ResourceCode.Secrets, ActionCode.Use)
+        );
     }
 
     canOpenConfigureModelsDialog(): boolean {
@@ -172,10 +176,19 @@ export class PermissionsService implements StorageService {
         if (this.can(ResourceCode.Agents, ActionCode.Read)) return '/agents';
         if (this.can(ResourceCode.Tools, ActionCode.Read)) return '/tools';
         if (this.can(ResourceCode.Flows, ActionCode.Read)) return '/flows/my';
-        if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/files/knowledge-sources';
-        if (this.can(ResourceCode.Files, ActionCode.Read)) return '/files/storage';
+        const storageTab = this.resolveStorageTab();
+        if (storageTab) return storageTab;
 
         return '/profile';
+    }
+
+    /** First `/storage/*` tab the caller can read in the active org, or `null` if none.
+     *  Ordered like the tabs: knowledge-sources → files → key-value-tables. */
+    resolveStorageTab(): string | null {
+        if (this.can(ResourceCode.KnowledgeSources, ActionCode.Read)) return '/storage/knowledge-sources';
+        if (this.can(ResourceCode.Files, ActionCode.Read)) return '/storage/files';
+        if (this.can(ResourceCode.KeyValueTables, ActionCode.Read)) return '/storage/key-value-tables';
+        return null;
     }
 
     clear(): void {

@@ -158,6 +158,17 @@ def test_validate_aggregates_multiple_violations(validator):
     assert "not supported" in error_msg
 
 
+@pytest.mark.parametrize(
+    ("filename", "rejected"), [("evil.exe", True), ("a.rar", True), ("ok.txt", False)]
+)
+def test_validate_name_rejects_blocked_and_unsupported_names(validator, filename, rejected):
+    if rejected:
+        with pytest.raises(ValidationError):
+            validator.validate_name(filename)
+    else:
+        validator.validate_name(filename)
+
+
 # --- size caps ---
 #
 # nginx caps a request body at 50M (nginx/templates/default.conf.template) but

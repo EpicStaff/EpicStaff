@@ -1,3 +1,4 @@
+import itertools
 import json
 import re
 import uuid
@@ -15,12 +16,73 @@ from src.crew.models.graph_models import (
 from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
+from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.crew.services.run_python_code_service import RunPythonCodeService
-from src.shared.models import LLMData, PythonCodeData
+from src.shared.models import LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
+    ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+
+# litellm reports json_schema support for these providers, but their APIs reject it
+# ("This response_format type is unavailable now") and only accept json_object.
+JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
+
+# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
+# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
+PROVIDER_ALIASES = {
+    "google_ai": "gemini",
+    "novita_ai": "novita",
+    "aws_sagemaker": "sagemaker",
+    "featherless-ai": "featherless_ai",
+}
+
+# Expressions arrive as data and are compiled one at a time, so a syntax error in a
+# row after the match never surfaces. Each row gets a fresh variable namespace;
+# builtins, sys.modules and imported modules are shared by all rows of a batch.
+# Lookup order matches the old per-row code, where the expression sat inside main():
+# `variables`, then the identifier-named variables, then the sandbox module globals
+# (json, os, sys, DotDict, get_secret, ...).
+_EVALUATE_UNTIL_MATCH_CODE = """
+import traceback
+import types
+
+
+def _to_ns(obj):
+    if isinstance(obj, dict):
+        return types.SimpleNamespace(**{k: _to_ns(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return [_to_ns(i) for i in obj]
+    return obj
+
+
+def _build_namespace(raw_variables):
+    namespace = dict(globals())
+    for key, value in raw_variables.items():
+        if key.isidentifier():
+            namespace[key] = _to_ns(value)
+    namespace["variables"] = _to_ns(raw_variables)
+    return namespace
+
+
+def main(expressions, variables):
+    results = []
+    for expression in expressions:
+        try:
+            result = eval(
+                compile(expression, "<condition>", "eval"), _build_namespace(variables)
+            )
+            assert isinstance(result, bool), "Expression must return a boolean value"
+        # BaseException so that exit() in an expression is reported against its row.
+        except BaseException as error:
+            message = "".join(traceback.format_exception_only(type(error), error)).strip()
+            return {"results": results, "error": message}
+        results.append(result)
+        if result:
+            break
+    return {"results": results, "error": None}
+"""
 
 
 def extract_first_json_object(text: str) -> Any:
@@ -77,7 +139,12 @@ class ClassificationDecisionTableNodeSubgraph:
     def _publish_message(self, graph_message: GraphMessage):
         """Publish a GraphMessage directly to Redis.
         Subgraph StreamWriter messages don't propagate to the parent graph's
-        astream, so we publish directly to Redis instead."""
+        astream, so we publish directly to Redis instead - and, since that
+        also means _emit_session_audit_event's own interception point (the
+        parent's astream loop) never sees these chunks either, dispatch to
+        the audit pipeline explicitly here too, right alongside the primary
+        publish (same data dict, same uuid, so both pipelines agree on the
+        event's identity)."""
         if self.redis_service is None:
             return
         try:
@@ -97,6 +164,11 @@ class ClassificationDecisionTableNodeSubgraph:
             }
         data["uuid"] = str(uuid.uuid4())
         self.redis_service.publish("graph:messages", data)
+        try:
+            emit_session_audit_event(data)
+        except Exception as audit_exc:
+            # Audit must never break the primary pipeline.
+            logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
     @staticmethod
     def _resolve_path(path_expr: str, ctx: dict):
@@ -229,40 +301,87 @@ class ClassificationDecisionTableNodeSubgraph:
                 lines.append(f"    {key} = _to_ns(_raw.get('{key}'))")
         return "\n".join(lines)
 
-    async def _execute_expression(self, expression: str, state: State) -> bool:
-        """Evaluate a Python expression in sandbox. Returns bool."""
-        variables_dict = state["variables"].model_dump()
+    @staticmethod
+    def _build_condition_expression(group: ClassificationConditionGroupData) -> str | None:
+        """Combine a row's field_expressions and main expression into one expression.
 
-        var_assignments = self._build_var_assignments(list(variables_dict.keys()))
-
-        code = f"""
-import types
-
-def _to_ns(obj):
-    if isinstance(obj, dict):
-        return types.SimpleNamespace(**{{k: _to_ns(v) for k, v in obj.items()}})
-    if isinstance(obj, list):
-        return [_to_ns(i) for i in obj]
-    return obj
-
-def main(**kwargs) -> bool:
-    _raw = kwargs.get("variables", {{}})
-{var_assignments}
-    variables = _to_ns(_raw)
-    result: bool = {expression}
-    assert isinstance(result, bool), "Expression must return a boolean value"
-    return result
-"""
-        python_code_data = PythonCodeData(
-            venv_name="default",
-            code=code,
-            entrypoint="main",
-            libraries=[],
+        Field expression format:
+          - Bare value: auto-wrapped as `field == value` (value must be valid Python,
+            e.g. `"start"`, `True`, `42`)
+          - Operator prefix: `> 5`, `!= "end"`, `in ("a", "b")` → prepended with field name
+          - Full expression with operators: used as-is (e.g. `field > 0 and field < 10`)
+        """
+        parts = []
+        _operator_prefixes = (
+            "==",
+            "!=",
+            ">=",
+            "<=",
+            ">",
+            "<",
+            " in ",
+            " not ",
         )
+        if group.field_expressions:
+            for field_name, field_expr in group.field_expressions.items():
+                if field_expr and field_expr.strip():
+                    expr = field_expr.strip()
+                    if expr.startswith(_operator_prefixes) or expr.startswith(
+                        ("in ", "not ", "is ")
+                    ):
+                        expr = f"{field_name} {expr}"
+                    elif not any(
+                        op in expr
+                        for op in (
+                            "==",
+                            "!=",
+                            ">=",
+                            "<=",
+                            ">",
+                            "<",
+                            " in ",
+                            " not ",
+                            " is ",
+                            " and ",
+                            " or ",
+                        )
+                    ):
+                        expr = f"{field_name} == {expr}"
+                    parts.append(f"({expr})")
+        if group.expression and group.expression.strip():
+            parts.append(f"({group.expression.strip()})")
 
+        return " and ".join(parts) if parts else None
+
+    async def _evaluate_until_match(
+        self, expressions: list[str], state: State
+    ) -> tuple[list[bool], str | None]:
+        """Evaluate row expressions in order, in one sandbox run, up to the first match.
+
+        Only a matched row changes state, so every row up to the next match sees the
+        same variables and can share one run. Evaluation stops at the first True or the
+        first failing expression; later expressions are never compiled or run. The
+        whole batch shares one SANDBOX_EXECUTION_TIMEOUT.
+
+        Returns:
+            The result of each evaluated row, and the error message of the row right
+            after them (index `len(results)`) if that row failed, else None.
+
+        Raises:
+            ClassificationDecisionTableNodeError: The sandbox run itself failed or
+                returned an unreadable result.
+        """
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
-            python_code_data=python_code_data,
-            inputs={"variables": variables_dict},
+            python_code_data=PythonCodeData(
+                venv_name="default",
+                code=_EVALUATE_UNTIL_MATCH_CODE,
+                entrypoint="main",
+                libraries=[],
+            ),
+            inputs={
+                "expressions": expressions,
+                "variables": state["variables"].model_dump(),
+            },
             stop_event=self.stop_event,
         )
 
@@ -270,7 +389,13 @@ def main(**kwargs) -> bool:
             raise ClassificationDecisionTableNodeError(
                 f"Expression execution failed: {result['stderr']}"
             )
-        return json.loads(result["result_data"]) or False
+        try:
+            evaluation = json.loads(result["result_data"])
+            return evaluation["results"], evaluation["error"]
+        except (TypeError, ValueError, KeyError) as error:
+            raise ClassificationDecisionTableNodeError(
+                f"Expression execution returned an unreadable result: {result['result_data']!r}"
+            ) from error
 
     async def _execute_manipulation(self, manipulation: str, state: State) -> None:
         """Execute manipulation code in sandbox. Updates state variables."""
@@ -330,7 +455,7 @@ def main(**kwargs) -> dict:
 
     async def _run_json_llm(
         self, prompt: str, llm: LLMData, output_schema: dict | str | None = None
-    ) -> tuple[Any, dict[str, int]]:
+    ) -> tuple[Any, TokenUsage]:
         """Call LLM via litellm and parse JSON response."""
         llm_config = llm.config
         litellm.drop_params = True
@@ -345,18 +470,43 @@ def main(**kwargs) -> dict:
                     "Prompt output_schema is not valid JSON; sending request without a response_format."
                 )
                 schema = None
+        messages = [{"role": "user", "content": prompt}]
         if isinstance(schema, dict) and schema:
-            response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "cdt_prompt_output",
-                    "schema": schema,
-                    "strict": True,
-                },
-            }
+            if llm.provider.lower().strip() in JSON_OBJECT_ONLY_PROVIDERS:
+                response_format = {"type": "json_object"}
+                # json_object mode carries no schema and requires the word "json" in the
+                # prompt; the user-written prompt guarantees neither, so state both here.
+                messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": (
+                            "Respond with a JSON object that matches this JSON schema: "
+                            f"{json.dumps(schema)}"
+                        ),
+                    },
+                )
+            else:
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "cdt_prompt_output",
+                        "schema": schema,
+                        "strict": True,
+                    },
+                }
 
+        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
+        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
+        # model id and must become "groq/openai/gpt-oss-120b".
+        litellm_provider = PROVIDER_ALIASES.get(llm.provider.lower().strip(), llm.provider)
+        model = (
+            llm_config.model
+            if llm_config.model.startswith(f"{litellm_provider}/")
+            else f"{litellm_provider}/{llm_config.model}"
+        )
         params = {
-            "model": f"{llm.provider}/{llm_config.model}",
+            "model": model,
             "timeout": llm_config.timeout,
             "temperature": llm_config.temperature,
             "top_p": llm_config.top_p,
@@ -372,20 +522,30 @@ def main(**kwargs) -> dict:
             "api_key": llm_config.api_key,
             "stream": False,
         }
-        resp = await litellm.acompletion(
-            **{**params, "messages": [{"role": "user", "content": prompt}]}
-        )
+        resp = await litellm.acompletion(**{**params, "messages": messages})
 
-        usage = {
-            "total_tokens": getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
-            "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0)
+        try:
+            cost = litellm.completion_cost(completion_response=resp)
+        except Exception:
+            cost = 0.0  # litellm raises for models without a pricing entry — don't crash CDT
+
+        cached_tokens = 0
+        details = (
+            getattr(resp.usage, "prompt_tokens_details", None) if hasattr(resp, "usage") else None
+        )
+        if details is not None:
+            cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
+        usage = TokenUsage(
+            total_tokens=getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
+            prompt_tokens=getattr(resp.usage, "prompt_tokens", 0) if hasattr(resp, "usage") else 0,
+            completion_tokens=getattr(resp.usage, "completion_tokens", 0)
             if hasattr(resp, "usage")
             else 0,
-            "completion_tokens": getattr(resp.usage, "completion_tokens", 0)
-            if hasattr(resp, "usage")
-            else 0,
-            "successful_requests": 1,
-        }
+            successful_requests=1,
+            cached_prompt_tokens=cached_tokens,
+            total_cost_usd=cost,
+        )
 
         content = resp.choices[0].message.content
         if not isinstance(content, str):
@@ -441,7 +601,7 @@ def main(**kwargs) -> dict:
 
         logger.info(
             f"Prompt '{prompt_id}' completed. "
-            f"Tokens: {usage.get('total_tokens', 0)}, "
+            f"Tokens: {usage.total_tokens}, "
             f"Result type: {type(result).__name__}"
         )
 
@@ -461,7 +621,7 @@ def main(**kwargs) -> dict:
             "raw_response": raw_response,
             "parsed_result": result,
             "result_variable": result_var,
-            "usage": usage,
+            "usage": usage.model_dump(),
         }
 
     def _indent_code(self, code: str) -> str:
@@ -489,6 +649,7 @@ def main(**kwargs) -> dict:
             enabled_groups,
             key=lambda g: g.order,
         )
+        condition_expressions = [self._build_condition_expression(g) for g in sorted_groups]
 
         async def enter_node_function(state: State, writer: StreamWriter):
             logger.info(f"Entering classification decision table: {self.node_name}")
@@ -516,6 +677,7 @@ def main(**kwargs) -> dict:
                 writer=writer,
                 input_=input_vars,
                 execution_order=self.execution_order(state),
+                node_type=self.TYPE,
             )
             self._publish_message(msg)
 
@@ -533,10 +695,39 @@ def main(**kwargs) -> dict:
                     error=str(e),
                     writer=writer,
                     execution_order=self.execution_order(state),
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
 
+            return state
+
+        def route_to_error_node(state: State, writer: StreamWriter, error: str):
+            """Route to the error node and publish error, then finish.
+
+            The finish closes the CDT message group in the UI, as on the
+            pre-computation error path."""
+            decision_vars = state["system_variables"]["nodes"][self.node_name]
+            decision_vars["result_node"] = self.node_data.next_error_node or END
+            msg = self.custom_session_message_writer.add_error_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                error=error,
+                writer=writer,
+                execution_order=self.execution_order(state),
+                node_type=self.TYPE,
+            )
+            self._publish_message(msg)
+            msg = self.custom_session_message_writer.add_finish_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                writer=writer,
+                output=decision_vars["result_node"],
+                execution_order=self.execution_order(state),
+                state=state,
+                node_type=self.TYPE,
+            )
+            self._publish_message(msg)
             return state
 
         async def evaluate_node_function(state: State, writer: StreamWriter):
@@ -554,6 +745,7 @@ def main(**kwargs) -> dict:
                     output=decision_vars["result_node"],
                     execution_order=self.execution_order(state),
                     state=state,
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
@@ -561,74 +753,53 @@ def main(**kwargs) -> dict:
             matched_next_node = None
             matched_condition_name = None
 
-            for group in sorted_groups:
-                try:
-                    # Step 1: Build combined expression from field_expressions + main expression
-                    # Field expression format:
-                    #   - Bare value: auto-wrapped as `field == value` (value must be valid Python, e.g. `"start"`, `True`, `42`)
-                    #   - Operator prefix: `> 5`, `!= "end"`, `in ("a", "b")` → prepended with field name
-                    #   - Full expression with operators: used as-is (e.g. `field > 0 and field < 10`)
-                    parts = []
-                    _operator_prefixes = (
-                        "==",
-                        "!=",
-                        ">=",
-                        "<=",
-                        ">",
-                        "<",
-                        " in ",
-                        " not ",
+            group_index = 0
+            while group_index < len(sorted_groups):
+                group = sorted_groups[group_index]
+                # Step 1: Evaluate the run of expression rows from here up to the
+                # next match in one sandbox call. A row without an expression
+                # matches without one.
+                batch_expressions = list(
+                    itertools.takewhile(bool, condition_expressions[group_index:])
+                )
+                # A failure of the batch run itself belongs to no single row.
+                batch_failure_scope = None
+                if len(batch_expressions) > 1:
+                    last_group = sorted_groups[group_index + len(batch_expressions) - 1]
+                    batch_failure_scope = (
+                        f"evaluating conditions from '{group.group_name}' "
+                        f"to '{last_group.group_name}'"
                     )
-                    if group.field_expressions:
-                        for field_name, field_expr in group.field_expressions.items():
-                            if field_expr and field_expr.strip():
-                                expr = field_expr.strip()
-                                if expr.startswith(_operator_prefixes) or expr.startswith(
-                                    ("in ", "not ", "is ")
-                                ):
-                                    expr = f"{field_name} {expr}"
-                                elif not any(
-                                    op in expr
-                                    for op in (
-                                        "==",
-                                        "!=",
-                                        ">=",
-                                        "<=",
-                                        ">",
-                                        "<",
-                                        " in ",
-                                        " not ",
-                                        " is ",
-                                        " and ",
-                                        " or ",
-                                    )
-                                ):
-                                    expr = f"{field_name} == {expr}"
-                                parts.append(f"({expr})")
-                    if group.expression and group.expression.strip():
-                        parts.append(f"({group.expression.strip()})")
+                try:
+                    if batch_expressions:
+                        results, expression_error = await self._evaluate_until_match(
+                            batch_expressions, state
+                        )
+                    else:
+                        results, expression_error = [True], None
+                    batch_failure_scope = None
 
-                    combined_expression = " and ".join(parts) if parts else None
+                    for expression_result in results:
+                        group = sorted_groups[group_index]
+                        msg = self.custom_session_message_writer.add_condition_group_message(
+                            session_id=self.session_id,
+                            node_name=self.node_name,
+                            group_name=group.group_name,
+                            result=expression_result,
+                            writer=writer,
+                            execution_order=self.execution_order(state),
+                            expression=group.expression,
+                        )
+                        self._publish_message(msg)
+                        group_index += 1
 
-                    expression_result = True
-                    if combined_expression:
-                        expression_result = await self._execute_expression(
-                            expression=combined_expression,
-                            state=state,
+                    if expression_error is not None:
+                        group = sorted_groups[group_index]
+                        raise ClassificationDecisionTableNodeError(
+                            f"Expression execution failed: {expression_error}"
                         )
 
-                    msg = self.custom_session_message_writer.add_condition_group_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        group_name=group.group_name,
-                        result=expression_result,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                        expression=group.expression,
-                    )
-                    self._publish_message(msg)
-
-                    if not expression_result:
+                    if not results[-1]:
                         continue
 
                     logger.info(f"Condition '{group.group_name}' matched.")
@@ -691,31 +862,15 @@ def main(**kwargs) -> dict:
                         break
 
                 except ClassificationDecisionTableNodeError as e:
-                    error = f"Error in condition '{group.group_name}': {e}"
+                    scope = batch_failure_scope or f"in condition '{group.group_name}'"
+                    error = f"Error {scope}: {e}"
                     logger.info(f"ERROR {error}")
-                    decision_vars["result_node"] = self.node_data.next_error_node or END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        error=error,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                    )
-                    self._publish_message(msg)
-                    return state
+                    return route_to_error_node(state, writer, error)
                 except Exception as e:
-                    error = f"Unexpected error in condition '{group.group_name}': {type(e).__name__}: {e}"
+                    scope = batch_failure_scope or f"in condition '{group.group_name}'"
+                    error = f"Unexpected error {scope}: {type(e).__name__}: {e}"
                     logger.info(f"ERROR {error}")
-                    decision_vars["result_node"] = self.node_data.next_error_node or END
-                    msg = self.custom_session_message_writer.add_error_message(
-                        session_id=self.session_id,
-                        node_name=self.node_name,
-                        error=error,
-                        writer=writer,
-                        execution_order=self.execution_order(state),
-                    )
-                    self._publish_message(msg)
-                    return state
+                    return route_to_error_node(state, writer, error)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -726,16 +881,7 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except ClassificationDecisionTableNodeError as e:
                 logger.error(f"Post-computation error: {e}")
-                decision_vars["result_node"] = self.node_data.next_error_node or END
-                msg = self.custom_session_message_writer.add_error_message(
-                    session_id=self.session_id,
-                    node_name=self.node_name,
-                    error=str(e),
-                    writer=writer,
-                    execution_order=self.execution_order(state),
-                )
-                self._publish_message(msg)
-                return state
+                return route_to_error_node(state, writer, str(e))
 
             logger.info(
                 f"Classification table '{self.node_name}' result: "
@@ -749,6 +895,7 @@ def main(**kwargs) -> dict:
                 output=decision_vars["result_node"],
                 execution_order=self.execution_order(state),
                 state=state,
+                node_type=self.TYPE,
                 matched_condition=matched_condition_name,
             )
             self._publish_message(msg)

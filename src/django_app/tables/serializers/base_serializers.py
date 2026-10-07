@@ -5,6 +5,7 @@ from rbac.scoping.fields import (
     resolve_active_org_id,
 )
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
@@ -153,13 +154,16 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             try:
                 telegram_service.register_telegram_trigger(telegram_trigger_instance=node)
             except Exception as e:
-                detail = getattr(e, "detail", None)
-                message = str(detail) if detail is not None else str(e)
+                # An APIException detail is a message we wrote; the text of
+                # any other exception is unvetted and may carry a secret.
+                message = str(e.detail) if isinstance(e, APIException) else type(e).__name__
                 logger.warning(
-                    f"[WebhookTrigger] Telegram re-registration failed for "
-                    f"node {node.pk} (trigger {trigger.pk}) after a secret "
-                    f"update: {message}. The secret was still saved; "
-                    "registration will need to be retried."
+                    "[WebhookTrigger] Telegram re-registration failed for node {} "
+                    "(trigger {}) after a secret update: {}. The secret was still "
+                    "saved; registration will need to be retried.",
+                    node.pk,
+                    trigger.pk,
+                    message,
                 )
                 registration_failures.append(f"node {node.pk}: {message}")
 
@@ -230,9 +234,12 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             rep["live_url"] = None
 
         auth = getattr(instance, "auth", None)
+        # The id only, never the name or value: an edit form pre-selects it and
+        # resolves the label from the secrets list, as with `auth_token_secret_id`.
         rep["auth"] = (
             {
                 "kind": auth.kind,
+                "secret_id": auth.secret_id,
                 "secret_tail": auth.secret.tail if auth.secret_id else None,
             }
             if auth is not None

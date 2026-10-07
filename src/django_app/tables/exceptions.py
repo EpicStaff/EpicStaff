@@ -1,3 +1,6 @@
+import math
+
+from rest_framework.exceptions import Throttled
 from utils.exceptions import CustomAPIExeption
 
 from tables.constants.knowledge_constants import (
@@ -10,6 +13,33 @@ __all__ = ["CustomAPIExeption"]
 class GraphEntryPointException(CustomAPIExeption):
     status_code = 400
     default_detail = "No node connected to start node"
+
+
+class GraphNotFoundError(CustomAPIExeption):
+    """Raised for a graph id that is missing or owned by an org the caller is not in."""
+
+    status_code = 404
+    default_detail = "Provided graph does not exist"
+    default_code = "graph_not_found"
+
+
+class SessionNotFoundError(CustomAPIExeption):
+    """Raised for a session id that is missing or owned by an org the caller is not in."""
+
+    status_code = 404
+    default_detail = "Session not found."
+    default_code = "session_not_found"
+
+
+class ParentSessionNotFoundError(CustomAPIExeption):
+    """Raised for a parent_session_id that is missing or owned by a different org than the graph being run.
+
+    400, not 404: the id is a reference inside the request body, not the resource being addressed.
+    """
+
+    status_code = 400
+    default_detail = "Parent session not found."
+    default_code = "parent_session_not_found"
 
 
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
@@ -85,6 +115,105 @@ class BuiltInToolModificationError(CustomAPIExeption):
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"
+    # Telegram's HTTP status when `setWebhook` itself failed with one; a safe int.
+    telegram_http_status: int | None = None
+
+
+class TelegramRegistrationPreconditionError(RegisterTelegramTriggerError):
+    """Raised when a node's configuration makes registration impossible.
+
+    Its detail is always a fixed or validator message, never a secret value,
+    so it is safe to log -- unlike other `RegisterTelegramTriggerError`s.
+    """
+
+
+class TelegramTunnelUnavailableError(CustomAPIExeption):
+    """Raised when an explicit registration cannot get the trigger's tunnel URL.
+
+    The detail is fixed on purpose: the underlying error text is not safe to show.
+    """
+
+    status_code = 503
+    default_detail = (
+        "The webhook tunnel is not available yet. Check the trigger's tunnel and try again."
+    )
+    default_code = "telegram_tunnel_unavailable"
+
+
+class TelegramBotKeyNotConfiguredError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "This Telegram trigger node has no bot key configured."
+    default_code = "telegram_bot_key_not_configured"
+
+
+class TelegramWebhookInfoUnavailableError(CustomAPIExeption):
+    """Raised when Telegram's getWebhookInfo cannot be read.
+
+    The detail is fixed on purpose: the underlying `requests` error message
+    contains the request URL, which embeds the bot token.
+    """
+
+    status_code = 502
+    default_detail = "Could not fetch webhook info from Telegram."
+    default_code = "telegram_webhook_info_unavailable"
+
+
+class TelegramBotKeyRejectedError(CustomAPIExeption):
+    """Raised when Telegram answers 401 or 404 for a node's bot key.
+
+    The detail is fixed on purpose: the underlying error text embeds the bot token.
+    """
+
+    status_code = 422
+    default_detail = (
+        "Telegram rejected this bot key. Check the secret selected as the bot key on this node."
+    )
+    default_code = "telegram_bot_key_rejected"
+
+
+class TelegramApiError(Exception):
+    """A Telegram Bot API call failed.
+
+    The message is built from safe facts only (failure kind, HTTP status,
+    Telegram's numeric `error_code`) and never from the underlying exception
+    text: the request URL embeds the bot token and the webhook `secret_token`.
+    `http_status` is Telegram's HTTP status when the failure had one.
+    """
+
+    def __init__(self, message: str, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+
+
+class TelegramRegistrationBlockedError(CustomAPIExeption):
+    """Raised when a node's configuration makes registering its webhook impossible.
+
+    The response also carries `registration_blocker: {code, message}`, the same
+    object the webhook-info endpoint reports.
+    """
+
+    status_code = 409
+    default_detail = "This node's configuration does not allow registering its webhook."
+    default_code = "telegram_registration_blocked"
+
+    def __init__(self, blocker_code: str, blocker_message: str):
+        super().__init__()
+        self.extra_response_data = {
+            "registration_blocker": {"code": blocker_code, "message": blocker_message}
+        }
+
+
+class TelegramRegistrationFailedError(CustomAPIExeption):
+    """Raised when an explicit webhook registration fails.
+
+    The detail is fixed on purpose: the underlying error can carry the bot token.
+    """
+
+    status_code = 502
+    default_detail = (
+        "Telegram could not register the webhook. Check the panel status and try again."
+    )
+    default_code = "telegram_registration_failed"
 
 
 class PythonCodeToolConfigSerializerError(CustomAPIExeption):
@@ -469,6 +598,34 @@ class PromptNotFoundError(CustomAPIExeption):
         )
 
 
+class SectionIdConflictError(CustomAPIExeption):
+    """Raised when a section id in the payload already belongs to a different CDT node."""
+
+    status_code = 400
+    default_code = "section_id_conflict"
+
+    def __init__(self, value: str):
+        self.value = value
+        super().__init__(
+            f"Section {value} already belongs to another node.",
+            code=self.default_code,
+        )
+
+
+class SectionNotFoundError(CustomAPIExeption):
+    """Raised when a condition group references a section id not present among this node's sections."""
+
+    status_code = 400
+    default_code = "section_not_found"
+
+    def __init__(self, value: str):
+        self.value = value
+        super().__init__(
+            f"Section {value} doesn't exist on this node.",
+            code=self.default_code,
+        )
+
+
 class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
     """Raised when a CDT node id doesn't resolve within the caller's org (cross-org and nonexistent ids are indistinguishable)."""
 
@@ -504,3 +661,165 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class StorageQuotaExceeded(CustomAPIExeption):
+    status_code = 413
+    default_detail = "Storage quota exceeded for this organization."
+    default_code = "storage_quota_exceeded"
+
+
+class UploadTooLarge(CustomAPIExeption):
+    status_code = 413
+    default_detail = "Uploaded file is too large."
+    default_code = "upload_too_large"
+
+
+class StoragePathIsFile(CustomAPIExeption):
+    """A folder is needed where a file of that name, or of a parent folder, exists."""
+
+    status_code = 409
+    default_code = "storage_path_is_file"
+
+    def __init__(self, path: str):
+        super().__init__(
+            f"{path!r} cannot be a folder: a file exists at that path or at one of its parents."
+        )
+
+
+class OverwriteNotPermitted(CustomAPIExeption):
+    """Replacing an existing file needs FILES:UPDATE on top of FILES:CREATE."""
+
+    status_code = 403
+    default_detail = "Replacing an existing file requires permission to edit files."
+    default_code = "overwrite_not_permitted"
+
+
+class RangeNotSatisfiable(CustomAPIExeption):
+    status_code = 416
+    default_detail = "Requested range starts past the end of the file."
+    default_code = "range_not_satisfiable"
+
+    def __init__(self, file_size: int | None = None):
+        super().__init__()
+        # RFC 9110: a 416 names the current length, so the client can retry within it.
+        self.headers = {"Content-Range": f"bytes */{file_size}"} if file_size is not None else {}
+
+
+class UploadSlotsBusy(CustomAPIExeption):
+    """No upload slot of this worker freed up in time."""
+
+    status_code = 503
+    default_detail = "The server is busy with other uploads. Please retry shortly."
+    default_code = "upload_slots_busy"
+
+    def __init__(self, retry_after: float):
+        super().__init__()
+        self.headers = {"Retry-After": str(math.ceil(retry_after))}
+
+
+class OrgUploadLimitReached(Throttled):
+    """The organization already runs its share of uploads; a Throttled, so it renders as 429."""
+
+    default_detail = "Your organization already has the maximum number of uploads in progress."
+    default_code = "org_upload_limit_reached"
+
+
+class UploadIdleTimeout(CustomAPIExeption):
+    status_code = 408
+    default_code = "upload_idle_timeout"
+
+    def __init__(self, idle_seconds: float):
+        super().__init__(
+            f"No data arrived for {math.ceil(idle_seconds)} seconds; the upload was aborted."
+        )
+
+
+class UploadDurationExceeded(CustomAPIExeption):
+    status_code = 408
+    default_code = "upload_duration_exceeded"
+
+    def __init__(self, max_seconds: float):
+        super().__init__(
+            f"The upload did not finish within the allowed {math.ceil(max_seconds)} seconds "
+            "and was aborted."
+        )
+
+
+class StorageUnavailable(CustomAPIExeption):
+    """Object storage could not be reached or answered with a server error."""
+
+    status_code = 503
+    default_detail = "File storage is temporarily unavailable. Please retry later."
+    default_code = "storage_unavailable"
+    # Long enough for a storage server restart, short enough not to strand a user.
+    RETRY_AFTER_SECONDS = 30
+
+    def __init__(self):
+        super().__init__()
+        self.headers = {"Retry-After": str(self.RETRY_AFTER_SECONDS)}
+
+
+class KeyValueEntryKeyInvalidError(CustomAPIExeption):
+    status_code = 400
+    default_code = "key_value_entry_key_invalid"
+
+    def __init__(self, key: str, reason: str):
+        shown = key if len(key) <= 100 else f"{key[:100]}…"
+        super().__init__(f"Key {shown!r} is not a valid key: {reason}.", code=self.default_code)
+
+
+class KeyValueEntryValueTooLargeError(CustomAPIExeption):
+    status_code = 400
+    default_code = "key_value_entry_value_too_large"
+
+    def __init__(self, size_bytes: int, max_bytes: int):
+        super().__init__(
+            f"Value is {size_bytes} bytes; the limit is {max_bytes} bytes.", code=self.default_code
+        )
+
+
+class KeyValueModeDeniedError(CustomAPIExeption):
+    """Raised when the caller lacks the key_value_tables permissions a node's mode needs.
+
+    Its own code keeps the frontend from treating this business-rule 403 as a
+    changed-permissions 403, which reloads the app.
+    """
+
+    status_code = 403
+    default_code = "key_value_mode_denied"
+    _PERMISSION_LABELS = {"read": "View", "write": "Create and Edit", "delete": "View and Delete"}
+
+    def __init__(self, mode: str, table_name: str):
+        super().__init__(
+            f"You need Key-Value Tables {self._PERMISSION_LABELS[mode]} permission to configure "
+            f"a {mode} node on the table '{table_name}'.",
+            code=self.default_code,
+        )
+
+
+class KeyValueSessionNotActiveError(CustomAPIExeption):
+    status_code = 409
+    default_code = "key_value_session_not_active"
+
+    def __init__(self, session_id: int):
+        super().__init__(f"Session {session_id} is not running.", code=self.default_code)
+
+
+class KeyValueTableNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_code = "key_value_table_not_found"
+
+    def __init__(self, table_id: int):
+        super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)
+
+
+class InvalidTestRunPayloadError(CustomAPIExeption):
+    """A test-run payload does not fit the trigger node it targets; carries every problem found."""
+
+    status_code = 400
+    default_code = "test_run_payload_invalid"
+
+    def __init__(self, messages: list[str]):
+        self.errors = messages
+        super().__init__(detail={"payload": messages}, code=self.default_code)

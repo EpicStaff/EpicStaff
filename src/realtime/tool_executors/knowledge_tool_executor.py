@@ -10,6 +10,11 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
+from utils.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 from .base_tool_executor import BaseToolExecutor
 
@@ -54,8 +59,16 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
                 target, query, timeout=DEFAULT_KNOWLEDGE_SEARCH_TIMEOUT
             )
         except Exception as error:
-            logger.warning("Knowledge search failed rag_id={} error={}", self.rag_id, error)
-            return f"Knowledge search failed: {error}"
+            correlation_id = new_error_correlation_id()
+            logger.warning(
+                "Knowledge search failed rag_id={} correlation_id={} error={}",
+                self.rag_id,
+                correlation_id,
+                error,
+            )
+            return build_public_error_message(
+                PublicErrorMessage.KNOWLEDGE_SEARCH_FAILED, correlation_id
+            )
 
         if isinstance(result, str):
             knowledges = result

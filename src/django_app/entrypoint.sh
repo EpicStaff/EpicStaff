@@ -11,6 +11,10 @@ echo "Postgres is ready."
 echo "Applying database migrations..."
 python manage.py migrate
 
+# Reconcile built-in roles with rbac/access/builtin_roles.json; an invalid file stops startup.
+echo "Seeding built-in roles..."
+python manage.py seed_builtin_roles
+
 # Fix PostgreSQL sequences for all tables
 echo "Fixing PostgreSQL sequences..."
 python manage.py fix_sequences

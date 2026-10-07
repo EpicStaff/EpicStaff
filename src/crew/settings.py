@@ -37,6 +37,10 @@ DEFAULT_RAG_SEARCH_TIMEOUT = env.time("DEFAULT_RAG_SEARCH_TIMEOUT")
 NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")
 GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 
+AUDIT_TRAIL_ENABLED = env.bool("AUDIT_TRAIL_ENABLED")
+AUDITOR_URL = env.str("AUDITOR_URL")
+AUDITOR_INGEST_API_KEY = env.str("AUDITOR_INGEST_API_KEY")
+
 # optional run-level token budget hard stop.
 # Global fallback used when a session does not carry a per-run override
 # (see GraphSessionManagerService.run_session / SessionData.initial_state
@@ -44,3 +48,8 @@ GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 # the feature is fully inert unless TOKEN_BUDGET is set or a run explicitly
 # opts in, so existing runs are byte-for-byte unchanged.
 DEFAULT_TOKEN_BUDGET = env.int("CREW_TOKEN_BUDGET") or None
+
+DJANGO_HOST = env.str("DJANGO_HOST")
+DJANGO_PORT = env.int("DJANGO_PORT")
+DJANGO_API_KEY = env.str("DJANGO_API_KEY")
+KEY_VALUE_TIMEOUT = env.time("CREW_KEY_VALUE_TIMEOUT")

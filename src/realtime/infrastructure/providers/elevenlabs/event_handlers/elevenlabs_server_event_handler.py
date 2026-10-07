@@ -8,6 +8,7 @@ import numpy as np
 from loguru import logger
 
 from infrastructure.persistence.database import save_realtime_session_item_to_db
+from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import local_tool_name
 
 
 class ElevenLabsServerEventHandler:
@@ -239,7 +240,7 @@ class ElevenLabsServerEventHandler:
             {"type": "response.done", "response": {"id": rid, "status": "completed"}}
         )
 
-        logger.info(f"Assistant turn finished with transcript: {text[:30]}...")
+        logger.info("Assistant turn {} finished with a transcript of {} characters", rid, len(text))
 
         self._current_response_id = None
         self._current_item_id = None
@@ -301,7 +302,7 @@ class ElevenLabsServerEventHandler:
     async def _handle_client_tool_call(self, data: dict[str, Any]) -> None:
         tool_call = data.get("client_tool_call", {})
         tool_call_id = tool_call.get("tool_call_id", "")
-        tool_name = tool_call.get("tool_name", "")
+        tool_name = local_tool_name(self.client.tool_prefix, tool_call.get("tool_name", ""))
         parameters = tool_call.get("parameters", {})
 
         await self._ensure_response_exists()

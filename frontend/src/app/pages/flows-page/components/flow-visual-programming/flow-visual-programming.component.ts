@@ -15,14 +15,27 @@ import {
     OnInit,
     signal,
     ViewChild,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
-import { ActionCode, GetLlmConfigRequest, NodeType, ResourceCode } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import {
+    AppSvgIconComponent,
+    ConfirmationDialogService,
+    SpinnerComponent,
+    UnsavedChangesDialogService,
+} from '@shared/components';
+import {
+    ActionCode,
+    GetLlmConfigRequest,
+    GraphSessionStatus,
+    isTerminalSessionStatus,
+    NodeType,
+    ResourceCode,
+} from '@shared/models';
+import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
+import { extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
     defaultIfEmpty,
@@ -45,6 +58,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
+import { CreateFlowDialogComponent } from '../../../../features/flows/components/create-flow-dialog/create-flow-dialog.component';
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
 import { RestoreWarningsDialogComponent } from '../../../../features/flows/components/restore-warnings-dialog/restore-warnings-dialog.component';
 import {
@@ -58,30 +72,43 @@ import {
     GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
+import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
+import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
+import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
+import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
+import { PromptConfig } from '../../../../visual-programming/core/models/classification-decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
+import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
 import {
     AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
     NodeModel,
     ScheduleTriggerNodeModel,
+    SubGraphNodeModel,
     TaskNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
+import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter-egg/snake-game/snake-game-overlay.component';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
+import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
+import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
+import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { extractToSubflow } from '../../../../visual-programming/utils/extract/extract-to-subflow';
 import {
-    createStartNode,
-    hasStartNode,
+    buildFlowModelFromGraphDto,
     mapGraphDtoToFlowModel,
     normalizeFlowPorts,
 } from '../../../../visual-programming/utils/load';
@@ -96,11 +123,18 @@ import {
     getNodeDiff,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
+    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
+import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+
+export const TEST_RUN_NODE_GONE_MESSAGE = 'This node no longer exists — reload the flow';
+export const TEST_RUN_NODE_NOT_SAVED_MESSAGE = 'Click Save in the top panel to save the graph before running a test';
+export const RUN_WHILE_SAVING_MESSAGE = 'The flow is being saved. Run again when it is saved.';
+export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open the node to see why';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -114,6 +148,8 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
         MatTooltipModule,
         FlowAssistantPanelComponent,
         VersionHistoryPanelComponent,
+        FlowVersionPreviewComponent,
+        SnakeGameOverlayComponent,
     ],
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
@@ -124,6 +160,20 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
     private readonly injector = inject(Injector);
+    private readonly easterEggTrigger = inject(EasterEggTriggerService);
+    private readonly flowGraphHost = viewChild(FlowGraphComponent, { read: ElementRef<HTMLElement> });
+    private readonly isSnakeGameActive = signal(false);
+    /** Board element the snake-game overlay covers; null while no game is running. */
+    protected readonly snakeGameBoard = computed<HTMLElement | null>(() =>
+        this.isSnakeGameActive() ? (this.flowGraphHost()?.nativeElement ?? null) : null
+    );
+    /** Read-only node id to node-type colour lookup for the snake-game intro; only evaluated while a game runs. */
+    protected readonly snakeGameNodeColors = computed<ReadonlyMap<string, string>>(
+        () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
+    );
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly flowTestRunService = inject(FlowTestRunService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -131,26 +181,49 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
-    private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
-    private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
+    /**
+     * A `graphState` whose node lists are older than the backend's: another user saved and only the
+     * save_version was taken over. Any later load or save replaces `graphState` and so ends it.
+     */
+    private readonly outdatedGraphState = signal<GraphDto | null>(null);
+    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
+    private readonly storedGraph = computed<GraphDto | null>(() => {
+        const graph = this.graphState();
+        return graph === this.outdatedGraphState() ? null : graph;
+    });
+    protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
+    /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
+    private readonly savedFlowStateService = inject(SavedFlowStateService);
     protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
         if (!graph) return { nodes: [], connections: [] };
-
-        let flowModel = mapGraphDtoToFlowModel(graph);
-        flowModel = this.addStartNodeIfNeeded(flowModel);
-        const validated = this.validateSubgraphNodes(flowModel, this.availableFlowLights());
-        return validated.flowModel;
+        return buildFlowModelFromGraphDto(graph, this.availableFlowLights());
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
+        const current = toDirtyComparableFlowState(this.currentFlowState());
+        const saved = toDirtyComparableFlowState(this.savedFlowStateService.savedFlow());
+        return JSON.stringify(current) !== JSON.stringify(saved);
     });
 
     public isSaving = signal(false);
-    public isRunning = signal(false);
+    /** A regular or test run is being started; shared so it locks the header Run and the panels' test Run. */
+    public readonly isRunning = this.flowTestRunService.isRunStarting;
+    /** The status of the run streaming into the run panel (regular or test), until it ends. */
+    protected readonly activeRunStatus = computed<GraphSessionStatus | null>(() => {
+        if (!this.runSessionSSEService.isStreaming()) return null;
+        const status = this.runSessionSSEService.status();
+        return isTerminalSessionStatus(status) ? null : status;
+    });
     public restoreWarnings = signal<RestoreWarning[]>([]);
+    /** Restore warnings still worth showing: one tied to a node goes away once that node is deleted. */
+    public readonly activeRestoreWarnings = computed(() => {
+        const backendNodeIds = new Set(this.flowService.nodes().map((node) => node.backendId));
+        return this.restoreWarnings().filter(
+            (warning) => warning.node_id == null || backendNodeIds.has(warning.node_id)
+        );
+    });
 
     public isPanelOpen = signal(false);
     public isPanelCollapsed = signal(true);
@@ -162,6 +235,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public readonly versionHistoryGraphSaveVersion = computed<number | undefined>(
         () => this.graphState()?.save_version
     );
+
+    /** The version shown instead of the live canvas; null while editing the live flow. */
+    public readonly previewedVersion = signal<GraphVersionDto | null>(null);
+    public readonly isPreviewing = computed(() => this.previewedVersion() !== null);
+    /** Live canvas pan/zoom captured on entering a preview, handed back when the live canvas re-mounts. */
+    public readonly savedViewport = signal<FlowViewport | null>(null);
+    public readonly selectedVersionId = signal<number | null>(null);
+    /** True while a restored version loads; the live canvas then re-mounts and fits it. */
+    public readonly isCanvasReloading = signal(false);
     private readonly MIN_PANEL_WIDTH = 430;
     private readonly MAX_PANEL_WIDTH_RATIO = 0.7;
     private readonly MIN_CANVAS_WIDTH = 560;
@@ -169,6 +251,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly routeQueryParamMap;
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
+    private liveCdtStorageIds = new Set<string>();
+    // The nodeId/nodeName query opens its panel once; re-mounting the live canvas must not re-open it.
+    private lastNodeQueryKey: string | null = null;
+    private isNodeQueryConsumed = false;
 
     @ViewChild(FlowGraphComponent)
     private flowGraphComponent?: FlowGraphComponent;
@@ -209,8 +295,20 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             initialValue: this.route.snapshot.queryParamMap,
         });
 
+        this.flowService.bindSavedGraph(this.storedGraph);
+        this.destroyRef.onDestroy(() => this.flowService.bindSavedGraph(null));
+
         effect(() => {
             const params = this.routeQueryParamMap();
+            const nodeQueryKey = [params.get('nodeId'), params.get('nodeName'), params.get('nodeType')].join('|');
+            if (nodeQueryKey !== this.lastNodeQueryKey) {
+                this.lastNodeQueryKey = nodeQueryKey;
+                this.isNodeQueryConsumed = false;
+            }
+            if (this.isNodeQueryConsumed) {
+                this.initialNodeId = null;
+                return;
+            }
             const nodeId = params.get('nodeId');
             if (nodeId) {
                 const match = this.currentFlowState().nodes.find(
@@ -243,12 +341,35 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!isFinite(graphId)) return;
             if (graphId === this.lastFetchedGraphId) return;
             this.lastFetchedGraphId = graphId;
+            this.previewedVersion.set(null);
+            this.savedViewport.set(null);
+            this.selectedVersionId.set(null);
+            this.isVersionHistoryOpen.set(false);
+            this.isSnakeGameActive.set(false);
             this.undoRedoService.setUndoStack([]);
             this.undoRedoService.setRedoStack([]);
             const warnings = this.createGraphWarningService.readPending();
-            if (warnings.length) this.restoreWarnings.set(warnings);
+            // Always replace: warnings from a previous flow must not follow the user to this one.
+            this.restoreWarnings.set(warnings);
+            // Test payload errors are keyed by canvas node id and belong to the previous flow.
+            this.flowTestRunService.clearAllServerErrors();
             this.fetchGraph(graphId);
         });
+
+        effect(() => {
+            const flowState = this.currentFlowState();
+            const cdtStorageIds = new Set(
+                flowState.nodes
+                    .filter((node) => node.type === NodeType.CLASSIFICATION_TABLE)
+                    .map((node) => String(node.nodeNumber ?? node.backendId))
+            );
+            const cdtRemoved = [...this.liveCdtStorageIds].some((id) => !cdtStorageIds.has(id));
+            this.liveCdtStorageIds = cdtStorageIds;
+            if (cdtRemoved) this.cleanupCdtGridState(flowState);
+        });
+        this.easterEggTrigger.activated$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.startSnakeGame());
 
         this.sidePanelService.saveNodeRequest$
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -257,6 +378,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.reloadRequested$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshCurrentFlow());
+
+        this.flowTestRunService.requests$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((request) => this.handleTestRun(request));
         this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             const currentId = this.profileService.currentUserSignal()?.id;
             if (event.saved_by.user_id === currentId) return;
@@ -267,6 +392,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!this.hasUnsavedChangesSignal()) {
                 this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
             }
+            // Either way the stored nodes changed and this graph does not have them.
+            this.outdatedGraphState.set(this.graphState());
         });
     }
 
@@ -274,6 +401,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.unsavedChangesRegistry.register(this, {
             onRefresh: this.refreshCurrentFlow.bind(this),
         });
+    }
+
+    protected closeSnakeGame(): void {
+        this.isSnakeGameActive.set(false);
     }
 
     public refreshCurrentFlow(): void {
@@ -303,8 +434,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 takeUntilDestroyed(this.destroyRef),
                 tap(({ graph, flows }) => {
                     // Update graphState and availableFlowLights so loadedFlowState()
-                    // recomputes via mapGraphDtoToFlowModel + addStartNodeIfNeeded +
-                    // validateSubgraphNodes (the existing computed pipeline).
+                    // recomputes via buildFlowModelFromGraphDto (the shared post-load pipeline).
                     this.graphState.set(graph);
                     this.availableFlowLights.set(flows);
 
@@ -351,7 +481,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     // setFlow retriggers ngOnChanges in flow-graph, which runs
                     // _shiftImportedNodes (using _preImportBackendIds set by doPartialImport)
                     // and fitAfterNextFlowChange.
-                    // savedFlowState is intentionally NOT updated — the flow stays dirty.
+                    // The saved baseline is intentionally NOT updated — the flow stays dirty.
                     this.flowService.setFlow(mergedFlow);
 
                     // Run the same warning toasts as applyLoadedGraphState.
@@ -387,7 +517,194 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
-    private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false): void {
+    public onExtractToSubflow(selectedNodeIds: Set<string>): void {
+        if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+
+        // Step 1: Save current parent graph to establish a clean baseline.
+        this.saveFlowState(this.currentFlowState(), false)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                // Step 2: Open the Create Flow dialog so the user names the new subflow.
+                switchMap(() => {
+                    const dialogRef = this.dialog.open<GraphDto | undefined>(CreateFlowDialogComponent, {
+                        width: '500px',
+                        providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
+                    });
+                    return dialogRef.closed;
+                }),
+                // If the user cancelled the dialog, stop.
+                filter((newGraphDto): newGraphDto is GraphDto => newGraphDto != null),
+                switchMap((newGraphDto) => {
+                    // Step 3: Run the extraction utility.
+                    const currentFlow = this.currentFlowState();
+                    const { subflowModel, parentModel } = extractToSubflow(
+                        currentFlow,
+                        selectedNodeIds,
+                        generateUuid(),
+                        newGraphDto.id
+                    );
+
+                    // Step 4: Build the subflow save payload (empty previous = all creates).
+                    const emptyFlow: FlowModel = { nodes: [], connections: [] };
+                    const subflowNodeDiff = getNodeDiff(emptyFlow, subflowModel);
+                    const subflowIdMap = buildUuidToBackendIdMap(subflowModel.nodes);
+                    const subflowConnectionDiff = getConnectionDiff(emptyFlow, subflowModel, subflowIdMap);
+                    const subflowPayload = buildBulkSavePayload(
+                        newGraphDto.id,
+                        subflowNodeDiff,
+                        subflowConnectionDiff,
+                        subflowModel,
+                        subflowIdMap,
+                        newGraphDto.save_version
+                    );
+
+                    // Step 5: Bulk-save the subflow nodes to the server.
+                    return this.flowApiService
+                        .bulkSaveGraph(newGraphDto.id, subflowPayload)
+                        .pipe(map(() => ({ newGraphDto, parentModel })));
+                }),
+                // Step 6: Update the parent flow with the extraction result and save it.
+                switchMap(({ newGraphDto, parentModel }) => {
+                    // Update the subgraph node name to match the newly created flow name.
+                    const namedParentModel: FlowModel = {
+                        ...parentModel,
+                        nodes: parentModel.nodes.map((node) => {
+                            if (node.type !== NodeType.SUBGRAPH) return node;
+                            const subgraphNode = node as SubGraphNodeModel;
+                            if (subgraphNode.data.id !== newGraphDto.id) return node;
+                            return {
+                                ...subgraphNode,
+                                node_name: newGraphDto.name,
+                                data: {
+                                    ...subgraphNode.data,
+                                    name: newGraphDto.name,
+                                    uuid: newGraphDto.uuid ?? '',
+                                    description: newGraphDto.description ?? '',
+                                },
+                            };
+                        }),
+                    };
+
+                    this.flowService.setFlow(normalizeFlowPorts(namedParentModel));
+                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => newGraphDto.name));
+                }),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Extract to subflow failed: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                })
+            )
+            .subscribe((subflowName) => {
+                this.toastService.success(`Extracted selection into subflow "${subflowName}"`);
+            });
+    }
+
+    public onUnpackSubflow(subGraphNodeId: string): void {
+        if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+
+        // Step 1: Find the SubGraphNode.
+        const subGraphNode = this.flowService
+            .nodes()
+            .find((node): node is SubGraphNodeModel => node.id === subGraphNodeId && node.type === NodeType.SUBGRAPH);
+        if (!subGraphNode) {
+            this.toastService.error('SubGraph node not found');
+            return;
+        }
+
+        const subgraphId = subGraphNode.data.id;
+        if (!subgraphId) {
+            this.toastService.error('SubGraph node has no linked flow');
+            return;
+        }
+
+        const subflowName = subGraphNode.data.name || subGraphNode.node_name || `Subflow #${subgraphId}`;
+
+        // Step 2: Check how many other flows reference this subflow.
+        this.flowApiService
+            .getSubflowUsage(subgraphId)
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Could not check subflow usage: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                }),
+                // Step 3: If used elsewhere, show a confirmation dialog; otherwise skip it.
+                switchMap(({ parent_flow_ids }) => {
+                    const currentGraphId = this.graph!.id;
+                    const otherFlowIds = parent_flow_ids.filter((id) => id !== currentGraphId);
+                    if (otherFlowIds.length > 0) {
+                        return this.confirmationDialogService
+                            .confirmWithOptions({
+                                title: 'Unpack Subflow',
+                                message:
+                                    `This subflow is used in ${otherFlowIds.length} other flow(s). ` +
+                                    `Unpack <strong>${subflowName}</strong> into the current graph?`,
+                                confirmText: 'Unpack',
+                                cancelText: 'Cancel',
+                                type: 'warning',
+                                checkbox: { label: 'Also delete the subflow (will break other flows that use it)' },
+                            })
+                            .pipe(
+                                filter(
+                                    (result): result is Exclude<typeof result, 'close'> =>
+                                        result !== 'close' && result.confirmed
+                                ),
+                                map((dialogResult) => dialogResult.checked)
+                            );
+                    }
+                    // Not used elsewhere — skip dialog, auto-delete after unpack.
+                    return of(true);
+                }),
+                // Step 4: Fetch the subflow graph from the server.
+                switchMap((deleteSubflow) =>
+                    this.flowApiService
+                        .getGraphById(subgraphId, true)
+                        .pipe(map((graphDto) => ({ graphDto, deleteSubflow })))
+                ),
+                switchMap(({ graphDto, deleteSubflow }) => {
+                    // Step 5: Map the subflow DTO to a FlowModel.
+                    const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(graphDto));
+
+                    // Step 6: Run the unpack utility.
+                    const currentFlow = this.currentFlowState();
+                    const unpackedModel = unpackSubflow(currentFlow, subGraphNodeId, subflowFlowModel);
+
+                    // Step 7: Update the parent flow and save.
+                    this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
+                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => deleteSubflow));
+                }),
+                // Step 8: Optionally delete the subflow.
+                switchMap((deleteSubflow) => {
+                    if (deleteSubflow) {
+                        return this.flowStorageService.deleteFlow(subgraphId).pipe(
+                            map(() => true),
+                            catchError(() => {
+                                this.toastService.error('Unpacked successfully, but failed to delete the subflow');
+                                return of(false);
+                            })
+                        );
+                    }
+                    return of(false);
+                }),
+                catchError((err: HttpErrorResponse) => {
+                    this.toastService.error(`Unpack subflow failed: ${extractHttpErrorMessage(err)}`);
+                    return EMPTY;
+                })
+            )
+            .subscribe((deleted) => {
+                const suffix = deleted ? ' and deleted the subflow' : '';
+                this.toastService.success(`Unpacked "${subflowName}" into the current graph${suffix}`);
+            });
+    }
+
+    private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false, onSettled?: () => void): void {
         forkJoin({
             graph: this.flowApiService.getGraphById(graphId, forceRefresh),
             flows: this.flowApiService.getGraphsLight().pipe(catchError(() => of([] as GetGraphLightRequest[]))),
@@ -403,17 +720,28 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     void this.router.navigate(['/flows/my']);
                     return EMPTY;
                 }),
-                finalize(() => this.cdr.markForCheck())
+                finalize(() => {
+                    onSettled?.();
+                    this.cdr.markForCheck();
+                })
             )
             .subscribe();
     }
 
     public onHeaderSave(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
         this.flowGraphComponent?.emitSave();
     }
 
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
 
         this.cleanupCdtGridState(flowState);
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
@@ -422,7 +750,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private getBlockingNodeValidationIssues(flowState: FlowModel): string[] {
         let issues: string[] = [];
         try {
-            issues = [...this.getInvalidTaskNodeMessages(flowState), ...this.getInvalidAgentNodeMessages(flowState)];
+            issues = [
+                ...this.getInvalidTaskNodeMessages(flowState),
+                ...this.getInvalidAgentNodeMessages(flowState),
+                ...this.getInvalidClassificationTableMessages(flowState),
+                // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
+                ...invalidKeyValueNodeMessages(flowState.nodes),
+            ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);
             return ['a node failed validation — check the console and try again'];
@@ -513,6 +847,45 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return messages;
     }
 
+    /** CDT prompt schemas may legitimately be stored as a JSON string (legacy rows,
+     *  CSV/JSON import, crew runtime `json.loads`) — parse before applying the object rule. */
+    private isValidCdtPromptSchema(schema: PromptConfig['output_schema']): boolean {
+        if (schema == null) return true;
+        if (typeof schema === 'string') {
+            const trimmed = schema.trim();
+            if (trimmed === '') return true;
+            try {
+                return isValidOutputSchema(JSON.parse(trimmed));
+            } catch {
+                return false;
+            }
+        }
+        return isValidOutputSchema(schema);
+    }
+
+    private getInvalidClassificationTableMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.CLASSIFICATION_TABLE) return;
+            const cdtNode = node as ClassificationDecisionTableNodeModel;
+            const prompts = cdtNode.data?.table?.prompts ?? {};
+
+            const invalidKeys = Object.entries(prompts)
+                .filter(([, cfg]) => cfg.output_schema_invalid || !this.isValidCdtPromptSchema(cfg.output_schema))
+                .map(([key]) => key);
+
+            if (invalidKeys.length === 0) return;
+
+            const label = cdtNode.node_name?.trim() || `Untitled decision table #${index + 1}`;
+            const detail =
+                invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
+            messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
+        });
+
+        return messages;
+    }
+
     private cleanupCdtGridState(flowState: FlowModel): void {
         const match = window.location.pathname.match(/\/flows\/(\d+)/);
         const graphId = match?.[1];
@@ -542,6 +915,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return EMPTY;
+        }
         if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
             return EMPTY;
         }
@@ -614,7 +991,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.flowService.updateNode({ ...node, data: { ...node.data, isActive: dto.is_active } });
             }
         }
-        this.savedFlowState.set(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
+        this.savedFlowStateService.setSavedFlow(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
         this.sidePanelService.notifyGraphSaved();
         if (showSuccessToast) {
             this.toastService.success('Graph saved successfully');
@@ -672,12 +1049,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
                 const savedNode = patchedFlow.nodes.find((n) => n.id === node.id);
                 if (savedNode) {
-                    const prev = this.savedFlowState();
+                    const prev = this.savedFlowStateService.savedFlow();
                     const exists = prev.nodes.some((n) => n.id === node.id);
                     const nextNodes = exists
                         ? prev.nodes.map((n) => (n.id === node.id ? savedNode : n))
                         : [...prev.nodes, savedNode];
-                    this.savedFlowState.set(cloneFlowState({ nodes: nextNodes, connections: prev.connections }));
+                    this.savedFlowStateService.setSavedFlow(
+                        cloneFlowState({ nodes: nextNodes, connections: prev.connections })
+                    );
                 }
 
                 this.toastService.success('Node saved');
@@ -713,18 +1092,94 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public handleRunFlow(): void {
+        this.runAfterSave(
+            () => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables),
+            (error) => this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`)
+        );
+    }
+
+    /** "Run with test payload" from a trigger node panel: save the flow, then start the run at that node. */
+    private handleTestRun(request: FlowTestRunRequest): void {
+        this.runAfterSave(
+            () => this.startTestRun(request),
+            (error) => this.reportTestRunError(request.nodeId, error),
+            request.nodeId
+        );
+    }
+
+    /** Runs after the save, when a node added since the last save has its backend id. */
+    private startTestRun(request: FlowTestRunRequest): Observable<RunGraphResponse> {
+        const node = this.flowService.nodes().find((candidate) => candidate.id === request.nodeId);
+        if (!node) {
+            this.toastService.error(TEST_RUN_NODE_GONE_MESSAGE);
+            return EMPTY;
+        }
+        if (node.backendId == null) {
+            this.toastService.error(TEST_RUN_NODE_NOT_SAVED_MESSAGE);
+            return EMPTY;
+        }
+        return this.runGraphService
+            .runTestSession({
+                graph_id: this.graph.id,
+                node_type: request.nodeType,
+                node_id: node.backendId,
+                payload: request.payload,
+            })
+            .pipe(tap(() => this.toastService.success('Test run started')));
+    }
+
+    private reportTestRunError(nodeId: string, error: HttpErrorResponse): void {
+        if (error.status === 400) {
+            const payloadErrors: unknown = error.error?.errors;
+            const isMessageList =
+                Array.isArray(payloadErrors) && payloadErrors.every((message) => typeof message === 'string');
+            this.flowTestRunService.setServerErrors(
+                nodeId,
+                isMessageList ? payloadErrors : [extractHttpErrorMessage(error)]
+            );
+            // The errors show under that node's test payload editor; say so when it is not on screen.
+            if (this.sidePanelService.selectedNodeId() !== nodeId) {
+                this.toastService.error(TEST_RUN_PAYLOAD_REJECTED_MESSAGE);
+            }
+            return;
+        }
+        if (error.status === 404) {
+            this.toastService.error(TEST_RUN_NODE_GONE_MESSAGE);
+            return;
+        }
+        if (error.status === 403) {
+            this.toastService.error("You don't have permission to run tests on this flow.");
+            return;
+        }
+        this.toastService.error(`Failed to start test run: ${extractHttpErrorMessage(error)}`);
+    }
+
+    /**
+     * Saves unsaved changes, then starts a run with `start` and opens the run panel on its session.
+     * Starts nothing while another run starts or the flow is being saved (the save would be skipped),
+     * or when the open panel cannot be committed; a failed save has already been reported and starts
+     * nothing either. `testRunNodeId` is the trigger node of a test run, so its panel can show that the
+     * run is starting.
+     */
+    private runAfterSave(
+        start: () => Observable<RunGraphResponse>,
+        onStartError: (error: HttpErrorResponse) => void,
+        testRunNodeId: string | null = null
+    ): void {
         if (this.isRunning() || !this.graph?.id) return;
+        if (this.isSaving()) {
+            this.toastService.info(RUN_WHILE_SAVING_MESSAGE);
+            return;
+        }
         if (this.flowGraphComponent && !this.flowGraphComponent.commitSidePanelToFlow()) return;
 
-        this.isRunning.set(true);
+        this.flowTestRunService.markRunStarting(testRunNodeId);
 
-        const saveFirst$: Observable<void> = this.saveGraphForRun();
-
-        saveFirst$
+        this.saveGraphForRun()
             .pipe(
-                switchMap(() => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables)),
+                switchMap(() => start()),
                 takeUntilDestroyed(this.destroyRef),
-                tap((response: { session_id?: number }) => {
+                tap((response: RunGraphResponse) => {
                     this.currentSessionId = response.session_id?.toString() ?? null;
                     if (this.currentSessionId) {
                         this.runSessionSSEService.startStream(this.currentSessionId);
@@ -734,11 +1189,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.cdr.markForCheck();
                 }),
                 catchError((error: HttpErrorResponse) => {
-                    this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`);
+                    onStartError(error);
                     return EMPTY;
                 }),
                 finalize(() => {
-                    this.isRunning.set(false);
+                    this.flowTestRunService.clearRunStarting();
                     this.cdr.markForCheck();
                 })
             )
@@ -761,9 +1216,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (flowUuid && startNodeInitialState) {
             const curlCommand = this.generateCurlCommand(flowUuid, startNodeInitialState, apiUrl);
             this.copyToClipboard(curlCommand);
-            this.toastService.success('CURL command copied to clipboard!');
+            this.toastService.success('cURL command copied to clipboard!');
         } else {
-            this.toastService.error('Unable to generate CURL: Missing flow ID or start node data');
+            this.toastService.error('Unable to generate cURL: Missing flow ID or start node data');
         }
     }
 
@@ -811,6 +1266,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
+            if (this.previewedVersion()) {
+                this.toastService.info('Exit preview mode to save');
+                return;
+            }
+            if (this.flowReadOnly.isReadOnly()) {
+                this.flowReadOnly.notifyBlocked();
+                return;
+            }
             this.onHeaderSave();
         }
     }
@@ -837,7 +1300,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 tap((result) => {
                     this.isDeactivating = false;
                     if (result === 'dont-save') {
-                        this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
+                        this.savedFlowStateService.setSavedFlow(cloneFlowState(this.currentFlowState()));
                     }
                 }),
                 map((result) => result === 'save' || result === 'dont-save')
@@ -954,46 +1417,27 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.unsavedChangesRegistry.unregister(this);
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
+        this.savedFlowStateService.reset();
     }
 
-    private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {
-        if (hasStartNode(flowModel)) return flowModel;
-        return { ...flowModel, nodes: [createStartNode(), ...flowModel.nodes] };
-    }
-
-    private validateSubgraphNodes(
-        flowModel: FlowModel,
-        flows: GetGraphLightRequest[]
-    ): { flowModel: FlowModel; blockedCount: number } {
-        const availableIds = new Set(flows.map((f) => f.id));
-        let blockedCount = 0;
-
-        const nextFlowModel: FlowModel = {
-            ...flowModel,
-            nodes: flowModel.nodes.map((node) => {
-                if (node.type !== NodeType.SUBGRAPH) return node;
-                const subgraphId = Number((node as { data?: { id?: unknown } })?.data?.id);
-                const isMissing = !subgraphId || !availableIds.has(subgraphId);
-                if (isMissing) blockedCount++;
-                return { ...node, isBlocked: isMissing };
-            }),
-        };
-
-        return { flowModel: nextFlowModel, blockedCount };
+    /** Starts the purely visual snake easter egg over the open flow; ignored while loading or already playing. */
+    private startSnakeGame(): void {
+        if (!this.isLoaded() || this.isSnakeGameActive() || !this.flowGraphHost()) return;
+        this.isSnakeGameActive.set(true);
     }
 
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
         this.graphState.set(graph);
         this.availableFlowLights.set(flows);
-        const normalizedFlow = normalizeFlowPorts(this.loadedFlowState());
+        const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
-        // savedFlowState captures the as-persisted snapshot used for dirty-tracking.
+        // The saved baseline captures the as-persisted snapshot used for dirty-tracking.
         // It is set BEFORE the legacy-name rewrite so that flows with legacy names are
-        // immediately marked dirty — the user accepted this behaviour (EST-2826).
-        this.savedFlowState.set(cloneFlowState(normalizedFlow));
+        // immediately marked dirty — the user accepted this behaviour.
+        this.savedFlowStateService.setSavedFlow(cloneFlowState(normalizedFlow));
 
         // Eagerly rewrite legacy "at HH:MM" once-schedule names to "at HH-MM" in the
-        // live canvas state. Because savedFlowState already holds the old names, the
+        // live canvas state. Because the saved baseline already holds the old names, the
         // flow will be marked dirty until the user saves, which is the intended UX.
         const rewrittenFlow: FlowModel = {
             ...normalizedFlow,
@@ -1004,6 +1448,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }),
         };
         this.flowService.setFlow(rewrittenFlow);
+        this.cleanupCdtGridState(rewrittenFlow);
 
         this.isLoaded.set(true);
 
@@ -1102,7 +1547,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
 
         const top = rect.top;
-        const left = rect.right - 30;
+        const left = rect.right + 8;
 
         this.shortcutsPos.set({ top, left });
         this.isShortcutsOpen.set(true);
@@ -1130,9 +1575,50 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public onVersionHistoryClosed(): void {
         this.isVersionHistoryOpen.set(false);
+        this.selectedVersionId.set(null);
+        this.onPreviewExit();
+    }
+
+    public onVersionPreviewRequested(version: GraphVersionDto): void {
+        if (!this.previewedVersion()) {
+            // Edits pending in an open node panel belong to the live flow; keep them before its canvas goes away.
+            if (!this.commitLiveSidePanel()) {
+                this.toastService.warning('Fix the errors in the open node panel before previewing a version');
+                return;
+            }
+            this.savedViewport.set(this.flowGraphComponent?.captureViewport() ?? null);
+            this.consumeNodeQuery();
+        }
+        // Switching between versions keeps the viewport captured on the first entry.
+        this.previewedVersion.set(version);
+        this.selectedVersionId.set(version.id);
+    }
+
+    /** Plain exit: the live canvas re-mounts with its root state and the viewport saved on entry. */
+    public onPreviewExit(): void {
+        this.previewedVersion.set(null);
+    }
+
+    public onVersionDeleted(version: GraphVersionDto): void {
+        if (this.selectedVersionId() === version.id) {
+            this.selectedVersionId.set(null);
+        }
+        if (this.previewedVersion()?.id === version.id) {
+            this.onPreviewExit();
+        }
+    }
+
+    /** A renamed or re-described version keeps the preview bar in step; same id, so nothing reloads. */
+    public onVersionUpdated(version: GraphVersionDto): void {
+        if (this.previewedVersion()?.id === version.id) {
+            this.previewedVersion.set(version);
+        }
     }
 
     public onVersionRestoreRequested(version: GraphVersionDto): void {
+        // The dirty check and the optional backup read the live flow (root state, which the preview
+        // never touches), so the preview stays open behind the dialog. It closes only once the user
+        // picks a restore option; Cancel leaves them in the preview.
         const hasUnsaved = this.hasUnsavedChanges();
         const message = hasUnsaved
             ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
@@ -1143,13 +1629,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 title: 'Restore version',
                 message,
                 saveText: 'Save & Restore',
-                dontSaveText: 'Just Restore',
+                dontSaveText: 'Discard & Restore',
                 cancelText: 'Cancel',
                 type: 'warning',
                 showDontSave: true,
             })
             .pipe(
                 switchMap((result) => {
+                    if (result === 'save' || result === 'dont-save') {
+                        this.onPreviewExit();
+                    }
                     if (result === 'save') {
                         return this.saveCurrentState().pipe(
                             switchMap(() =>
@@ -1181,11 +1670,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     } else {
                         this.toastService.success('Version restored successfully');
                     }
-                    this.isVersionHistoryOpen.set(false);
+                    this.onVersionHistoryClosed();
                     this.restoreWarnings.set(response.warnings);
                     this.undoRedoService.setUndoStack([]);
                     this.undoRedoService.setRedoStack([]);
-                    this.refreshCurrentFlow();
+                    this.reloadRestoredGraph();
                 },
                 error: () => this.toastService.error('Failed to restore version'),
             });
@@ -1194,7 +1683,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onShowRestoreWarnings(): void {
         const dialogRef = this.dialog.open<number | undefined>(RestoreWarningsDialogComponent, {
             width: '560px',
-            data: { warnings: this.restoreWarnings() },
+            data: { warnings: this.activeRestoreWarnings() },
         });
 
         dialogRef.closed
@@ -1277,5 +1766,33 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    /** Commits the live node panel into the root flow; false (or a throw) means it holds invalid edits. */
+    private commitLiveSidePanel(): boolean {
+        try {
+            return this.flowGraphComponent?.commitSidePanelToFlow() ?? true;
+        } catch (error) {
+            console.error('Committing the open node panel failed', error);
+            return false;
+        }
+    }
+
+    private consumeNodeQuery(): void {
+        this.isNodeQueryConsumed = true;
+        this.initialNodeId = null;
+    }
+
+    /**
+     * Loads the restored graph while the live canvas is unmounted, so it re-mounts and fits the
+     * restored version instead of keeping the pre-restore (or pre-preview) viewport.
+     */
+    private reloadRestoredGraph(): void {
+        const graphId = Number(this.route.snapshot.paramMap.get('id'));
+        if (!isFinite(graphId)) return;
+        this.savedViewport.set(null);
+        this.consumeNodeQuery();
+        this.isCanvasReloading.set(true);
+        this.fetchGraph(graphId, true, true, () => this.isCanvasReloading.set(false));
     }
 }

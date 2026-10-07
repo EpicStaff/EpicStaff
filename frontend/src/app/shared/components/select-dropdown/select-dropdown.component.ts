@@ -65,6 +65,7 @@ export class SelectDropdownComponent {
     loadChildren = input<((node: SelectDropdownTreeNode) => Observable<SelectDropdownTreeNode[]>) | null>(null);
 
     searchable = input<boolean>(true);
+    readonly = input<boolean>(false);
     searchPlaceholder = input<string>('Search item...');
     selectedOnTop = input<boolean>(false);
     panelWidth = input<number | null>(null);
@@ -72,6 +73,7 @@ export class SelectDropdownComponent {
     maxPanelWidth = input<string | number | null>(null);
     /** Panel max-height. Number => px; string passed through (e.g. '80vh'). Null keeps the CSS default. */
     maxPanelHeight = input<string | number | null>(null);
+    panelClass = input<string>('');
     emptyText = input<string>('No results');
     checkedTip = input<((value: unknown) => string | null) | null>(null);
 
@@ -221,6 +223,7 @@ export class SelectDropdownComponent {
     }
 
     openDropdown(): void {
+        if (this.readonly()) return;
         const triggerEl = this.triggerDir()?.elementRef ?? this.defaultTrigger!;
         if (!this.overlayRef) {
             // Adaptive placement: prefer below the trigger, fall back to above, then
@@ -251,6 +254,7 @@ export class SelectDropdownComponent {
                 scrollStrategy: this.overlay.scrollStrategies.reposition(),
                 hasBackdrop: true,
                 backdropClass: 'transparent-backdrop',
+                panelClass: this.panelClass() || undefined,
                 width: this.panelWidth() ?? triggerEl.nativeElement.offsetWidth,
                 minWidth: this.minPanelWidth() ?? undefined,
                 maxWidth: this.maxPanelWidth() ?? undefined,
@@ -295,6 +299,7 @@ export class SelectDropdownComponent {
 
     // ============ FOOTER (multiple) ============
     saveChanges(): void {
+        if (this.readonly()) return;
         const next = [...this.draft()];
         const folderIds = [...this.draftFolderIds()];
         this.selected.set(next);
@@ -308,6 +313,7 @@ export class SelectDropdownComponent {
     }
 
     clearFilter(): void {
+        if (this.readonly()) return;
         this.draft.set([]);
         this.draftFolderIds.set(new Set());
     }
@@ -322,6 +328,7 @@ export class SelectDropdownComponent {
     });
 
     selectTab(id: string): void {
+        if (this.readonly()) return;
         if (id === this.resolvedActiveTabId()) return;
         if (this.selectionMode() === 'multiple') this.draftChange.emit([...this.draft()]);
         this.activeTabId.set(id);
@@ -332,6 +339,7 @@ export class SelectDropdownComponent {
     }
 
     onHeaderAction(): void {
+        if (this.readonly()) return;
         const active = this.resolvedActiveTabId();
         this.headerActionClick.emit(active ?? '');
     }
@@ -359,6 +367,7 @@ export class SelectDropdownComponent {
     }
 
     selectItem(item: SelectDropdownListItem): void {
+        if (this.readonly()) return;
         if (item.disabled) return;
         if (this.selectionMode() === 'single') {
             this.selected.set([item.value]);
@@ -401,6 +410,7 @@ export class SelectDropdownComponent {
     }
 
     onTreeRowClick(node: RuntimeTreeNode): void {
+        if (this.readonly()) return;
         if (node.disabled) return;
         if (node.type === 'folder') {
             if (this.selectionMode() === 'single') {

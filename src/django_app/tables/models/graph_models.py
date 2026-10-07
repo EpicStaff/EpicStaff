@@ -16,6 +16,7 @@ from tables.models.base_models import (
     ContentHashMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TestPayloadMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -210,6 +211,31 @@ class FileExtractorNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
+
+class KeyValueNode(BaseNode, SoftDeleteFields):
+    class Mode(models.TextChoices):
+        READ = "read"
+        WRITE = "write"
+        DELETE = "delete"
+
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="key_value_node_list")
+    # SET_NULL: deleting a table is allowed while nodes use it; they stay with no table
+    # selected (see KeyValueTableService.delete_table).
+    key_value_table = models.ForeignKey(
+        "KeyValueTable",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="nodes",
+    )
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.READ)
+    entries = models.JSONField(default=list, blank=True)
 
     class Meta:
         default_manager_name = "objects"
@@ -566,7 +592,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
         ]
 
 
-class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -596,6 +622,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
             "content_hash",
             "metadata",
             "python_code",
+            "test_payload",
         ]
 
         data = {
@@ -611,7 +638,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class TelegramTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -636,7 +663,14 @@ class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
     def generate_hash(self):
-        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "content_hash",
+            "metadata",
+            "test_payload",
+        ]
         data = {
             f.name: str(getattr(self, f.attname))
             for f in self._meta.fields
@@ -757,6 +791,8 @@ class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDelet
     post_output_variable_path = models.CharField(
         max_length=512, null=True, default=None, blank=True
     )
+    pre_use_storage = models.BooleanField(default=False)
+    post_use_storage = models.BooleanField(default=False)
     prompts = models.JSONField(default=dict, blank=True)
     default_llm_config = models.ForeignKey(
         "LLMConfig",
@@ -827,6 +863,16 @@ class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields):
         unique_together = ("cdt_node", "prompt_key")
 
 
+class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
+    id = models.UUIDField(primary_key=True)  # client-generated id — and the Django PK
+    classification_decision_table_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    name = models.CharField(max_length=255, blank=True, default="")
+
+
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
@@ -850,7 +896,14 @@ class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
     field_expressions = models.JSONField(default=dict, blank=True)
     field_manipulations = models.JSONField(default=dict, blank=True)
     route_code = models.CharField(max_length=128, null=True, default=None, blank=True)
-    section = models.CharField(max_length=128, null=True, default=None, blank=True)
+    section = models.ForeignKey(
+        "ClassificationConditionGroupSection",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        blank=True,
+        related_name="condition_groups",
+    )
 
     class Meta:
         default_manager_name = "objects"

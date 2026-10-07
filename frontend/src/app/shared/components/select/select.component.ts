@@ -30,6 +30,8 @@ export interface SelectItem<T = unknown> {
     value: T;
     group?: string;
     icon?: string;
+    /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
+    dotColor?: string;
     /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
     trailingActionIcon?: string;
 }
@@ -69,6 +71,14 @@ export class SelectComponent implements ControlValueAccessor {
     transparent = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
     allowCustomValue = input<boolean>(false);
+    /**
+     * When true, renders the selected value as plain text instead of an interactive trigger.
+     * Semantically distinct from `disabled` (which shows a greyed-out clickable control).
+     * Use this for read-only permission views.
+     */
+    readonly = input<boolean>(false);
+    /** Text shown in readonly mode when no value is selected. */
+    readonlyEmptyPlaceholder = input<string>('—');
 
     changed = output<unknown>();
     opened = output<void>();
@@ -107,6 +117,19 @@ export class SelectComponent implements ControlValueAccessor {
         return this.placeholder();
     });
 
+    /**
+     * Value to render in readonly mode: the selected item's name, or a custom-value string
+     * (when allowed), or the readonly empty placeholder. Never falls back to the interactive
+     * placeholder text.
+     */
+    protected readonly readonlyDisplayText = computed<string>(() => {
+        const item = this.selectedItem();
+        if (item) return item.name;
+        const value = this.selectedValue();
+        if (this.allowCustomValue() && typeof value === 'string' && value.length) return value;
+        return this.readonlyEmptyPlaceholder();
+    });
+
     private onChange: (value: unknown) => void = () => {};
     private onTouched: () => void = () => {};
 
@@ -121,7 +144,7 @@ export class SelectComponent implements ControlValueAccessor {
     private destroyRef = inject(DestroyRef);
 
     toggle() {
-        if (this.isDisabled()) return;
+        if (this.isDisabled() || this.readonly()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
@@ -131,7 +154,7 @@ export class SelectComponent implements ControlValueAccessor {
 
     /** Opens the dropdown anchored to originElement. Useful with hideTrigger + a projected trigger. */
     openAt(originElement: HTMLElement, minWidth = 160) {
-        if (this.isDisabled()) return;
+        if (this.isDisabled() || this.readonly()) return;
         this.opened.emit();
         this.search.set('');
 
@@ -183,7 +206,7 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     select(item: SelectItem) {
-        if (this.isDisabled()) return;
+        if (this.isDisabled() || this.readonly()) return;
         this.onChange(item.value);
         this.onTouched();
 
@@ -193,7 +216,7 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     protected commitCustomValue() {
-        if (this.isDisabled() || !this.allowCustomValue()) return;
+        if (this.isDisabled() || this.readonly() || !this.allowCustomValue()) return;
         const value = this.search().trim();
         if (!value) return;
 

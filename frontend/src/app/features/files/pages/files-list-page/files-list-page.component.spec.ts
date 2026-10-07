@@ -10,9 +10,11 @@ import { RouterTestingHarness } from '@angular/router/testing';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
 import { StorageItem } from '../../models/storage.models';
+import { FilesSearchService } from '../../services/files-search.service';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageDragService } from '../../services/storage-drag.service';
 import { StoragePageComponent } from './components/storage-page/storage-page.component';
@@ -36,12 +38,16 @@ class StoragePageStubComponent implements OnDestroy {
 @Component({ selector: 'app-collections-list-page', template: '<div class="collections-stub">collections</div>' })
 class CollectionsListPageStubComponent {}
 
+@Component({ selector: 'app-key-value-tables-page', template: '<div class="key-value-tables-stub">kv</div>' })
+class KeyValueTablesPageStubComponent {}
+
 const file: StorageItem = { id: 1, name: 'a.pdf', path: 'a.pdf', type: 'file' };
 
 describe('FilesListPageComponent', () => {
     let harness: RouterTestingHarness;
     let storageDrag: StorageDragService;
     let canReadKnowledge: boolean;
+    let canAll: boolean;
 
     function fixture(): ComponentFixture<unknown> {
         return harness.fixture;
@@ -84,6 +90,7 @@ describe('FilesListPageComponent', () => {
         lifecycle.storageDestroyed = 0;
         lifecycle.deepLinkPath = null;
         canReadKnowledge = true;
+        canAll = true;
         // jsdom has no ResizeObserver; the header's overflow directives need one.
         vi.stubGlobal(
             'ResizeObserver',
@@ -99,7 +106,7 @@ describe('FilesListPageComponent', () => {
             providers: [
                 provideRouter([
                     {
-                        path: 'files',
+                        path: 'storage',
                         component: FilesListPageComponent,
                         children: [
                             {
@@ -107,7 +114,8 @@ describe('FilesListPageComponent', () => {
                                 canActivate: [() => canReadKnowledge],
                                 children: [],
                             },
-                            { path: 'storage', children: [] },
+                            { path: 'files', children: [] },
+                            { path: 'key-value-tables', children: [] },
                         ],
                     },
                 ]),
@@ -117,13 +125,15 @@ describe('FilesListPageComponent', () => {
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
                 {
                     provide: PermissionsService,
-                    useValue: { can: () => true },
+                    useValue: { can: () => canAll },
                 },
             ],
         });
         TestBed.overrideComponent(FilesListPageComponent, {
-            remove: { imports: [CollectionsListPageComponent, StoragePageComponent] },
-            add: { imports: [CollectionsListPageStubComponent, StoragePageStubComponent] },
+            remove: { imports: [CollectionsListPageComponent, StoragePageComponent, KeyValueTablesPageComponent] },
+            add: {
+                imports: [CollectionsListPageStubComponent, StoragePageStubComponent, KeyValueTablesPageStubComponent],
+            },
         });
         await TestBed.compileComponents();
         storageDrag = TestBed.inject(StorageDragService);
@@ -137,7 +147,7 @@ describe('FilesListPageComponent', () => {
     });
 
     it('renders only the Storage page on the storage tab, visibly', async () => {
-        await navigate('/files/storage');
+        await navigate('/storage/files');
 
         expect(query('.storage-stub')).not.toBeNull();
         expect(query('.collections-stub')).toBeNull();
@@ -147,7 +157,7 @@ describe('FilesListPageComponent', () => {
     });
 
     it('renders only the Knowledge Sources page on its tab', async () => {
-        await navigate('/files/knowledge-sources');
+        await navigate('/storage/knowledge-sources');
 
         expect(query('.collections-stub')).not.toBeNull();
         expect(query('.storage-stub')).toBeNull();
@@ -155,7 +165,7 @@ describe('FilesListPageComponent', () => {
     });
 
     it('shows a spinner while a tab page is still loading', async () => {
-        await harness.navigateByUrl('/files/storage');
+        await harness.navigateByUrl('/storage/files');
         await loadDeferBlocks(DeferBlockState.Loading);
         fixture().detectChanges();
 
@@ -164,19 +174,19 @@ describe('FilesListPageComponent', () => {
     });
 
     it('unmounts the Storage page on a plain tab switch', async () => {
-        await navigate('/files/storage');
-        await navigate('/files/knowledge-sources');
+        await navigate('/storage/files');
+        await navigate('/storage/knowledge-sources');
 
         expect(query('.storage-stub')).toBeNull();
         expect(lifecycle.storageDestroyed).toBe(1);
     });
 
     it('keeps the same Storage page mounted, hidden but rendered, while a drag from it is live', async () => {
-        await navigate('/files/storage');
+        await navigate('/storage/files');
         const storageElement = query('.storage-stub');
         storageDrag.start(file);
 
-        await navigate('/files/knowledge-sources');
+        await navigate('/storage/knowledge-sources');
 
         expect(query('.collections-stub')).not.toBeNull();
         expect(query('.storage-stub')).toBe(storageElement);
@@ -190,9 +200,9 @@ describe('FilesListPageComponent', () => {
     });
 
     it('unmounts the kept-alive Storage page once the drag ends', async () => {
-        await navigate('/files/storage');
+        await navigate('/storage/files');
         storageDrag.start(file);
-        await navigate('/files/knowledge-sources');
+        await navigate('/storage/knowledge-sources');
 
         storageDrag.end();
         await settle();
@@ -203,12 +213,12 @@ describe('FilesListPageComponent', () => {
     });
 
     it('shows the kept-alive Storage page again when the drag returns to its tab', async () => {
-        await navigate('/files/storage');
+        await navigate('/storage/files');
         const storageElement = query('.storage-stub');
         storageDrag.start(file);
-        await navigate('/files/knowledge-sources');
+        await navigate('/storage/knowledge-sources');
 
-        await navigate('/files/storage');
+        await navigate('/storage/files');
 
         expect(query('.storage-stub')).toBe(storageElement);
         expect(storageLayer()?.classList).not.toContain('tab-page--kept-alive');
@@ -217,7 +227,7 @@ describe('FilesListPageComponent', () => {
     });
 
     it('never mounts the Storage page just because a drag is live elsewhere', async () => {
-        await navigate('/files/knowledge-sources');
+        await navigate('/storage/knowledge-sources');
 
         storageDrag.start(file);
         await settle();
@@ -226,17 +236,64 @@ describe('FilesListPageComponent', () => {
         expect(lifecycle.storageCreated).toBe(0);
     });
 
+    it('renders only the Key-Value Tables page on its tab, with no header create button', async () => {
+        await navigate('/storage/key-value-tables');
+
+        expect(query('.key-value-tables-stub')).not.toBeNull();
+        expect(query('.storage-stub')).toBeNull();
+        expect(query('.collections-stub')).toBeNull();
+        // Positive control for the button is the storage-tab test above (same permissions).
+        expect(query('.header-actions app-button')).toBeNull();
+    });
+
+    describe('header search', () => {
+        function headerSearch(): HTMLInputElement | null {
+            return query('.search-input') as HTMLInputElement | null;
+        }
+
+        it('is gone on Key-Value Tables, which searches keys in its own grid, and back on another tab', async () => {
+            await navigate('/storage/key-value-tables');
+            expect(headerSearch()).toBeNull();
+
+            await navigate('/storage/files');
+            expect(headerSearch()?.placeholder).toBe('Search collections, folders, files...');
+
+            // The tab comes from the route, not from a folder named like another tab in the query.
+            await navigate('/storage/files?path=/key-value-tables');
+            expect(headerSearch()?.placeholder).toBe('Search collections, folders, files...');
+        });
+
+        it('clears the search term when the tab changes, not within the same tab', async () => {
+            await navigate('/storage/files');
+            const search = harness.routeDebugElement!.injector.get(FilesSearchService);
+
+            search.setSearchTerm('report');
+            await navigate('/storage/files?page=2');
+            expect(search.searchTerm()).toBe('report');
+
+            await navigate('/storage/key-value-tables');
+            expect(search.searchTerm()).toBe('');
+        });
+
+        it('hides the header create button when the user lacks the permission', async () => {
+            canAll = false;
+            await navigate('/storage/files');
+
+            expect(query('.header-actions app-button')).toBeNull();
+        });
+    });
+
     describe('storage deep link (?path=), e.g. from the export-session-files dialog', () => {
         it('is readable by the Storage page through its injected ActivatedRoute', async () => {
-            await navigate('/files/storage?path=a/b');
+            await navigate('/storage/files?path=a/b');
 
             expect(lifecycle.deepLinkPath).toBe('a/b');
         });
 
         it('is readable when arriving from the Knowledge Sources tab', async () => {
-            await navigate('/files/knowledge-sources');
+            await navigate('/storage/knowledge-sources');
 
-            await navigate('/files/storage?path=reports/q1.pdf');
+            await navigate('/storage/files?path=reports/q1.pdf');
 
             expect(lifecycle.deepLinkPath).toBe('reports/q1.pdf');
         });
@@ -259,7 +316,7 @@ describe('FilesListPageComponent', () => {
         }
 
         it('opens Knowledge Sources when a storage drag rests on its tab', async () => {
-            await navigate('/files/storage');
+            await navigate('/storage/files');
             storageDrag.start(file);
             await settle();
 
@@ -267,25 +324,25 @@ describe('FilesListPageComponent', () => {
             fixture().detectChanges();
             expect(tab('knowledge-sources').classList).toContain('tab-spring-loading');
             await vi.advanceTimersByTimeAsync(TAB_SPRING_LOAD_DELAY_MS - 1);
-            expect(TestBed.inject(Router).url).toBe('/files/storage');
+            expect(TestBed.inject(Router).url).toBe('/storage/files');
             await waitForSpringLoad();
 
-            expect(TestBed.inject(Router).url).toBe('/files/knowledge-sources');
+            expect(TestBed.inject(Router).url).toBe('/storage/knowledge-sources');
             expect(query('.collections-stub')).not.toBeNull();
             expect(storageLayer()?.classList).toContain('tab-page--kept-alive');
         });
 
         it('ignores drags that are not storage drags (e.g. OS files)', async () => {
-            await navigate('/files/storage');
+            await navigate('/storage/files');
 
             await restOnTab('knowledge-sources');
 
-            expect(TestBed.inject(Router).url).toBe('/files/storage');
+            expect(TestBed.inject(Router).url).toBe('/storage/files');
             expect(tab('knowledge-sources').classList).not.toContain('tab-spring-loading');
         });
 
         it('cancels when the drag leaves the tab before the delay', async () => {
-            await navigate('/files/storage');
+            await navigate('/storage/files');
             storageDrag.start(file);
             await settle();
 
@@ -295,18 +352,18 @@ describe('FilesListPageComponent', () => {
             );
             await waitForSpringLoad();
 
-            expect(TestBed.inject(Router).url).toBe('/files/storage');
+            expect(TestBed.inject(Router).url).toBe('/storage/files');
         });
 
         it('does not navigate to a tab the guard refuses', async () => {
-            await navigate('/files/storage');
+            await navigate('/storage/files');
             storageDrag.start(file);
             canReadKnowledge = false;
             await settle();
 
             await restOnTab('knowledge-sources');
 
-            expect(TestBed.inject(Router).url).toBe('/files/storage');
+            expect(TestBed.inject(Router).url).toBe('/storage/files');
             expect(query('.storage-stub')).not.toBeNull();
         });
     });

@@ -1,8 +1,9 @@
 """Static taxonomy for the permission matrix UI.
 
-Single source of truth for which actions apply to which resource type.
-Read by `PermissionCatalogView` (FE matrix UI) and indirectly by the
-built-in role seed migration (for sanity-checking applicable bits).
+Single source of truth for which actions apply to which resource type. The
+seeder validates `builtin_roles.json` against `applicable_actions`, so
+removing an action here while that file still grants it makes the container
+fail to start.
 """
 
 from functools import reduce
@@ -138,6 +139,14 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
+        "code": ResourceType.AUDIT.value,
+        "label": "Audit",
+        "group": "admin",
+        "description": "Org-wide session execution trace: browse and export",
+        "applicable_actions": ["read", "export"],
+        "platform_actions": [],
+    },
+    {
         "code": ResourceType.VOICE.value,
         "label": "Voice",
         "group": "config",
@@ -150,6 +159,14 @@ RESOURCE_TYPE_METADATA = [
         "label": "Webhooks",
         "group": "config",
         "description": "Webhook trigger ingress routes and their auth configuration",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
+    {
+        "code": ResourceType.KEY_VALUE_TABLES.value,
+        "label": "Key-Value Tables",
+        "group": "workspace",
+        "description": "Key-value tables that flows read and write across runs",
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
@@ -274,6 +291,11 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "create": (("webhooks", "read"),),
         "update": (("webhooks", "read"),),
         "delete": (("webhooks", "read"),),
+    },
+    ResourceType.KEY_VALUE_TABLES.value: {
+        "create": (("key_value_tables", "read"),),
+        "update": (("key_value_tables", "read"),),
+        "delete": (("key_value_tables", "read"),),
     },
 }
 

@@ -21,6 +21,7 @@ from tables.models import (
     Edge,
     FileExtractorNode,
     Graph,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     Session,
@@ -181,6 +182,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         session: Session,
         token_budget: int | None = None,
+        run_type: str = "",
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
@@ -196,9 +198,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return SessionData(
             id=session.pk,
+            org_id=session.graph.org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
+            run_type=run_type,
         )
 
     def run_session(
@@ -243,7 +247,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
 
             session_data: SessionData = self.create_session_data(
-                session=session, token_budget=token_budget
+                session=session,
+                token_budget=token_budget,
+                run_type=trigger.trigger_type,
             )
             # TODO: add ping or waiting for crew to accept connections
 
@@ -285,7 +291,9 @@ class SessionManagerService(metaclass=SingletonMeta):
     def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
-            session = Session.objects.get(id=graph_session_message_data.session_id)
+            session = Session.objects.select_related("graph").get(
+                id=graph_session_message_data.session_id
+            )
             GraphSessionMessage.objects.create(
                 session=session,
                 name=graph_session_message_data.name,
@@ -333,6 +341,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             "graph_drift_search_config",
         )
         file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk)
+        key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(graph=graph.pk)
         edge_list = Edge.objects.filter(graph=graph.pk)
         conditional_edge_list = ConditionalEdge.objects.filter(graph=graph.pk).select_related(
@@ -342,10 +351,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph=graph.pk
         ).prefetch_related("condition_groups__conditions")
         subgraph_node_list = SubGraphNode.objects.filter(graph=graph.pk).select_related("subgraph")
-        webhook_trigger_node_list = WebhookTriggerNode.objects.filter(
-            graph=graph.pk
-        ).select_related("python_code")
-        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
+        webhook_trigger_node_list = (
+            WebhookTriggerNode.objects.filter(graph=graph.pk)
+            .defer("test_payload")
+            .select_related("python_code")
+        )
+        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
+            "test_payload"
+        )
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = ClassificationDecisionTableNode.objects.filter(
             graph=graph.pk
@@ -441,6 +454,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             python_node_list,
             knowledge_node_list,
             file_extractor_node_list,
+            key_value_node_list,
             audio_transcription_node_list,
             decision_table_node_list,
             classification_decision_table_node_list,
@@ -516,6 +530,10 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_id=session.pk if session else None,
             )
             for item in file_extractor_node_list
+        ]
+        key_value_node_data_list = [
+            cv.convert_key_value_node_to_pydantic(key_value_node=item, resolver=resolver)
+            for item in key_value_node_list
         ]
         audio_transcription_node_data_list = [
             cv.convert_audio_transcription_node_to_pydantic(
@@ -607,7 +625,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         for item in classification_decision_table_node_list:
             classification_dt_node_data_list.append(
                 cv.convert_classification_decision_table_node_to_pydantic(
-                    node=item, resolver=resolver
+                    node=item,
+                    resolver=resolver,
+                    graph_id=graph.pk,
+                    session_id=session.pk if session else None,
                 )
             )
 
@@ -627,6 +648,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             python_node_list=python_node_data_list,
             knowledge_node_list=knowledge_node_data_list,
             file_extractor_node_list=file_extractor_node_data_list,
+            key_value_node_list=key_value_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
             task_node_list=task_node_data_list,
             agent_node_list=agent_node_data_list,

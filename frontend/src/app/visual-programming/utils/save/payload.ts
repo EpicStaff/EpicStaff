@@ -1,4 +1,5 @@
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
+import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
@@ -210,6 +211,7 @@ function buildCdtNodePayload(
                   },
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
+        pre_use_storage: tableData.pre_use_storage ?? false,
         post_python_code:
             postCodeValue.trim() === '' && !postSecretIds.length
                 ? null
@@ -222,6 +224,7 @@ function buildCdtNodePayload(
                   },
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
+        post_use_storage: tableData.post_use_storage ?? false,
         prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
                 ({
@@ -239,6 +242,11 @@ function buildCdtNodePayload(
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
         ...(errorRef.tempId != null ? { next_error_node_temp_id: errorRef.tempId } : {}),
         condition_groups: conditionGroups,
+        sections: ((tableData.sections ?? []) as CdtSection[]).map((s) => ({
+            id: s.id,
+            name: s.name,
+            metadata: { color: normalizeCdtSectionColor(s.metadata?.color) },
+        })),
         metadata: toNodeMetadata(node),
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
 }
@@ -346,6 +354,7 @@ export function buildBulkSavePayload(
         knowledge_node_ids: nodeDiff.knowledgeRetrieverNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
+        key_value_node_ids: nodeDiff.keyValueNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         edge_ids: connectionDiff.toDelete.map((c) => c.data?.id).filter((id): id is number => id != null),
     };
 
@@ -436,6 +445,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            test_payload: n.data.test_payload ?? {},
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
@@ -444,6 +454,7 @@ export function buildBulkSavePayload(
             telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
+            test_payload: n.data.test_payload ?? {},
             metadata: toNodeMetadata(n),
         })),
         schedule_trigger_node_list: nodeItems(nodeDiff.scheduleNodes, (n) => ({
@@ -476,6 +487,16 @@ export function buildBulkSavePayload(
             query: n.data?.query ?? '',
             search_method: n.data?.search_method ?? null,
             search_configs: n.data?.search_configs ?? null,
+            metadata: toNodeMetadata(n),
+        })),
+        key_value_node_list: nodeItems(nodeDiff.keyValueNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            input_map: n.input_map || {},
+            output_variable_path: null,
+            key_value_table: n.data?.key_value_table ?? null,
+            mode: n.data?.mode ?? 'read',
+            entries: n.data?.entries ?? [],
             metadata: toNodeMetadata(n),
         })),
         edge_list: [...edgeList, ...edgeUpdateList],

@@ -204,11 +204,11 @@ export const routes: Routes = [
                     },
                     {
                         path: 'knowledge-sources',
-                        redirectTo: 'files',
+                        redirectTo: 'storage',
                         pathMatch: 'full',
                     },
                     {
-                        path: 'files',
+                        path: 'storage',
                         loadComponent: () =>
                             import('./features/files/pages/files-list-page/files-list-page.component').then(
                                 (m) => m.FilesListPageComponent
@@ -218,8 +218,11 @@ export const routes: Routes = [
                                 path: '',
                                 canActivate: [
                                     () => {
-                                        const last = inject(LastVisitedTabService).get('/files');
-                                        return inject(Router).parseUrl(last ?? '/files/knowledge-sources');
+                                        const last = inject(LastVisitedTabService).get('/storage');
+                                        const permissions = inject(PermissionsService);
+                                        return inject(Router).parseUrl(
+                                            last ?? permissions.resolveStorageTab() ?? permissions.resolveDefaultRoute()
+                                        );
                                     },
                                 ],
                                 children: [],
@@ -239,6 +242,12 @@ export const routes: Routes = [
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
                                 children: [],
                             },
+                            {
+                                path: FILES_TAB.KeyValueTables,
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
+                                children: [],
+                            },
                         ],
                     },
                     {
@@ -254,6 +263,15 @@ export const routes: Routes = [
                             ),
                         canActivate: [permissionGuard],
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
+                    },
+                    {
+                        path: 'audit',
+                        loadComponent: () =>
+                            import('./features/audit/audit-sessions-browser.component').then(
+                                (m) => m.AuditSessionsBrowserComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Audit, ActionCode.Read] },
                     },
                     {
                         path: 'workspace',

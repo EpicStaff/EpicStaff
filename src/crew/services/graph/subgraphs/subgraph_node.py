@@ -24,6 +24,7 @@ class SubGraphNode:
         subgraph_node_data: SubGraphNodeData,
         unique_subgraph_list: list[SubGraphData],
         graph_builder: StateGraph,
+        org_id: int,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
@@ -32,6 +33,7 @@ class SubGraphNode:
         self.subgraph_node_data = subgraph_node_data
         self._graph_builder = graph_builder
         self.session_id = session_id
+        self.org_id = org_id
         self.node_name = subgraph_node_data.node_name
         self.input_map = subgraph_node_data.input_map
         self.subgraph_data = self._get_graph_data(subgraph_node_data.subgraph_id)
@@ -68,6 +70,7 @@ class SubGraphNode:
             graph=self.subgraph_data.data,
             unique_subgraph_list=self.unique_subgraph_list,
             initial_state=initial_state,
+            org_id=self.org_id,
         )
 
     def _create_subgraph_builder(self):
@@ -80,6 +83,7 @@ class SubGraphNode:
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
             agent_task_service=self.session_graph_builder.agent_task_service,
+            key_value_client=self.session_graph_builder.key_value_client,
             stop_event=self.stop_event,
         )
 
@@ -217,14 +221,14 @@ class SubGraphNode:
 
     def _process_subgraph_result(self, state, subgraph_input, result) -> dict:
         """Process subgraph result and update parent state."""
-        subgraph_output = result["variables"].model_dump()
+        subgraph_output = result["variables"].deep_dump()
 
-        temp_state = {"variables": DotDict(state["variables"].model_dump())}
+        temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
-        if self.output_variable_path == "variables":
-            temp_state["variables"] = DotDict(subgraph_output)
-        elif self.output_variable_path:
-            if self.output_variable_path.startswith("variables."):
+        if self.output_variable_path:
+            if self.output_variable_path == "variables" or self.output_variable_path.startswith(
+                "variables."
+            ):
                 full_path = self.output_variable_path
             else:
                 full_path = f"variables.{self.output_variable_path}"
@@ -232,7 +236,7 @@ class SubGraphNode:
             set_output_variables(temp_state, full_path, subgraph_output)
 
         state_history_item = self._create_state_history_item(
-            subgraph_input, subgraph_output, dict(temp_state["variables"])
+            subgraph_input, subgraph_output, temp_state["variables"].deep_dump()
         )
 
         counts = dict(state.get("execution_counts", {}))
