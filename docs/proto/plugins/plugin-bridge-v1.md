@@ -6,7 +6,7 @@ status: draft
 tags: [plugins, prototype, protocol, security]
 created: 2026-10-07
 updated: 2026-10-07
-related: [plugins-prd, plugins-rules, plugins-architecture, plugin-package-format, plugins-api-contract, plugins-glossary]
+related: [plugin-bridge-v2, plugins-prd, plugins-rules, plugins-architecture, plugin-package-format, plugins-api-contract, plugins-glossary, plugins-code-map]
 ---
 
 # Plugin bridge v1
@@ -82,12 +82,13 @@ sending data out never fire `load`. Assume anything the bridge returns may reach
 
 ## Versioning
 
-- `BRIDGE_TABLES = {1: BRIDGE_V1_METHODS}` in `bridge-tables.ts`; the host dispatches by the plugin's `bridge` version
-  (from its manifest, see [[plugin-package-format]]).
+- `BRIDGE_TABLES = {1: BRIDGE_V1_METHODS, 2: BRIDGE_V2_METHODS}` in `bridge-tables.ts`; the host dispatches by the
+  plugin's `bridge` version (from its manifest, see [[plugin-package-format]]). v2 — for plugin apps — reuses every v1
+  handler and adds `kv.*`, `nav.*` and `theme.changed` ([[plugin-bridge-v2]]).
 - **v1 is a frozen public contract**: new behaviour means bridge v2; v1 semantics never change, so pages built for v1 keep
   working after EpicStaff upgrades ([[plugins-rules]] U3). If an underlying REST endpoint changes, the v1 handler adapts.
 - `bridge-v1.contract.spec.ts` pins method names, params, results, error codes, the envelope, and the exact HTTP call each
-  method makes. The backend accepts `SUPPORTED_BRIDGE_VERSIONS = {1}` (`src/django_app/plugins/manifest.py`).
+  method makes. The backend accepts `SUPPORTED_BRIDGE_VERSIONS = {1, 2}` (`src/django_app/plugins/manifest.py`).
 
 ## Round trip
 
@@ -115,9 +116,11 @@ sequenceDiagram
 
 ## Related
 
+- [[plugin-bridge-v2]] — [Plugin bridge v2](plugin-bridge-v2.md) (what plugin apps add on top of v1)
 - [[plugins-prd]] — [Plugins — product requirements](plugins-prd.md)
 - [[plugins-rules]] — [Plugins — rules](plugins-rules.md)
 - [[plugins-architecture]] — [Plugins — architecture](plugins-architecture.md)
 - [[plugin-package-format]] — [Plugin package format](plugin-package-format.md)
 - [[plugins-api-contract]] — [Plugins API contract](api-contract.md) (the `ui-session` response feeds the access policy)
 - [[plugins-glossary]] — [Plugins glossary](plugins-glossary.md)
+- [[plugins-code-map]] — [Plugins code map](code-map.md)

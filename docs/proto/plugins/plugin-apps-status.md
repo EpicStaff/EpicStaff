@@ -12,7 +12,8 @@ related: [alignment-plugin-apps, plugin-apps-plan]
 # Plugin apps — build status and morning test guide
 
 Built overnight on 2026-10-07 against [[alignment-plugin-apps]] and the frozen contracts in [[plugin-apps-plan]].
-**Nothing is committed** — every change is in the working tree of `proto/plugins-06-10-26`.
+Committed and pushed on 2026-10-07 as `3dc256813` (backend), `9cc899e90` (frontend), `306edc54b` (SDK + sample) and
+`bfeea626f` (docs). The current concept is described in the docs listed in [INDEX](INDEX.md); this page is the build log.
 
 ## What was built
 
@@ -103,7 +104,7 @@ sends only the id and the question; the flow keeps the transcript.
   (delete the plugin from Settings first so its resources go through the normal path).
 - The Playwright browser profile is logged in as the test user.
 
-## Proposed commits (not run — waiting for your yes)
+## Commits (run on 2026-10-07 after an explicit yes)
 
 ```
 git -C <SRC> add src/ && git -C <SRC> commit -m "chore(proto): plugins — backend: key-value tables in plugins, framework app serving, dev mode"

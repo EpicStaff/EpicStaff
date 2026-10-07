@@ -2,7 +2,7 @@
 id: plugin-apps-plan
 title: Plugin apps — implementation plan (frozen contracts + workstreams)
 type: plan
-status: in-progress
+status: done
 tags: [plugins, prototype, plugin-apps]
 created: 2026-10-07
 updated: 2026-10-07
