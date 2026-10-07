@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from tables.models.graph_models import (
@@ -48,7 +48,7 @@ class TriggerSpec:
 
     @classmethod
     def webhook(
-        cls, node: WebhookTriggerNode, path: str, config_id: str | None = None
+        cls, node: WebhookTriggerNode, path: str | None, config_id: str | None = None
     ) -> "TriggerSpec":
         return cls(
             trigger_type=SessionTrigger.TriggerType.WEBHOOK,
@@ -91,6 +91,10 @@ class TriggerSpec:
         if not isinstance(chat, dict):
             return None
         return chat.get("id")
+
+    def as_test_run(self) -> "TriggerSpec":
+        """Return a copy flagged as an editor test run; the original spec is left unchanged."""
+        return replace(self, extra={**self.extra, SessionTrigger.TEST_RUN_EXTRA_KEY: True})
 
     @property
     def node_id(self) -> int | None:

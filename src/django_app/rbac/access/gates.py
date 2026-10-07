@@ -123,7 +123,7 @@ class IsSystemApiKeyAuthenticated(BasePermission):
     For internal-service lookup endpoints that intentionally bypass
     org-context scoping, where the token itself is the only authorization
     check performed (e.g. `RealtimeChannelViewSet.lookup_by_token`, restricted
-    to the trusted `realtime`/`voice_app` services). Pair it alone in
+    to the trusted `realtime` service). Pair it alone in
     `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`), so a
     regular JWT session cannot use these org-bypass paths.
 

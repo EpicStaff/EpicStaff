@@ -11,13 +11,18 @@ export interface ConfirmationResultWithOptions {
     checked: boolean;
 }
 
+interface ConfirmationDialogConfig {
+    width?: string;
+    panelClass?: string;
+}
+
 @Injectable({
     providedIn: 'root',
 })
 export class ConfirmationDialogService {
     private readonly dialog = inject(Dialog);
 
-    confirm(options: ConfirmationDialogData, config?: { width?: string }): Observable<ConfirmationResult> {
+    confirm(options: ConfirmationDialogData, config?: ConfirmationDialogConfig): Observable<ConfirmationResult> {
         return this.openDialog(options, config).pipe(
             map((result) => {
                 if (!result) return 'close';
@@ -30,7 +35,7 @@ export class ConfirmationDialogService {
 
     confirmWithOptions(
         options: ConfirmationDialogData,
-        config?: { width?: string }
+        config?: ConfirmationDialogConfig
     ): Observable<ConfirmationResultWithOptions | 'close'> {
         return this.openDialog(options, config).pipe(
             map((result) => {
@@ -45,10 +50,11 @@ export class ConfirmationDialogService {
 
     private openDialog(
         options: ConfirmationDialogData,
-        config?: { width?: string }
+        config?: ConfirmationDialogConfig
     ): Observable<DialogResult | undefined> {
         const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
             width: config?.width ?? '400px',
+            panelClass: config?.panelClass,
             data: options,
         });
         return dialogRef.closed;

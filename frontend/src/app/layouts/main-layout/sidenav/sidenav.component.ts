@@ -13,7 +13,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -36,6 +36,9 @@ import { TooltipComponent } from './tooltip/tooltip.component';
 interface NavItem {
     id: string;
     routeLink?: string | (() => string | null);
+    /** URL path prefixes that highlight this item: its own section plus pages that belong to it
+     *  but live outside its route tree (e.g. flow sessions under Flows). */
+    activePaths?: string[];
     icon?: string;
     label: string;
     showTooltip: boolean;
@@ -50,7 +53,6 @@ interface NavItem {
     selector: 'app-left-sidebar',
     imports: [
         TooltipComponent,
-        RouterLinkActive,
         RouterLink,
         OverlayModule,
         PortalModule,
@@ -145,13 +147,14 @@ export class LeftSidebarComponent implements AfterViewInit {
     public showOrgTooltip = false;
 
     private router = inject(Router);
-    public isWorkspaceRoute = toSignal(
+    private currentPath = toSignal(
         this.router.events.pipe(
             filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-            map(() => this.router.url.startsWith('/workspace'))
+            map(() => this.readCurrentPath())
         ),
-        { initialValue: this.router.url.startsWith('/workspace') }
+        { initialValue: this.readCurrentPath() }
     );
+    public isWorkspaceRoute = computed(() => this.currentPath().startsWith('/workspace'));
 
     public activeMembership = computed(() => {
         const user = this.user();
@@ -191,6 +194,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             {
                 id: 'agents',
                 routeLink: 'agents',
+                activePaths: ['/agents'],
                 icon: 'agents',
                 label: 'Agents',
                 isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
@@ -199,6 +203,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             {
                 id: 'tools',
                 routeLink: 'tools',
+                activePaths: ['/tools'],
                 icon: 'tools',
                 label: 'Tools',
                 isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
@@ -207,6 +212,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             {
                 id: 'files',
                 routeLink: () => this.permissionService.resolveFilesTab(),
+                activePaths: ['/files'],
                 icon: 'sources',
                 label: 'Files',
                 isPermitted: () => this.permissionService.resolveFilesTab() !== null,
@@ -215,6 +221,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             {
                 id: 'flows',
                 routeLink: 'flows',
+                activePaths: ['/flows', '/sessions', '/graph'],
                 icon: 'flows',
                 label: 'Flows',
                 isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
@@ -223,9 +230,19 @@ export class LeftSidebarComponent implements AfterViewInit {
             {
                 id: 'chats',
                 routeLink: 'chats',
+                activePaths: ['/chats'],
                 icon: 'chats',
                 isPermitted: () => true,
                 label: 'Chats',
+                showTooltip: false,
+            },
+            {
+                id: 'audit',
+                routeLink: 'audit',
+                activePaths: ['/audit'],
+                icon: 'audit',
+                label: 'Audit',
+                isPermitted: () => this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
                 showTooltip: false,
             },
         ];
@@ -293,8 +310,17 @@ export class LeftSidebarComponent implements AfterViewInit {
         }
     }
 
+    public isItemActive(item: NavItem): boolean {
+        const path = this.currentPath();
+        return (item.activePaths ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+    }
+
     public resolveRouteLink(item: NavItem): string | null {
         if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
+    }
+
+    private readCurrentPath(): string {
+        return this.router.url.split(/[?#;]/)[0];
     }
 }

@@ -1,0 +1,47 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.flow-filter__search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background-color: transparent;
+
+    &:focus-within {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.flow-filter__search-icon {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+input[type='text'] {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: none;
+    background: none;
+    outline: none;
+    color: var(--color-text-primary);
+    font-size: 13px;
+
+    &::placeholder {
+        color: var(--color-input-text-placeholder);
+    }
+}
+
+app-audit-checkbox-enum {
+    display: block;
+    max-height: 180px;
+    overflow-y: auto;
+}

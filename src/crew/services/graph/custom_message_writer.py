@@ -14,6 +14,16 @@ from models.state import State
 
 
 class CustomSessionMessageWriter:
+    """
+    Upstream stream-message producer: builds GraphMessage objects onto the
+    LangGraph StreamWriter for the primary Redis-backed pipeline. Unrelated
+    to (and unaware of) src.shared.audit.writers.session_writer.SessionAuditWriter,
+    which fans these same messages out to the audit trail downstream, in
+    session_audit_provider.py::emit_session_audit_event - despite sharing
+    the method name `add_custom_message`, the two classes are different
+    concepts in series, not duplicates of each other.
+    """
+
     @classmethod
     def _convert_state(cls, state: State):
         return {
@@ -29,6 +39,7 @@ class CustomSessionMessageWriter:
         writer: StreamWriter,
         input_: Any,
         execution_order: int,
+        node_type: str = "",
     ):
         """
         Add a start message to the graph.
@@ -37,6 +48,7 @@ class CustomSessionMessageWriter:
             writer (StreamWriter): A stream writer to write the message to.
             input_ (Any): The input to the node.
             execution_order (int): The order of execution of the node.
+            node_type (str): The emitting node's BaseNode.TYPE, audit-only.
         """
         start_message_data = StartMessageData(
             input=input_,
@@ -46,6 +58,7 @@ class CustomSessionMessageWriter:
             name=node_name,
             execution_order=execution_order,
             message_data=start_message_data,
+            node_type=node_type,
         )
         writer(graph_message)
         return graph_message
@@ -59,6 +72,7 @@ class CustomSessionMessageWriter:
         output: Any,
         execution_order: int,
         state: State,
+        node_type: str = "",
         **kwargs,
     ):
         """
@@ -69,6 +83,7 @@ class CustomSessionMessageWriter:
             output (Any): The output of the node.
             execution_order (int): The order of execution of the node.
             state (State): The current state of the graph.
+            node_type (str): The emitting node's BaseNode.TYPE, audit-only.
             **kwargs: Additional data to include in the finish message.
 
         This function creates a finish message containing the node's output,
@@ -87,6 +102,7 @@ class CustomSessionMessageWriter:
             name=node_name,
             execution_order=execution_order,
             message_data=finish_message_data,
+            node_type=node_type,
         )
         writer(graph_message)
         return graph_message
@@ -99,6 +115,7 @@ class CustomSessionMessageWriter:
         writer: StreamWriter,
         error: Exception,
         execution_order: int,
+        node_type: str = "",
     ):
         """
         Add an error message to the graph.
@@ -107,6 +124,7 @@ class CustomSessionMessageWriter:
             writer (StreamWriter): A stream writer to write the message to.
             error (Exception): The exception that was raised.
             execution_order (int): The order of execution of the node.
+            node_type (str): The emitting node's BaseNode.TYPE, audit-only.
 
         This function creates an error message containing details about the
         exception that occurred. It includes the session ID, node name, execution
@@ -122,6 +140,7 @@ class CustomSessionMessageWriter:
             name=node_name,
             execution_order=execution_order,
             message_data=error_message_data,
+            node_type=node_type,
         )
         writer(graph_message)
         return graph_message
