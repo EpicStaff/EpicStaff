@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EpicStaff Benchmarks</title>
+  <link rel="icon" href="data:," />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    /* Layout: one-column workbench — actions, run picker, differences, then tabbed comparisons; wide tables scroll inside their own box. */
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --ink: #12161c;
+      --ink-2: #4b5360;
+      --muted: #7c8592;
+      --line: #d9dee5;
+      --grid: #e6e9ee;
+      --accent: #1f5bc4;
+      --accent-soft: #e5edfb;
+      --good: #0b7a0b;
+      --bad: #c42b2b;
+      --alert-bg: #fdeceb;
+      --alert-ink: #8a1c1c;
+      --alert-line: #eeb1ad;
+      --series-1: #2a78d6;
+      --series-2: #eb6834;
+      --series-3: #1baf7a;
+      --series-4: #eda100;
+      --series-5: #e87ba4;
+      --series-6: #008300;
+      --series-7: #4a3aa7;
+      --series-8: #e34948;
+      --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --font-data: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #0e1116;
+        --surface: #161a21;
+        --ink: #edf0f4;
+        --ink-2: #b6bdc8;
+        --muted: #858e9b;
+        --line: #2b313b;
+        --grid: #232830;
+        --accent: #79a6f2;
+        --accent-soft: #1b2940;
+        --good: #43c15b;
+        --bad: #f07070;
+        --alert-bg: #3a1618;
+        --alert-ink: #ffd0cc;
+        --alert-line: #7d2d2d;
+        --series-1: #3987e5;
+        --series-2: #d95926;
+        --series-3: #199e70;
+        --series-4: #c98500;
+        --series-5: #d55181;
+        --series-6: #008300;
+        --series-7: #9085e9;
+        --series-8: #e66767;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding-inline: 16px;
+      padding-block: 20px 48px;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.45 var(--font-ui);
+    }
+    body > * { max-width: 1440px; margin-inline: auto; }
+    h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+    h2 { font-size: 16px; margin: 0 0 4px; text-wrap: balance; }
+    h3 { font-size: 13px; margin: 16px 0 6px; color: var(--ink-2); font-weight: 600; letter-spacing: 0.02em; }
+    p { margin: 0; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 16px; }
+    .subtitle { color: var(--ink-2); }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+    button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .drop { border: 1px dashed var(--line); border-radius: 6px; padding: 6px 12px; color: var(--muted); }
+    .drop.over { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+    .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+    .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; margin-bottom: 12px; }
+    label.field { display: grid; gap: 2px; font-size: 12px; color: var(--ink-2); }
+    label.inline { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; color: var(--ink-2); }
+    label.inline > select { min-width: 0; }
+    select, input[type="search"] { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-bottom: 12px; }
+    .table-wrap { overflow-x: auto; max-width: 100%; }
+    table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; white-space: nowrap; }
+    th { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+    th.num, td.num { text-align: right; }
+    th button { all: unset; cursor: pointer; }
+    th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    th[aria-sort="ascending"] button::after { content: " ▲"; }
+    th[aria-sort="descending"] button::after { content: " ▼"; }
+    tr.selected td { background: var(--accent-soft); }
+    .mono { font-family: var(--font-data); font-size: 12.5px; }
+    .clip { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; }
+    .wrap { white-space: normal; min-width: 18ch; max-width: 36ch; }
+    .chip { display: inline-block; padding: 0 6px; margin-right: 4px; border: 1px solid var(--line); border-radius: 999px; font-size: 11.5px; color: var(--ink-2); }
+    .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; }
+    .delta { display: block; font-size: 12px; }
+    .delta.better { color: var(--good); }
+    .delta.worse { color: var(--bad); }
+    .delta.same, .muted { color: var(--muted); }
+    .reason { display: block; font-size: 12px; color: var(--ink-2); }
+    .warn { cursor: help; color: var(--bad); }
+    .banner { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--alert-line); border-radius: 6px; background: var(--alert-bg); color: var(--alert-ink); font-weight: 600; }
+    #messages { display: grid; gap: 6px; }
+    #messages:not(:empty) { margin-bottom: 16px; }
+    #messages p { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--alert-line); border-radius: 6px; background: var(--alert-bg); color: var(--alert-ink); }
+    nav { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+    nav button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; color: var(--ink-2); }
+    nav button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
+    .hint { max-width: 80ch; margin: 2px 0 12px; font-size: 12.5px; color: var(--ink-2); }
+    .empty { padding: 24px 0; color: var(--ink-2); }
+    .chart { position: relative; width: 100%; }
+    .grid-2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+    .grid-2 > * { min-width: 0; }
+    .key { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>EpicStaff Benchmarks</h1>
+      <p class="subtitle">Pick runs, set a baseline, compare capacity, latency and resources.</p>
+    </div>
+    <div class="actions">
+      <button id="load-index" type="button">Load index.json</button>
+      <button id="open-folders" type="button" class="primary">Open run folders…</button>
+      <input id="folder-input" type="file" webkitdirectory multiple hidden />
+      <div id="drop-zone" class="drop">or drop run folders here</div>
+    </div>
+  </header>
+  <div id="messages" role="status" aria-live="polite"></div>
+  <section id="runs" class="panel" aria-labelledby="runs-title">
+    <div class="panel-head">
+      <h2 id="runs-title">Runs</h2>
+      <p id="runs-count" class="muted"></p>
+    </div>
+    <div class="filters">
+      <label class="field">Kind <select id="filter-kind"></select></label>
+      <label class="field">Case <select id="filter-case"></select></label>
+      <label class="field">Ref <select id="filter-ref"></select></label>
+      <label class="field">Host <select id="filter-host"></select></label>
+      <label class="field">Search <input id="filter-text" type="search" placeholder="note, label, sha, folder" /></label>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Select</th>
+            <th scope="col">Baseline</th>
+            <th scope="col">Run</th>
+            <th scope="col">Date (UTC)</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Case / variant</th>
+            <th scope="col">Ref</th>
+            <th scope="col">Sha</th>
+            <th scope="col">Host</th>
+            <th scope="col">Note</th>
+            <th scope="col">Labels</th>
+            <th scope="col" title="Capacity runs: highest passing concurrency per phase. Dev runs: p95 end-to-end seconds.">Result</th>
+          </tr>
+        </thead>
+        <tbody id="runs-body"></tbody>
+      </table>
+    </div>
+  </section>
+  <section id="diff" class="panel" hidden></section>
+  <nav id="tabs" aria-label="Comparison views"></nav>
+  <main id="tab"></main>
+  <script>
+    "use strict";
+
+    const TABS = ["Verdicts", "Curves", "Time breakdown", "Timeline", "Nodes", "Containers", "Waterfall"];
+    // Same text columns as compare.py: never coerced to numbers, even when they look numeric.
+    const TEXT_COLUMNS = new Set([
+      "phase", "kind", "verdict", "live_verdict", "fail_reasons", "bottleneck", "node_name", "node_type",
+      "container", "status", "error_reason", "censored", "service", "checkpoint", "extra_json",
+    ]);
+    const NUMBER = /^-?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+    const MEASURED_KINDS = new Set(["ladder", "bisect", "dev"]);
+    const CAPACITY_COLUMNS = [
+      // [verdict key, label, +1 higher is better / -1 lower is better]
+      ["max_pass_concurrency", "Max passing concurrency", 1],
+      ["first_fail_level", "First failing level", 1],
+      ["throughput_per_min_at_max", "Throughput /min", 1],
+      ["p95_e2e_s_at_max", "p95 end-to-end s", -1],
+      ["p95_platform_overhead_s_at_max", "p95 platform overhead s", -1],
+      ["cpu_s_per_session_at_max", "CPU-s / session", -1],
+      ["mb_per_concurrent_total", "MB / concurrent session", -1],
+    ];
+    const DEV_COLUMNS = [
+      ["level", "Concurrency", 0],
+      ["throughput_per_min", "Throughput /min", 1],
+      ["p50_e2e_s", "p50 end-to-end s", -1],
+      ["p95_e2e_s", "p95 end-to-end s", -1],
+      ["cpu_s_per_session", "CPU-s / session", -1],
+    ];
+    const CURVE_METRICS = {
+      throughput_per_min: "Throughput (sessions / min)",
+      e2e_s_p50: "p50 end-to-end (s)",
+      e2e_s_p95: "p95 end-to-end (s)",
+      queue_wait_s_p95: "p95 queue wait (s)",
+      platform_overhead_s_p95: "p95 platform overhead (s)",
+      error_rate: "Error rate (0–1)",
+      cpu_s_per_session: "CPU-seconds per session",
+      mb_per_concurrent: "MB per concurrent session",
+    };
+    const BREAKDOWN = [
+      ["dispatch_s", "Dispatch"], ["queue_wait_s", "Queue wait"], ["agent_queue_s", "Agent queue"],
+      ["llm_s", "LLM"], ["python_s", "Python"], ["other_s", "Other"],
+    ];
+    const SPAN_TYPES = [
+      ["session", "Session (request → end)", "--muted"], ["queue", "Queue (received → slot)", "--series-2"],
+      ["node", "Node", "--series-1"], ["llm", "LLM call", "--series-7"], ["exec", "Python exec (sandbox)", "--series-3"],
+    ];
+    const PICKS = ["fastest", "median", "slowest", "failed", "cold"];
+
+    const state = {
+      runs: new Map(),
+      selected: [],
+      baseline: null,
+      tab: "Verdicts",
+      filters: { kind: "", case: "", ref: "", host: "", text: "" },
+      curveMetric: "throughput_per_min",
+      logX: true,
+      rightAxis: "host",
+      focusRun: null,
+      sessionPick: "median",
+    };
+    let charts = [];
+    let localCount = 0;
+    let diffToken = 0;
+    const notified = new Set();
+
+    // ------------------------------------------------------------ small helpers
+
+    const $ = (selector) => document.querySelector(selector);
+
+    function el(tag, attributes = {}, ...children) {
+      const node = document.createElement(tag);
+      for (const [name, value] of Object.entries(attributes)) {
+        if (value === undefined || value === null || value === false) continue;
+        if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
+        else if (name === "class") node.className = value;
+        else node.setAttribute(name, value === true ? "" : value);
+      }
+      node.append(...children.flat(Infinity).filter((child) => child !== null && child !== undefined && child !== false));
+      return node;
+    }
+
+    const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+    function fmt(value) {
+      if (value === null || value === undefined || value === "") return "—";
+      if (typeof value !== "number") return String(value);
+      if (Number.isInteger(value)) return String(value);
+      const size = Math.abs(value);
+      return String(+value.toFixed(size >= 100 ? 1 : size >= 10 ? 2 : 3));
+    }
+
+    // Every compared metric is non-negative in reality; a negative value is a fit artefact
+    // (e.g. MB per concurrent session from a noisy slope), so it gets no percentage.
+    function percentChange(value, base) {
+      if (typeof value !== "number" || typeof base !== "number" || base <= 0 || value < 0) return null;
+      return ((value - base) / Math.abs(base)) * 100;
+    }
+
+    function delta(value, base, better) {
+      const percent = percentChange(value, base);
+      if (percent === null) return null;
+      const tone = !better || Math.abs(percent) < 0.05 ? "same" : (percent > 0) === (better > 0) ? "better" : "worse";
+      return el("span", { class: `delta ${tone}` }, `${percent >= 0 ? "+" : ""}${percent.toFixed(1)}%`);
+    }
+
+    function mean(values) {
+      const known = values.filter((value) => typeof value === "number");
+      return known.length ? known.reduce((sum, value) => sum + value, 0) / known.length : null;
+    }
+
+    function notify(text) {
+      if (notified.has(text)) return;
+      notified.add(text);
+      const line = el("p", {}, el("span", {}, text));
+      line.append(el("button", { type: "button", onclick: () => { line.remove(); notified.delete(text); } }, "Dismiss"));
+      $("#messages").append(line);
+    }
+
+    const byCreated = (left, right) => (left.summary.created_at || "").localeCompare(right.summary.created_at || "");
+    const byName = (left, right) => String(left ?? "").localeCompare(String(right ?? ""), undefined, { numeric: true });
+    const swatch = (run) => el("span", { class: "swatch", style: `background: var(--series-${run.slot + 1})`, "aria-hidden": "true" });
+    const runColor = (run) => css(`--series-${run.slot + 1}`);
+    const comparable = (run, baseline) => run !== baseline && run.summary.kind === baseline.summary.kind;
+
+    function runCell(run, baseline, ...extra) {
+      return el("td", { title: run.folder }, swatch(run), run.tag, " ",
+        run === baseline ? el("span", { class: "chip" }, "baseline") : null, extra);
+    }
+
+    function phaseList(rowLists) {
+      const names = [];
+      for (const rows of rowLists) for (const row of rows) if (row && row.phase && !names.includes(row.phase)) names.push(row.phase);
+      return names;
+    }
+
+    // Same rule as compare.headline: capacity → highest passing step; otherwise the first step.
+    function headline(run, steps, phase) {
+      const own = steps.filter((step) => step.phase === phase);
+      const passes = own.filter((step) => step.verdict === "pass");
+      if (run.summary.kind === "capacity" && passes.length) return passes.reduce((best, step) => (step.level > best.level ? step : best));
+      return own[0] || null;
+    }
+
+    const sameStep = (row, step) => row.phase === step.phase && row.segment === step.segment && row.level === step.level && row.kind === step.kind;
+
+    // ------------------------------------------------------------ loading
+
+    async function loadIndex() {
+      try {
+        const response = await fetch("benchmarks/index.json", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const index = await response.json();
+        if (index.schema_version !== 1) {
+          notify(`benchmarks/index.json has schema_version ${index.schema_version}; this viewer reads version 1. Update index.html from benchmark/viewer.html.`);
+          return;
+        }
+        for (const entry of index.runs) {
+          const key = `served:${entry.folder}`;
+          const existing = state.runs.get(key);
+          if (existing) existing.summary = entry;
+          else state.runs.set(key, {
+            key, tag: `#${entry.number}`, number: entry.number, folder: entry.folder, local: false,
+            source: `benchmarks/${encodeURIComponent(entry.folder)}/`, summary: entry,
+          });
+        }
+        if (!state.selected.length && index.runs.length) {
+          const newest = [...state.runs.values()].filter((run) => !run.local).sort(byCreated).pop();
+          toggleSelect(newest, true);
+          return;
+        }
+        refresh();
+      } catch (error) {
+        notify(`Could not load benchmarks/index.json (${error.message}). If you opened this page from disk, use “Open run folders…” instead.`);
+      }
+    }
+
+    async function openFolders(fileList) {
+      const folders = new Map();
+      for (const file of fileList) {
+        const parts = (file.relativePath || file.webkitRelativePath || file.name).split("/");
+        if (parts.length < 2) continue;
+        const folder = parts[parts.length - 2];
+        if (!folders.has(folder)) folders.set(folder, new Map());
+        folders.get(folder).set(parts[parts.length - 1], file);
+      }
+      const opened = [];
+      for (const [folder, files] of folders) {
+        if (!files.has("meta.json")) continue;
+        try {
+          opened.push({ folder, files, meta: JSON.parse(await files.get("meta.json").text()) });
+        } catch (error) {
+          notify(`${folder}: meta.json is not valid JSON (${error.message}).`);
+        }
+      }
+      opened.sort((left, right) => (left.meta.created_at || "").localeCompare(right.meta.created_at || "")); // L1 = oldest, like #1
+      let added = 0;
+      for (const { folder, files, meta } of opened) {
+        if (!checkSchema(meta)) continue;
+        const key = `local:${folder}`;
+        const existing = state.runs.get(key);
+        const run = existing || { key, tag: `L${++localCount}`, number: null, folder, local: true };
+        Object.assign(run, { source: files, summary: summaryFromMeta(meta), metaPromise: Promise.resolve(meta), cache: new Map() });
+        state.runs.set(key, run);
+        added++;
+      }
+      if (!added) notify("No run folders found: pick a run folder (it holds meta.json) or a folder that contains run folders.");
+      refresh();
+    }
+
+    function summaryFromMeta(meta) {
+      return {
+        created_at: meta.created_at, kind: meta.kind, case: meta.case?.name, variant: meta.case?.variant,
+        ref: meta.git?.ref, sha: (meta.git?.sha || "").slice(0, 7), host: meta.host?.hostname, note: meta.note,
+        labels: meta.labels || [],
+        verdicts: Object.fromEntries((meta.phases || []).map((phase) => [phase.name, phase.verdict || {}])),
+      };
+    }
+
+    async function readText(source, name) {
+      let blob;
+      if (typeof source === "string") {
+        const response = await fetch(source + name);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        blob = await response.blob();
+      } else {
+        blob = source.get(name);
+        if (!blob) throw new Error("not in the folder");
+      }
+      if (name.endsWith(".gz")) {
+        // A server that sends Content-Encoding: gzip has already decoded it; only gunzip real gzip bytes.
+        const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+        if (head[0] === 0x1f && head[1] === 0x8b) {
+          return new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).text();
+        }
+      }
+      return blob.text();
+    }
+
+    function parseCsv(text) {
+      const records = [];
+      const length = text.length;
+      let row = [];
+      let position = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+      while (position < length) {
+        let value;
+        if (text[position] === '"') {
+          value = "";
+          position++;
+          for (;;) {
+            const close = text.indexOf('"', position);
+            if (close === -1) { value += text.slice(position); position = length; break; }
+            value += text.slice(position, close);
+            if (text[close + 1] === '"') { value += '"'; position = close + 2; } else { position = close + 1; break; }
+          }
+        } else {
+          let end = position;
+          while (end < length && text[end] !== "," && text[end] !== "\n" && text[end] !== "\r") end++;
+          value = text.slice(position, end);
+          position = end;
+        }
+        row.push(value);
+        if (text[position] === ",") {
+          position++;
+          if (position === length) row.push("");
+          continue;
+        }
+        records.push(row);
+        row = [];
+        if (text[position] === "\r") position++;
+        if (text[position] === "\n") position++;
+      }
+      if (row.length) records.push(row);
+      const [header, ...body] = records;
+      if (!header) return [];
+      return body
+        .filter((cells) => !(cells.length === 1 && cells[0] === ""))
+        .map((cells) => {
+          const object = {};
+          header.forEach((name, column) => {
+            const raw = cells[column] ?? "";
+            object[name] = raw === "" ? null : !TEXT_COLUMNS.has(name) && NUMBER.test(raw) ? Number(raw) : raw;
+          });
+          return object;
+        });
+    }
+
+    function checkSchema(meta) {
+      if (meta.schema_version === 1) return true;
+      notify(`Run ${meta.run_id || "(no run_id)"} has schema_version ${meta.schema_version ?? "(missing)"}; this viewer reads version 1 only, so the run cannot be opened. Update index.html from benchmark/viewer.html.`);
+      return false;
+    }
+
+    function loadMeta(run) {
+      run.metaPromise ??= readText(run.source, "meta.json")
+        .then(JSON.parse)
+        .then((meta) => {
+          if (checkSchema(meta)) return meta;
+          run.refused = true;
+          return null;
+        })
+        .catch((error) => {
+          notify(`${run.tag}: could not read meta.json (${error.message}).`);
+          run.refused = true;
+          return null;
+        });
+      return run.metaPromise;
+    }
+
+    function runCsv(run, name) {
+      run.cache ??= new Map();
+      if (!run.cache.has(name)) {
+        run.cache.set(name, readText(run.source, name).then(parseCsv).catch((error) => {
+          notify(`${run.tag}: could not read ${name} (${error.message}).`);
+          return [];
+        }));
+      }
+      return run.cache.get(name);
+    }
+
+    // ------------------------------------------------------------ selection and the run list
+
+    function toggleSelect(run, on) {
+      if (on && !state.selected.includes(run.key)) {
+        const used = new Set(state.selected.map((key) => state.runs.get(key).slot));
+        run.slot = [0, 1, 2, 3, 4, 5, 6, 7].find((slot) => !used.has(slot)) ?? state.selected.length % 8;
+        state.selected.push(run.key);
+        state.baseline ??= run.key;
+        loadMeta(run).then((meta) => { if (!meta) toggleSelect(run, false); });
+      } else if (!on) {
+        state.selected = state.selected.filter((key) => key !== run.key);
+        if (state.baseline === run.key) state.baseline = state.selected[0] ?? null;
+      }
+      refresh();
+    }
+
+    function setBaseline(run) {
+      state.baseline = run.key;
+      if (state.selected.includes(run.key)) refresh();
+      else toggleSelect(run, true);
+    }
+
+    function selectedRuns() {
+      const runs = state.selected.map((key) => state.runs.get(key)).filter((run) => run && !run.refused);
+      const baseline = runs.find((run) => run.key === state.baseline) || runs[0];
+      return baseline ? [baseline, ...runs.filter((run) => run !== baseline).sort(byCreated)] : [];
+    }
+
+    function refresh() {
+      renderRuns();
+      renderDiff(selectedRuns());
+      renderTab();
+    }
+
+    function resultText(summary) {
+      return Object.entries(summary.verdicts || {}).map(([phase, verdict]) =>
+        summary.kind === "capacity"
+          ? `${phase} ${fmt(verdict.max_pass_concurrency)}`
+          : `${phase} p95 ${fmt(verdict.p95_e2e_s ?? verdict.p95_e2e_s_at_max)} s`).join(" · ") || "—";
+    }
+
+    function renderRuns() {
+      const runs = [...state.runs.values()];
+      for (const key of ["kind", "case", "ref", "host"]) {
+        const select = $(`#filter-${key}`);
+        const values = [...new Set(runs.map((run) => run.summary[key]).filter(Boolean))].sort();
+        select.replaceChildren(el("option", { value: "" }, "All"), ...values.map((value) => el("option", { value }, value)));
+        if (!values.includes(state.filters[key])) state.filters[key] = "";
+        select.value = state.filters[key];
+      }
+      const text = state.filters.text.trim().toLowerCase();
+      const visible = runs
+        .filter((run) => ["kind", "case", "ref", "host"].every((key) => !state.filters[key] || run.summary[key] === state.filters[key]))
+        .filter((run) => !text || [run.tag, run.folder, run.summary.note, run.summary.sha, ...(run.summary.labels || [])]
+          .join(" ").toLowerCase().includes(text))
+        .sort((left, right) => byCreated(right, left) || (right.number ?? 0) - (left.number ?? 0));
+      $("#runs-count").textContent = `${visible.length} of ${runs.length} runs shown · ${state.selected.length} selected`;
+      const body = $("#runs-body");
+      if (!runs.length) {
+        body.replaceChildren(el("tr", {}, el("td", { colspan: 12, class: "empty" },
+          "No runs loaded yet. On the results site the list loads by itself; from disk, use “Open run folders…” or drop run folders above.")));
+        return;
+      }
+      body.replaceChildren(...visible.map((run) => {
+        const selected = state.selected.includes(run.key);
+        const summary = run.summary;
+        return el("tr", { class: selected ? "selected" : "" },
+          el("td", {}, el("input", {
+            type: "checkbox", "aria-label": `Select run ${run.tag}`, checked: selected, disabled: run.refused,
+            onchange: (event) => toggleSelect(run, event.target.checked),
+          })),
+          el("td", {}, el("input", {
+            type: "radio", name: "baseline", "aria-label": `Use run ${run.tag} as the baseline`,
+            checked: state.baseline === run.key, disabled: run.refused, onchange: () => setBaseline(run),
+          })),
+          el("td", { title: run.folder }, selected ? swatch(run) : null, run.local ? el("span", { class: "chip" }, "local") : null, run.tag),
+          el("td", { class: "mono" }, (summary.created_at || "").replace("T", " ").slice(0, 16) || "—"),
+          el("td", {}, summary.kind || "—"),
+          el("td", {}, `${summary.case || "—"} / ${summary.variant || "—"}`),
+          el("td", {}, summary.ref || "—"),
+          el("td", { class: "mono" }, summary.sha || "—"),
+          el("td", {}, summary.host || "—"),
+          el("td", { class: "clip", title: summary.note || "" }, summary.note || "—"),
+          el("td", {}, (summary.labels || []).length ? summary.labels.map((label) => el("span", { class: "chip" }, label)) : "—"),
+          el("td", {}, run.refused ? el("span", { class: "chip" }, "unsupported schema") : resultText(summary)));
+      }));
+    }
+
+    // ------------------------------------------------------------ what's different
+
+    async function renderDiff(runs) {
+      const token = ++diffToken;
+      const section = $("#diff");
+      if (runs.length < 2) { section.hidden = true; return; }
+      const metas = await Promise.all(runs.map(loadMeta));
+      if (token !== diffToken) return;
+      const known = runs.map((run, index) => [run, metas[index]]).filter(([, meta]) => meta);
+      const get = (meta, path) => path.split(".").reduce((value, key) => value?.[key], meta);
+      const phase = (meta, name) => (meta.phases || []).find((item) => item.name === name);
+      const rows = ["git.ref", "git.sha", "git.dirty", "case.hash", "case.variant", "case.overrides"]
+        .map((path) => [path, known.map(([, meta]) => get(meta, path))]);
+      const envKeys = [...new Set(known.flatMap(([, meta]) => Object.keys(meta.env || {})))].sort();
+      rows.push(...envKeys.map((key) => [`env.${key}`, known.map(([, meta]) => meta.env?.[key])]));
+      rows.push(...["host.hostname", "host.vcpu", "host.ram_mb", "labels"].map((path) => [path, known.map(([, meta]) => get(meta, path))]));
+      const phaseNames = [...new Set(known.flatMap(([, meta]) => (meta.phases || []).map((item) => item.name)))];
+      for (const name of phaseNames) {
+        rows.push([`phases[${name}].graph_hash`, known.map(([, meta]) => phase(meta, name)?.graph_hash)]);
+        rows.push([`phases[${name}].provider_health.slow_provider`, known.map(([, meta]) => phase(meta, name)?.provider_health?.slow_provider)]);
+      }
+      const show = (value) => value === undefined || value === null || (Array.isArray(value) && !value.length)
+        ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
+      const differing = rows.filter(([, values]) => new Set(values.map(show)).size > 1);
+      const caseDiffers = new Set(known.map(([, meta]) => meta.case?.hash)).size > 1;
+      const graphDiffers = phaseNames.some((name) =>
+        new Set(known.map(([, meta]) => phase(meta, name)?.graph_hash).filter(Boolean)).size > 1);
+      section.replaceChildren(
+        el("div", { class: "panel-head" }, el("h2", {}, "What’s different")),
+        caseDiffers || graphDiffers
+          ? el("p", { class: "banner", role: "alert" }, "Different workload: the case or a phase graph differs between the selected runs, so their numbers are not directly comparable.")
+          : "",
+        differing.length
+          ? el("div", { class: "table-wrap" }, el("table", {},
+            el("thead", {}, el("tr", {}, el("th", { scope: "col" }, "Field"), known.map(([run]) => el("th", { scope: "col" }, swatch(run), run.tag)))),
+            el("tbody", {}, differing.map(([path, values]) => el("tr", {},
+              el("th", { scope: "row", class: "mono" }, path),
+              values.map((value) => el("td", { class: "mono clip", title: show(value) }, show(value))))))))
+          : el("p", { class: "muted" }, "The selected runs share git ref and sha, case, variant, env, host and labels."));
+      section.hidden = false;
+    }
+
+    // ------------------------------------------------------------ tabs
+
+    function renderNav() {
+      $("#tabs").replaceChildren(...TABS.map((name) => el("button", {
+        type: "button", "aria-selected": String(state.tab === name),
+        onclick: () => { state.tab = name; renderTab(); },
+      }, name)));
+    }
+
+    function destroyCharts() {
+      charts.forEach((chart) => chart.destroy());
+      charts = [];
+    }
+
+    async function renderTab() {
+      renderNav();
+      destroyCharts();
+      const main = $("#tab");
+      const runs = selectedRuns();
+      if (!runs.length) {
+        main.replaceChildren(el("p", { class: "empty" },
+          "Select one or more runs above. The first run you select is the baseline; change it in the Baseline column."));
+        return;
+      }
+      if (window.Chart) {
+        Chart.defaults.color = css("--ink-2");
+        Chart.defaults.borderColor = css("--grid");
+        Chart.defaults.font.family = css("--font-ui");
+        Chart.defaults.animation = false;
+        Chart.defaults.maintainAspectRatio = false;
+      }
+      const host = el("div");
+      main.replaceChildren(host);
+      const baseline = runs[0];
+      try {
+        if (state.tab === "Verdicts") await renderVerdicts(runs, baseline, host);
+        else if (state.tab === "Curves") await renderCurves(runs, host);
+        else if (state.tab === "Time breakdown") await renderBreakdown(runs, host);
+        else if (state.tab === "Timeline") await renderTimeline(focusRun(runs, host), host);
+        else if (state.tab === "Nodes") await renderNodes(runs, baseline, host);
+        else if (state.tab === "Containers") await renderContainers(runs, baseline, host);
+        else await renderWaterfall(focusRun(runs, host), host);
+      } catch (error) {
+        console.error(error);
+        if (host.isConnected) host.append(el("p", { class: "banner" }, `Could not draw ${state.tab}: ${error.message}`));
+      }
+    }
+
+    function focusRun(runs, host) {
+      const run = runs.find((item) => item.key === state.focusRun) || runs[0];
+      if (runs.length > 1) {
+        const select = el("select", {
+          id: "focus-run", onchange: (event) => { state.focusRun = event.target.value; renderTab(); },
+        }, runs.map((item) => el("option", { value: item.key }, `${item.tag} · ${item.summary.ref || ""} · ${item.summary.case || ""}`)));
+        select.value = run.key;
+        host.append(el("div", { class: "controls" }, el("label", { class: "inline" }, "Run", select)));
+      }
+      return run;
+    }
+
+    function makeChart(parent, config, height, description) {
+      if (!window.Chart) {
+        parent.append(el("p", { class: "muted" }, "Charts need Chart.js from cdnjs.cloudflare.com, which did not load. The tables still work."));
+        return null;
+      }
+      const canvas = el("canvas", { role: "img", "aria-label": description });
+      parent.append(el("div", { class: "chart", style: `height: ${height}px` }, canvas));
+      const chart = new Chart(canvas, config);
+      charts.push(chart);
+      return chart;
+    }
+
+    function sortableTable(columns, rows) {
+      let sortColumn = null;
+      let direction = 1;
+      const body = el("tbody");
+      const headers = columns.map((column, index) => el("th", { scope: "col", class: column.numeric ? "num" : "", "aria-sort": "none" },
+        el("button", { type: "button", onclick: () => { direction = sortColumn === index ? -direction : 1; sortColumn = index; draw(); } }, column.label)));
+      function draw() {
+        const ordered = sortColumn === null ? rows : [...rows].sort((left, right) => {
+          const column = columns[sortColumn];
+          const a = column.value(left);
+          const b = column.value(right);
+          if (a === null || a === undefined) return b === null || b === undefined ? 0 : 1;
+          if (b === null || b === undefined) return -1;
+          return (typeof a === "number" && typeof b === "number" ? a - b : byName(a, b)) * direction;
+        });
+        headers.forEach((header, index) => header.setAttribute("aria-sort", index === sortColumn ? (direction > 0 ? "ascending" : "descending") : "none"));
+        body.replaceChildren(...ordered.map((row) => el("tr", {}, columns.map((column) =>
+          column.cell ? column.cell(row) : el("td", { class: column.numeric ? "num" : "" }, fmt(column.value(row)))))));
+      }
+      draw();
+      return el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, headers)), body));
+    }
+
+    const numberCell = (value, base, better, show) => el("td", { class: "num" }, fmt(value), show ? delta(value, base, better) : null);
+
+    // ------------------------------------------------------------ Verdicts
+
+    async function renderVerdicts(runs, baseline, host) {
+      const metas = await Promise.all(runs.map(loadMeta));
+      if (!host.isConnected) return;
+      const baseMeta = metas[0];
+      const phases = phaseList(metas.map((meta) => (meta?.phases || []).map((phase) => ({ phase: phase.name }))));
+      host.append(el("p", { class: "hint" },
+        `Capacity runs: values at the highest passing concurrency level. Δ vs baseline ${baseline.tag}, only between runs of the same kind: green is better, red is worse (lower is better for latency, CPU and memory).`));
+      for (const phaseName of phases) {
+        const panel = el("section", { class: "panel" }, el("h2", {}, `Phase ${phaseName}`));
+        let slow = false;
+        for (const kind of ["capacity", "dev"]) {
+          const rows = runs.map((run, index) => ({ run, meta: metas[index], phase: metas[index]?.phases?.find((item) => item.name === phaseName) }))
+            .filter((row) => row.meta?.kind === kind && row.phase);
+          if (!rows.length) continue;
+          const basePhase = baseMeta?.kind === kind ? baseMeta.phases.find((item) => item.name === phaseName) : null;
+          const columns = kind === "capacity" ? CAPACITY_COLUMNS : DEV_COLUMNS;
+          const head = el("tr", {}, el("th", { scope: "col" }, kind === "capacity" ? "Capacity run" : "Dev run"),
+            columns.map(([, label]) => el("th", { scope: "col", class: "num" }, label)),
+            kind === "capacity" ? [el("th", { scope: "col", class: "num" }, "Estimated limit"), el("th", { scope: "col" }, "Bottleneck at first failing level")] : null);
+          const body = rows.map(({ run, phase }) => {
+            const verdict = phase.verdict || {};
+            const showDelta = basePhase && run !== baseline;
+            const warn = phase.provider_health?.slow_provider;
+            if (warn) slow = true;
+            const cells = columns.map(([key, , better]) => numberCell(verdict[key], basePhase?.verdict?.[key], better, showDelta));
+            if (kind === "capacity") {
+              const estimate = phase.capacity_estimate;
+              cells.push(el("td", { class: "num" }, estimate ? `${fmt(estimate.concurrency)} (${estimate.limit})` : "—",
+                showDelta ? delta(estimate?.concurrency, basePhase.capacity_estimate?.concurrency, 1) : null));
+              cells.push(el("td", { class: "wrap" }, verdict.bottleneck || "—",
+                verdict.fail_reasons ? el("span", { class: "reason" }, verdict.fail_reasons) : null));
+            }
+            return el("tr", {}, runCell(run, baseline, warn
+              ? el("span", { class: "warn", title: "The LLM provider was slow during this run: latency and throughput reflect the provider, not EpicStaff." }, "⚠")
+              : null), cells);
+          });
+          panel.append(el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, body))));
+        }
+        if (slow) panel.append(el("p", { class: "hint" }, "⚠ The LLM provider was slow during this run (LLM p95 more than twice the smoke run’s): latency and throughput reflect the provider, not EpicStaff."));
+        host.append(panel);
+      }
+    }
+
+    // ------------------------------------------------------------ Curves
+
+    async function renderCurves(runs, host) {
+      const steps = await Promise.all(runs.map((run) => runCsv(run, "steps.csv")));
+      if (!host.isConnected) return;
+      const metric = el("select", { id: "curve-metric", onchange: (event) => { state.curveMetric = event.target.value; renderTab(); } },
+        Object.entries(CURVE_METRICS).map(([key, label]) => el("option", { value: key }, label)));
+      metric.value = state.curveMetric;
+      host.append(el("div", { class: "controls" },
+        el("label", { class: "inline" }, "Metric", metric),
+        el("label", { class: "inline" }, el("input", {
+          id: "curve-log", type: "checkbox", checked: state.logX, onchange: (event) => { state.logX = event.target.checked; renderTab(); },
+        }), "Log scale for concurrency")));
+      const surface = css("--surface");
+      for (const phase of phaseList(steps)) {
+        const datasets = [];
+        const levels = new Set();
+        runs.forEach((run, index) => {
+          const rows = steps[index].filter((step) => step.phase === phase && MEASURED_KINDS.has(step.kind)).sort((a, b) => a.level - b.level);
+          if (!rows.length) return;
+          const color = runColor(run);
+          rows.forEach((row) => levels.add(row.level));
+          datasets.push({
+            label: `${run.tag} ${run.summary.ref || ""}`.trim(),
+            data: rows.map((row) => ({ x: row.level, y: row[state.curveMetric], verdict: row.verdict })),
+            borderColor: color, backgroundColor: color, borderWidth: 2, spanGaps: true,
+            pointRadius: 5, pointHoverRadius: 7, pointBorderWidth: 2, pointBorderColor: color,
+            pointBackgroundColor: (context) => (context.raw?.verdict === "pass" ? color : surface),
+            pointStyle: (context) => (context.raw?.verdict === "invalid" ? "crossRot" : "circle"),
+          });
+        });
+        const ticks = [...levels].sort((a, b) => a - b);
+        const panel = el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`));
+        host.append(panel);
+        makeChart(panel, {
+          type: "line",
+          data: { datasets },
+          options: {
+            interaction: { mode: "nearest", intersect: false },
+            scales: {
+              x: {
+                type: state.logX ? "logarithmic" : "linear",
+                min: state.logX ? ticks[0] / 1.25 : 0,
+                max: ticks[ticks.length - 1] * (state.logX ? 1.25 : 1.05),
+                title: { display: true, text: "Concurrency level (sessions in flight)" },
+                afterBuildTicks: (axis) => { axis.ticks = ticks.map((value) => ({ value })); },
+                ticks: { callback: (value) => value },
+              },
+              y: { beginAtZero: true, title: { display: true, text: CURVE_METRICS[state.curveMetric] } },
+            },
+            plugins: {
+              legend: { position: "bottom", labels: { usePointStyle: true, pointStyle: "line" } },
+              tooltip: { callbacks: { label: (item) => `${item.dataset.label}: ${fmt(item.raw.y)} at ${item.raw.x} (${item.raw.verdict || "no verdict"})` } },
+            },
+          },
+        }, 320, `${CURVE_METRICS[state.curveMetric]} by concurrency level, phase ${phase}`);
+        panel.append(el("p", { class: "key" }, el("span", {}, "● pass"), el("span", {}, "○ fail"), el("span", {}, "✕ invalid (too few sessions or generator-limited)")));
+      }
+    }
+
+    // ------------------------------------------------------------ Time breakdown
+
+    async function renderBreakdown(runs, host) {
+      const data = await Promise.all(runs.map(async (run) => ({ run, steps: await runCsv(run, "steps.csv"), sessions: await runCsv(run, "sessions.csv.gz") })));
+      if (!host.isConnected) return;
+      host.append(el("p", { class: "hint" }, "Mean seconds per completed session at each run’s headline level (capacity: highest passing level; dev: its only level). Cold-start sessions are left out."));
+      for (const phase of phaseList(data.map((item) => item.steps))) {
+        const bars = [];
+        for (const { run, steps, sessions } of data) {
+          const step = headline(run, steps, phase);
+          if (!step) continue;
+          const rows = sessions.filter((session) => sameStep(session, step) && MEASURED_KINDS.has(session.kind) && !session.cold && session.status === "end");
+          const means = Object.fromEntries(BREAKDOWN.map(([key]) => [key, mean(rows.map((row) => row[key]))]));
+          bars.push({ run, level: step.level, count: rows.length, means, total: mean(rows.map((row) => row.e2e_s)) });
+        }
+        if (!bars.length) continue;
+        const panel = el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`));
+        host.append(panel);
+        makeChart(panel, {
+          type: "bar",
+          data: {
+            labels: bars.map((bar) => `${bar.run.tag} @${bar.level}`),
+            datasets: BREAKDOWN.map(([key, label], index) => ({
+              label, data: bars.map((bar) => bar.means[key]),
+              backgroundColor: css(`--series-${index + 1}`), borderColor: css("--surface"), borderWidth: 1, maxBarThickness: 28,
+            })),
+          },
+          options: {
+            indexAxis: "y",
+            scales: { x: { stacked: true, beginAtZero: true, title: { display: true, text: "Mean seconds per session" } }, y: { stacked: true } },
+            plugins: {
+              legend: { position: "bottom" },
+              tooltip: {
+                callbacks: {
+                  label: (item) => `${item.dataset.label}: ${fmt(item.raw)} s`,
+                  footer: (items) => `end-to-end mean ${fmt(bars[items[0].dataIndex].total)} s · ${bars[items[0].dataIndex].count} sessions`,
+                },
+              },
+            },
+          },
+        }, 90 + 40 * bars.length, `Where session time goes, phase ${phase}`);
+        panel.append(sortableTable([
+          { label: "Run", value: (bar) => bar.run.tag, cell: (bar) => runCell(bar.run, runs[0]) },
+          { label: "Level", value: (bar) => bar.level, numeric: true },
+          { label: "Sessions", value: (bar) => bar.count, numeric: true },
+          ...BREAKDOWN.map(([key, label]) => ({ label: `${label} s`, value: (bar) => bar.means[key], numeric: true })),
+          { label: "End-to-end s", value: (bar) => bar.total, numeric: true },
+        ], bars));
+      }
+    }
+
+    // ------------------------------------------------------------ Timeline
+
+    function decimate(points, limit = 2000) {
+      if (points.length <= limit) return points;
+      const size = Math.ceil(points.length / Math.floor(limit / 2)); // ≤ limit / 2 buckets, two points each
+      const result = [];
+      for (let start = 0; start < points.length; start += size) {
+        let low = null;
+        let high = null;
+        for (let index = start; index < Math.min(start + size, points.length); index++) {
+          const point = points[index];
+          if (typeof point.y !== "number") continue;
+          if (!low || point.y < low.y) low = point;
+          if (!high || point.y > high.y) high = point;
+        }
+        if (!low) result.push({ x: points[start].x, y: null });
+        else if (low === high) result.push(low);
+        else result.push(...(low.x <= high.x ? [low, high] : [high, low]));
+      }
+      return result;
+    }
+
+    function markerPlugin(markers, withLabels) {
+      return {
+        id: "stepMarkers",
+        afterDatasetsDraw(chart) {
+          const { ctx, chartArea, scales } = chart;
+          let lastLabel = -Infinity;
+          let lastPhase = null;
+          ctx.save();
+          ctx.font = `11px ${css("--font-ui")}`;
+          for (const marker of markers) {
+            const x = scales.x.getPixelForValue(marker.x);
+            if (x < chartArea.left || x > chartArea.right) continue;
+            ctx.strokeStyle = marker.color;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.stroke();
+            if (withLabels && x - lastLabel > 48) {
+              ctx.fillStyle = css("--ink-2");
+              ctx.fillText(marker.phase !== lastPhase ? `${marker.phase} ${marker.level}` : String(marker.level), x + 3, chartArea.top + 11);
+              lastLabel = x;
+            }
+            lastPhase = marker.phase;
+          }
+          ctx.restore();
+        },
+      };
+    }
+
+    function timeChart(parent, title, datasets, yTitle, markers, withLabels, extraScales = {}) {
+      parent.append(el("h3", {}, title));
+      return makeChart(parent, {
+        type: "line",
+        data: { datasets: datasets.map((dataset) => ({ pointRadius: 0, pointHitRadius: 4, borderWidth: 1.5, backgroundColor: dataset.borderColor, ...dataset })) },
+        options: {
+          parsing: false,
+          normalized: true,
+          interaction: { mode: "nearest", axis: "x", intersect: false },
+          scales: {
+            x: { type: "linear", title: { display: true, text: "Seconds since run start" } },
+            y: { beginAtZero: true, title: { display: true, text: yTitle } },
+            ...extraScales,
+          },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 14, boxHeight: 2 } },
+            tooltip: { callbacks: { title: (items) => `${fmt(items[0]?.parsed.x)} s`, label: (item) => `${item.dataset.label}: ${fmt(item.parsed.y)}` } },
+          },
+        },
+        plugins: [markerPlugin(markers, withLabels)],
+      }, 300, title);
+    }
+
+    async function renderTimeline(run, host) {
+      const [steps, timeline, containerRows] = await Promise.all([
+        runCsv(run, "steps.csv"), runCsv(run, "timeline.csv"), runCsv(run, "container_timeline.csv"),
+      ]);
+      if (!host.isConnected) return;
+      if (!timeline.length) {
+        host.append(el("p", { class: "empty" }, `${run.tag} has no timeline samples.`));
+        return;
+      }
+      const verdictColor = { pass: css("--good"), fail: css("--bad") };
+      const markers = steps.filter((step) => MEASURED_KINDS.has(step.kind)).map((step) => {
+        const first = timeline.find((row) => row.phase === step.phase && row.segment === step.segment && row.level === step.level);
+        return first && { x: first.rel_s, phase: step.phase, level: step.level, color: verdictColor[step.verdict] || css("--muted") };
+      }).filter(Boolean).sort((a, b) => a.x - b.x);
+      const series = (rows, key) => decimate(rows.map((row) => ({ x: row.rel_s, y: row[key] })));
+      const byContainer = new Map();
+      for (const row of containerRows) {
+        if (!byContainer.has(row.container)) byContainer.set(row.container, []);
+        byContainer.get(row.container).push(row);
+      }
+      const peak = (name) => byContainer.get(name).reduce((max, row) => Math.max(max, row.mem_mb ?? 0), 0);
+      const ranked = [...byContainer.keys()].sort((a, b) => peak(b) - peak(a));
+      const shown = ranked.slice(0, 5);
+      const hidden = ranked.slice(5);
+      const containerColor = (name) => css(`--series-${4 + shown.indexOf(name)}`);
+
+      const rightAxis = el("select", { id: "right-axis", onchange: (event) => { state.rightAxis = event.target.value; renderTab(); } },
+        el("option", { value: "host" }, "Host CPU %"), el("option", { value: "containers" }, "Container CPU %"), el("option", { value: "none" }, "Nothing"));
+      rightAxis.value = state.rightAxis;
+      host.append(el("div", { class: "controls" }, el("label", { class: "inline" }, "Right axis", rightAxis)),
+        el("p", { class: "hint" }, "Vertical lines mark where each measured level starts: green passed, red failed, grey invalid. Container CPU %: 100 = one full core. Host CPU %: share of all cores."));
+
+      const sessionSets = [
+        { label: "target", data: series(timeline, "target"), borderColor: css("--muted"), stepped: true, borderWidth: 1 },
+        { label: "in flight", data: series(timeline, "inflight"), borderColor: css("--series-1") },
+        { label: "running", data: series(timeline, "running"), borderColor: css("--series-3") },
+        { label: "queued", data: series(timeline, "queued"), borderColor: css("--series-2") },
+      ].map((dataset) => ({ yAxisID: "y", ...dataset }));
+      const cpuSets = state.rightAxis === "host"
+        ? [{ label: "host CPU %", data: series(timeline, "host_cpu_pct"), borderColor: css("--ink-2"), borderDash: [5, 3], yAxisID: "y2" }]
+        : state.rightAxis === "containers"
+          ? shown.map((name) => ({ label: `${name} CPU %`, data: series(byContainer.get(name), "cpu_pct"), borderColor: containerColor(name), borderDash: [5, 3], yAxisID: "y2" }))
+          : [];
+      const panel = el("section", { class: "panel" }, el("h2", {}, `${run.tag} · ${run.summary.case || ""} · ${run.summary.ref || ""}`));
+      host.append(panel);
+      timeChart(panel, "Sessions and CPU", [...sessionSets, ...cpuSets], "Sessions", markers, true, cpuSets.length
+        ? { y2: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: "CPU %" } } }
+        : {});
+      timeChart(panel, "Memory per container", shown.map((name) => ({ label: name, data: series(byContainer.get(name), "mem_mb"), borderColor: containerColor(name) })),
+        "MB", markers, false);
+      if (hidden.length) {
+        panel.append(el("p", { class: "hint" }, `Memory and container CPU show the ${shown.length} containers with the highest peak memory. Not drawn: ${hidden.join(", ")}. The Containers tab lists every container.`));
+      }
+      const pair = el("div", { class: "grid-2" }, el("div"), el("div"));
+      panel.append(pair);
+      timeChart(pair.children[0], "Postgres connections", [
+        { label: "connections", data: series(timeline, "pg_connections"), borderColor: css("--series-1") },
+        { label: "max connections", data: series(timeline, "pg_max_connections"), borderColor: css("--muted"), borderDash: [5, 3], borderWidth: 1 },
+      ], "Connections", markers, false);
+      timeChart(pair.children[1], "Redis memory", [
+        { label: "used MB", data: series(timeline, "redis_used_mb"), borderColor: css("--series-1") },
+      ], "MB", markers, false);
+    }
+
+    // ------------------------------------------------------------ Nodes
+
+    async function renderNodes(runs, baseline, host) {
+      const data = await Promise.all(runs.map(async (run) => ({ run, steps: await runCsv(run, "steps.csv"), nodes: await runCsv(run, "nodes.csv") })));
+      if (!host.isConnected) return;
+      host.append(el("p", { class: "hint" }, `Node durations at each run’s headline level. Δ p50 compares with the same node in baseline ${baseline.tag} (runs of the same kind only). Click a column header to sort.`));
+      const atHeadline = ({ run, steps, nodes }, phase) => {
+        const step = headline(run, steps, phase);
+        return step ? nodes.filter((node) => sameStep(node, step)) : [];
+      };
+      for (const phase of phaseList(data.map((item) => item.steps))) {
+        const baseNodes = atHeadline(data[0], phase);
+        const rows = data.flatMap((item) => atHeadline(item, phase).map((node) => {
+          const base = comparable(item.run, baseline) ? baseNodes.find((other) => other.node_name === node.node_name) : null;
+          return { run: item.run, node, base, change: percentChange(node.p50_s, base?.p50_s) };
+        })).sort((a, b) => byName(a.node.node_name, b.node.node_name)); // stable: runs stay in order under each node
+        if (!rows.length) continue;
+        host.append(el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`), sortableTable([
+          { label: "Node", value: (row) => row.node.node_name },
+          { label: "Type", value: (row) => row.node.node_type },
+          { label: "Run", value: (row) => row.run.tag, cell: (row) => runCell(row.run, baseline) },
+          { label: "Level", value: (row) => row.node.level, numeric: true },
+          { label: "Count", value: (row) => row.node.count, numeric: true },
+          { label: "p50 s", value: (row) => row.node.p50_s, numeric: true },
+          { label: "p95 s", value: (row) => row.node.p95_s, numeric: true },
+          { label: "Errors", value: (row) => row.node.error_count, numeric: true },
+          {
+            label: "Δ p50 vs baseline", value: (row) => row.change, numeric: true,
+            cell: (row) => el("td", { class: "num" }, delta(row.node.p50_s, row.base?.p50_s, -1) || "—"),
+          },
+        ], rows)));
+      }
+    }
+
+    // ------------------------------------------------------------ Containers
+
+    async function renderContainers(runs, baseline, host) {
+      const data = await Promise.all(runs.map(async (run) => ({
+        run, steps: await runCsv(run, "steps.csv"), phases: await runCsv(run, "container_phases.csv"), containers: await runCsv(run, "containers.csv"),
+      })));
+      if (!host.isConnected) return;
+      host.append(el("p", { class: "hint" }, `Memory model per container over the whole phase (baseline MB, MB added per concurrent session with its r², MB still held after cooldown) and CPU / peak memory at each run’s headline level. Δ vs baseline ${baseline.tag} for runs of the same kind.`));
+      const collect = ({ run, steps, phases, containers }, phase) => {
+        const step = headline(run, steps, phase);
+        const names = new Set([
+          ...phases.filter((row) => row.phase === phase).map((row) => row.container),
+          ...(step ? containers.filter((row) => sameStep(row, step)).map((row) => row.container) : []),
+        ]);
+        return [...names].map((container) => ({
+          run, container, level: step?.level,
+          model: phases.find((row) => row.phase === phase && row.container === container) || {},
+          load: (step && containers.find((row) => sameStep(row, step) && row.container === container)) || {},
+        }));
+      };
+      for (const phase of phaseList(data.flatMap((item) => [item.steps, item.phases]))) {
+        const baseRows = collect(data[0], phase);
+        const rows = data.flatMap((item) => collect(item, phase).map((row) => ({
+          ...row, base: comparable(row.run, baseline) ? baseRows.find((other) => other.container === row.container) : null,
+        }))).sort((a, b) => byName(a.container, b.container));
+        if (!rows.length) continue;
+        const withDelta = (pick, better) => (row) => numberCell(pick(row), row.base ? pick(row.base) : null, better, Boolean(row.base));
+        host.append(el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`), sortableTable([
+          { label: "Container", value: (row) => row.container },
+          { label: "Run", value: (row) => row.run.tag, cell: (row) => runCell(row.run, baseline) },
+          { label: "Baseline MB", value: (row) => row.model.baseline_mb, numeric: true },
+          { label: "MB / concurrent session", value: (row) => row.model.mb_per_concurrent, numeric: true, cell: withDelta((row) => row.model.mb_per_concurrent, -1) },
+          { label: "r²", value: (row) => row.model.r2, numeric: true },
+          { label: "Retained MB after cooldown", value: (row) => row.model.retained_mb_after_cooldown, numeric: true },
+          { label: "Headline level", value: (row) => row.level, numeric: true },
+          { label: "CPU-s / session", value: (row) => row.load.cpu_s_per_session, numeric: true, cell: withDelta((row) => row.load.cpu_s_per_session, -1) },
+          { label: "Peak memory MB", value: (row) => row.load.mem_peak_mb, numeric: true, cell: withDelta((row) => row.load.mem_peak_mb, -1) },
+        ], rows)));
+      }
+    }
+
+    // ------------------------------------------------------------ Waterfall
+
+    function sessionSpans(events) {
+      const sorted = [...events].sort((a, b) => a.ts - b.ts);
+      const extra = (event) => { try { return JSON.parse(event.extra_json || "{}"); } catch { return {}; } };
+      const first = (service, checkpoint) => sorted.find((event) => event.service === service && event.checkpoint === checkpoint);
+      const origin = first("django_app", "request_received") || sorted[0];
+      const spans = [];
+      const end = first("crew", "session_end");
+      if (end) spans.push({ type: "session", label: "Session", start: 0, end: end.ts - origin.ts });
+      const received = first("crew", "received");
+      const slot = first("crew", "slot_acquired");
+      if (received && slot) spans.push({ type: "queue", label: "Queue", start: received.ts - origin.ts, end: slot.ts - origin.ts });
+      const pair = (startName, endName, key, type, label) => {
+        const open = new Map();
+        for (const event of sorted) {
+          const id = key(event);
+          if (event.checkpoint === startName) {
+            if (!open.has(id)) open.set(id, []);
+            open.get(id).push(event);
+          } else if (event.checkpoint === endName && open.get(id)?.length) {
+            const start = open.get(id).shift();
+            spans.push({ type, label: label(start), start: start.ts - origin.ts, end: event.ts - origin.ts });
+          }
+        }
+      };
+      pair("node_start", "node_end", (event) => event.node_name, "node", (event) => event.node_name || "Node");
+      pair("llm_start", "llm_end", (event) => extra(event).correlation_id, "llm", (event) => (event.node_name ? `LLM · ${event.node_name}` : "LLM call"));
+      pair("exec_start", "exec_end", (event) => extra(event).execution_id, "exec", () => "Python exec");
+      return spans.sort((a, b) => a.start - b.start || b.end - a.end);
+    }
+
+    async function renderWaterfall(run, host) {
+      const [sessions, events] = await Promise.all([runCsv(run, "sessions.csv.gz"), runCsv(run, "events_sample.csv")]);
+      if (!host.isConnected) return;
+      const eventsBySession = new Map();
+      for (const event of events) {
+        if (!eventsBySession.has(event.session_id)) eventsBySession.set(event.session_id, []);
+        eventsBySession.get(event.session_id).push(event);
+      }
+      const sampled = sessions.filter((session) => eventsBySession.has(session.session_id));
+      const finished = sampled.filter((session) => session.status === "end" && session.e2e_s !== null && !session.cold).sort((a, b) => a.e2e_s - b.e2e_s);
+      const picks = {
+        fastest: finished[0], median: finished[Math.floor(finished.length / 2)], slowest: finished[finished.length - 1],
+        failed: sampled.find((session) => session.status !== null && session.status !== "end"), cold: sampled.find((session) => session.cold),
+      };
+      const pick = picks[state.sessionPick] ? state.sessionPick : PICKS.find((name) => picks[name]);
+      const select = el("select", { id: "session-pick", onchange: (event) => { state.sessionPick = event.target.value; renderTab(); } },
+        PICKS.map((name) => el("option", { value: name, disabled: !picks[name] },
+          picks[name] ? `${name}: session ${picks[name].session_id}, ${fmt(picks[name].e2e_s)} s` : `${name}: none in this run`)));
+      host.append(el("div", { class: "controls" }, el("label", { class: "inline" }, "Session", select)));
+      if (!pick) {
+        host.append(el("p", { class: "empty" }, `${run.tag} has no sampled session events (events_sample.csv).`));
+        return;
+      }
+      select.value = pick;
+      const session = picks[pick];
+      const spans = sessionSpans(eventsBySession.get(session.session_id));
+      const panel = el("section", { class: "panel" },
+        el("h2", {}, `${run.tag} · session ${session.session_id}`),
+        el("p", { class: "hint" }, `Phase ${session.phase}, level ${fmt(session.level)} (${session.kind}) · end-to-end ${fmt(session.e2e_s)} s · status ${session.status || "unfinished"}${session.error_reason ? ` · ${session.error_reason}` : ""}. Bars start at the moment Django received the request.`));
+      host.append(panel);
+      const types = SPAN_TYPES.filter(([type]) => spans.some((span) => span.type === type));
+      makeChart(panel, {
+        type: "bar",
+        data: {
+          labels: spans.map((span) => span.label),
+          datasets: types.map(([type, label, token]) => ({
+            label, grouped: false, backgroundColor: css(token), borderRadius: 2, barPercentage: 0.8, categoryPercentage: 0.9,
+            data: spans.map((span) => (span.type === type ? [span.start, span.end] : null)),
+          })),
+        },
+        options: {
+          indexAxis: "y",
+          scales: { x: { beginAtZero: true, title: { display: true, text: "Seconds since request received" } }, y: { grid: { display: false } } },
+          plugins: {
+            legend: { position: "bottom" },
+            tooltip: {
+              callbacks: {
+                label: (item) => {
+                  const [start, end] = item.raw;
+                  return `${spans[item.dataIndex].label}: ${fmt(start)} → ${fmt(end)} s (${fmt(end - start)} s)`;
+                },
+              },
+            },
+          },
+        },
+      }, 80 + 24 * spans.length, `Span waterfall for session ${session.session_id}`);
+    }
+
+    // ------------------------------------------------------------ wiring
+
+    $("#load-index").addEventListener("click", loadIndex);
+    $("#open-folders").addEventListener("click", () => $("#folder-input").click());
+    $("#folder-input").addEventListener("change", (event) => {
+      openFolders([...event.target.files]);
+      event.target.value = "";
+    });
+    for (const key of ["kind", "case", "ref", "host"]) {
+      $(`#filter-${key}`).addEventListener("change", (event) => { state.filters[key] = event.target.value; renderRuns(); });
+    }
+    $("#filter-text").addEventListener("input", (event) => { state.filters.text = event.target.value; renderRuns(); });
+
+    async function walk(entry, prefix, files) {
+      const path = prefix + entry.name;
+      if (entry.isFile) {
+        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+        file.relativePath = path;
+        files.push(file);
+        return;
+      }
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) break;
+        await Promise.all(batch.map((child) => walk(child, `${path}/`, files)));
+      }
+    }
+
+    const dropZone = $("#drop-zone");
+    dropZone.addEventListener("dragover", (event) => { event.preventDefault(); dropZone.classList.add("over"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("over"));
+    dropZone.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("over");
+      const entries = [...event.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+      const files = [];
+      await Promise.all(entries.map((entry) => walk(entry, "", files)));
+      openFolders(files);
+    });
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.selected.length) renderTab(); });
+
+    refresh();
+    if (/^https?:$/.test(location.protocol)) loadIndex();
+  </script>
+</body>
+</html>

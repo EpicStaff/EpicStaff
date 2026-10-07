@@ -18,6 +18,7 @@ import analyze
 import api
 import compare
 import config
+import fixtures
 import load
 import push
 import runner
@@ -695,11 +696,8 @@ class BottleneckTest(unittest.TestCase):
         )
 
 
-@unittest.skipUnless(Path(__file__).with_name("fixtures.py").exists(), "fixtures arrive in Task 11")
 class AnalyzeFolderTest(unittest.TestCase):
     def test_writes_every_file_with_the_schema_columns(self):
-        import fixtures
-
         out = Path(tempfile.mkdtemp())
         run_dir = fixtures.write_capacity_run(
             out, name="demo", levels=(10, 20, 40), fail_from=40, seed=1
