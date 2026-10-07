@@ -694,3 +694,14 @@ class KeyValueTableNotFoundError(CustomAPIExeption):
 
     def __init__(self, table_id: int):
         super().__init__(f"Key-value table {table_id} not found.", code=self.default_code)
+
+
+class InvalidTestRunPayloadError(CustomAPIExeption):
+    """A test-run payload does not fit the trigger node it targets; carries every problem found."""
+
+    status_code = 400
+    default_code = "test_run_payload_invalid"
+
+    def __init__(self, messages: list[str]):
+        self.errors = messages
+        super().__init__(detail={"payload": messages}, code=self.default_code)
