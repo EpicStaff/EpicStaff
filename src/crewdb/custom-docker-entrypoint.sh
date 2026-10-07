@@ -113,6 +113,38 @@ EOF
     echo "[realtime] Role ready: ${realtime_user}"
 }
 
+create_sandbox_user() {
+    local sandbox_user="${SANDBOX_DB_USER}"
+    local sandbox_password="${SANDBOX_DB_PASSWORD}"
+    local sandbox_schema="${SANDBOX_DB_SCHEMA}"
+
+    if [[ -z "$sandbox_user" || -z "$sandbox_password" ]]; then
+        echo "[sandbox] WARNING: SANDBOX_DB_USER or SANDBOX_DB_PASSWORD not set, skipping"
+        return 0
+    fi
+
+    echo "[sandbox] Creating role and owned schema if not exists..."
+    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${sandbox_user}') THEN
+        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${sandbox_user}', '${sandbox_password}');
+        RAISE NOTICE '[sandbox] Created user ${sandbox_user}';
+    ELSE
+        RAISE NOTICE '[sandbox] User ${sandbox_user} already exists, skipping';
+    END IF;
+END
+\$\$;
+
+-- The sandbox role owns its own schema and everything it creates there (its venv
+-- table and Piccolo's own migration table). Default the role's search_path to it so
+-- every sandbox connection and migration targets this namespace. No public grants.
+CREATE SCHEMA IF NOT EXISTS "${sandbox_schema}" AUTHORIZATION "${sandbox_user}";
+ALTER ROLE "${sandbox_user}" SET search_path = "${sandbox_schema}";
+EOF
+    echo "[sandbox] Role and schema ready: ${sandbox_user} owns schema ${sandbox_schema}"
+}
+
 # TABLE PERMISSION GRANT FUNCTIONS
 # Called only after Django migrations have run.
 # Each function is safe to call multiple times.
@@ -444,6 +476,7 @@ background_setup() {
         create_manager_user
         create_knowledge_user
         create_realtime_user
+        create_sandbox_user
         install_event_triggers
         echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
 
