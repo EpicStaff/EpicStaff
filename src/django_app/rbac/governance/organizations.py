@@ -24,7 +24,7 @@ from rbac.governance.organization_deletion import (
     OrganizationDeletionCounts,
     participants,
 )
-from rbac.models import Organization, OrganizationUser
+from rbac.models import Organization, OrganizationConfig, OrganizationUser
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
 
@@ -113,8 +113,10 @@ class OrganizationManagementService(CrossOrgResourceService):
         return self._get_organization_with_member_count(org_id)
 
     def _list_organizations(self, is_active: bool | None = None) -> QuerySet[Organization]:
-        qs = Organization.objects.annotate(member_count=Count("members")).order_by(
-            "-is_active", "name"
+        qs = (
+            Organization.objects.annotate(member_count=Count("members"))
+            .select_related("config")
+            .order_by("-is_active", "name")
         )
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
@@ -126,6 +128,7 @@ class OrganizationManagementService(CrossOrgResourceService):
             org = Organization.objects.create(name=name)
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
+        OrganizationConfig.objects.create(org=org)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -140,6 +143,19 @@ class OrganizationManagementService(CrossOrgResourceService):
             org.save(update_fields=["name", "updated_at"])
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
+        return self._get_organization_with_member_count(org.pk)
+
+    @transaction.atomic
+    def update_audit_retention(self, org_id: int, audit_retention_days: int) -> Organization:
+        """Lives on OrganizationConfig, not Organization itself. get_or_create
+        is defensive insurance only - every org should already have a config
+        row from create_organization (or the migration backfill, for
+        pre-existing orgs)."""
+        org = self._get_locked_org(org_id)
+        config, _ = OrganizationConfig.objects.select_for_update().get_or_create(org=org)
+        if config.audit_retention_days != audit_retention_days:
+            config.audit_retention_days = audit_retention_days
+            config.save(update_fields=["audit_retention_days"])
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic

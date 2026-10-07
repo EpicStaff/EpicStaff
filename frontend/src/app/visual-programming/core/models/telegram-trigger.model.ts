@@ -31,6 +31,7 @@ export interface CreateTelegramTriggerNodeRequest {
     webhook_trigger: WebhookTriggerWrite | null;
     fields: CreateTelegramTriggerNodeField[];
     metadata?: Record<string, unknown>;
+    test_payload: Record<string, unknown>;
 }
 
 export interface TelegramTriggerNodeField {
@@ -86,4 +87,6 @@ export interface GetTelegramTriggerNodeRequest {
     metadata: Record<string, unknown>;
     /** Nested object from the live API; a bare id when built from a version snapshot. */
     webhook_trigger: WebhookTriggerWrite | null;
+    /** Payload used by "Run with test payload": `{[parent]: {[field_name]: value}}`, `{}` when unset. */
+    test_payload: Record<string, unknown>;
 }

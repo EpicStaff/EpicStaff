@@ -29,6 +29,7 @@ from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
     ScheduleTriggerValidator,
 )
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 _OTHER_NODE_TYPE_RELATED_NAME = {
     WebhookTriggerAuthKind.WEBHOOK: "telegram_trigger_nodes",
@@ -85,8 +86,10 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
+            "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
+        extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}
 
     def validate(self, attrs):
         _reject_cross_type_trigger_conflict(
@@ -139,8 +142,10 @@ class TelegramTriggerNodeSerializer(
             "graph",
             "fields",
             "webhook_trigger",
+            "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
+        extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

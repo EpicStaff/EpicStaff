@@ -3,6 +3,7 @@ import { Provider } from '@angular/core';
 import { ClipboardService } from '../../services/clipboard.service';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { FlowTestRunService } from '../../services/flow-test-run.service';
 import { NodeFactoryService } from '../../services/node-factory.service';
 import { NodeNameValidatorService } from '../../services/node-name-validator.service';
 import { SavedFlowStateService } from '../../services/saved-flow-state.service';
@@ -33,4 +34,5 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     NodeFactoryService,
     NodeNameValidatorService,
     UniqueNodeNameValidatorService,
+    FlowTestRunService,
 ];

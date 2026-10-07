@@ -26,7 +26,14 @@ import {
     SpinnerComponent,
     UnsavedChangesDialogService,
 } from '@shared/components';
-import { ActionCode, GetLlmConfigRequest, NodeType, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    GetLlmConfigRequest,
+    GraphSessionStatus,
+    isTerminalSessionStatus,
+    NodeType,
+    ResourceCode,
+} from '@shared/models';
 import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
@@ -65,6 +72,7 @@ import {
     GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
+import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
@@ -94,6 +102,7 @@ import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/fl
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
+import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
@@ -121,6 +130,11 @@ import { isValidOutputSchema } from '../../../../visual-programming/utils/valida
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+
+export const TEST_RUN_NODE_GONE_MESSAGE = 'This node no longer exists — reload the flow';
+export const TEST_RUN_NODE_NOT_SAVED_MESSAGE = 'Click Save in the top panel to save the graph before running a test';
+export const RUN_WHILE_SAVING_MESSAGE = 'The flow is being saved. Run again when it is saved.';
+export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open the node to see why';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -159,6 +173,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly flowTestRunService = inject(FlowTestRunService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -166,6 +181,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
+    /**
+     * A `graphState` whose node lists are older than the backend's: another user saved and only the
+     * save_version was taken over. Any later load or save replaces `graphState` and so ends it.
+     */
+    private readonly outdatedGraphState = signal<GraphDto | null>(null);
+    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
+    private readonly storedGraph = computed<GraphDto | null>(() => {
+        const graph = this.graphState();
+        return graph === this.outdatedGraphState() ? null : graph;
+    });
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
@@ -183,7 +208,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     });
 
     public isSaving = signal(false);
-    public isRunning = signal(false);
+    /** A regular or test run is being started; shared so it locks the header Run and the panels' test Run. */
+    public readonly isRunning = this.flowTestRunService.isRunStarting;
+    /** The status of the run streaming into the run panel (regular or test), until it ends. */
+    protected readonly activeRunStatus = computed<GraphSessionStatus | null>(() => {
+        if (!this.runSessionSSEService.isStreaming()) return null;
+        const status = this.runSessionSSEService.status();
+        return isTerminalSessionStatus(status) ? null : status;
+    });
     public restoreWarnings = signal<RestoreWarning[]>([]);
     /** Restore warnings still worth showing: one tied to a node goes away once that node is deleted. */
     public readonly activeRestoreWarnings = computed(() => {
@@ -263,6 +295,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             initialValue: this.route.snapshot.queryParamMap,
         });
 
+        this.flowService.bindSavedGraph(this.storedGraph);
+        this.destroyRef.onDestroy(() => this.flowService.bindSavedGraph(null));
+
         effect(() => {
             const params = this.routeQueryParamMap();
             const nodeQueryKey = [params.get('nodeId'), params.get('nodeName'), params.get('nodeType')].join('|');
@@ -316,6 +351,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const warnings = this.createGraphWarningService.readPending();
             // Always replace: warnings from a previous flow must not follow the user to this one.
             this.restoreWarnings.set(warnings);
+            // Test payload errors are keyed by canvas node id and belong to the previous flow.
+            this.flowTestRunService.clearAllServerErrors();
             this.fetchGraph(graphId);
         });
 
@@ -341,6 +378,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.reloadRequested$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshCurrentFlow());
+
+        this.flowTestRunService.requests$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((request) => this.handleTestRun(request));
         this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             const currentId = this.profileService.currentUserSignal()?.id;
             if (event.saved_by.user_id === currentId) return;
@@ -351,6 +392,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!this.hasUnsavedChangesSignal()) {
                 this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
             }
+            // Either way the stored nodes changed and this graph does not have them.
+            this.outdatedGraphState.set(this.graphState());
         });
     }
 
@@ -1049,18 +1092,94 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public handleRunFlow(): void {
+        this.runAfterSave(
+            () => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables),
+            (error) => this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`)
+        );
+    }
+
+    /** "Run with test payload" from a trigger node panel: save the flow, then start the run at that node. */
+    private handleTestRun(request: FlowTestRunRequest): void {
+        this.runAfterSave(
+            () => this.startTestRun(request),
+            (error) => this.reportTestRunError(request.nodeId, error),
+            request.nodeId
+        );
+    }
+
+    /** Runs after the save, when a node added since the last save has its backend id. */
+    private startTestRun(request: FlowTestRunRequest): Observable<RunGraphResponse> {
+        const node = this.flowService.nodes().find((candidate) => candidate.id === request.nodeId);
+        if (!node) {
+            this.toastService.error(TEST_RUN_NODE_GONE_MESSAGE);
+            return EMPTY;
+        }
+        if (node.backendId == null) {
+            this.toastService.error(TEST_RUN_NODE_NOT_SAVED_MESSAGE);
+            return EMPTY;
+        }
+        return this.runGraphService
+            .runTestSession({
+                graph_id: this.graph.id,
+                node_type: request.nodeType,
+                node_id: node.backendId,
+                payload: request.payload,
+            })
+            .pipe(tap(() => this.toastService.success('Test run started')));
+    }
+
+    private reportTestRunError(nodeId: string, error: HttpErrorResponse): void {
+        if (error.status === 400) {
+            const payloadErrors: unknown = error.error?.errors;
+            const isMessageList =
+                Array.isArray(payloadErrors) && payloadErrors.every((message) => typeof message === 'string');
+            this.flowTestRunService.setServerErrors(
+                nodeId,
+                isMessageList ? payloadErrors : [extractHttpErrorMessage(error)]
+            );
+            // The errors show under that node's test payload editor; say so when it is not on screen.
+            if (this.sidePanelService.selectedNodeId() !== nodeId) {
+                this.toastService.error(TEST_RUN_PAYLOAD_REJECTED_MESSAGE);
+            }
+            return;
+        }
+        if (error.status === 404) {
+            this.toastService.error(TEST_RUN_NODE_GONE_MESSAGE);
+            return;
+        }
+        if (error.status === 403) {
+            this.toastService.error("You don't have permission to run tests on this flow.");
+            return;
+        }
+        this.toastService.error(`Failed to start test run: ${extractHttpErrorMessage(error)}`);
+    }
+
+    /**
+     * Saves unsaved changes, then starts a run with `start` and opens the run panel on its session.
+     * Starts nothing while another run starts or the flow is being saved (the save would be skipped),
+     * or when the open panel cannot be committed; a failed save has already been reported and starts
+     * nothing either. `testRunNodeId` is the trigger node of a test run, so its panel can show that the
+     * run is starting.
+     */
+    private runAfterSave(
+        start: () => Observable<RunGraphResponse>,
+        onStartError: (error: HttpErrorResponse) => void,
+        testRunNodeId: string | null = null
+    ): void {
         if (this.isRunning() || !this.graph?.id) return;
+        if (this.isSaving()) {
+            this.toastService.info(RUN_WHILE_SAVING_MESSAGE);
+            return;
+        }
         if (this.flowGraphComponent && !this.flowGraphComponent.commitSidePanelToFlow()) return;
 
-        this.isRunning.set(true);
+        this.flowTestRunService.markRunStarting(testRunNodeId);
 
-        const saveFirst$: Observable<void> = this.saveGraphForRun();
-
-        saveFirst$
+        this.saveGraphForRun()
             .pipe(
-                switchMap(() => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables)),
+                switchMap(() => start()),
                 takeUntilDestroyed(this.destroyRef),
-                tap((response: { session_id?: number }) => {
+                tap((response: RunGraphResponse) => {
                     this.currentSessionId = response.session_id?.toString() ?? null;
                     if (this.currentSessionId) {
                         this.runSessionSSEService.startStream(this.currentSessionId);
@@ -1070,11 +1189,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.cdr.markForCheck();
                 }),
                 catchError((error: HttpErrorResponse) => {
-                    this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`);
+                    onStartError(error);
                     return EMPTY;
                 }),
                 finalize(() => {
-                    this.isRunning.set(false);
+                    this.flowTestRunService.clearRunStarting();
                     this.cdr.markForCheck();
                 })
             )
