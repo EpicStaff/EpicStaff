@@ -429,7 +429,7 @@ def bottleneck(context: dict) -> str:
         return f"agent queue growing (p95 {context['agent_queue_p95']:.1f} s)"
     if context["pg_ratio_max"] is not None and context["pg_ratio_max"] >= 0.9:
         return f"Postgres connections at {context['pg_ratio_max']:.0%} of max"
-    return "latency rule only (no saturated resource found)"
+    return "no saturated resource found"
 
 
 # ---------------------------------------------------------------- windows of samples
@@ -444,21 +444,28 @@ def _mean(values) -> float | None:
     return round(sum(values) / len(values), 3) if values else None
 
 
-def _cpu_seconds(container_rows: list[dict]) -> dict[str, float]:
-    """Σ cpu_pct/100 * Δt per container over the given samples."""
+def _cpu_seconds(container_rows: list[dict], start: float, end: float) -> dict[str, float]:
+    """CPU-seconds per container: time-weighted mean of the known cpu_pct x window length.
+
+    Unknown samples (None) are skipped, never integrated as zero; a container with no
+    known sample is omitted.
+    """
     by_container: dict[str, list[dict]] = defaultdict(list)
     for row in container_rows:
-        by_container[row["container"]].append(row)
+        if row["cpu_pct"] is not None:
+            by_container[row["container"]].append(row)
     seconds = {}
     for name, rows in by_container.items():
         rows.sort(key=lambda row: row["ts"])
-        seconds[name] = round(
-            sum(
-                (row["cpu_pct"] or 0) / 100 * (row["ts"] - previous["ts"])
-                for previous, row in itertools.pairwise(rows)
-            ),
-            3,
-        )
+        weights = [row["ts"] - previous["ts"] for previous, row in itertools.pairwise(rows)]
+        if sum(weights) > 0:
+            weighted = sum(
+                weight * row["cpu_pct"] for weight, row in zip(weights, rows[1:], strict=True)
+            )
+            mean_pct = weighted / sum(weights)
+        else:
+            mean_pct = sum(row["cpu_pct"] for row in rows) / len(rows)
+        seconds[name] = round(mean_pct / 100 * (end - start), 3)
     return seconds
 
 
@@ -468,10 +475,9 @@ def _baselines(data: RunData) -> dict[tuple[str, str], float]:
     for segment in data.segments:
         rows = _in(data.container_timeline, segment.baseline_start, segment.load_start)
         for name in {row["container"] for row in rows}:
-            result.setdefault(
-                (segment.phase, name),
-                _mean(row["mem_mb"] for row in rows if row["container"] == name),
-            )
+            mean = _mean(row["mem_mb"] for row in rows if row["container"] == name)
+            if mean is not None:
+                result.setdefault((segment.phase, name), mean)
     return result
 
 
@@ -496,15 +502,16 @@ def _step_and_container_rows(data, rows, baselines, crew_cap):
             and window.settle_end_ts <= row["end_ts"] <= window.end_ts
             and row["phase"] == window.phase
         ]
-        cpu = _cpu_seconds(container_samples)
+        cpu = _cpu_seconds(container_samples, window.settle_end_ts, window.end_ts)
         running_mean = _mean(row["running"] for row in samples) or 0
-        per_container_extra = {
-            name: (
-                _mean(row["mem_mb"] for row in container_samples if row["container"] == name) or 0
+        per_container_extra = {}
+        for name in cpu:
+            window_mean = _mean(
+                row["mem_mb"] for row in container_samples if row["container"] == name
             )
-            - (baselines.get((window.phase, name)) or 0)
-            for name in cpu
-        }
+            baseline = baselines.get((window.phase, name))
+            if window_mean is not None and baseline is not None:
+                per_container_extra[name] = window_mean - baseline
         ok = [row for row in window_rows if row["status"] == "end"]
         step = {
             "phase": window.phase,
@@ -528,7 +535,7 @@ def _step_and_container_rows(data, rows, baselines, crew_cap):
             if finished_ok
             else None,
             "mb_per_concurrent": round(sum(per_container_extra.values()) / running_mean, 2)
-            if running_mean
+            if running_mean and per_container_extra
             else None,
             "gen_lag_p99_ms": percentile(
                 [row["gen_lag_ms"] for row in window_rows if row["gen_lag_ms"] is not None], 0.99
@@ -618,14 +625,18 @@ def _counter_delta(rows: list[dict], key: str) -> int:
 
 
 def _restarted(container_timeline: list[dict], window: Window) -> list[str]:
+    """Containers whose known restart/OOM counter rose versus its first known value."""
     rows = _in(container_timeline, window.start_ts, window.end_ts)
-    first: dict[str, dict] = {}
-    changed = []
+    first: dict[tuple[str, str], int] = {}
+    changed: set[str] = set()
     for row in sorted(rows, key=lambda item: item["ts"]):
-        start = first.setdefault(row["container"], row)
-        if (row["restarts"], row["oom_kills"]) != (start["restarts"], start["oom_kills"]):
-            changed.append(row["container"])
-    return changed
+        for key in ("restarts", "oom_kills"):
+            if row[key] is None:
+                continue
+            start = first.setdefault((row["container"], key), row[key])
+            if row[key] > start:
+                changed.add(row["container"])
+    return sorted(changed)
 
 
 def _at_cpu_limit(container_samples: list[dict], limits: dict) -> list[str]:
@@ -734,9 +745,7 @@ def _sample_session_ids(rows: list[dict]) -> set[int]:
     return {row["session_id"] for row in chosen if row["session_id"] is not None}
 
 
-def _event_rows(
-    events: list[dict], by_session: dict[int, list[dict]], only: set[int] | None
-) -> list[dict]:
+def _event_rows(by_session: dict[int, list[dict]], only: set[int] | None) -> list[dict]:
     result = []
     for session_id, session_events in by_session.items():
         if only is not None and session_id not in only:
@@ -773,14 +782,14 @@ def _phase_summary(data, phase, steps, rows, by_session, container_phase_rows) -
     passes = [step for step in own if step["verdict"] == "pass"]
     fails = [step for step in own if step["verdict"] == "fail"]
     best = max(passes, key=lambda step: step["level"]) if passes else None
-    mb_total = (
-        sum(
-            row["mb_per_concurrent"] or 0
-            for row in container_phase_rows
-            if row["phase"] == phase.name
-        )
-        or None
-    )
+    slopes = [
+        row["mb_per_concurrent"]
+        for row in container_phase_rows
+        if row["phase"] == phase.name
+        and row["r2"] is not None
+        and row["mb_per_concurrent"] is not None
+    ]
+    mb_total = sum(slopes) if slopes else None
     verdict = {
         "max_pass_concurrency": best["level"] if best else None,
         "first_fail_level": min((step["level"] for step in fails), default=None),
@@ -789,7 +798,7 @@ def _phase_summary(data, phase, steps, rows, by_session, container_phase_rows) -
         "p95_e2e_s_at_max": best and best["e2e_s_p95"],
         "p95_platform_overhead_s_at_max": best and best["platform_overhead_s_p95"],
         "cpu_s_per_session_at_max": best and best["cpu_s_per_session"],
-        "mb_per_concurrent_total": round(mb_total, 2) if mb_total else None,
+        "mb_per_concurrent_total": round(mb_total, 2) if mb_total is not None else None,
         "bottleneck": next(
             (step["bottleneck"] for step in sorted(fails, key=lambda step: step["level"])), None
         ),
@@ -842,20 +851,21 @@ def _phase_summary(data, phase, steps, rows, by_session, container_phase_rows) -
             if segment.phase == phase.name
             for row in _in(data.timeline, segment.baseline_start, segment.load_start)
         )
-        bounds = {
-            "cpu": round((host.get("vcpu") or 0) * best["e2e_s_p50"] / best["cpu_s_per_session"])
-        }
-        if baseline_avail and mb_total:
+        bounds = {}
+        if host.get("vcpu"):
+            bounds["cpu"] = round(host["vcpu"] * best["e2e_s_p50"] / best["cpu_s_per_session"])
+        if baseline_avail and mb_total and mb_total > 0:
             bounds["ram"] = round(baseline_avail / mb_total)
         for key in ("CREW_MAX_CONCURRENT_SESSIONS", "AGENT_MAX_CONCURRENT_RUNS"):
             value = data.meta.get("env", {}).get(key)
             if value and value.isdigit() and (key.startswith("CREW") or health["llm_calls"]):
                 bounds[key] = int(value)
-        estimate = {
-            "bounds": bounds,
-            "limit": min(bounds, key=bounds.get),
-            "concurrency": min(bounds.values()),
-        }
+        if bounds:
+            estimate = {
+                "bounds": bounds,
+                "limit": min(bounds, key=bounds.get),
+                "concurrency": min(bounds.values()),
+            }
     cold = [row for row in rows if row["phase"] == phase.name and row["cold"]]
     graph = data.meta.get("graphs", {}).get(phase.name, {})
     return {
@@ -900,7 +910,7 @@ def analyze(data: RunData, out_dir: Path) -> dict:
         if step["live_verdict"] and step["live_verdict"] != step["verdict"]
     ]
     if revised:
-        meta.setdefault("labels", []).append("verdict-revised:" + ",".join(revised))
+        meta["labels"] = [*(meta.get("labels") or []), "verdict-revised:" + ",".join(revised)]
     meta.pop("graphs", None)
     _write_csv(out_dir / "sessions.csv.gz", SESSION_COLUMNS, rows)
     _write_csv(out_dir / "steps.csv", STEP_COLUMNS, steps)
@@ -914,11 +924,9 @@ def analyze(data: RunData, out_dir: Path) -> dict:
     _write_csv(
         out_dir / "events_sample.csv",
         EVENT_COLUMNS,
-        _event_rows(data.events, by_session, _sample_session_ids(rows)),
+        _event_rows(by_session, _sample_session_ids(rows)),
     )
-    _write_csv(
-        out_dir / "events_full.csv.gz", EVENT_COLUMNS, _event_rows(data.events, by_session, None)
-    )
+    _write_csv(out_dir / "events_full.csv.gz", EVENT_COLUMNS, _event_rows(by_session, None))
     (out_dir / "case.toml").write_text(data.case.source_text, encoding="utf-8")
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2, default=str), encoding="utf-8")
     return meta

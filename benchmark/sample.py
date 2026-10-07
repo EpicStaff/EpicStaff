@@ -73,6 +73,11 @@ def live_line(row: dict, per_container: dict[str, dict]) -> str:
     )
 
 
+def _docker_oom(state: dict) -> int | None:
+    """OOM flag from `docker inspect` State; None when the inspect gave no state."""
+    return int(bool(state["OOMKilled"])) if "OOMKilled" in state else None
+
+
 class Sampler:
     def __init__(
         self,
@@ -169,7 +174,7 @@ class Sampler:
         stats = self._docker_stats(fallback) if fallback else {}
         for name, path in self._cgroups.items():
             state = inspected.get(name, {}).get("State", {})
-            restarts = inspected.get(name, {}).get("RestartCount", 0)
+            restarts = inspected.get(name, {}).get("RestartCount")
             if path is not None:
                 try:
                     usage = parse_cpu_stat((path / "cpu.stat").read_text())
@@ -189,10 +194,10 @@ class Sampler:
                 except (OSError, AttributeError, ValueError):
                     self._cgroups[name] = None
                     cpu_pct, mem_mb = stats.get(name, (None, None))
-                    oom = int(bool(state.get("OOMKilled")))
+                    oom = _docker_oom(state)
             else:
                 cpu_pct, mem_mb = stats.get(name, (None, None))
-                oom = int(bool(state.get("OOMKilled")))
+                oom = _docker_oom(state)
             metrics[name] = {
                 "cpu_pct": cpu_pct,
                 "mem_mb": mem_mb,
@@ -312,17 +317,20 @@ class Sampler:
         self._previous_runner = (wall, cpu)
         return round((cpu - previous_cpu) / max(wall - previous_wall, 1e-6) * 100, 1)
 
-    def snapshot_counts(self) -> dict[str, tuple[int, int]]:
-        """(restarts, oom_kills) per container from the latest sample."""
+    def snapshot_counts(self) -> dict[str, tuple[int | None, int | None]]:
+        """(restarts, oom_kills) per container from the latest sample; None = unknown."""
         return {
             name: (metrics["restarts"], metrics["oom_kills"])
             for name, metrics in self.latest.get("containers", {}).items()
         }
 
-    def restarts_since(self, baseline: dict[str, tuple[int, int]]) -> list[str]:
+    def restarts_since(self, baseline: dict[str, tuple[int | None, int | None]]) -> list[str]:
+        """Containers whose restart or OOM counter rose; an unknown value never counts."""
         return [
             name
             for name, counts in self.snapshot_counts().items()
-            if counts[0] > baseline.get(name, (0, 0))[0]
-            or counts[1] > baseline.get(name, (0, 0))[1]
+            if any(
+                now is not None and before is not None and now > before
+                for now, before in zip(counts, baseline.get(name, (0, 0)), strict=True)
+            )
         ]

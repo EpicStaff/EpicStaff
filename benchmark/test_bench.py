@@ -679,9 +679,7 @@ class BottleneckTest(unittest.TestCase):
             "previous_agent_queue_p95": 0.1,
             "pg_ratio_max": 0.2,
         }
-        self.assertEqual(
-            analyze.bottleneck(base), "latency rule only (no saturated resource found)"
-        )
+        self.assertEqual(analyze.bottleneck(base), "no saturated resource found")
         self.assertEqual(analyze.bottleneck({**base, "host_cpu_mean": 95}), "host CPU 95%")
         self.assertEqual(
             analyze.bottleneck({**base, "host_cpu_mean": 95, "restarts": ["crew"]}),
@@ -722,6 +720,99 @@ class AnalyzeFolderTest(unittest.TestCase):
         self.assertEqual(meta["schema_version"], 1)
         verdict = meta["phases"][0]["verdict"]
         self.assertEqual((verdict["max_pass_concurrency"], verdict["first_fail_level"]), (20, 40))
+
+
+def synthetic_run(mem_slope, vcpu=4, labels=None):
+    """One passing 10-session step with a controllable memory-vs-running slope."""
+    case_path = Path(tempfile.mkdtemp()) / "case.toml"
+    case_path.write_text(CASE_TOML, encoding="utf-8")
+    case = config.load_case(case_path)
+    records = [record(n, intended=20 + n, sent=20 + n, done=30 + n) for n in range(1, 13)]
+    timeline, container_timeline = [], []
+    for ts in range(0, 111, 5):
+        running = 0 if ts < 10 else (ts // 5 % 4) * 5
+        row = dict.fromkeys(analyze.TIMELINE_COLUMNS)
+        row.update(ts=ts, running=running, inflight=running, queued=0, host_mem_avail_mb=8000)
+        timeline.append(row)
+        container_timeline.append(
+            dict.fromkeys(analyze.CONTAINER_TIMELINE_COLUMNS)
+            | {"ts": ts, "container": "crew", "cpu_pct": 50, "mem_mb": 1000 + mem_slope * running}
+            | {"restarts": 0, "oom_kills": 0}
+        )
+    segment = analyze.Segment("payload", 1, "ladder", 0, 10, 100, 110)
+    window = analyze.Window("payload", 10, "ladder", 1, start_ts=10, settle_end_ts=20, end_ts=100)
+    meta = {"host": {"vcpu": vcpu}, "env": {}, "labels": labels}
+    return analyze.RunData(
+        case, "base", meta, records, [window], [segment], [], timeline, container_timeline
+    )
+
+
+class RobustnessTest(unittest.TestCase):
+    def test_negative_memory_slope_gives_no_ram_bound(self):
+        meta = analyze.analyze(synthetic_run(mem_slope=-0.3), Path(tempfile.mkdtemp()))
+        estimate = meta["phases"][0]["capacity_estimate"]
+        self.assertNotIn("ram", estimate["bounds"])
+        self.assertGreater(estimate["concurrency"], 0)
+
+    def test_unknown_vcpu_gives_no_cpu_bound(self):
+        meta = analyze.analyze(synthetic_run(mem_slope=0.3, vcpu=None), Path(tempfile.mkdtemp()))
+        self.assertNotIn("cpu", meta["phases"][0]["capacity_estimate"]["bounds"])
+
+    def test_cpu_seconds_skip_unknown_samples(self):
+        def rows(cpu_values):
+            return [
+                {"container": "crew", "ts": index * 5, "cpu_pct": cpu}
+                for index, cpu in enumerate(cpu_values)
+            ]
+
+        known = analyze._cpu_seconds(rows([50, 50, 50]), 0, 10)
+        gappy = analyze._cpu_seconds(rows([50, None, 50]), 0, 10)
+        self.assertEqual(known, {"crew": 5.0})
+        self.assertEqual(gappy, known)
+        self.assertEqual(analyze._cpu_seconds(rows([None, None]), 0, 10), {})
+
+    def test_restarted_ignores_unknown_and_failed_probe(self):
+        window = analyze.Window("payload", 10, "ladder", 1, 0, 0, 100)
+
+        def timeline(restarts):
+            return [
+                {"container": "crew", "ts": index, "restarts": value, "oom_kills": 0}
+                for index, value in enumerate(restarts)
+            ]
+
+        self.assertEqual(analyze._restarted(timeline([2, None, 2]), window), [])
+        self.assertEqual(analyze._restarted(timeline([2, 0, 2]), window), [])
+        self.assertEqual(analyze._restarted(timeline([2, 3]), window), ["crew"])
+
+    def test_restarts_since_ignores_unknown_counts(self):
+        sampler = sample.Sampler(
+            {},
+            status=dict,
+            db_user="u",
+            redis_user="r",
+            redis_password="p",
+        )
+        sampler.latest = {"containers": {"crew": {"restarts": None, "oom_kills": None}}}
+        self.assertEqual(sampler.restarts_since({"crew": (2, 0)}), [])
+        sampler.latest = {"containers": {"crew": {"restarts": 3, "oom_kills": None}}}
+        self.assertEqual(sampler.restarts_since({"crew": (2, 0)}), ["crew"])
+
+    def test_failed_inspect_yields_unknown_restarts(self):
+        sampler = sample.Sampler({}, status=dict, db_user="u", redis_user="r", redis_password="p")
+        sampler._cgroups = {"crew": None}
+        with mock.patch.object(sampler, "_docker_stats", return_value={}):
+            metrics = sampler._container_metrics(0.0, {})
+        self.assertIsNone(metrics["crew"]["restarts"])
+        self.assertIsNone(metrics["crew"]["oom_kills"])
+
+    def test_analyze_does_not_mutate_input_labels(self):
+        data = synthetic_run(mem_slope=0.3, labels=["mine"])
+        data.windows[0].live_verdict = "fail"
+        first = analyze.analyze(data, Path(tempfile.mkdtemp()))
+        second = analyze.analyze(data, Path(tempfile.mkdtemp()))
+        self.assertEqual(data.meta["labels"], ["mine"])
+        self.assertEqual(first["labels"], second["labels"])
+        self.assertEqual(len(first["labels"]), 2)
 
 
 if __name__ == "__main__":
