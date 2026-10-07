@@ -50,6 +50,7 @@ def _make_session_data(graph: GraphData) -> SessionData:
     """Helper to create SessionData with a graph."""
     return SessionData(
         id=1,
+        org_id=1,
         graph=graph,
         unique_subgraph_list=[],
     )
@@ -338,6 +339,7 @@ def test_webhook_trigger_node_in_subgraph_is_found():
 
     session = SessionData(
         id=1,
+        org_id=1,
         graph=_make_empty_graph(),
         unique_subgraph_list=[SubGraphData(id=2, data=subgraph_data)],
     )
@@ -590,6 +592,7 @@ def test_subgraph_with_storage_is_found():
 
     session = SessionData(
         id=1,
+        org_id=1,
         graph=main_graph,
         unique_subgraph_list=[SubGraphData(id=2, data=subgraph_data)],
     )

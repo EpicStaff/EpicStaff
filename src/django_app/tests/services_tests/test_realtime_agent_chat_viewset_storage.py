@@ -38,7 +38,7 @@ def agent_definition(org):
         name="Test Agent",
         organization_id=org.id,
         description="Test agent",
-        instructions="You are a helpful assistant",
+        instruction_list=[{"name": "Instruction_1.md", "content": "You are a helpful assistant"}],
     )
 
 

@@ -67,6 +67,14 @@ def test_credential_scope_validator_rejects_empty_allowed_paths(converter):
         )
 
     error_message = str(exc_info.value)
-    assert "storage_allowed_paths is empty" in error_message
-    assert "no session_id" in error_message
-    assert "GraphStorageFile" in error_message
+    assert error_message == (
+        "storage_allowed_paths is empty; refusing to scope a "
+        "temporary credential to the entire org prefix. Attach the "
+        "required files or folders to the flow, or ensure a session "
+        "is present."
+    )
+    # The internal diagnostic (session_id, GraphStorageFile) is logged
+    # server-side, not rendered in the client-facing message -- DRF would
+    # otherwise ship it verbatim to the API consumer.
+    assert "session_id" not in error_message
+    assert "GraphStorageFile" not in error_message

@@ -60,7 +60,7 @@ def _make_storage_python_node(
 
 
 def _make_session_data(session_id: int, graph: GraphData) -> SessionData:
-    return SessionData(id=session_id, graph=graph, unique_subgraph_list=[])
+    return SessionData(id=session_id, org_id=1, graph=graph, unique_subgraph_list=[])
 
 
 def _stub_gateway(mock_gateway_class, access_key: str = "minted_key") -> mock.AsyncMock:

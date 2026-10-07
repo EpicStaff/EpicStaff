@@ -68,7 +68,7 @@ def realtime_chat(org, db):
         name="Revoke Agent",
         organization_id=org.id,
         description="agent",
-        instructions="be helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "be helpful"}],
     )
     rt_agent_definition = RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition
