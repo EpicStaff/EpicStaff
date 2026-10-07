@@ -11,12 +11,7 @@ def iso_utc_timestamp():
 
 
 def dataclass_to_shallow_dict(instance) -> dict:
-    """Return a dataclass instance's top-level fields as a new dict.
-
-    Field values are shared, not copied. Unlike `dataclasses.asdict`, nested dict/list
-    subclasses such as DotDict/DotList flow variables are not rebuilt, which is what
-    makes `asdict` expensive on large state.
-    """
+    """Top-level fields as a dict; values are shared, not deep-copied like `asdict`."""
     return {
         dataclass_field.name: getattr(instance, dataclass_field.name)
         for dataclass_field in fields(instance)
@@ -24,11 +19,7 @@ def dataclass_to_shallow_dict(instance) -> dict:
 
 
 def encode_dataclass_as_dict(value: object) -> dict:
-    """`json.dumps` `default` hook that encodes nested dataclass instances as dicts.
-
-    DotDict/DotList are dict/list subclasses, so `json` encodes them natively and never
-    reaches this hook. Anything else that is not JSON-serializable still raises TypeError.
-    """
+    """`json.dumps` default hook: dataclasses become dicts, anything else raises."""
     if is_dataclass(value) and not isinstance(value, type):
         return dataclass_to_shallow_dict(value)
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
@@ -43,12 +34,7 @@ class GraphMessage:
     timestamp: str = field(default_factory=iso_utc_timestamp)
 
     def to_payload(self) -> dict:
-        """Return the dict published on `graph:messages`, without its `uuid`.
-
-        Only this message and its `message_data` become new dicts, so code reading
-        `message_data` (token budget, subgraph ids) always gets a dict; deeper values are
-        shared with this message and left for `encode_payload` to serialize.
-        """
+        """Shallow dict for `graph:messages` (no `uuid`); `message_data` is always a dict."""
         payload = dataclass_to_shallow_dict(self)
         if is_dataclass(self.message_data):
             payload["message_data"] = dataclass_to_shallow_dict(self.message_data)
@@ -56,12 +42,7 @@ class GraphMessage:
 
     @staticmethod
     def encode_payload(payload: dict) -> str:
-        """Encode a `to_payload()` dict as the JSON published on `graph:messages`.
-
-        Adds a fresh `uuid` (Django deduplicates on it) without mutating `payload`.
-        Nested dataclasses are encoded as dicts; any other non-JSON value raises, as
-        `json.dumps` always has, so the session fails at the node that produced it.
-        """
+        """JSON for `graph:messages` with a fresh `uuid` (Django deduplicates on it)."""
         return json.dumps({**payload, "uuid": str(uuid.uuid4())}, default=encode_dataclass_as_dict)
 
 
