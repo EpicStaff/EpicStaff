@@ -5,6 +5,7 @@ import {
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     input,
     OnInit,
@@ -15,20 +16,15 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
+import { AppSvgIconComponent, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
-import { StorageItem } from '../../../../../files/models/storage.models';
-import { StorageApiService } from '../../../../../files/services/storage-api.service';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
-import {
-    ExtractTextFromStorageDialogComponent,
-    ExtractTextFromStorageDialogResult,
-} from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
-import { AgentDefinition, AgentSurfacePlace } from '../../../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../../../models/agent-definition.model';
+import { AgentFocus, AgentSelection } from '../../../../models/explorer.model';
 import { RealtimeAgentDefinition } from '../../../../models/realtime-agent-definition.model';
 import {
     CreateSurfaceRequest,
@@ -39,21 +35,21 @@ import {
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
 import { RealtimeAgentDefinitionsApiService } from '../../../../services/realtime-agent-definitions-api.service';
 import { SurfaceDragService } from '../../../../services/surface-drag.service';
-import { INSTRUCTIONS_ACCEPT_ATTR, readFileAsText } from '../../../../utils/instructions-file.utils';
 import {
     AgentAdditionalSettingsData,
     AgentAdditionalSettingsDialogComponent,
     AgentAdditionalSettingsResult,
 } from './agent-additional-settings-dialog/agent-additional-settings-dialog.component';
+import { AgentInstructionsListComponent } from './agent-instructions-list/agent-instructions-list.component';
 import { AgentSurfacesPanelComponent } from './agent-surfaces-panel/agent-surfaces-panel.component';
 
 export interface AgentSavePayload {
     id: number | null;
     name: string;
     description: string;
-    instructions: string;
-    bootIsDoc: boolean;
-    openBootDocInEdit?: boolean;
+    /** Only sent when creating; existing agents save their list via `instructionListChange`. */
+    instruction_list?: AgentInstruction[];
+    openFirstInstructionInEdit?: boolean;
     llm_config: number | null;
     fcm_llm_config: number | null;
     max_iter?: number;
@@ -70,6 +66,12 @@ export interface AgentSavePayload {
 
 export type AgentSectionId = 'basics' | 'surfaces';
 
+const SECTIONS_BY_FOCUS: Record<AgentFocus, Record<AgentSectionId, boolean>> = {
+    all: { basics: true, surfaces: true },
+    instructions: { basics: true, surfaces: false },
+    surfaces: { basics: false, surfaces: true },
+};
+
 interface RealtimeProviderConfig {
     openai_config: number | null;
     elevenlabs_config: number | null;
@@ -80,7 +82,6 @@ interface RealtimeProviderConfig {
 interface AgentFormValue {
     name: string;
     description: string;
-    instructions: string;
     llm_config: number | null;
 }
 
@@ -93,6 +94,7 @@ interface AgentFormValue {
         HideInlineSubtitleOnOverflowDirective,
         EnterBlurDirective,
         AgentSurfacesPanelComponent,
+        AgentInstructionsListComponent,
         MatTooltipModule,
         HasPermissionDirective,
     ],
@@ -104,15 +106,12 @@ export class AgentDetailComponent implements OnInit {
     private readonly fb: FormBuilder = inject(FormBuilder);
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
-    private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
-    private readonly storageApiService: StorageApiService = inject(StorageApiService);
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly toast: ToastService = inject(ToastService);
+    private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
     private readonly permissionService = inject(PermissionsService);
     private readonly realtimeApi = inject(RealtimeAgentDefinitionsApiService);
-
-    readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
 
     agent = input<AgentDefinition | null>(null);
     isCreating = input<boolean>(false);
@@ -121,8 +120,9 @@ export class AgentDetailComponent implements OnInit {
     saveErrorTick = input<number>(0);
     surfaceSaveError = input<SurfaceSaveError | null>(null);
     surfaceCreateErrorTick = input<number>(0);
-    bootIsDoc = input<boolean>(false);
-    surfacesOnly = input<boolean>(false);
+    instructionListError = input<string | null>(null);
+    /** Applied on every new reference, so re-selecting the same agent re-opens and scrolls up. */
+    focusRequest = input<AgentSelection | null>(null);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
     /** When true, disables the reactive form and blocks save/delete/duplicate emissions. */
     readOnly = input<boolean>(false);
@@ -131,9 +131,8 @@ export class AgentDetailComponent implements OnInit {
     readonly delete = output<AgentDefinition>();
     readonly duplicate = output<AgentDefinition>();
     readonly dirtyChange = output<boolean>();
-    readonly bootDocChange = output<boolean>();
-    readonly openBootDoc = output<void>();
-    readonly extractText = output<string>();
+    readonly instructionListChange = output<AgentInstruction[]>();
+    readonly openInstruction = output<{ index: number; edit: boolean }>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly setSharedInCategory = output<{ surfaceIds: number[]; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
@@ -159,7 +158,6 @@ export class AgentDetailComponent implements OnInit {
     readonly form = this.fb.nonNullable.group({
         name: ['', [Validators.required, Validators.maxLength(255)]],
         description: [''],
-        instructions: [''],
         llm_config: [null as number | null],
     });
 
@@ -169,19 +167,7 @@ export class AgentDetailComponent implements OnInit {
         initialValue: this.form.controls.llm_config.value,
     });
 
-    readonly bootAsDoc = signal<boolean>(false);
-    readonly bootDocName = 'Boot_Instructions.md';
-
-    private static readonly BOOT_SUGGEST_AT = 100;
-    private static readonly BOOT_URGE_AT = 250;
-    readonly bootLength = signal<number>(0);
-    readonly bootHintLevel = computed<'none' | 'suggest' | 'urge'>(() => {
-        const n = this.bootLength();
-        if (n > AgentDetailComponent.BOOT_URGE_AT) return 'urge';
-        if (n > AgentDetailComponent.BOOT_SUGGEST_AT) return 'suggest';
-        return 'none';
-    });
-    readonly bootAtMaxHeight = signal<boolean>(false);
+    readonly instructionList = computed<AgentInstruction[]>(() => this.agent()?.instruction_list ?? []);
 
     readonly sections = signal<Record<AgentSectionId, boolean>>({
         basics: true,
@@ -196,7 +182,6 @@ export class AgentDetailComponent implements OnInit {
         effect(() => {
             const a = this.agent();
             const creating = this.isCreating();
-            this.bootAsDoc.set(!creating && this.bootIsDoc());
 
             const key = creating ? 'creating' : a ? `agent:${a.id}` : null;
             if (key === this.seededKey) return;
@@ -210,8 +195,6 @@ export class AgentDetailComponent implements OnInit {
                 this.form.markAsPristine();
             }
             this.savedSnapshot = this.form.getRawValue();
-            this.bootLength.set((this.form.controls.instructions.value ?? '').length);
-            this.bootAtMaxHeight.set(false);
             this.dirtyChange.emit(this.form.dirty);
         });
 
@@ -223,9 +206,18 @@ export class AgentDetailComponent implements OnInit {
         // While a storage item or shared surface is being dragged, an agent shown in the
         // preview opens straight on its Surfaces section (Basics collapsed) — it's the drop area.
         effect(() => {
-            if (!this.storageDrag.isDragging() && !this.surfaceDrag.isDragging()) return;
+            if (!this.isDragging()) return;
             if (!this.agent()) return;
             untracked(() => this.sections.set({ basics: false, surfaces: true }));
+        });
+
+        effect(() => {
+            const request = this.focusRequest();
+            if (!request) return;
+            untracked(() => {
+                this.sections.set(this.isDragging() ? SECTIONS_BY_FOCUS.surfaces : SECTIONS_BY_FOCUS[request.focus]);
+                this.host.nativeElement.scrollTo({ top: 0 });
+            });
         });
 
         // Reflect readOnly on the reactive form so text fields render disabled.
@@ -245,6 +237,10 @@ export class AgentDetailComponent implements OnInit {
         this.form.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.dirtyChange.emit(this.form.dirty));
+    }
+
+    private isDragging(): boolean {
+        return this.storageDrag.isDragging() || this.surfaceDrag.isDragging();
     }
 
     isOpen(id: AgentSectionId): boolean {
@@ -288,8 +284,6 @@ export class AgentDetailComponent implements OnInit {
             id: a?.id ?? null,
             name: effectiveName,
             description: v.description ?? '',
-            instructions: v.instructions ?? '',
-            bootIsDoc: this.bootAsDoc(),
             llm_config: v.llm_config,
             fcm_llm_config: a?.fcm_llm_config ?? null,
             max_iter: a?.max_iter,
@@ -306,26 +300,20 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private emptyValue(): AgentFormValue {
-        return { name: '', description: '', instructions: '', llm_config: null };
+        return { name: '', description: '', llm_config: null };
     }
 
     private valueFromAgent(a: AgentDefinition): AgentFormValue {
         return {
             name: a.name,
             description: a.description ?? '',
-            instructions: a.instructions ?? '',
             llm_config: a.llm_config,
         };
     }
 
     private sameAsSnapshot(v: AgentFormValue): boolean {
         const s = this.savedSnapshot;
-        return (
-            v.name === s.name &&
-            v.description === s.description &&
-            v.instructions === s.instructions &&
-            v.llm_config === s.llm_config
-        );
+        return v.name === s.name && v.description === s.description && v.llm_config === s.llm_config;
     }
 
     private revertToSnapshot(): void {
@@ -338,7 +326,6 @@ export class AgentDetailComponent implements OnInit {
         const target = this.valueFromAgent(a);
         this.savedSnapshot = target;
         this.form.reset(target);
-        this.bootLength.set((target.instructions ?? '').length);
     }
 
     openAdditionalSettings(): void {
@@ -397,8 +384,6 @@ export class AgentDetailComponent implements OnInit {
             id: a.id,
             name: v.name.trim() || a.name,
             description: v.description ?? '',
-            instructions: v.instructions ?? '',
-            bootIsDoc: this.bootAsDoc(),
             llm_config: v.llm_config,
             fcm_llm_config: result.fcm_llm_config,
             max_iter: result.max_iter,
@@ -465,18 +450,17 @@ export class AgentDetailComponent implements OnInit {
             });
     }
 
-    createBootDoc(): void {
-        this.bootAsDoc.set(true);
-
+    /** Existing agents emit the list for saving; a draft is created first, with the list as its instructions. */
+    onInstructionListChange(instructionList: AgentInstruction[]): void {
+        if (this.readOnly()) return;
         if (this.isCreating()) {
-            this.createDraftAgentAsBootDoc();
+            this.createDraftAgentWithInstructions(instructionList);
             return;
         }
-
-        this.bootDocChange.emit(true);
+        this.instructionListChange.emit(instructionList);
     }
 
-    private createDraftAgentAsBootDoc(): void {
+    private createDraftAgentWithInstructions(instructionList: AgentInstruction[]): void {
         if (this.saving()) return;
         const v = this.form.getRawValue();
         const name = v.name.trim();
@@ -485,99 +469,18 @@ export class AgentDetailComponent implements OnInit {
             id: null,
             name,
             description: v.description ?? '',
-            instructions: v.instructions ?? '',
-            bootIsDoc: true,
-            openBootDocInEdit: true,
+            instruction_list: instructionList,
+            openFirstInstructionInEdit: true,
             llm_config: v.llm_config,
             fcm_llm_config: null,
         });
     }
 
-    removeBootDoc(): void {
-        this.bootAsDoc.set(false);
-        this.bootDocChange.emit(false);
-    }
-
-    onOpenBootDoc(): void {
-        this.openBootDoc.emit();
-    }
-
-    /** "Extract Text from PC": open the native file picker (no upload). */
-    onExtractFromPc(input: HTMLInputElement): void {
-        input.click();
-    }
-
-    onPcFileSelected(event: Event): void {
-        const input = event.target as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = ''; // allow re-picking the same file
-        if (!file) return;
-        readFileAsText(file)
-            .then((text) => this.applyExtractedText(text))
-            .catch(() => this.toast.error(`Failed to read "${file.name}"`));
-    }
-
-    /** "Extract Text from Storage": pick a text file from storage and read it. */
-    onExtractFromStorage(): void {
-        const ref = this.dialog.open<ExtractTextFromStorageDialogResult | undefined>(
-            ExtractTextFromStorageDialogComponent
-        );
-        ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-            if (!result) return;
-            this.readStorageFile(result.item);
-        });
-    }
-
-    private readStorageFile(item: StorageItem): void {
-        this.storageApiService
-            .downloadBlob(item.path)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) =>
-                    readFileAsText(blob)
-                        .then((text) => this.applyExtractedText(text))
-                        .catch(() => this.toast.error(`Failed to read "${item.name}"`)),
-                error: () => this.toast.error(`Failed to load "${item.name}" from storage`),
-            });
-    }
-
-    /** Emit the extracted text, warning first if instructions already exist. */
-    private applyExtractedText(text: string): void {
-        if (this.agent()?.id == null) {
-            this.toast.info('Save the agent before importing instructions');
-            return;
-        }
-        const hasExisting = (this.form.controls.instructions.value ?? '').trim().length > 0;
-        if (!hasExisting) {
-            this.extractText.emit(text);
-            return;
-        }
-        this.confirm
-            .confirm({
-                title: 'Replace boot instructions?',
-                message: 'This will overwrite the current boot instructions with the file contents.',
-                confirmText: 'Replace',
-                cancelText: 'Cancel',
-                type: 'warning',
-            })
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((result) => {
-                if (result === true) this.extractText.emit(text);
-            });
-    }
-
-    adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): number {
+    adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): void {
         textarea.style.height = 'auto';
         const full = textarea.scrollHeight;
         textarea.style.height = `${Math.min(full, maxPx)}px`;
         textarea.style.overflowY = full > maxPx ? 'auto' : 'hidden';
-        return full;
-    }
-
-    adjustBootHeight(textarea: HTMLTextAreaElement): void {
-        const maxPx = window.innerHeight * 0.5;
-        const full = this.adjustTextareaHeight(textarea, maxPx);
-        this.bootAtMaxHeight.set(full > maxPx);
     }
 
     onDelete(): void {
