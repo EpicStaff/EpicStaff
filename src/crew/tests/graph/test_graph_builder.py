@@ -69,6 +69,8 @@ def mock_services():
         user="default",
         password="redis_password",
     )
+    # Decision table nodes publish their messages straight to Redis; keep unit tests off a live server.
+    redis_service.publish = Mock()
     return {
         "redis_service": redis_service,
         "python_code_executor_service": FakePythonCodeExecutorService(),
