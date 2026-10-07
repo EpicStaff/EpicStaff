@@ -559,9 +559,12 @@ describe('KeyValueNodePanelComponent', () => {
                 ['test1', 'variables.my_key1'],
                 ['test2', 'variables.my_key2'],
             ];
+            // The node opens on one blank row; Add key adds the rest.
             rows.forEach(([key, value], row) => {
-                fixture.nativeElement.querySelector('.add-entry').click();
-                fixture.detectChanges();
+                if (row > 0) {
+                    fixture.nativeElement.querySelector('.add-entry').click();
+                    fixture.detectChanges();
+                }
                 type('Key', row, key);
                 type('Variable path', row, value);
             });
@@ -634,8 +637,9 @@ describe('KeyValueNodePanelComponent', () => {
 
         it('gives rows with no key yet their own values back after a key is typed in delete mode', () => {
             const { panel, fixture } = createPanel(nodeWith('write', []), { renderTemplate: true });
-            for (const value of ['variables.v1', 'variables.v2']) {
-                fixture.nativeElement.querySelector('.add-entry').click();
+            // The node opens on one blank row; Add key adds the second.
+            for (const [row, value] of ['variables.v1', 'variables.v2'].entries()) {
+                if (row > 0) fixture.nativeElement.querySelector('.add-entry').click();
                 entriesOf(panel)
                     .at(entriesOf(panel).length - 1)
                     .patchValue({ value });
@@ -1226,6 +1230,37 @@ describe('KeyValueNodePanelComponent', () => {
             });
         }
 
+        for (const mode of ['read', 'write', 'delete'] as const) {
+            it(`opens a ${mode} node with no keys on one blank row, as Add key adds, and saves no keys`, () => {
+                vi.useFakeTimers();
+                const { panel, fixture, triggerAutosave } = createPanel(nodeWith(mode, []), {
+                    renderTemplate: true,
+                });
+
+                expect(entriesOf(panel).getRawValue()).toEqual(
+                    mode === 'delete' ? [{ key: '' }] : [{ key: '', value: 'variables.' }]
+                );
+                expect(fixture.nativeElement.querySelectorAll('input[aria-label="Key"]').length).toBe(1);
+                expect(panel.form.valid).toBe(true);
+                expect(panel.onSave()!.data.entries).toEqual([]);
+                // The blank row is no edit, so the canvas has nothing to sync.
+                vi.advanceTimersByTime(1000);
+                expect(triggerAutosave).not.toHaveBeenCalled();
+            });
+        }
+
+        it('opens a node with keys on its keys only, with no blank row added', () => {
+            const { panel } = createPanel(nodes.write, { renderTemplate: true });
+
+            expect(entriesOf(panel).getRawValue()).toEqual([{ key: 'plan', value: 'variables.plan' }]);
+        });
+
+        it('opens a node with no keys in a read-only flow on no rows, as there is nothing to fill in', () => {
+            const { panel } = createPanel(nodeWith('write', []), { renderTemplate: true, readOnly: true });
+
+            expect(entriesOf(panel).length).toBe(0);
+        });
+
         it('treats a value left at the variables. prefill, or cleared, as empty', () => {
             const { panel, fixture } = createPanel(nodes.write, { renderTemplate: true });
             const added = addEntry(fixture, panel);
@@ -1466,6 +1501,82 @@ describe('KeyValueNodePanelComponent', () => {
 
             typeKey(fixture, 'profile_{');
 
+            expect(getEntries).not.toHaveBeenCalled();
+            expect(suggestionItems()).toEqual([]);
+        });
+
+        it('opens on focus before anything is typed, searching the key as it stands', () => {
+            const getEntries = vi.fn(() => of(page(['profile_admin', 'profile_guest'])));
+            const { fixture } = createPanel(mapKeyValueNodeToModel(DTO), {
+                renderTemplate: true,
+                getEntries,
+            });
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+
+            input.focus();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+
+            expect(getEntries).toHaveBeenCalledWith({ table: 3, search: 'profile', limit: 20, offset: 0 });
+            expect(suggestionItems().map((item) => item.textContent!.trim())).toEqual([
+                'profile_admin',
+                'profile_guest',
+            ]);
+        });
+
+        it('opens again on a click into the focused key after Escape closed it', () => {
+            const getEntries = vi.fn(() => of(page(['profile_admin'])));
+            const { fixture } = createPanel(mapKeyValueNodeToModel(DTO), {
+                renderTemplate: true,
+                getEntries,
+            });
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+            input.focus();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+            fixture.detectChanges();
+            expect(suggestionItems()).toEqual([]);
+
+            input.click();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+
+            expect(suggestionItems().map((item) => item.textContent!.trim())).toEqual(['profile_admin']);
+        });
+
+        it('does not search again on a click into a key whose list is open', () => {
+            const getEntries = vi.fn(() => of(page(['profile_admin'])));
+            const { fixture } = createPanel(mapKeyValueNodeToModel(DTO), {
+                renderTemplate: true,
+                getEntries,
+            });
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('input[aria-label="Key"]');
+            input.focus();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+
+            input.click();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+
+            expect(getEntries).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the key of a row added by Add key unfocused, so its list does not open unasked', () => {
+            const getEntries = vi.fn(() => of(page(['profile_admin'])));
+            const { fixture } = createPanel(mapKeyValueNodeToModel(DTO), {
+                renderTemplate: true,
+                getEntries,
+            });
+
+            fixture.nativeElement.querySelector('.add-entry').click();
+            fixture.detectChanges();
+            TestBed.tick();
+            vi.advanceTimersByTime(250);
+            fixture.detectChanges();
+
+            expect(document.activeElement?.getAttribute('aria-label')).not.toBe('Key');
             expect(getEntries).not.toHaveBeenCalled();
             expect(suggestionItems()).toEqual([]);
         });
@@ -2485,7 +2596,7 @@ describe('KeyValueNodePanelComponent', () => {
         };
 
         for (const mode of ['read', 'write', 'delete'] as const) {
-            it(`shows under the new row's key in ${mode} once Add key focuses it`, () => {
+            it(`shows under the key of a row added in ${mode} once the user focuses it`, () => {
                 const entries = mode === 'delete' ? [{ key: 'a' }] : [{ key: 'a', value: 'variables.a' }];
                 const { fixture } = createPanel(nodeWith(mode, entries), { renderTemplate: true });
                 expect(helpsOf(fixture)).toEqual([[]]);
@@ -2494,8 +2605,9 @@ describe('KeyValueNodePanelComponent', () => {
                 fixture.detectChanges();
                 TestBed.tick();
                 fixture.detectChanges();
+                expect(helpsOf(fixture)).toEqual([[], []]);
 
-                expect(document.activeElement).toBe(keyOfRow(fixture, 1));
+                focusKey(fixture, 1);
                 expect(helpsOf(fixture)).toEqual([[], [KEY_HELP]]);
             });
         }
