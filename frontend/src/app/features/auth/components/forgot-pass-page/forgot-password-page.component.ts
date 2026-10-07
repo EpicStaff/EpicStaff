@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -9,6 +10,8 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { strictEmailValidator } from '@shared/form-validators';
+import { HttpStatus } from '@shared/models';
+import { getRetryAfterSeconds } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -18,6 +21,8 @@ type PageState = 'request' | 'email-sent' | 'reset-unavailable';
 
 // Mirrors the server's account-neutral wording, used when the response carries no detail.
 const RESET_REQUESTED_FALLBACK_MESSAGE = 'If the email is registered, a reset link has been sent.';
+const RESET_REQUEST_FAILED_MESSAGE = 'Could not request a password reset. Please try again.';
+const SECONDS_PER_MINUTE = 60;
 
 @Component({
     selector: 'app-forgot-password',
@@ -71,11 +76,21 @@ export class ForgotPasswordPageComponent {
                     this.resetRequestedMessage.set(response.detail?.trim() || RESET_REQUESTED_FALLBACK_MESSAGE);
                     this.state.set('email-sent');
                 },
-                error: (err) => this.toast.error(err.error.message),
+                error: (err: HttpErrorResponse) => this.toast.error(this.describeRequestError(err)),
             });
     }
 
     navToLogin(): void {
         void this.router.navigate(['/login']);
+    }
+
+    private describeRequestError(err: HttpErrorResponse): string {
+        if (err.status !== HttpStatus.TooManyRequests) return err.error?.message ?? RESET_REQUEST_FAILED_MESSAGE;
+
+        const seconds = getRetryAfterSeconds(err);
+        if (!seconds) return 'Too many reset requests. Please try again later.';
+        // The limit is hourly, so the wait reads better in whole minutes than in seconds.
+        const minutes = Math.ceil(seconds / SECONDS_PER_MINUTE);
+        return `Too many reset requests. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
     }
 }
