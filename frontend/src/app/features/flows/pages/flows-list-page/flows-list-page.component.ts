@@ -439,7 +439,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     }
 
     public onImportClick(): void {
-        const settings = this.importFlowSettings.settings();
+        const settings = this.importFlowSettings.requestSettings();
 
         const input = document.createElement('input');
         input.type = 'file';

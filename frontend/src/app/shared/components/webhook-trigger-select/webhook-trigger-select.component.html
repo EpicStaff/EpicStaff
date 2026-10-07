@@ -13,28 +13,31 @@
         type="button"
         class="wts__trigger"
         [class.wts__trigger--open]="open()"
-        [class.wts__trigger--placeholder]="!selectedTrigger()"
+        [class.wts__trigger--placeholder]="triggerText() === placeholder()"
+        [class.wts__trigger--readonly]="isReadonlyView()"
         [disabled]="controlDisabled()"
         (click)="toggle()"
     >
         <span class="wts__trigger-value">
-            {{ selectedTrigger() ? displayLabel(selectedTrigger()!) : placeholder() }}
+            {{ triggerText() }}
         </span>
-        <svg
-            class="wts__chevron"
-            [class.wts__chevron--open]="open()"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-        >
-            <path
-                d="M6 9l6 6 6-6"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-            />
-        </svg>
+        @if (!isReadonlyView()) {
+            <svg
+                class="wts__chevron"
+                [class.wts__chevron--open]="open()"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    d="M6 9l6 6 6-6"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linecap="round"
+                />
+            </svg>
+        }
     </button>
 
     @if (selectedIsDisallowed()) {

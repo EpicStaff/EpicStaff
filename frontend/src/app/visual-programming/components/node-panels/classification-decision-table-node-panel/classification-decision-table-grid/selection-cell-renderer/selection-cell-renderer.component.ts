@@ -18,17 +18,18 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                 <span class="drag-dot"></span>
                 <span class="drag-dot"></span>
             </span>
-            <label
-                class="selection-checkbox"
+            <div
+                class="ag-checkbox-input-wrapper"
+                [class.ag-checked]="isSelected"
                 (click)="onCheckboxClick($event)"
             >
                 <input
                     type="checkbox"
+                    class="ag-input-field-input ag-checkbox-input"
                     [checked]="isSelected"
                     (change)="toggleSelection($event)"
                 />
-                <span class="checkmark"></span>
-            </label>
+            </div>
         </div>
     `,
     styles: [
@@ -61,49 +62,6 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                 border-radius: 50%;
                 background: rgba(217, 217, 222, 0.5);
                 pointer-events: none;
-            }
-            .selection-checkbox {
-                position: relative;
-                width: 16px;
-                height: 16px;
-                cursor: pointer;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .selection-checkbox input {
-                position: absolute;
-                opacity: 0;
-                width: 16px;
-                height: 16px;
-                margin: 0;
-                cursor: pointer;
-            }
-            .checkmark {
-                display: block;
-                width: 16px;
-                height: 16px;
-                border: 1px solid rgba(217, 217, 222, 0.5);
-                border-radius: 3px;
-                background: transparent;
-                transition:
-                    background 0.15s ease,
-                    border-color 0.15s ease;
-            }
-            .selection-checkbox input:checked + .checkmark {
-                background: var(--purple-primary);
-                border-color: var(--purple-primary);
-            }
-            .selection-checkbox input:checked + .checkmark::after {
-                content: '';
-                position: absolute;
-                left: 5px;
-                top: 2px;
-                width: 4px;
-                height: 8px;
-                border: solid #fff;
-                border-width: 0 2px 2px 0;
-                transform: rotate(45deg);
             }
         `,
     ],

@@ -114,7 +114,7 @@ export const QUERY_EXAMPLES: string[] = [
     'status in ["failed"] or node_type in ["AGENT", "PYTHON"]',
     'name == "Session Start"',
     'error is not empty and not session_id == 66',
-    'input : est3285 and output : Greetings',
+    'input : order1234 and output : Greetings',
 ];
 
 export const QUERY_FIELDS: string[] = [

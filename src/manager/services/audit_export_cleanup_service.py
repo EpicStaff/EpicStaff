@@ -1,12 +1,12 @@
 import asyncio
+import contextlib
 import pathlib
 import uuid
 from time import time
 
-from redis.asyncio import Redis
-
 import settings
 from helpers.logger import logger
+from redis.asyncio import Redis
 from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX, deregister_job
 
 
@@ -54,10 +54,8 @@ class ExportCleanupService:
     async def stop(self):
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
 
     async def _sweep_loop(self):
@@ -69,9 +67,7 @@ class ExportCleanupService:
             await asyncio.sleep(self.sweep_interval_seconds)
 
     async def sweep_once(self):
-        due_jobs_ids = await self.redis_client.zrangebyscore(
-            EXPIRY_ZSET_KEY, min=0, max=time()
-        )
+        due_jobs_ids = await self.redis_client.zrangebyscore(EXPIRY_ZSET_KEY, min=0, max=time())
         for job_id in due_jobs_ids:
             try:
                 await self._delete_job(job_id)
@@ -118,7 +114,5 @@ class ExportCleanupService:
             return
 
         async with self.redis_client.pipeline(transaction=True) as pipe:
-            deregister_job(
-                pipe, domain=domain, job_id=job_id, org_id=org_id, user_id=user_id
-            )
+            deregister_job(pipe, domain=domain, job_id=job_id, org_id=org_id, user_id=user_id)
             await pipe.execute()

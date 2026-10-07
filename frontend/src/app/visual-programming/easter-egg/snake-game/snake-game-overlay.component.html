@@ -1,0 +1,40 @@
+<canvas
+    #gameCanvas
+    class="game-canvas"
+></canvas>
+
+@if (isHudVisible()) {
+    <div
+        class="hud"
+        aria-live="polite"
+    >
+        <span class="hud-item">SCORE {{ score() }}</span>
+        <span class="hud-item">TIME {{ elapsedLabel() }}</span>
+        <span class="hud-item">OCTOPUSES {{ foodEaten() }}</span>
+    </div>
+}
+
+@if (isGameOverCardVisible()) {
+    <div
+        class="game-over-card"
+        role="dialog"
+        aria-label="Game over"
+    >
+        <h2 class="game-over-title">GAME OVER</h2>
+        <dl class="game-over-stats">
+            <div class="game-over-stat">
+                <dt>SCORE</dt>
+                <dd>{{ score() }}</dd>
+            </div>
+            <div class="game-over-stat">
+                <dt>OCTOPUSES</dt>
+                <dd>{{ foodEaten() }}</dd>
+            </div>
+            <div class="game-over-stat">
+                <dt>SURVIVED</dt>
+                <dd>{{ elapsedLabel() }}</dd>
+            </div>
+        </dl>
+        <p class="game-over-hint">click anywhere to exit</p>
+    </div>
+}

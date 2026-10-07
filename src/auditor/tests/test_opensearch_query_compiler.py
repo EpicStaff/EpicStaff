@@ -336,21 +336,21 @@ def test_compile_never_lets_client_ast_touch_org_id():
 
 
 def test_compile_free_text_compiles_contains_on_every_free_text_field():
-    node = {"field": "__text__", "op": "contains", "value": "est3285"}
+    node = {"field": "__text__", "op": "contains", "value": "order1234"}
     query = compile_filters(node, org_id=1, retention_days=0)
     compiled_leaf = _filter_clauses(query)[0]
     should = compiled_leaf["bool"]["should"]
     for field in ("name", "node_type", "flow_name", "input", "output", "details"):
         explicit = _filter_clauses(
             compile_filters(
-                {"field": field, "op": "contains", "value": "est3285"},
+                {"field": field, "op": "contains", "value": "order1234"},
                 org_id=1,
                 retention_days=0,
             )
         )[0]
         assert explicit in should
     assert len(should) == 6
-    assert {"wildcard": {"input": {"value": "*est3285*", "case_insensitive": True}}} in should
+    assert {"wildcard": {"input": {"value": "*order1234*", "case_insensitive": True}}} in should
 
 
 def test_compile_flattened_alias_in_op_uses_terms():

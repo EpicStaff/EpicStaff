@@ -22,8 +22,8 @@ class OrganizationSettingsUpdateSerializer(serializers.Serializer):
     """Validate the org self-service settings PATCH body.
 
     This serializer is the only validation: OrganizationManagementService
-    stores the value as given. 0 = unlimited (default), per EST-3341's
-    explicit AC — free-form days with no product upper bound; max_value only
+    stores the value as given. 0 = unlimited (default), as the product
+    requires — free-form days with no product upper bound; max_value only
     guards the database column's range.
     """
 

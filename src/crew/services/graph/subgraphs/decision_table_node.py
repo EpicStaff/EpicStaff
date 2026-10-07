@@ -215,15 +215,6 @@ def main(variables: dict) -> bool:
             state["system_variables"]["execution_order"] = order + 1
             state["system_variables"]["nodes"][self.node_name]["execution_order"] = order
             input_vars = state["variables"].model_dump()
-            # "shared" is a live SharedVariables object injected onto flow
-            # state (graph_session_manager_service.py), not JSON-serializable
-            # - leaving it in poisons this event's audit write and, before
-            # AuditClient's flush loop was hardened against a single bad
-            # event, silently killed audit for the rest of the process.
-            # Classification's own enter_node_function already strips it;
-            # this one didn't.
-            if "shared" in input_vars:
-                del input_vars["shared"]
             msg = self.custom_session_message_writer.add_start_message(
                 session_id=self.session_id,
                 node_name=self.node_name,

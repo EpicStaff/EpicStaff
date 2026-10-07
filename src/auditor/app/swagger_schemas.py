@@ -90,7 +90,7 @@ see the per-op pairs in this request's own `openapi_examples`):
     status in ["error", "warning"] or tool in ["Web_Search_Tool", "Notification_Tool"]
     name == "Session Start"
     Error is not empty and not ID == 66
-    input : est3285 and output : Greetings
+    input : order1234 and output : Greetings
     status != "completed" and duration >= 60
     text: "timeout"
 """

@@ -11,6 +11,8 @@ class TablesConfig(AppConfig):
 
     def ready(self):
         # ruff: noqa: F401
+        from rbac.governance.organization_deletion import register_participant
+
         import tables.import_export.version_conversions.convertions
         import tables.signals.graph_signals
         import tables.signals.naive_rag_signals
@@ -43,6 +45,7 @@ class TablesConfig(AppConfig):
             decision_table_node,
             end_node,
             file_extractor_node,
+            key_value_node,
             knowledge_node,
             note_node,
             python_node,
@@ -54,6 +57,7 @@ class TablesConfig(AppConfig):
             webhook_trigger_node,
         )
         from tables.services.converter_service import ConverterService
+        from tables.services.organization_deletion import TablesOrganizationDeletion
         from tables.services.realtime_service import RealtimeService
         from tables.services.redis_service import RedisService
         from tables.services.run_python_code_service import RunPythonCodeService
@@ -98,6 +102,8 @@ class TablesConfig(AppConfig):
         )
         ScheduleTriggerService(session_manager_service=session_manager_service)
 
+        register_participant(TablesOrganizationDeletion())
+
         # Register strategies for import/export entities
         entity_registry.register(llm_models.LLMModelStrategy())
         entity_registry.register(llm_models.EmbeddingModelStrategy())
@@ -128,6 +134,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(python_node.PythonNodeStrategy())
         entity_registry.register(audio_transcription_node.AudioTranscriptionNodeStrategy())
         entity_registry.register(file_extractor_node.FileExtractorNodeStrategy())
+        entity_registry.register(key_value_node.KeyValueNodeStrategy())
         entity_registry.register(telegram_trigger_node.TelegramTriggerNodeStrategy())
         entity_registry.register(webhook_trigger_node.WebhookTriggerNodeStrategy())
         entity_registry.register(decision_table_node.DecisionTableNodeStrategy())

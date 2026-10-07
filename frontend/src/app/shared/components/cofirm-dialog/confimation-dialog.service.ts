@@ -1,35 +1,63 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 
 import { ConfirmationDialogComponent, ConfirmationDialogData, DialogResult } from './confirmation-dialog.component';
 
 export type ConfirmationResult = boolean | 'close';
 
+export interface ConfirmationResultWithOptions {
+    confirmed: boolean;
+    checked: boolean;
+}
+
+interface ConfirmationDialogConfig {
+    width?: string;
+    panelClass?: string;
+}
+
 @Injectable({
     providedIn: 'root',
 })
 export class ConfirmationDialogService {
-    constructor(private dialog: Dialog) {}
+    private readonly dialog = inject(Dialog);
 
-    confirm(
+    confirm(options: ConfirmationDialogData, config?: ConfirmationDialogConfig): Observable<ConfirmationResult> {
+        return this.openDialog(options, config).pipe(
+            map((result) => {
+                if (!result) return 'close';
+                if (result.action === 'confirm') return true;
+                if (result.action === 'cancel') return false;
+                return 'close';
+            })
+        );
+    }
+
+    confirmWithOptions(
         options: ConfirmationDialogData,
-        config?: { width?: string; panelClass?: string }
-    ): Observable<ConfirmationResult> {
+        config?: ConfirmationDialogConfig
+    ): Observable<ConfirmationResultWithOptions | 'close'> {
+        return this.openDialog(options, config).pipe(
+            map((result) => {
+                if (!result || result.action === 'close') return 'close';
+                return {
+                    confirmed: result.action === 'confirm',
+                    checked: result.checked ?? false,
+                };
+            })
+        );
+    }
+
+    private openDialog(
+        options: ConfirmationDialogData,
+        config?: ConfirmationDialogConfig
+    ): Observable<DialogResult | undefined> {
         const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
             width: config?.width ?? '400px',
             panelClass: config?.panelClass,
             data: options,
         });
-
-        return dialogRef.closed.pipe(
-            map((result) => {
-                if (!result) return 'close';
-                if (result === 'confirm') return true;
-                if (result === 'cancel') return false;
-                return 'close';
-            })
-        );
+        return dialogRef.closed;
     }
 
     confirmDelete(itemName: string): Observable<ConfirmationResult> {

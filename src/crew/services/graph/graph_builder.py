@@ -1,5 +1,6 @@
 import json
 
+from clients.key_value import KeyValueClient
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -11,6 +12,7 @@ from services.graph.nodes import (
     BaseNode,
     EndNode,
     FileContentExtractorNode,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
 )
@@ -52,6 +54,7 @@ class SessionGraphBuilder:
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
         agent_task_service: AgentTaskService | None = None,
+        key_value_client: KeyValueClient | None = None,
     ):
         """
         Initializes the SessionGraphBuilder with the required services and session details.
@@ -62,6 +65,8 @@ class SessionGraphBuilder:
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
+            key_value_client (KeyValueClient | None): The client used by KeyValueNode to read/write/delete
+                key-value table entries. Required if the graph schema contains Key-Value nodes.
         """
 
         self.session_id = session_id
@@ -69,6 +74,7 @@ class SessionGraphBuilder:
         self.python_code_executor_service = python_code_executor_service
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
+        self.key_value_client = key_value_client
         self.remembered_outputs_store = RememberedOutputsStore(redis_service=redis_service)
 
         self._graph_builder = StateGraph(State)
@@ -273,6 +279,12 @@ class SessionGraphBuilder:
             )
             self.add_node(task_node)
 
+        if schema.key_value_node_list and self.key_value_client is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.key_value_node_list)} Key-Value "
+                "node(s) but no key_value_client was provided to SessionGraphBuilder."
+            )
+
         if schema.agent_node_list and self.agent_task_service is None:
             raise RuntimeError(
                 f"Graph '{schema.name}' contains {len(schema.agent_node_list)} agent node(s) "
@@ -331,6 +343,19 @@ class SessionGraphBuilder:
                 org_id=file_extractor_node_data.org_id,
             )
             self.add_node(file_extractor_node)
+
+        for key_value_node_data in schema.key_value_node_list:
+            self.add_node(
+                KeyValueNode(
+                    session_id=self.session_id,
+                    node_name=key_value_node_data.node_name,
+                    stop_event=self.stop_event,
+                    key_value_table_id=key_value_node_data.key_value_table_id,
+                    mode=key_value_node_data.mode,
+                    entries=key_value_node_data.entries,
+                    key_value_client=self.key_value_client,
+                )
+            )
 
         for audio_transcription_node_data in schema.audio_transcription_node_list:
             audio_transcription_node = AudioTranscriptionNode(

@@ -313,7 +313,7 @@ SEARCH_REQUEST_EXAMPLES = {
     },
     "flattened path - whole blob (query)": {
         "summary": "Bare `input`/`output`/`details` root - search anywhere in the blob",
-        "value": {"query": "input : est3285 and output : Greetings"},
+        "value": {"query": "input : order1234 and output : Greetings"},
     },
     # --- match_scope (structural, filters/query field either way) -------
     "match_scope - full_session_history": {

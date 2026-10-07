@@ -14,16 +14,16 @@ _PRESET_EXAMPLE = {
     "filter_body": {"query": 'status = "failed"'},
 }
 
-AUDIT_FILTER_PRESET_COPY = dict(
-    summary="Copy a saved preset",
-    description=(
+AUDIT_FILTER_PRESET_COPY = {
+    "summary": "Copy a saved preset",
+    "description": (
         "Clones the preset's `filter_body` under a new row. `name` is "
         "optional - if omitted, the original's own name is reused, "
         "auto-numbered (`My Filter` -> `My Filter #2`) the same way "
         "Crew/Agent/Graph copy already works if that name is taken."
     ),
-    request=AuditFilterPresetCopySerializer,
-    responses={
+    "request": AuditFilterPresetCopySerializer,
+    "responses": {
         201: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="Preset copied.",
@@ -37,30 +37,28 @@ AUDIT_FILTER_PRESET_COPY = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-AUDIT_FILTER_PRESET_EXPORT_ONE = dict(
-    summary="Export one saved preset by id",
-    description=(
+AUDIT_FILTER_PRESET_EXPORT_ONE = {
+    "summary": "Export one saved preset by id",
+    "description": (
         "Downloads a single preset as a `.json` attachment - the bare "
         "`{id, name, filter_body}` object, matching the single-item shape "
         "`import` accepts. Same convention as Agent/Crew/Graph export."
     ),
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="The preset, as a downloadable JSON file.",
-            examples=[
-                OpenApiExample("Exported", value=_PRESET_EXAMPLE, response_only=True)
-            ],
+            examples=[OpenApiExample("Exported", value=_PRESET_EXAMPLE, response_only=True)],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}
 
-AUDIT_FILTER_PRESET_EXPORT_ALL = dict(
-    summary="Export a selection of the caller's own saved presets",
-    description=(
+AUDIT_FILTER_PRESET_EXPORT_ALL = {
+    "summary": "Export a selection of the caller's own saved presets",
+    "description": (
         "Bulk counterpart to the single-preset export above - always "
         'returns the `{"presets": [...]}` batch shape (even for one id), '
         "matching what `import`'s batch mode accepts. `ids` is required "
@@ -68,8 +66,8 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = dict(
         "uses) - an id that isn't the caller's own, or doesn't exist, 400s "
         "the whole request rather than being silently dropped."
     ),
-    request=BulkExportSerializer,
-    responses={
+    "request": BulkExportSerializer,
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="A `{presets: [...]}` batch, as a downloadable JSON file.",
@@ -92,16 +90,14 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-    examples=[
-        OpenApiExample(
-            "Export a selection", value={"ids": [1, 2, 3]}, request_only=True
-        ),
+    "examples": [
+        OpenApiExample("Export a selection", value={"ids": [1, 2, 3]}, request_only=True),
     ],
-)
+}
 
-AUDIT_FILTER_PRESET_IMPORT = dict(
-    summary="Import a preset file (upload) - single object or a batch",
-    description=(
+AUDIT_FILTER_PRESET_IMPORT = {
+    "summary": "Import a preset file (upload) - single object or a batch",
+    "description": (
         "Upload the exact `.json` file the single or bulk export endpoint "
         'produced - either the single-object shape or a `{"presets": '
         "[...]}` batch. `org`/`created_by` always come from the caller's "
@@ -112,7 +108,7 @@ AUDIT_FILTER_PRESET_IMPORT = dict(
         "returns, keyed by entity type (`AuditFilterPreset`, since presets "
         "are always a single-entity-type import)."
     ),
-    request={
+    "request": {
         "multipart/form-data": {
             "type": "object",
             "properties": {
@@ -121,7 +117,7 @@ AUDIT_FILTER_PRESET_IMPORT = dict(
             "required": ["file"],
         }
     },
-    responses={
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="Import summary, keyed by entity type.",
@@ -155,4 +151,4 @@ AUDIT_FILTER_PRESET_IMPORT = dict(
         ),
         401: UNAUTHORIZED_401_RESPONSE,
     },
-)
+}

@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+
 import uvicorn
 from app.core import settings
 from app.main import create_app
@@ -21,7 +23,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(main())
-    except KeyboardInterrupt:
-        pass

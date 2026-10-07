@@ -1,6 +1,5 @@
-from rest_framework import serializers
-
 from rbac.scoping.fields import resolve_active_org_id
+from rest_framework import serializers
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.validators.audit_filter_body_validator import validate_filter_body_shape
 
@@ -21,15 +20,11 @@ class AuditFilterPresetSerializer(serializers.ModelSerializer):
 
         request = self.context["request"]
         org_id = resolve_active_org_id(request)
-        qs = AuditFilterPreset.objects.filter(
-            org_id=org_id, created_by=request.user, name=name
-        )
+        qs = AuditFilterPreset.objects.filter(org_id=org_id, created_by=request.user, name=name)
         if self.instance is not None:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(
-                {"name": "You already have a preset with this name."}
-            )
+            raise serializers.ValidationError({"name": "You already have a preset with this name."})
         return attrs
 
 

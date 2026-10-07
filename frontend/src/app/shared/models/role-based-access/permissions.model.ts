@@ -24,6 +24,7 @@ export enum ResourceCode {
     Audit = 'audit',
     Voice = 'voice',
     Webhooks = 'webhooks',
+    KeyValueTables = 'key_value_tables',
 }
 
 export interface ActivePermissions {

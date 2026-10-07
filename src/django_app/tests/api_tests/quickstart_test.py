@@ -53,7 +53,7 @@ def openai_provider_seeded(openai_provider):
         name="text-embedding-3-small", embedding_provider=openai_provider
     )
     RealtimeModel.objects.get_or_create(
-        name="gpt-4o-mini-realtime-preview-2024-12-17", provider=openai_provider
+        name="test-realtime-model", provider=openai_provider
     )
     RealtimeTranscriptionModel.objects.get_or_create(
         name="whisper-1", provider=openai_provider
@@ -225,16 +225,16 @@ def test_post_quickstart_invalid_provider(auth_client, quickstart_url):
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
 
 
-@pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
+@pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
 @pytest.mark.django_db
 def test_post_quickstart_does_not_auto_apply_to_default_models(
-    auth_client, quickstart_url, openai_provider_seeded
+    auth_client, quickstart_url, openai_provider_seeded, default_org
 ):
     auth_client.post(
         quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
     )
 
-    dm = DefaultModels.load()
+    dm = DefaultModels.load_for_org(default_org.id)
     assert dm.agent_llm_config is None
     assert dm.memory_embedding_config is None
 
@@ -246,7 +246,7 @@ def test_post_quickstart_does_not_auto_apply_to_default_models(
 
 @pytest.mark.django_db
 def test_post_apply_sets_default_models(
-    auth_client, quickstart_url, quickstart_apply_url, openai_provider_seeded
+    auth_client, quickstart_url, quickstart_apply_url, openai_provider_seeded, default_org
 ):
     auth_client.post(
         quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
@@ -256,7 +256,7 @@ def test_post_apply_sets_default_models(
 
     assert response.status_code == status.HTTP_200_OK, response.content
 
-    dm = DefaultModels.load()
+    dm = DefaultModels.objects.get(org=default_org)
     llm = LLMConfig.objects.get(custom_name="quickstart_openai")
     embedding = EmbeddingConfig.objects.get(custom_name="quickstart_openai")
     realtime = RealtimeConfig.objects.get(custom_name="quickstart_openai")
@@ -305,7 +305,7 @@ def test_post_apply_response_contains_default_models_shape(
 
 @pytest.mark.django_db
 def test_post_apply_uses_latest_tagged_config(
-    auth_client, quickstart_url, quickstart_apply_url, openai_provider_seeded
+    auth_client, quickstart_url, quickstart_apply_url, openai_provider_seeded, default_org
 ):
     """Apply always uses the config carrying the quickstart:latest tag."""
     auth_client.post(
@@ -317,7 +317,7 @@ def test_post_apply_uses_latest_tagged_config(
 
     auth_client.post(quickstart_apply_url, format="json")
 
-    dm = DefaultModels.load()
+    dm = DefaultModels.objects.get(org=default_org)
     latest_llm = LLMConfig.objects.filter(
         tags__name=QUICKSTART_TAG, tags__predefined=True
     ).first()

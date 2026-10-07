@@ -38,9 +38,7 @@ def register_job(
     pipe.expire(index_key, hash_ttl_seconds)
 
 
-def deregister_job(
-    pipe, *, domain: str, job_id: str, org_id: int, user_id: int
-) -> None:
+def deregister_job(pipe, *, domain: str, job_id: str, org_id: int, user_id: int) -> None:
     pipe.delete(f"{JOB_KEY_PREFIX}{job_id}")
     pipe.zrem(EXPIRY_ZSET_KEY, job_id)
     pipe.srem(user_jobs_key(domain, org_id, user_id), job_id)

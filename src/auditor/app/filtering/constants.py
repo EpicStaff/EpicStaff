@@ -32,6 +32,4 @@ FLATTENED_OPS = frozenset(
 )
 SELECT_OPS = frozenset({"in", "not_in", "equals", "not_equal"})
 RANGE_OPS = frozenset({"equals", "gt", "lt", "gte", "lte"})
-DURATION_OPS = frozenset(
-    {"gt", "lt", "gte", "lte", "equals", "is_empty", "is_not_empty"}
-)
+DURATION_OPS = frozenset({"gt", "lt", "gte", "lte", "equals", "is_empty", "is_not_empty"})

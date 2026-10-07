@@ -10,9 +10,9 @@ else
   echo "Generating config.json..."
   cat <<EOF > $CONFIG_PATH
 {
-  "apiUrl": "${API_URL:-http://localhost/api/}",
-  "realtimeApiUrl": "${REALTIME_API_URL:-http://localhost/realtime/}",
-  "auditorUrl": "${AUDITOR_API_URL:-http://localhost/auditor/}",
+  "apiUrl": "${API_URL}",
+  "realtimeApiUrl": "${REALTIME_API_URL}",
+  "auditorUrl": "${AUDITOR_API_URL}",
   "isEpicChatEnabled": ${EPIC_CHAT_ENABLED:-true}
 }
 EOF

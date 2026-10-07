@@ -5,6 +5,18 @@
     overflow: hidden;
 }
 
+// Must stay z-index/transform/isolation-free: it is moved inside `f-canvas`'s
+// stacking context, and any stacking context of its own would trap its
+// children's z-index instead of letting it compete with `.f-nodes-container`.
+.node-overlays-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
 ::ng-deep app-flow-graph {
     .f-magnetic-lines {
         .f-line {
@@ -17,6 +29,15 @@
             fill: var(--vp-line-alignment-color);
         }
     }
+    .editor-wrapper.readonly {
+        .f-connection {
+            .f-connection-selection {
+                cursor: default;
+                pointer-events: none;
+            }
+        }
+    }
+
     .f-connection {
         z-index: 2;
         .f-connection-drag-handle {
@@ -131,6 +152,10 @@
             .f-connection-path {
                 stroke-dasharray: 6 4;
             }
+        }
+
+        &.is-reassign-follower {
+            opacity: 0.3;
         }
 
         .connection-center {
@@ -555,6 +580,15 @@ app-nodes-search {
 .settings-icon-btn {
     color: var(--fog-alpha-70);
     font-size: 1.25rem;
+
+    &:hover {
+        color: var(--fog-200);
+    }
+}
+
+.extract-subflow-btn {
+    color: var(--fog-alpha-70);
+    font-size: 1.125rem;
 
     &:hover {
         color: var(--fog-200);

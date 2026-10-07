@@ -37,6 +37,14 @@ class MembershipManagementService(CrossOrgResourceService):
         MEMBERSHIPS does not let you hand out authority you lack. Superadmin
         bypasses. `assert_role_is_assignable` still runs first and blocks the
         global Superadmin role and foreign-org custom roles.
+      - The ceiling checks only the NEW role being assigned, never the target's
+        CURRENT role — by design, since this model is permission-based, not
+        hierarchy-based. There is no "you can't touch someone more privileged
+        than you": a holder of MEMBERSHIPS.UPDATE/DELETE can change or remove
+        any member's membership, Org Admins included. `remove_member` grants
+        nothing new, so it has no ceiling check at all. Built-in roles are
+        ordinary roles; the only thing that sets them apart is `is_built_in`
+        (immutable role definition), which is unrelated to this ceiling.
       - A non-superadmin cannot change or remove their OWN membership.
       - No last-org-admin guard — superadmin is the rescue backstop.
     """

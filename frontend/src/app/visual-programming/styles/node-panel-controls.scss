@@ -1,0 +1,38 @@
+// Mixins only, no emitted rules: safe to @use from components that style their own .btn-* classes.
+
+// Muted helper text under a field, e.g. the task node's "Add entries to Input List to use them here."
+@mixin hint-text {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+// The "=" between the two fields of a row, e.g. the Input List's "argument = variable".
+@mixin equals-sign {
+    color: var(--white);
+    font-weight: 500;
+    margin: 0 -2px;
+}
+
+// Full-width "add a row" button under a list, e.g. the task node's "Add Input".
+// Full width comes from sitting in a column flex container.
+@mixin add-row-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--color-action-btn-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    transition: background-color 0.2s;
+    cursor: pointer;
+    font-size: 0.875rem;
+
+    &:hover {
+        background: var(--color-action-btn-background-hover);
+    }
+
+    app-svg-icon {
+        flex-shrink: 0;
+    }
+}

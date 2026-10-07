@@ -1,5 +1,5 @@
 🛠️ Auditor Developer Guide
-This guide is task-oriented: how to actually do things in the audit-trail system (EST-3322), not a status summary. If you just need to understand the shape of the data, read `src/auditor/app/domains/sessions/mappings/README.md` (mapping/field decisions) first — this doc assumes you've seen it. For the code map (the audit-domain abstraction, file-by-file roles, cross-layer contracts), see `wiki/services/auditor.md`. For the search request body's field/operator/query-language reference (what you actually type into `filters`/`query`), see [`Filtering_And_Query_Language.md`](./Filtering_And_Query_Language.md).
+This guide is task-oriented: how to actually do things in the audit-trail system, not a status summary. If you just need to understand the shape of the data, read `src/auditor/app/domains/sessions/mappings/README.md` (mapping/field decisions) first — this doc assumes you've seen it. For the code map (the audit-domain abstraction, file-by-file roles, cross-layer contracts), see `wiki/services/auditor.md`. For the search request body's field/operator/query-language reference (what you actually type into `filters`/`query`), see [`Filtering_And_Query_Language.md`](./Filtering_And_Query_Language.md).
 
 ## Architecture in one paragraph
 

@@ -1,11 +1,11 @@
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-AUDIT_TOKEN_CREATE = dict(
-    summary="Mint a short-lived audit token for the active organization",
-    description=(
+AUDIT_TOKEN_CREATE = {
+    "summary": "Mint a short-lived audit token for the active organization",
+    "description": (
         "Mints a 5-minute JWT scoped to the caller's "
         "active organization (`X-Organization-Id`), consumed directly by "
         "the `auditor` service — the frontend never calls Django again for "
@@ -15,8 +15,8 @@ AUDIT_TOKEN_CREATE = dict(
         "`exp`. Returns 403 before minting anything if the caller has no "
         "AUDIT permission at all in the active org."
     ),
-    request=None,  # no request body - org comes from X-Organization-Id header
-    responses={
+    "request": None,  # no request body - org comes from X-Organization-Id header
+    "responses": {
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description="Token minted.",
@@ -34,4 +34,4 @@ AUDIT_TOKEN_CREATE = dict(
             description="Caller has no AUDIT:READ or AUDIT:EXPORT in the active organization.",
         ),
     },
-)
+}

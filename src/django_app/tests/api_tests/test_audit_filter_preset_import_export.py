@@ -4,6 +4,8 @@ import pytest
 from django.urls import reverse
 
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.strategies.audit_filter_preset import AuditFilterPresetStrategy
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tests.helpers import data_to_json_file
 
@@ -299,3 +301,12 @@ class TestAuditFilterPresetImport:
         response = auth_client.post(url, {"file": file}, format="multipart")
 
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_find_existing_without_owner_never_matches_another_users_preset(preset, default_org):
+    found = AuditFilterPresetStrategy().find_existing(
+        {"name": preset.name}, IDMapper(), org_id=default_org.id
+    )
+
+    assert found is None

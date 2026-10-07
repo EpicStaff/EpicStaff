@@ -1,23 +1,22 @@
-import tarfile
-import zipfile
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
 
-from tables.services.storage_service.archive_limits import (
-    ArchiveExtractionGuard,
-    default_guard,
-)
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FileListItem,
     FolderInfo,
     TreeNode,
-    UploadResult,
 )
-from tables.services.storage_service.path_utils import sanitize_storage_path
+from utils.logger import logger
+
+
+class StorageUnreachable(Exception):  # noqa: N818
+    """The object store is unreachable, timed out or failed on its side."""
 
 
 class AbstractStorageBackend(ABC):
+    """Object storage of flat keys, where a key ending in "/" is a folder marker.
+    Only the streaming-upload methods raise StorageUnreachable on an outage."""
+
     @staticmethod
     def _increment_name(name: str, is_folder: bool = False) -> str:
         """
@@ -47,99 +46,55 @@ class AbstractStorageBackend(ABC):
                 stem, counter = prefix, int(num)
         return f"{stem} ({counter + 1}){ext}"
 
-    def _check_archive_password(self, archive_file, archive_name: str) -> None:
-        """Raise ValueError if archive contains any password-protected entries."""
-        pos = archive_file.tell()
-        is_zip = zipfile.is_zipfile(archive_file)
-        archive_file.seek(pos)
-        if not is_zip:
-            return
-
-        msg = f"Archive '{archive_name}' contains protected files"
-        try:
-            with zipfile.ZipFile(archive_file, "r") as zf:
-                for entry in zf.infolist():
-                    if not entry.is_dir() and entry.flag_bits & 0x1:
-                        raise ValueError(msg)
-        except (RuntimeError, zipfile.BadZipFile) as e:
-            raise ValueError(msg) from e
-        finally:
-            archive_file.seek(pos)
-
-    def _sanitize_archive_member_name(self, name: str) -> str:
-        """Raise ValueError if an archive member name can escape the extraction folder."""
-        return sanitize_storage_path(name, allow_empty=False)
-
-    def _iter_archive_entries(
-        self, archive_file, guard: ArchiveExtractionGuard | None = None
-    ) -> Iterator[tuple[str, bytes]]:
-        """Yield (relative_path, bytes) for every file inside a ZIP or TAR archive."""
-        pos = archive_file.tell()
-        guard = guard or default_guard()
-
-        if zipfile.is_zipfile(archive_file):
-            archive_file.seek(pos)
-
-            with zipfile.ZipFile(archive_file, "r") as zf:
-                for entry in zf.infolist():
-                    if not entry.is_dir():
-                        guard.account_entry()
-                        safe_name = self._sanitize_archive_member_name(entry.filename)
-                        with zf.open(entry, "r") as member_file:
-                            yield (
-                                safe_name,
-                                guard.read_member(member_file, entry.filename),
-                            )
-
-            return
-
-        archive_file.seek(pos)
-
-        try:
-            is_tar = tarfile.is_tarfile(archive_file)
-        except Exception:
-            is_tar = False
-
-        if is_tar:
-            archive_file.seek(pos)
-
-            with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
-                for member in tf.getmembers():
-                    if member.issym() or member.islnk():
-                        raise ValueError(
-                            f"Archive member is a symlink or hardlink: {member.name!r}"
-                        )
-                    if member.isfile():
-                        guard.account_entry()
-                        safe_name = self._sanitize_archive_member_name(member.name)
-                        fobj = tf.extractfile(member)
-                        if fobj:
-                            yield safe_name, guard.read_member(fobj, member.name)
-
-            return
-
-        archive_file.seek(pos)
-        raise ValueError("Unsupported archive format — expected ZIP or TAR")
-
     @abstractmethod
     def list_(self, prefix: str) -> list[FileListItem]:
         """List files and folders at prefix."""
 
+    @property
     @abstractmethod
-    def upload(self, path: str, file_object) -> UploadResult:
-        """Upload file_object to path."""
+    def part_size(self) -> int:
+        """Bytes per part of upload_chunks and upload_stream; callers size buffers by it."""
+
+    @abstractmethod
+    async def upload_chunks(self, path: str, chunks, *, size_guard=None, before_commit=None) -> int:
+        """Store an async stream of byte chunks at path; return the byte count.
+        `before_commit(total)` runs before the object becomes visible; raising aborts the upload."""
+
+    @abstractmethod
+    def upload_stream(self, path: str, file_object) -> None:
+        """Store a readable of unknown size at path; read(n) must return n bytes until EOF."""
+
+    @abstractmethod
+    def put_bytes(self, path: str, data: bytes) -> int:
+        """Store data at path in one request; returns its size."""
 
     @abstractmethod
     def download(self, path: str) -> bytes:
         """Return file content as bytes."""
 
     @abstractmethod
+    def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
+        """Return bytes first..last (inclusive; None = to the end) and their Content-Range."""
+
+    @abstractmethod
+    def unique_key(self, key: str, is_folder: bool = False) -> str:
+        """Return key or its first free "name (n)" variant; a folder also clashes with a file."""
+
+    @abstractmethod
     def delete(self, path: str) -> None:
         """Delete file or folder (folder = recursive)."""
 
     @abstractmethod
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
+
+    @abstractmethod
     def mkdir(self, path: str) -> None:
         """Create a folder."""
+
+    @abstractmethod
+    def claim_folder(self, path: str) -> bool:
+        """Atomically create the folder marker if nothing of that name exists; False if taken."""
 
     @abstractmethod
     def move(self, source_path: str, destination_path: str) -> str:
@@ -162,12 +117,31 @@ class AbstractStorageBackend(ABC):
         """
 
     @abstractmethod
-    def copy(self, source_path: str, destination_path: str) -> list[str]:
-        """Copy file or folder. Returns the actual destination path(s) created."""
+    def copy(self, source_path: str, destination_path: str) -> list[tuple[str, int]]:
+        """Copy a file or folder into the destination folder; return (key, size) per created object.
+        On failure nothing it created is left behind."""
+
+    @abstractmethod
+    def delete_keys(self, keys: list[str]) -> None:
+        """Delete exactly these keys (as copy returns them), nothing else."""
+
+    def discard_keys(self, keys: list[str]) -> None:
+        """Best-effort removal of the keys a failed write created; failures are only logged."""
+        if not keys:
+            return
+        try:
+            # One key twice (a name repeated in an archive) is deleted once.
+            self.delete_keys(list(dict.fromkeys(keys)))
+        except Exception:
+            logger.exception("Could not remove {} objects of a failed write", len(keys))
 
     @abstractmethod
     def info(self, path: str) -> FileInfo | FolderInfo:
         """Return file or folder metadata."""
+
+    @abstractmethod
+    def head_file(self, path: str) -> FileInfo | None:
+        """Metadata of the file at path from one quick, non-retried request, or None."""
 
     @abstractmethod
     def exists(self, path: str) -> bool:
@@ -176,10 +150,6 @@ class AbstractStorageBackend(ABC):
     @abstractmethod
     def list_all_keys(self, prefix: str) -> list[str]:
         """Recursively list all file keys under prefix (excludes folder markers)."""
-
-    @abstractmethod
-    def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
-        """Extract archive into prefix. Returns list of extracted paths."""
 
     @abstractmethod
     def list_tree(

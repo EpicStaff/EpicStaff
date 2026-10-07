@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from types import CoroutineType
 from typing import Any
 
+from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from loguru import logger
 from models.graph_models import GraphMessage
@@ -98,6 +99,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         agent_task_service: AgentTaskService | None = None,
+        key_value_client: KeyValueClient | None = None,
         max_concurrent_sessions: int = 20,
     ):
         """
@@ -109,6 +111,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_schema_channel (str): The Redis channel for listening to session schema messages.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice.
+            key_value_client (KeyValueClient | None): The client used by KeyValueNode to read/write/delete
+                key-value table entries.
         """
 
         self.redis_service = redis_service
@@ -118,6 +122,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
+        self.key_value_client = key_value_client
         self.session_graph_pool: dict[int, SessionCoroItem] = {}
         self.session_queue = asyncio.Queue()
         self._worker_task: asyncio.Task | None = None
@@ -168,6 +173,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
                 agent_task_service=self.agent_task_service,
+                key_value_client=self.key_value_client,
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
@@ -287,7 +293,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 variables=final_state["variables"].model_dump(),
             )
 
-            # Cleanup shared variables
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)

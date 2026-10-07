@@ -1,11 +1,9 @@
 import uuid
 from abc import ABC, abstractmethod
-from typing import Generic
 
 from loguru import logger
-
 from src.shared.audit.client import AuditClient
-from src.shared.audit.protocols import T
+from src.shared.audit.protocols import AuditEventLike, T
 
 
 def derive_root_id(namespace: uuid.UUID, key: str) -> str:
@@ -25,7 +23,7 @@ async def safe_emit(client: AuditClient[T], event: T) -> None:
         logger.warning(f"Audit emit failed, dropping event {event.id}: {e}")
 
 
-class BaseAuditWriter(ABC, Generic[T]):
+class BaseAuditWriter[T: AuditEventLike](ABC):
     """
     Shared plumbing every domain writer gets for free: owns the client,
     knows how to emit safely, and shuts it down. To add a domain writer:

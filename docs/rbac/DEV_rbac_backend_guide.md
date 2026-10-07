@@ -96,6 +96,7 @@ class ResourceType(models.TextChoices):
         SURFACES,
     )
     WEBHOOKS
+    KEY_VALUE_TABLES
 
 
 class Permission(IntFlag):
@@ -108,47 +109,56 @@ class Permission(IntFlag):
     LIST = 128  # reserved — not in the catalog, checked nowhere
 ```
 
-### 2.2 Built-in roles (seeded by a chain of idempotent data migrations)
+### 2.2 Built-in roles (declared in `rbac/access/builtin_roles.json`)
 
-Superadmin role row has **zero** `RolePermission` rows — authority comes exclusively from
-`User.is_superadmin`. The seeds run 0171 → 0183 → 0205 → 0209 → 0210 → 0212 → 0236 → 0242 →
-0246, each overriding the last; `0242_reseed_builtin_role_permissions` is the authoritative
-end state for the resources it covers, and `0246_seed_webhooks_resource_permissions` seeds
-the `webhooks` resource introduced afterward. Current bitmasks:
+The four built-in roles — name, description and every permission they hold — are declared in
+**`rbac/access/builtin_roles.json`**. The file is the state, not a patch:
+`python manage.py seed_builtin_roles` (run by `entrypoint.sh` on every container start, right
+after `migrate`) makes the database match it exactly.
 
-| resource_type | Org Admin | Member | Viewer |
-|---|---|---|---|
-| flows | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
-| agents | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
-| tools | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
-| surfaces | 15 (CRUD) | 7 (CRU) | 2 (R) |
-| knowledge_sources | 15 (CRUD) | 2 (R) | 2 (R) |
-| files | 31 (CRUD+E) | 23 (CRU+E) | 2 (R) |
-| projects | 31 (CRUD+E) | 7 (CRU) | 2 (R) |
-| llm_configs | 15 (CRUD) | 2 (R) | 2 (R) |
-| voice | 15 (CRUD) | 2 (R) | 2 (R) |
-| webhooks | 15 (CRUD) | 15 (CRUD) | 2 (R) |
-| secrets | 75 (CRD+use) | 0 | 0 |
-| memberships | 15 (CRUD) | 0 | 0 |
-| roles | 15 (CRUD) | 0 | 0 |
-| organizations | 6 (R+U) | 0 | 0 |
-| api_keys | 10 (R+D) | 0 | 0 |
+```json
+"Member": {
+  "description": "Builds and edits workspace resources; no organization administration.",
+  "permissions": {
+    "flows": ["create", "read", "update"],
+    "knowledge_sources": ["read"]
+  }
+}
+```
 
-Migration `0242` re-seeds all three roles so that every stored bit is one the
-code enforces **and** the catalog can grant. It removed three kinds of dead bit
-the earlier seeds had accumulated — `flows:USE` on Viewer (nothing enforces it;
-running a flow checks `FLOWS.READ`), `secrets:LIST` (`Permission.LIST` is
-checked nowhere), and `secrets:UPDATE` (`SecretViewSet` has no update route) —
-all behaviour-neutral, since none of them gated anything. This matters beyond
-tidiness: the escalation ceiling compares these masks when deciding whether the
-holder of one role may assign another, so a bit that grants nothing could still
-refuse a legitimate assignment. `use` is an action of `secrets` only, and among
-the built-ins only Org Admin holds it.
+- **Absence is revocation.** An action missing from a resource's list is removed from the role;
+  a resource missing from `permissions` is removed entirely. To take a permission away, delete
+  it from the file.
+- **Only grantable actions are accepted.** Each action must be in that resource's
+  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `flows`, `list` anywhere, or a
+  platform action is refused. To grant a new kind of action, add it to the catalog and enforce
+  it first. This keeps every stored bit one the code enforces and the matrix can show — the
+  escalation ceiling compares these masks, so a dead bit can still refuse a legitimate
+  assignment.
+- **An invalid file stops startup.** The whole file is validated before anything is written
+  (unknown role, resource or action; empty list; a built-in role missing from the file;
+  grants on Superadmin), every error is reported at once, and the writes run in one
+  transaction.
+- **Roles are never deleted.** A missing built-in role is created and a changed description is
+  updated; a built-in role in the database that the file does not name is only warned about —
+  memberships cascade from it.
+- **Superadmin** has `"permissions": {}` — its authority is `User.is_superadmin`.
 
-If you change a seed, do it with a new idempotent data migration — never edit an
-applied one. `tests/conftest.py::seed_builtin_roles_and_permissions` replays the
-whole chain after `flush`; a new seed must be appended there too, and the
-re-seed must stay last.
+`key_value_tables` has no `use` action; its built-in grants are in `builtin_roles.json` like
+every other resource. A Key-Value node's mode decides which `key_value_tables` bits configuring
+it needs (`MODE_PERMISSIONS` in `tables/services/key_value_table_service.py`: read → R, write →
+C and U, delete → R and D, since a delete node's session message shows the deleted values).
+
+**To change a built-in role:** edit the JSON, run
+`make django-tests ARGS="tests/command_tests/test_seed_builtin_roles.py tests/services_tests/test_builtin_role_permissions.py"`,
+restart the `django_app` container. Running Django outside Docker? `make django-migrate` does not
+apply the file — run `make django-manage CMD="seed_builtin_roles"` after it. **Never write a data migration for built-in roles** — the
+seeder would overwrite it on the next start. Migrations `0171` … `0246`, which seeded them
+before, are history: they still run on a fresh database and the command reconciles right
+after. Tests get the same state: `tests/conftest.py` runs the same seeder after `flush`.
+
+Permissions are resolved from the database on every request and never cached in the JWT, so a
+change applies on the first request after the container restarts.
 
 ---
 
@@ -184,7 +194,16 @@ Two authentication classes (`rbac/identity/authentication.py`), both global defa
   `X-Organization-Id` header the caller sends — identical to that owner authenticating with
   a JWT. Key management endpoints (`/api/profile/api-keys/`,
   `/api/admin/api-keys/`) are JWT-only (`DenyApiKeyAuth`) — see
-  [api_keys.md](api_keys.md).
+  [api_keys.md](api_keys.md). Every write on the governance surface
+  (`/api/admin/roles|memberships|organizations|users/`, including permanent
+  deletion) is JWT-only, and the SYSTEM key is rejected there even on reads
+  (`RestrictApiKeyToUserKeyReads`, prepended first by the `get_permissions` of
+  `CrossOrgAdminViewSet` and of `UserAdminViewSet`): a leaked credential must not
+  be able to rewrite governance or erase accounts or tenants. `reset-user` and the
+  admin password reset are JWT-only via `DenyApiKeyAuth`. Those two, and permanent
+  deletion of users and organizations, are superadmin-only by construction — they
+  add no `ResourceType` and no `Permission` bit, so no custom role can ever be
+  granted them.
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `rbac/identity/tickets.py`): `POST /api/auth/sse-ticket/`
@@ -351,8 +370,8 @@ transactions with `SELECT FOR UPDATE`:
   assigning any role (`MembershipManagementService.add_member` / `change_role`,
   the bits it grants). It never inspects `is_built_in`, so built-in Org Admin
   and an over-ceiling custom role are refused identically, and it compares only
-  the catalog's grantable action bits (`GRANTABLE_ACTION_BITS`) so ungranted
-  `use`/`list` seed data cannot block a legitimate grant. Superadmin bypasses
+  the catalog's grantable action bits per resource (`grantable_bits_for`) so a stored bit
+  that is not an action of its resource cannot block a legitimate grant. Superadmin bypasses
   inside `covers`.
 - last-active-superadmin guard (`user_management_service.py`)
 - last-active-organization guard (`organization_management_service.py`)
@@ -526,8 +545,9 @@ to that module — never raw `Response({"error": ...})`.
    org-scoped fields for FK references (§6.1).
 5. **Resource type** — reuse the closest existing `ResourceType`. Only add a new one when
    the resource genuinely needs its own permission column; that requires: enum value +
-   `RESOURCE_TYPE_METADATA` entry + an idempotent seed migration granting bits to
-   built-in roles + FE catalog pickup (automatic via the catalog endpoint).
+   `RESOURCE_TYPE_METADATA` entry + the resource's grants for each built-in role in
+   `rbac/access/builtin_roles.json` (no migration, §2.2) + FE catalog pickup (automatic via
+   the catalog endpoint).
 6. **Tests** (pattern: `tests/api_tests/test_org_scoping_core.py`):
    - create lands in the active org with `created_by` stamped;
    - list returns only active-org rows;
@@ -657,6 +677,7 @@ path — the default org is only for bootstrap and data migrations.
 | Org resolution | `rbac/access/org_context.py` |
 | Effective permissions + resolver | `rbac/access/effective.py`, `rbac/access/resolver.py` |
 | Action maps & catalog | `rbac/access/action_map.py`, `rbac/access/catalog.py` |
+| Built-in roles (state + seeder + command) | `rbac/access/builtin_roles.json`, `rbac/access/builtin_roles.py`, `rbac/management/commands/seed_builtin_roles.py` |
 | Bitmask helpers | `rbac/access/bitmask.py` |
 | SSE/WS tickets | `rbac/identity/tickets.py` |
 | Queryset mixins | `rbac/scoping/mixins.py` |

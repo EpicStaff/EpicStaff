@@ -159,15 +159,15 @@ class QuickstartService(metaclass=SingletonMeta):
             if new_config:
                 new_config.tags.add(tag)
 
-    def apply_to_default_models(self, config_name: str) -> DefaultModels:
+    def apply_to_default_models(self, config_name: str, *, org_id: int) -> DefaultModels:
         """
-        Applies the given quickstart config to DefaultModels singleton.
+        Applies the given quickstart config to the organization's DefaultModels row.
         Sets all relevant FKs based on what configs exist for that config_name.
         """
-        llm = LLMConfig.objects.filter(custom_name=config_name).first()
-        embedding = EmbeddingConfig.objects.filter(custom_name=config_name).first()
+        llm = LLMConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
+        embedding = EmbeddingConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
 
-        dm = DefaultModels.load()
+        dm = DefaultModels.load_for_org(org_id)
         if llm:
             dm.agent_llm_config = llm
             dm.agent_fcm_llm_config = llm
@@ -178,12 +178,12 @@ class QuickstartService(metaclass=SingletonMeta):
         dm.save()
         return dm
 
-    def is_synced(self, last_config: dict) -> bool:
+    def is_synced(self, last_config: dict, *, org_id: int) -> bool:
         """
-        Returns True if DefaultModels FKs all point to the configs
+        Returns True if the organization's DefaultModels FKs all point to the configs
         from the given last_config dict.
         """
-        dm = DefaultModels.load()
+        dm = DefaultModels.load_for_org(org_id)
         checks = []
         if last_config.get("llm_config"):
             checks.append(dm.agent_llm_config_id == last_config["llm_config"].id)

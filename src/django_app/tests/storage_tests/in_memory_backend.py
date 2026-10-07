@@ -1,16 +1,23 @@
 import io
 import mimetypes
+import threading
+import zipfile
 from datetime import datetime, timezone
 
-from tables.services.storage_service.base import AbstractStorageBackend
+from botocore.exceptions import ClientError
+from tables.exceptions import RangeNotSatisfiable
+from tables.services.storage_service.base import AbstractStorageBackend, StorageUnreachable
 from tables.services.storage_service.dataclasses import (
     FileInfo,
     FolderInfo,
     FileListItem,
     TreeNode,
-    UploadResult,
 )
-from tables.services.storage_service.path_utils import sanitize_storage_path
+from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.quota import record_files_within_quota
+from tables.services.storage_service.s3_backend import S3StorageBackend
+
+MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 class InMemoryStorageBackend(AbstractStorageBackend):
@@ -20,11 +27,13 @@ class InMemoryStorageBackend(AbstractStorageBackend):
     Mirrors S3 key semantics: everything is a flat dict of full key -> (bytes,
     modified datetime). Folders have no real existence — they are either a
     zero-byte marker key ending in "/" (created by mkdir) or implied by files
-    living under a common prefix (a "virtual folder").
+    living under a common prefix (a "virtual folder"). Like MinIO, it refuses to
+    write a key under a path that is a stored object (XMinioParentIsObject).
     """
 
-    def __init__(self, organization_prefix: str = ""):
+    def __init__(self, organization_prefix: str = "", part_size: int = 16 * 1024 * 1024):
         self.organization_prefix = organization_prefix
+        self._part_size = part_size
         self._objects: dict[str, tuple[bytes, datetime]] = {}
 
     def _full_path(self, path: str) -> str:
@@ -38,6 +47,31 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             return full_key[len(self.organization_prefix) :]
         return full_key
 
+    def _parent_object(self, full_key: str) -> str | None:
+        """The stored object that is an ancestor path of full_key, if any."""
+        segments = full_key.rstrip("/").split("/")
+        if full_key.endswith("/"):
+            segments.append("")
+        for depth in range(1, len(segments)):
+            ancestor = "/".join(segments[:depth])
+            if ancestor in self._objects:
+                return ancestor
+        return None
+
+    def _store(self, full_key: str, entry: tuple[bytes, datetime]) -> None:
+        if (parent := self._parent_object(full_key)) is not None:
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "XMinioParentIsObject",
+                        "Message": f"Object-prefix is already an object: {parent}",
+                    },
+                    "ResponseMetadata": {"HTTPStatusCode": 400},
+                },
+                "PutObject",
+            )
+        self._objects[full_key] = entry
+
     def _key_exists(self, key: str, is_folder: bool) -> bool:
         if is_folder:
             folder_prefix = key if key.endswith("/") else key + "/"
@@ -46,9 +80,16 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             return any(k.startswith(folder_prefix) for k in self._objects)
         return key in self._objects
 
-    def _unique_key(self, key: str, is_folder: bool = False) -> str:
+    def _name_taken(self, key: str, is_folder: bool) -> bool:
+        if is_folder:
+            return self._key_exists(key, is_folder=True) or self._key_exists(
+                key.rstrip("/"), is_folder=False
+            )
+        return self._key_exists(key, is_folder=False)
+
+    def unique_key(self, key: str, is_folder: bool = False) -> str:
         """Increment the name segment of *key* until nothing exists at that path."""
-        if not self._key_exists(key, is_folder):
+        if not self._name_taken(key, is_folder):
             return key
         parts = key.rstrip("/").rsplit("/", 1)
         parent = parts[0] + "/" if len(parts) > 1 else ""
@@ -56,22 +97,45 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         while True:
             name = self._increment_name(name, is_folder=is_folder)
             candidate = parent + name
-            if not self._key_exists(candidate, is_folder):
+            if not self._name_taken(candidate, is_folder):
                 return candidate
 
     # --- Basic operations ---
 
-    def upload(self, path: str, file_object) -> UploadResult:
-        full_path = self._full_path(path)
-        content = file_object.read()
-        self._objects[full_path] = (content, datetime.now(timezone.utc))
-        return UploadResult(path=path, size=len(content))
+    @property
+    def part_size(self) -> int:
+        return self._part_size
+
+    async def upload_chunks(self, path: str, chunks, *, size_guard=None, before_commit=None) -> int:
+        """Async twin of S3StorageBackend.upload_chunks; nothing is stored on abort."""
+        buffer = bytearray()
+        async for chunk in chunks:
+            buffer.extend(chunk)
+            if size_guard is not None:
+                size_guard(len(buffer))
+        if before_commit is not None:
+            await before_commit(len(buffer))
+        return self.put_bytes(path, buffer)
+
+    def upload_stream(self, path: str, file_object) -> None:
+        self.put_bytes(path, file_object.read())
+
+    def put_bytes(self, path: str, data: bytes) -> int:
+        self._store(self._full_path(path), (bytes(data), datetime.now(timezone.utc)))
+        return len(data)
 
     def download(self, path: str) -> bytes:
         full_path = self._full_path(path)
         if full_path not in self._objects:
             raise FileNotFoundError(f"File does not exist: {path}")
         return self._objects[full_path][0]
+
+    def download_range(self, path: str, first: int, last: int | None) -> tuple[bytes, str]:
+        data = self.download(path)
+        if first >= len(data):
+            raise RangeNotSatisfiable(len(data))
+        last = len(data) - 1 if last is None else min(last, len(data) - 1)
+        return data[first : last + 1], f"bytes {first}-{last}/{len(data)}"
 
     def delete(self, path: str) -> None:
         full_path = self._full_path(path)
@@ -83,11 +147,38 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         for key in [k for k in self._objects if k.startswith(prefix)]:
             del self._objects[key]
 
+    def delete_keys(self, keys: list[str]) -> None:
+        for key in keys:
+            self._objects.pop(key, None)
+
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
+        full_prefix = self._full_path(prefix)
+        if not full_prefix or full_prefix == "/":
+            raise ValueError(
+                "delete_prefix() refused an empty resolved prefix — this "
+                "would delete every object in the store."
+            )
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+        for key in [k for k in self._objects if k.startswith(full_prefix)]:
+            del self._objects[key]
+
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)
         if not full_path.endswith("/"):
             full_path += "/"
+        self._store(full_path, (b"", datetime.now(timezone.utc)))
+
+    def claim_folder(self, path: str) -> bool:
+        full_path = self._full_path(path)
+        if not full_path.endswith("/"):
+            full_path += "/"
+        # S3StorageBackend reports XMinioParentIsObject as a lost claim too.
+        if full_path in self._objects or self._parent_object(full_path) is not None:
+            return False
         self._objects[full_path] = (b"", datetime.now(timezone.utc))
+        return True
 
     def exists(self, path: str) -> bool:
         full_path = self._full_path(path)
@@ -205,6 +296,22 @@ class InMemoryStorageBackend(AbstractStorageBackend):
                 )
 
         raise FileNotFoundError(f"File does not exist: {path}")
+
+    def head_file(self, path: str) -> FileInfo | None:
+        clean_path = path.rstrip("/")
+        stored = self._objects.get(self._full_path(clean_path))
+        if stored is None:
+            return None
+        content, modified = stored
+        content_type, _ = mimetypes.guess_type(clean_path)
+        return FileInfo(
+            id=None,
+            name=clean_path.split("/")[-1],
+            path=clean_path,
+            size=len(content),
+            content_type=content_type or "application/octet-stream",
+            modified=modified.isoformat(),
+        )
 
     def list_tree(
         self, prefix: str, max_depth: int | None = None, max_entries: int = 50_000
@@ -333,14 +440,15 @@ class InMemoryStorageBackend(AbstractStorageBackend):
 
     def _copy_into(
         self, source_path: str, destination_path: str
-    ) -> tuple[str, list[str]]:
+    ) -> tuple[str, list[tuple[str, int]]]:
         """
         Copy source into the destination folder, deduping the destination name
         against existing keys.
 
-        Returns (actual_destination_base, created_keys): for a file, both the
-        exact target key; for a folder, the deduped folder base (ending in
-        "/") and every key (including markers) created underneath it.
+        Returns (actual_destination_base, created): for a file, the exact target
+        key and [(target_key, size)]; for a folder, the deduped folder base
+        (ending in "/") and (key, size) of every object (markers included)
+        created underneath it.
         """
         full_source = self._full_path(source_path)
         full_destination = self._full_path(destination_path)
@@ -349,31 +457,31 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         if full_source in self._objects:
             source_name = full_source.rstrip("/").split("/")[-1]
             target_key = full_destination.rstrip("/") + "/" + source_name
-            target_key = self._unique_key(target_key)
-            self._objects[target_key] = self._objects[full_source]
-            return target_key, [target_key]
+            target_key = self.unique_key(target_key)
+            self._store(target_key, self._objects[full_source])
+            return target_key, [(target_key, len(self._objects[full_source][0]))]
 
         # Folder
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
         source_folder_name = full_source.rstrip("/").split("/")[-1]
         dest_base = full_destination.rstrip("/") + "/" + source_folder_name
-        dest_base = self._unique_key(dest_base, is_folder=True)
+        dest_base = self.unique_key(dest_base, is_folder=True)
 
-        created_keys = []
+        created = []
         for key in [k for k in self._objects if k.startswith(source_prefix)]:
             relative = key[len(source_prefix) :]
             destination_key = (
                 dest_base + "/" + relative if relative else dest_base + "/"
             )
-            self._objects[destination_key] = self._objects[key]
-            created_keys.append(destination_key)
+            self._store(destination_key, self._objects[key])
+            created.append((destination_key, len(self._objects[key][0])))
 
-        if not created_keys:
+        if not created:
             raise FileNotFoundError(f"Source path does not exist: {source_path}")
 
-        return dest_base + "/", created_keys
+        return dest_base + "/", created
 
-    def copy(self, source_path: str, destination_path: str) -> list[str]:
+    def copy(self, source_path: str, destination_path: str) -> list[tuple[str, int]]:
         return self._copy_into(source_path, destination_path)[1]
 
     def move(self, source_path: str, destination_path: str) -> str:
@@ -395,7 +503,8 @@ class InMemoryStorageBackend(AbstractStorageBackend):
 
         # Single file
         if full_source in self._objects:
-            self._objects[full_destination] = self._objects.pop(full_source)
+            self._store(full_destination, self._objects[full_source])
+            del self._objects[full_source]
             return
 
         # Folder: map source_prefix/* -> destination_prefix/* (no extra nesting)
@@ -412,30 +521,163 @@ class InMemoryStorageBackend(AbstractStorageBackend):
 
         for key in keys_to_move:
             relative = key[len(source_prefix) :]
-            self._objects[dest_prefix + relative] = self._objects.pop(key)
+            self._store(dest_prefix + relative, self._objects[key])
+            del self._objects[key]
 
-    # --- Archives ---
 
-    def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
-        self._check_archive_password(archive_file, archive_name)
+class FailingInMemoryBackend(InMemoryStorageBackend):
+    """In-memory storage that is unreachable for every key ending in failing_key_suffix."""
 
-        stem = archive_name
-        for ext in (".tar.gz", ".tar.bz2", ".tar.xz", ".zip", ".tar"):
-            if stem.lower().endswith(ext):
-                stem = stem[: -len(ext)]
-                break
+    def __init__(self, failing_key_suffix: str, part_size: int = 16 * 1024 * 1024):
+        super().__init__(part_size=part_size)
+        self.failing_key_suffix = failing_key_suffix
 
-        safe_stem = sanitize_storage_path(stem, allow_empty=False)
-        folder_key = f"{prefix.rstrip('/')}/{safe_stem}" if prefix else safe_stem
-        full_folder_key = self._full_path(folder_key)
-        unique_full_key = self._unique_key(full_folder_key, is_folder=True)
-        unique_folder_path = self._strip_prefix(unique_full_key)
+    def put_bytes(self, path: str, data: bytes) -> int:
+        if path.endswith(self.failing_key_suffix):
+            raise StorageUnreachable("storage went away")
+        return super().put_bytes(path, data)
 
-        extracted_paths = []
+    def upload_stream(self, path: str, file_object) -> None:
+        if path.endswith(self.failing_key_suffix):
+            raise StorageUnreachable("storage went away")
+        super().upload_stream(path, file_object)
 
-        for relative_path, file_bytes in self._iter_archive_entries(archive_file):
-            destination_path = unique_folder_path.rstrip("/") + "/" + relative_path
-            self.upload(destination_path, io.BytesIO(file_bytes))
-            extracted_paths.append(destination_path)
 
-        return extracted_paths
+def client_error(code: str, status: int, operation: str = "PutObject") -> ClientError:
+    return ClientError(
+        {"Error": {"Code": code}, "ResponseMetadata": {"HTTPStatusCode": status}}, operation
+    )
+
+
+class _Paginator:
+    def __init__(self, client, page_size):
+        self._client = client
+        self._page_size = page_size
+
+    def paginate(self, *, Bucket, Prefix):
+        keys = sorted(key for key in self._client.objects if key.startswith(Prefix))
+        for start in range(0, len(keys), self._page_size):
+            yield {
+                "Contents": [
+                    {"Key": key, "Size": len(self._client.objects[key]), "LastModified": MODIFIED}
+                    for key in keys[start : start + self._page_size]
+                ]
+            }
+
+
+class FakeS3Client:
+    """The slice of the boto3 S3 client that S3StorageBackend uses, over a dict."""
+
+    def __init__(self, page_size=2):
+        self.objects: dict[str, bytes] = {}
+        self.page_size = page_size
+        self.fail_copy_number: int | None = None  # 1-based copy_object call to fail
+        self.copy_error: BaseException = client_error("InternalError", 500, "CopyObject")
+        self.delete_error: BaseException | None = None
+        self.delete_batches: list[list[str]] = []
+        self.head_calls: list[str] = []
+        self.puts: list[bytes] = []
+        self.parts: dict[int, bytes] = {}
+        self.completed: list[dict] | None = None
+        self.aborted = False
+        self.peak_live_parts = 0
+        self._live_parts = 0
+        self._copies = 0
+        self._lock = threading.Lock()
+
+    def head_object(self, *, Bucket, Key):
+        self.head_calls.append(Key)
+        if Key not in self.objects:
+            raise client_error("404", 404, "HeadObject")
+        return {
+            "ContentLength": len(self.objects[Key]),
+            "LastModified": MODIFIED,
+            "ContentType": "text/plain",
+        }
+
+    def list_objects_v2(self, *, Bucket, Prefix, MaxKeys=1000, Delimiter=None):
+        keys = sorted(key for key in self.objects if key.startswith(Prefix))[:MaxKeys]
+        return {
+            "KeyCount": len(keys),
+            "Contents": [
+                {"Key": key, "Size": len(self.objects[key]), "LastModified": MODIFIED}
+                for key in keys
+            ],
+        }
+
+    def get_paginator(self, name):
+        assert name == "list_objects_v2"
+        return _Paginator(self, self.page_size)
+
+    def copy_object(self, *, CopySource, Bucket, Key):
+        self._copies += 1
+        if self._copies == self.fail_copy_number:
+            raise self.copy_error
+        self.objects[Key] = self.objects[CopySource["Key"]]
+
+    def delete_objects(self, *, Bucket, Delete):
+        keys = [entry["Key"] for entry in Delete["Objects"]]
+        assert len(keys) <= 1000
+        self.delete_batches.append(keys)
+        if self.delete_error is not None:
+            raise self.delete_error
+        for key in keys:
+            self.objects.pop(key, None)
+        return {}
+
+    def delete_object(self, *, Bucket, Key):
+        self.objects.pop(Key, None)
+
+    def put_object(self, *, Bucket, Key, Body, **_kwargs):
+        self.puts.append(bytes(Body))
+        self.objects[Key] = bytes(Body)
+
+    def create_multipart_upload(self, *, Bucket, Key):
+        return {"UploadId": "upload-1"}
+
+    def upload_part(self, *, Bucket, Key, UploadId, PartNumber, Body):
+        with self._lock:
+            self._live_parts += 1
+            self.peak_live_parts = max(self.peak_live_parts, self._live_parts)
+        self.parts[PartNumber] = bytes(Body)
+        with self._lock:
+            self._live_parts -= 1
+        return {"ETag": f"etag-{PartNumber}"}
+
+    def complete_multipart_upload(self, *, Bucket, Key, UploadId, MultipartUpload):
+        self.completed = MultipartUpload["Parts"]
+
+    def abort_multipart_upload(self, *, Bucket, Key, UploadId):
+        self.aborted = True
+
+
+def make_s3_backend(client: FakeS3Client, part_size: int = 16 * 1024 * 1024) -> S3StorageBackend:
+    """S3StorageBackend talking to `client`, without building real boto3 clients."""
+    backend = S3StorageBackend.__new__(S3StorageBackend)
+    backend.bucket_name = "bucket"
+    backend.organization_prefix = ""
+    backend.client = client
+    backend._head_file_client = client
+    backend._part_size = part_size
+    return backend
+
+
+def seed_file(backend, org_id: int, path: str, content: bytes) -> None:
+    """Store a file of the org and record its row within the quota, as a finished
+    upload leaves it."""
+    backend.put_bytes(storage_key(org_id, path), content)
+    record_files_within_quota(org_id, [(path, len(content))])
+
+
+async def async_chunks(*chunks: bytes):
+    """A request body arriving as `chunks`."""
+    for chunk in chunks:
+        yield chunk
+
+
+def zip_bytes(members: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
