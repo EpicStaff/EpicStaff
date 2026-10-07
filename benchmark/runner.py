@@ -135,7 +135,7 @@ def plan_text(case: Case, variants: list[Variant]) -> str:
     per_level = ladder.settle_s + ladder.hold_s
     drain = ladder.session_timeout_s + 95
     segment = 60 + ladder.baseline_s + ladder.cooldown_s + drain
-    smoke = len(case.phases) * (60 + drain)
+    smoke = len(case.phases) * (segment + 60)
     worst = smoke + len(case.phases) * (
         segment + len(levels) * per_level + ladder.bisect_steps * (segment + per_level)
     )
@@ -496,7 +496,8 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
                         crash = error
                         labels.append(f"crashed:{type(error).__name__}")
                         print(
-                            f"\n[run] phase {phase.name} crashed: {error!r}; saving what was measured"
+                            f"\n[run] phase {phase.name} crashed; saving what was measured\n"
+                            + "".join(traceback.format_exception(error))
                         )
                         break
                     finally:
@@ -516,9 +517,8 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
                 main_compose.up(build=False)
             except stack.StackError as error:
                 print(
-                    "\n!!! re-applying the original .env failed: "
-                    f"{error}\n!!! run: docker compose -f {options.repo / 'src' / 'docker-compose.yaml'}"
-                    f" --env-file {env_path} up -d\n"
+                    f"\n!!! re-applying the original .env failed: {error}"
+                    f"\n!!! run: {shlex.join(main_compose.cmd('up', '-d'))}\n"
                 )
     labels += [
         f"fallback-control:{phase_runner.phase.name}"
@@ -571,7 +571,7 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
     analyze.analyze(data, run_dir)
     print(f"\nRun folder: {run_dir}")
     if crash is not None:
-        raise SystemExit(f"run crashed: {crash!r} (partial results in {run_dir})")
+        raise crash
     return run_dir
 
 
@@ -773,13 +773,14 @@ def run_dev(case: Case, options: Options, sessions: int, concurrency: int) -> Pa
 def preflight_only(case: Case, options: Options) -> int:
     findings = evaluate_host(_host_facts(options.repo))
     if _report(findings, fatal=False):
-        return 2  # without docker the stack checks below cannot run
+        return 2  # any host-level error (e.g. docker down) makes the stack checks below meaningless
     api = Api(options.api_base, options.api_key, options.org_id)
     env_path = options.repo / "src" / ".env"
     compose = stack.Compose(options.repo / "src", env_path, stack.detect_project())
     graphs = _resolve_graphs(api, case)
     env = {**stack.read_env_file(env_path), **case.env}  # a run applies the case env on top
-    stack_findings = evaluate_stack(_stack_facts(compose, api, case, env, graphs), case)
+    facts = _stack_facts(compose, api, case, env, graphs, case_env=case.env)
+    stack_findings = evaluate_stack(facts, case)
     has_error = _report(stack_findings, fatal=False)
     if not findings and not stack_findings:
         print("preflight ok")

@@ -1179,5 +1179,95 @@ class WorktreeCertsTest(unittest.TestCase):
         self.assertEqual(copied, ["server.crt"])
 
 
+class FakeSessionsApi:
+    def __init__(self, counts=None, rows=None):
+        self.counts, self.rows = list(counts or []), rows or []
+
+    def in_flight(self, graph_id):
+        value = self.counts.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def sessions_since(self, graph_id, since_iso):
+        return self.rows
+
+
+def make_phase_runner(fake_api):
+    case = config.load_case(write_case())
+    options = runner.Options("http://x", "key", "1")
+    return runner.PhaseRunner(case, case.phases[0], fake_api, None, options, {}, 0)
+
+
+class FallbackApiTest(unittest.TestCase):
+    def test_failing_api_returns_last_count_and_aborts_after_the_window(self):
+        error = api.ApiError(503, "boom")
+        phase_runner = make_phase_runner(FakeSessionsApi([4, error, error, 6]))
+        now = [100.0]
+        phase_runner.clock = lambda: now[0]
+        sampler = mock.Mock(latest={})
+        sampler.restarts_since.return_value = []
+        controller = mock.Mock()
+        controller.recent_error_rate.return_value = None
+        check = phase_runner._abort_check(controller, sampler, {})
+        self.assertEqual(phase_runner._count_in_flight(), 4)
+        self.assertEqual(phase_runner._count_in_flight(), 4)  # error: last known count
+        self.assertIsNone(check())  # error just started
+        now[0] += runner.API_ERROR_PERSIST_S
+        self.assertEqual(phase_runner._count_in_flight(), 4)
+        self.assertIn("API unreachable while counting sessions", check())
+        self.assertEqual(phase_runner._count_in_flight(), 6)  # recovered: error cleared
+        self.assertIsNone(check())
+
+    def test_first_failure_without_a_known_count_returns_zero(self):
+        phase_runner = make_phase_runner(FakeSessionsApi([api.ApiError(None, "down")]))
+        self.assertEqual(phase_runner._count_in_flight(), 0)
+
+    def test_sessions_api_rows_set_end_times_but_not_for_failed_sends(self):
+        rows = [
+            {"id": 1, "status": "end", "finished_at": "2026-10-07T10:00:00Z"},
+            {"id": 2, "status": "error", "finished_at": "2026-10-07T10:00:05+00:00"},
+            {"id": 3, "status": "end", "finished_at": "2026-10-07T10:00:09Z"},
+            {"id": 4, "status": "run", "finished_at": None},
+        ]
+        phase_runner = make_phase_runner(FakeSessionsApi(rows=rows))
+        records = []
+        for session_id, status in [(1, None), (2, None), (3, "timeout"), (4, None)]:
+            record = load.SessionRecord("payload", 25, "ladder", 1, intended_ts=1.0)
+            record.session_id, record.end_status = session_id, status
+            records.append(record)
+        phase_runner._apply_sessions_api(records)
+        self.assertEqual((records[0].end_status, records[0].done_ts), ("end", 1791367200.0))
+        self.assertEqual((records[1].end_status, records[1].done_ts), ("error", 1791367205.0))
+        self.assertEqual((records[2].end_status, records[2].done_ts), ("timeout", None))
+        self.assertEqual((records[3].end_status, records[3].done_ts), (None, None))
+
+
+class WorktreeCleanupTest(unittest.TestCase):
+    def test_certs_copy_failure_removes_the_worktree_and_temp_root(self):
+        repo = Path(tempfile.mkdtemp())
+        certs = repo / "src" / "nginx" / "certs"
+        certs.mkdir(parents=True)
+        (certs / "server.crt").write_text("cert")
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append(args)
+            if "add" in args:
+                Path(args[6]).mkdir(parents=True)
+            return mock.Mock(returncode=0)
+
+        worktree = stack.Worktree(repo, "main")
+        with (
+            mock.patch.object(stack, "run", side_effect=fake_run),
+            mock.patch.object(stack.shutil, "copy2", side_effect=OSError("disk full")),
+            self.assertRaises(OSError),
+        ):
+            worktree.__enter__()
+        self.assertTrue(any("remove" in call for call in calls))
+        self.assertTrue(any("prune" in call for call in calls))
+        self.assertFalse(worktree._temp_root.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
