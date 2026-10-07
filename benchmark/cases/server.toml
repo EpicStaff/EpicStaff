@@ -1,0 +1,46 @@
+# Server capacity case: two sequential phases, concurrency ladder until the first failing level.
+# Graph ids are server-specific: set them here or pass --graph payload=<id> --graph complex=<id>.
+name = "server-capacity"
+kind = "capacity"
+
+[env]                                   # applied to src/.env for the run, restored afterwards
+CREW_MAX_CONCURRENT_SESSIONS = 100000   # otherwise the ladder measures crew's cap (default 25)
+AGENT_MAX_CONCURRENT_RUNS = 100000      # otherwise agents stall at 10 runs per replica
+DJANGO_LOG_LEVEL = "BENCH"
+CREW_LOG_LEVEL = "BENCH"
+AGENT_LOG_LEVEL = "BENCH"
+SANDBOX_LOG_LEVEL = "BENCH"
+
+[ladder]
+start = 25            # first concurrency level (sessions in flight)
+factor = 2            # next level = level x factor
+max = 20000
+hold_s = 180          # measured window per level
+settle_s = 30         # raised automatically to the smoke run's p95 session time
+baseline_s = 20
+cooldown_s = 120
+bisect_steps = 2
+session_timeout_s = 900
+
+[pass]
+p95_e2e_s = 120
+p95_queue_wait_s = 5
+max_error_rate = 0.01
+
+[abort]
+error_rate_30s = 0.05
+host_min_available_ram_pct = 5
+container_restart = true
+generator_lag_p99_ms = 500
+
+[[phase]]
+name = "payload"      # big payload through 5 Python nodes, no LLM
+# graph_id = 17
+
+[[phase]]
+name = "complex"      # agents, RAG, real LLM
+# graph_id = 18
+pass = { p95_e2e_s = 300 }
+
+[[variant]]
+name = "default"
