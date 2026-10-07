@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -6,6 +7,7 @@ import {
     computed,
     DestroyRef,
     DOCUMENT,
+    effect,
     inject,
     OnInit,
     signal,
@@ -35,6 +37,7 @@ import {
 } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
+import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { ToastService } from '../../services/notifications';
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -43,11 +46,20 @@ import { McpToolsService } from '../tools/services/mcp-tools/mcp-tools.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
+import {
+    AuditValueDialogComponent,
+    AuditValueDialogData,
+} from './components/audit-value-dialog/audit-value-dialog.component';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
-import { buildAuditRows } from './utils/build-audit-rows.util';
+import {
+    auditFilterStorageKey,
+    readStoredAuditFilter,
+    writeStoredAuditFilter,
+} from './utils/audit-filter-storage.util';
+import { AuditRow, buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
 import { sanitizeToolName } from './utils/sanitize-tool-name.util';
@@ -84,6 +96,11 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private document = inject(DOCUMENT);
     private toastService = inject(ToastService);
+    private dialog = inject(Dialog);
+    // Read once: an org switch remounts this page, so a later org change must not redirect writes.
+    private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
+    private readonly appliedFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'applied');
+    private readonly draftFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'draft');
     private searchSubscription: Subscription | null = null;
     private searchInput = new Subject<string>();
     public readonly timeZoneLabel = buildTimeZoneLabel();
@@ -98,9 +115,18 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private rawEvents = signal<AuditSessionEvent[]>([]);
     private cursorStack = signal<(string | null)[]>([null]);
     private nextCursor = signal<string | null>(null);
-    protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
-    private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    private appliedFilter = signal<AuditFilterState>(readStoredAuditFilter(this.appliedFilterStorageKey));
+    // a selection made in the panel but not applied yet also survives a reload
+    protected draftFilter = signal<AuditFilterState>(
+        readStoredAuditFilter(this.draftFilterStorageKey, this.appliedFilter())
+    );
     private collapsedIds = signal<ReadonlySet<string>>(new Set());
+    private readonly persistAppliedFilter = effect(() =>
+        writeStoredAuditFilter(this.appliedFilterStorageKey, this.appliedFilter())
+    );
+    private readonly persistDraftFilter = effect(() =>
+        writeStoredAuditFilter(this.draftFilterStorageKey, this.draftFilter())
+    );
     public flowNames = signal<string[]>([]);
     public exportingFormat = signal<ExportFormat | null>(null);
     public allRows = computed(() => buildAuditRows(this.rawEvents()));
@@ -425,6 +451,13 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public onExportItemSelected(item: ActionDropdownItem): void {
         this.exportFiltered(item.value as ExportFormat);
+    }
+
+    protected openValue(field: string, row: AuditRow, value: string, isPlainText = false): void {
+        const rowName = row.event.name || row.nameLabel;
+        this.dialog.open<void, AuditValueDialogData>(AuditValueDialogComponent, {
+            data: { title: rowName ? `${field} — ${rowName}` : field, value, isPlainText },
+        });
     }
 }
 

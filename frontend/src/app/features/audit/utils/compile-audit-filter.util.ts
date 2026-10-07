@@ -142,10 +142,6 @@ export function compileAuditFilter(state: AuditFilterState): AuditFilterQuery {
         leaves.push({ field: 'node_type', op: 'in', value: state.nodeTypes });
     }
 
-    if (state.runTypes.length > 0) {
-        leaves.push({ field: 'run_type', op: 'in', value: state.runTypes });
-    }
-
     const tokens = state.tokens;
     if (tokens.op === 'is_empty') {
         leaves.push({ field: TOKENS_FIELD, op: 'key_not_exists', value: null });

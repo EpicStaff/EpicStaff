@@ -30,7 +30,7 @@
             [title]="scope().fullSessionHistory ? fullSessionHint : ''"
         >
             <app-checkbox
-                [checked]="scope().children"
+                [checked]="scope().children || scope().fullSessionHistory"
                 [disabled]="scope().fullSessionHistory"
                 (changed)="setChildren($event)"
             />
@@ -44,7 +44,7 @@
             [title]="scope().fullSessionHistory ? fullSessionHint : ''"
         >
             <app-checkbox
-                [checked]="scope().rowsBeforeEnabled"
+                [checked]="scope().rowsBeforeEnabled || scope().fullSessionHistory"
                 [disabled]="scope().fullSessionHistory"
                 (changed)="setRowsBeforeEnabled($event)"
             />

@@ -17,7 +17,6 @@ import {
     KIND_OPTIONS,
     NODE_TYPE_OPTIONS,
     OPERATOR_LABELS,
-    RUN_TYPE_OPTIONS,
     STATUS_OPTIONS,
     TOKEN_OPERATOR_LABELS,
 } from '../models/audit-filter-options';
@@ -197,10 +196,6 @@ export function describeAuditFilter(
         chips.push({ key: 'nodeType', label: 'Node Type', value: labelsFor(state.nodeTypes, NODE_TYPE_OPTIONS) });
     }
 
-    if (state.runTypes.length > 0) {
-        chips.push({ key: 'run', label: 'Run', value: labelsFor(state.runTypes, RUN_TYPE_OPTIONS) });
-    }
-
     if (state.agent.values.length > 0) {
         chips.push({
             key: 'agent',
@@ -278,8 +273,6 @@ export function clearAuditFilterField(state: AuditFilterState, key: string): Aud
             return { ...state, statuses: [] };
         case 'nodeType':
             return { ...state, nodeTypes: [] };
-        case 'run':
-            return { ...state, runTypes: [] };
         case 'input':
             return { ...state, input: [createAuditConditionGroup()] };
         case 'output':

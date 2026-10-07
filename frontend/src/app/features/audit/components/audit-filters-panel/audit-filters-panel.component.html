@@ -109,21 +109,6 @@
                 </app-audit-filter-group>
 
                 <app-audit-filter-group
-                    label="Run"
-                    [disabled]="!isRunTypeEnabled()"
-                    [class.is-disabled]="!isRunTypeEnabled()"
-                    [hint]="isRunTypeEnabled() ? '' : 'Only sessions carry a run type'"
-                >
-                    <app-audit-checkbox-enum
-                        [options]="runTypeOptions"
-                        [value]="filter().runTypes"
-                        [disabledValues]="disabledRunTypes()"
-                        disabledHint="Only sessions carry a run type"
-                        (valueChange)="setRunTypes($event)"
-                    />
-                </app-audit-filter-group>
-
-                <app-audit-filter-group
                     label="Input"
                     [disabled]="!isInputEnabled()"
                     [class.is-disabled]="!isInputEnabled()"
@@ -267,6 +252,11 @@
             </div>
         } @else if (activeTab() === 'query') {
             <div class="filters-panel__query">
+                <app-audit-match-scope
+                    [scope]="filter().matchScope"
+                    (scopeChange)="setMatchScope($event)"
+                />
+
                 <label
                     class="filters-panel__section"
                     for="audit-query"

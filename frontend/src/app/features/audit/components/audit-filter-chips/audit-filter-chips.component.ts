@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AuditFilterChip } from '../../utils/describe-audit-filter.util';
 
@@ -15,7 +16,7 @@ const CONDITION_CHIP_KEYS: ReadonlySet<string> = new Set([
 @Component({
     selector: 'app-audit-filter-chips',
     standalone: true,
-    imports: [],
+    imports: [MatTooltipModule],
     templateUrl: './audit-filter-chips.component.html',
     styleUrls: ['./audit-filter-chips.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

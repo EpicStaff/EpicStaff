@@ -16,6 +16,7 @@ export interface AuditPreset {
     id: number;
     name: string;
     filter_body: AuditPresetBody;
+    is_owner: boolean;
     created_at: string;
     updated_at: string;
 }

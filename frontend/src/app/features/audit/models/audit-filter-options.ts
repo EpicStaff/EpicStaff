@@ -11,14 +11,6 @@ export const STATUS_OPTIONS: AuditEnumOption[] = [
     { value: 'failed', label: 'Failed', icon: 'x' },
 ];
 
-export const RUN_TYPE_OPTIONS: AuditEnumOption[] = [
-    { value: 'manual', label: 'Manual' },
-    { value: 'schedule', label: 'Schedule' },
-    { value: 'webhook', label: 'Webhook' },
-    { value: 'telegram', label: 'Telegram' },
-    { value: 'parent_flow', label: 'Parent flow' },
-];
-
 export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [
     { value: 'AGENT', label: 'Agent' },
     { value: 'TASK', label: 'Task' },
@@ -123,7 +115,6 @@ export const QUERY_FIELDS: string[] = [
     'name',
     'flow_name',
     'node_type',
-    'run_type',
     'status',
     'event_time',
     'duration',

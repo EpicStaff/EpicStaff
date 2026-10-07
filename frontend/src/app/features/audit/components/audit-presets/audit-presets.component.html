@@ -102,7 +102,7 @@
                                 class="preset-menu"
                                 role="menu"
                             >
-                                @if (card.state !== null) {
+                                @if (card.state !== null && card.preset.is_owner) {
                                     <button
                                         #menuItem
                                         class="preset-menu__item"
@@ -124,14 +124,16 @@
                                     Duplicate
                                 </button>
                                 @if (card.state !== null) {
-                                    <button
-                                        class="preset-menu__item"
-                                        type="button"
-                                        role="menuitem"
-                                        (click)="overwrite(card)"
-                                    >
-                                        Overwrite with current filters
-                                    </button>
+                                    @if (card.preset.is_owner) {
+                                        <button
+                                            class="preset-menu__item"
+                                            type="button"
+                                            role="menuitem"
+                                            (click)="overwrite(card)"
+                                        >
+                                            Overwrite with current filters
+                                        </button>
+                                    }
                                     <button
                                         class="preset-menu__item"
                                         type="button"
@@ -143,14 +145,16 @@
                                         Copy as query code
                                     </button>
                                 }
-                                <button
-                                    class="preset-menu__item"
-                                    type="button"
-                                    role="menuitem"
-                                    (click)="confirmDelete(card.preset)"
-                                >
-                                    Delete preset
-                                </button>
+                                @if (card.preset.is_owner) {
+                                    <button
+                                        class="preset-menu__item"
+                                        type="button"
+                                        role="menuitem"
+                                        (click)="confirmDelete(card.preset)"
+                                    >
+                                        Delete preset
+                                    </button>
+                                }
                             </div>
                         </ng-template>
                     </div>

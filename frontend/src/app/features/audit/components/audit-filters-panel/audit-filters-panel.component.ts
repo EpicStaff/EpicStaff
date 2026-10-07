@@ -20,10 +20,9 @@ import {
     NODE_TYPE_OPTIONS,
     QUERY_EXAMPLES,
     QUERY_FIELDS,
-    RUN_TYPE_OPTIONS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
-import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunType } from '../../models/audit-session.models';
+import { AuditEventKind, AuditEventStatus, AuditNodeType } from '../../models/audit-session.models';
 import {
     allowedKinds,
     AUDIT_FILTER_FIELDS,
@@ -80,7 +79,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public readonly kindOptions = KIND_OPTIONS;
     public readonly statusOptions = STATUS_OPTIONS;
-    public readonly runTypeOptions = RUN_TYPE_OPTIONS;
     public readonly nodeTypeOptions = NODE_TYPE_OPTIONS;
     public readonly errorOperators = ERROR_OPERATORS;
     public readonly jsonOperators = JSON_OPERATORS;
@@ -119,7 +117,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public isStatusEnabled = computed(() => isFieldAvailable('status', this.filter()));
     public isNodeTypeEnabled = computed(() => isFieldAvailable('nodeType', this.filter()));
-    public isRunTypeEnabled = computed(() => isFieldAvailable('run', this.filter()));
     public isErrorEnabled = computed(() => isFieldAvailable('error', this.filter()));
     public isInputEnabled = computed(() => isFieldAvailable('input', this.filter()));
     public isOutputEnabled = computed(() => isFieldAvailable('output', this.filter()));
@@ -169,10 +166,6 @@ export class AuditFiltersPanelComponent implements OnInit {
         this.isNodeTypeEnabled() ? [] : this.nodeTypeOptions.map((option) => option.value)
     );
 
-    public disabledRunTypes = computed(() =>
-        this.isRunTypeEnabled() ? [] : this.runTypeOptions.map((option) => option.value)
-    );
-
     public readonly dateRange = computed<DateRangeFilter>(() => ({
         after: this.filter().dateFrom,
         before: this.filter().dateTo,
@@ -192,10 +185,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setStatuses(statuses: string[]): void {
         this.updateBuilder({ statuses: statuses as AuditEventStatus[] });
-    }
-
-    public setRunTypes(values: string[]): void {
-        this.updateBuilder({ runTypes: values as AuditRunType[] });
     }
 
     public setNodeTypes(values: string[]): void {

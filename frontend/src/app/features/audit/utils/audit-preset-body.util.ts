@@ -21,14 +21,18 @@ export function buildPresetBody(state: AuditFilterState): AuditPresetBody {
     };
 }
 
+export function mergeSavedFilterState(saved: Partial<AuditFilterState>): AuditFilterState {
+    return {
+        ...EMPTY_AUDIT_FILTER,
+        ...saved,
+        matchScope: { ...DEFAULT_MATCH_SCOPE, ...saved.matchScope },
+    };
+}
+
 export function restorePresetState(body: AuditPresetBody): AuditFilterState | null {
     const saved = body.ui_state?.state;
     if (saved) {
-        return {
-            ...EMPTY_AUDIT_FILTER,
-            ...saved,
-            matchScope: { ...DEFAULT_MATCH_SCOPE, ...saved.matchScope },
-        };
+        return mergeSavedFilterState(saved);
     }
     if (typeof body.query === 'string') {
         return {

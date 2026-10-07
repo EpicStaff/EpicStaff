@@ -27,10 +27,6 @@ export const AUDIT_FILTER_FIELDS: Record<string, AuditFilterFieldMeta> = {
         kinds: ['node', 'event'],
         isActive: (state) => state.nodeTypes.length > 0,
     },
-    run: {
-        kinds: ['session', 'event'],
-        isActive: (state) => state.runTypes.length > 0,
-    },
     error: {
         kinds: ['event'],
         isActive: (state) => hasUsableCondition(state.error),

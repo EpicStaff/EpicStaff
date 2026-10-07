@@ -85,7 +85,8 @@ $padding-x: 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 8px $padding-x 0;
+    // bottom room keeps the last control's border and focus outline inside the clip
+    padding: 8px $padding-x 4px;
 }
 
 .filter-group__hint {

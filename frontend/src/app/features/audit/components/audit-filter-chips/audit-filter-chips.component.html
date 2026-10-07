@@ -4,7 +4,8 @@
         <span
             class="filter-chip__value"
             [class.filter-chip__value--wide]="isConditionChip(chip.key)"
-            [title]="chip.value"
+            [matTooltip]="chip.value"
+            matTooltipPosition="above"
             >{{ chip.value }}</span
         >
         <button

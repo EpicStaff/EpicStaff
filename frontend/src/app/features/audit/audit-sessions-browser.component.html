@@ -100,7 +100,6 @@
                             <col style="width: 140px" />
                             <col style="width: 120px" />
                             <col style="width: 96px" />
-                            <col style="width: 90px" />
                             <col style="width: 150px" />
                             <col style="width: 110px" />
                             <col style="width: 110px" />
@@ -116,7 +115,6 @@
                                 <th>Flow</th>
                                 <th>Node Type</th>
                                 <th>Status</th>
-                                <th>Run Type</th>
                                 <th>Date</th>
                                 <th>Input</th>
                                 <th>Output</th>
@@ -213,32 +211,54 @@
                                             </span>
                                         }
                                     </td>
-                                    <td>{{ row.runLabel }}</td>
                                     <td class="audit-table__date">
                                         {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
                                     </td>
+                                    @let input = row.event.input | auditJson;
+                                    @let output = row.event.output | auditJson;
+                                    @let error = row.event.error ?? '';
+                                    @let details = row.event.details | auditJson;
+                                    <ng-template
+                                        #valueCell
+                                        let-field="field"
+                                        let-text="text"
+                                        let-isPlainText="isPlainText"
+                                    >
+                                        @if (text) {
+                                            <button
+                                                class="audit-value-cell"
+                                                type="button"
+                                                aria-haspopup="dialog"
+                                                (click)="openValue(field, row, text, isPlainText)"
+                                            >
+                                                <app-audit-highlight
+                                                    [text]="text"
+                                                    [term]="highlightTerm()"
+                                                />
+                                            </button>
+                                        }
+                                    </ng-template>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.input | auditJson"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="valueCell; context: { field: 'Input', text: input }"
                                         />
                                     </td>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.output | auditJson"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="valueCell; context: { field: 'Output', text: output }"
                                         />
                                     </td>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.error ?? ''"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="
+                                                valueCell;
+                                                context: { field: 'Error', text: error, isPlainText: true }
+                                            "
                                         />
                                     </td>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.details | auditJson"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="valueCell; context: { field: 'Details', text: details }"
                                         />
                                     </td>
                                 </tr>

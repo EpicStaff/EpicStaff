@@ -31,7 +31,13 @@ export class AuditMatchScopeComponent {
     }
 
     protected setFullSessionHistory(fullSessionHistory: boolean): void {
-        this.scope.update((current) => ({ ...current, fullSessionHistory }));
+        // full history implies the narrower scopes, so they follow it both ways
+        this.scope.update((current) => ({
+            ...current,
+            fullSessionHistory,
+            children: fullSessionHistory,
+            rowsBeforeEnabled: fullSessionHistory,
+        }));
     }
 
     protected setRowsBefore(event: Event): void {
