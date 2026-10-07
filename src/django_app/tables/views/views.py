@@ -640,8 +640,7 @@ class InitRealtimeAPIView(APIView):
             # definition's own `organization` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
-            # API-key-authenticated requests (see IsApiKeyAuthenticated /
-            # ApiKeyAuthentication).
+            # API-key-authenticated requests (see ApiKeyAuthentication).
             #
             # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it
