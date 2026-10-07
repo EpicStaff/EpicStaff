@@ -328,6 +328,7 @@ services:
       SANDBOX_REQUIRE_ISOLATION: ${SANDBOX_REQUIRE_ISOLATION:?}
       SANDBOX_REQUIRE_SIGNAL_ISOLATION: ${SANDBOX_REQUIRE_SIGNAL_ISOLATION:-true}
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
+      SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
       STORAGE_HOST: ${STORAGE_HOST:?}
       STORAGE_PORT: ${STORAGE_PORT:?}
@@ -336,8 +337,6 @@ services:
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - sandbox-network
     tty: true
@@ -359,9 +358,13 @@ services:
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
       - KILL  # signal the dropped-privilege user-code child's process group on execution timeout.
+      - NET_ADMIN  # install the per-uid egress firewall at startup. User code drops to sandboxuser and never holds it; root pip does (same accepted risk as pip itself).
     depends_on:
       redis:
         condition: service_healthy
+      # The egress firewall resolves the storage IP once at startup for its carve-out.
+      storage:
+        condition: service_started
 
   storage:
     image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff

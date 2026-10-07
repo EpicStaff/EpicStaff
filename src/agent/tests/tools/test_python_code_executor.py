@@ -209,9 +209,9 @@ async def test_storage_config_read_from_tool_data():
 
 
 async def test_secrets_are_forwarded_to_sandbox_task():
-    """A tool's resolved secrets must reach the sandbox: the executor was
-    silently dropping them, so get_secret() in the sandbox always saw an
-    empty declaration regardless of what the tool declared."""
+    """A tool's resolved secrets must reach the sandbox:
+    the executor was silently dropping them, so get_secret() in the sandbox
+    always saw an empty declaration regardless of what the tool declared."""
     sandbox = MagicMock()
     sandbox.submit = AsyncMock(return_value=_make_success_result())
 

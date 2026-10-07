@@ -35,6 +35,7 @@ def _set_env_defaults() -> None:
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
         "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
+        "SANDBOX_BLOCK_PRIVATE_NETWORK": "true",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -117,6 +118,19 @@ def allow_running_without_signal_isolation(monkeypatch):
     import settings
 
     monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", False)
+
+
+@pytest.fixture(autouse=True)
+def allow_running_without_egress_firewall(monkeypatch):
+    """Stop the private-network requirement from refusing unrelated handler tests.
+
+    Installing the egress firewall needs root, CAP_NET_ADMIN and iptables, which
+    no test run has, so with the production default (BLOCK_PRIVATE_NETWORK=True)
+    every handler test would be refused. Tests of that refusal set this explicitly.
+    """
+    import settings
+
+    monkeypatch.setattr(settings, "BLOCK_PRIVATE_NETWORK", False)
 
 
 def pytest_terminal_summary(terminalreporter):

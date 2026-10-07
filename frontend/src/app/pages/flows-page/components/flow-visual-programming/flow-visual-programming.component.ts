@@ -1309,7 +1309,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.flowService.setFlow(normalizedFlow);
         // savedFlowState captures the as-persisted snapshot used for dirty-tracking.
         // It is set BEFORE the legacy-name rewrite so that flows with legacy names are
-        // immediately marked dirty — the user accepted this behaviour (EST-2826).
+        // immediately marked dirty — the user accepted this behaviour.
         this.savedFlowState.set(cloneFlowState(normalizedFlow));
 
         // Eagerly rewrite legacy "at HH:MM" once-schedule names to "at HH-MM" in the

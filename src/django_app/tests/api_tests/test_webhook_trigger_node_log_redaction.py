@@ -4,7 +4,7 @@ from django.urls import reverse
 from tables.models.graph_models import Graph, WebhookTriggerNode
 from utils.logger import logger
 
-SECRET_MARKER = "EST4312_SECRET_MARKER_do_not_log"
+SECRET_MARKER = "WEBHOOK_AUTH_SECRET_MARKER_do_not_log"
 
 
 @pytest.fixture

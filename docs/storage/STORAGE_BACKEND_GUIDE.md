@@ -2,7 +2,7 @@
 
 ## Overview
 
-The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. The default server is [RustFS](https://github.com/rustfs/rustfs) (Apache-2.0), which replaced MinIO in EST-4230 after MinIO stopped publishing images.
+The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. The default server is [RustFS](https://github.com/rustfs/rustfs) (Apache-2.0), which replaced MinIO after MinIO stopped publishing images.
 
 The sandbox also uses the storage backend Admin API to create short-lived, org-scoped credentials for each code execution. RustFS implements a MinIO-compatible Admin API with documented differences (see **RustFS API Compatibility** below). A plain S3 service without an Admin API (for example AWS S3) can serve files, but sandbox storage access will not work.
 

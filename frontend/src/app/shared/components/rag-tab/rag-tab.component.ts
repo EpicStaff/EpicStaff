@@ -185,7 +185,7 @@ export class RagTabComponent implements OnInit {
     hideSourceSelectors = input<boolean>(false);
     readOnly = input<boolean>(false);
     // Shared surfaces have no owning agent to source an LLM from — suggestions are
-    // out of scope for them by product decision (EST-3986): manual config only.
+    // out of scope for them by product decision: manual config only.
     suggestionsDisabled = input<boolean>(false);
 
     selectedRagType = signal<'naive' | 'graph' | null>(null);

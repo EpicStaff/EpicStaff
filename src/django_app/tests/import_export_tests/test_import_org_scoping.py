@@ -186,7 +186,7 @@ class TestProviderRealtimeConfigCrossOrg:
     stamp it, and find_existing/uniqueness must not leak across orgs.
 
     `openai_realtime_builtin_model` (tests/fixtures.py) seeds the registry
-    create_entity now validates model_name against (EST-3146) -- without it,
+    create_entity now validates model_name against -- without it,
     every create_entity call below (model_name="gpt-realtime-1.5") would be
     rejected as an unregistered model rather than exercising the org-scoping
     behavior these tests are actually about."""

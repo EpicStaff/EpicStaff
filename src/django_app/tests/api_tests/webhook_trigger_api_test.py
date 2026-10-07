@@ -1648,7 +1648,7 @@ class TestWebhookTriggerAuthAPI:
     def test_updating_telegram_auth_secret_with_registration_failure_still_saves_secret(
         self, auth_client, graph: Graph, default_org, mock_telegram_service
     ):
-        """Critical review fix (EST-3939): `register_telegram_trigger` runs
+        """Regression: `register_telegram_trigger` runs
         AFTER `set_trigger_auth_secret` has already committed the new secret
         to the DB. If it raises (tunnel unavailable, Telegram API error,
         network failure), the new secret must NOT be rolled back -- the
