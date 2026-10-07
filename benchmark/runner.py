@@ -1,0 +1,665 @@
+"""Run lifecycle: pre-flight → build + env → resolve graphs → smoke → phases → analyze."""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import re
+import time
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
+from pathlib import Path
+
+import analyze
+import stack
+from api import Api, ApiError, graph_hash
+from config import (
+    Case,
+    DevSettings,
+    Phase,
+    Variant,
+    allowlisted,
+    bisect_next,
+    ladder_levels,
+)
+from load import Controller
+from sample import Sampler
+
+RESULTS_DIR = Path(__file__).resolve().parent / "results"
+EXPECTED_CHECKPOINTS = {
+    "django_app": {"request_received"},
+    "crew": {"received", "slot_acquired", "session_end"},
+}
+LOG_LEVEL_VARIABLES = {
+    "django_app": "DJANGO_LOG_LEVEL",
+    "crew": "CREW_LOG_LEVEL",
+    "agent": "AGENT_LOG_LEVEL",
+    "sandbox": "SANDBOX_LOG_LEVEL",
+}
+CAP_VARIABLES = ("CREW_MAX_CONCURRENT_SESSIONS", "AGENT_MAX_CONCURRENT_RUNS")
+
+
+@dataclass
+class Options:
+    api_base: str
+    api_key: str
+    org_id: str
+    note: str = ""
+    build: bool = True
+    smoke: bool = True
+    restart: bool = True
+    results_dir: Path = RESULTS_DIR
+    repo: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
+
+
+def evaluate_host(facts: dict) -> list[tuple[str, str]]:
+    findings = []
+    if not facts["docker_ok"]:
+        findings.append(("error", "docker is not reachable"))
+    if facts["backup_exists"]:
+        findings.append(
+            (
+                "error",
+                "src/.env.bench-backup exists: a previous run did not restore .env (move it back first)",
+            )
+        )
+    if facts["load1"] is not None and facts["load1"] > 0.5 * facts["vcpu"]:
+        findings.append(
+            (
+                "error",
+                f"host load {facts['load1']:.1f} > half of {facts['vcpu']} vCPU: something else is running",
+            )
+        )
+    if facts["mem_avail_pct"] is not None and facts["mem_avail_pct"] < 20:
+        findings.append(("error", f"only {facts['mem_avail_pct']:.0f}% RAM available"))
+    return findings
+
+
+def evaluate_stack(facts: dict, case: Case) -> list[tuple[str, str]]:
+    findings = (
+        [("error", f"unhealthy containers: {facts['unhealthy']}")] if facts["unhealthy"] else []
+    )
+    findings += [
+        ("error", f"phase {phase}: graph not readable ({error})")
+        for phase, error in facts["graph_errors"].items()
+    ]
+    findings += [
+        ("error", f"phase {phase}: {count} sessions still pending/run — wait or stop them")
+        for phase, count in facts["leftover"].items()
+        if count
+    ]
+    findings += [
+        ("error", f"{name} log driver '{driver}' cannot be followed (need json-file or local)")
+        for name, driver in facts["log_drivers"].items()
+        if driver not in ("json-file", "local")
+    ]
+    findings += [
+        ("warn", f"BENCH not active on {name}: its checkpoints are missing from this run")
+        for name, active in facts["bench_active"].items()
+        if not active
+    ]
+    if case.kind == "capacity":
+        for key, value in facts["caps"].items():
+            if value is not None and value < case.ladder.max:
+                findings.append(
+                    (
+                        "warn",
+                        f"{key}={value} is below ladder.max={case.ladder.max}: you will measure the cap",
+                    )
+                )
+        if any(not limit for limit in facts["memory_limits"].values()):
+            findings.append(
+                (
+                    "warn",
+                    "no container memory limit: a break can take the whole host down (host-RAM guard only)",
+                )
+            )
+    return findings
+
+
+def plan_text(case: Case, variants: list[Variant]) -> str:
+    ladder = case.ladder
+    levels = ladder_levels(ladder)
+    lines = [f"case {case.name} ({case.kind}), hash {case.case_hash}"]
+    for variant in variants:
+        lines.append(
+            f"variant {variant.name}: ref={variant.ref or 'current checkout'} env={ {**case.env, **variant.env} }"
+        )
+    if case.kind == "dev":
+        lines.append(f"dev: {case.dev.sessions} sessions, {case.dev.concurrency} in flight")
+        return "\n".join(lines)
+    per_level = ladder.settle_s + ladder.hold_s
+    segment = 60 + ladder.baseline_s + ladder.cooldown_s
+    worst = len(case.phases) * (
+        segment + len(levels) * per_level + ladder.bisect_steps * (segment + per_level)
+    )
+    for phase in case.phases:
+        lines.append(
+            f"{phase.name}: {' → '.join(map(str, levels))} (+ up to {ladder.bisect_steps} bisect probes)"
+        )
+    lines.append(
+        f"worst case per variant: {worst / 60:.0f} min, {len(variants) * worst / 60:.0f} min total"
+    )
+    return "\n".join(lines)
+
+
+def run_dir_name(
+    created: str, host: str, ref: str, sha: str, case_name: str, variant_name: str
+) -> str:
+    def slug(text: str) -> str:
+        return re.sub(r"[^A-Za-z0-9.-]+", "-", text).strip("-")
+
+    return f"{created}_{slug(host)}_{slug(ref)}_{sha[:7]}_{slug(case_name)}-{slug(variant_name)}"
+
+
+class PhaseRunner:
+    """Drives one phase: segments (ladder, bisect probes), followers, sampler, controller."""
+
+    def __init__(
+        self,
+        case: Case,
+        phase: Phase,
+        api: Api,
+        compose: stack.Compose,
+        options: Options,
+        env: dict[str, str],
+        settle_s: float,
+    ):
+        self.case, self.phase, self.api, self.compose, self.options = (
+            case,
+            phase,
+            api,
+            compose,
+            options,
+        )
+        self.env, self.settle_s = env, settle_s
+        self.windows: list[analyze.Window] = []
+        self.segments: list[analyze.Segment] = []
+        self.events: list[dict] = []
+        self.timeline: list[dict] = []
+        self.container_timeline: list[dict] = []
+        self.records = []
+        self.fallback = False
+
+    def run_capacity(self) -> None:
+        levels = ladder_levels(self.case.ladder)
+        last_pass, first_fail = None, None
+        for level, verdict in self._segment("ladder", levels):
+            if verdict == "pass":
+                last_pass = level
+            else:
+                first_fail = level if verdict == "fail" else None
+                break
+        for _ in range(self.case.ladder.bisect_steps):
+            probe = bisect_next(last_pass, first_fail) if first_fail else None
+            if probe is None:
+                return
+            ((_, verdict),) = self._segment("bisect", [probe])
+            if verdict == "pass":
+                last_pass = probe
+            elif verdict == "fail":
+                first_fail = probe
+            else:
+                return
+
+    def run_dev(self, sessions: int, concurrency: int) -> None:
+        self._segment("dev", [concurrency], max_starts=sessions)
+
+    def _segment(
+        self, kind: str, levels: list[int], max_starts: int | None = None
+    ) -> list[tuple[int, str]]:
+        ladder, segment_no = self.case.ladder, len(self.segments) + 1
+        if self.options.restart:
+            self.compose.restart()
+        containers = self.compose.containers()
+        since = time.time()
+        controller = Controller(
+            lambda: self.api.start_session(self.phase.graph_id, self.phase.variables),
+            self.api.stop_session,
+        )
+        followers: list[stack.LogFollower] = []
+        sampler: Sampler | None = None
+        results: list[tuple[int, str]] = []
+        baseline_start = load_start = None
+        try:
+            for name in stack.INSTRUMENTED:
+                if name in containers:
+                    followers.append(
+                        stack.LogFollower(
+                            containers[name]["Name"],
+                            since,
+                            controller.on_event if name == "crew" else None,
+                            service=name,
+                        )
+                    )
+            sampler = Sampler(
+                {row["Name"]: row["ID"] for row in containers.values()},
+                controller.status,
+                self.env.get("DB_USER"),
+                self.env.get("REDIS_USER"),
+                self.env.get("REDIS_PASSWORD"),
+            )
+            sampler.mark(phase=self.phase.name, segment=segment_no, level=0, target=0)
+            sampler.start()
+            crew = next(
+                (f for f in followers if f.container == containers.get("crew", {}).get("Name")),
+                None,
+            )
+            # The cold session is tracked by DB counts, so it ends even on a branch without BENCH lines.
+            controller.external_in_flight = lambda: self.api.in_flight(self.phase.graph_id)
+            controller.set_context(self.phase.name, 0, "cold", segment_no)
+            controller.hold(
+                1, ladder.session_timeout_s, ladder.session_timeout_s, lambda: None, max_starts=1
+            )
+            time.sleep(2)  # let crew's session_end line reach the follower
+            self.fallback = crew is None or not any(
+                e.get("checkpoint") == "session_end" for e in crew.events
+            )
+            if not self.fallback:
+                controller.external_in_flight = None
+            baseline_start = time.time()
+            time.sleep(ladder.baseline_s)
+            load_start = time.time()
+            counts = sampler.snapshot_counts()
+            for level in levels:
+                start = time.time()
+                controller.set_context(self.phase.name, level, kind, segment_no)
+                sampler.mark(level=level, target=level)
+                hold_s = (
+                    ladder.session_timeout_s * 4 if max_starts else self.settle_s + ladder.hold_s
+                )
+                reason = controller.hold(
+                    level,
+                    hold_s,
+                    ladder.session_timeout_s,
+                    self._abort_check(controller, sampler, counts),
+                    max_starts=max_starts,
+                )
+                window = analyze.Window(
+                    self.phase.name,
+                    level,
+                    kind,
+                    segment_no,
+                    start,
+                    start + (0 if max_starts else self.settle_s),
+                    time.time(),
+                    reason,
+                )
+                live_rows = analyze.build_rows(
+                    controller.records, [e for f in followers for e in f.events], now=time.time()
+                )
+                verdict, reasons = analyze.judge(
+                    analyze.measured(live_rows, window),
+                    window,
+                    self.phase.pass_rules,
+                    self.case.abort,
+                )
+                window.live_verdict = verdict
+                self.windows.append(window)
+                results.append((level, verdict))
+                print(f"[{self.phase.name}] {kind} level {level}: {verdict} {'; '.join(reasons)}")
+                if verdict != "pass":
+                    break
+            load_end = time.time()
+            sampler.mark(level=0, target=0)
+            controller.drain(ladder.session_timeout_s)
+            time.sleep(ladder.cooldown_s)
+            self.segments.append(
+                analyze.Segment(
+                    self.phase.name,
+                    segment_no,
+                    kind,
+                    baseline_start,
+                    load_start,
+                    load_end,
+                    time.time(),
+                )
+            )
+        finally:
+            if load_start is not None and len(self.segments) < segment_no:
+                # interrupted mid-segment: keep what was measured
+                now = time.time()
+                self.segments.append(
+                    analyze.Segment(
+                        self.phase.name, segment_no, kind, baseline_start, load_start, now, now
+                    )
+                )
+            if sampler:
+                sampler.stop()
+                self.timeline += sampler.rows
+                self.container_timeline += sampler.container_rows
+            for follower in followers:
+                follower.stop()
+            controller.close()
+            self.events += [event for follower in followers for event in follower.events]
+            self.records += controller.records
+        return results
+
+    def _abort_check(self, controller: Controller, sampler: Sampler, counts: dict):
+        abort = self.case.abort
+
+        def check() -> str | None:
+            latest = sampler.latest
+            if abort.container_restart:
+                restarted = sampler.restarts_since(counts)
+                if restarted:
+                    return f"container restart/OOM: {', '.join(restarted)}"
+            available = latest.get("host_mem_avail_pct")
+            if available is not None and available < abort.host_min_available_ram_pct:
+                return (
+                    f"host RAM available {available:.0f}% < {abort.host_min_available_ram_pct:g}%"
+                )
+            rate = controller.recent_error_rate(time.time())
+            if rate is not None and rate >= abort.error_rate_30s:
+                return f"error rate {rate:.0%} over 30 s"
+            return None
+
+        return check
+
+    def finish_fallback(self) -> None:
+        """Branches without crew BENCH lines: take end times from the sessions API."""
+        if not self.fallback or not self.records:
+            return
+        since = datetime.fromtimestamp(min(r.intended_ts for r in self.records), UTC).isoformat()
+        by_id = {row["id"]: row for row in self.api.sessions_since(self.phase.graph_id, since)}
+        for record in self.records:
+            row = by_id.get(record.session_id)
+            if (
+                row
+                and row.get("finished_at")
+                and record.end_status not in ("http_error", "timeout")
+            ):
+                record.done_ts = datetime.fromisoformat(row["finished_at"]).timestamp()
+                record.end_status = row.get("status")
+
+    def cleanup(self) -> None:
+        ids = [record.session_id for record in self.records if record.session_id]
+        if ids:
+            print(f"[{self.phase.name}] deleted {self.api.delete_sessions(ids)} sessions")
+
+
+def run_variant(case: Case, variant: Variant, options: Options) -> Path:
+    api = Api(options.api_base, options.api_key, options.org_id)
+    env_path = options.repo / "src" / ".env"
+    host_findings = evaluate_host(_host_facts(options.repo))
+    _report(host_findings)
+    created = datetime.now(UTC)
+    phases, labels = [], []
+    meta_git = stack.git_info(options.repo)
+    with contextlib.ExitStack() as exits:
+        root = (
+            exits.enter_context(stack.Worktree(options.repo, variant.ref))
+            if variant.ref
+            else options.repo
+        )
+        if variant.ref:
+            meta_git = {**stack.git_info(root), "ref": variant.ref}
+        compose = stack.Compose(root / "src", env_path, stack.detect_project())
+        overrides = {**case.env, **variant.env}
+        try:
+            with stack.EnvOverride(env_path, overrides):
+                compose.up(build=options.build)
+                env = stack.read_env_file(env_path)
+                graphs = _resolve_graphs(api, case)
+                _report(evaluate_stack(_stack_facts(compose, api, case, env, graphs), case))
+                smoke = (
+                    run_smoke(case, api, compose, options, env) if options.smoke else {"ran": False}
+                )
+                settle_s = max(
+                    [case.ladder.settle_s, *[v for v in smoke.get("e2e_p95_s", {}).values() if v]]
+                )
+                for phase in case.phases:
+                    phase_runner = PhaseRunner(case, phase, api, compose, options, env, settle_s)
+                    phases.append(phase_runner)
+                    try:
+                        if case.kind == "dev":
+                            phase_runner.run_dev(case.dev.sessions, case.dev.concurrency)
+                        else:
+                            phase_runner.run_capacity()
+                    except KeyboardInterrupt:
+                        labels.append("interrupted")
+                        print("\n[run] interrupted: saving what was measured")
+                        break
+                    finally:
+                        phase_runner.finish_fallback()
+                        phase_runner.cleanup()
+                images, limits = compose.images(), _container_limits(compose)
+        finally:
+            compose.up(build=False)  # .env is restored by now: re-apply the original settings
+    labels += [
+        f"fallback-control:{phase_runner.phase.name}"
+        for phase_runner in phases
+        if phase_runner.fallback
+    ]
+    labels += ["dirty-tree"] if meta_git["dirty"] else []
+    labels += [] if options.build else ["build-unverified"]
+    host = stack.host_info()
+    name = run_dir_name(
+        created.strftime("%Y-%m-%d_%H%M"),
+        host["hostname"],
+        meta_git["ref"],
+        meta_git["sha"],
+        case.name,
+        variant.name,
+    )
+    meta = {
+        "run_id": name,
+        "created_at": created.isoformat(timespec="seconds"),
+        "note": options.note,
+        "kind": case.kind,
+        "case": {
+            "name": case.name,
+            "hash": case.case_hash,
+            "variant": variant.name,
+            "overrides": allowlisted(overrides),
+        },
+        "git": {**meta_git, "built": options.build},
+        "images": images,
+        "host": host,
+        "container_limits": limits,
+        "env": {key: value for key, value in allowlisted(env).items() if value != "<set>"},
+        "labels": labels,
+        "smoke": smoke,
+        "graphs": graphs,
+    }
+    data = analyze.RunData(
+        case,
+        variant.name,
+        meta,
+        [r for p in phases for r in p.records],
+        [w for p in phases for w in p.windows],
+        [s for p in phases for s in p.segments],
+        [e for p in phases for e in p.events],
+        [t for p in phases for t in p.timeline],
+        [c for p in phases for c in p.container_timeline],
+    )
+    run_dir = options.results_dir / name
+    analyze.analyze(data, run_dir)
+    print(f"\nRun folder: {run_dir}")
+    return run_dir
+
+
+def _report(findings: list[tuple[str, str]], fatal: bool = True) -> bool:
+    """Print findings; returns True when any is an error (and exits 2 on it unless not fatal)."""
+    for level, message in findings:
+        print(f"{'✗' if level == 'error' else '⚠'} {message}")
+    has_error = any(level == "error" for level, _ in findings)
+    if has_error and fatal:
+        raise SystemExit(2)
+    return has_error
+
+
+def _host_facts(repo: Path) -> dict:
+    load1 = mem_avail_pct = None
+    with contextlib.suppress(OSError, ValueError, IndexError):
+        load1 = float(Path("/proc/loadavg").read_text().split()[0])
+    with contextlib.suppress(OSError, KeyError, ZeroDivisionError, ValueError):
+        meminfo = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            name, _, rest = line.partition(":")
+            meminfo[name] = int(rest.split()[0])
+        mem_avail_pct = 100 * meminfo["MemAvailable"] / meminfo["MemTotal"]
+    return {
+        "docker_ok": stack.run(["docker", "info"], check=False).returncode == 0,
+        "load1": load1,
+        "vcpu": os.cpu_count() or 1,
+        "mem_avail_pct": mem_avail_pct,
+        "backup_exists": (repo / "src" / f".env{stack.BACKUP_SUFFIX}").exists(),
+    }
+
+
+def _resolve_graphs(api: Api, case: Case) -> dict[str, dict]:
+    graphs = {}
+    for phase in case.phases:
+        try:
+            graph = api.get_graph(phase.graph_id)
+            graphs[phase.name] = {
+                "graph_id": phase.graph_id,
+                "graph_name": graph["name"],
+                "graph_hash": graph_hash(graph),
+            }
+        except ApiError as error:
+            graphs[phase.name] = {"error": str(error)}
+    return graphs
+
+
+def _stack_facts(compose: stack.Compose, api: Api, case: Case, env: dict, graphs: dict) -> dict:
+    unhealthy = [
+        row["Service"]
+        for row in compose.ps()
+        if not (row.get("State") == "running" and row.get("Health") in ("", "healthy", None))
+        and not (row.get("State") == "exited" and row.get("ExitCode") == 0)
+    ]
+    graph_errors = {name: graph["error"] for name, graph in graphs.items() if "error" in graph}
+    leftover = {}
+    for phase in case.phases:
+        if phase.name in graph_errors:
+            continue
+        try:
+            leftover[phase.name] = api.in_flight(phase.graph_id)
+        except ApiError as error:
+            graph_errors[phase.name] = str(error)
+    containers = compose.containers()
+    names = [containers[name]["Name"] for name in stack.INSTRUMENTED if name in containers]
+    inspected = stack.inspect(names)
+    log_drivers, bench_active, memory_limits = {}, {}, {}
+    for service in stack.INSTRUMENTED:
+        data = inspected.get(containers.get(service, {}).get("Name", ""))
+        if data is None:
+            continue
+        host_config = data.get("HostConfig", {})
+        log_drivers[service] = host_config.get("LogConfig", {}).get("Type")
+        level = stack.container_env(data).get(LOG_LEVEL_VARIABLES[service], "")
+        bench_active[service] = level.upper() in ("BENCH", "DEBUG", "TRACE")
+        memory_limits[service] = host_config.get("Memory") or 0
+    caps = {}
+    for key in CAP_VARIABLES:
+        try:
+            caps[key] = int(env[key])
+        except (KeyError, ValueError):
+            caps[key] = None
+    return {
+        "unhealthy": unhealthy,
+        "graph_errors": graph_errors,
+        "leftover": leftover,
+        "log_drivers": log_drivers,
+        "bench_active": bench_active,
+        "caps": caps,
+        "memory_limits": memory_limits,
+    }
+
+
+def _container_limits(compose: stack.Compose) -> dict[str, dict]:
+    names = [row["Name"] for row in compose.containers().values()]
+    limits = {}
+    for name, data in stack.inspect(names).items():
+        host_config = data.get("HostConfig", {})
+        cpus, memory = host_config.get("NanoCpus"), host_config.get("Memory")
+        limits[name] = {
+            "cpus": cpus / 1e9 if cpus else None,
+            "mem_mb": memory / 2**20 if memory else None,
+        }
+    return limits
+
+
+def _smoke_failures(records: list, events: list[dict]) -> list[str]:
+    """Why a smoke phase is not trustworthy; empty when it is."""
+    problems = []
+    if not any(record.ok for record in records):
+        problems.append("no session finished with status 'end'")
+    failed = [record for record in records if record.end_status != "end"]
+    if failed:
+        statuses = sorted({str(record.end_status) for record in failed})
+        problems.append(
+            f"{len(failed)} of {len(records)} sessions did not end cleanly ({statuses})"
+        )
+    seen = {(event["service"], event["checkpoint"]) for event in events}
+    active = {service for service, _ in seen}  # a service that logged nothing has BENCH inactive
+    required = {
+        service: set(names) for service, names in EXPECTED_CHECKPOINTS.items() if service in active
+    }
+    if "agent" in active and ("crew", "agent_dispatched") in seen:
+        required["agent"] = {"llm_start", "llm_end"}
+    if "sandbox" in active:
+        required["sandbox"] = {"exec_start", "exec_end"}
+    for service, checkpoints in required.items():
+        missing = sorted(name for name in checkpoints if (service, name) not in seen)
+        if missing:
+            problems.append(f"{service}: missing checkpoints {missing}")
+    return problems
+
+
+def run_smoke(case: Case, api: Api, compose: stack.Compose, options: Options, env: dict) -> dict:
+    """A short real run per phase, to prove the instrumentation works before the long ladder."""
+    smoke_case = replace(case, ladder=replace(case.ladder, hold_s=60))
+    smoke_options = replace(options, restart=False)
+    details, e2e_p95, llm_p95 = [], {}, {}
+    for phase in case.phases:
+        phase_runner = PhaseRunner(smoke_case, phase, api, compose, smoke_options, env, settle_s=0)
+        try:
+            phase_runner._segment("smoke", [2])
+            phase_runner.finish_fallback()
+            details += [
+                f"{phase.name}: {problem}"
+                for problem in _smoke_failures(phase_runner.records, phase_runner.events)
+            ]
+            rows = analyze.build_rows(phase_runner.records, phase_runner.events)
+            e2e_p95[phase.name] = analyze.percentile(
+                [row["e2e_s"] for row in rows if row["status"] == "end" and row["e2e_s"]], 0.95
+            )
+            llm_p95[phase.name] = analyze.percentile(
+                [row["llm_s"] for row in rows if row["llm_calls"]], 0.95
+            )
+        finally:
+            phase_runner.cleanup()
+    result = {
+        "ran": True,
+        "passed": not details,
+        "details": "; ".join(details) or "ok",
+        "e2e_p95_s": e2e_p95,
+        "llm_p95_s": llm_p95,
+    }
+    if details:
+        print(f"✗ smoke failed: {result['details']}")
+        raise SystemExit(3)
+    print("smoke passed")
+    return result
+
+
+def run_dev(case: Case, options: Options, sessions: int, concurrency: int) -> Path:
+    dev_case = replace(case, dev=DevSettings(sessions, concurrency), phases=case.phases[:1])
+    return run_variant(dev_case, Variant("default"), replace(options, smoke=False))
+
+
+def preflight_only(case: Case, options: Options) -> int:
+    api = Api(options.api_base, options.api_key, options.org_id)
+    env_path = options.repo / "src" / ".env"
+    compose = stack.Compose(options.repo / "src", env_path, stack.detect_project())
+    graphs = _resolve_graphs(api, case)
+    env = stack.read_env_file(env_path)
+    findings = evaluate_host(_host_facts(options.repo))
+    findings += evaluate_stack(_stack_facts(compose, api, case, env, graphs), case)
+    has_error = _report(findings, fatal=False)
+    if not findings:
+        print("preflight ok")
+    return 2 if has_error else 0

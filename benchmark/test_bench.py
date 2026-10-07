@@ -19,6 +19,7 @@ import compare
 import config
 import load
 import push
+import runner
 import sample
 import stack
 from config import AbortRules, PassRules
@@ -1054,3 +1055,71 @@ class PushTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreflightTest(unittest.TestCase):
+    def test_host_errors_and_ok(self):
+        facts = {
+            "docker_ok": True,
+            "load1": 1.0,
+            "vcpu": 12,
+            "mem_avail_pct": 80,
+            "backup_exists": False,
+        }
+        self.assertEqual(runner.evaluate_host(facts), [])
+        bad = {
+            **facts,
+            "load1": 9.0,
+            "mem_avail_pct": 10,
+            "backup_exists": True,
+            "docker_ok": False,
+        }
+        self.assertEqual({level for level, _ in runner.evaluate_host(bad)}, {"error"})
+        self.assertEqual(len(runner.evaluate_host(bad)), 4)
+
+    def test_stack_warnings(self):
+        case = config.load_case(write_case())
+        facts = {
+            "unhealthy": [],
+            "graph_errors": {},
+            "leftover": {"payload": 0},
+            "log_drivers": {"crew": "json-file"},
+            "bench_active": {"django_app": True, "crew": True, "agent": False, "sandbox": True},
+            "caps": {"CREW_MAX_CONCURRENT_SESSIONS": 25, "AGENT_MAX_CONCURRENT_RUNS": 100000},
+            "memory_limits": {"crew": 0},
+        }
+        findings = runner.evaluate_stack(facts, case)
+        self.assertIn(
+            ("warn", "BENCH not active on agent: its checkpoints are missing from this run"),
+            findings,
+        )
+        self.assertTrue(
+            any("CREW_MAX_CONCURRENT_SESSIONS=25" in message for _, message in findings)
+        )
+        self.assertTrue(any("memory limit" in message for _, message in findings))
+        self.assertFalse(any(level == "error" for level, _ in findings))
+        broken = {
+            **facts,
+            "log_drivers": {"crew": "none"},
+            "leftover": {"payload": 3},
+            "graph_errors": {"payload": "HTTP 404"},
+        }
+        errors = sum(level == "error" for level, _ in runner.evaluate_stack(broken, case))
+        self.assertEqual(errors, 3)
+
+
+class PlanTest(unittest.TestCase):
+    def test_plan_lists_levels_and_worst_case(self):
+        case = config.load_case(write_case())
+        text = runner.plan_text(case, list(case.variants))
+        self.assertIn("payload: 25 → 50 → 100 → 200 → 400", text)
+        self.assertIn("crew-cap-50", text)
+        self.assertIn("worst case", text)
+
+    def test_run_dir_name_is_slugged(self):
+        name = runner.run_dir_name(
+            "2026-10-07_1432", "host", "feat/EST-4430-x", "a1b2c3d4", "server-capacity", "default"
+        )
+        self.assertEqual(
+            name, "2026-10-07_1432_host_feat-EST-4430-x_a1b2c3d_server-capacity-default"
+        )
