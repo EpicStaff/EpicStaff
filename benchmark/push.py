@@ -59,15 +59,18 @@ def build_index(
 ) -> dict:
     """Build index from existing benchmarks and optional extra run metadata.
 
-    extra_metas: list of (folder_name, meta_dict) for runs not yet in benchmarks_dir.
+    extra_metas: list of (folder_name, meta_dict) for runs not yet in benchmarks_dir or re-pushed runs.
+    If a folder in extra_metas already exists in benchmarks_dir, it replaces the existing entry.
     """
     numbers = {run["folder"]: run["number"] for run in (previous or {}).get("runs", [])}
     metas = []
     for meta_path in benchmarks_dir.glob("*/meta.json"):
         metas.append((meta_path.parent.name, json.loads(meta_path.read_text(encoding="utf-8"))))
 
-    # Add extra_metas (incoming runs being pushed)
+    # Add extra_metas (incoming runs being pushed), replacing any existing entry with same folder name
     if extra_metas:
+        extra_folders = {folder for folder, _ in extra_metas}
+        metas = [(folder, meta) for folder, meta in metas if folder not in extra_folders]
         metas.extend(extra_metas)
 
     metas.sort(key=lambda item: item[1].get("created_at", ""))
@@ -146,7 +149,6 @@ def push(
 
     # (c) Dry-run: compute target folders and run numbers without writing
     benchmarks = repo_path / "benchmarks"
-    benchmarks.mkdir(exist_ok=True)
     previous = None
     index_path = benchmarks / "index.json"
     if index_path.exists():
@@ -184,6 +186,7 @@ def push(
         return
 
     # (f) Only now: copy, write, and git
+    benchmarks.mkdir(exist_ok=True)
     for run_dir in run_dirs:
         target = benchmarks / run_dir.name
         shutil.copytree(

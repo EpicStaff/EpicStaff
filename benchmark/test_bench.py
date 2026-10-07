@@ -962,8 +962,7 @@ class PushTest(unittest.TestCase):
             push.push([run_dir], str(repo_path), viewer_src, None, False, ask=lambda _: "n")
         self.assertEqual(git_calls, [["status", "--porcelain"], ["pull", "--ff-only"]])
         benchmarks = repo_path / "benchmarks"
-        self.assertFalse((benchmarks / "r1").exists())
-        self.assertFalse((benchmarks / "index.json").exists())
+        self.assertFalse(benchmarks.exists())
 
     def test_push_with_yes_copies_and_commits(self):
         folder = Path(tempfile.mkdtemp())
@@ -999,9 +998,39 @@ class PushTest(unittest.TestCase):
         self.assertFalse((benchmarks / "r2" / "events_full.csv.gz").exists())
         self.assertTrue((benchmarks / "index.json").exists())
         self.assertTrue((repo_path / "index.html").exists())
-        self.assertIn(["add", "benchmarks", "index.html"], git_calls)
-        self.assertTrue(any("commit" in c for c in git_calls))
-        self.assertIn(["push"], git_calls)
+        self.assertEqual(
+            git_calls[-3:],
+            [["add", "benchmarks", "index.html"], ["commit", "-m", git_calls[-2][2]], ["push"]],
+        )
+
+    def test_push_repush_same_run_keeps_one_index_entry(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "r3", 100, 1.0)
+        repo_path = folder / "repo"
+        repo_path.mkdir()
+        (repo_path / "benchmarks").mkdir()
+        viewer_src = Path(tempfile.mktemp())
+        viewer_src.write_text("viewer", encoding="utf-8")
+        all_git_calls = []
+
+        def mock_git(repo, *args):
+            all_git_calls.append(list(args))
+            if "status" in args:
+                return "M benchmarks/index.json" if len(all_git_calls) == 5 else ""
+            return ""
+
+        with mock.patch.object(push, "_git", side_effect=mock_git):
+            push.push([run_dir], str(repo_path), viewer_src, None, True, ask=None)
+            all_git_calls.clear()
+            push.push([run_dir], str(repo_path), viewer_src, None, True, ask=None)
+            git_calls_second = all_git_calls.copy()
+
+        index = json.loads((repo_path / "benchmarks" / "index.json").read_text(encoding="utf-8"))
+        run_entries = [r for r in index["runs"] if r["folder"] == "r3"]
+        self.assertEqual(len(run_entries), 1)
+        self.assertEqual(run_entries[0]["number"], 1)
+        self.assertIn(["status", "--porcelain"], git_calls_second)
+        self.assertNotIn(["push"], git_calls_second)
 
     def test_compare_keeps_numeric_node_name_as_string(self):
         folder = Path(tempfile.mkdtemp())
