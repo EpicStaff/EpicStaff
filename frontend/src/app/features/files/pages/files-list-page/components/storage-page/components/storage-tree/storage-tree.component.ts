@@ -118,8 +118,7 @@ export class StorageTreeComponent {
     });
 
     constructor() {
-        // A destroyed drag source never fires `dragend`; end a drag this tree started so
-        // drop targets elsewhere (e.g. the collections panel) are not left active.
+        // A destroyed drag source never fires `dragend`, so end the drag here.
         inject(DestroyRef).onDestroy(() => {
             this.clearDragExpandTimer();
             if (this.draggedItems().length > 0) this.storageDrag.end();

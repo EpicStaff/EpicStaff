@@ -207,7 +207,6 @@ describe('StorageTreeFacade loading state', () => {
         response.complete();
         expect(facade.isInitialLoading()).toBe(false);
 
-        // A later refresh is still "loading", but must not unmount the tree/drop panel.
         const refresh = new Subject<StorageItem[]>();
         TestBed.inject(StorageApiService).list = vi.fn(() => refresh);
         facade.reloadTreePreservingExpansion();

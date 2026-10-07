@@ -14,7 +14,6 @@ import { DragDropAreaComponent, FetchErrorStateComponent, SpinnerComponent } fro
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
 
-import { CollectionDropPanelComponent } from '../../../../../knowledge-sources/components/collection-drop-panel/collection-drop-panel.component';
 import { StorageItem } from '../../../../models/storage.models';
 import { FilesSearchService } from '../../../../services/files-search.service';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../../services/storage-tree-facade.service';
@@ -33,7 +32,6 @@ const SIDEBAR_STORAGE_KEY = 'files';
         DragDropAreaComponent,
         ResizableSidebarDirective,
         FetchErrorStateComponent,
-        CollectionDropPanelComponent,
     ],
     templateUrl: './storage-page.component.html',
     styleUrls: ['./storage-page.component.scss'],
