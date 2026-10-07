@@ -4,7 +4,7 @@
 
 The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. The default server is [RustFS](https://github.com/rustfs/rustfs) (Apache-2.0), which replaced MinIO after MinIO stopped publishing images.
 
-The sandbox also uses the storage backend Admin API to create short-lived, org-scoped credentials for each code execution. RustFS implements a MinIO-compatible Admin API with documented differences (see **RustFS API Compatibility** below). A plain S3 service without an Admin API (for example AWS S3) can serve files, but sandbox storage access will not work.
+`django_app` also uses the storage backend Admin API to mint short-lived, org-scoped credentials for storage-enabled code execution (session, Test-run, and realtime). The sandbox never talks to the Admin API itself — it only ever receives credentials already minted by `django_app`, carried in the execution payload (see **Service Account Credential Management** below). RustFS implements a MinIO-compatible Admin API with documented differences (see **RustFS API Compatibility** below). A plain S3 service without an Admin API (for example AWS S3) can serve files, but storage-enabled code execution will not work.
 
 ---
 
@@ -352,7 +352,7 @@ RustFS implements a MinIO-compatible Admin API with the following confirmed diff
    
    This is not a RustFS-specific quirk but a documented third encryption mode in the official MinIO Admin API specification.
 
-2. **Expiration enforcement** — RustFS enforces service account expiration server-side, independent of the issuer's credential revocation. Once a service account reaches its expiration timestamp, the storage backend rejects operations from that account. The sandbox `sweep()` function reads service account expiration timestamps directly from RustFS and cleans up expired accounts based on these backend-sourced timestamps.
+2. **Expiration enforcement** — RustFS enforces service account expiration server-side, independent of application-level revocation. Once a service account reaches its expiration timestamp, the storage backend rejects operations from that account regardless of whether `django_app` ever explicitly revoked it.
 
 3. **Cascade deletion on `remove_user`** — Removing a parent user cascades to revoke all service accounts it minted, identical to MinIO behavior.
 
@@ -366,16 +366,65 @@ RustFS implements a MinIO-compatible Admin API with the following confirmed diff
 
 ### Temporary credential lifecycle
 
-When the sandbox executes a flow, the `StorageAdminGateway` provisions short-lived, org-scoped service account credentials:
+All minting happens in `django_app`, via the `storage_credentials` app
+(`storage_credentials/services/session_credential_service.py` and
+`storage_credentials/clients/minio_admin_client.py`'s `StorageAdminGateway`).
+**Neither the sandbox nor realtime ever calls the Admin API** — they only ever
+receive already-minted credentials, carried on the execution payload
+(`CodeTaskData.storage_credentials`), so a compromised sandbox process never
+has access to anything capable of minting or revoking storage credentials.
 
-1. **Creation** — `create_service_account()` generates credentials with:
-   - A policy containing a `Deny` statement that blocks the account from self-minting additional service accounts (preventing privilege escalation)
-   - An expiration timestamp (typically 1 hour)
-   - The request body is encrypted with the library's own (Argon2id, AEAD ID 0) `encrypt()` — the response is never read, so the AEAD ID 2 issue doesn't apply here
+There are three entry points, one per execution context, all funneling
+through the same `_mint_and_persist()`:
 
-2. **Expiration enforcement** — RustFS rejects API calls from expired accounts at the storage layer, independent of any application-level tracking.
+1. **Session** — `issue_for_session()`, called once from `run_session()` when
+   the session graph contains at least one storage-enabled node. One account
+   is minted and reused by every storage node in that session.
+2. **Test run** — `issue_for_test_run()`, called from the django "Test run"
+   endpoint. One account per execution.
+3. **Realtime chat** — `issue_for_realtime_chat()`, called once per chat from
+   `converter_service.py` when the agent's tools require storage. One account
+   is reused for the whole chat, not re-minted per tool call.
 
-3. **Cleanup** — `sweep()` reads the live service account list directly from RustFS via `list_service_accounts()` and removes expired accounts based on server-side expiration timestamps, not from a Django registry.
+Minting itself (`_mint_and_persist()`):
+
+- Builds an IAM policy scoped to `org_<id>/<allowed_paths>` — the allowed
+  paths are first validated and org-prefixed by `CredentialScopeValidator`
+  (`scope_validator.py`), which fails closed on an empty, malformed, or
+  org-escaping path list. This is what stops a session from ever being handed
+  a credential wider than the union of its own nodes' declared paths.
+- Calls `create_service_account()` with that policy and an expiration derived
+  from `STORAGE_TEMP_CREDENTIALS_TTL_HOURS` (default 24h; `<= 0` means no
+  expiration — the `expiration` argument is omitted from the request
+  entirely, not set to some very long value).
+- Persists `(access_key, issued_at)` in the `TemporaryStorageAccount` Postgres
+  table (`storage_credentials/models.py`), keyed to exactly one of
+  `session` / `python_code_result` / `realtime_agent_chat` via a
+  `CheckConstraint`. `secret_key` is never persisted — it only ever travels
+  in the in-memory/Redis payload for that one execution.
+- Minting is not best-effort: a failure (scope validation, the Admin API
+  call, or the DB write) raises and stops the caller (session startup, the
+  Test-run request, or realtime chat init) — there is no silent fallback to
+  an unscoped or missing credential.
+
+### Revocation
+
+Revocation is also django-only, via `session_credential_service.revoke_for_session()` /
+`revoke_for_test_run()` / `revoke_for_realtime_chat()`, each triggered by the
+natural end-of-life signal for its owner:
+
+- **Session** — a terminal status (`end`/`error`/`stop`/`expired`) seen by
+  `redis_pubsub.py`'s `session_status_handler`.
+- **Test run** — the result message on `code_results_handler`.
+- **Realtime chat** — `RealtimeAgentChatViewSet.end`.
+
+Each looks up the row by its owner's id, calls
+`StorageAdminGateway.delete_service_account()`, and deletes the
+`TemporaryStorageAccount` row only after a successful revoke — a failed
+revoke leaves the row in place for the manager's daily cleanup job
+(`src/manager/services/storage_account_cleanup_service.py`) to retry later.
+Revocation failure is logged and swallowed: it never blocks the caller's own
+completion (status update, result persistence, or chat teardown).
 
 ### Deny Statement Verification
 
@@ -385,11 +434,19 @@ Live-fire verified against RustFS (2026-09-29), both directions:
 - With `Resource: ["arn:aws:s3:::*"]` (current code): a temporary credential attempting `admin:CreateServiceAccount` on itself is rejected with `403 AccessDenied`.
 - With `Resource: ["*"]` (the pre-EST-3892 form): RustFS rejects the policy document itself at creation time — `400 InvalidArgument: Policy format is invalid` — a temporary credential could not even be issued.
 
-So the ARN form isn't just a safer choice among two working options — it's the only one RustFS accepts at all. This enforces a hard boundary: sandbox-executed flows cannot expand their own access or mint credentials that outlive their execution.
+So the ARN form isn't just a safer choice among two working options — it's the only one RustFS accepts at all. This enforces a hard boundary: a minted credential cannot expand its own access or mint credentials that outlive it.
 
 ### Data source for credential tracking
 
-Prior implementations tracked issued credentials in a Django `Secret.metadata` registry as a workaround for a broken `list_service_accounts()` in early RustFS versions. This registry has been removed: `sweep()` now reads directly from the storage backend's authoritative service account list and expiration timestamps via `_AdminResponseDecryptor`, eliminating the need for application-level credential tracking.
+Credential tracking is the `TemporaryStorageAccount` Postgres table described
+above — not a Django `Secret.metadata` registry (an earlier, now-removed
+approach) and not a live query against RustFS's own service-account list.
+`StorageAdminGateway.list_service_accounts()` still exists on the client for
+completeness but has no current caller; nothing in the credential lifecycle
+reads RustFS's account list to decide what to clean up. The manager's cleanup
+job only ever deletes `TemporaryStorageAccount` rows whose owner (session /
+Test-run / realtime chat) has already reached a terminal state — it never
+calls the storage backend itself.
 
 ---
 
