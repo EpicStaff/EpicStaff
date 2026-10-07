@@ -1,0 +1,42 @@
+.transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.message {
+    align-self: flex-start;
+    max-width: min(720px, 85%);
+    padding: 10px 14px;
+    border-radius: 12px 12px 12px 4px;
+    background: var(--es-color-surface-raised, #222225);
+    border: 1px solid var(--es-color-divider-subtle, #c8ceda14);
+}
+
+.message--user {
+    align-self: flex-end;
+    border-radius: 12px 12px 4px 12px;
+    background: var(--es-color-accent, #685fff);
+    border-color: transparent;
+    color: #ffffff;
+}
+
+.message--pending {
+    color: var(--es-color-text-tertiary, rgba(217, 217, 222, 0.4));
+}
+
+.message__meta {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.7;
+}
+
+.message__content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

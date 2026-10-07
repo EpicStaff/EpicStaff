@@ -1,0 +1,37 @@
+{
+    "name": "chat-admin-app",
+    "version": "0.1.0",
+    "description": "The Chat Admin plugin app: chat with the plugin's flow and browse the conversations it stores.",
+    "private": true,
+    "engines": {
+        "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+    },
+    "scripts": {
+        "ng": "ng",
+        "build:sdk": "tsc -p ../../../plugin-sdk/tsconfig.json",
+        "prestart": "npm run build:sdk",
+        "start": "ng serve",
+        "prebuild": "npm run build:sdk",
+        "build": "ng build",
+        "validate": "node ../../../plugin-sdk/bin/epicstaff-plugin.mjs validate ../plugin --ui dist/chat-admin/browser",
+        "pack": "node ../../../plugin-sdk/bin/epicstaff-plugin.mjs pack ../plugin --ui dist/chat-admin/browser --out dist/chat-admin-plugin.zip"
+    },
+    "dependencies": {
+        "@angular/common": "22.2.1",
+        "@angular/compiler": "22.2.1",
+        "@angular/core": "22.2.1",
+        "@angular/forms": "22.2.1",
+        "@angular/platform-browser": "22.2.1",
+        "@angular/router": "22.2.1",
+        "@epicstaff/plugin-sdk": "file:../../../plugin-sdk",
+        "@fontsource/inter": "5.2.8",
+        "rxjs": "7.8.2",
+        "tslib": "2.8.1"
+    },
+    "devDependencies": {
+        "@angular/build": "22.2.1",
+        "@angular/cli": "22.2.1",
+        "@angular/compiler-cli": "22.2.1",
+        "typescript": "~6.0.3"
+    }
+}

@@ -1,0 +1,48 @@
+{
+    "name": "@epicstaff/plugin-sdk",
+    "version": "0.1.0",
+    "description": "Bridge client, storage stand-in, mock host and CLI for EpicStaff plugin apps (bridge v2).",
+    "private": true,
+    "license": "SEE LICENSE IN ../LICENSE.md",
+    "type": "module",
+    "engines": {
+        "node": ">=22.18.0"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./storage-shim": {
+            "types": "./dist/storage-shim.d.ts",
+            "default": "./dist/storage-shim.js"
+        },
+        "./mock-host": {
+            "types": "./dist/mock-host.d.ts",
+            "default": "./dist/mock-host.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "types": "./dist/index.d.ts",
+    "sideEffects": [
+        "./dist/storage-shim.js"
+    ],
+    "bin": {
+        "epicstaff-plugin": "./bin/epicstaff-plugin.mjs"
+    },
+    "files": [
+        "dist",
+        "bin",
+        "cli",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.check.json",
+        "test": "npm run build && npm run typecheck && node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\""
+    },
+    "devDependencies": {
+        "@types/node": "24.19.1",
+        "typescript": "6.0.3"
+    }
+}

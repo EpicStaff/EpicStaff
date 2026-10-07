@@ -1,0 +1,127 @@
+/*
+ * Global styles. Colours come from EpicStaff's theme tokens (`--es-*`, set on <html> by the SDK);
+ * every use carries a fallback, so the app also looks right standalone. The fallbacks are
+ * EpicStaff's dark theme.
+ *
+ * Inter is bundled (latin subset only) to prove web fonts load inside the sandbox.
+ */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    color-scheme: dark;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--es-color-background, #212325);
+    color: var(--es-color-text, #d9d9de);
+    font-family: var(--es-font-family, Inter, 'Helvetica Neue', sans-serif);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+p {
+    margin: 0;
+}
+
+a {
+    color: var(--es-color-accent, #685fff);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--es-color-accent-hover, #574fd6);
+}
+
+:focus-visible {
+    outline: none;
+    box-shadow: var(--es-focus-ring, 0 0 0 2px rgba(104, 95, 255, 0.4));
+}
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--es-color-accent, #685fff);
+    color: #ffffff;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.button:hover:not(:disabled) {
+    background: var(--es-color-accent-hover, #574fd6);
+    color: #ffffff;
+}
+
+.button:active:not(:disabled) {
+    background: var(--es-color-accent-active, #473fb3);
+}
+
+.button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.button--ghost {
+    background: transparent;
+    border-color: var(--es-color-border, #c8ceda24);
+    color: var(--es-color-text, #d9d9de);
+}
+
+.button--ghost:hover:not(:disabled) {
+    background: var(--es-color-surface, #232323);
+    color: var(--es-color-text, #d9d9de);
+}
+
+.input {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--es-color-input-border, #c8ceda24);
+    border-radius: 8px;
+    background: var(--es-color-input-background, #27272b);
+    color: var(--es-color-text, #d9d9de);
+    font: inherit;
+}
+
+.input::placeholder {
+    color: var(--es-color-input-placeholder, #c8ceda4d);
+}
+
+.muted {
+    color: var(--es-color-text-secondary, rgba(217, 217, 222, 0.6));
+}
+
+.notice {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--es-color-border, #c8ceda24);
+    background: var(--es-color-surface, #232323);
+}
+
+.notice--error {
+    border-color: var(--es-color-error, #f54242);
+    color: var(--es-color-error, #f54242);
+}

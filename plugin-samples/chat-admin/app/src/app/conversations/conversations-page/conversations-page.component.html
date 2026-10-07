@@ -1,0 +1,113 @@
+<section class="conversations">
+    <header class="conversations__header">
+        <h1 class="conversations__title">Conversations</h1>
+        <div class="conversations__tools">
+            <input
+                class="input conversations__search"
+                type="search"
+                placeholder="Search by conversation id"
+                aria-label="Search conversations by id"
+                maxlength="512"
+                [formControl]="searchControl"
+            />
+            <select
+                class="input"
+                aria-label="Sort conversations"
+                (change)="setOrdering($event)"
+            >
+                @for (option of orderings; track option.value) {
+                    <option
+                        [value]="option.value"
+                        [selected]="isSelected(option.value)"
+                    >
+                        {{ option.label }}
+                    </option>
+                }
+            </select>
+        </div>
+    </header>
+
+    @if (errorMessage(); as error) {
+        <p
+            class="notice notice--error"
+            role="alert"
+        >
+            {{ error }}
+        </p>
+    }
+
+    @if (listing(); as result) {
+        <div
+            class="conversations__body"
+            [class.conversations__body--loading]="conversations.isLoading()"
+        >
+            <p class="muted">
+                {{ result.count }} {{ result.count === 1 ? 'conversation' : 'conversations' }}
+                @if (query().search) {
+                    matching “{{ query().search }}”
+                }
+            </p>
+
+            @if (result.items.length === 0) {
+                <div class="notice">
+                    @if (query().search) {
+                        No conversation id contains “{{ query().search }}”.
+                    } @else {
+                        No conversations yet. Ask something in Chat, and the flow saves it here.
+                    }
+                </div>
+            } @else {
+                <ul class="conversation-list">
+                    @for (item of result.items; track item.key) {
+                        <li>
+                            <a
+                                class="conversation-list__row"
+                                [routerLink]="['/conversations', item.key]"
+                            >
+                                <span class="conversation-list__title">{{ item.title || item.key }}</span>
+                                <span class="conversation-list__meta muted">
+                                    @if (item.title) {
+                                        <span class="conversation-list__key">{{ item.key }}</span>
+                                    }
+                                    @if (item.turns !== null) {
+                                        <span>{{ item.turns }} {{ item.turns === 1 ? 'turn' : 'turns' }}</span>
+                                    }
+                                    @if (item.updatedAt) {
+                                        <span>{{ item.updatedAt | date: 'MMM d, y, HH:mm' }}</span>
+                                    }
+                                </span>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (pageCount() > 1) {
+                <nav
+                    class="pager"
+                    aria-label="Pages"
+                >
+                    <button
+                        type="button"
+                        class="button button--ghost"
+                        [disabled]="query().page <= 1"
+                        (click)="goToPage(query().page - 1)"
+                    >
+                        Previous
+                    </button>
+                    <span class="muted">Page {{ query().page }} of {{ pageCount() }}</span>
+                    <button
+                        type="button"
+                        class="button button--ghost"
+                        [disabled]="query().page >= pageCount()"
+                        (click)="goToPage(query().page + 1)"
+                    >
+                        Next
+                    </button>
+                </nav>
+            }
+        </div>
+    } @else if (!errorMessage()) {
+        <p class="muted">Loading conversations…</p>
+    }
+</section>

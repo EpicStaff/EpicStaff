@@ -1,0 +1,301 @@
+{
+  "Flow": [
+    {
+      "id": 1,
+      "edge_list": [
+        {
+          "id": 1,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 1,
+          "end_node_id": 2
+        },
+        {
+          "id": 2,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 2,
+          "end_node_id": 3
+        },
+        {
+          "id": 3,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 3,
+          "end_node_id": 4
+        },
+        {
+          "id": 4,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 4,
+          "end_node_id": 5
+        },
+        {
+          "id": 5,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 5,
+          "end_node_id": 6
+        },
+        {
+          "id": 6,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {},
+          "start_node_id": 6,
+          "end_node_id": 7
+        }
+      ],
+      "conditional_edge_list": [],
+      "uuid": "377e5cf0-5d97-4ba1-bf27-e3f191578c74",
+      "name": "Chat Admin",
+      "description": "Answers a chat message and keeps the conversation in a key-value table.",
+      "metadata": {},
+      "time_to_live": 3600,
+      "enable_persistent_variables": false,
+      "epicchat_enabled": false,
+      "org": 2,
+      "nodes": [
+        {
+          "id": 3,
+          "python_code": {
+            "code": "# Chat Admin \"Format history\" node: renders the stored conversation as plain text\n# for the answering task's prompt. The task would otherwise see the record as a\n# Python dict, or \"None\" for a new conversation.\n\n# The most recent messages only, so a long conversation does not crowd the prompt.\nMAX_HISTORY_MESSAGES = 20\nNO_HISTORY = \"(This is the start of the conversation.)\"\nROLE_LABELS = {\"user\": \"User\", \"assistant\": \"Assistant\"}\n\n\ndef main(conversation):\n    messages = conversation.get(\"messages\") if isinstance(conversation, dict) else None\n    lines = [\n        f\"{ROLE_LABELS.get(message.get('role'), 'User')}: {message.get('content') or ''}\"\n        for message in (messages or [])[-MAX_HISTORY_MESSAGES:]\n        if isinstance(message, dict)\n    ]\n    return \"\\n\\n\".join(lines) or NO_HISTORY\n",
+            "libraries": "",
+            "entrypoint": "main",
+            "global_kwargs": {}
+          },
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 640,
+              "y": 0
+            }
+          },
+          "node_name": "Format history",
+          "input_map": {
+            "conversation": "variables.conversation"
+          },
+          "output_variable_path": "variables.history",
+          "test_input": {},
+          "use_storage": false,
+          "node_type": "PythonNode"
+        },
+        {
+          "id": 5,
+          "python_code": {
+            "code": "# Chat Admin \"Append turn\" node: adds one question and its answer to the\n# conversation record, which the next node stores under the conversation id.\n#\n# Record: {title, turns, messages: [{role, content, at}], started_at, updated_at,\n# conversation_id}. `turns` counts every question asked in the conversation, also\n# those whose messages were dropped to keep the record small.\nimport json\nfrom datetime import UTC, datetime\n\n# The key-value table takes values up to 256 KiB; stay well below it.\nMAX_RECORD_BYTES = 200_000\nMAX_TITLE_CHARS = 80\nUNTITLED = \"New conversation\"\nELLIPSIS = \"\u2026\"\n\n\ndef main(conversation_id, conversation, question, answer):\n    now = _now()\n    previous = conversation if isinstance(conversation, dict) else {}\n    messages = [\n        dict(message) for message in previous.get(\"messages\") or [] if isinstance(message, dict)\n    ]\n    question = _text(question)\n    messages.append({\"role\": \"user\", \"content\": question, \"at\": now})\n    messages.append({\"role\": \"assistant\", \"content\": _text(answer), \"at\": now})\n    record = {\n        \"title\": previous.get(\"title\") or _title(question),\n        \"turns\": _count(previous.get(\"turns\")) + 1,\n        \"messages\": messages,\n        \"started_at\": previous.get(\"started_at\") or now,\n        \"updated_at\": now,\n        \"conversation_id\": conversation_id,\n    }\n    return _fit(record)\n\n\ndef _fit(record):\n    \"\"\"Drop the oldest question/answer pairs until the record fits.\n\n    If the newest pair alone is still too big, shorten its answer, then its question.\n    \"\"\"\n    messages = record[\"messages\"]\n    while _size(record) > MAX_RECORD_BYTES and len(messages) > 2:\n        del messages[:2]\n    for message in reversed(messages):\n        overflow = _size(record) - MAX_RECORD_BYTES\n        if overflow <= 0:\n            break\n        message[\"content\"] = _shorten(message[\"content\"], overflow)\n    return record\n\n\ndef _shorten(text, overflow):\n    # Cut by UTF-8 bytes: a character never takes fewer bytes in the JSON than in\n    # UTF-8, so the JSON shrinks by at least what is cut, and the ellipsis puts back\n    # exactly its own length. A character split by the cut is dropped whole.\n    encoded = text.encode(\"utf-8\")\n    keep = len(encoded) - overflow - len(ELLIPSIS.encode(\"utf-8\"))\n    if keep <= 0:\n        return \"\"\n    return encoded[:keep].decode(\"utf-8\", errors=\"ignore\") + ELLIPSIS\n\n\ndef _size(record):\n    # Measured the way the key-value table measures a value.\n    return len(json.dumps(record, ensure_ascii=False).encode(\"utf-8\"))\n\n\ndef _title(question):\n    title = \" \".join(question.split())\n    if not title:\n        return UNTITLED\n    if len(title) <= MAX_TITLE_CHARS:\n        return title\n    return title[: MAX_TITLE_CHARS - len(ELLIPSIS)].rstrip() + ELLIPSIS\n\n\ndef _text(value):\n    return \"\" if value is None else str(value)\n\n\ndef _count(value):\n    return value if isinstance(value, int) and not isinstance(value, bool) else 0\n\n\ndef _now():\n    return datetime.now(UTC).isoformat(timespec=\"seconds\").replace(\"+00:00\", \"Z\")\n",
+            "libraries": "",
+            "entrypoint": "main",
+            "global_kwargs": {}
+          },
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 1280,
+              "y": 0
+            }
+          },
+          "node_name": "Append turn",
+          "input_map": {
+            "answer": "variables.answer",
+            "question": "variables.question",
+            "conversation": "variables.conversation",
+            "conversation_id": "variables.conversation_id"
+          },
+          "output_variable_path": "variables.record",
+          "test_input": {},
+          "use_storage": false,
+          "node_type": "PythonNode"
+        },
+        {
+          "id": 2,
+          "key_value_table": 1,
+          "key_value_table_name": "conversations",
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 320,
+              "y": 0
+            }
+          },
+          "node_name": "Load conversation",
+          "input_map": {},
+          "output_variable_path": null,
+          "mode": "read",
+          "entries": [
+            {
+              "key": "{variables.conversation_id}",
+              "value": "variables.conversation"
+            }
+          ],
+          "node_type": "KeyValueNode"
+        },
+        {
+          "id": 6,
+          "key_value_table": 1,
+          "key_value_table_name": "conversations",
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 1600,
+              "y": 0
+            }
+          },
+          "node_name": "Save conversation",
+          "input_map": {},
+          "output_variable_path": null,
+          "mode": "write",
+          "entries": [
+            {
+              "key": "{variables.conversation_id}",
+              "value": "variables.record"
+            }
+          ],
+          "node_type": "KeyValueNode"
+        },
+        {
+          "id": 1,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 0,
+              "y": 0
+            }
+          },
+          "variables": {
+            "variables": {
+              "question": "",
+              "conversation_id": ""
+            }
+          },
+          "node_type": "StartNode"
+        },
+        {
+          "id": 7,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 1920,
+              "y": 0
+            }
+          },
+          "output_map": {
+            "answer": "variables.answer",
+            "conversation_id": "variables.conversation_id"
+          },
+          "node_type": "EndNode"
+        },
+        {
+          "id": 4,
+          "is_soft_deleted": false,
+          "soft_deleted_at": null,
+          "metadata": {
+            "position": {
+              "x": 960,
+              "y": 0
+            }
+          },
+          "node_name": "Answer",
+          "input_map": {
+            "history": "variables.history",
+            "question": "variables.question"
+          },
+          "output_variable_path": "variables.answer",
+          "instructions": "Conversation so far:\n{history}\n\nNew message from the user:\n{question}\n\nReply to the new message helpfully and concisely.",
+          "output_schema": {},
+          "remember_output": false,
+          "agent_definition": 1,
+          "surface_list": [],
+          "inline_surface": null,
+          "node_type": "TaskNode"
+        }
+      ],
+      "labels": []
+    }
+  ],
+  "AgentDefinition": [
+    {
+      "id": 1,
+      "name": "Chat Admin Agent",
+      "description": "Answers chat messages as a general support assistant.",
+      "instructions": "You are a friendly, helpful support assistant. Answer clearly and concisely, in the language the user writes in, and use the earlier conversation for context. If you are not sure about something, say so instead of guessing. Keep answers short unless the user asks for detail.",
+      "metadata": {},
+      "max_iter": null,
+      "max_rpm": null,
+      "max_execution_time": null,
+      "cache": null,
+      "max_retry_limit": null,
+      "default_temperature": null,
+      "max_tool_calls": null,
+      "tool_timeout": null,
+      "max_consecutive_failures": null,
+      "schema_max_retries": null,
+      "llm_config": 1,
+      "fcm_llm_config": null,
+      "owned_surfaces": [],
+      "default_surfaces": []
+    }
+  ],
+  "LLMConfig": [
+    {
+      "id": 1,
+      "model": 2,
+      "custom_name": "Chat Admin GPT-4o mini",
+      "temperature": 0.3,
+      "top_p": 1.0,
+      "stop": null,
+      "max_tokens": 4096,
+      "context_window": 16000,
+      "presence_penalty": 0.0,
+      "frequency_penalty": 0.0,
+      "logit_bias": null,
+      "seed": null,
+      "logprobs": null,
+      "top_logprobs": null,
+      "base_url": null,
+      "api_version": null,
+      "extra_headers": {},
+      "timeout": 120.0,
+      "is_visible": true,
+      "org": 2,
+      "tags": []
+    }
+  ],
+  "LLMModel": [
+    {
+      "id": 2,
+      "tags": [],
+      "name": "gpt-4o-mini",
+      "predefined": false,
+      "description": null,
+      "deployment_id": null,
+      "api_version": null,
+      "base_url": null,
+      "is_visible": true,
+      "is_custom": false,
+      "org": null,
+      "provider_name": "openai"
+    }
+  ],
+  "KeyValueTable": [
+    {
+      "id": 1,
+      "name": "conversations",
+      "description": "One entry per chat conversation."
+    }
+  ],
+  "main_entity": "Flow",
+  "version": 3
+}

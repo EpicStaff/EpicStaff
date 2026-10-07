@@ -1,0 +1,58 @@
+<section class="about">
+    <h1 class="about__title">About</h1>
+
+    @if (context(); as context) {
+        <dl class="facts">
+            <dt>Plugin</dt>
+            <dd>{{ context.plugin.name }}</dd>
+            <dt>Version</dt>
+            <dd>{{ context.plugin.version }}</dd>
+            <dt>Plugin id</dt>
+            <dd>{{ context.plugin.id }}</dd>
+            <dt>Bridge</dt>
+            <dd>version {{ bridgeVersion }}</dd>
+            <dt>Host</dt>
+            <dd>{{ mocked() ? 'Mock host (sample data, not inside EpicStaff)' : 'EpicStaff' }}</dd>
+            <dt>Theme</dt>
+            <dd>
+                <span class="theme-chip">{{ themeMode() === 'light' ? 'Light' : 'Dark' }}</span>
+                <span class="muted">follows EpicStaff live</span>
+            </dd>
+        </dl>
+
+        <h2 class="about__subtitle">What this app may use</h2>
+        <table class="access">
+            <thead>
+                <tr>
+                    <th scope="col">Alias</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (entry of access(); track entry.alias) {
+                    <tr>
+                        <td>{{ entry.alias }}</td>
+                        <td>{{ entry.type }}</td>
+                        <td>{{ entry.actions || 'none' }}</td>
+                    </tr>
+                } @empty {
+                    <tr>
+                        <td
+                            colspan="3"
+                            class="muted"
+                        >
+                            Nothing: the access list is empty or its resources were deleted.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    } @else {
+        <p class="muted">Not connected to EpicStaff.</p>
+    }
+
+    <p class="about__font">
+        This text is set in Inter, bundled with the app: <span class="about__weights">Regular · <b>Semibold</b></span>
+    </p>
+</section>

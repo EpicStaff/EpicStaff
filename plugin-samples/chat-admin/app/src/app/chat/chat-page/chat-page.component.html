@@ -1,0 +1,67 @@
+<section class="chat">
+    <header class="chat__header">
+        <div class="chat__heading">
+            <h1 class="chat__title">{{ store.title() }}</h1>
+            <p class="chat__id muted">{{ store.conversationId() }}</p>
+        </div>
+        <button
+            type="button"
+            class="button button--ghost"
+            [disabled]="store.isEmpty() && !store.saved()"
+            (click)="newConversation()"
+        >
+            New conversation
+        </button>
+    </header>
+
+    <div
+        #scroller
+        class="chat__scroller"
+    >
+        @if (store.loading()) {
+            <p class="muted">Loading the conversation…</p>
+        } @else if (store.messages().length === 0 && !store.asking()) {
+            <div class="chat__empty">
+                <h2 class="chat__empty-title">Ask the assistant</h2>
+                <p class="muted">
+                    The chat flow saves every question and answer to this plugin's conversations table. Browse them
+                    under Conversations.
+                </p>
+            </div>
+        } @else {
+            <app-transcript
+                [messages]="store.messages()"
+                [pending]="store.asking()"
+            />
+        }
+    </div>
+
+    @if (store.error(); as error) {
+        <p
+            class="notice notice--error"
+            role="alert"
+        >
+            {{ error }}
+        </p>
+    }
+
+    <div class="composer">
+        <textarea
+            class="input composer__input"
+            rows="2"
+            placeholder="Type a question and press Enter"
+            aria-label="Your question"
+            [maxlength]="maxQuestionLength"
+            [formControl]="question"
+            (keydown.enter)="onEnter($event)"
+        ></textarea>
+        <button
+            type="button"
+            class="button"
+            [disabled]="!canAsk()"
+            (click)="ask()"
+        >
+            Send
+        </button>
+    </div>
+</section>

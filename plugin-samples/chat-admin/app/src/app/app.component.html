@@ -1,0 +1,59 @@
+<div class="shell">
+    <header class="shell__header">
+        <div class="shell__brand">
+            <img
+                class="shell__icon"
+                src="icon.svg"
+                alt=""
+                width="20"
+                height="20"
+            />
+            <span class="shell__name">{{ pluginName() }}</span>
+            @if (mocked()) {
+                <span
+                    class="shell__badge"
+                    title="Not inside EpicStaff: a mock host answers with sample data."
+                >
+                    Sample data
+                </span>
+            }
+        </div>
+        <nav
+            class="tabs"
+            aria-label="Sections"
+        >
+            <a
+                class="tabs__tab"
+                [class.tabs__tab--active]="section() === 'chat'"
+                [routerLink]="chatLink()"
+                >Chat</a
+            >
+            <a
+                class="tabs__tab"
+                [class.tabs__tab--active]="section() === 'conversations'"
+                routerLink="/conversations"
+            >
+                Conversations
+            </a>
+            <a
+                class="tabs__tab"
+                [class.tabs__tab--active]="section() === 'about'"
+                routerLink="/about"
+                >About</a
+            >
+        </nav>
+    </header>
+
+    @if (connectionError(); as error) {
+        <p
+            class="notice notice--error shell__error"
+            role="alert"
+        >
+            {{ error }}
+        </p>
+    }
+
+    <main class="shell__content">
+        <router-outlet />
+    </main>
+</div>

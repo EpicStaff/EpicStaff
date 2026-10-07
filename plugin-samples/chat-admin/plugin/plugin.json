@@ -1,0 +1,40 @@
+{
+  "format_version": 1,
+  "bridge": 2,
+  "id": "chat-admin",
+  "version": "0.1.0",
+  "name": "Chat Admin",
+  "description": "A support chat bot with its own app: chat with the assistant, then browse, search and reopen every conversation it has had.",
+  "icon": "ui/icon.svg",
+  "ui": {
+    "entry": "ui/index.html"
+  },
+  "secret_slots": [
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "OpenAI API key used by the chat model."
+    }
+  ],
+  "secret_bindings": [
+    {
+      "entity": "LLMConfig",
+      "ref": 1,
+      "field": "api_key_secret",
+      "slot": "OPENAI_API_KEY"
+    }
+  ],
+  "access": [
+    {
+      "alias": "chat",
+      "type": "flow",
+      "ref": 1,
+      "actions": ["run", "sessions.read", "sessions.stop"]
+    },
+    {
+      "alias": "conversations",
+      "type": "key_value_table",
+      "ref": 1,
+      "actions": ["read"]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+<section class="detail">
+    <nav class="detail__back">
+        <a routerLink="/conversations">← All conversations</a>
+    </nav>
+
+    @if (!validKey()) {
+        <p
+            class="notice notice--error"
+            role="alert"
+        >
+            “{{ key() }}” is not a valid conversation key.
+        </p>
+    } @else if (errorMessage(); as error) {
+        <p
+            class="notice notice--error"
+            role="alert"
+        >
+            {{ error }}
+        </p>
+    } @else if (lookup.hasValue()) {
+        @let result = lookup.value();
+        @switch (result.kind) {
+            @case ('found') {
+                @let conversation = result.conversation;
+                <header class="detail__header">
+                    <div class="detail__heading">
+                        <h1 class="detail__title">{{ conversation.title || key() }}</h1>
+                        <p class="muted detail__meta">
+                            <span>{{ key() }}</span>
+                            <span>{{ conversation.turns }} {{ conversation.turns === 1 ? 'turn' : 'turns' }}</span>
+                            @if (conversation.startedAt) {
+                                <span>Started {{ conversation.startedAt | date: 'MMM d, y, HH:mm' }}</span>
+                            }
+                            @if (conversation.updatedAt) {
+                                <span>Updated {{ conversation.updatedAt | date: 'MMM d, y, HH:mm' }}</span>
+                            }
+                        </p>
+                    </div>
+                    <a
+                        class="button"
+                        [routerLink]="['/chat', key()]"
+                        >Continue in chat</a
+                    >
+                </header>
+                <div class="detail__transcript">
+                    @if (conversation.messages.length === 0) {
+                        <p class="muted">This conversation has no messages.</p>
+                    } @else {
+                        <app-transcript [messages]="conversation.messages" />
+                    }
+                </div>
+            }
+            @case ('unreadable') {
+                <header class="detail__header">
+                    <h1 class="detail__title">{{ key() }}</h1>
+                </header>
+                <p class="notice">This entry is not a conversation record. Its stored value:</p>
+                <pre class="detail__raw">{{ result.entry.value | json }}</pre>
+            }
+            @case ('missing') {
+                <p class="notice">No conversation with the key “{{ key() }}”. It may have been deleted.</p>
+            }
+        }
+    } @else {
+        <p class="muted">Loading the conversation…</p>
+    }
+</section>

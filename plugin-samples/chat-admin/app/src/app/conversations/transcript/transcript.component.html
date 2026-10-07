@@ -1,0 +1,25 @@
+<ol
+    class="transcript"
+    aria-live="polite"
+>
+    @for (message of messages(); track $index) {
+        <li
+            class="message"
+            [class.message--user]="message.role === 'user'"
+        >
+            <span class="message__meta">
+                {{ message.role === 'user' ? 'You' : 'Assistant' }}
+                @if (message.at) {
+                    · {{ message.at | date: 'MMM d, HH:mm' }}
+                }
+            </span>
+            <p class="message__content">{{ message.content }}</p>
+        </li>
+    }
+    @if (pending()) {
+        <li class="message message--pending">
+            <span class="message__meta">Assistant</span>
+            <p class="message__content">Thinking…</p>
+        </li>
+    }
+</ol>

@@ -1,0 +1,78 @@
+:host {
+    display: block;
+    height: 100%;
+}
+
+.shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.shell__header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--es-color-divider, #c8ceda24);
+    background: var(--es-color-sidenav, #222225);
+}
+
+.shell__brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+}
+
+.shell__icon {
+    display: block;
+}
+
+.shell__name {
+    font-weight: 600;
+}
+
+.shell__badge {
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--es-color-warning, #f5a623);
+    color: var(--es-color-warning, #f5a623);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tabs {
+    display: flex;
+    gap: 4px;
+    align-self: stretch;
+}
+
+.tabs__tab {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 2px solid transparent;
+    color: var(--es-color-text-secondary, rgba(217, 217, 222, 0.6));
+    font-weight: 500;
+}
+
+.tabs__tab:hover {
+    color: var(--es-color-text, #d9d9de);
+}
+
+.tabs__tab--active {
+    border-bottom-color: var(--es-color-accent, #685fff);
+    color: var(--es-color-text, #d9d9de);
+}
+
+.shell__error {
+    margin: 16px 24px 0;
+}
+
+.shell__content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 20px 24px;
+}
