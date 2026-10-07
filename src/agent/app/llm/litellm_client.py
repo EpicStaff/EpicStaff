@@ -44,7 +44,9 @@ async def _bench_llm_span(
             if chunk.usage:
                 usage = chunk.usage
             yield chunk
-    except Exception as error:
+    except GeneratorExit:
+        raise
+    except BaseException as error:
         error_type = type(error).__name__
         raise
     finally:

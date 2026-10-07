@@ -53,3 +53,32 @@ def test_span_logs_start_and_end_with_usage():
 def test_span_logs_error_type_and_reraises():
     _, end = _bench_lines(fail=True)
     assert end["ok"] is False and end["error_type"] == "RuntimeError"
+
+
+def test_span_counts_cancellation_as_failed():
+    stream = io.StringIO()
+    logger.remove()
+    add_bench_sink(stream, "BENCH")
+
+    async def slow_chunks():
+        yield LLMChunk(delta_text="hi")
+        await asyncio.sleep(10)
+
+    async def main():
+        first_chunk = asyncio.Event()
+
+        async def consume():
+            async for _ in _bench_llm_span(slow_chunks(), "gpt-4o-mini"):
+                first_chunk.set()
+
+        task = asyncio.create_task(consume())
+        await first_chunk.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(main())
+    lines = [json.loads(line) for line in stream.getvalue().splitlines() if line.startswith('{"bench"')]
+    end = lines[-1]
+    assert end["checkpoint"] == "llm_end"
+    assert end["ok"] is False and end["error_type"] == "CancelledError"
