@@ -25,9 +25,22 @@ META_FIELDS = [
     ("case", "variant"),
     ("host", "hostname"),
 ]
+TEXT_COLUMNS = {
+    "phase",
+    "kind",
+    "verdict",
+    "live_verdict",
+    "fail_reasons",
+    "bottleneck",
+    "node_name",
+    "node_type",
+    "container",
+}
 
 
-def _number(value: str):
+def _number(value: str, column_name: str):
+    if column_name in TEXT_COLUMNS:
+        return value or None
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -38,9 +51,8 @@ def _read(path: Path) -> list[dict]:
     if not path.exists():
         return []
     with open(path, newline="", encoding="utf-8") as source:
-        return [
-            {key: _number(value) for key, value in row.items()} for row in csv.DictReader(source)
-        ]
+        reader = csv.DictReader(source)
+        return [{key: _number(value, key) for key, value in row.items()} for row in reader]
 
 
 def load_run(path: Path) -> dict:

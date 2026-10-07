@@ -915,6 +915,113 @@ class PushTest(unittest.TestCase):
                 True,
             )
 
+    def test_secret_in_gzip_file_is_found(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "gzipped", 100, 1.0)
+        import gzip
+
+        gzip_path = run_dir / "events_sample.csv.gz"
+        with gzip.open(gzip_path, "wb") as f:
+            f.write(b"x,secret-key-456\ny,z\n")
+        self.assertTrue(push.contains_secret(run_dir, "secret-key-456"))
+
+    def test_secret_split_across_chunk_boundary_is_found(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "chunked", 100, 1.0)
+        secret = "X" * 1000
+        csv_path = run_dir / "events_sample.csv"
+        # Write secret split across chunk boundary by using chunks smaller than secret
+        content = "a" * (push.CHUNK_SIZE - 500) + secret + "b" * 100
+        csv_path.write_text(content, encoding="utf-8")
+        self.assertTrue(push.contains_secret(run_dir, secret))
+
+    def test_corrupt_gzip_raises_system_exit(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "corrupt", 100, 1.0)
+        corrupt_path = run_dir / "corrupted.csv.gz"
+        corrupt_path.write_bytes(b"\x1f\x8b\x08\x00bad data here")
+        with self.assertRaisesRegex(SystemExit, "cannot be read"):
+            push.contains_secret(run_dir, "anything")
+
+    def test_push_with_no_confirmation_leaves_clone_untouched(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "r1", 100, 1.0)
+        repo_path = folder / "repo"
+        repo_path.mkdir()
+        viewer_src = Path(tempfile.mktemp())
+        viewer_src.write_text("viewer", encoding="utf-8")
+        git_calls = []
+
+        def mock_git(repo, *args):
+            git_calls.append(list(args))
+            if "status" in args or "pull" in args:
+                return ""
+            return ""
+
+        with mock.patch.object(push, "_git", side_effect=mock_git):
+            push.push([run_dir], str(repo_path), viewer_src, None, False, ask=lambda _: "n")
+        self.assertEqual(git_calls, [["status", "--porcelain"], ["pull", "--ff-only"]])
+        benchmarks = repo_path / "benchmarks"
+        self.assertFalse((benchmarks / "r1").exists())
+        self.assertFalse((benchmarks / "index.json").exists())
+
+    def test_push_with_yes_copies_and_commits(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "r2", 100, 1.0)
+        (run_dir / "events_full.csv.gz").write_text("full", encoding="utf-8")
+        (run_dir / "events_sample.csv").write_text("sample", encoding="utf-8")
+        repo_path = folder / "repo"
+        repo_path.mkdir()
+        benchmarks = repo_path / "benchmarks"
+        benchmarks.mkdir()
+        viewer_src = Path(tempfile.mktemp())
+        viewer_src.write_text("viewer", encoding="utf-8")
+        git_calls = []
+        call_count = [0]
+
+        def mock_git(repo, *args):
+            git_calls.append(list(args))
+            if "status" in args:
+                # First status call (before copying) should return empty
+                # Second status call (after copying) should return modified files
+                if call_count[0] == 0 and "status" in args:
+                    call_count[0] += 1
+                    return ""
+                elif "status" in args:
+                    return "M benchmarks/index.json"
+            return ""
+
+        with mock.patch.object(push, "_git", side_effect=mock_git):
+            push.push([run_dir], str(repo_path), viewer_src, None, True, ask=None)
+
+        self.assertTrue((benchmarks / "r2").exists())
+        self.assertTrue((benchmarks / "r2" / "events_sample.csv").exists())
+        self.assertFalse((benchmarks / "r2" / "events_full.csv.gz").exists())
+        self.assertTrue((benchmarks / "index.json").exists())
+        self.assertTrue((repo_path / "index.html").exists())
+        self.assertIn(["add", "benchmarks", "index.html"], git_calls)
+        self.assertTrue(any("commit" in c for c in git_calls))
+        self.assertIn(["push"], git_calls)
+
+    def test_compare_keeps_numeric_node_name_as_string(self):
+        folder = Path(tempfile.mkdtemp())
+        run_a = fake_run(folder, "a", 100, 10.0)
+        run_b = fake_run(folder, "b", 100, 10.0)
+        header = ",".join(analyze.NODE_COLUMNS)
+        values = dict.fromkeys(analyze.NODE_COLUMNS, "")
+        values.update(phase="payload", node_name="123", level="100", p50_s="1.0")
+        (run_a / "nodes.csv").write_text(
+            header + "\n" + ",".join(values[c] for c in analyze.NODE_COLUMNS) + "\n",
+            encoding="utf-8",
+        )
+        (run_b / "nodes.csv").write_text(
+            header + "\n" + ",".join(values[c] for c in analyze.NODE_COLUMNS) + "\n",
+            encoding="utf-8",
+        )
+        text = compare.compare_runs([run_a, run_b])
+        self.assertIn("node p50 123", text)
+        self.assertNotIn("node p50 123.0", text)
+
 
 if __name__ == "__main__":
     unittest.main()
