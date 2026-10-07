@@ -51,7 +51,7 @@ describe('CollectionDetailsDialogService', () => {
             trigger,
             {
                 component: CollectionDetailsSummaryComponent,
-                inputs: { stats: buildCollectionStats(DOCUMENTS), collectionId: 42 },
+                inputs: { stats: buildCollectionStats(DOCUMENTS) },
             }
         );
     });

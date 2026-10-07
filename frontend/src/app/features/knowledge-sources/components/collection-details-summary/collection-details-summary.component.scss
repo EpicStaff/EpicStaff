@@ -54,34 +54,4 @@
         font-weight: var(--text-body-weight);
         line-height: var(--text-body-line-height);
     }
-
-    &__path {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 40px;
-        padding: 0 6px 0 8px;
-        border: 1px solid var(--color-input-border);
-        border-radius: 4px;
-        background-color: var(--color-input-background);
-    }
-
-    &__path-value {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--color-text-primary);
-        font-size: var(--text-body-size);
-        line-height: var(--text-body-line-height);
-    }
-
-    // app-copy-button floats over a card, hidden until hover, by default; here it sits inline and always shows.
-    &__copy {
-        position: static;
-        flex-shrink: 0;
-        opacity: 1;
-        --copy-btn-color: var(--color-text-primary);
-    }
 }

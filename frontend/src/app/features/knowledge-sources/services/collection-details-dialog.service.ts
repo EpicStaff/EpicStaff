@@ -26,11 +26,7 @@ export class CollectionDetailsDialogService {
     ): DialogRef<void, AuthorshipDetailsDialogComponent> {
         return this.authorshipDetailsDialog.open(COLLECTION_DETAILS_TITLE, collection, restoreFocusTo, {
             component: CollectionDetailsSummaryComponent,
-            inputs: {
-                stats: buildCollectionStats(documents),
-                // Flows (knowledge node), surfaces and the API all refer to a collection by its id; the name can change.
-                collectionId: collection.collection_id,
-            },
+            inputs: { stats: buildCollectionStats(documents) },
         });
     }
 }
