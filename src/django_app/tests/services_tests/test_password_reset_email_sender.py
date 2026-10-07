@@ -1,9 +1,11 @@
+from unittest.mock import patch
+
 import pytest
 from django.core import mail
 from django.test import override_settings
 
 from rbac.identity.passwords.email_sender import PasswordResetEmailSender
-from utils.logger import logger
+from utils.logger import MAX_LOG_LENGTH, logger
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
 CONSOLE_EMAIL = "django.core.mail.backends.console.EmailBackend"
@@ -59,3 +61,24 @@ def test_sender_never_prints_the_reset_link_through_the_console_backend(
     assert RAW_TOKEN not in stdout
     assert RAW_TOKEN not in stderr
     assert not any(RAW_TOKEN in message for message in captured_log_messages)
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+def test_send_failure_is_one_short_line_without_email_token_or_path(
+    regular_user, captured_log_messages
+):
+    refusal = ConnectionRefusedError(f"relay refused {regular_user.email} {RAW_TOKEN}")
+    with patch("rbac.identity.passwords.email_sender.send_mail", side_effect=refusal):
+        PasswordResetEmailSender().send(regular_user, RAW_TOKEN)
+
+    [line] = [m for m in captured_log_messages if "password_reset_email_send_failed" in m]
+    assert line.startswith(
+        f"password_reset_email_send_failed user_id={regular_user.id} "
+        "error_type=ConnectionRefusedError at="
+    )
+    assert len(line.rstrip("\n")) <= MAX_LOG_LENGTH
+    assert regular_user.email not in line
+    assert RAW_TOKEN not in line
+    assert "/" not in line
+    assert "\\" not in line

@@ -1,4 +1,3 @@
-import traceback
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -6,6 +5,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from utils.logger import logger
 
+from rbac.identity.passwords.failure_description import describe_failure
 from rbac.identity.passwords.smtp_config import SmtpConfigService
 
 
@@ -55,14 +55,10 @@ class PasswordResetEmailSender:
             # of every local, and the error message itself (a refused
             # recipient, for one) can name the address. Both would put the
             # email, and the raw token, into the application log.
-            failed_at = traceback.extract_tb(error.__traceback__)[-1]
             logger.error(
-                "password_reset_email_send_failed user_id={} error_type={} at={}:{} in {}",
+                "password_reset_email_send_failed user_id={} {}",
                 user.id,
-                type(error).__name__,
-                failed_at.filename,
-                failed_at.lineno,
-                failed_at.name,
+                describe_failure(error),
             )
 
     def _build_context(self, user, raw_token: str) -> dict:

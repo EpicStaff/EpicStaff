@@ -39,14 +39,18 @@ Base URL in examples: `http://localhost:8000`.
 
 | Endpoint | Bucket | Env var | Default |
 |---|---|---|---|
-| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `LOGIN_THROTTLE_RATE` | `5/min` |
-| `/api/auth/password-reset/request/` | `<ip>\|<email>` | `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
-| `/api/auth/password-reset/confirm/` | `<ip>` | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
-| `/api/auth/refresh/` | `<ip>` | `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `DJANGO_LOGIN_THROTTLE_RATE` | `5/min` |
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>` | `DJANGO_LOGIN_IP_THROTTLE_RATE` | `20/min` |
+| `/api/auth/password-reset/request/` | `<ip>\|<email>` | `DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
+| `/api/auth/password-reset/request/` | `<ip>` | `DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` | `20/hour` |
+| `/api/auth/password-reset/confirm/` | `<ip>` | `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
+| `/api/auth/refresh/` | `<ip>` | `DJANGO_TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
 
-The last two key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
+Login and reset-request each apply two buckets, and a request is refused when either is exhausted. The `<ip>|<email>` bucket limits what one address can do to one account (guesses at its password, reset emails to its mailbox) without one user's attempts using up the allowance of everyone behind the same NAT. It never stops an address that names a new email on each request, since every email is a fresh bucket; the `<ip>` bucket caps that total. The `<ip>` bucket's `429` depends only on the caller's IP, so it reveals nothing about which emails are registered.
 
-**Login has no account lockout.** Wrong passwords never lock or slow down an account; the login throttle is the only brake on password guessing. Everything below about the client address therefore protects the login endpoint directly.
+Refresh and confirm key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
+
+**Login has no account lockout.** Wrong passwords never lock or slow down an account; the two login throttles are the only brake on password guessing. The `<ip>|<email>` bucket limits guessing at one account (credential stuffing, brute force), the `<ip>` bucket limits trying one password across many accounts (password spraying). Both key on the client address, so everything below about that address protects the login endpoint directly. An attacker with many addresses is not stopped by either; that would need a lockout or a proxy-level limit, neither of which exists today.
 
 ### Client address and the proxy contract
 
@@ -157,10 +161,11 @@ create_superadmin` workflow).
 
 | Env var | Default | Notes |
 |---|---|---|
-| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
-| `LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
-| `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
-| `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
+| `DJANGO_FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
+| `DJANGO_LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
+| `DJANGO_LOGIN_IP_THROTTLE_RATE` | `20/min` | Second rate for the same two endpoints, bucketed per IP whatever the email. |
+| `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
+| `DJANGO_TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
 
 ### GET `/api/auth/first-setup/`
 
@@ -304,8 +309,10 @@ Response:
 - `401` on invalid credentials — flat envelope with no `errors` array, so the
   caller cannot distinguish which of email/password was wrong (user-enumeration
   protection).
-- `429` with `Retry-After` header once the composite `<ip>|<email>` bucket is
-  exhausted. Rate comes from `LOGIN_THROTTLE_RATE` (default `5/min`).
+- `429` with `Retry-After` header once either bucket is exhausted: the
+  composite `<ip>|<email>` bucket (`DJANGO_LOGIN_THROTTLE_RATE`, default
+  `5/min`) or the per-IP bucket (`DJANGO_LOGIN_IP_THROTTLE_RATE`, default
+  `20/min`).
 
 ### POST `/api/auth/refresh/`
 

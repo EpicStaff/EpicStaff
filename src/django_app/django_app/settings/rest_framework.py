@@ -21,6 +21,7 @@ REST_FRAMEWORK = {
     "NUM_PROXIES": env.int("DJANGO_NUM_PROXIES"),
     "DEFAULT_THROTTLE_RATES": {
         "login": env.str("DJANGO_LOGIN_THROTTLE_RATE"),
+        "login_ip": env.str("DJANGO_LOGIN_IP_THROTTLE_RATE"),
         "password_reset_request": env.str("DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE"),
         "password_reset_request_ip": env.str("DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE"),
         "password_reset_confirm": env.str("DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE"),

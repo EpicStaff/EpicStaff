@@ -1,6 +1,7 @@
 """Per-IP throttles on the anonymous auth endpoints:
 `POST /api/auth/refresh/`, `POST /api/auth/password-reset/confirm/`, and the
-IP-only cap on `POST /api/auth/password-reset/request/`.
+IP-only caps on `POST /api/auth/password-reset/request/` and on login
+(`POST /api/auth/login/`, `POST /api/auth/swagger-token/`).
 
 The login/reset-request throttles keyed on `ip|email` live in
 test_rbac_auth.py; this file keeps the forged-forwarding-header guards for
@@ -14,6 +15,7 @@ attribute is already set.
 """
 
 import asyncio
+import json
 from unittest.mock import patch
 
 import pytest
@@ -28,6 +30,7 @@ from django.urls import reverse
 from django_app.asgi import application, django_asgi_app
 from rbac.models import PasswordResetToken
 from rbac.throttles import (
+    LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
     PasswordResetRequestIpThrottle,
@@ -206,7 +209,6 @@ def test_reset_request_ip_throttle_ignores_a_forged_forwarded_for(api_client):
 # Django's ASGI handler builds META from scope headers, so these tests drive the
 # ASGI application itself.
 
-LOGIN_BODY = b'{"email": "asgi-probe@example.com", "password": "wrong-password"}'
 
 
 @pytest.fixture
@@ -222,8 +224,9 @@ def keep_test_db_connection_open():
     request_finished.connect(close_old_connections)
 
 
-def _login_over_asgi(asgi_app, forged_address):
+def _login_over_asgi(asgi_app, forged_address, email="asgi-probe@example.com"):
     """POST a failed login as nginx would forward it, plus a forged underscore XFF."""
+    body = json.dumps({"email": email, "password": "wrong-password"}).encode()
     scope = {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -239,7 +242,7 @@ def _login_over_asgi(asgi_app, forged_address):
         "headers": [
             (b"host", b"testserver"),
             (b"content-type", b"application/json"),
-            (b"content-length", str(len(LOGIN_BODY)).encode()),
+            (b"content-length", str(len(body)).encode()),
             (b"x-forwarded-for", b"10.0.0.1"),
             (b"x_forwarded_for", forged_address.encode()),
         ],
@@ -251,7 +254,7 @@ def _login_over_asgi(asgi_app, forged_address):
         nonlocal request_sent
         if not request_sent:
             request_sent = True
-            return {"type": "http.request", "body": LOGIN_BODY, "more_body": False}
+            return {"type": "http.request", "body": body, "more_body": False}
         # Django listens for a disconnect while the view runs; never send one.
         await asyncio.Future()
 
@@ -293,3 +296,140 @@ def test_bare_django_asgi_app_lets_an_underscore_forwarded_for_pick_the_identity
     statuses = [_login_over_asgi(django_asgi_app, f"10.0.0.{90 + i}") for i in range(3)]
 
     assert statuses == [401, 401, 401]
+
+
+# ---------------- login: per-IP cap against password spraying ----------------
+#
+# Every login hashes a password, so the rates are pinned low to keep N small.
+
+LOGIN_IP_RATE = "3/min"
+SPRAYED_PASSWORD = "Spring2026!"
+
+
+def _login(api_client, email, password=SPRAYED_PASSWORD, **extra):
+    return api_client.post(
+        reverse("login"), data={"email": email, "password": password}, format="json", **extra
+    )
+
+
+@pytest.mark.django_db
+@patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
+def test_login_spraying_from_one_ip_is_throttled(api_client):
+    """Each email is a fresh `ip|email` bucket; only the IP cap stops this."""
+    cache.clear()
+
+    for index in range(3):
+        assert _login(api_client, f"victim{index}@example.com").status_code == 401
+
+    r = _login(api_client, "victim-next@example.com")
+
+    assert r.status_code == 429
+    assert "retry-after" in {k.lower() for k in r.headers}
+
+
+@pytest.mark.django_db
+@patch.object(LoginThrottle, "rate", "2/min", create=True)
+@patch.object(LoginIpThrottle, "rate", "5/min", create=True)
+def test_login_one_email_is_throttled_at_the_per_account_rate_below_the_ip_cap(
+    api_client, regular_user
+):
+    """Control: the IP cap must not replace the `ip|email` bucket."""
+    cache.clear()
+
+    for _ in range(2):
+        assert _login(api_client, regular_user.email).status_code == 401
+
+    assert _login(api_client, regular_user.email).status_code == 429
+    # The IP still has budget left, so the refusal above came from the
+    # per-account bucket and another account is still reachable.
+    assert _login(api_client, "someone-else@example.com").status_code == 401
+
+
+@pytest.mark.django_db
+@patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
+def test_login_ip_throttle_leaves_other_ips_alone(api_client):
+    cache.clear()
+    for index in range(3):
+        _login(api_client, f"victim{index}@example.com", REMOTE_ADDR="10.0.0.1")
+    assert _login(api_client, "victim-next@example.com", REMOTE_ADDR="10.0.0.1").status_code == 429
+
+    r = _login(api_client, "victim-next@example.com", REMOTE_ADDR="10.0.0.2")
+
+    assert r.status_code == 401
+
+
+@pytest.mark.django_db
+@patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
+@patch.object(LoginIpThrottle, "timer", staticmethod(lambda: FROZEN_NOW))
+@patch.object(LoginThrottle, "timer", staticmethod(lambda: FROZEN_NOW))
+def test_login_ip_throttle_answers_alike_for_registered_and_unknown_emails(
+    api_client, regular_user
+):
+    # The clock is frozen so both 429s carry the same "available in N seconds".
+    cache.clear()
+    for index in range(3):
+        _login(api_client, f"victim{index}@example.com")
+
+    # The correct password, so the 429 cannot hint at the password either.
+    registered = _login(api_client, regular_user.email, password="UserStrongPass123!")
+    unknown = _login(api_client, "nobody@example.com")
+
+    assert registered.status_code == unknown.status_code == 429
+    assert registered.json() == unknown.json()
+    assert registered.headers["Retry-After"] == unknown.headers["Retry-After"]
+    assert "access" not in registered.json()
+
+
+@pytest.mark.django_db
+@patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
+def test_swagger_token_spraying_from_one_ip_is_throttled(api_client):
+    cache.clear()
+    url = reverse("swagger_token")
+
+    def swagger_login(email):
+        return api_client.post(
+            url, data={"username": email, "password": SPRAYED_PASSWORD}, format="json"
+        )
+
+    # Wrong credentials currently answer 403 here, not the 401 the view
+    # intends; that is a separate defect, so only "not throttled" is asserted.
+    for index in range(3):
+        assert swagger_login(f"victim{index}@example.com").status_code != 429
+
+    r = swagger_login("victim-next@example.com")
+
+    assert r.status_code == 429
+    assert "retry-after" in {k.lower() for k in r.headers}
+
+
+@pytest.mark.django_db
+@one_trusted_proxy()
+@patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
+def test_login_spraying_with_a_forged_underscore_forwarded_for_is_still_capped(
+    keep_test_db_connection_open,
+):
+    cache.clear()
+
+    statuses = [
+        _login_over_asgi(application, f"10.0.0.{90 + i}", email=f"victim{i}@example.com")
+        for i in range(4)
+    ]
+
+    assert statuses == [401, 401, 401, 429]
+
+
+@pytest.mark.django_db
+@one_trusted_proxy()
+@patch.object(LoginIpThrottle, "rate", LOGIN_IP_RATE, create=True)
+def test_bare_django_asgi_app_lets_a_forged_forwarded_for_dodge_the_login_ip_cap(
+    keep_test_db_connection_open,
+):
+    """Control: proves the test above reaches the IP cap through the ASGI merge."""
+    cache.clear()
+
+    statuses = [
+        _login_over_asgi(django_asgi_app, f"10.0.0.{90 + i}", email=f"victim{i}@example.com")
+        for i in range(4)
+    ]
+
+    assert statuses == [401, 401, 401, 401]

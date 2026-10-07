@@ -53,7 +53,7 @@ Validation errors come back as 400 with one of these `code` values:
 |---|---|---|
 | `invalid` | Field is missing | "Please choose a file." |
 | `invalid_avatar` | File is not a valid JPEG or PNG | "Only JPEG or PNG images are allowed." |
-| `avatar_too_large` | File exceeds `AVATAR_MAX_BYTES` | Echo the message — it includes the max in MB. |
+| `avatar_too_large` | File exceeds `DJANGO_AVATAR_MAX_SIZE` | Echo the message — it includes the max in MB. |
 
 Response on success: the full updated profile (`avatar_url` now non-null).
 
@@ -178,7 +178,8 @@ No body.
 { "ticket": "k7Xq8...", "expires_in": 300 }
 ```
 
-Throttled by `LoginThrottle` (default 5/min, env `LOGIN_THROTTLE_RATE`).
+Throttled by `LoginThrottle` (default 5/min, env `DJANGO_LOGIN_THROTTLE_RATE`). The body carries no
+`email`, so the bucket is the caller's IP alone, shared with the login scope rather than per account.
 
 ### POST `/api/profile/password-change/confirm/`
 
@@ -244,7 +245,7 @@ Or, for multi-field validation:
 | 400 | `invalid_current_password` | Step 1 received a wrong current password. |
 | 400 | `invalid_password_change_ticket` | Ticket is unknown, expired, already used, or does not belong to the calling user. |
 | 400 | `invalid_avatar` | Upload is not a valid JPEG or PNG. |
-| 400 | `avatar_too_large` | Upload exceeds `AVATAR_MAX_BYTES`. |
+| 400 | `avatar_too_large` | Upload exceeds `DJANGO_AVATAR_MAX_SIZE`. |
 | 401 | (default DRF) | Unauthenticated. |
 | 403 | — | Authenticated but lacks user context (e.g., env-seeded API key). |
 | 404 | — | URL not registered (defense against stale FE that still calls `/api/auth/me/`). |
@@ -256,9 +257,9 @@ Or, for multi-field validation:
 
 - `MEDIA_URL` must be served by the reverse proxy (nginx / Caddy) in production. Django serves `MEDIA_URL` only in DEBUG mode.
 - Env vars:
-  - `PASSWORD_CHANGE_TICKET_TTL_SECONDS` (default `300`)
-  - `AVATAR_MAX_BYTES` (default `5242880` = 5 MB)
-  - `AVATAR_ALLOWED_FORMATS` (default `JPEG,PNG`)
-  - `LOGIN_THROTTLE_RATE` (already in Story 2; reused for password-change request)
+  - `DJANGO_PASSWORD_CHANGE_TICKET_TTL` (default `5m`)
+  - `DJANGO_AVATAR_MAX_SIZE` (default `50mb`)
+  - `DJANGO_AVATAR_ALLOWED_FORMATS` (default `JPEG,PNG`)
+  - `DJANGO_LOGIN_THROTTLE_RATE` (shared with login; reused for password-change request)
 - Redis 6.2+ required (`GETDEL` for atomic ticket consume).
 - Pillow is already a Django `ImageField` dependency — no additional install.

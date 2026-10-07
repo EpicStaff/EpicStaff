@@ -52,6 +52,7 @@ from rbac.serializers.auth import (
     TokenIntrospectRequestSerializer,
 )
 from rbac.throttles import (
+    LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
     PasswordResetRequestIpThrottle,
@@ -63,7 +64,7 @@ from rbac.validation.auth import AuthValidationService
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
-    throttle_classes = [LoginThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle]
 
     _validator = AuthValidationService()
 
@@ -271,7 +272,7 @@ class ApiKeyValidateView(APIView):
 class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [LoginThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle]
 
     @extend_schema(**SWAGGER_TOKEN_POST)
     def post(self, request):

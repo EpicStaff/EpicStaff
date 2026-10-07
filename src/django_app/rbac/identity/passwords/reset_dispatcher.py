@@ -1,11 +1,12 @@
 import threading
 import time
-import traceback
 from collections.abc import Callable
 from concurrent.futures import Executor, ThreadPoolExecutor
 
 from django.db import close_old_connections, connections
 from utils.logger import logger
+
+from rbac.identity.passwords.failure_description import describe_failure
 
 _WORKER_COUNT = 2
 # Jobs running or waiting, per process. The bound is on delivery latency, not
@@ -35,13 +36,6 @@ def _run_with_own_connections(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     finally:
         connections.close_all()
-
-
-def _failure_location(error: BaseException) -> str:
-    # A frame's location carries no runtime values, unlike the exception
-    # message or a traceback with locals, which can hold the email or token.
-    frame = traceback.extract_tb(error.__traceback__)[-1]
-    return f"{frame.filename}:{frame.lineno} in {frame.name}"
 
 
 class PasswordResetDispatcher:
@@ -94,11 +88,7 @@ class PasswordResetDispatcher:
             # Whatever the executor does, the request still gets its uniform
             # answer; a refused job is a dropped one.
             self._free_slots.release()
-            logger.error(
-                "password_reset_job_not_queued error_type={} at={}",
-                type(error).__name__,
-                _failure_location(error),
-            )
+            logger.error("password_reset_job_not_queued {}", describe_failure(error))
             return False
         return True
 
@@ -123,11 +113,7 @@ class PasswordResetDispatcher:
             job()
         except Exception as error:
             # One line, because `utils.logger` cuts messages at 200 characters.
-            logger.error(
-                "password_reset_job_failed error_type={} at={}",
-                type(error).__name__,
-                _failure_location(error),
-            )
+            logger.error("password_reset_job_failed {}", describe_failure(error))
         finally:
             self._free_slots.release()
 

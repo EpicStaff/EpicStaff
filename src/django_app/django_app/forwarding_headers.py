@@ -15,11 +15,12 @@ class DropUnderscoreForwardingHeadersMiddleware:
     Django builds META by upper-casing a header name and turning dashes into
     underscores, so `X_Forwarded_For` and `X-Forwarded-For` both land in
     `HTTP_X_FORWARDED_FOR`, joined with a comma. The proxy only overwrites the
-    dash spelling; a client-sent underscore spelling then follows it, and DRF
-    (`NUM_PROXIES`) reads the last entry, which lets a caller choose the address
-    every throttle keys on. Dropping the underscore spellings here keeps that
-    closed even if the proxy stops stripping them. Other headers, including
-    other underscore headers, pass through untouched.
+    dash spelling; a client-sent underscore spelling then follows it, after the
+    proxy's own entry. DRF reads the entry `NUM_PROXIES` from the end, so the
+    appended value shifts that position onto one the caller wrote, which lets a
+    caller choose the address every throttle keys on. Dropping the underscore
+    spellings here keeps that closed even if the proxy stops stripping them.
+    Other headers, including other underscore headers, pass through untouched.
     """
 
     def __init__(self, app):

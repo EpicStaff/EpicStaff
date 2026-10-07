@@ -170,10 +170,11 @@ class PasswordRecoveryService:
 
     @staticmethod
     def _log_request_ignored_without_smtp() -> None:
-        # The endpoint is anonymous and its throttle is keyed on ip|email, so
-        # rotating emails gets a fresh bucket per request. `cache.add` is an
-        # atomic set-if-absent shared by every worker: one line per window,
-        # however many requests arrive.
+        # The per-IP reset throttle runs before the view, so one client only
+        # gets here as often as its IP allows, but the endpoint is anonymous
+        # and a flood spread over many addresses still arrives in full.
+        # `cache.add` is an atomic set-if-absent shared by every worker: one
+        # line per window, however many requests arrive.
         if not cache.add(_SMTP_OFF_LOG_CACHE_KEY, True, timeout=_SMTP_OFF_LOG_INTERVAL_SECONDS):
             return
         # Kept under the 200-character cut of `utils.logger`'s stdout sink.

@@ -83,10 +83,10 @@ Throttling: two throttles apply, and a request must pass both. A
 throttled request gets `429` before the view runs, so no job is queued.
 
 * `PasswordResetRequestThrottle`, bucket `ip|email`, rate
-  `PASSWORD_RESET_REQUEST_THROTTLE_RATE` (default `5/hour`). Keeps one
+  `DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE` (default `5/hour`). Keeps one
   mailbox from being flooded with reset emails.
 * `PasswordResetRequestIpThrottle`, bucket **IP only**, rate
-  `PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` (default `20/hour`). An IP
+  `DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` (default `20/hour`). An IP
   rotating emails gets a fresh `ip|email` bucket for every email, so
   without this cap one client could queue jobs faster than the two workers
   clear them, keep the backlog full and get every legitimate reset dropped.
@@ -242,20 +242,20 @@ All env vars land in `src/.env` and are forwarded through
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PASSWORD_RESET_TOKEN_TTL` | `900` | Token lifetime, seconds. |
-| `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` | Throttle on the request endpoint, bucketed per `ip\|email`. |
-| `PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` | `20/hour` | Second throttle on the request endpoint, bucketed per **IP only**, whatever the email. |
-| `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Throttle on the confirm endpoint, bucketed per **IP only** — see Security invariants. |
-| `EMAIL_HOST` | *(empty)* | SMTP host. Empty → console backend, and self-service password reset is disabled (use `manage.py reset_password`). |
-| `EMAIL_PORT` | `587` | SMTP port. |
-| `EMAIL_HOST_USER` | *(empty)* | SMTP user. Leave blank for relays that do not require AUTH (mailpit, local Postfix). |
-| `EMAIL_HOST_PASSWORD` | *(empty)* | SMTP password. Leave blank for relays that do not require AUTH. |
-| `EMAIL_USE_TLS` | `True` | |
-| `EMAIL_USE_SSL` | `False` | |
+| `DJANGO_PASSWORD_RESET_TOKEN_TTL` | `15m` | Token lifetime. |
+| `DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` | Throttle on the request endpoint, bucketed per `ip\|email`. |
+| `DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` | `20/hour` | Second throttle on the request endpoint, bucketed per **IP only**, whatever the email. |
+| `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Throttle on the confirm endpoint, bucketed per **IP only** — see Security invariants. |
+| `DJANGO_EMAIL_HOST` | `none` (dev: `mailpit`) | SMTP host (Django's `EMAIL_HOST`). Blank or `none` → console backend, and self-service password reset is disabled (use `manage.py reset_password`). |
+| `DJANGO_EMAIL_PORT` | `1025` | SMTP port. |
+| `DJANGO_EMAIL_USER` | `none` | SMTP user (Django's `EMAIL_HOST_USER`). Leave blank for relays that do not require AUTH (mailpit, local Postfix). |
+| `DJANGO_EMAIL_PASSWORD` | `none` | SMTP password (Django's `EMAIL_HOST_PASSWORD`). Leave blank for relays that do not require AUTH. |
+| `DJANGO_EMAIL_USE_TLS` | `true` | |
+| `DJANGO_EMAIL_USE_SSL` | `false` | |
 | `EMAIL_TIMEOUT` | `10` | Seconds to wait on the SMTP relay. A settings constant, not an env var. |
-| `DEFAULT_FROM_EMAIL` | `no-reply@epicstaff.local` | `From:` header on reset emails. |
-| `FRONTEND_BASE_URL` | `http://localhost:4200` | Base of the reset link. |
-| `FRONTEND_PASSWORD_RESET_PATH` | `/reset-password` | Path segment; token appended as `?token=<opaque string>`. |
+| `DJANGO_DEFAULT_FROM_EMAIL` | `no-reply@epicstaff.local` | `From:` header on reset emails. |
+| `DJANGO_FRONTEND_BASE_URL` | none in prod, required (dev: `http://localhost:4200`) | Base of the reset link. |
+| `DJANGO_FRONTEND_PASSWORD_RESET_PATH` | `/reset-password` | Path segment; token appended as `?token=<opaque string>`. |
 
 `EMAIL_BACKEND` is resolved at import time: SMTP when `EMAIL_HOST` is
 set, else console. Whether Django authenticates against that host is
