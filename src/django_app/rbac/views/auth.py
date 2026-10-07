@@ -54,6 +54,7 @@ from rbac.serializers.auth import (
 from rbac.throttles import (
     LoginThrottle,
     PasswordResetConfirmThrottle,
+    PasswordResetRequestIpThrottle,
     PasswordResetRequestThrottle,
     TokenRefreshThrottle,
 )
@@ -310,7 +311,7 @@ class PasswordResetRequestView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [PasswordResetRequestThrottle]
+    throttle_classes = [PasswordResetRequestThrottle, PasswordResetRequestIpThrottle]
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()

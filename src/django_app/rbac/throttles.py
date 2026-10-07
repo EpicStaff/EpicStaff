@@ -25,14 +25,14 @@ class PasswordResetRequestThrottle(SimpleRateThrottle):
     """
     Throttle for POST /api/auth/password-reset/request/.
 
-    Bucket key is `<ip>|<email-lowercased>` so neither an IP nor an email
-    can be used to farm unlimited reset emails. Rate is driven by the
+    Bucket key is `<ip>|<email-lowercased>`, so one mailbox cannot be
+    flooded with reset emails from one IP. Rate is driven by the
     `password_reset_request` scope (default 5/hour, env var
     `PASSWORD_RESET_REQUEST_THROTTLE_RATE`).
 
-    The endpoint itself returns 200 regardless of whether the email
-    exists, so the throttle is the only surface that pushes back on
-    automated abuse.
+    It does not limit an IP that rotates emails: every new email is a fresh
+    bucket. `PasswordResetRequestIpThrottle` covers that, and the view
+    applies both.
     """
 
     scope = "password_reset_request"
@@ -43,6 +43,28 @@ class PasswordResetRequestThrottle(SimpleRateThrottle):
         ip = self.get_ident(request)
         ident = f"{ip}|{email}" if email else ip
         return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class PasswordResetRequestIpThrottle(AnonRateThrottle):
+    """
+    IP-only throttle for POST /api/auth/password-reset/request/, applied
+    alongside `PasswordResetRequestThrottle`.
+
+    Each request queues a background job, and a handful of worker threads
+    per process drain them far slower than the endpoint accepts requests.
+    An IP rotating random emails would never hit the `ip|email` bucket, but
+    would keep the job backlog full, and every legitimate reset would then be
+    dropped behind the same "link has been sent" answer. Keyed on IP alone,
+    like `PasswordResetConfirmThrottle`; its 429 depends only on the caller's
+    IP, so it says nothing about which accounts exist.
+
+    Rate is driven by the `password_reset_request_ip` scope (default 20/hour,
+    env var `PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE`). A person needs one or
+    two requests; 20 leaves room for several users behind one NAT, while one
+    IP can no longer queue jobs faster than two workers clear them.
+    """
+
+    scope = "password_reset_request_ip"
 
 
 class TokenRefreshThrottle(AnonRateThrottle):

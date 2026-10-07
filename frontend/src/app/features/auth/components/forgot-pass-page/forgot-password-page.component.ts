@@ -9,12 +9,15 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { strictEmailValidator } from '@shared/form-validators';
-import { finalize, tap } from 'rxjs';
+import { finalize } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
 
 type PageState = 'request' | 'email-sent' | 'reset-unavailable';
+
+// Mirrors the server's account-neutral wording, used when the response carries no detail.
+const RESET_REQUESTED_FALLBACK_MESSAGE = 'If the email is registered, a reset link has been sent.';
 
 @Component({
     selector: 'app-forgot-password',
@@ -36,7 +39,7 @@ export class ForgotPasswordPageComponent {
     private destroyRef = inject(DestroyRef);
 
     state = signal<PageState>('request');
-    submittedEmail = signal('');
+    protected readonly resetRequestedMessage = signal(RESET_REQUESTED_FALLBACK_MESSAGE);
     loading = signal(false);
 
     readonly emailControl = new FormControl('', {
@@ -54,12 +57,20 @@ export class ForgotPasswordPageComponent {
             .requestResetPassword({ email })
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                tap(() => this.submittedEmail.set(this.emailControl.getRawValue())),
                 finalize(() => this.loading.set(false))
             )
             .subscribe({
-                // Without SMTP the server creates no reset link, so the page must not claim one was sent.
-                next: (response) => this.state.set(response.smtp_configured ? 'email-sent' : 'reset-unavailable'),
+                next: (response) => {
+                    // Without SMTP the server creates no reset link, so the page must not claim one was sent.
+                    if (!response.smtp_configured) {
+                        this.state.set('reset-unavailable');
+                        return;
+                    }
+                    // The server answers identically for every email so it never reveals whether an account exists;
+                    // the page shows that wording instead of promising a link was sent.
+                    this.resetRequestedMessage.set(response.detail?.trim() || RESET_REQUESTED_FALLBACK_MESSAGE);
+                    this.state.set('email-sent');
+                },
                 error: (err) => this.toast.error(err.error.message),
             });
     }

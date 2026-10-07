@@ -9,6 +9,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rbac.access.builtin_roles import BuiltInRoleSeeder
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.identity.api_keys.generator import ApiKeyGenerator
+from rbac.identity.passwords import reset_dispatcher
+
+from .helpers import InlineExecutor
 
 # Import shared fixtures (graph, agent, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403
@@ -51,6 +54,22 @@ def heal_builtin_roles(request):
         return
     if not Role.objects.filter(is_built_in=True).exists():
         BuiltInRoleSeeder().seed()
+
+
+@pytest.fixture(autouse=True)
+def run_password_reset_jobs_inline(monkeypatch):
+    """Run password-reset jobs on the test thread instead of the worker pool.
+
+    A pool thread has its own database connection, outside the test's
+    transaction: it would not see the test's rows, and its writes would land
+    after the test's assertions, or after the test.
+    """
+    monkeypatch.setattr(
+        reset_dispatcher,
+        "default_dispatcher",
+        reset_dispatcher.PasswordResetDispatcher(executor=InlineExecutor(), max_in_flight=1),
+    )
+    yield
 
 
 @pytest.fixture(autouse=True)

@@ -15,6 +15,8 @@ class ResizeObserverStub {
 }
 
 const RESET_DETAIL = 'If the email is registered, a reset link has been sent.';
+// Differs from the client fallback so the test proves the page renders what the server sent.
+const SERVER_DETAIL = 'If that address belongs to an account, reset instructions are on their way.';
 const SUBMITTED_EMAIL = 'user@example.com';
 
 describe('ForgotPasswordPageComponent result state', () => {
@@ -50,13 +52,32 @@ describe('ForgotPasswordPageComponent result state', () => {
         return element.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim();
     }
 
-    it('confirms the reset email was sent when the server has SMTP configured', () => {
-        submitWith({ detail: RESET_DETAIL, smtp_configured: true });
+    it('explains in the request form that a link is sent only when an account exists', () => {
+        expect(normalizedText('.hint')).toBe(
+            "If an account exists for this email, we'll send you a link to reset your password."
+        );
+    });
+
+    it('shows the server wording, which does not reveal whether the account exists, when SMTP is configured', () => {
+        submitWith({ detail: SERVER_DETAIL, smtp_configured: true });
 
         expect(requestResetPassword).toHaveBeenCalledWith({ email: SUBMITTED_EMAIL });
         expect(normalizedText('.title')).toBe('Check email');
-        expect(normalizedText('.subtitle')).toContain('We have sent the reset to');
-        expect(normalizedText('.subtitle .email')).toBe(SUBMITTED_EMAIL);
+        expect(normalizedText('.subtitle')).toBe(SERVER_DETAIL);
+        expect(fixture.nativeElement.textContent).not.toContain('We have sent');
+        expect(fixture.nativeElement.textContent).not.toContain(SUBMITTED_EMAIL);
+    });
+
+    it.each([
+        ['missing', undefined],
+        ['null', null],
+        ['empty', ''],
+        ['blank', '   '],
+    ])('falls back to the account-neutral wording when the server detail is %s', (_case, detail) => {
+        submitWith({ detail, smtp_configured: true } as ResetPasswordResponse);
+
+        expect(normalizedText('.title')).toBe('Check email');
+        expect(normalizedText('.subtitle')).toBe(RESET_DETAIL);
     });
 
     it('tells the user to contact an administrator when the server has no SMTP configured', () => {

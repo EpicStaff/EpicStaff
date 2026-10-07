@@ -1,9 +1,10 @@
+import traceback
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
-from loguru import logger
+from utils.logger import logger
 
 from rbac.identity.passwords.smtp_config import SmtpConfigService
 
@@ -11,10 +12,11 @@ from rbac.identity.passwords.smtp_config import SmtpConfigService
 class PasswordResetEmailSender:
     """Renders and dispatches the password-reset email.
 
-    The sender is intentionally fail-silent: a downstream SMTP error must
-    not change the HTTP response of `POST /password-reset/request/`,
-    because that response is uniform by design (no enumeration). The
-    failure is logged so operators can still see it.
+    The sender is intentionally fail-silent. It runs on a
+    `PasswordResetDispatcher` worker, after the request has returned, so
+    nothing upstream could act on an SMTP error. The failure is logged by
+    user id, exception type and location only, so operators can still see
+    it without the log ever holding the email address or the link.
 
     The email carries a live credential, so it is only handed to a real
     SMTP relay. When `SmtpConfigService` reports SMTP as not configured,
@@ -48,8 +50,20 @@ class PasswordResetEmailSender:
                 recipient_list=[user.email],
                 fail_silently=False,
             )
-        except Exception:
-            logger.exception("password_reset_email_send_failed user_id={}", user.id)
+        except Exception as error:
+            # Not `logger.exception`: loguru prints a traceback with the value
+            # of every local, and the error message itself (a refused
+            # recipient, for one) can name the address. Both would put the
+            # email, and the raw token, into the application log.
+            failed_at = traceback.extract_tb(error.__traceback__)[-1]
+            logger.error(
+                "password_reset_email_send_failed user_id={} error_type={} at={}:{} in {}",
+                user.id,
+                type(error).__name__,
+                failed_at.filename,
+                failed_at.lineno,
+                failed_at.name,
+            )
 
     def _build_context(self, user, raw_token: str) -> dict:
         base = settings.FRONTEND_BASE_URL.rstrip("/")

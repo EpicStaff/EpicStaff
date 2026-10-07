@@ -1,7 +1,8 @@
-"""Per-IP throttles on the two anonymous auth endpoints that had none:
-`POST /api/auth/refresh/` and `POST /api/auth/password-reset/confirm/`.
+"""Per-IP throttles on the anonymous auth endpoints:
+`POST /api/auth/refresh/`, `POST /api/auth/password-reset/confirm/`, and the
+IP-only cap on `POST /api/auth/password-reset/request/`.
 
-The login/reset-request throttles (composite `ip|email`) live in
+The login/reset-request throttles keyed on `ip|email` live in
 test_rbac_auth.py.
 
 Rates are pinned by patching the throttle's `rate` attribute, not with
@@ -15,9 +16,17 @@ from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 
-from rbac.throttles import PasswordResetConfirmThrottle, TokenRefreshThrottle
+from rbac.models import PasswordResetToken
+from rbac.throttles import (
+    PasswordResetConfirmThrottle,
+    PasswordResetRequestIpThrottle,
+    TokenRefreshThrottle,
+)
+
+LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
 
 CONFIRM_PAYLOAD = {"token": "not-a-real-token", "new_password": "BrandNewPass123!"}
 
@@ -80,4 +89,91 @@ def test_confirm_throttle_ignores_a_forged_forwarded_for(api_client):
         format="json",
         HTTP_X_FORWARDED_FOR="10.0.0.99, 127.0.0.1",
     )
+    assert r.status_code == 429
+
+
+# ---------------- password-reset request: per-IP cap ----------------
+
+RESET_REQUEST_IP_RATE = "3/hour"
+FROZEN_NOW = 1_000_000.0
+
+
+def _request_reset(api_client, email, **extra):
+    return api_client.post(
+        reverse("password_reset_request"), data={"email": email}, format="json", **extra
+    )
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+@patch.object(PasswordResetRequestIpThrottle, "rate", RESET_REQUEST_IP_RATE, create=True)
+def test_reset_request_from_one_ip_rotating_emails_is_throttled(api_client):
+    """Each email is a fresh `ip|email` bucket; only the IP cap stops this."""
+    cache.clear()
+
+    for index in range(3):
+        assert _request_reset(api_client, f"probe{index}@example.com").status_code == 200
+
+    r = _request_reset(api_client, "probe-next@example.com")
+    assert r.status_code == 429
+    assert "retry-after" in {k.lower() for k in r.headers}
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+@patch.object(PasswordResetRequestIpThrottle, "rate", RESET_REQUEST_IP_RATE, create=True)
+@patch.object(PasswordResetRequestIpThrottle, "timer", staticmethod(lambda: FROZEN_NOW))
+def test_reset_request_ip_throttle_answers_alike_for_registered_and_unknown_emails(
+    api_client, regular_user
+):
+    # The clock is frozen so both 429s carry the same "available in N seconds".
+    cache.clear()
+    for index in range(3):
+        _request_reset(api_client, f"probe{index}@example.com")
+    PasswordResetToken.objects.all().delete()
+
+    registered = _request_reset(api_client, regular_user.email)
+    unknown = _request_reset(api_client, "nobody@example.com")
+
+    assert registered.status_code == unknown.status_code == 429
+    assert registered.json() == unknown.json()
+    assert registered.headers["Retry-After"] == unknown.headers["Retry-After"]
+    # Throttled before the view, so no job ran for the registered email.
+    assert PasswordResetToken.objects.count() == 0
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+@patch.object(PasswordResetRequestIpThrottle, "rate", RESET_REQUEST_IP_RATE, create=True)
+def test_reset_request_ip_throttle_leaves_other_ips_alone(api_client):
+    cache.clear()
+    for index in range(3):
+        _request_reset(api_client, f"probe{index}@example.com", REMOTE_ADDR="10.0.0.1")
+    assert (
+        _request_reset(api_client, "probe-next@example.com", REMOTE_ADDR="10.0.0.1").status_code
+        == 429
+    )
+
+    r = _request_reset(api_client, "someone@example.com", REMOTE_ADDR="10.0.0.2")
+
+    assert r.status_code == 200
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+@patch.object(PasswordResetRequestIpThrottle, "rate", RESET_REQUEST_IP_RATE, create=True)
+def test_reset_request_ip_throttle_ignores_a_forged_forwarded_for(api_client):
+    """Same production NUM_PROXIES guard as the confirm throttle above."""
+    cache.clear()
+    for index in range(3):
+        _request_reset(
+            api_client,
+            f"probe{index}@example.com",
+            HTTP_X_FORWARDED_FOR=f"10.0.0.{index}, 127.0.0.1",
+        )
+
+    r = _request_reset(
+        api_client, "probe-next@example.com", HTTP_X_FORWARDED_FOR="10.0.0.99, 127.0.0.1"
+    )
+
     assert r.status_code == 429

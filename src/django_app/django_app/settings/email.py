@@ -7,6 +7,12 @@ EMAIL_HOST_USER = env.str("DJANGO_EMAIL_USER")
 EMAIL_HOST_PASSWORD = env.str("DJANGO_EMAIL_PASSWORD")
 EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS")
 EMAIL_USE_SSL = env.bool("DJANGO_EMAIL_USE_SSL")
+# Seconds the SMTP backend waits on the relay's socket. Django's default is
+# no timeout: a relay that accepts the connection and never answers would hang
+# the password-reset worker threads for good, fill their backlog and stop
+# every reset email until the process restarts. A healthy relay answers well
+# within this, TLS handshake included.
+EMAIL_TIMEOUT = 10
 
 # EMAIL_HOST blank -> console backend instead of a live SMTP relay. The console
 # backend writes every message to the application log, so nothing secret may go

@@ -22,6 +22,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": env.str("DJANGO_LOGIN_THROTTLE_RATE"),
         "password_reset_request": env.str("DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE"),
+        "password_reset_request_ip": env.str("DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE"),
         "password_reset_confirm": env.str("DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE"),
         "token_refresh": env.str("DJANGO_TOKEN_REFRESH_THROTTLE_RATE"),
         "notify_email": env.str("DJANGO_NOTIFY_EMAIL_THROTTLE_RATE"),
