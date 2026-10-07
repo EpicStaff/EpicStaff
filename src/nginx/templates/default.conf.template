@@ -19,9 +19,9 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
 }
 
-upstream auditor_server {
-    server ${AUDITOR_HOST}:${AUDITOR_PORT};
-}
+# Docker's embedded DNS, used by the /auditor/ location to resolve the auditor
+# at request time.
+resolver 127.0.0.11 valid=10s ipv6=off;
 
 underscores_in_headers on;
 
@@ -177,7 +177,14 @@ server {
     }
 
     location /auditor/ {
-        proxy_pass http://auditor_server/;
+        # The auditor exits on startup when AUDIT_TRAIL_ENABLED is not true, so
+        # its hostname may not exist. A static upstream would be resolved when
+        # nginx starts and a missing host stops nginx entirely; proxying to a
+        # variable resolves only when a request arrives, so /auditor/ returns
+        # 502 while the auditor is disabled and nothing else is affected.
+        set $auditor_upstream http://${AUDITOR_HOST}:${AUDITOR_PORT};
+        rewrite ^/auditor/(.*)$ /$1 break;
+        proxy_pass $auditor_upstream;
         proxy_http_version 1.1;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Host $host;
