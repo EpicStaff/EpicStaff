@@ -3,15 +3,19 @@
 Run from the repo root:  python -m unittest discover -s benchmark -p "test_*.py"
 """
 
+import itertools
 import json
 import tempfile
 import textwrap
+import threading
+import time as time_module
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import api
 import config
+import load
 import sample
 import stack
 
@@ -326,6 +330,119 @@ class SamplerTest(unittest.TestCase):
         self.assertEqual(len(sampler.rows), 2)
         second_row_cpu = sampler.latest["containers"]["test"]["cpu_pct"]
         self.assertIsNone(second_row_cpu)
+
+
+class FakeStack:
+    """start_session returns new ids; a timer reports session_end after `duration_s`."""
+
+    def __init__(self, duration_s=0.05, fail_every=0, end_before_answer=False):
+        self.ids = itertools.count(1)
+        self.duration_s, self.fail_every, self.end_before_answer = (
+            duration_s,
+            fail_every,
+            end_before_answer,
+        )
+        self.controller = None
+        self.stopped = []
+        self.max_in_flight = 0
+
+    def start(self):
+        session_id = next(self.ids)
+        if self.fail_every and session_id % self.fail_every == 0:
+            raise load_error(503)
+        self.max_in_flight = max(self.max_in_flight, self.controller.in_flight_count())
+        end = {"session_id": session_id, "checkpoint": "session_end", "status": "end"}
+        if self.end_before_answer:
+            self.controller.on_event({**end, "ts": time_module.time()})
+        elif self.duration_s is not None:
+            threading.Timer(
+                self.duration_s, lambda: self.controller.on_event({**end, "ts": time_module.time()})
+            ).start()
+        return 200, session_id
+
+    def stop(self, session_id):
+        self.stopped.append(session_id)
+
+
+def load_error(status):
+    error = RuntimeError(f"HTTP {status}")
+    error.status = status
+    return error
+
+
+def make_controller(fake):
+    controller = load.Controller(fake.start, fake.stop, senders=8)
+    fake.controller = controller
+    controller.set_context("payload", 5, "ladder", 1)
+    return controller
+
+
+class ControllerTest(unittest.TestCase):
+    def test_holds_target_and_drains(self):
+        fake = FakeStack(duration_s=0.05)
+        controller = make_controller(fake)
+        self.assertIsNone(
+            controller.hold(target=5, duration_s=0.6, timeout_s=10, abort_check=lambda: None)
+        )
+        controller.drain(timeout_s=5)
+        self.assertLessEqual(fake.max_in_flight, 5)
+        self.assertGreater(len(controller.records), 10)
+        self.assertTrue(all(record.ok for record in controller.records))
+        controller.close()
+
+    def test_session_end_before_http_answer(self):
+        fake = FakeStack(end_before_answer=True)
+        controller = make_controller(fake)
+        controller.hold(target=3, duration_s=0.3, timeout_s=10, abort_check=lambda: None)
+        controller.drain(timeout_s=2)
+        self.assertEqual(controller.in_flight_count(), 0)
+        self.assertTrue(all(record.done for record in controller.records))
+        controller.close()
+
+    def test_http_errors_free_their_slot_and_count_as_failed(self):
+        fake = FakeStack(duration_s=0.02, fail_every=2)
+        controller = make_controller(fake)
+        controller.hold(target=4, duration_s=0.3, timeout_s=10, abort_check=lambda: None)
+        controller.drain(timeout_s=2)
+        failed = [record for record in controller.records if record.end_status == "http_error"]
+        self.assertTrue(failed)
+        self.assertEqual({record.http_status for record in failed}, {503})
+        controller.close()
+
+    def test_timeout_stops_the_session(self):
+        fake = FakeStack(duration_s=None)  # never ends
+        controller = make_controller(fake)
+        controller.hold(target=2, duration_s=0.3, timeout_s=0.1, abort_check=lambda: None)
+        controller.drain(timeout_s=0.5)
+        self.assertTrue(fake.stopped)
+        self.assertTrue(
+            all(
+                record.end_status == "timeout"
+                for record in controller.records
+                if record.session_id in fake.stopped
+            )
+        )
+        controller.close()
+
+    def test_max_starts_runs_exactly_n_sessions(self):
+        fake = FakeStack(duration_s=0.01)
+        controller = make_controller(fake)
+        controller.hold(
+            target=25, duration_s=30, timeout_s=10, abort_check=lambda: None, max_starts=100
+        )
+        self.assertEqual(len(controller.records), 100)
+        self.assertTrue(all(record.done for record in controller.records))
+        controller.close()
+
+    def test_abort_reason_is_returned(self):
+        fake = FakeStack(duration_s=0.05)
+        controller = make_controller(fake)
+        self.assertEqual(
+            controller.hold(target=2, duration_s=5, timeout_s=10, abort_check=lambda: "host RAM"),
+            "host RAM",
+        )
+        controller.drain(timeout_s=2)
+        controller.close()
 
 
 if __name__ == "__main__":
