@@ -90,8 +90,8 @@ def python_code_equal(code_instance: PythonCode, code_data: dict):
     """Compares instance of PythonCode with incoming python code data. Returns True if both are equal"""
     return all(
         [
-            code_instance.libraries == code_data.get("libraries"),
-            (code_instance.code.rstrip() + "\n") == (code_data.get("code").rstrip() + "\n"),
+            code_instance.venv_id == code_data.get("venv_id"),
+            (code_instance.code.rstrip() + "\n") == (code_data.get("code", "").rstrip() + "\n"),
             code_instance.entrypoint == code_data.get("entrypoint"),
             code_instance.global_kwargs == code_data.get("global_kwargs"),
         ]

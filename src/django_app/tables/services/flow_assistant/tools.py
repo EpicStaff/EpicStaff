@@ -1018,13 +1018,13 @@ def _resolve_python_code_summary(python_code_id: int | None) -> dict | None:
     if python_code_id is None:
         return None
     try:
-        pc = PythonCode.objects.only("code", "entrypoint", "libraries").get(pk=python_code_id)
+        pc = PythonCode.objects.only("code", "entrypoint", "venv_id").get(pk=python_code_id)
     except PythonCode.DoesNotExist:
         return None
     return {
         "code": pc.code,
         "entrypoint": pc.entrypoint,
-        "libraries": pc.get_libraries_list(),
+        "venv_id": pc.venv_id,
     }
 
 

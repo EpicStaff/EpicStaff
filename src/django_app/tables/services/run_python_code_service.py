@@ -79,7 +79,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         self._evict_oldest_results(organization_id)
         code_task_data = CodeTaskData(
             venv_name=f"venv_{python_code_id}",
-            libraries=python_code.get_libraries_list(),
+            # Libraries moved off PythonCode onto the venv; per-venv library management
+            # for this one-off runner is a later task, so it runs on the default venv.
+            libraries=[],
             code=python_code.code,
             entrypoint=python_code.entrypoint,
             func_kwargs=varaibles,
