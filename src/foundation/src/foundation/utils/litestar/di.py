@@ -30,3 +30,7 @@ def register(
             sync_to_thread=sync_to_thread,
         )
         return func
+
+    if fn is None:
+        return decorator
+    return decorator(fn)
