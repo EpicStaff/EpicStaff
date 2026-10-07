@@ -1,8 +1,13 @@
 import json
+from uuid import uuid4
 
+import fakeredis
 import pytest
+from django.conf import settings
 
 from tables.models import GraphSessionMessage
+from tables.models.graph_models import Graph
+from tables.models.session_models import Session
 from tables.services.redis_pubsub import RedisPubSub
 
 # None of these tests touch the database themselves, but tests/conftest.py has an
@@ -153,3 +158,26 @@ def test_calculate_total_token_usage_defaults_missing_total_cost_usd_to_zero():
 
     assert total_usage["total_cost_usd"] == 0
     assert total_usage["total_tokens"] == 100
+
+
+def test_graph_session_message_handler_buffers_node_type(default_org, monkeypatch):
+    # close_old_connections() would close the test transaction's connection.
+    monkeypatch.setattr("tables.services.redis_pubsub.close_old_connections", lambda: None)
+    graph = Graph.objects.create(name="flow", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.RUN)
+    pubsub = RedisPubSub()
+    pubsub.redis_client = fakeredis.FakeRedis(decode_responses=True)
+    payload = {
+        "session_id": session.id,
+        "name": "agent_1 #5",
+        "execution_order": 0,
+        "timestamp": "2026-10-07T12:41:02.809000Z",
+        "message_data": {"message_type": "start", "input": {}},
+        "uuid": str(uuid4()),
+        "node_type": "AGENT",
+    }
+
+    pubsub.graph_session_message_handler({"data": json.dumps(payload)})
+
+    [buffered] = pubsub.buffers[settings.GRAPH_MESSAGES_CHANNEL]
+    assert buffered["node_type"] == "AGENT"

@@ -389,6 +389,7 @@ class RedisPubSub:
                     "name": graph_session_message_data.name,
                     "execution_order": graph_session_message_data.execution_order,
                     "message_data": graph_session_message_data.message_data,
+                    "node_type": graph_session_message_data.node_type,
                     "uuid": message_uuid,
                     "parent_subgraph_execution_id": parent_subgraph_execution_id,
                 }
@@ -652,6 +653,7 @@ class RedisPubSub:
                         "name": msg.name,
                         "execution_order": msg.execution_order,
                         "message_data": scoped_message_data,
+                        "node_type": msg.node_type,
                         "uuid": uuid4(),
                         "parent_subgraph_execution_id": new_parent,
                     }
