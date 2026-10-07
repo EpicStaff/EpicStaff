@@ -202,23 +202,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     public hiddenColumnGroups = signal<Map<string, { label: string; colIds: string[] }>>(new Map());
 
-    // Hidden-column restore badges: position computed from DOM
-    public hiddenColumnBadges = signal<Array<{ colId: string; x: number; y: number; label: string }>>([]);
-
-    // Same badges, sorted left-to-right — drives the "Expand <Label>" menu item order
-    public sortedHiddenBadges = computed(() => [...this.hiddenColumnBadges()].sort((a, b) => a.x - b.x));
-
-    // Total number of hidden entries used to decide whether clicking a badge should expand instantly or open the picker menu.
-    public totalHiddenEntries = computed<number>(() => {
-        const groups = this.hiddenColumnGroups();
-        const groupedIds = new Set<string>();
-        groups.forEach((info) => info.colIds.forEach((id) => groupedIds.add(id)));
-        let ungroupedCount = 0;
-        this.hiddenColIds().forEach((id) => {
-            if (!groupedIds.has(id)) ungroupedCount++;
-        });
-        return ungroupedCount + groups.size;
-    });
+    // Hidden-column restore badges: position computed from DOM.
+    // Each badge can hold multiple entries when adjacent hidden columns are merged.
+    public hiddenColumnBadges = signal<
+        Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }>
+    >([]);
 
     // Selection state for toolbar buttons
     public selectedRowCount = signal<number>(0);
@@ -768,7 +756,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         headerColumnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
         headerColumnResizeHandleColor: 'transparent',
         pinnedColumnBorder: { style: 'solid', width: 4, color: '#3f4144' },
-        fontSize: 14,
+        cellHorizontalPadding: 8,
+        fontSize: 12,
     });
 
     public defaultColDef: ColDef = {
@@ -882,6 +871,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         theme: this.myTheme,
         rowHeight: CDT_GRID_ROW_HEIGHT,
         headerHeight: CDT_GRID_HEADER_HEIGHT,
+        groupHeaderHeight: CDT_GRID_HEADER_HEIGHT / 2,
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
@@ -1034,6 +1024,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
             this.applyUnhideState(info.colIds);
             this.saveGridState();
+            this.ensureColumnsFitViewport();
             setTimeout(() => this.updateAddButtonPositions(), 50);
             this.cdr.markForCheck();
             return;
@@ -1043,6 +1034,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.hiddenColIds.set(current);
         this.applyUnhideState([colId]);
         this.saveGridState();
+        this.ensureColumnsFitViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1060,6 +1052,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
         this.applyUnhideState(allIds);
         this.saveGridState();
+        this.ensureColumnsFitViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1071,19 +1064,28 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: ids.map((colId) => ({ colId, hide: false })),
         });
     }
-    public onHiddenBadgeClick(event: MouseEvent): void {
+    public onHiddenBadgeClick(event: MouseEvent, badge: { entries: Array<{ colId: string; label: string }> }): void {
         event.stopPropagation();
+        if (badge.entries.length === 1) {
+            this.unhideColumn(badge.entries[0].colId);
+            return;
+        }
+        this.activeBadgeEntries = badge.entries;
         this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate);
     }
+
+    public activeBadgeEntries: Array<{ colId: string; label: string }> = [];
 
     public handleExpandHiddenEntry(colId: string): void {
         this.hiddenBadgeMenuCtrl.close();
         this.unhideColumn(colId);
     }
 
-    public handleExpandAllHidden(): void {
+    public handleExpandAllBadgeEntries(): void {
         this.hiddenBadgeMenuCtrl.close();
-        this.unhideAllColumns();
+        for (const entry of this.activeBadgeEntries) {
+            this.unhideColumn(entry.colId);
+        }
     }
 
     /** Freeze all columns from index 0 through the last colId in childColIds. */
@@ -1286,7 +1288,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
 
         const fullOrder = this.getFullColOrder();
-        const badges: Array<{ colId: string; x: number; y: number; label: string }> = [];
         const wrapperEl = this.elRef.nativeElement.querySelector('.grid-wrapper') as HTMLElement | null;
         const containerRect = (wrapperEl ?? this.elRef.nativeElement).getBoundingClientRect();
 
@@ -1347,30 +1348,15 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
         };
 
-        const stackCounts = new Map<number, number>();
-        for (const addPos of [this.exprAddPos(), this.manipAddPos()]) {
-            if (addPos) stackCounts.set(addPos.x - 10, 1);
-        }
-        const placeBadge = (colId: string, boundaryX: number, label: string): void => {
-            let stackKey = boundaryX;
-            for (const key of stackCounts.keys()) {
-                if (Math.abs(key - boundaryX) < 5) {
-                    stackKey = key;
-                    break;
-                }
-            }
-            const indexInStack = stackCounts.get(stackKey) ?? 0;
-            stackCounts.set(stackKey, indexInStack + 1);
-            badges.push({ colId, x: stackKey + indexInStack * 22, y, label });
-        };
+        // Collect raw entries with their boundary positions
+        type RawEntry = { colId: string; label: string; boundaryX: number };
+        const rawEntries: RawEntry[] = [];
 
         for (const hiddenId of hidden) {
             if (groupedColIdToGroupId.has(hiddenId)) continue;
-
             const boundaryX = computeBoundaryX(hiddenId);
             if (boundaryX === null) continue;
-
-            placeBadge(hiddenId, boundaryX, this.getColLabel(hiddenId));
+            rawEntries.push({ colId: hiddenId, label: this.getColLabel(hiddenId), boundaryX });
         }
 
         const emittedGroups = new Set<string>();
@@ -1385,11 +1371,24 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 .sort((a, b) => fullOrder.indexOf(a) - fullOrder.indexOf(b));
             if (sortedColIds.length === 0) continue;
 
-            const anchorColId = sortedColIds[0];
-            const boundaryX = computeBoundaryX(anchorColId);
+            const boundaryX = computeBoundaryX(sortedColIds[0]);
             if (boundaryX === null) continue;
+            rawEntries.push({ colId: groupId, label: info.label, boundaryX });
+        }
 
-            placeBadge(groupId, boundaryX, info.label);
+        // Sort by position, then merge entries whose positions are within 5px (adjacent)
+        rawEntries.sort((a, b) => a.boundaryX - b.boundaryX);
+
+        const mergeThreshold = 5;
+        const badges: Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }> = [];
+
+        for (const entry of rawEntries) {
+            const last = badges.length > 0 ? badges[badges.length - 1] : null;
+            if (last && Math.abs(last.x - entry.boundaryX) < mergeThreshold) {
+                last.entries.push({ colId: entry.colId, label: entry.label });
+            } else {
+                badges.push({ entries: [{ colId: entry.colId, label: entry.label }], x: entry.boundaryX, y });
+            }
         }
 
         this.hiddenColumnBadges.set(badges);
@@ -1426,7 +1425,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             editable: (params: EditableCallbackParams<ConditionGroup>) =>
                 !this.isRowLocked(params.data as ConditionGroup),
-            minWidth: Math.max(70, fieldName.length * 9 + 52),
+            minWidth: Math.max(120, fieldName.length * 9 + 52),
             flex: 1,
             cellRenderer: MonacoCellRendererComponent,
             cellRendererParams: { singleLine: true },
@@ -1781,6 +1780,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerComponent: ColumnHeaderMenuComponent,
             headerComponentParams: this.makeMenuHeaderParams('route_code', 'Route Code'),
             field: 'route_code',
+            minWidth: 150,
             editable: true,
             flex: 1,
             suppressMovable: true,
@@ -1915,6 +1915,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
 
         if (this.gridApi) {
+            const hasGroups = this.columnDefs.some((def) => 'children' in def);
+            const leafHeight = hasGroups ? CDT_GRID_HEADER_HEIGHT / 2 : CDT_GRID_HEADER_HEIGHT;
+            this.gridApi.setGridOption('headerHeight', leafHeight);
+
             this.isRebuilding = true;
             this.gridApi.setGridOption('columnDefs', this.columnDefs);
             this.isRebuilding = false;
@@ -2269,13 +2273,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.outsideClickUnlisten = this.renderer.listen('document', 'pointerdown', (event: PointerEvent) => {
             const target = event.target as Node | null;
             if (!target) return;
-            const gridRoot = this.elRef.nativeElement as HTMLElement;
-            // Click was inside the grid — keep focus
-            if (gridRoot.contains(target)) return;
             // Click was inside an ag-grid popup rendered to document body (dropdowns, menus)
             const path = (event.composedPath?.() ?? []) as HTMLElement[];
             const inAgPopup = path.some(
-                (el) => el?.classList?.contains?.('ag-popup') || el?.classList?.contains?.('ag-popup-child')
+                (el) =>
+                    el?.classList?.contains?.('ag-popup') ||
+                    el?.classList?.contains?.('ag-popup-child') ||
+                    el?.classList?.contains?.('ag-grid-scrolling-container')
             );
             if (inAgPopup) return;
             // Clear focused cell so the purple border disappears
@@ -2917,6 +2921,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (!gridEl) return;
             const viewportWidth = gridEl.nativeElement.clientWidth;
             if (totalColWidth < viewportWidth - 4) {
+                this.gridApi.sizeColumnsToFit();
+            }
+        }, 0);
+    }
+
+    private ensureColumnsFitViewport(): void {
+        if (!this.gridApi) return;
+        setTimeout(() => {
+            const columnState = this.gridApi?.getColumnState();
+            if (!columnState) return;
+            const totalColWidth = columnState.filter((s) => !s.hide).reduce((sum, s) => sum + (s.width ?? 0), 0);
+            const gridEl = this.gridElementRef();
+            if (!gridEl) return;
+            const viewportWidth = gridEl.nativeElement.clientWidth;
+            if (totalColWidth > viewportWidth) {
                 this.gridApi.sizeColumnsToFit();
             }
         }, 0);

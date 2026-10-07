@@ -205,17 +205,18 @@
     flex: 1;
     gap: 0;
     min-height: 0;
+    margin-top: -1.5rem;
     overflow: hidden;
 }
 
-.schema-editor-pane {
+.side-editor-pane {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
     @include mixins.editor-pane-corner;
 
-    .schema-editor-pane-header {
+    .side-editor-pane-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -224,7 +225,7 @@
         flex-shrink: 0;
     }
 
-    .schema-editor-pane-title {
+    .side-editor-pane-title {
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -233,7 +234,7 @@
         color: var(--white-alpha-80);
     }
 
-    .schema-editor-pane-actions {
+    .side-editor-pane-actions {
         display: flex;
         align-items: center;
 
@@ -257,12 +258,70 @@
         }
     }
 
-    .schema-editor-pane-body {
+    .side-editor-pane-body {
         flex: 1;
         min-height: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+    }
+
+    .prompt-schema-error {
+        font-size: 12px;
+        color: var(--color-ks-status-failed);
+        padding: 0.25rem 0.75rem;
+    }
+
+    .side-editor-prompt-text {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+
+        .prompt-textarea-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: var(--gray-850);
+            border: none;
+            border-radius: 0;
+            overflow: auto;
+        }
+
+        .prompt-highlight-overlay {
+            position: absolute;
+            inset: 0;
+            padding: 0.75rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            color: transparent;
+            white-space: pre-wrap;
+            word-break: break-word;
+            pointer-events: none;
+        }
+
+        .prompt-textarea--transparent {
+            flex: 1;
+            resize: none;
+            padding: 0.75rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            color: var(--white);
+            caret-color: var(--white);
+            background: transparent;
+            border: none;
+            outline: none;
+
+            &::placeholder {
+                color: var(--white-alpha-25);
+            }
+        }
+
+        .var-token {
+            color: var(--teal-470);
+            font-weight: 500;
+        }
     }
 }
 
@@ -275,7 +334,7 @@
     flex: 1;
     min-width: 0;
 
-    .prompts-layout:has(.schema-editor-pane) & {
+    .prompts-layout:has(.side-editor-pane) & {
         @include mixins.resizable-column(420px);
     }
 
@@ -361,6 +420,22 @@
                 color: var(--white);
                 background: var(--purple-alpha-35);
             }
+        }
+    }
+
+    .field-label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .field-expand-icon {
+        color: var(--white-alpha-50);
+        cursor: pointer;
+        transition: color 0.15s ease;
+
+        &:hover {
+            color: var(--white);
         }
     }
 

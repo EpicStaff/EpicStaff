@@ -192,17 +192,23 @@
             ></div>
         }
 
-        <!-- Hidden-column restore badge -->
-        @if (sortedHiddenBadges().length > 0) {
+        <!-- Hidden-column restore badges -->
+        @for (badge of hiddenColumnBadges(); track badge.x) {
             <button
                 class="hidden-col-badge"
-                [style.left.px]="sortedHiddenBadges()[0].x"
-                [style.top.px]="sortedHiddenBadges()[0].y"
-                [title]="totalHiddenEntries() + ' hidden columns'"
-                (click)="onHiddenBadgeClick($event)"
+                [style.left.px]="badge.x"
+                [style.top.px]="badge.y"
+                [title]="
+                    badge.entries.length === 1
+                        ? 'Expand ' + badge.entries[0].label
+                        : badge.entries.length + ' hidden columns'
+                "
+                (click)="onHiddenBadgeClick($event, badge)"
             >
                 <i class="ti ti-arrows-horizontal"></i>
-                <span class="hidden-col-count">{{ totalHiddenEntries() }}</span>
+                @if (badge.entries.length > 1) {
+                    <span class="hidden-col-count">{{ badge.entries.length }}</span>
+                }
             </button>
         }
     </div>
@@ -304,17 +310,17 @@
 
 <ng-template #hiddenBadgeMenuTemplate>
     <div class="chm-dropdown">
-        @for (item of sortedHiddenBadges(); track item.colId) {
+        @for (entry of activeBadgeEntries; track entry.colId) {
             <div
                 class="chm-menu-item"
-                (click)="handleExpandHiddenEntry(item.colId)"
+                (click)="handleExpandHiddenEntry(entry.colId)"
             >
-                <span>Expand {{ item.label }}</span>
+                <span>Expand {{ entry.label }}</span>
             </div>
         }
         <div
             class="chm-menu-item"
-            (click)="handleExpandAllHidden()"
+            (click)="handleExpandAllBadgeEntries()"
         >
             <span>Expand All</span>
         </div>

@@ -781,6 +781,10 @@ $group-gutter-width: 28px;
     }
 }
 
+:host ::ng-deep .ag-cell.ag-cell-value {
+    font-size: 0.75rem !important;
+}
+
 // Flex-center content in spanned (merged) expression/field cells so that
 // row-spanning cells render their content vertically centered.
 :host ::ng-deep .ag-cell.ag-cell-value[col-id='expression'],

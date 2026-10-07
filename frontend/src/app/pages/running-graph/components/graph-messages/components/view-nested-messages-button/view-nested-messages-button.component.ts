@@ -45,7 +45,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .view-nested-button {
                 background-color: var(--message-accent-color, var(--color-nodes-flow-link));
-                color: var(--color-white);
+                color: var(--graphite-900);
                 height: 28px;
                 border: 2px solid
                     color-mix(in srgb, var(--message-accent-color, var(--color-nodes-flow-link)) 40%, transparent);
@@ -73,6 +73,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             }
 
             .show-nested-btn--open {
+                color: var(--color-white);
                 background-color: transparent;
             }
 

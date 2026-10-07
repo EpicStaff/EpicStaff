@@ -283,7 +283,7 @@
                         <div
                             #promptsListColumn
                             class="prompts-section"
-                            [style.flex-basis.px]="schemaEditorPromptId() !== null ? promptsListWidth.width() : null"
+                            [style.flex-basis.px]="sideEditorPromptId() !== null ? promptsListWidth.width() : null"
                         >
                             <div class="prompt-section-header">
                                 <span class="prompt-section-title">
@@ -398,29 +398,48 @@
                                                         />
                                                     </div>
 
-                                                    <div class="prompt-field">
-                                                        <label class="field-label">Prompt Text</label>
-                                                        <div class="prompt-textarea-wrapper">
-                                                            <div
-                                                                class="prompt-highlight-overlay"
-                                                                aria-hidden="true"
-                                                                [innerHTML]="
-                                                                    getHighlightedPromptText(prompt.prompt_text)
-                                                                "
-                                                            ></div>
-                                                            <textarea
-                                                                class="prompt-textarea prompt-textarea--transparent"
-                                                                rows="8"
-                                                                [ngModel]="prompt.prompt_text"
-                                                                [readonly]="isReadOnly()"
-                                                                [ngModelOptions]="{ standalone: true }"
-                                                                (ngModelChange)="onPromptTextChange(prompt.id, $event)"
-                                                                placeholder="Enter prompt template. Use curly braces for variable interpolation."
-                                                            ></textarea>
+                                                    @if (
+                                                        sideEditorPromptId() !== prompt.id ||
+                                                        sideEditorView() !== 'prompt'
+                                                    ) {
+                                                        <div class="prompt-field">
+                                                            <div class="field-label-row">
+                                                                <label class="field-label">Prompt</label>
+                                                                <app-svg-icon
+                                                                    class="field-expand-icon"
+                                                                    icon="editor-expand"
+                                                                    size="0.875rem"
+                                                                    title="Expand"
+                                                                    (click)="openSideEditor(prompt.id, 'prompt')"
+                                                                />
+                                                            </div>
+                                                            <div class="prompt-textarea-wrapper">
+                                                                <div
+                                                                    class="prompt-highlight-overlay"
+                                                                    aria-hidden="true"
+                                                                    [innerHTML]="
+                                                                        getHighlightedPromptText(prompt.prompt_text)
+                                                                    "
+                                                                ></div>
+                                                                <textarea
+                                                                    class="prompt-textarea prompt-textarea--transparent"
+                                                                    rows="8"
+                                                                    [ngModel]="prompt.prompt_text"
+                                                                    [readonly]="isReadOnly()"
+                                                                    [ngModelOptions]="{ standalone: true }"
+                                                                    (ngModelChange)="
+                                                                        onPromptTextChange(prompt.id, $event)
+                                                                    "
+                                                                    placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                                ></textarea>
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    }
 
-                                                    @if (schemaEditorPromptId() !== prompt.id) {
+                                                    @if (
+                                                        sideEditorPromptId() !== prompt.id ||
+                                                        sideEditorView() !== 'schema'
+                                                    ) {
                                                         <div class="prompt-field">
                                                             <label class="field-label">Output Schema</label>
                                                             <app-json-editor
@@ -431,7 +450,7 @@
                                                                 [showHeader]="true"
                                                                 [allowCopy]="true"
                                                                 [allowExpand]="true"
-                                                                (expand)="openSchemaEditor(prompt.id)"
+                                                                (expand)="openSideEditor(prompt.id, 'schema')"
                                                                 [editorHeight]="220"
                                                                 [exampleHint]="outputSchemaExampleHint"
                                                                 [readonly]="isReadOnly()"
@@ -457,34 +476,35 @@
                             </div>
                         </div>
 
-                        @if (schemaEditorPrompt(); as prompt) {
+                        @if (sideEditorPrompt(); as prompt) {
                             <app-column-resize-divider
-                                ariaLabel="Resize prompts list and schema editor"
+                                ariaLabel="Resize prompts list and editor"
                                 [column]="promptsListColumn"
-                                [opposite]="schemaEditorColumn"
+                                [opposite]="sideEditorColumn"
                                 [(width)]="promptsListWidth.width"
                                 [defaultWidth]="promptsListWidth.defaultWidth"
                                 [minWidth]="300"
                             />
                             <section
-                                #schemaEditorColumn
-                                class="schema-editor-pane"
-                                aria-label="Output Schema Editor"
+                                #sideEditorColumn
+                                class="side-editor-pane"
+                                aria-label="Side Editor"
                             >
-                                <div class="schema-editor-pane-header">
-                                    <span class="schema-editor-pane-title">
+                                <div class="side-editor-pane-header">
+                                    <span class="side-editor-pane-title">
                                         <app-svg-icon
-                                            icon="brackets"
+                                            [icon]="sideEditorView() === 'schema' ? 'brackets' : 'file-empty-state'"
                                             size="1rem"
                                         ></app-svg-icon>
-                                        Output Schema — {{ prompt.id }}
+                                        {{ sideEditorView() === 'schema' ? 'Output Schema' : 'Prompt' }}
+                                        — {{ prompt.id }}
                                     </span>
-                                    <div class="schema-editor-pane-actions">
+                                    <div class="side-editor-pane-actions">
                                         <button
                                             type="button"
                                             title="Copy"
-                                            aria-label="Copy JSON"
-                                            (click)="copySchemaJson()"
+                                            aria-label="Copy content"
+                                            (click)="copySideEditorContent()"
                                         >
                                             <app-svg-icon
                                                 icon="copy"
@@ -495,7 +515,7 @@
                                             type="button"
                                             title="Collapse"
                                             aria-label="Collapse editor panel"
-                                            (click)="closeSchemaEditor()"
+                                            (click)="closeSideEditor()"
                                         >
                                             <app-svg-icon
                                                 icon="editor-collapse"
@@ -504,18 +524,38 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="schema-editor-pane-body">
-                                    <app-json-editor
-                                        [jsonData]="getPromptSchemaText(prompt.id, prompt.output_schema)"
-                                        (jsonChange)="onSchemaChange(prompt.id, $event)"
-                                        [showHeader]="false"
-                                        [fullHeight]="true"
-                                        [exampleHint]="outputSchemaExampleHint"
-                                        [readonly]="isReadOnly()"
-                                    ></app-json-editor>
-                                    @if (getPromptSchemaError(prompt.id)) {
-                                        <div class="prompt-schema-error">
-                                            {{ getPromptSchemaError(prompt.id) }}
+                                <div class="side-editor-pane-body">
+                                    @if (sideEditorView() === 'schema') {
+                                        <app-json-editor
+                                            [jsonData]="getPromptSchemaText(prompt.id, prompt.output_schema)"
+                                            (jsonChange)="onSchemaChange(prompt.id, $event)"
+                                            [showHeader]="false"
+                                            [fullHeight]="true"
+                                            [exampleHint]="outputSchemaExampleHint"
+                                            [readonly]="isReadOnly()"
+                                        ></app-json-editor>
+                                        @if (getPromptSchemaError(prompt.id)) {
+                                            <div class="prompt-schema-error">
+                                                {{ getPromptSchemaError(prompt.id) }}
+                                            </div>
+                                        }
+                                    } @else {
+                                        <div class="side-editor-prompt-text">
+                                            <div class="prompt-textarea-wrapper">
+                                                <div
+                                                    class="prompt-highlight-overlay"
+                                                    aria-hidden="true"
+                                                    [innerHTML]="getHighlightedPromptText(prompt.prompt_text)"
+                                                ></div>
+                                                <textarea
+                                                    class="prompt-textarea prompt-textarea--transparent"
+                                                    [ngModel]="prompt.prompt_text"
+                                                    [readonly]="isReadOnly()"
+                                                    [ngModelOptions]="{ standalone: true }"
+                                                    (ngModelChange)="onPromptTextChange(prompt.id, $event)"
+                                                    placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                ></textarea>
+                                            </div>
                                         </div>
                                     }
                                 </div>

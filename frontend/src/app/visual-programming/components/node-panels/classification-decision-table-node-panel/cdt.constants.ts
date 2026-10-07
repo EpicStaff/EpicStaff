@@ -24,7 +24,7 @@ export const CDT_MANIP_PREFIX = 'manip_' as const;
  * NOTE: intentionally different from CDT_OVERLAY_ROW_HEIGHT — do NOT unify.
  */
 export const CDT_GRID_ROW_HEIGHT = 28;
-export const CDT_GRID_HEADER_HEIGHT = 28;
+export const CDT_GRID_HEADER_HEIGHT = 56;
 
 /**
  * Row height (px) used by the collapsed-group overlay position calculation.

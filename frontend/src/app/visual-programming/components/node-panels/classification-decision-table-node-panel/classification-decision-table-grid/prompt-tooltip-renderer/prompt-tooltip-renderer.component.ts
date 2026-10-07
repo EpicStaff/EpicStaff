@@ -57,7 +57,6 @@ interface PromptTooltipParams extends ICellRendererParams {
                 height: 100%;
                 display: flex;
                 align-items: center;
-                padding: 0 8px;
                 gap: 6px;
                 cursor: default;
                 overflow: hidden;
@@ -82,8 +81,8 @@ interface PromptTooltipParams extends ICellRendererParams {
                 display: none;
                 align-items: center;
                 justify-content: center;
-                width: 28px;
-                height: 28px;
+                width: 16px;
+                height: 16px;
                 flex-shrink: 0;
                 background: transparent;
                 border: 1px solid var(--accent-color);
@@ -92,7 +91,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 cursor: pointer;
                 padding: 0;
                 color: var(--accent-color);
-                font-size: 1rem;
+                font-size: 0.75rem;
             }
             .open-in-library-btn:hover {
                 background: rgba(104, 95, 255, 0.08);
@@ -103,12 +102,14 @@ interface PromptTooltipParams extends ICellRendererParams {
             .select-placeholder {
                 display: flex;
                 align-items: center;
+                width: 100%;
+                justify-content: space-between;
                 gap: 4px;
                 color: rgba(255, 255, 255, 0.35);
-                font-size: 0.8125rem;
+                font-size: 0.75rem;
             }
             .select-placeholder .ti {
-                font-size: 0.6875rem;
+                font-size: 0.75rem;
                 opacity: 0.7;
             }
             .deleted-prompt-badge {
