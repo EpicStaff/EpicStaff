@@ -53,6 +53,10 @@ class PythonCodeData(BaseModel):
     code: str
     entrypoint: str
     libraries: list[str]
+    # The sandbox_new venv id this code runs in; None means its default venv.
+    # Filled by the converter from PythonCode.venv. `venv_name`/`libraries` stay
+    # for producers not yet migrated off the old sandbox (agent, realtime).
+    venv_id: int | None = None
     global_kwargs: dict[str, Any] | None = None
     use_storage: bool = False
     storage_allowed_paths: list[str] | None = None
@@ -160,6 +164,9 @@ class CodeResultData(BaseModel):
 class CodeTaskData(BaseModel):
     venv_name: str
     libraries: list[str]
+    # sandbox_new venv id; None means its default venv. venv_name/libraries are
+    # legacy fields the HTTP intake ignores.
+    venv_id: int | None = None
     code: str
     execution_id: str
     entrypoint: str
