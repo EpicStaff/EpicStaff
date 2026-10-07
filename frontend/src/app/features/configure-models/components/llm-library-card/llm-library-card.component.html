@@ -2,39 +2,7 @@
     <div class="llm-card__top">
         <span class="llm-card__model">{{ model().customName }}</span>
         <div class="llm-card__actions">
-            <button
-                #menuTrigger="cdkMenuTriggerFor"
-                type="button"
-                class="llm-card__action"
-                aria-label="More actions"
-                matTooltip="More"
-                matTooltipPosition="above"
-                [cdkMenuTriggerFor]="menu"
-                [cdkMenuPosition]="menuPositions"
-                [class.llm-card__action--active]="menuTrigger.isOpen()"
-            >
-                <i
-                    class="ti ti-dots-vertical"
-                    aria-hidden="true"
-                ></i>
-            </button>
-            <ng-template #menu>
-                <div
-                    cdkMenu
-                    class="llm-card-menu"
-                >
-                    <!-- Every item needs (keydown.escape): see onMenuItemEscape(). -->
-                    <button
-                        cdkMenuItem
-                        type="button"
-                        class="llm-card-menu__item"
-                        (cdkMenuItemTriggered)="onViewDetails()"
-                        (keydown.escape)="onMenuItemEscape($event)"
-                    >
-                        View Details
-                    </button>
-                </div>
-            </ng-template>
+            <app-config-card-more-menu (viewDetailsClick)="onViewDetails($event)" />
             <button
                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                 type="button"

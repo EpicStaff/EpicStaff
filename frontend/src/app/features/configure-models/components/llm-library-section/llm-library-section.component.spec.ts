@@ -1,14 +1,19 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { signal } from '@angular/core';
+import { DebugElement, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
 import {
+    ActionCode,
+    ElevenLabsRealtimeConfig,
     EmbeddingConfig,
+    GeminiRealtimeConfig,
     GetLlmConfigRequest,
     LlmLibraryModel,
     LlmLibraryProviderGroup,
     ModelTypes,
+    OpenAIRealtimeConfig,
+    ResourceCode,
     UserSummary,
 } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
@@ -20,7 +25,9 @@ import { DefaultModelsStorageService } from '../../services/default-models-stora
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
+import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
+import { RealtimeProvider } from '../realtime-config-dialog/realtime-config-dialog.component';
 import { LlmLibrarySectionComponent } from './llm-library-section.component';
 
 // An LLM config and an embedding config may share an id; the card's config type decides which one is meant.
@@ -64,6 +71,55 @@ const EMBEDDING_CONFIG: EmbeddingConfig = {
     last_edited_at: '2026-04-02T08:00:00Z',
 };
 
+const VOICE_OWNER: UserSummary = { id: 3, display_name: 'Taras Shevchenko', avatar_url: null };
+
+const OPENAI_VOICE_CONFIG: OpenAIRealtimeConfig = {
+    id: 11,
+    custom_name: 'OpenAI voice',
+    api_key_secret_id: null,
+    model_name: 'gpt-realtime-1.5',
+    base_url: null,
+    transcription_model_name: 'whisper-1',
+    transcription_api_key_secret_id: null,
+    voice_recognition_prompt: null,
+    created_at: '2026-05-01T10:00:00Z',
+    created_by: VOICE_OWNER,
+    last_edited_by: null,
+    last_edited_at: null,
+};
+
+const ELEVENLABS_VOICE_CONFIG: ElevenLabsRealtimeConfig = {
+    id: 12,
+    custom_name: 'ElevenLabs voice',
+    api_key_secret_id: null,
+    model_name: 'eleven_turbo_v2_5',
+    language: null,
+    created_at: '2026-05-02T10:00:00Z',
+    created_by: VOICE_OWNER,
+    last_edited_by: VOICE_OWNER,
+    last_edited_at: '2026-05-03T10:00:00Z',
+};
+
+const GEMINI_VOICE_CONFIG: GeminiRealtimeConfig = {
+    id: 13,
+    custom_name: 'Gemini voice',
+    api_key_secret_id: null,
+    model_name: 'gemini-3.1-flash-live-preview',
+    voice_recognition_prompt: null,
+    created_at: null,
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
+};
+
+type VoiceConfig = OpenAIRealtimeConfig | ElevenLabsRealtimeConfig | GeminiRealtimeConfig;
+
+const VOICE_CONFIGS: Record<RealtimeProvider, VoiceConfig> = {
+    openai: OPENAI_VOICE_CONFIG,
+    elevenlabs: ELEVENLABS_VOICE_CONFIG,
+    gemini: GEMINI_VOICE_CONFIG,
+};
+
 function libraryModel(configType: ModelTypes, id: number): LlmLibraryModel {
     return {
         id,
@@ -81,11 +137,14 @@ function providerGroup(configType: ModelTypes, models: LlmLibraryModel[]): LlmLi
     return { id: `openai-${configType}`, providerName: 'OpenAI', providerIconPath: 'openai', models, configType };
 }
 
-function realtimeStorageStub(): object {
-    return { configs: signal([]), getAllConfigs: () => of([]), deleteConfig: () => of(undefined) };
+function realtimeStorageStub(configs: VoiceConfig[] = []): object {
+    return { configs: signal(configs), getAllConfigs: () => of(configs), deleteConfig: () => of(undefined) };
 }
 
-function render(models: LlmLibraryModel[]): {
+function render(
+    models: LlmLibraryModel[],
+    { voiceConfigs = [], grantedActions = [] }: { voiceConfigs?: VoiceConfig[]; grantedActions?: ActionCode[] } = {}
+): {
     fixture: ComponentFixture<LlmLibrarySectionComponent>;
     open: ReturnType<typeof vi.fn>;
 } {
@@ -109,15 +168,27 @@ function render(models: LlmLibraryModel[]): {
             { provide: LLMLibraryService, useValue: libraryService },
             { provide: LlmConfigStorageService, useValue: { configs: signal([LLM_CONFIG]) } },
             { provide: EmbeddingConfigStorageService, useValue: { configs: signal([EMBEDDING_CONFIG]) } },
-            { provide: OpenAIRealtimeConfigStorageService, useValue: realtimeStorageStub() },
-            { provide: ElevenLabsRealtimeConfigStorageService, useValue: realtimeStorageStub() },
-            { provide: GeminiRealtimeConfigStorageService, useValue: realtimeStorageStub() },
+            {
+                provide: OpenAIRealtimeConfigStorageService,
+                useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === OPENAI_VOICE_CONFIG)),
+            },
+            {
+                provide: ElevenLabsRealtimeConfigStorageService,
+                useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === ELEVENLABS_VOICE_CONFIG)),
+            },
+            {
+                provide: GeminiRealtimeConfigStorageService,
+                useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === GEMINI_VOICE_CONFIG)),
+            },
             { provide: AuthorshipDetailsDialogService, useValue: { open } },
             { provide: ConfirmationDialogService, useValue: {} },
             { provide: DefaultModelsStorageService, useValue: {} },
             { provide: ToastService, useValue: {} },
             { provide: Dialog, useValue: {} },
-            { provide: PermissionsService, useValue: { can: () => false } },
+            {
+                provide: PermissionsService,
+                useValue: { can: (_resource: ResourceCode, action: ActionCode) => grantedActions.includes(action) },
+            },
         ],
     });
     const fixture = TestBed.createComponent(LlmLibrarySectionComponent);
@@ -163,5 +234,57 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
         viewDetailsOn(fixture, staleModel);
 
         expect(open).not.toHaveBeenCalled();
+    });
+});
+
+/** The voice card showing `config`, found by its custom name. */
+function voiceCard(fixture: ComponentFixture<LlmLibrarySectionComponent>, config: VoiceConfig): DebugElement {
+    return fixture.debugElement
+        .queryAll(By.css('.voice-card'))
+        .find((card) => card.query(By.css('.name')).nativeElement.textContent.trim() === config.custom_name)!;
+}
+
+describe('LlmLibrarySectionComponent voice config cards', () => {
+    it.each(Object.entries(VOICE_CONFIGS))('places the ⋮ button before edit and delete on a %s card', (_, config) => {
+        const { fixture } = render([], {
+            voiceConfigs: [config],
+            grantedActions: [ActionCode.Update, ActionCode.Delete],
+        });
+
+        const buttons = (voiceCard(fixture, config).nativeElement as HTMLElement).querySelectorAll('button');
+
+        expect(Array.from(buttons, (button) => button.getAttribute('aria-label') ?? button.title)).toEqual([
+            'More actions',
+            'Edit',
+            'Delete',
+        ]);
+    });
+
+    it.each(Object.entries(VOICE_CONFIGS))(
+        'opens "Configuration Details" with the config of a %s card when "View Details" is chosen',
+        (_, config) => {
+            const { fixture, open } = render([], { voiceConfigs: Object.values(VOICE_CONFIGS) });
+            const card = voiceCard(fixture, config);
+            const trigger = (card.nativeElement as HTMLElement).querySelector<HTMLElement>(
+                '[aria-label="More actions"]'
+            )!;
+
+            (
+                card.query(By.directive(ConfigCardMoreMenuComponent)).componentInstance as ConfigCardMoreMenuComponent
+            ).viewDetailsClick.emit(trigger);
+
+            expect(open).toHaveBeenCalledExactlyOnceWith('Configuration Details', config, trigger);
+        }
+    );
+
+    it('offers only the ⋮ button to a user who can only read configurations', () => {
+        const { fixture } = render([], { voiceConfigs: [OPENAI_VOICE_CONFIG] });
+
+        const buttons = (voiceCard(fixture, OPENAI_VOICE_CONFIG).nativeElement as HTMLElement).querySelectorAll(
+            'button'
+        );
+
+        expect(buttons).toHaveLength(1);
+        expect(buttons[0].getAttribute('aria-label')).toBe('More actions');
     });
 });

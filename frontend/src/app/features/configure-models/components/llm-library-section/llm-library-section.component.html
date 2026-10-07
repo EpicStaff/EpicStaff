@@ -95,6 +95,9 @@
                                 <div class="top">
                                     <span class="model">{{ c.model_name }}</span>
                                     <div class="actions">
+                                        <app-config-card-more-menu
+                                            (viewDetailsClick)="onViewConfigDetails(c, $event)"
+                                        />
                                         <button
                                             *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                                             type="button"

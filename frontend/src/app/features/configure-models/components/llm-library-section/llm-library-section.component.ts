@@ -40,6 +40,7 @@ import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elev
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
+import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
 import {
     LlmLibraryCardComponent,
     LlmLibraryCardViewDetailsEvent,
@@ -49,7 +50,7 @@ import {
     RealtimeProvider,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
 
-interface VoiceProviderConfig {
+interface VoiceProviderConfig extends AuthorshipDetailsSource {
     id: number;
     custom_name: string;
     model_name: string;
@@ -72,6 +73,7 @@ type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeP
     imports: [
         FormsModule,
         LlmLibraryCardComponent,
+        ConfigCardMoreMenuComponent,
         AppSvgIconComponent,
         LoadingSpinnerComponent,
         SelectComponent,
@@ -260,6 +262,11 @@ export class LlmLibrarySectionComponent implements OnInit {
             disableClose: true,
             data: { config, action: 'update', provider: provider.key },
         });
+    }
+
+    /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
+    onViewConfigDetails(config: VoiceProviderConfig, trigger: HTMLElement): void {
+        this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
     }
 
     onDeleteConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
