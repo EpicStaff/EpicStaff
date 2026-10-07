@@ -27,9 +27,7 @@ class CsvExportFormatStrategy(ExportFormatStrategy):
         self.projection = projection
 
     def render(self, data: dict, entity_type: str, prefix: str, base_name: str) -> HttpResponse:
-        rows = []
-        for item in data.get(entity_type, []):
-            rows.extend(self.projection.expand(item))
+        rows = self.projection.expand_all(data.get(entity_type, []))
 
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=self.projection.FIELDS, extrasaction="ignore")
