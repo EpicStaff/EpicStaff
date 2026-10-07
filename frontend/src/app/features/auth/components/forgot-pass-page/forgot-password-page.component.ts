@@ -14,7 +14,7 @@ import { finalize, tap } from 'rxjs';
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
 
-type PageState = 'request' | 'email-sent';
+type PageState = 'request' | 'email-sent' | 'reset-unavailable';
 
 @Component({
     selector: 'app-forgot-password',
@@ -58,7 +58,8 @@ export class ForgotPasswordPageComponent {
                 finalize(() => this.loading.set(false))
             )
             .subscribe({
-                next: () => this.state.set('email-sent'),
+                // Without SMTP the server creates no reset link, so the page must not claim one was sent.
+                next: (response) => this.state.set(response.smtp_configured ? 'email-sent' : 'reset-unavailable'),
                 error: (err) => this.toast.error(err.error.message),
             });
     }

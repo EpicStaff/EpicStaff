@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.test import override_settings
 
 
 @pytest.fixture
@@ -15,6 +16,21 @@ def existing_user(db):
 
 @pytest.mark.django_db
 def test_reset_password_sets_the_new_password(existing_user):
+    call_command(
+        "reset_password",
+        "user@example.com",
+        "--password",
+        "BrandNewPass456!",
+        stdout=io.StringIO(),
+    )
+    existing_user.refresh_from_db()
+    assert existing_user.check_password("BrandNewPass456!")
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_HOST="")
+def test_reset_password_works_without_smtp(existing_user):
+    """Guards against gating this command on SMTP: without SMTP it is the only reset path."""
     call_command(
         "reset_password",
         "user@example.com",

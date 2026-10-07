@@ -21,7 +21,7 @@ View  ──▶  AuthValidationService.validate_*()  (shape + strength)
              │
              ├── SmtpConfigService              (is SMTP configured?)
              ├── PasswordResetTokenRepository   (generate/hash, lookup, delete)
-             ├── PasswordResetEmailSender       (render + send, fail-silent)
+             ├── PasswordResetEmailSender       (render + send, fail-silent, never without SMTP)
              ├── PasswordWriter                 (validate against the account, set_password + save)
              └── CredentialRevocationService    (blacklist refresh tokens, revoke API keys)
 ```
@@ -35,26 +35,46 @@ tests can swap in fakes without monkey-patching.
 
 Body: `{ "email": "<email>" }`.
 
-Always returns **200** with body:
+Always returns **200**. The body depends only on whether SMTP is
+configured, never on whether the email exists. With SMTP:
 
 ```json
-{ "detail": "If the email is registered, a reset link has been sent.", "smtp_configured": true|false }
+{ "detail": "If the email is registered, a reset link has been sent.", "smtp_configured": true }
+```
+
+Without SMTP (the text matches the frontend's "Reset unavailable" page):
+
+```json
+{ "detail": "Password reset by email isn't available on this server. Ask your administrator to reset your password.", "smtp_configured": false }
 ```
 
 Behavior:
 
-* If the email resolves to a user, inside a single transaction: all
-  prior unused tokens for that user are marked `is_used=True` and a new
-  `PasswordResetToken` is created. Only the most recent link works.
+* If SMTP is **not** configured (`SmtpConfigService.is_configured()` is
+  false, i.e. `DJANGO_EMAIL_HOST` is blank or `none` — the shipped prod
+  default), **self-service reset is disabled**. The request is ignored
+  before the account is looked up: no token is created, pending tokens
+  are left alone, nothing is sent, and the response carries
+  `smtp_configured: false` for every email. One warning,
+  `password_reset_request_ignored_smtp_not_configured`, tells operators to
+  use [`manage.py reset_password`](#cli-fallback); it names no email and is
+  logged at most once per 5 minutes across all workers, so anonymous
+  traffic cannot flood the log. Without SMTP Django's backend is the
+  console one, which would print the reset link into the application
+  log — anyone with log access could take over the account.
 * If SMTP is configured (`EMAIL_HOST` set — credentials are optional
-  and only used when the relay requires AUTH), the reset email is
-  dispatched through `django.core.mail`. Delivery is fail-silent — a
-  send error never changes the HTTP response.
-* If SMTP is **not** configured, `EMAIL_BACKEND` is the console backend
-  and Django prints the rendered email (with the reset link) to stdout.
-  That is the documented no-SMTP recovery surface.
-* If the email does not resolve to a user, no token is created and no
-  email is sent, but the response body is identical.
+  and only used when the relay requires AUTH) and the email resolves to
+  a user, inside a single transaction every prior grant for that user is
+  deleted and a new `PasswordResetToken` is created. Only the most recent
+  link works. The reset email is then dispatched through
+  `django.core.mail`. Delivery is fail-silent — a send error never changes
+  the HTTP response.
+* If SMTP is configured and the email does not resolve to a user, no
+  token is created and no email is sent, but the response body is
+  identical.
+* `PasswordResetEmailSender` checks `SmtpConfigService` as well and drops
+  the message without rendering it when SMTP is not configured, so no
+  other caller can route a reset link to the console backend either.
 
 Throttling: `PasswordResetRequestThrottle`, bucket `ip|email`, rate
 `PASSWORD_RESET_REQUEST_THROTTLE_RATE` (default `5/hour`).
@@ -114,6 +134,11 @@ Body: `{ "user_id": <int>, "new_password": "<pw>" }`.
 
 ## CLI fallback
 
+This is the recovery path when SMTP is not configured — the anonymous
+request endpoint is disabled then (see above). Run it inside the
+`django_app` container, e.g.
+`docker compose exec django_app python manage.py reset_password <email> --generate`.
+
 ```
 python manage.py reset_password <email> [--generate | --password <pw>]
 ```
@@ -144,7 +169,7 @@ All env vars land in `src/.env` and are forwarded through
 | `PASSWORD_RESET_TOKEN_TTL` | `900` | Token lifetime, seconds. |
 | `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` | Throttle on the request endpoint, bucketed per `ip\|email`. |
 | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Throttle on the confirm endpoint, bucketed per **IP only** — see Security invariants. |
-| `EMAIL_HOST` | *(empty)* | SMTP host. Empty → console backend. |
+| `EMAIL_HOST` | *(empty)* | SMTP host. Empty → console backend, and self-service password reset is disabled (use `manage.py reset_password`). |
 | `EMAIL_PORT` | `587` | SMTP port. |
 | `EMAIL_HOST_USER` | *(empty)* | SMTP user. Leave blank for relays that do not require AUTH (mailpit, local Postfix). |
 | `EMAIL_HOST_PASSWORD` | *(empty)* | SMTP password. Leave blank for relays that do not require AUTH. |
@@ -161,7 +186,10 @@ both blank = no AUTH attempted (required for mailpit and other
 unauthenticated relays; setting creds against a server that does not
 implement SMTP AUTH raises `SMTPNotSupportedError`).
 `SmtpConfigService.is_configured()` is the source of truth for "should
-we tell the user an email is coming?" — inspect it, not `EMAIL_BACKEND`.
+we tell the user an email is coming?" and "may a reset link be sent at
+all?" — inspect it, not `EMAIL_BACKEND`. The console backend writes every
+message to the application log, so no reset token is issued or sent
+without SMTP; operators use `manage.py reset_password` instead.
 
 ## Security invariants
 
@@ -250,6 +278,9 @@ we tell the user an email is coming?" — inspect it, not `EMAIL_BACKEND`.
   together are deliberate.
 * **Fail-silent email.** SMTP errors are logged, never surfaced, so the
   HTTP response stays uniform (no side-channel).
+* **No reset link without SMTP.** With SMTP off the request endpoint
+  issues no token and the sender refuses to send, so a live link never
+  reaches the console backend and, through it, the application log.
 
 ## Out of scope (future stories)
 

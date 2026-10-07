@@ -133,8 +133,19 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetRequestResponseSerializer(serializers.Serializer):
-    detail = serializers.CharField()
-    smtp_configured = serializers.BooleanField()
+    detail = serializers.CharField(
+        help_text=(
+            "Human-readable outcome, the same for every email. With SMTP: a "
+            "link has been sent if the email is registered. Without SMTP: reset "
+            "by email is unavailable, ask an administrator."
+        )
+    )
+    smtp_configured = serializers.BooleanField(
+        help_text=(
+            "False when the server has no SMTP relay: self-service reset is "
+            "disabled and nothing was sent. Same value for every email."
+        )
+    )
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):

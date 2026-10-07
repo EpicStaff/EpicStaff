@@ -297,9 +297,16 @@ class PasswordResetRequestView(APIView):
     """Anonymous password-reset initiation.
 
     Uniform 200 response by design — does not reveal whether the email
-    exists. The response also flags whether SMTP is configured so the
-    frontend can guide the user to the CLI fallback when it is not.
+    exists. The response also flags whether SMTP is configured; without it
+    self-service reset is disabled and `detail` sends the user to an
+    administrator, matching the frontend's "reset unavailable" copy.
     """
+
+    _DETAIL_LINK_SENT = "If the email is registered, a reset link has been sent."
+    _DETAIL_RESET_UNAVAILABLE = (
+        "Password reset by email isn't available on this server. "
+        "Ask your administrator to reset your password."
+    )
 
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -315,11 +322,13 @@ class PasswordResetRequestView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_password_reset_request(request.data)
-        result = self._service.request_reset(cleaned["email"])
+        smtp_configured = self._service.request_reset(cleaned["email"])["smtp_configured"]
         return Response(
             {
-                "detail": "If the email is registered, a reset link has been sent.",
-                "smtp_configured": result["smtp_configured"],
+                "detail": (
+                    self._DETAIL_LINK_SENT if smtp_configured else self._DETAIL_RESET_UNAVAILABLE
+                ),
+                "smtp_configured": smtp_configured,
             },
             status=status.HTTP_200_OK,
         )

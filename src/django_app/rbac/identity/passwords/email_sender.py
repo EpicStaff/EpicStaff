@@ -5,6 +5,8 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from loguru import logger
 
+from rbac.identity.passwords.smtp_config import SmtpConfigService
+
 
 class PasswordResetEmailSender:
     """Renders and dispatches the password-reset email.
@@ -14,15 +16,27 @@ class PasswordResetEmailSender:
     because that response is uniform by design (no enumeration). The
     failure is logged so operators can still see it.
 
-    Delivery goes through Django's configured `EMAIL_BACKEND`. In dev
-    (no SMTP creds) that is the console backend and the link lands in
-    stdout, which is the documented no-SMTP recovery path.
+    The email carries a live credential, so it is only handed to a real
+    SMTP relay. When `SmtpConfigService` reports SMTP as not configured,
+    Django's backend is the console one, which would write the link into
+    the application log; the sender then drops the message without
+    rendering it. `PasswordRecoveryService` already skips issuing a token
+    in that case — this check keeps any other caller from leaking a link.
     """
 
     _SUBJECT_TEMPLATE = "rbac/password_reset_email.subject.txt"
     _BODY_TEMPLATE = "rbac/password_reset_email.txt"
 
+    def __init__(self, smtp_config: SmtpConfigService | None = None):
+        self._smtp_config = smtp_config or SmtpConfigService()
+
     def send(self, user, raw_token: str) -> None:
+        if not self._smtp_config.is_configured():
+            logger.warning(
+                "password_reset_email_not_sent_smtp_not_configured user_id={}",
+                user.id,
+            )
+            return
         try:
             context = self._build_context(user, raw_token)
             subject = render_to_string(self._SUBJECT_TEMPLATE, context).strip()
