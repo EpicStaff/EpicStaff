@@ -700,8 +700,8 @@ async def test_error_route_emits_finish_after_error(
     result = await subgraph.ainvoke(make_state())
 
     messages = [
-        published.args[1]["message_data"]
-        for published in redis_service.publish.call_args_list
+        json.loads(published.args[1])["message_data"]
+        for published in redis_service.publish_encoded.call_args_list
         if published.args[0] == "graph:messages"
     ]
     message_types = [message["message_type"] for message in messages]
@@ -750,8 +750,8 @@ def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
 
 def published_messages(redis_service: MagicMock) -> list[dict]:
     return [
-        published.args[1]["message_data"]
-        for published in redis_service.publish.call_args_list
+        json.loads(published.args[1])["message_data"]
+        for published in redis_service.publish_encoded.call_args_list
         if published.args[0] == "graph:messages"
     ]
 

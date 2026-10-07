@@ -232,7 +232,10 @@ class RedisService(metaclass=SingletonMeta):
         logger.info(f"Message published to channel '{channel}'.")
 
     def publish(self, channel: str, message: object):
-        self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
+        self.publish_encoded(channel, json.dumps(message))
+
+    def publish_encoded(self, channel: str, encoded_message: str):
+        self.sync_redis_client.publish(channel=channel, message=encoded_message)
         logger.info(f"Message published to channel '{channel}'.")
 
     async def aupdate_session_status(self, session_id: int, status: str, **kwargs):

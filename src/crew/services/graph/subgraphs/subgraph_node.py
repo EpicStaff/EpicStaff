@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import asdict
 from uuid import uuid4
 
 from dotdict import DotDict
@@ -10,6 +9,7 @@ from models.graph_models import (
     GraphMessage,
     SubGraphFinishMessageData,
     SubGraphStartMessageData,
+    dataclass_to_shallow_dict,
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
@@ -200,7 +200,7 @@ class SubGraphNode:
                         msg_data = data.message_data
 
                         if not isinstance(msg_data, dict):
-                            msg_data = asdict(msg_data)
+                            msg_data = dataclass_to_shallow_dict(msg_data)
                             data.message_data = msg_data
 
                         existing = msg_data.get("subgraph_execution_ids") or []
@@ -223,7 +223,9 @@ class SubGraphNode:
         temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
         if self.output_variable_path:
-            if self.output_variable_path == "variables" or self.output_variable_path.startswith("variables."):
+            if self.output_variable_path == "variables" or self.output_variable_path.startswith(
+                "variables."
+            ):
                 full_path = self.output_variable_path
             else:
                 full_path = f"variables.{self.output_variable_path}"
