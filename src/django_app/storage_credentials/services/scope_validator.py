@@ -1,3 +1,5 @@
+from loguru import logger
+
 from storage_credentials.exceptions import CredentialScopeValidationError
 
 
@@ -26,14 +28,16 @@ class CredentialScopeValidator:
             # Fail closed: an empty/missing storage_allowed_paths must not
             # default to org-wide access. Every caller that legitimately
             # wants storage must pass an explicit, narrow path.
+            logger.warning(
+                "storage_allowed_paths is empty for org_id={}: no session-scoped path was "
+                "added (missing session_id) and no graph-level storage files are configured.",
+                org_id,
+            )
             raise CredentialScopeValidationError(
                 "storage_allowed_paths is empty; refusing to scope a "
-                "temporary credential to the entire org prefix. This "
-                "usually means the request has no session_id (so no "
-                "'sessions/<id>/' path was added) and the graph has no "
-                "GraphStorageFile items configured. Check the caller in "
-                "converter_service.py for a missing session_id or an "
-                "empty graph-level storage configuration."
+                "temporary credential to the entire org prefix. Attach the "
+                "required files or folders to the flow, or ensure a session "
+                "is present."
             )
 
         scoped_folders: set[str] = set()

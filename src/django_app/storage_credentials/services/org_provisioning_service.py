@@ -54,9 +54,12 @@ class OrgStorageProvisioningService:
                 )
             )
         except Exception as error:
-            raise OrgStorageProvisioningError(
-                f"Failed to provision storage user for org_id={org.id}: {error}"
-            ) from error
+            logger.exception(
+                "Failed to provision storage user for org_id={}: {}",
+                org.id,
+                error,
+            )
+            raise OrgStorageProvisioningError() from error
 
         org_credential_store.save(org=org, access_key=access_key, secret_key=secret_key)
         logger.info("Provisioned org-level storage user for org_id={}", org.id)
@@ -75,9 +78,12 @@ class OrgStorageProvisioningService:
         try:
             asyncio.run(self._deprovision_in_storage(org_id=org_id, access_key=access_key))
         except Exception as error:
-            raise OrgStorageProvisioningError(
-                f"Failed to deprovision storage user for org_id={org_id}: {error}"
-            ) from error
+            logger.exception(
+                "Failed to deprovision storage user for org_id={}: {}",
+                org_id,
+                error,
+            )
+            raise OrgStorageProvisioningError() from error
 
         org_credential_store.delete(org_id=org_id)
         logger.info("Deprovisioned org-level storage user for org_id={}", org_id)

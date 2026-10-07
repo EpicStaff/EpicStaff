@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiohttp import ClientConnectorError, ServerDisconnectedError
 from aiohttp.client_reqrep import ConnectionKey
+from loguru import logger
 from miniopy_async.error import MinioAdminException
 from miniopy_async.minioadmin import _COMMAND
 
@@ -39,6 +40,16 @@ class TestCreateServiceAccount:
             )
             gateway._client = MagicMock()
             return gateway
+
+    @pytest.fixture
+    def error_logs(self):
+        """Collect loguru ERROR records emitted during the test. The raw
+        backend error is logged server-side instead of being interpolated
+        into the client-facing exception detail."""
+        records: list[str] = []
+        sink_id = logger.add(records.append, level="ERROR")
+        yield records
+        logger.remove(sink_id)
 
     @staticmethod
     def _create_mock_response():
@@ -184,8 +195,11 @@ class TestCreateServiceAccount:
             mock_decrypt.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_miniaoadmin_exception_raises_credential_issue_error(self, gateway):
-        """Verify MinioAdminException is converted to TemporaryCredentialIssueError."""
+    async def test_miniaoadmin_exception_raises_credential_issue_error(self, gateway, error_logs):
+        """MinioAdminException is converted to TemporaryCredentialIssueError.
+
+        The backend's own response body must not reach the exception detail --
+        DRF renders it verbatim to the API client. It belongs in the log."""
         policy = {"Version": "2012-10-17", "Statement": []}
         expiration = timedelta(hours=1)
 
@@ -198,7 +212,11 @@ class TestCreateServiceAccount:
         with pytest.raises(TemporaryCredentialIssueError) as exc_info:
             await gateway.create_service_account(policy, expiration)
 
-        assert "Failed to mint temporary service account" in str(exc_info.value)
+        detail = str(exc_info.value)
+        assert detail == TemporaryCredentialIssueError.default_detail
+        assert "Service account creation failed" not in detail
+        assert "Failed to mint temporary service account" in "".join(error_logs)
+        assert "Service account creation failed" in "".join(error_logs)
 
     @pytest.mark.asyncio
     async def test_generated_keys_meet_exact_length_requirements(self, gateway):
@@ -293,8 +311,12 @@ class TestCreateServiceAccount:
         mock_response.read.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_client_connector_error_raises_credential_issue_error(self, gateway):
-        """Verify ClientConnectorError is caught and converted to TemporaryCredentialIssueError."""
+    async def test_client_connector_error_raises_credential_issue_error(self, gateway, error_logs):
+        """ClientConnectorError is caught and converted to TemporaryCredentialIssueError.
+
+        The network branch is now distinguishable only in the log -- the
+        client-facing detail is the generic default for both branches, so
+        that a connection string ('storage:9000') never leaves the server."""
         policy = {"Version": "2012-10-17", "Statement": []}
         expiration = timedelta(hours=1)
 
@@ -328,11 +350,18 @@ class TestCreateServiceAccount:
         with pytest.raises(TemporaryCredentialIssueError) as exc_info:
             await gateway.create_service_account(policy, expiration)
 
-        assert "network error" in str(exc_info.value)
+        detail = str(exc_info.value)
+        assert detail == TemporaryCredentialIssueError.default_detail
+        assert "storage:9000" not in detail
+        assert "Connection refused" not in detail
+        assert "network error" in "".join(error_logs)
 
     @pytest.mark.asyncio
-    async def test_server_disconnected_error_raises_credential_issue_error(self, gateway):
-        """Verify ServerDisconnectedError is caught and converted to TemporaryCredentialIssueError."""
+    async def test_server_disconnected_error_raises_credential_issue_error(
+        self, gateway, error_logs
+    ):
+        """ServerDisconnectedError is caught and converted to TemporaryCredentialIssueError,
+        with the network detail confined to the log."""
         policy = {"Version": "2012-10-17", "Statement": []}
         expiration = timedelta(hours=1)
 
@@ -354,11 +383,13 @@ class TestCreateServiceAccount:
         with pytest.raises(TemporaryCredentialIssueError) as exc_info:
             await gateway.create_service_account(policy, expiration)
 
-        assert "network error" in str(exc_info.value)
+        assert str(exc_info.value) == TemporaryCredentialIssueError.default_detail
+        assert "network error" in "".join(error_logs)
 
     @pytest.mark.asyncio
-    async def test_asyncio_timeout_error_raises_credential_issue_error(self, gateway):
-        """Verify asyncio.TimeoutError is caught and converted to TemporaryCredentialIssueError."""
+    async def test_asyncio_timeout_error_raises_credential_issue_error(self, gateway, error_logs):
+        """asyncio.TimeoutError is caught and converted to TemporaryCredentialIssueError,
+        with the timeout detail confined to the log."""
         policy = {"Version": "2012-10-17", "Statement": []}
         expiration = timedelta(hours=1)
 
@@ -373,7 +404,10 @@ class TestCreateServiceAccount:
         with pytest.raises(TemporaryCredentialIssueError) as exc_info:
             await gateway.create_service_account(policy, expiration)
 
-        assert "network error" in str(exc_info.value)
+        detail = str(exc_info.value)
+        assert detail == TemporaryCredentialIssueError.default_detail
+        assert "Request timed out after 5 retries" not in detail
+        assert "network error" in "".join(error_logs)
 
 
 class _FakeResponseContent:

@@ -16,7 +16,10 @@ from src.shared.models.graph_nodes import EndNodeData, GraphData, PythonNodeData
 from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.tools import PythonCodeData
-from storage_credentials.exceptions import CredentialScopeValidationError
+from storage_credentials.exceptions import (
+    CredentialScopeValidationError,
+    TemporaryCredentialIssueError,
+)
 from storage_credentials.models import TemporaryStorageAccount
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import Graph, PythonCodeResult, RealtimeAgentChat, Session
@@ -228,7 +231,10 @@ class TestIssueForSessionWithStorage(TestCase):
     @mock.patch("storage_credentials.services.session_credential_service.asyncio.run")
     @mock.patch("storage_credentials.services.session_credential_service.org_credential_store")
     def test_db_write_failure_raises_exception(self, mock_org_store, mock_asyncio_run):
-        """Verify that DB write failure propagates as an exception."""
+        """A DB write failure must surface as the domain exception, and the
+        raw DB error text must stay out of the client-facing detail -- DRF
+        renders `detail` verbatim, and an IntegrityError can embed the
+        access_key value."""
         mock_asyncio_run.side_effect = _asyncio_run_stub(("test_access", "test_secret"))
         self._stub_org_credentials(mock_org_store)
 
@@ -236,12 +242,17 @@ class TestIssueForSessionWithStorage(TestCase):
 
         with mock.patch(
             "storage_credentials.models.TemporaryStorageAccount.objects.create",
-            side_effect=Exception("DB write failed"),
+            side_effect=Exception("DB write failed: Key (access_key)=(test_access) already exists"),
         ):
-            with pytest.raises(Exception, match="Failed to persist temporary storage account"):
+            with pytest.raises(TemporaryCredentialIssueError) as exc_info:
                 session_credential_service.issue_for_session(
                     session_data=session_data, session_orm=self.session, org=self.org
                 )
+
+        detail = str(exc_info.value)
+        assert detail == TemporaryCredentialIssueError.default_detail
+        assert "DB write failed" not in detail
+        assert "test_access" not in detail
 
     @mock.patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
     def test_repeated_calls_in_same_process_no_event_loop_error(self, mock_gateway_class):

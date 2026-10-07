@@ -155,9 +155,12 @@ class SessionCredentialService:
         try:
             org_creds = org_credential_store.get(org_id=org_id)
         except Exception as error:
-            raise TemporaryCredentialIssueError(
-                f"Failed to retrieve org-level storage credentials for org_id={org_id}: {error}"
-            ) from error
+            logger.exception(
+                "Failed to retrieve org-level storage credentials for org_id={}: {}",
+                org_id,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
 
         ttl_hours = settings.STORAGE_TEMP_CREDENTIALS_TTL_HOURS
         expiration = timedelta(hours=ttl_hours) if ttl_hours > 0 else None
@@ -170,9 +173,12 @@ class SessionCredentialService:
         except TemporaryCredentialIssueError:
             raise
         except Exception as error:
-            raise TemporaryCredentialIssueError(
-                f"Failed to mint temporary storage credentials for {owner_label}: {error}"
-            ) from error
+            logger.exception(
+                "Failed to mint temporary storage credentials for {}: {}",
+                owner_label,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
 
         try:
             TemporaryStorageAccount.objects.create(
@@ -180,9 +186,12 @@ class SessionCredentialService:
             )
             logger.info("Persisted temporary storage account for {}", owner_label)
         except Exception as error:
-            raise TemporaryCredentialIssueError(
-                f"Failed to persist temporary storage account for {owner_label}: {error}"
-            ) from error
+            logger.exception(
+                "Failed to persist temporary storage account for {}: {}",
+                owner_label,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
 
         return StorageCredentials(access_key=access_key, secret_key=secret_key)
 

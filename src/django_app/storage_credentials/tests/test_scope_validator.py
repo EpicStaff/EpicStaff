@@ -14,6 +14,7 @@ empty entry. See the discrepancy note on
 """
 
 import pytest
+from loguru import logger
 
 from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.services.scope_validator import CredentialScopeValidator
@@ -22,6 +23,15 @@ from storage_credentials.services.scope_validator import CredentialScopeValidato
 @pytest.fixture
 def validator() -> CredentialScopeValidator:
     return CredentialScopeValidator()
+
+
+@pytest.fixture
+def warning_logs():
+    """Collect loguru WARNING records emitted during the test."""
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
 
 
 def test_paths_that_are_subsets_of_the_prefix_pass(validator):
@@ -68,24 +78,44 @@ def test_empty_list_storage_allowed_paths_is_rejected(validator):
         )
 
 
-def test_empty_storage_allowed_paths_error_message_is_diagnostic(validator):
-    """The error message must point tool operators at the two likely root
-    causes (missing session_id, no graph-level storage items) without
-    forcing them to trace back through converter_service.py."""
+def test_empty_storage_allowed_paths_error_message_leaks_no_internals(validator):
+    """This message is rendered verbatim to the API client, so it must stay
+    user-actionable without naming internal modules, call sites or model
+    classes. The deeper diagnostic (missing session_id, no graph-level
+    storage items) belongs in the server-side log, not in the response."""
     with pytest.raises(CredentialScopeValidationError) as exc_info:
         validator.validate(
             org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[]
         )
 
-    assert str(exc_info.value) == (
+    message = str(exc_info.value)
+
+    assert message == (
         "storage_allowed_paths is empty; refusing to scope a "
-        "temporary credential to the entire org prefix. This "
-        "usually means the request has no session_id (so no "
-        "'sessions/<id>/' path was added) and the graph has no "
-        "GraphStorageFile items configured. Check the caller in "
-        "converter_service.py for a missing session_id or an "
-        "empty graph-level storage configuration."
+        "temporary credential to the entire org prefix. Attach the "
+        "required files or folders to the flow, or ensure a session "
+        "is present."
     )
+    for internal_reference in (
+        "converter_service",
+        ".py",
+        "session_id",
+        "GraphStorageFile",
+    ):
+        assert internal_reference not in message
+
+
+def test_empty_storage_allowed_paths_logs_the_internal_diagnostic(validator, warning_logs):
+    """The detail removed from the client-facing message must not be lost --
+    operators still need it, from the log."""
+    with pytest.raises(CredentialScopeValidationError):
+        validator.validate(
+            org_id=7, storage_org_prefix="org_7", storage_allowed_paths=[]
+        )
+
+    logged = "".join(warning_logs)
+    assert "org_id=7" in logged
+    assert "session_id" in logged
 
 
 def test_missing_org_id_is_rejected(validator):

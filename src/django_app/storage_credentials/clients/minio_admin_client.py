@@ -28,6 +28,7 @@ from aiohttp import (
 )
 from aiohttp_retry import ExponentialRetry, RetryClient
 from Crypto.Cipher import AES
+from loguru import logger
 from miniopy_async import MinioAdmin as _MinioAdminClient
 from miniopy_async.credentials import StaticProvider
 from miniopy_async.crypto import (
@@ -202,10 +203,11 @@ class StorageAdminGateway:
     def _split_host(value: str) -> tuple[bool, str]:
         parts = value.split("://")
         if len(parts) != 2:
-            raise StorageCredentialConfigError(
-                f"STORAGE_ENDPOINT is empty or malformed: expected "
-                f"`scheme://host[:port]`, got {value!r}"
+            logger.error(
+                "STORAGE_ENDPOINT is empty or malformed: expected `scheme://host[:port]`, got {!r}",
+                value,
             )
+            raise StorageCredentialConfigError()
         http, endpoint = parts
         return http == "https", endpoint
 
@@ -304,21 +306,22 @@ class StorageAdminGateway:
             await response.read()
             return access_key, secret_key
         except MinioAdminException as error:
-            raise TemporaryCredentialIssueError(
-                f"Failed to mint temporary service account: {error}"
-            ) from error
+            logger.exception("Failed to mint temporary service account: {}", error)
+            raise TemporaryCredentialIssueError() from error
         except (TimeoutError, ClientConnectorError, ServerDisconnectedError) as error:
-            raise TemporaryCredentialIssueError(
-                f"Failed to mint temporary service account (network error): {error}"
-            ) from error
+            logger.exception("Failed to mint temporary service account (network error): {}", error)
+            raise TemporaryCredentialIssueError() from error
 
     async def delete_service_account(self, access_key: str) -> None:
         try:
             await self._client.delete_service_account(access_key)
         except Exception as error:
-            raise TemporaryCredentialRevokeError(
-                f"Failed to revoke service account '{access_key}': {error}"
-            ) from error
+            logger.exception(
+                "Failed to revoke service account '{}': {}",
+                access_key,
+                error,
+            )
+            raise TemporaryCredentialRevokeError() from error
 
     async def list_service_accounts(self, user: str) -> list[dict[str, Any]]:
         """Active service accounts of `user`, each carrying at least
@@ -341,13 +344,19 @@ class StorageAdminGateway:
             )
             raw = await decryptor.decrypt(response)
         except MinioAdminException as error:
-            raise TemporaryCredentialListError(
-                f"Failed to list service accounts for user '{user}': {error}"
-            ) from error
+            logger.exception(
+                "Failed to list service accounts for user '{}': {}",
+                user,
+                error,
+            )
+            raise TemporaryCredentialListError() from error
         except (TimeoutError, ClientConnectorError, ServerDisconnectedError) as error:
-            raise TemporaryCredentialListError(
-                f"Failed to list service accounts for user '{user}' (network error): {error}"
-            ) from error
+            logger.exception(
+                "Failed to list service accounts for user '{}' (network error): {}",
+                user,
+                error,
+            )
+            raise TemporaryCredentialListError() from error
         except (OSError, ValueError) as error:
             # _AdminResponseDecryptor raises OSError on a malformed/short
             # header and ValueError (via decrypt_and_verify) on a bad AEAD
@@ -356,9 +365,12 @@ class StorageAdminGateway:
             # reads to EOF and lets aiohttp auto-release), a failure here
             # exits mid-stream and would otherwise leak the connection out
             # of the TCPConnector(limit=10) pool.
-            raise TemporaryCredentialListError(
-                f"Failed to decrypt service account list for user '{user}': {error}"
-            ) from error
+            logger.exception(
+                "Failed to decrypt service account list for user '{}': {}",
+                user,
+                error,
+            )
+            raise TemporaryCredentialListError() from error
         finally:
             if response is not None:
                 response.release()
