@@ -29,7 +29,6 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated
-from src.shared.bench import bench_mark
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
@@ -466,9 +465,14 @@ class RunSession(APIView):
                 token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
-            # session_id only exists after run_session, so the line is written late
-            # with the real arrival time.
-            bench_mark(session_id, "request_received", ts=request_received_ts)
+            # session_id exists only now, so the line is written late with the real arrival time.
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="request_received",
+                session_id=session_id,
+                arrival_ts=request_received_ts,
+            )
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})

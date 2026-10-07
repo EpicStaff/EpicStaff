@@ -12,7 +12,7 @@ from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
 from services.storage_credential_manager import StorageCredentialManager
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
-from src.shared.bench import bench_mark
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeTaskData
 from utils.logger import logger
 
@@ -213,9 +213,12 @@ async def run(code_task_data: CodeTaskData):
     Run the dynamic virtual environment execution chain.
     """
     execution_dir = settings.OUTPUT_PATH / code_task_data.execution_id
-    # Supervisor side only: the Landlock jail is applied in the launched child.
-    bench_mark(
-        code_task_data.session_id, "exec_start", execution_id=code_task_data.execution_id
+    logger.log(
+        BENCH_LEVEL,
+        "bench {checkpoint}",
+        checkpoint="exec_start",
+        session_id=code_task_data.session_id,
+        execution_id=code_task_data.execution_id,
     )
     try:
         result = await executor_chain.run(
@@ -231,9 +234,11 @@ async def run(code_task_data: CodeTaskData):
             storage_org_prefix=code_task_data.storage_org_prefix,
             secrets=code_task_data.secrets,
         )
-        bench_mark(
-            code_task_data.session_id,
-            "exec_end",
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_end",
+            session_id=code_task_data.session_id,
             execution_id=code_task_data.execution_id,
             returncode=result.returncode,
         )

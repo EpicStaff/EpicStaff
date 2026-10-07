@@ -2,7 +2,7 @@ from dataclasses import replace
 
 from django.db import transaction
 from rbac.identity.api_keys.principals import SystemServicePrincipal
-from src.shared.bench import bench_mark
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
     AgentNodeData,
     ConditionalEdgeData,
@@ -177,6 +177,9 @@ class SessionManagerService(metaclass=SingletonMeta):
             SessionPrincipal.objects.create(
                 session=session, **self._resolve_principal_fields(user, api_key)
             )
+        logger.log(
+            BENCH_LEVEL, "bench {checkpoint}", checkpoint="session_created", session_id=session.pk
+        )
         return session
 
     def create_session_data(
@@ -240,7 +243,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             user=user,
             api_key=api_key,
         )
-        bench_mark(session.pk, "session_created")
         try:
             violations = secret_declaration_validator.violations(graph_id=graph_id)
             if violations:
@@ -260,7 +262,13 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_data=session_data,
                 org_id=graph.org_id,
             )
-            bench_mark(session.pk, "published", received_n=received_n)
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="published",
+                session_id=session.pk,
+                received_n=received_n,
+            )
             required_listeners = 2
             if received_n != required_listeners:
                 logger.error("Data was sent but not received.")
