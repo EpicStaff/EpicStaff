@@ -7,20 +7,27 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "foundation",
     "litestar>=2.24.0",
     "loguru>=0.7.3",
     "miniopy-async>=1.23.5",
-    "piccolo>=1.36.0",
+    "packaging>=24.0",
+    "piccolo[postgres]>=1.36.0",
     "pydantic>=2.13.5",
     "redis>=8.1.0",
+    "unicorn>=2.1.4",
+    "uvicorn>=0.54.0",
 ]
-
-[project.scripts]
-sandbox-new = "sandbox_new:main"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true }
 
 [dependency-groups]
 dev = [
