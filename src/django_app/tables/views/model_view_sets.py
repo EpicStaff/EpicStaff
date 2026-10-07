@@ -801,7 +801,7 @@ class GraphViewSet(
             )
             .all()
         )
-        return qs.filter(org_id=self.get_active_org_id())
+        return qs.filter(org_id=self.get_active_org_id()).order_by("-id")
 
     def perform_create(self, serializer):
         org_id = self.get_active_org_id()
@@ -1007,6 +1007,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             Graph.objects.only("id", "name", "description")
             .prefetch_related("tags", "labels")
             .filter(org_id=self.get_active_org_id())
+            .order_by("-id")
         )
 
 
