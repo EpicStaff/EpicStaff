@@ -293,7 +293,7 @@ function createStartToEntryConnections(
 
 const VARIABLES_PREFIX = 'variables.';
 const VARIABLES_REGEX = /\bvariables\.([A-Za-z_][A-Za-z0-9_]*)/g;
-const BARE_IDENTIFIER_REGEX = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
+const BARE_IDENTIFIER_CHAIN_REGEX = /\b([A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z0-9_]+)*/g;
 
 /**
  * Python keywords, builtins, and CDT wrapper-injected names that should never
@@ -408,12 +408,12 @@ function extractVariableNamesFromCode(code: string): string[] {
         seen.add(match[1]);
     }
 
-    // Pass 2: bare identifiers — catches CDT expressions like `triage_result`
+    // Pass 2: bare identifiers — catches CDT expressions
     // that the backend resolves without the `variables.` prefix.
     // False positives are harmless (unused input_map entries are ignored at runtime);
     // false negatives (missing a variable) would break the subflow.
-    BARE_IDENTIFIER_REGEX.lastIndex = 0;
-    while ((match = BARE_IDENTIFIER_REGEX.exec(code)) !== null) {
+    BARE_IDENTIFIER_CHAIN_REGEX.lastIndex = 0;
+    while ((match = BARE_IDENTIFIER_CHAIN_REGEX.exec(code)) !== null) {
         const identifier = match[1];
         if (!PYTHON_EXCLUDED_IDENTIFIERS.has(identifier)) {
             seen.add(identifier);

@@ -184,9 +184,7 @@ def signature_filename(login: str, gid: int) -> str:
     return f"{login}_{gid}.json"
 
 
-def resolve_pr_authors(
-    repo: str, pr_no: int, token: str
-) -> tuple[list[dict[str, Any]], list[str]]:
+def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str, Any]], list[str]]:
     """Resolve the distinct GitHub authors of a PR's commits.
 
     Returns (authors, unresolved) where authors is a de-duplicated list of
@@ -225,9 +223,7 @@ def resolve_pr_authors(
             author = commit.get("author")
             if author is None:
                 git_author = commit["commit"]["author"]
-                unresolved.append(
-                    f"{git_author.get('name')} <{git_author.get('email')}>"
-                )
+                unresolved.append(f"{git_author.get('name')} <{git_author.get('email')}>")
                 continue
 
             if author.get("type") == "Bot":

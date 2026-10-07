@@ -564,7 +564,7 @@ class TestLLMConfigStrategy:
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o #2"
 
-    @pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
+    @pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service
     ):

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, signal } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 
 import {
@@ -19,7 +19,7 @@ import {
 export class ExtractedChunksMessageComponent {
     @Input() message!: GraphMessage;
 
-    isExpanded = true;
+    protected readonly isExpanded = signal(false);
 
     get data(): ExtractedChunksMessageData | null {
         if (this.message?.message_data?.message_type === MessageType.EXTRACTED_CHUNKS) {
@@ -79,6 +79,6 @@ export class ExtractedChunksMessageComponent {
     }
 
     toggle(): void {
-        this.isExpanded = !this.isExpanded;
+        this.isExpanded.update((expanded) => !expanded);
     }
 }

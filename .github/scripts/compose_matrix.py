@@ -82,9 +82,7 @@ def main() -> int:
         # dockerfile abs: relative to context
         dockerfile_path = Path(str(dockerfile))
         dockerfile_abs = (
-            dockerfile_path
-            if dockerfile_path.is_absolute()
-            else (context_abs / dockerfile_path)
+            dockerfile_path if dockerfile_path.is_absolute() else (context_abs / dockerfile_path)
         ).resolve()
 
         # safety: must be inside repo

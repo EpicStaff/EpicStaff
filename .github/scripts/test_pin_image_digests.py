@@ -40,6 +40,7 @@ def run_pin_script(digest_map: dict[str, str], compose_yaml: str) -> tuple[int, 
             [sys.executable, str(SCRIPT), str(digest_map_path), str(src_path), str(dst_path)],
             capture_output=True,
             text=True,
+            check=False,
         )
 
         parsed: dict = {}
@@ -58,9 +59,7 @@ services:
   webhook:
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
 """
-        exit_code, stderr, parsed = run_pin_script(
-            {"webhook": "sha256:" + "a" * 64}, compose_yaml
-        )
+        exit_code, stderr, parsed = run_pin_script({"webhook": "sha256:" + "a" * 64}, compose_yaml)
 
         self.assertEqual(exit_code, 0, msg=stderr)
         image = parsed["services"]["webhook"]["image"]
@@ -74,9 +73,7 @@ services:
   django:
     image: ghcr.io/epicstaff/django:${IMAGE_TAG:-latest}
 """
-        exit_code, stderr, parsed = run_pin_script(
-            {"django": "sha256:" + "b" * 64}, compose_yaml
-        )
+        exit_code, stderr, parsed = run_pin_script({"django": "sha256:" + "b" * 64}, compose_yaml)
 
         self.assertEqual(exit_code, 0, msg=stderr)
         self.assertEqual(

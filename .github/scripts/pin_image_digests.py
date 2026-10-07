@@ -50,7 +50,7 @@ def main() -> int:
     services = (data.get("services") or {}) if isinstance(data, dict) else {}
 
     pinned = 0
-    for name, svc in services.items():
+    for svc in services.values():
         if not isinstance(svc, dict):
             continue
 

@@ -34,9 +34,7 @@ def parse_version_from_text(text: str, source: str = "CLA.md") -> str:
 
     match = _VERSION_RE.search(first_line)
     if not match:
-        raise ValueError(
-            f"Could not find CLA version in first line of {source!r}: {first_line!r}"
-        )
+        raise ValueError(f"Could not find CLA version in first line of {source!r}: {first_line!r}")
 
     return match.group(1)
 

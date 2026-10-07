@@ -27,7 +27,7 @@ def main() -> int:
         data = yaml.load(f)
 
     services = (data.get("services") or {}) if isinstance(data, dict) else {}
-    for _, svc in services.items():
+    for svc in services.values():
         if isinstance(svc, dict):
             svc.pop("build", None)
 
