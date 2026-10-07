@@ -122,9 +122,7 @@ export class FlowsApiService {
 
     getGraphVersions(graphId: number): Observable<GraphVersionDto[]> {
         const params = new HttpParams().set('graph_id', graphId.toString());
-        return this.http
-            .get<ApiGetRequest<GraphVersionDto>>(`${this.configService.apiUrl}graph-versions/`, { params })
-            .pipe(map((response) => response.results));
+        return this.getAllFlowPages<GraphVersionDto>(`${this.configService.apiUrl}graph-versions/`, params);
     }
 
     updateGraphVersion(id: number, data: GraphVersionUpdateRequest): Observable<GraphVersionDto> {

@@ -224,4 +224,41 @@ describe('FlowsApiService', () => {
 
         expect(result).toEqual([{ id: 1 }, { id: 3 }, { id: 2 }]);
     });
+
+    describe('getGraphVersions', () => {
+        const graphVersionsUrl = '/api/graph-versions/';
+
+        it('sends graph_id on every page and keeps the server order across pages', () => {
+            let result: unknown;
+            service.getGraphVersions(2).subscribe((versions) => (result = versions));
+
+            const firstRequest = httpMock.expectOne(
+                (request) => request.url === graphVersionsUrl && !request.params.has('offset')
+            );
+            expect(firstRequest.request.params.get('graph_id')).toBe('2');
+            firstRequest.flush({
+                count: 3,
+                next: 'http://internal-host:8000/api/graph-versions/?graph_id=2&limit=2&offset=2',
+                previous: null,
+                results: [{ id: 70 }, { id: 90 }],
+            });
+
+            const secondRequest = expectPageAtOffset(2);
+            expect(secondRequest.request.url).toBe(graphVersionsUrl);
+            expect(secondRequest.request.params.get('graph_id')).toBe('2');
+            expect(secondRequest.request.params.get('limit')).toBe('2');
+            secondRequest.flush({ count: 3, next: null, previous: graphVersionsUrl, results: [{ id: 80 }] });
+
+            expect(result).toEqual([{ id: 70 }, { id: 90 }, { id: 80 }]);
+        });
+
+        it('sends only graph_id on the first request', () => {
+            service.getGraphVersions(2).subscribe();
+
+            const request = httpMock.expectOne((candidate) => candidate.url === graphVersionsUrl);
+            expect(request.request.params.keys()).toEqual(['graph_id']);
+            expect(request.request.params.get('graph_id')).toBe('2');
+            request.flush({ count: 0, next: null, previous: null, results: [] });
+        });
+    });
 });

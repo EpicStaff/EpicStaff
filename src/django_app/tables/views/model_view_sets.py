@@ -1141,7 +1141,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         qs = manager.all()
         if self.action in ("list", "all"):
             qs = qs.defer("snapshot", "dependencies")
-        return qs.filter(graph__org_id=self.get_active_org_id())
+        return qs.filter(graph__org_id=self.get_active_org_id()).order_by("-created_at", "-id")
 
     def get_serializer_class(self):
         if self.action == "create":

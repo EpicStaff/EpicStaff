@@ -24,7 +24,7 @@ import {
     SpinnerComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { filter, switchMap } from 'rxjs';
+import { filter, Subscription, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
@@ -60,6 +60,8 @@ export class VersionHistoryPanelComponent implements OnInit {
     private editingVersion: GraphVersionDto | null = null;
     private isSaving = false;
     private pendingPreviewTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Only the latest load may write the list: an older, slower load must not overwrite a newer one. */
+    private versionsLoadSubscription: Subscription | null = null;
 
     @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement>;
 
@@ -258,7 +260,8 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public loadVersions(): void {
-        this.flowApiService
+        this.versionsLoadSubscription?.unsubscribe();
+        this.versionsLoadSubscription = this.flowApiService
             .getGraphVersions(this.graphId())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
