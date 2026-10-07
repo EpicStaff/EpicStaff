@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.db import connection
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -25,7 +26,14 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
     `BuiltInRoleSeeder` is the same code `manage.py seed_builtin_roles` runs at
     container start, so tests see exactly the state in
     `rbac/access/builtin_roles.json`.
+
+    pytest-django creates test databases only when a collected test needs
+    one. A run of database-free tests alone leaves the connection on the
+    real database from `.env`, and flushing that would wipe a developer's
+    data, so the flush only ever targets a database Django created for tests.
     """
+    if not connection.settings_dict["NAME"].startswith("test_"):
+        return
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
         BuiltInRoleSeeder().seed()
