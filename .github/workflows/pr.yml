@@ -18,6 +18,7 @@ jobs:
     outputs:
       fe: ${{ steps.filter.outputs.fe }}
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
+      be_deps: ${{ steps.filter.outputs.be_deps }}
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
@@ -53,6 +54,9 @@ jobs:
           filter fe '^(frontend/|\.github/workflows/pr\.yml$|scripts/check-undeclared-imports\.mjs$|scripts/check-third-party-notices\.mjs$)'
 
           filter fe_deps '^(frontend/package\.json$|frontend/package-lock\.json$|scripts/check-third-party-notices\.mjs$)'
+
+          # pyproject.toml too: adding or removing one adds or removes a service.
+          filter be_deps '^(src/[^/]+/uv\.lock$|src/[^/]+/pyproject\.toml$|scripts/generate-python-notices\.py$)'
 
           # Wider than src/ and frontend/ on purpose: the compose matrix generator
           # in compose-build.yml also runs scripts/envtool.py and
@@ -180,6 +184,19 @@ jobs:
             echo "ERROR: Jira ticket IDs found. Explain the why in words; keep the ticket in the branch, commit and PR."
             exit 1
           fi
+
+  # Backend half of the licence attribution guard: compares the uv.lock hashes
+  # stamped in the notices header, so it needs neither venvs nor network.
+  check-backend-notices:
+    needs: changes
+    if: needs.changes.outputs.be_deps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check backend third-party notices are in sync
+        run: python3 scripts/generate-python-notices.py --check
 
   # The rbac app was extracted out of tables specifically to stop
   # rbac reaching back into tables. Two imports are structural and stay
@@ -424,7 +441,7 @@ jobs:
   # This is meant to be temporary.
 
   build:
-    needs: [changes, check-cla, check-external-urls, check-rbac-boundary, frontend-checks]
+    needs: [changes, check-cla, check-external-urls, check-rbac-boundary, check-backend-notices, frontend-checks]
     # `!cancelled() && !failure()` is mandatory, not defensive. frontend-checks can
     # now be skipped, and a skipped dependency skips its dependants by default;
     # overriding the default job condition with an explicit `if:` is the only way to
