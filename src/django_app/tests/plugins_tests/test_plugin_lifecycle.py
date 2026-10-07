@@ -20,8 +20,12 @@ from tables.models import (
     SourceCollection,
     StorageFile,
 )
+from tables.models import KeyValueNode, KeyValueTable, KeyValueTableEntry
 from tables.models.graph_models import SubGraphNode
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.secrets.secret_service import secret_service
+from rbac.models import Role, RolePermission
+from rbac.models.enums import Permission
 from tests.plugins_tests.helpers import SECRETS, plugin_url, registered_ids, upload
 
 Status = Session.SessionStatus
@@ -355,3 +359,129 @@ def test_catalog_models_are_never_linked(installed_plugin):
     assert registered_ids(installed_plugin, "llm_model") == []
     assert registered_ids(installed_plugin, "embedding_model") == []
     assert EmbeddingConfig.objects.filter(pk__in=registered_ids(installed_plugin, "embedding_config")).exists()
+
+
+# --- key-value tables --------------------------------------------------------------
+
+CHAT_ADMIN_TABLE = "chat_admin__conversations"
+
+
+@pytest.fixture
+def plugin_table(chat_admin_plugin, acme):
+    """The chat-admin plugin's table, holding two conversations."""
+    table = KeyValueTable.objects.get(org=acme, name=CHAT_ADMIN_TABLE)
+    KeyValueTableService().write(table, {"c_1": {"turns": 1}, "c_2": {"turns": 3}})
+    yield table
+
+
+@pytest.fixture
+def own_flow_using_the_table(acme, plugin_table):
+    """A flow of the org itself that reads the plugin's table."""
+    graph = Graph.objects.create(name="Conversation report", org=acme)
+    node = KeyValueNode.objects.create(
+        graph=graph,
+        node_name="Read",
+        key_value_table=plugin_table,
+        entries=[{"key": "c_1", "value": "variables.conversation"}],
+    )
+    yield graph, node
+
+
+@pytest.mark.django_db
+def test_delete_preview_counts_the_table_and_reports_the_orgs_flow_using_it(
+    chat_admin_plugin, plugin_table, own_flow_using_the_table, admin_client
+):
+    own_flow, _ = own_flow_using_the_table
+
+    body = admin_client.get(plugin_url(chat_admin_plugin, "delete-preview")).json()
+
+    assert body["resource_counts"]["key_value_table"] == 1
+    assert body["affected_resources"]["key_value_tables"] == 1
+    assert {"type": "key_value_table", "resource_id": plugin_table.pk, "name": CHAT_ADMIN_TABLE, "exists": True} in body["resources"]
+    assert {
+        "type": "key_value_table",
+        "resource_id": plugin_table.pk,
+        "name": CHAT_ADMIN_TABLE,
+        "used_by": [{"type": "flow", "resource_id": own_flow.pk, "name": "Conversation report"}],
+    } in body["external_usages"]
+
+
+@pytest.mark.django_db
+def test_the_plugins_own_flow_is_not_an_external_usage_of_its_table(
+    chat_admin_plugin, plugin_table, admin_client
+):
+    body = admin_client.get(plugin_url(chat_admin_plugin, "delete-preview")).json()
+
+    assert body["external_usages"] == []
+
+
+@pytest.mark.django_db
+def test_delete_removes_the_table_and_its_rows_and_unlinks_the_orgs_node(
+    chat_admin_plugin, plugin_table, own_flow_using_the_table, admin_client, stopped_sessions
+):
+    own_flow, own_node = own_flow_using_the_table
+
+    response = admin_client.delete(plugin_url(chat_admin_plugin))
+
+    assert response.status_code == 204, response.content
+    assert not KeyValueTable.objects.filter(pk=plugin_table.pk).exists()
+    assert not KeyValueTableEntry.objects.filter(table_id=plugin_table.pk).exists()
+    own_node.refresh_from_db()
+    assert own_node.key_value_table_id is None
+    assert Graph.objects.filter(pk=own_flow.pk).exists()
+    assert not Plugin.objects.exists()
+
+
+@pytest.mark.django_db
+def test_delete_needs_delete_on_key_value_tables(
+    chat_admin_plugin, plugin_table, acme, member_of, org_client
+):
+    role = Role.objects.create(name="Remover without tables", org=acme, is_built_in=False)
+    RolePermission.objects.create(role=role, resource_type="plugins", permissions=255)
+    for resource_type in ("flows", "agents", "llm_configs", "secrets"):
+        RolePermission.objects.create(
+            role=role, resource_type=resource_type, permissions=int(Permission.READ | Permission.DELETE)
+        )
+    client = org_client(member_of(acme, role, "remover@acme.test"), acme)
+
+    preview = client.get(plugin_url(chat_admin_plugin, "delete-preview")).json()
+    response = client.delete(plugin_url(chat_admin_plugin))
+
+    assert preview["missing_permissions"] == [{"resource_type": "key_value_tables", "action": "delete"}]
+    assert response.status_code == 403, response.content
+    assert response.json()["errors"] == [{"resource_type": "key_value_tables", "action": "delete"}]
+    assert KeyValueTable.objects.filter(pk=plugin_table.pk).exists()
+    assert plugin_table.entries.count() == 2
+    assert Plugin.objects.filter(pk=chat_admin_plugin.pk, suspended=False).exists()
+
+
+@pytest.mark.django_db
+def test_a_table_deleted_concurrently_does_not_abort_the_plugin_delete(
+    chat_admin_plugin, plugin_table, admin_client, stopped_sessions, monkeypatch
+):
+    """The table is gone by the time delete reaches it, after the registry was loaded."""
+    delete_table = KeyValueTableService.delete_table
+
+    def _deleted_meanwhile(service, table):
+        KeyValueTable.objects.filter(pk=table.pk).delete()
+        return delete_table(service, table)
+
+    monkeypatch.setattr(KeyValueTableService, "delete_table", _deleted_meanwhile)
+
+    response = admin_client.delete(plugin_url(chat_admin_plugin))
+
+    assert response.status_code == 204, response.content
+    assert not Plugin.objects.exists()
+    assert not KeyValueTable.objects.filter(pk=plugin_table.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_skips_a_table_the_org_already_deleted(
+    chat_admin_plugin, plugin_table, admin_client, stopped_sessions
+):
+    KeyValueTableService().delete_table(plugin_table)
+
+    response = admin_client.delete(plugin_url(chat_admin_plugin))
+
+    assert response.status_code == 204, response.content
+    assert not Plugin.objects.exists()

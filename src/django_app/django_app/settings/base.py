@@ -115,3 +115,8 @@ SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
 REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
 
 DJANGO_API_KEY = env.str("DJANGO_API_KEY")
+
+# Lets a plugin admin load an installed plugin's page from their own dev server on
+# localhost instead of its bundled files. A developer-machine switch: never turn it on
+# for a shared or internet-facing instance.
+PLUGINS_DEV_MODE = env.bool("PLUGINS_DEV_MODE", False)

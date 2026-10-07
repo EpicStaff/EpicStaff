@@ -1,10 +1,9 @@
 import posixpath
 from collections import Counter
 
-from tables.import_export.enums import EntityType
 from tables.import_export.services.inspect_service import InspectService
 
-from plugins.manifest import PluginPackage
+from plugins.manifest import ACCESS_ENTITY_TYPES, PluginPackage
 from plugins.resource_types import IMPORTED_ENTITIES, PluginResourceType
 from plugins.services.secret_destinations import bundle_destinations
 
@@ -41,7 +40,6 @@ def build_preview(
     if package.has_knowledge:
         warnings.append(KNOWLEDGE_WARNING)
 
-    flow_names = {flow["id"]: flow.get("name", "") for flow in package.entities(EntityType.GRAPH)}
     destinations = bundle_destinations(package)
     return {
         "plugin": {
@@ -61,7 +59,7 @@ def build_preview(
                 "alias": entry.alias,
                 "type": entry.type,
                 "ref": entry.ref,
-                "resource_name": flow_names.get(entry.ref, ""),
+                "resource_name": _bundled_name(package, entry.type, entry.ref),
                 "actions": list(entry.actions),
             }
             for entry in manifest.access
@@ -83,6 +81,16 @@ def build_preview(
         "conflicts": conflicts,
         "can_install": not missing_permissions and not conflicts,
     }
+
+
+def _bundled_name(package: PluginPackage, access_type: str, ref: int) -> str:
+    """Name of the resources.json entity an access entry points at, as it will be installed."""
+    entity_type = ACCESS_ENTITY_TYPES[access_type]
+    name_key = IMPORTED_ENTITIES[entity_type].name_key
+    for entity in package.entities(entity_type):
+        if entity["id"] == ref:
+            return entity.get(name_key) or ""
+    return ""
 
 
 def _contents(package: PluginPackage) -> list[dict]:

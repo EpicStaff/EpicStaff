@@ -14,6 +14,7 @@ from typing import Annotated, Literal
 from django.core.exceptions import ValidationError as DjangoValidationError
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from pydantic import ValidationError as PydanticValidationError
+from tables.constants.key_value_constants import MAX_TABLE_NAME_LENGTH
 from tables.constants.knowledge_constants import ALLOWED_FILE_TYPES
 from tables.import_export.constants import MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType, NodeType
@@ -30,7 +31,7 @@ from plugins.resource_types import CATALOG_TYPES, PLUGIN_OWNED_TYPES
 from plugins.services.bundle_reader import PluginBundle
 
 SUPPORTED_FORMAT_VERSIONS = frozenset({1})
-SUPPORTED_BRIDGE_VERSIONS = frozenset({1})
+SUPPORTED_BRIDGE_VERSIONS = frozenset({1, 2})
 
 MANIFEST_PATH = "plugin.json"
 RESOURCES_PATH = "resources.json"
@@ -38,22 +39,54 @@ KNOWLEDGE_FOLDER = "knowledge/"
 FILES_FOLDER = "files/"
 UI_FOLDER = "ui/"
 
-MAX_UI_ASSETS = 50
-MAX_UI_ASSET_BYTES = 5 * 1024 * 1024
+# Sized for a production build of a full framework app: lazy chunks, fonts, images.
+MAX_UI_ASSETS = 300
+MAX_UI_ASSET_BYTES = 20 * 1024 * 1024
 MAX_ICON_BYTES = 64 * 1024
 
+# The only files a page may ship, and the type each is served with. Frameworks emit
+# .mjs chunks, .map source maps, web fonts and a licence .txt next to the bundle.
 UI_CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".txt": "text/plain; charset=utf-8",
     ".svg": "image/svg+xml",
     ".png": "image/png",
-    ".json": "application/json",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
 }
 ICON_CONTENT_TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
-ACCESS_ACTIONS = ("run", "sessions.read", "sessions.stop")
+# What a page may do with each kind of resource an `access[]` entry names.
+ACCESS_ACTIONS_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "flow": ("run", "sessions.read", "sessions.stop"),
+    "key_value_table": ("read",),
+}
+# The resources.json entity an entry's `ref` points at.
+ACCESS_ENTITY_TYPES: dict[str, EntityType] = {
+    "flow": EntityType.GRAPH,
+    "key_value_table": EntityType.KEY_VALUE_TABLE,
+}
+# The first bridge version whose methods can use each access type. A v1 page has no
+# method that reads a table, so granting it one would be a grant nothing can use.
+ACCESS_MIN_BRIDGE_VERSION: dict[str, int] = {
+    "flow": 1,
+    "key_value_table": 2,
+}
+AccessType = Literal["flow", "key_value_table"]
+AccessAction = Literal["run", "sessions.read", "sessions.stop", "read"]
 
 # The (entity, field) pairs a secret slot may be bound to. Each is an FK to Secret,
 # so binding never depends on a secret's name.
@@ -125,14 +158,21 @@ class StorageFileEntry(_ManifestModel):
 
 class AccessEntry(_ManifestModel):
     alias: Alias
-    type: Literal["flow"]
+    type: AccessType
     ref: int
-    actions: list[Literal["run", "sessions.read", "sessions.stop"]] = Field(min_length=1)
+    actions: list[AccessAction] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def _unique_actions(self):
+    def _valid_actions(self):
         if len(set(self.actions)) != len(self.actions):
             raise ValueError("actions must not repeat")
+        allowed = ACCESS_ACTIONS_BY_TYPE[self.type]
+        for action in self.actions:
+            if action not in allowed:
+                raise ValueError(
+                    f"action '{action}' does not apply to a {self.type} "
+                    f"(allowed: {', '.join(allowed)})"
+                )
         return self
 
 
@@ -179,6 +219,13 @@ class PluginManifest(_ManifestModel):
         for binding in self.secret_bindings:
             if binding.slot not in declared:
                 raise ValueError(f"secret binding uses undeclared slot '{binding.slot}'")
+        for entry in self.access:
+            needed = ACCESS_MIN_BRIDGE_VERSION[entry.type]
+            if self.bridge < needed:
+                raise ValueError(
+                    f"access '{entry.alias}' is a {entry.type}, which needs bridge {needed} "
+                    f"or later (this plugin declares bridge {self.bridge})"
+                )
         return self
 
 
@@ -195,6 +242,15 @@ def slot_secret_name(plugin_id: str, slot: str) -> str:
     return f"{plugin_id.upper().replace('-', '_')}__{slot}"
 
 
+def key_value_table_name(plugin_id: str, name: str) -> str:
+    """Name a bundled key-value table is installed under: `<slug>__<name>`.
+
+    The prefix keeps a plugin's table apart from the org's own tables, whose names
+    are unique per org regardless of case.
+    """
+    return f"{plugin_id.replace('-', '_')}__{name}"
+
+
 @dataclass(frozen=True)
 class UiAsset:
     # Relative to the bundle's ui/ folder.
@@ -208,7 +264,8 @@ class PluginPackage:
     """A bundle that passed every rule, ready to preview or install."""
 
     manifest: PluginManifest
-    # resources.json, converted to the current import format version.
+    # resources.json, converted to the current import format version, with every
+    # key-value table already renamed to its installed `<slug>__<name>`.
     resources: dict
     bundle: PluginBundle
     icon_data_url: str
@@ -245,6 +302,8 @@ def load_package(bundle: PluginBundle) -> PluginPackage:
     errors += _check_resource_types(resources)
     errors += _check_refs(manifest, resources)
     errors += _check_flows(resources)
+    errors += _check_key_value_tables(manifest, resources)
+    errors += _check_key_value_nodes(resources)
     errors += _check_name_bound_secrets(resources)
     errors += _check_knowledge(manifest, bundle)
     errors += _check_storage_files(manifest, bundle)
@@ -257,7 +316,7 @@ def load_package(bundle: PluginBundle) -> PluginPackage:
 
     return PluginPackage(
         manifest=manifest,
-        resources=resources,
+        resources=_with_installed_table_names(manifest.id, resources),
         bundle=bundle,
         icon_data_url=icon_data_url,
         ui_entry=ui_entry,
@@ -394,7 +453,7 @@ def _check_refs(manifest: PluginManifest, resources: dict) -> list[dict]:
                 (f"storage_files.{index}.attach_to_flows.{position}", EntityType.GRAPH, flow)
             )
     for index, entry in enumerate(manifest.access):
-        references.append((f"access.{index}.ref", EntityType.GRAPH, entry.ref))
+        references.append((f"access.{index}.ref", ACCESS_ENTITY_TYPES[entry.type], entry.ref))
 
     return [
         {
@@ -420,6 +479,86 @@ def _check_flows(resources: dict) -> list[dict]:
                     }
                 )
     return errors
+
+
+def _check_key_value_tables(manifest: PluginManifest, resources: dict) -> list[dict]:
+    """Every bundled table needs a name that is still valid, and unique, once prefixed."""
+    tables = resources.get(EntityType.KEY_VALUE_TABLE)
+    if not isinstance(tables, list):
+        # _check_resource_types already reports a malformed entity list.
+        return []
+    errors = []
+    seen: set[str] = set()
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        loc = f"{RESOURCES_PATH}.{EntityType.KEY_VALUE_TABLE}.{table.get('id')}"
+        name = table.get("name")
+        if not isinstance(name, str) or not name.strip():
+            errors.append({"loc": loc, "message": "A key-value table needs a name."})
+            continue
+        installed_name = key_value_table_name(manifest.id, name)
+        if len(installed_name) > MAX_TABLE_NAME_LENGTH:
+            errors.append(
+                {
+                    "loc": loc,
+                    "message": f"The key-value table name '{installed_name}' is longer than "
+                    f"{MAX_TABLE_NAME_LENGTH} characters.",
+                }
+            )
+        elif name.lower() in seen:
+            errors.append({"loc": loc, "message": f"Two key-value tables are named '{name}'."})
+        seen.add(name.lower())
+    return errors
+
+
+def _check_key_value_nodes(resources: dict) -> list[dict]:
+    """A Key-Value node may use only a table the plugin ships.
+
+    The importer re-binds a node to a table by name inside the installing org, so a
+    node naming a table the bundle does not ship would read or write the org's own
+    table of that name and could hand its rows to the plugin.
+    """
+    shipped = _ids(resources, EntityType.KEY_VALUE_TABLE)
+    errors = []
+    for flow in resources.get(EntityType.GRAPH) or []:
+        for node in flow.get("nodes") or []:
+            if node.get("node_type") != NodeType.KEY_VALUE_NODE:
+                continue
+            table_id = node.get("key_value_table")
+            if table_id is None and not node.get("key_value_table_name"):
+                continue
+            if not isinstance(table_id, int) or table_id not in shipped:
+                errors.append(
+                    {
+                        "loc": f"{RESOURCES_PATH}.Flow.{flow.get('id')}.{node.get('node_name') or node.get('id')}",
+                        "message": "A Key-Value node may only use a key-value table the plugin "
+                        "ships in resources.json.",
+                    }
+                )
+    return errors
+
+
+def _with_installed_table_names(plugin_id: str, resources: dict) -> dict:
+    """Rename the bundled tables, and the Key-Value nodes' references to them, to their installed names.
+
+    Done once here, so preview, conflict checks and the install all see the same name.
+    `resources` is the package's own converted copy, so it is changed in place.
+    """
+    names_by_id = {}
+    for table in resources.get(EntityType.KEY_VALUE_TABLE) or []:
+        table["name"] = key_value_table_name(plugin_id, table["name"])
+        names_by_id[table["id"]] = table["name"]
+    if not names_by_id:
+        return resources
+    for flow in resources.get(EntityType.GRAPH) or []:
+        for node in flow.get("nodes") or []:
+            if (
+                node.get("node_type") == NodeType.KEY_VALUE_NODE
+                and node.get("key_value_table") in names_by_id
+            ):
+                node["key_value_table_name"] = names_by_id[node["key_value_table"]]
+    return resources
 
 
 def _check_name_bound_secrets(resources: dict) -> list[dict]:

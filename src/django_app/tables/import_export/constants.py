@@ -33,6 +33,8 @@ DEPENDENCY_ORDER = (
     EntityType.AGENT_DEFINITION,
     EntityType.CREW,
     EntityType.WEBHOOK_TRIGGER,
+    # Before GRAPH: a Key-Value node binds the table this import created or reused.
+    EntityType.KEY_VALUE_TABLE,
     EntityType.GRAPH,
     EntityType.START_NODE,
     EntityType.CREW_NODE,

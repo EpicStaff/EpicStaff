@@ -13,9 +13,11 @@ from tables.validators.file_upload_validator import FileValidator
 
 from plugins.exceptions import InvalidPluginError
 
-MAX_BUNDLE_BYTES = 20 * 1024 * 1024
-MAX_BUNDLE_ENTRIES = 200
-MAX_BUNDLE_UNPACKED_BYTES = 50 * 1024 * 1024
+# Room for a full framework app (up to 300 UI files, 20 MB) next to the plugin's
+# knowledge and files; see MAX_UI_ASSETS in plugins.manifest.
+MAX_BUNDLE_BYTES = 30 * 1024 * 1024
+MAX_BUNDLE_ENTRIES = 400
+MAX_BUNDLE_UNPACKED_BYTES = 60 * 1024 * 1024
 
 # Junk an OS adds when zipping a folder; dropped instead of rejected.
 _IGNORED_SEGMENTS = frozenset({"__MACOSX", ".DS_Store"})

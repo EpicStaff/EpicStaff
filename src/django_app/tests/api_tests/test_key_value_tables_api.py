@@ -482,6 +482,32 @@ def test_entry_filter_by_foreign_table_matches_missing_table(admin_client, table
 
 
 @pytest.mark.django_db
+def test_entry_filter_by_exact_key_finds_only_that_entry(admin_client, org_a, table_a):
+    other_table = KeyValueTable.objects.create(org=org_a, name="Other")
+    for key in ("c_1", "c_10", "C_1", "xc_1"):
+        KeyValueTableEntry.objects.create(table=table_a, key=key, value=key)
+    KeyValueTableEntry.objects.create(table=other_table, key="c_1", value="other")
+
+    response = admin_client.get(ENTRIES_URL, {"table": table_a.id, "key": "c_1", "limit": 1})
+
+    assert response.status_code == 200, response.content
+    assert response.data["count"] == 1
+    [row] = response.data["results"]
+    assert (row["key"], row["table"], row["value_preview"]) == ("c_1", table_a.id, '"c_1"')
+
+
+@pytest.mark.django_db
+def test_entry_filter_by_exact_key_in_a_foreign_table_is_empty(admin_client, table_b):
+    KeyValueTableEntry.objects.create(table=table_b, key="k", value=1)
+
+    response = admin_client.get(ENTRIES_URL, {"table": table_b.id, "key": "k"})
+    without_table = admin_client.get(ENTRIES_URL, {"key": "k"})
+
+    assert response.status_code == without_table.status_code == 200
+    assert _results(response) == _results(without_table) == []
+
+
+@pytest.mark.django_db
 def test_entry_search_and_pagination(admin_client, table_a):
     for index in range(3):
         KeyValueTableEntry.objects.create(table=table_a, key=f"order_{index}", value=index)

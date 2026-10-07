@@ -84,6 +84,15 @@ class GraphStrategy(EntityImportExportStrategy):
         ) | set(instance.task_node_list.values_list("agent_definition_id", flat=True))
         deps[EntityType.AGENT_DEFINITION].discard(None)
 
+        # Only the flow's own org's tables: a node never binds another org's table, and
+        # exporting one would carry its name out of that org.
+        deps[EntityType.KEY_VALUE_TABLE] = set(
+            instance.key_value_node_list.filter(
+                key_value_table__org_id=instance.org_id
+            ).values_list("key_value_table_id", flat=True)
+        )
+        deps[EntityType.KEY_VALUE_TABLE].discard(None)
+
         deps[EntityType.SURFACE] = set(
             Surface.objects.filter(agent_nodes__graph=instance).values_list("id", flat=True)
         ) | set(Surface.objects.filter(task_nodes__graph=instance).values_list("id", flat=True))

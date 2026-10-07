@@ -1,4 +1,4 @@
-"""Signed, short-lived tokens that let a sandboxed plugin page load its own files.
+"""Signed, expiring tokens that let a sandboxed plugin page load its own files.
 
 The page runs in an opaque-origin iframe with no credentials, so the token in its
 URL is the only thing that authorizes its asset requests. It names the plugin,
@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from django.core import signing
 
 SALT = "plugins.ui"
-MAX_AGE_SECONDS = 600
+# The page loads lazy chunks long after it opened, all under the token it was given,
+# so the token lives as long as a page is reasonably kept open.
+MAX_AGE_SECONDS = 12 * 60 * 60
 
 
 @dataclass(frozen=True)

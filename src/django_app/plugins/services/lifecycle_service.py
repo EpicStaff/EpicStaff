@@ -1,6 +1,7 @@
 """Suspend, resume and delete installed plugins."""
 
 from collections import Counter, defaultdict
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 
@@ -14,7 +15,9 @@ from rbac.access.resolver import PermissionResolver
 from rbac.governance.delete_collector import build_affected_resources, summarize
 from rbac.models.enums import Permission
 from redis import RedisError
+from tables.exceptions import KeyValueTableNotFoundError
 from tables.models import EmbeddingConfig, LLMConfig, Session, StorageFile
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
@@ -41,6 +44,7 @@ LIVE_SESSION_STATUSES = (
 # no step deletes something a later step still needs to find by its own path.
 DELETE_ORDER: tuple[PluginResourceType, ...] = (
     _T.FLOW,
+    _T.KEY_VALUE_TABLE,
     _T.AGENT_DEFINITION,
     _T.SURFACE,
     _T.PYTHON_CODE_TOOL,
@@ -78,6 +82,7 @@ class _ExternalUsage:
 # kind of reference, add an entry; test_plugin_lifecycle checks every field exists.
 EXTERNAL_USAGES: tuple[_ExternalUsage, ...] = (
     _ExternalUsage(_T.FLOW, "tables.SubGraphNode", "subgraph", _T.FLOW, "graph"),
+    _ExternalUsage(_T.KEY_VALUE_TABLE, "tables.KeyValueNode", "key_value_table", _T.FLOW, "graph"),
     _ExternalUsage(_T.AGENT_DEFINITION, "tables.TaskNode", "agent_definition", _T.FLOW, "graph"),
     _ExternalUsage(_T.AGENT_DEFINITION, "tables.AgentNode", "agent_definition", _T.FLOW, "graph"),
     _ExternalUsage(
@@ -203,6 +208,13 @@ class PluginLifecycleService:
                 elif resource_type == _T.STORAGE_FILE:
                     storage_keys.append(storage_key(plugin.org_id, instance.path))
                     StorageFileSync.on_delete(plugin.org_id, instance.path)
+                elif resource_type == _T.KEY_VALUE_TABLE:
+                    # Takes the table's row lock first, like a table delete from its own
+                    # page, so a flow writing entries right now cannot deadlock with it.
+                    # Its rows go with it; the org's own nodes using it are unlinked.
+                    # Not found means it was deleted meanwhile, e.g. from its own page.
+                    with suppress(KeyValueTableNotFoundError):
+                        KeyValueTableService().delete_table(instance)
                 elif _still_exists(instance):
                     # An earlier step may have cascaded to it, e.g. an agent's owned surface.
                     instance.delete()

@@ -12,6 +12,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
+    CharFilter,
     DjangoFilterBackend,
     FilterSet,
     NumberFilter,
@@ -2578,6 +2579,8 @@ class KeyValueTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSe
         # Plain number, not ModelChoiceFilter: that validates against every org's
         # tables, so a foreign id (200, empty) would be distinguishable from a missing one (400).
         table = NumberFilter(field_name="table_id")
+        # Exact and case-sensitive, unlike `?search=`: finds the one entry stored under a key.
+        key = CharFilter(field_name="key", lookup_expr="exact")
 
     filterset_class = KeyValueTableEntryFilter
 

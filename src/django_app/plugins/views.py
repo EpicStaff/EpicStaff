@@ -11,11 +11,13 @@ from rest_framework.response import Response
 
 from plugins.models import Plugin
 from plugins.serializers import (
+    PluginDevUiRequestSerializer,
     PluginInspectRequestSerializer,
     PluginInstallRequestSerializer,
     PluginSecretsRequestSerializer,
 )
 from plugins.services import knowledge_service
+from plugins.services.dev_ui_service import PluginDevUiService
 from plugins.services.install_service import PluginInstallService
 from plugins.services.lifecycle_service import PluginLifecycleService
 from plugins.services.presenter import PluginPresenter
@@ -46,6 +48,7 @@ class PluginViewSet(
         "delete_preview": Permission.DELETE,
         "ui_session": Permission.USE,
         "nav": Permission.USE,
+        "dev_ui": Permission.UPDATE,
     }
     queryset = Plugin.objects.order_by("name", "id")
     # An org has few plugins and the navigation needs all of them at once.
@@ -157,8 +160,26 @@ class PluginViewSet(
 
     @action(detail=True, methods=["post"], url_path="ui-session")
     def ui_session(self, request, pk=None):
-        """A short-lived URL of the plugin's page for the sandboxed iframe."""
+        """The URL of the plugin's page for the sandboxed iframe, with an expiring token."""
         return Response(PluginUiService().open_session(self.get_object(), user=request.user))
+
+    @action(detail=True, methods=["post", "delete"], url_path="dev-ui")
+    def dev_ui(self, request, pk=None):
+        """Load the plugin's page from the caller's localhost dev server (POST), or stop (DELETE).
+
+        Only the caller gets the dev page, and only while the instance runs in plugin dev mode.
+        """
+        plugin = self.get_object()
+        dev_ui = PluginDevUiService()
+        if request.method == "DELETE":
+            return self._detail(dev_ui.clear(plugin))
+        # Before the body: with dev mode off the answer is 409 whatever was sent.
+        dev_ui.require_enabled()
+        serializer = PluginDevUiRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self._detail(
+            dev_ui.set_url(plugin, serializer.validated_data["url"], user=request.user)
+        )
 
     def _detail(self, plugin: Plugin) -> Response:
         knowledge_service.refresh_states([plugin])

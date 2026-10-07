@@ -1,8 +1,8 @@
 """Refuse to run anything a suspended plugin installed.
 
-Hooked into the three places every run passes through: starting a session (any
-trigger), building an agent definition for a node payload, and building a tool.
-Each check costs one EXISTS query when no plugin is suspended anywhere.
+Hooked into the places every run passes through: starting a session (any trigger),
+building an agent definition for a node payload, building a tool, and building a
+Key-Value node. Each check costs one EXISTS query when no plugin is suspended anywhere.
 """
 
 from collections.abc import Iterable
@@ -39,6 +39,15 @@ class PluginGuard:
         """Raises: PluginSuspendedError: the tool belongs to a suspended plugin."""
         if _any_suspended():
             self._check(resource_type, [tool_id])
+
+    def check_key_value_table(self, table_id: int) -> None:
+        """Refuse an org flow whose Key-Value node uses a suspended plugin's table.
+
+        Raises:
+            PluginSuspendedError: the table belongs to a suspended plugin.
+        """
+        if _any_suspended():
+            self._check(PluginResourceType.KEY_VALUE_TABLE, [table_id])
 
     def _check(self, resource_type: PluginResourceType, object_ids: Iterable[int]) -> None:
         suspended = (

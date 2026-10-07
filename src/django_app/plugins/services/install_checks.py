@@ -1,8 +1,10 @@
 """Checks an install must pass before it writes anything, shared by preview and install."""
 
 from rbac.access.effective import EffectivePermissions
-from rbac.models.enums import Permission
-from tables.models import Secret, StorageFile
+from rbac.models.enums import Permission, ResourceType
+from tables.import_export.enums import EntityType, NodeType
+from tables.models import KeyValueTable, Secret, StorageFile
+from tables.services.key_value_table_service import MODE_PERMISSIONS
 
 from plugins.exceptions import InvalidPluginSecretsError, PluginAlreadyInstalledError
 from plugins.manifest import PluginPackage
@@ -45,14 +47,48 @@ def missing_permissions(package: PluginPackage, effective: EffectivePermissions)
         contained.append(PluginResourceType.SOURCE_COLLECTION)
     if package.manifest.storage_files:
         contained.append(PluginResourceType.STORAGE_FILE)
-    return missing_permissions_on(contained, Permission.CREATE, effective)
+    missing = missing_permissions_on(contained, Permission.CREATE, effective)
+    missing += [
+        item
+        for item in _missing_key_value_node_permissions(package, effective)
+        if item not in missing
+    ]
+    return sorted(
+        missing, key=lambda item: (item["resource_type"], int(Permission[item["action"].upper()]))
+    )
+
+
+def _missing_key_value_node_permissions(
+    package: PluginPackage, effective: EffectivePermissions
+) -> list[dict]:
+    """The key_value_tables permissions a bundled Key-Value node needs to bind its table.
+
+    The importer binds a node's table only for an installer holding every permission
+    of the node's mode, and leaves it unbound otherwise. A plugin flow with an unbound
+    node fails on every run, so the install is refused up front instead.
+    """
+    needed: set[Permission] = set()
+    for flow in package.entities(EntityType.GRAPH):
+        for node in flow.get("nodes") or []:
+            if (
+                node.get("node_type") == NodeType.KEY_VALUE_NODE
+                and node.get("key_value_table") is not None
+            ):
+                # An unknown mode fails the import's own validation later.
+                needed.update(MODE_PERMISSIONS.get(node.get("mode", "read"), ()))
+    return [
+        {"resource_type": ResourceType.KEY_VALUE_TABLES.value, "action": permission.name.lower()}
+        for permission in sorted(needed)
+        if not effective.can(ResourceType.KEY_VALUE_TABLES, permission)
+    ]
 
 
 def find_conflicts(package: PluginPackage, org_id: int) -> list[dict]:
     """Org rows already holding a name the install would create.
 
-    Secrets are unique per org by name and storage files by path; overwriting
-    either would hand the org's own data to the plugin.
+    Secrets are unique per org by name, key-value tables by name regardless of
+    case, and storage files by path; overwriting or reusing any of them would hand
+    the org's own data to the plugin.
     """
     secret_names = [package.secret_name(slot.name) for slot in package.manifest.secret_slots]
     taken_secrets = set(
@@ -64,15 +100,38 @@ def find_conflicts(package: PluginPackage, org_id: int) -> list[dict]:
             "path", flat=True
         )
     )
-    return [
-        {"type": "secret", "name": name, "message": f"A secret named '{name}' already exists."}
-        for name in secret_names
-        if name in taken_secrets
-    ] + [
-        {"type": "storage_file", "name": path, "message": f"A file already exists at '{path}'."}
-        for path in storage_paths
-        if path in taken_paths
+    # Already `<slug>__<name>`. One query per table: a plugin ships a handful, and
+    # iexact here is exactly the rule the table's unique constraint enforces.
+    table_names = [table["name"] for table in package.entities(EntityType.KEY_VALUE_TABLE)]
+    taken_tables = [
+        name
+        for name in table_names
+        if KeyValueTable.objects.filter(org_id=org_id, name__iexact=name).exists()
     ]
+    return (
+        [
+            {"type": "secret", "name": name, "message": f"A secret named '{name}' already exists."}
+            for name in secret_names
+            if name in taken_secrets
+        ]
+        + [
+            {
+                "type": "key_value_table",
+                "name": name,
+                "message": f"A key-value table named '{name}' already exists.",
+            }
+            for name in taken_tables
+        ]
+        + [
+            {
+                "type": "storage_file",
+                "name": path,
+                "message": f"A file already exists at '{path}'.",
+            }
+            for path in storage_paths
+            if path in taken_paths
+        ]
+    )
 
 
 def check_secret_values(declared: list[str], secrets: dict, *, require_every_slot: bool) -> None:

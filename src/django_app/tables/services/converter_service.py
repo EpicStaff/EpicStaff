@@ -858,6 +858,8 @@ class ConverterService(metaclass=SingletonMeta):
         key_value_node: KeyValueNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
     ) -> KeyValueNodeData:
+        if key_value_node.key_value_table_id is not None:
+            plugin_guard.check_key_value_table(key_value_node.key_value_table_id)
         return KeyValueNodeData(
             node_name=resolver(key_value_node.id),
             key_value_table_id=key_value_node.key_value_table_id,

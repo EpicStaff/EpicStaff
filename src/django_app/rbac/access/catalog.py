@@ -313,6 +313,9 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
             ("llm_configs", "create"),
             ("secrets", "create"),
             ("webhooks", "create"),
+            ("key_value_tables", "create"),
+            # A bundled Key-Value node that writes binds its table only with update too.
+            ("key_value_tables", "update"),
         ),
         "update": (("plugins", "read"),),
         # Uninstalling removes every resource the plugin installed, and the
@@ -328,6 +331,7 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
             ("llm_configs", "delete"),
             ("secrets", "delete"),
             ("webhooks", "delete"),
+            ("key_value_tables", "delete"),
         ),
         "use": (("plugins", "read"),),
     },

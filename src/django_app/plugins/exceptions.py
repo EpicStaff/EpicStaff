@@ -120,3 +120,20 @@ class PluginNotRetryableError(CustomAPIExeption):
     status_code = 409
     default_detail = "Only a plugin that needs attention can be retried."
     default_code = "plugin_not_retryable"
+
+
+class PluginDevModeDisabledError(CustomAPIExeption):
+    """The instance does not run in plugin dev mode (settings.PLUGINS_DEV_MODE is off)."""
+
+    status_code = 409
+    default_detail = "Plugin dev mode is off on this EpicStaff instance."
+    default_code = "plugin_dev_mode_disabled"
+
+
+class InvalidPluginDevUiUrlError(CustomAPIExeption):
+    status_code = 400
+    default_detail = (
+        "The dev server URL must be a plain http:// URL on localhost or 127.0.0.1, "
+        "with an optional port and path and no query or fragment."
+    )
+    default_code = "invalid"

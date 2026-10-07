@@ -28,6 +28,7 @@ class TablesConfig(AppConfig):
             agent_definition,
             configs,
             graph,
+            key_value_table,
             label,
             llm_models,
             mcp_tools,
@@ -123,6 +124,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(session.SessionStrategy())
         entity_registry.register(label.LabelStrategy())
         entity_registry.register(webhook.WebhookTriggerStrategy())
+        entity_registry.register(key_value_table.KeyValueTableStrategy())
         entity_registry.register(tags.AgentTagStrategy())
         entity_registry.register(tags.GraphTagStrategy())
         entity_registry.register(tags.LLMConfigTagStrategy())

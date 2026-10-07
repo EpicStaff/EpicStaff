@@ -494,7 +494,7 @@ MANIFEST_RULES = [
     ("bad version", {"manifest_changes": {"version": "latest"}}, "String should match pattern"),
     ("bad slot name", {"manifest_changes": {"secret_slots": [{"name": "openai-key"}], "secret_bindings": []}}, "String should match pattern"),
     ("unsupported format", {"manifest_changes": {"format_version": 2}}, "format_version 2 is not supported"),
-    ("unsupported bridge", {"manifest_changes": {"bridge": 2}}, "bridge 2 is not supported"),
+    ("unsupported bridge", {"manifest_changes": {"bridge": 3}}, "bridge 3 is not supported"),
     (
         "binding to an undeclared slot",
         {"manifest_changes": {"secret_bindings": [{"entity": "LLMConfig", "ref": 1, "field": "api_key_secret", "slot": "NOPE"}]}},
@@ -516,12 +516,12 @@ MANIFEST_RULES = [
     (
         "action outside the allowlist",
         {"manifest_changes": {"access": [{"alias": "chat", "type": "flow", "ref": 1, "actions": ["sessions.delete"]}]}},
-        "Input should be 'run', 'sessions.read' or 'sessions.stop'",
+        "Input should be 'run', 'sessions.read', 'sessions.stop' or 'read'",
     ),
     (
         "access to something other than a flow",
         {"manifest_changes": {"access": [{"alias": "chat", "type": "agent", "ref": 1, "actions": ["run"]}]}},
-        "Input should be 'flow'",
+        "Input should be 'flow' or 'key_value_table'",
     ),
     (
         "ref missing from resources.json",
@@ -627,6 +627,72 @@ def test_ui_file_count_cap_is_enforced(monkeypatch):
         load_package(read_bundle(upload(build_sample_zip())))
 
     assert any("more than 1 files" in error["message"] for error in caught.value.errors)
+
+
+def _with_ui_files(count: int) -> dict[str, bytes]:
+    """The sample with extra one-byte UI files, so ui/ holds `count` files."""
+    files = sample_files()
+    existing = sum(1 for path in files if path.startswith("ui/"))
+    files.update({f"ui/chunk-{index}.js": b"x" for index in range(count - existing)})
+    return files
+
+
+def test_ui_may_hold_300_files():
+    package = load_package(read_bundle(upload(build_zip(_with_ui_files(300)))))
+
+    assert len(package.ui_assets) == 300
+
+
+def test_ui_may_not_hold_301_files():
+    with pytest.raises(InvalidPluginError) as caught:
+        load_package(read_bundle(upload(build_zip(_with_ui_files(301)))))
+
+    assert {"loc": "ui/", "message": "ui/ holds more than 300 files."} in caught.value.errors
+
+
+@pytest.mark.parametrize("extra, valid", [(0, True), (1, False)], ids=["20-mb", "20-mb-plus-1"])
+def test_ui_may_hold_20_mb(extra, valid):
+    files = sample_files()
+    used = sum(len(content) for path, content in files.items() if path.startswith("ui/"))
+    files["ui/vendor.js"] = b"x" * (20 * 1024 * 1024 - used + extra)
+    content = build_zip(files)
+
+    if valid:
+        load_package(read_bundle(upload(content)))
+    else:
+        with pytest.raises(InvalidPluginError) as caught:
+            load_package(read_bundle(upload(content)))
+        assert {"loc": "ui/", "message": "ui/ is larger than 20 MB."} in caught.value.errors
+
+
+def test_bundle_caps_leave_room_for_a_framework_build():
+    assert bundle_reader.MAX_BUNDLE_BYTES == 30 * 1024 * 1024
+    assert bundle_reader.MAX_BUNDLE_ENTRIES == 400
+    assert bundle_reader.MAX_BUNDLE_UNPACKED_BYTES == 60 * 1024 * 1024
+
+
+def test_a_bundle_of_350_entries_is_read():
+    files = _with_ui_files(300)
+    files.update({f"files/note-{index}.md": b"x" for index in range(350 - len(files))})
+
+    assert len(read_bundle(upload(build_zip(files))).files) == 350
+
+
+@pytest.mark.parametrize(
+    "path, content_type",
+    [
+        ("ui/chunk-A1.mjs", "text/javascript; charset=utf-8"),
+        ("ui/media/inter.woff2", "font/woff2"),
+        ("ui/main.js.map", "application/json"),
+        ("ui/3rdpartylicenses.txt", "text/plain; charset=utf-8"),
+        ("ui/favicon.ico", "image/x-icon"),
+    ],
+)
+def test_framework_build_files_are_accepted_with_their_type(path, content_type):
+    package = load_package(read_bundle(upload(build_sample_zip(replace={path: b"x"}))))
+
+    [asset] = [asset for asset in package.ui_assets if asset.path == path.removeprefix("ui/")]
+    assert asset.content_type == content_type
 
 
 def test_every_problem_is_reported_at_once():

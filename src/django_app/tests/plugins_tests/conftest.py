@@ -1,6 +1,7 @@
 import pytest
+from plugins.management.commands.plugin_export_resources import build_chat_admin_resources
 from plugins.models import Plugin
-from plugins.samples.zip_builder import build_sample_zip
+from plugins.samples.zip_builder import build_sample_zip, build_zip
 from plugins.services import install_service, lifecycle_service
 from plugins.services.install_service import PluginInstallService
 from rbac.models import OrganizationUser
@@ -8,7 +9,12 @@ from tables.clients import KnowledgeClient
 from tables.models import EmbeddingModel, LLMModel, Provider
 from tables.services.session_manager_service import SessionManagerService
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.plugins_tests.helpers import SECRETS, upload
+from tests.plugins_tests.helpers import (
+    SECRETS,
+    chat_admin_files,
+    chat_admin_manifest,
+    upload,
+)
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 
 
@@ -66,6 +72,30 @@ def member_of(django_user_model):
 @pytest.fixture
 def sample_zip():
     yield build_sample_zip()
+
+
+@pytest.fixture
+def chat_admin_bundle(openai_catalog):
+    """The chat-admin sample as its export command builds it: (resources.json, plugin.json, refs).
+
+    The command's rows live in a scratch org of their own, never in acme or beta.
+    """
+    resources, refs = build_chat_admin_resources()
+    yield resources, chat_admin_manifest(refs), refs
+
+
+@pytest.fixture
+def chat_admin_zip(chat_admin_bundle):
+    resources, manifest, _ = chat_admin_bundle
+    yield build_zip(chat_admin_files(resources, manifest))
+
+
+@pytest.fixture
+def chat_admin_plugin(admin_acme, acme, chat_admin_zip):
+    """The chat-admin sample installed in Acme by its Org Admin; it has no knowledge, so it is ready."""
+    yield PluginInstallService().install(
+        upload(chat_admin_zip, "chat-admin.zip"), secrets=SECRETS, user=admin_acme, org_id=acme.pk
+    )
 
 
 

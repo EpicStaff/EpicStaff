@@ -139,6 +139,8 @@ LIFECYCLE_ACTIONS = [
     ("get", "delete-preview/"),
     ("delete", ""),
     ("post", "ui-session/"),
+    ("post", "dev-ui/"),
+    ("delete", "dev-ui/"),
 ]
 
 

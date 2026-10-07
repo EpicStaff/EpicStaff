@@ -1,7 +1,9 @@
 from collections import Counter, defaultdict
 
+from django.conf import settings
+
 from plugins.models import Plugin, PluginResource
-from plugins.resource_types import RESOURCE_MODELS, PluginResourceType
+from plugins.resource_types import ACCESS_RESOURCE_TYPES, RESOURCE_MODELS, PluginResourceType
 from plugins.services.secret_destinations import installed_destinations
 
 
@@ -68,7 +70,7 @@ class PluginPresenter:
 
         access = []
         for entry in plugin.access:
-            resource_id, resource_name = linked(PluginResourceType.FLOW, entry["ref"])
+            resource_id, resource_name = linked(ACCESS_RESOURCE_TYPES[entry["type"]], entry["ref"])
             access.append(
                 {
                     "alias": entry["alias"],
@@ -111,6 +113,9 @@ class PluginPresenter:
             "access": access,
             "secret_slots": secret_slots,
             "contents": dict(Counter(resource.resource_type for resource in resources)),
+            "dev_mode_available": settings.PLUGINS_DEV_MODE,
+            "dev_ui_url": plugin.dev_ui_url or None,
+            "dev_ui_user": plugin.dev_ui_user_id,
             "created_by": plugin.created_by_id,
             "created_at": plugin.created_at,
             "updated_at": plugin.updated_at,

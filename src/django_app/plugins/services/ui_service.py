@@ -13,6 +13,7 @@ from plugins.exceptions import PluginHasNoUiError, PluginNotReadyError, PluginSu
 from plugins.manifest import UI_CONTENT_TYPES
 from plugins.models import Plugin, PluginAsset
 from plugins.services import knowledge_service, ui_token
+from plugins.services.dev_ui_service import PluginDevUiService
 from plugins.services.presenter import PluginPresenter
 
 UI_URL_PREFIX = "/api/plugin-ui/"
@@ -30,6 +31,8 @@ class PluginUiService:
     def open_session(self, plugin: Plugin, *, user) -> dict:
         """A page URL for `user`, carrying a token valid for `ui_token.MAX_AGE_SECONDS`.
 
+        In plugin dev mode, the admin who set a dev URL gets that URL instead, with
+        no token (`dev_mode: true`); everyone else still gets the installed page.
         The caller has already checked `plugins:use` in the plugin's org.
 
         Raises:
@@ -44,14 +47,23 @@ class PluginUiService:
         if plugin.state != Plugin.State.READY:
             raise PluginNotReadyError()
 
-        token = ui_token.issue(
-            ui_token.UiTokenClaims(plugin_pk=plugin.pk, org_id=plugin.org_id, user_id=user.pk)
-        )
+        dev_url = PluginDevUiService().dev_url_for(plugin, user)
+        if dev_url is None:
+            token = ui_token.issue(
+                ui_token.UiTokenClaims(plugin_pk=plugin.pk, org_id=plugin.org_id, user_id=user.pk)
+            )
+            page = {
+                "url": f"{UI_URL_PREFIX}{token}/{plugin.ui_entry}",
+                "token": token,
+                "expires_in": ui_token.MAX_AGE_SECONDS,
+                "dev_mode": False,
+            }
+        else:
+            # The author's dev server serves the page, so there is no token to issue.
+            page = {"url": dev_url, "token": "", "expires_in": None, "dev_mode": True}
         presented = PluginPresenter().present(plugin)
         return {
-            "url": f"{UI_URL_PREFIX}{token}/{plugin.ui_entry}",
-            "token": token,
-            "expires_in": ui_token.MAX_AGE_SECONDS,
+            **page,
             "bridge_version": plugin.bridge_version,
             "plugin": {
                 "id": plugin.pk,

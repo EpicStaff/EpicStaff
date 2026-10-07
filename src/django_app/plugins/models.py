@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import TimestampMixin
@@ -42,6 +43,16 @@ class Plugin(OrgScopedModel, TimestampMixin):
     # [{name, description}]
     secret_slots = models.JSONField(default=list, blank=True)
     manifest = models.JSONField(default=dict, blank=True)
+    # Dev mode: the page is loaded from this localhost URL instead of the bundled
+    # files, for `dev_ui_user` only and only while settings.PLUGINS_DEV_MODE is on.
+    dev_ui_url = models.CharField(max_length=255, blank=True, default="")
+    dev_ui_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

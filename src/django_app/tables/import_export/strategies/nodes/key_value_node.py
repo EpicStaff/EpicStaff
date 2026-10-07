@@ -36,5 +36,11 @@ class KeyValueNodeStrategy(EntityImportExportStrategy):
             table_name,
             mode=serializer.validated_data.get("mode", KeyValueNode.Mode.READ),
             user=kwargs.get("user"),
+            # Set only when the file carried the table itself (full flow import).
+            imported_table_id=(
+                id_mapper.get_or_none(EntityType.KEY_VALUE_TABLE, table_id)
+                if table_id is not None
+                else None
+            ),
         )
         return serializer.save(key_value_table=table)

@@ -152,6 +152,27 @@ def test_partial_export_knows_key_value_nodes():
 
 
 @pytest.mark.django_db
+def test_partial_export_carries_no_key_value_table(source_node):
+    """Pasting a node re-binds by name; only a full flow export ships the table itself."""
+    full = ExportService(entity_registry).export_entities(
+        EntityType.GRAPH, [source_node.graph_id], org_id=source_node.graph.org_id
+    )
+    partial = GraphPartialExportService(entity_registry).export(
+        [NodeRef(entity_type=EntityType.KEY_VALUE_NODE, node_id=source_node.id)],
+        org_id=source_node.graph.org_id,
+    )
+
+    assert not partial.has_errors, partial.errors
+    assert EntityType.KEY_VALUE_TABLE in full
+    assert EntityType.KEY_VALUE_TABLE not in partial.data
+    [node] = partial.data[EntityType.KEY_VALUE_NODE]
+    assert (node["key_value_table"], node["key_value_table_name"]) == (
+        source_node.key_value_table_id,
+        "Customers",
+    )
+
+
+@pytest.mark.django_db
 def test_import_rejects_malformed_entries(source_node, source_org):
     strategy = entity_registry.get_strategy(EntityType.KEY_VALUE_NODE)
     exported = {**strategy.export_entity(source_node), "entries": "x"}

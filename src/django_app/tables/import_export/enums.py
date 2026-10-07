@@ -16,6 +16,7 @@ class EntityType(StrEnum):
     PYTHON_CODE_TOOL = "PythonCodeTool"
     MCP_TOOL = "MCPTool"
     WEBHOOK_TRIGGER = "WebhookTrigger"
+    KEY_VALUE_TABLE = "KeyValueTable"
     REALTIME_AGENT = "RealtimeAgent"
     AGENT = "Agent"
     CREW = "Project"

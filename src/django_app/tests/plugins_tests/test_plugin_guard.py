@@ -6,7 +6,15 @@ from plugins.models import Plugin, PluginResource
 from plugins.resource_types import PluginResourceType
 from plugins.services.guard import PluginGuard
 from plugins.services.lifecycle_service import PluginLifecycleService
-from tables.models import Graph, PythonCode, PythonCodeTool, Session
+from tables.models import (
+    Edge,
+    Graph,
+    KeyValueNode,
+    KeyValueTable,
+    PythonCode,
+    PythonCodeTool,
+    Session,
+)
 from tables.models.graph_models import StartNode, SubGraphNode, TaskNode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
@@ -210,3 +218,60 @@ def test_with_nothing_suspended_a_check_is_one_query(
 ):
     with django_assert_num_queries(1):
         PluginGuard().check_flow(plugin_flow)
+
+
+# --- key-value tables --------------------------------------------------------------
+
+
+@pytest.fixture
+def own_flow_using_the_plugin_table(chat_admin_plugin, acme):
+    """A flow of the org itself whose Key-Value node reads the chat-admin plugin's table."""
+    table = KeyValueTable.objects.get(org=acme, name="chat_admin__conversations")
+    graph = Graph.objects.create(name="Conversation report", org=acme)
+    start = StartNode.objects.create(graph=graph, variables={"variables": {}})
+    read = KeyValueNode.objects.create(
+        graph=graph,
+        node_name="Read",
+        key_value_table=table,
+        entries=[{"key": "c_1", "value": "variables.conversation"}],
+    )
+    Edge.objects.create(graph=graph, start_node_id=start.id, end_node_id=read.id)
+    yield graph, table
+
+
+@pytest.mark.django_db
+def test_an_own_flow_using_a_suspended_plugins_table_cannot_build_its_session(
+    chat_admin_plugin, own_flow_using_the_plugin_table, admin_acme, published_sessions
+):
+    own, _ = own_flow_using_the_plugin_table
+    Plugin.objects.filter(pk=chat_admin_plugin.pk).update(suspended=True)
+
+    with pytest.raises(PluginSuspendedError, match="Chat Admin"):
+        _run(own.pk, admin_acme)
+
+    assert Session.objects.get(graph=own).status == Session.SessionStatus.ERROR
+    assert published_sessions == []
+
+
+@pytest.mark.django_db
+def test_an_own_flow_using_a_running_plugins_table_runs(
+    chat_admin_plugin, own_flow_using_the_plugin_table, admin_acme, published_sessions
+):
+    own, _ = own_flow_using_the_plugin_table
+
+    session_id = _run(own.pk, admin_acme)
+
+    assert published_sessions == [session_id]
+
+
+@pytest.mark.django_db
+def test_table_check_refuses_only_suspended_plugin_tables(
+    chat_admin_plugin, own_flow_using_the_plugin_table, acme
+):
+    _, plugin_table = own_flow_using_the_plugin_table
+    own_table = KeyValueTable.objects.create(org=acme, name="Mine")
+    Plugin.objects.filter(pk=chat_admin_plugin.pk).update(suspended=True)
+
+    with pytest.raises(PluginSuspendedError):
+        PluginGuard().check_key_value_table(plugin_table.pk)
+    PluginGuard().check_key_value_table(own_table.pk)

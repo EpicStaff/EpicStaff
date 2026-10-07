@@ -33,3 +33,8 @@ class PluginSecretsRequestSerializer(serializers.Serializer):
         child=serializers.CharField(allow_blank=True, trim_whitespace=False)
     )
     retry_indexing = serializers.BooleanField(required=False, default=False)
+
+
+class PluginDevUiRequestSerializer(serializers.Serializer):
+    # Checked by PluginDevUiService, which owns the rule for an acceptable dev URL.
+    url = serializers.CharField(trim_whitespace=False)

@@ -259,13 +259,15 @@ class KeyValueTableService:
         table_name: str | None,
         mode: str,
         user=None,
+        imported_table_id: int | None = None,
     ) -> KeyValueTable | None:
         """Re-bind a copied, imported or restored node's table reference inside `org_id`.
 
-        The table with `table_id` wins only if it is in `org_id` and still carries
-        `table_name`; otherwise any table of `org_id` with that name; otherwise `None`.
-        A table id alone is never trusted, so a foreign-org id is never kept, and
-        nothing is created.
+        A table the same import brought along wins: `imported_table_id` is bound if it
+        is in `org_id`, and nothing else is tried. Otherwise the table with `table_id`
+        wins only if it is in `org_id` and still carries `table_name`; otherwise any
+        table of `org_id` with that name; otherwise `None`. A table id alone is never
+        trusted, so a foreign-org id is never kept, and nothing is created here.
 
         Args:
             mode: The node's mode, which decides the permissions `user` needs.
@@ -273,8 +275,15 @@ class KeyValueTableService:
                 every permission in MODE_PERMISSIONS[mode] in `org_id`; otherwise `None`,
                 so the node shows "No table" instead of failing the whole operation.
                 `None` means the caller has no acting user and skips the check.
+            imported_table_id: The table the import created or reused for the node's
+                exported table id, when the file carried that table. A plugin install
+                relies on it: its table is force-created under a prefixed name, so the
+                name in the node no longer finds it.
         """
-        table = self._find_reference(org_id, table_id, table_name)
+        if imported_table_id is not None:
+            table = KeyValueTable.objects.filter(pk=imported_table_id, org_id=org_id).first()
+        else:
+            table = self._find_reference(org_id, table_id, table_name)
         if table is None or user is None or self.can_configure(user, table, mode):
             return table
         return None

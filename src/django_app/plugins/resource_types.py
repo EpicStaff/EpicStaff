@@ -36,6 +36,7 @@ class PluginResourceType(models.TextChoices):
     # the one a bundled config names. Only rows the install created are linked.
     LLM_MODEL = "llm_model", "LLM model"
     EMBEDDING_MODEL = "embedding_model", "Embedding model"
+    KEY_VALUE_TABLE = "key_value_table", "Key-value table"
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ RESOURCE_MODELS: dict[PluginResourceType, ResourceModel] = {
     PluginResourceType.STORAGE_FILE: ResourceModel("tables.StorageFile", "path"),
     PluginResourceType.LLM_MODEL: ResourceModel("tables.LLMModel", "name"),
     PluginResourceType.EMBEDDING_MODEL: ResourceModel("tables.EmbeddingModel", "name"),
+    PluginResourceType.KEY_VALUE_TABLE: ResourceModel("tables.KeyValueTable", "name"),
 }
 
 
@@ -93,9 +95,18 @@ IMPORTED_ENTITIES: dict[EntityType, ImportedEntity] = {
     EntityType.PYTHON_CODE_TOOL: ImportedEntity(PluginResourceType.PYTHON_CODE_TOOL, "name"),
     EntityType.MCP_TOOL: ImportedEntity(PluginResourceType.MCP_TOOL, "name"),
     EntityType.WEBHOOK_TRIGGER: ImportedEntity(PluginResourceType.WEBHOOK_TRIGGER, "path"),
+    # Its name is already prefixed with the plugin id when the bundle is loaded.
+    EntityType.KEY_VALUE_TABLE: ImportedEntity(PluginResourceType.KEY_VALUE_TABLE, "name"),
 }
 
 PLUGIN_OWNED_TYPES: frozenset[EntityType] = frozenset(IMPORTED_ENTITIES)
+
+# What an `access[]` entry's `type` grants the plugin page, keyed by the manifest
+# value. The presenter resolves an entry's installed row through this.
+ACCESS_RESOURCE_TYPES: dict[str, PluginResourceType] = {
+    "flow": PluginResourceType.FLOW,
+    "key_value_table": PluginResourceType.KEY_VALUE_TABLE,
+}
 
 # Catalog types the importer reuses when the org's catalog has a match and
 # creates as an org-owned custom row when it does not. Only a created, org-owned
