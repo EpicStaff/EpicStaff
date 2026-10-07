@@ -229,8 +229,19 @@ class StorageAdminGateway:
 
     async def remove_user(self, access_key: str) -> None:
         """Removing the parent user cascades: the storage backend revokes all of that
-        user's service accounts along with it."""
-        await self._client.user_remove(access_key)
+        user's service accounts along with it.
+
+        Idempotent against RustFS's own error-code quirk: removing a user that
+        already doesn't exist returns 500 InternalError here, not 404.
+        That specific case means deprovisioning already achieved its goal,
+        so it's treated as success, not retried as a failure.
+        """
+        try:
+            await self._client.user_remove(access_key)
+        except MinioAdminException as error:
+            if "does not exist" in error._body.lower():
+                return
+            raise
 
     async def create_named_policy(self, policy_name: str, policy: dict[str, Any]) -> None:
         with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
