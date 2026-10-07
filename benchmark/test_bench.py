@@ -243,5 +243,90 @@ class SampleParseTest(unittest.TestCase):
         self.assertAlmostEqual(sample.parse_docker_size_mb("512MiB"), 512.0)
 
 
+class SamplerTest(unittest.TestCase):
+    def test_probe_failure_degrades_gracefully(self):
+        """When stack.run raises StackError, row is appended with those fields None."""
+        sampler = sample.Sampler(
+            {},
+            status=lambda: {
+                "inflight": 1,
+                "running": 1,
+                "completed": 0,
+                "failed": 0,
+            },
+            db_user="u",
+            redis_user="r",
+            redis_password="p",
+        )
+        with (
+            mock.patch.object(stack, "inspect", return_value={}),
+            mock.patch.object(stack, "run", side_effect=stack.StackError("timeout")),
+        ):
+            sampler._sample()
+        self.assertEqual(len(sampler.rows), 1)
+        row = sampler.rows[0]
+        self.assertIsNone(row["pg_connections"])
+        self.assertIsNone(row["redis_used_mb"])
+        expected_keys = {
+            "ts",
+            "rel_s",
+            "phase",
+            "segment",
+            "level",
+            "target",
+            "inflight",
+            "running",
+            "queued",
+            "completed",
+            "failed",
+            "host_cpu_pct",
+            "host_mem_avail_mb",
+            "host_mem_avail_pct",
+            "load1",
+            "pg_connections",
+            "pg_max_connections",
+            "redis_used_mb",
+            "runner_cpu_pct",
+        }
+        self.assertEqual(set(row.keys()), expected_keys)
+
+    def test_container_restart_negative_cpu(self):
+        """After a container restart, cpu_pct should be None when usage resets."""
+        folder = Path(tempfile.mkdtemp())
+        cpu_stat = folder / "cpu.stat"
+        memory_current = folder / "memory.current"
+        memory_events = folder / "memory.events"
+        cpu_stat.write_text("usage_usec 2000000\nuser_usec 1000000\n")
+        memory_current.write_text("1048576\n")
+        memory_events.write_text("oom_kill 0\n")
+
+        sampler = sample.Sampler(
+            {"test": "dummy"},
+            status=lambda: {
+                "inflight": 1,
+                "running": 1,
+                "completed": 0,
+                "failed": 0,
+            },
+            db_user=None,
+            redis_user=None,
+            redis_password=None,
+        )
+        sampler._cgroups["test"] = folder
+
+        with mock.patch.object(stack, "inspect", return_value={}):
+            sampler._sample()
+        self.assertEqual(len(sampler.rows), 1)
+        first_row_cpu = sampler.latest["containers"]["test"]["cpu_pct"]
+        self.assertIsNone(first_row_cpu)
+
+        cpu_stat.write_text("usage_usec 1000\nuser_usec 500\n")
+        with mock.patch.object(stack, "inspect", return_value={}):
+            sampler._sample()
+        self.assertEqual(len(sampler.rows), 2)
+        second_row_cpu = sampler.latest["containers"]["test"]["cpu_pct"]
+        self.assertIsNone(second_row_cpu)
+
+
 if __name__ == "__main__":
     unittest.main()

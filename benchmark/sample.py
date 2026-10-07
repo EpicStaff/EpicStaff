@@ -107,8 +107,14 @@ class Sampler:
     def _cgroup_dir(container_id: str) -> Path | None:
         for root in CGROUP_ROOTS:
             path = Path(root.format(id=container_id))
-            if (path / "cpu.stat").exists():
-                return path
+            cpu_stat_path = path / "cpu.stat"
+            if cpu_stat_path.exists():
+                try:
+                    text = cpu_stat_path.read_text()
+                    if "usage_usec" in text:
+                        return path
+                except (OSError, ValueError):
+                    pass
         return None
 
     def mark(self, **context) -> None:
@@ -119,7 +125,7 @@ class Sampler:
 
     def stop(self) -> None:
         self._stop.set()
-        self._thread.join(timeout=30)
+        self._thread.join(timeout=60)
 
     def _loop(self) -> None:
         next_at = time.monotonic()
@@ -127,17 +133,21 @@ class Sampler:
             try:
                 self._sample()
             except Exception as error:  # a failed sample is a gap, never a crashed run
-                print(f"[sampler] {type(error).__name__}: {error}")
+                print(f"[sampler] {type(error).__name__}: {error}", flush=True)
             next_at += self.interval_s
             self._stop.wait(max(0.0, next_at - time.monotonic()))
 
     def _sample(self) -> None:
         now = time.time()
         base = {"ts": round(now, 3), "rel_s": round(now - self._started, 1), **self.context}
-        inspected = stack.inspect(list(self.containers))
+        try:
+            inspected = stack.inspect(list(self.containers))
+        except (stack.StackError, ValueError):
+            inspected = {}
         per_container = self._container_metrics(now, inspected)
-        for name, metrics in per_container.items():
-            self.container_rows.append({**base, "container": name, **metrics})
+        container_rows = [
+            {**base, "container": name, **metrics} for name, metrics in per_container.items()
+        ]
         status = self.status()
         row = {
             **base,
@@ -149,6 +159,7 @@ class Sampler:
             "runner_cpu_pct": self._runner_cpu(),
         }
         self.rows.append(row)
+        self.container_rows.extend(container_rows)
         self.latest = {**row, "containers": per_container}
         print(live_line(row, per_container), flush=True)
 
@@ -160,16 +171,25 @@ class Sampler:
             state = inspected.get(name, {}).get("State", {})
             restarts = inspected.get(name, {}).get("RestartCount", 0)
             if path is not None:
-                usage = parse_cpu_stat((path / "cpu.stat").read_text())
-                previous = self._previous_cpu.get(name)
-                self._previous_cpu[name] = (now, usage)
-                cpu_pct = (
-                    round((usage - previous[1]) / 1e6 / (now - previous[0]) * 100, 1)
-                    if previous
-                    else None
-                )
-                mem_mb = round(int((path / "memory.current").read_text()) / 1024**2, 1)
-                oom = parse_memory_events((path / "memory.events").read_text())
+                try:
+                    usage = parse_cpu_stat((path / "cpu.stat").read_text())
+                    previous = self._previous_cpu.get(name)
+                    wall = time.monotonic()
+                    cpu_pct = None
+                    if previous:
+                        prev_wall, prev_usage = previous
+                        delta_usage = usage - prev_usage
+                        if delta_usage < 0:
+                            cpu_pct = None
+                        else:
+                            cpu_pct = round(delta_usage / 1e6 / (wall - prev_wall) * 100, 1)
+                    self._previous_cpu[name] = (wall, usage)
+                    mem_mb = round(int((path / "memory.current").read_text()) / 1024**2, 1)
+                    oom = parse_memory_events((path / "memory.events").read_text())
+                except (OSError, AttributeError, ValueError):
+                    self._cgroups[name] = None
+                    cpu_pct, mem_mb = stats.get(name, (None, None))
+                    oom = int(bool(state.get("OOMKilled")))
             else:
                 cpu_pct, mem_mb = stats.get(name, (None, None))
                 oom = int(bool(state.get("OOMKilled")))
@@ -182,26 +202,32 @@ class Sampler:
         return metrics
 
     def _docker_stats(self, names: list[str]) -> dict[str, tuple[float | None, float | None]]:
-        result = stack.run(
-            [
-                "docker",
-                "stats",
-                "--no-stream",
-                "--format",
-                "{{json .}}",
-                *names,
-            ],
-            check=False,
-            timeout=30,
-        )
+        try:
+            result = stack.run(
+                [
+                    "docker",
+                    "stats",
+                    "--no-stream",
+                    "--format",
+                    "{{json .}}",
+                    *names,
+                ],
+                check=False,
+                timeout=30,
+            )
+        except stack.StackError:
+            return {}
         stats = {}
         for line in result.stdout.splitlines():
-            row = json.loads(line)
-            cpu = row.get("CPUPerc", "").rstrip("%")
-            stats[row["Name"]] = (
-                float(cpu) if cpu else None,
-                parse_docker_size_mb(row.get("MemUsage", "").split("/")[0]),
-            )
+            try:
+                row = json.loads(line)
+                cpu = row.get("CPUPerc", "").rstrip("%")
+                stats[row["Name"]] = (
+                    float(cpu) if cpu else None,
+                    parse_docker_size_mb(row.get("MemUsage", "").split("/")[0]),
+                )
+            except (json.JSONDecodeError, ValueError, KeyError):
+                continue
         return stats
 
     def _host_metrics(self) -> dict:
@@ -229,49 +255,55 @@ class Sampler:
     def _saturation(self) -> dict:
         result = {"pg_connections": None, "pg_max_connections": None, "redis_used_mb": None}
         if self.db_user:
-            query = "select count(*), current_setting('max_connections') from pg_stat_activity"
-            pg = stack.run(
-                [
-                    "docker",
-                    "exec",
-                    "crewdb",
-                    "psql",
-                    "-U",
-                    self.db_user,
-                    "-d",
-                    "postgres",
-                    "-tAc",
-                    query,
-                ],
-                check=False,
-                timeout=10,
-            )
-            if pg.returncode == 0 and "|" in pg.stdout:
-                count, maximum = pg.stdout.strip().split("|")
-                result.update(pg_connections=int(count), pg_max_connections=int(maximum))
+            try:
+                query = "select count(*), current_setting('max_connections') from pg_stat_activity"
+                pg = stack.run(
+                    [
+                        "docker",
+                        "exec",
+                        "crewdb",
+                        "psql",
+                        "-U",
+                        self.db_user,
+                        "-d",
+                        "postgres",
+                        "-tAc",
+                        query,
+                    ],
+                    check=False,
+                    timeout=10,
+                )
+                if pg.returncode == 0 and "|" in pg.stdout:
+                    count, maximum = pg.stdout.strip().split("|")
+                    result.update(pg_connections=int(count), pg_max_connections=int(maximum))
+            except (stack.StackError, ValueError):
+                pass
         if self.redis_user:
-            env = {**os.environ, "REDISCLI_AUTH": self.redis_password or ""}
-            redis = stack.run(
-                [
-                    "docker",
-                    "exec",
-                    "-e",
-                    "REDISCLI_AUTH",
-                    "redis",
-                    "redis-cli",
-                    "--user",
-                    self.redis_user,
-                    "--no-auth-warning",
-                    "INFO",
-                    "memory",
-                ],
-                check=False,
-                timeout=10,
-                env=env,
-            )
-            result["redis_used_mb"] = (
-                parse_redis_used_mb(redis.stdout) if redis.returncode == 0 else None
-            )
+            try:
+                env = {**os.environ, "REDISCLI_AUTH": self.redis_password or ""}
+                redis = stack.run(
+                    [
+                        "docker",
+                        "exec",
+                        "-e",
+                        "REDISCLI_AUTH",
+                        "redis",
+                        "redis-cli",
+                        "--user",
+                        self.redis_user,
+                        "--no-auth-warning",
+                        "INFO",
+                        "memory",
+                    ],
+                    check=False,
+                    timeout=10,
+                    env=env,
+                )
+                result["redis_used_mb"] = (
+                    parse_redis_used_mb(redis.stdout) if redis.returncode == 0 else None
+                )
+            except stack.StackError:
+                pass
         return result
 
     def _runner_cpu(self) -> float:
