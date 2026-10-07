@@ -206,3 +206,49 @@ def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
     assert rows[0]["principal_kind"] == "user"
     assert rows[0]["principal_user_id"] == str(regular_user.id)
     assert rows[0]["principal_email"] == regular_user.email
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stream_type", ["agent_node_stream", "task_node_stream"])
+def test_export_csv_includes_agent_tool_events(
+    default_org, regular_user, monkeypatch, stream_type
+):
+    graph = Graph.objects.create(name="export-csv-tools", org=default_org)
+    sm = _stub_publish(monkeypatch)
+    session_id = sm.run_session(
+        graph_id=graph.id,
+        variables={},
+        user=regular_user,
+        trigger=TriggerSpec.manual(),
+    )
+    task = {"name": "lookup", "order": 0}
+    for step_id, event, data in [
+        (1, "tool_call", {"id": "c1", "name": "search", "arguments": '{"q": "x"}', "task": task}),
+        (2, "tool_result", {"tool_call_id": "c1", "name": "search", "content": "found", "is_error": False, "task": task}),
+    ]:
+        GraphSessionMessage.objects.create(
+            session_id=session_id,
+            created_at=timezone.now(),
+            name="agent",
+            execution_order=step_id,
+            message_data={
+                "message_type": stream_type,
+                "event": event,
+                "step_id": step_id,
+                "is_final": False,
+                "data": data,
+            },
+            uuid=uuid.uuid4(),
+        )
+
+    exported_types = [m["message_data"]["event"] for m in _export(session_id)["messages"]]
+    assert exported_types == ["tool_call", "tool_result"]
+
+    call, result = sorted(_export_csv_rows(session_id), key=lambda row: row["execution_order"])
+    assert call["msg__type"] == stream_type
+    assert call["msg__event"] == "tool_call"
+    assert result["msg__event"] == "tool_result"
+    assert call["msg__tool"] == "search"
+    assert call["msg__tool_input"] == '{"q": "x"}'
+    assert result["msg__tool"] == "search"
+    assert result["msg__result"] == "found"
