@@ -1,5 +1,8 @@
+from datetime import UTC
+
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
+from tables.constants.telegram_constants import TelegramRegistrationBlockerCode
 from tables.models.graph_models import (
     Graph,
     ScheduleTriggerNode,
@@ -191,6 +194,41 @@ class TelegramTriggerNodeReadSerializer(TelegramTriggerNodeSerializer):
 
 class TelegramTriggerNodeDataFieldsSerializer(serializers.Serializer):
     data = serializers.JSONField()
+
+
+class TelegramRegistrationBlockerSerializer(serializers.Serializer):
+    code = serializers.ChoiceField(
+        choices=[code.value for code in TelegramRegistrationBlockerCode],
+        help_text="Stable machine-readable reason; switch on this, not on `message`.",
+    )
+    message = serializers.CharField(
+        help_text="Human-readable explanation. Never contains a secret value."
+    )
+
+
+class TelegramWebhookInfoSerializer(serializers.Serializer):
+    """Read-only shape of `TelegramWebhookStatus` for the node's webhook-info action."""
+
+    registered_url = serializers.CharField(allow_null=True)
+    expected_url = serializers.CharField(allow_null=True)
+    is_match = serializers.BooleanField(
+        allow_null=True,
+        help_text=(
+            "False when Telegram has no webhook set or it points elsewhere; "
+            "null only when `expected_url` is null."
+        ),
+    )
+    pending_update_count = serializers.IntegerField(allow_null=True)
+    last_error_message = serializers.CharField(allow_null=True)
+    last_error_date = serializers.DateTimeField(allow_null=True, default_timezone=UTC)
+    registration_blocker = TelegramRegistrationBlockerSerializer(
+        allow_null=True,
+        help_text=(
+            "Why registering this node's webhook cannot work, derived from its "
+            "configuration without calling Telegram; null when nothing blocks it. "
+            "Independent of `registered_url`/`is_match`, which still reflect Telegram."
+        ),
+    )
 
 
 class _ScheduleIntervalInputSerializer(serializers.Serializer):
