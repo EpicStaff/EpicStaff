@@ -3,16 +3,21 @@ import uuid
 from typing import Any
 
 import settings
+from clients.sandbox import SandboxClient
 from loguru import logger
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
-from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.models import CodeResultData, PythonCodeData
 from utils.singleton_meta import SingletonMeta
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
-    def __init__(self, redis_service: RedisService):
+    # sandbox_client is Optional only so the singleton's other construction sites
+    # (CDT subgraphs do `RunPythonCodeService(redis_service=...)`) stay valid; the
+    # real client is injected once in main.py at startup, before any run_code call.
+    def __init__(self, redis_service: RedisService, sandbox_client: SandboxClient | None = None):
         self.redis_service = redis_service
+        self.sandbox_client = sandbox_client
 
     async def run_code(
         self,
@@ -22,13 +27,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         stop_event: StopEvent | None = None,
     ) -> dict[str, Any]:
         additional_global_kwargs = additional_global_kwargs or {}
-        venv_name = python_code_data.venv_name
-        code = python_code_data.code
-        entrypoint = python_code_data.entrypoint
-        libraries = python_code_data.libraries
-
         global_kwargs = python_code_data.global_kwargs or {}
-
         merged_global_kwargs = {
             **global_kwargs,
             **additional_global_kwargs,
@@ -37,32 +36,40 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             merged_global_kwargs["org_id"] = python_code_data.org_id
 
         unique_task_id = str(uuid.uuid4())
-        code_task_data = CodeTaskData(
-            venv_name=venv_name,
-            libraries=libraries,
-            code=code,
-            execution_id=unique_task_id,
-            entrypoint=entrypoint,
-            func_kwargs=inputs,
-            global_kwargs=merged_global_kwargs,
-            use_storage=python_code_data.use_storage,
-            storage_allowed_paths=python_code_data.storage_allowed_paths,
-            storage_org_prefix=python_code_data.storage_org_prefix,
-            session_id=python_code_data.session_id,
-            secrets=python_code_data.secrets,
-            org_id=python_code_data.org_id,
-        )
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
-
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
+
+        # Subscribe before submitting so a fast result is never missed.
         await self.redis_service.asubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
 
-        total_len = 0
-        for g in self.redis_service._async_pubsub_groups.values():
-            total_len += len(g._subscribers)
-        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
-        logger.info("Waiting for code_results")
+        try:
+            await self.sandbox_client.submit(
+                execution_id=unique_task_id,
+                venv_id=python_code_data.venv_id,
+                session_id=python_code_data.session_id,
+                code=python_code_data.code,
+                entrypoint=python_code_data.entrypoint,
+                func_kwargs=inputs,
+                global_kwargs=merged_global_kwargs,
+                secrets=python_code_data.secrets,
+                use_storage=python_code_data.use_storage,
+                storage_allowed_paths=python_code_data.storage_allowed_paths or [],
+                storage_org_prefix=python_code_data.storage_org_prefix,
+                timeout=None,
+            )
+        except Exception as error:
+            # The result will never arrive, so do not wait on it: fail the node now.
+            self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
+            logger.exception("Sandbox submit failed for {}", unique_task_id)
+            return {
+                "execution_id": unique_task_id,
+                "result_data": None,
+                "stdout": "",
+                "stderr": f"Sandbox submit failed: {error}",
+                "returncode": 1,
+            }
 
+        logger.info("Waiting for code_results")
         while True:
             if callback_receiver.results is not None:
                 self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
@@ -77,7 +84,6 @@ class RunPythonCallbackReceiver:
         self.execution_id = execution_id
         self.results: dict[str, Any] | None = None
 
-    # @psutil_wrapper
     async def callback(self, message: dict[str, Any]):
         code_result_data = CodeResultData.model_validate_json(message["data"])
         if code_result_data.execution_id == self.execution_id:
