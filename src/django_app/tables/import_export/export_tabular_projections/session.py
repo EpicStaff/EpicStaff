@@ -8,6 +8,12 @@ _TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "cached_prompt_tokens", "
 # `state` is the whole variable namespace and can be huge.
 _DROPPED_KEYS = {"message_type", "state"}
 _EMPTY_VALUES = (None, "", {}, [])
+_STARTED_BY_TYPES = {
+    "user": "user",
+    "api_key_user": "api_key",
+    "api_key_system": "system_api_key",
+    "trigger": "trigger",
+}
 
 
 def _encode(value):
@@ -150,6 +156,23 @@ def _message_columns(message_type: str | None, data: dict) -> tuple[dict, dict]:
     return {}, rest
 
 
+def _started_by(session: dict) -> tuple[str, str | None]:
+    principal = session.get("principal") or {}
+    started_by_type = _STARTED_BY_TYPES.get(principal.get("kind"), "unknown")
+    email = principal.get("email")
+    if started_by_type == "user":
+        return started_by_type, email
+    if started_by_type == "trigger":
+        return started_by_type, session.get("trigger_node_name")
+    if started_by_type in ("api_key", "system_api_key"):
+        # api_key_name is None once the key is deleted (the FK is SET_NULL).
+        key_name = principal.get("api_key_name")
+        if key_name and email:
+            return started_by_type, f"{key_name} ({email})"
+        return started_by_type, key_name or email
+    return started_by_type, None
+
+
 def _copy_key(row: dict) -> tuple:
     message_type = (row.get("message_data") or {}).get("message_type")
     return row["created_at"], row["name"], row["execution_order"], message_type
@@ -177,10 +200,8 @@ class SessionTabularProjection(TabularProjection):
         "flow_id",
         "flow_name",
         "session_status",
-        "principal_kind",
-        "principal_email",
-        "principal_user_id",
-        "principal_api_key_id",
+        "started_by_type",
+        "started_by",
         "message_id",
         "created_at",
         "execution_order",
@@ -221,10 +242,8 @@ class SessionTabularProjection(TabularProjection):
             "flow_id": row["flow_id"],
             "flow_name": row["flow_name"],
             "session_status": row["session_status"],
-            "principal_kind": row["principal_kind"],
-            "principal_email": row["principal_email"],
-            "principal_user_id": row["principal_user_id"],
-            "principal_api_key_id": row["principal_api_key_id"],
+            "started_by_type": row["started_by_type"],
+            "started_by": row["started_by"],
             "message_id": row["id"],
             "created_at": row["created_at"],
             "execution_order": row["execution_order"],
@@ -254,15 +273,13 @@ class SessionTabularProjection(TabularProjection):
 
     def expand(self, item: dict) -> list[dict]:
         session = item.get("session") or {}
-        principal = session.get("principal") or {}
+        started_by_type, started_by = _started_by(session)
         context = {
             "flow_id": session.get("graph"),
             "flow_name": session.get("graph_name"),
             "session_status": session.get("status"),
-            "principal_kind": principal.get("kind"),
-            "principal_email": principal.get("email"),
-            "principal_user_id": principal.get("user"),
-            "principal_api_key_id": principal.get("api_key"),
+            "started_by_type": started_by_type,
+            "started_by": started_by,
         }
         messages = item.get("messages", [])
         # Rows from non-BaseNode emitters store no node_type; the same node's start row does.

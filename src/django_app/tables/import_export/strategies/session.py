@@ -30,7 +30,7 @@ class SessionStrategy(EntityImportExportStrategy):
     def get_instance(self, entity_id: int) -> Session:
         return (
             Session.objects.filter(id=entity_id)
-            .select_related("trigger", "principal", "graph")
+            .select_related("trigger", "principal__api_key", "graph")
             .first()
         )
 

@@ -378,8 +378,8 @@ def test_agent_session_rows():
         assert row["flow_id"] == "3"
         assert row["flow_name"] == "agent flow"
         assert row["session_status"] == "end"
-        assert row["principal_kind"] == "user"
-        assert row["principal_email"] == "admin@example.com"
+        assert row["started_by_type"] == "user"
+        assert row["started_by"] == "admin@example.com"
         assert "state_history" not in row["details"]
 
     start = rows["41"]

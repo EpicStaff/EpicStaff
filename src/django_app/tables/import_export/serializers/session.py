@@ -20,9 +20,11 @@ class GraphSessionMessageExportSerializer(serializers.ModelSerializer):
 
 
 class SessionPrincipalExportSerializer(serializers.ModelSerializer):
+    api_key_name = serializers.CharField(source="api_key.name", default=None)
+
     class Meta:
         model = SessionPrincipal
-        fields = ["kind", "user", "api_key", "email"]
+        fields = ["kind", "user", "api_key", "api_key_name", "email"]
 
 
 class SessionExportSerializer(serializers.ModelSerializer):
