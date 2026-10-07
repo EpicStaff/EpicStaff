@@ -1,6 +1,4 @@
 import json
-import uuid
-from dataclasses import asdict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -58,23 +56,8 @@ class DecisionTableNodeSubgraph:
         reach Redis (hence never Postgres) or OpenSearch at all."""
         if self.redis_service is None:
             return
-        try:
-            data = asdict(graph_message)
-        except (TypeError, Exception) as e:
-            logger.warning(f"Failed to serialize GraphMessage via asdict: {e}")
-            data = {
-                "session_id": graph_message.session_id,
-                "name": graph_message.name,
-                "execution_order": graph_message.execution_order,
-                "message_data": graph_message.message_data
-                if isinstance(graph_message.message_data, dict)
-                else {
-                    "message_type": getattr(graph_message.message_data, "message_type", "unknown")
-                },
-                "timestamp": graph_message.timestamp,
-            }
-        data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
+        data = graph_message.to_payload()
+        self.redis_service.publish_encoded("graph:messages", GraphMessage.encode_payload(data))
         try:
             emit_session_audit_event(data)
         except Exception as audit_exc:
