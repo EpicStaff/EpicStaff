@@ -13,11 +13,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import analyze
 import api
 import config
 import load
 import sample
 import stack
+from config import AbortRules, PassRules
 
 CASE_TOML = textwrap.dedent(
     """
@@ -512,6 +514,214 @@ class ControllerTest(unittest.TestCase):
         controller.external_in_flight = lambda: 0
         self.assertIsNone(controller.recent_error_rate(time_module.time(), min_done=0))
         controller.close()
+
+
+def record(
+    session_id,
+    intended,
+    sent,
+    done,
+    status="end",
+    level=10,
+    kind="ladder",
+    segment=1,
+    phase="payload",
+):
+    return load.SessionRecord(
+        phase,
+        level,
+        kind,
+        segment,
+        intended,
+        sent_ts=sent,
+        api_ms=5,
+        http_status=200,
+        session_id=session_id,
+        done_ts=done,
+        end_status=status,
+    )
+
+
+def crew_events(session_id, received, slot, end, status="end"):
+    return [
+        {"service": "crew", "checkpoint": "received", "session_id": session_id, "ts": received},
+        {"service": "crew", "checkpoint": "slot_acquired", "session_id": session_id, "ts": slot},
+        {
+            "service": "crew",
+            "checkpoint": "agent_dispatched",
+            "session_id": session_id,
+            "correlation_id": f"c{session_id}",
+            "ts": slot + 0.1,
+        },
+        {
+            "service": "agent",
+            "checkpoint": "llm_start",
+            "correlation_id": f"c{session_id}",
+            "ts": slot + 0.2,
+        },
+        {
+            "service": "agent",
+            "checkpoint": "llm_end",
+            "correlation_id": f"c{session_id}",
+            "ts": slot + 1.2,
+            "total_tokens": 50,
+            "ok": True,
+        },
+        {
+            "service": "crew",
+            "checkpoint": "session_end",
+            "session_id": session_id,
+            "status": status,
+            "ts": end,
+        },
+    ]
+
+
+WINDOW = analyze.Window("payload", 10, "ladder", 1, start_ts=0, settle_end_ts=10, end_ts=100)
+
+
+class AnalyzeTest(unittest.TestCase):
+    def test_session_row_breaks_time_down(self):
+        events, _ = analyze.index_events(crew_events(1, received=11.0, slot=12.0, end=15.0))
+        row = analyze.session_row(record(1, intended=10.5, sent=10.6, done=15.0), events[1])
+        self.assertAlmostEqual(row["e2e_s"], 4.4)
+        self.assertAlmostEqual(row["queue_wait_s"], 1.0)
+        self.assertAlmostEqual(row["run_s"], 3.0)
+        self.assertAlmostEqual(row["llm_s"], 1.0)
+        self.assertAlmostEqual(row["platform_overhead_s"], 3.4)
+        self.assertEqual((row["llm_calls"], row["tokens"]), (1, 50))
+        self.assertAlmostEqual(row["gen_lag_ms"], 100.0)
+
+    def test_records_without_events(self):
+        row = analyze.session_row(record(2, intended=10, sent=10, done=20), [])
+        self.assertEqual(row["e2e_s"], 10)
+        self.assertIsNone(row["queue_wait_s"])
+        self.assertEqual(row["llm_s"], 0)
+
+    def test_censored_in_live_mode(self):
+        row = analyze.session_row(
+            record(3, intended=10, sent=10, done=None, status=None), [], now=40
+        )
+        self.assertTrue(row["censored"])
+        self.assertEqual(row["e2e_s"], 30)
+
+    def test_percentiles(self):
+        self.assertIsNone(analyze.percentile([], 0.5))
+        self.assertEqual(analyze.percentile([1, 2, 3, 4], 0.5), 2.5)
+        self.assertEqual(analyze.stats([2, 4])["mean"], 3)
+
+
+class JudgeTest(unittest.TestCase):
+    def rows(self, count, e2e, status="end", lag=1.0):
+        return [
+            {
+                "phase": "payload",
+                "segment": 1,
+                "level": 10,
+                "kind": "ladder",
+                "intended_ts": 20,
+                "e2e_s": e2e,
+                "queue_wait_s": 0.5,
+                "status": status,
+                "censored": False,
+                "gen_lag_ms": lag,
+            }
+            for _ in range(count)
+        ]
+
+    def test_pass(self):
+        self.assertEqual(
+            analyze.judge(self.rows(20, 5), WINDOW, PassRules(p95_e2e_s=10), AbortRules())[0],
+            "pass",
+        )
+
+    def test_latency_fail(self):
+        verdict, reasons = analyze.judge(
+            self.rows(20, 50), WINDOW, PassRules(p95_e2e_s=10), AbortRules()
+        )
+        self.assertEqual(verdict, "fail")
+        self.assertIn("p95 e2e", reasons[0])
+
+    def test_too_few_finished_is_invalid(self):
+        self.assertEqual(
+            analyze.judge(self.rows(3, 5), WINDOW, PassRules(), AbortRules())[0], "invalid"
+        )
+
+    def test_generator_limited_is_invalid_not_fail(self):
+        verdict, reasons = analyze.judge(
+            self.rows(20, 5, lag=900), WINDOW, PassRules(), AbortRules()
+        )
+        self.assertEqual(verdict, "invalid")
+        self.assertIn("generator-limited", reasons[0])
+
+    def test_abort_is_fail(self):
+        aborted = analyze.Window(
+            "payload", 10, "ladder", 1, 0, 10, 100, abort_reason="container restart: crew"
+        )
+        self.assertEqual(
+            analyze.judge(self.rows(20, 5), aborted, PassRules(), AbortRules()),
+            ("fail", ["container restart: crew"]),
+        )
+
+
+class BottleneckTest(unittest.TestCase):
+    def test_first_match_wins(self):
+        base = {
+            "restarts": [],
+            "host_mem_avail_min_pct": 50,
+            "ram_guard_pct": 5,
+            "host_cpu_mean": 40,
+            "containers_at_cpu_limit": [],
+            "running_mean": 10,
+            "queued_mean": 0,
+            "crew_cap": 25,
+            "agent_queue_p95": 0.1,
+            "previous_agent_queue_p95": 0.1,
+            "pg_ratio_max": 0.2,
+        }
+        self.assertEqual(
+            analyze.bottleneck(base), "latency rule only (no saturated resource found)"
+        )
+        self.assertEqual(analyze.bottleneck({**base, "host_cpu_mean": 95}), "host CPU 95%")
+        self.assertEqual(
+            analyze.bottleneck({**base, "host_cpu_mean": 95, "restarts": ["crew"]}),
+            "container restart/OOM: crew",
+        )
+        self.assertEqual(
+            analyze.bottleneck({**base, "running_mean": 25, "queued_mean": 30}),
+            "crew slots full (25) with sessions queued",
+        )
+
+
+@unittest.skipUnless(Path(__file__).with_name("fixtures.py").exists(), "fixtures arrive in Task 11")
+class AnalyzeFolderTest(unittest.TestCase):
+    def test_writes_every_file_with_the_schema_columns(self):
+        import fixtures
+
+        out = Path(tempfile.mkdtemp())
+        run_dir = fixtures.write_capacity_run(
+            out, name="demo", levels=(10, 20, 40), fail_from=40, seed=1
+        )
+        expected = {
+            "meta.json",
+            "case.toml",
+            "sessions.csv.gz",
+            "steps.csv",
+            "containers.csv",
+            "container_phases.csv",
+            "nodes.csv",
+            "timeline.csv",
+            "container_timeline.csv",
+            "events_sample.csv",
+            "events_full.csv.gz",
+        }
+        self.assertEqual({path.name for path in run_dir.iterdir()}, expected)
+        with open(run_dir / "steps.csv", encoding="utf-8") as steps_file:
+            self.assertEqual(steps_file.readline().strip().split(","), analyze.STEP_COLUMNS)
+        meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["schema_version"], 1)
+        verdict = meta["phases"][0]["verdict"]
+        self.assertEqual((verdict["max_pass_concurrency"], verdict["first_fail_level"]), (20, 40))
 
 
 if __name__ == "__main__":
