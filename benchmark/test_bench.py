@@ -382,7 +382,9 @@ class ControllerTest(unittest.TestCase):
         fake = FakeStack(duration_s=0.05)
         controller = make_controller(fake)
         self.assertIsNone(
-            controller.hold(target=5, duration_s=0.6, timeout_s=10, abort_check=lambda: None)
+            controller.hold(
+                target=5, duration_s=0.6, timeout_s=10, abort_check=lambda: None, tick_s=0.05
+            )
         )
         controller.drain(timeout_s=5)
         self.assertLessEqual(fake.max_in_flight, 5)
@@ -394,9 +396,10 @@ class ControllerTest(unittest.TestCase):
         fake = FakeStack(end_before_answer=True)
         controller = make_controller(fake)
         controller.hold(target=3, duration_s=0.3, timeout_s=10, abort_check=lambda: None)
-        controller.drain(timeout_s=2)
+        self.assertEqual(controller.drain(timeout_s=2), 0)
         self.assertEqual(controller.in_flight_count(), 0)
         self.assertTrue(all(record.done for record in controller.records))
+        self.assertTrue(all(record.ok for record in controller.records))
         controller.close()
 
     def test_http_errors_free_their_slot_and_count_as_failed(self):
@@ -404,6 +407,7 @@ class ControllerTest(unittest.TestCase):
         controller = make_controller(fake)
         controller.hold(target=4, duration_s=0.3, timeout_s=10, abort_check=lambda: None)
         controller.drain(timeout_s=2)
+        self.assertEqual(controller.in_flight_count(), 0)
         failed = [record for record in controller.records if record.end_status == "http_error"]
         self.assertTrue(failed)
         self.assertEqual({record.http_status for record in failed}, {503})
@@ -442,6 +446,49 @@ class ControllerTest(unittest.TestCase):
             "host RAM",
         )
         controller.drain(timeout_s=2)
+        controller.close()
+
+    def test_slot_acquired_before_http_answer_counts_as_running(self):
+        class EarlySlotStack(FakeStack):
+            def start(self):
+                session_id = next(self.ids)
+                self.controller.on_event({"session_id": session_id, "checkpoint": "slot_acquired"})
+                return 200, session_id
+
+        fake = EarlySlotStack()
+        controller = make_controller(fake)
+        controller.hold(target=1, duration_s=0.3, timeout_s=10, abort_check=lambda: None)
+        self.assertEqual(controller.in_flight_count(), 1)
+        self.assertEqual(controller.running_count(), 1)
+        self.assertEqual(controller.drain(timeout_s=0.2), 1)
+        controller.close()
+
+    def test_fallback_mode_uses_external_count_and_stops_nothing(self):
+        fake = FakeStack(duration_s=None)
+        controller = make_controller(fake)
+        controller.external_in_flight = lambda: 3
+        controller.hold(target=5, duration_s=0.3, timeout_s=0.05, abort_check=lambda: None)
+        self.assertEqual(controller.drain(timeout_s=0.2), 0)
+        self.assertEqual(controller.status()["inflight"], 3)
+        self.assertEqual(fake.stopped, [])
+        controller.close()
+
+    def test_drain_stops_leftovers_before_returning(self):
+        fake = FakeStack(duration_s=None)
+        controller = make_controller(fake)
+        controller.hold(target=3, duration_s=0.3, timeout_s=10, abort_check=lambda: None)
+        self.assertEqual(controller.drain(timeout_s=0.2), 3)
+        self.assertEqual(sorted(fake.stopped), [1, 2, 3])
+        controller.close()
+
+    def test_session_end_without_status_is_unknown_and_not_ok(self):
+        fake = FakeStack(duration_s=None)
+        controller = make_controller(fake)
+        controller.hold(target=1, duration_s=0.1, timeout_s=10, abort_check=lambda: None)
+        controller.on_event({"session_id": 1, "checkpoint": "session_end", "ts": 1.0})
+        record = controller.records[0]
+        self.assertEqual(record.end_status, "unknown")
+        self.assertFalse(record.ok)
         controller.close()
 
 

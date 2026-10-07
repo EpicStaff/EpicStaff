@@ -44,11 +44,13 @@ class Controller:
     ):
         self._start_session, self._stop_session, self._clock = start_session, stop_session, clock
         self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=senders)
+        self._stop_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
         self._lock = threading.Lock()
         self.records: list[SessionRecord] = []
         self._in_flight: dict[int, SessionRecord] = {}
         self._early_done: dict[int, tuple[float, str]] = {}
         self._running: set[int] = set()
+        self._early_running: set[int] = set()
         self._pending_http = 0
         self.external_in_flight: Callable[[], int] | None = None
         self._context = ("", 0, "", 0)
@@ -62,23 +64,25 @@ class Controller:
         if not isinstance(session_id, int):
             return
         with self._lock:
-            if event.get("checkpoint") == "slot_acquired" and session_id in self._in_flight:
-                self._running.add(session_id)
+            if event.get("checkpoint") == "slot_acquired":
+                if session_id in self._in_flight:
+                    self._running.add(session_id)
+                else:
+                    self._early_running.add(session_id)  # slot_acquired beat the HTTP answer
             elif event.get("checkpoint") == "session_end":
                 self._finish(
                     session_id,
                     float(event.get("ts") or self._clock()),
-                    event.get("status") or "end",
+                    event.get("status") or "unknown",
                 )
 
     def _finish(self, session_id: int, ts: float, status: str) -> None:  # caller holds the lock
         self._running.discard(session_id)
+        self._early_running.discard(session_id)
         record = self._in_flight.pop(session_id, None)
         if record is None:
-            self._early_done[session_id] = (
-                ts,
-                status,
-            )  # session_end arrived before the HTTP answer
+            # session_end arrived before the HTTP answer
+            self._early_done[session_id] = (ts, status)
         elif record.done_ts is None:
             record.done_ts, record.end_status = ts, status
 
@@ -103,8 +107,11 @@ class Controller:
             early = self._early_done.pop(session_id, None)
             if early:
                 record.done_ts, record.end_status = early
-            else:
+            elif self.external_in_flight is None:
                 self._in_flight[session_id] = record
+                if session_id in self._early_running:
+                    self._early_running.discard(session_id)
+                    self._running.add(session_id)
 
     def _submit(self, count: int, now: float) -> None:
         phase, level, kind, segment = self._context
@@ -115,9 +122,10 @@ class Controller:
                 self._pending_http += 1
             self._pool.submit(self._send, record)
 
-    def _expire(self, now: float, timeout_s: float) -> None:
+    def _expire(self, now: float, timeout_s: float) -> list[concurrent.futures.Future]:
+        """Time out sessions older than `timeout_s`; returns the stop futures it submitted."""
         if self.external_in_flight is not None:
-            return  # fallback control knows counts, not ids: nothing to expire or stop
+            return []  # fallback control knows counts, not ids: nothing to expire or stop
         with self._lock:
             expired = [
                 record for record in self._in_flight.values() if now - record.sent_ts > timeout_s
@@ -126,8 +134,7 @@ class Controller:
                 self._in_flight.pop(record.session_id)
                 self._running.discard(record.session_id)
                 record.done_ts, record.end_status = now, "timeout"
-        for record in expired:
-            self._pool.submit(self._safe_stop, record.session_id)
+        return [self._stop_pool.submit(self._safe_stop, record.session_id) for record in expired]
 
     def _safe_stop(self, session_id: int) -> None:
         try:
@@ -148,10 +155,12 @@ class Controller:
             return len(self._running)
 
     def status(self) -> dict:
+        external = self.external_in_flight() if self.external_in_flight is not None else None
         with self._lock:
             done = [record for record in self.records if record.done_ts is not None]
+            inflight = self._pending_http + (len(self._in_flight) if external is None else external)
             return {
-                "inflight": len(self._in_flight) + self._pending_http,
+                "inflight": inflight,
                 "running": len(self._running),
                 "completed": sum(record.ok for record in done),
                 "failed": sum(not record.ok for record in done),
@@ -205,14 +214,21 @@ class Controller:
         return None
 
     def drain(self, timeout_s: float) -> int:
-        """Wait for in-flight sessions; stop the ones still running after `timeout_s`."""
+        """Wait for in-flight sessions; stop the ones still running after `timeout_s`.
+        Returns the number of sessions it stopped (0 in fallback mode)."""
         deadline = time.monotonic() + timeout_s
         while self.in_flight_count() > 0 and time.monotonic() < deadline:
             time.sleep(0.25)
-        with self._lock:
-            leftover = list(self._in_flight.values())
-        self._expire(self._clock(), timeout_s=-1)
-        return len(leftover)
+        pending_deadline = time.monotonic() + 35  # let unanswered start requests finish
+        while time.monotonic() < pending_deadline:
+            with self._lock:
+                if self._pending_http == 0:
+                    break
+            time.sleep(0.05)
+        futures = self._expire(self._clock(), timeout_s=-1)
+        concurrent.futures.wait(futures, timeout=60)
+        return len(futures)
 
     def close(self) -> None:
         self._pool.shutdown(wait=True, cancel_futures=True)
+        self._stop_pool.shutdown(wait=True)  # never cancel stops
