@@ -272,6 +272,7 @@ class PhaseRunner:
             )
             if not self.fallback:
                 controller.external_in_flight = None
+                self._api_error = None  # left over from counting the cold session
             baseline_start = time.time()
             time.sleep(ladder.baseline_s)
             load_start = time.time()
@@ -349,7 +350,9 @@ class PhaseRunner:
             )
             completed = True
         finally:
+            self.records += controller.records  # first: a second Ctrl+C below must not lose them
             if not completed:
+                print(f"[{self.phase.name}] stopping in-flight sessions...")
                 # stop what is still running before cleanup deletes it; in fallback mode drop the
                 # API-based count so drain only waits for pending HTTP and never calls the API
                 controller.external_in_flight = None
@@ -370,14 +373,13 @@ class PhaseRunner:
                 self._safe("log follower stop", follower.stop)
             self._safe("controller close", controller.close)
             self.events += [event for follower in followers for event in follower.events]
-            self.records += controller.records
         return results
 
     def _safe(self, step: str, action) -> None:
         try:
             action()
-        except Exception as error:
-            print(f"[{self.phase.name}] {step} failed: {error!r}")
+        except Exception:
+            print(f"[{self.phase.name}] {step} failed:\n{traceback.format_exc()}")
 
     def _count_in_flight(self) -> int:
         """Fallback session count; a failing API is the break being measured, not a crash."""
@@ -386,7 +388,8 @@ class PhaseRunner:
         except ApiError as error:
             if self._api_error is None:
                 self._api_error = (self.clock(), str(error))
-            return self._last_in_flight
+            # never report 0 while a session may be running: hold() would end early
+            return max(self._last_in_flight, 1)
         self._api_error = None
         self._last_in_flight = count
         return count
@@ -405,7 +408,11 @@ class PhaseRunner:
                 return (
                     f"host RAM available {available:.0f}% < {abort.host_min_available_ram_pct:g}%"
                 )
-            if self._api_error and self.clock() - self._api_error[0] >= self.api_error_persist_s:
+            if (
+                controller.external_in_flight is not None
+                and self._api_error
+                and self.clock() - self._api_error[0] >= self.api_error_persist_s
+            ):
                 return f"API unreachable while counting sessions: {self._api_error[1]}"
             rate = controller.recent_error_rate(time.time())
             if rate is not None and rate >= abort.error_rate_30s:
@@ -447,7 +454,7 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
     _report(host_findings)
     created = datetime.now(UTC)
     phases, labels = [], []
-    images, limits, crash = {}, {}, None
+    images, limits, crash, interrupted = {}, {}, None, False
     project = stack.detect_project()
     meta_git = stack.git_info(options.repo)
     with contextlib.ExitStack() as exits:
@@ -489,16 +496,14 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
                         else:
                             phase_runner.run_capacity()
                     except KeyboardInterrupt:
+                        interrupted = True
                         labels.append("interrupted")
                         print("\n[run] interrupted: saving what was measured")
                         break
                     except Exception as error:
                         crash = error
                         labels.append(f"crashed:{type(error).__name__}")
-                        print(
-                            f"\n[run] phase {phase.name} crashed; saving what was measured\n"
-                            + "".join(traceback.format_exception(error))
-                        )
+                        print(f"\n[run] phase {phase.name} crashed; saving what was measured")
                         break
                     finally:
                         for step in (phase_runner.finish_fallback, phase_runner.cleanup):
@@ -572,6 +577,8 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
     print(f"\nRun folder: {run_dir}")
     if crash is not None:
         raise crash
+    if interrupted:
+        raise KeyboardInterrupt
     return run_dir
 
 
@@ -660,9 +667,9 @@ def _stack_facts(
         host_config = data.get("HostConfig", {})
         log_drivers[service] = host_config.get("LogConfig", {}).get("Type")
         variable = LOG_LEVEL_VARIABLES[service]
-        # a run applies the case env first, so it counts before the running container's env
-        levels = [(case_env or {}).get(variable, ""), stack.container_env(data).get(variable, "")]
-        bench_active[service] = any(level.upper() in BENCH_LEVELS for level in levels)
+        # a run applies the case env, so it wins over the running container's env
+        level = (case_env or {}).get(variable) or stack.container_env(data).get(variable, "")
+        bench_active[service] = level.upper() in BENCH_LEVELS
         memory_limits[service] = host_config.get("Memory") or 0
     caps = {}
     for key in CAP_VARIABLES:
@@ -729,7 +736,10 @@ def run_smoke(case: Case, api: Api, compose: stack.Compose, options: Options, en
         phase_runner = PhaseRunner(smoke_case, phase, api, compose, smoke_options, env, settle_s=0)
         try:
             phase_runner._segment("smoke", [2])
-            phase_runner.finish_fallback()
+            try:
+                phase_runner.finish_fallback()
+            except ApiError as error:
+                print(f"[{phase.name}] could not refresh smoke sessions from the API: {error}")
             rows = analyze.build_rows(phase_runner.records, phase_runner.events)
             details += [
                 f"{phase.name}: {problem}" for problem in _smoke_failures(rows, phase_runner.events)

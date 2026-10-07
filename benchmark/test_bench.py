@@ -5,6 +5,7 @@ Run from the repo root:  python -m unittest discover -s benchmark -p "test_*.py"
 
 import itertools
 import json
+import shutil
 import tempfile
 import textwrap
 import threading
@@ -1173,8 +1174,6 @@ class WorktreeCertsTest(unittest.TestCase):
             try:
                 copied = sorted(item.name for item in (path / "src" / "nginx" / "certs").iterdir())
             finally:
-                import shutil
-
                 shutil.rmtree(worktree._temp_root, ignore_errors=True)
         self.assertEqual(copied, ["server.crt"])
 
@@ -1219,9 +1218,19 @@ class FallbackApiTest(unittest.TestCase):
         self.assertEqual(phase_runner._count_in_flight(), 6)  # recovered: error cleared
         self.assertIsNone(check())
 
-    def test_first_failure_without_a_known_count_returns_zero(self):
+    def test_first_failure_without_a_known_count_assumes_one_session(self):
         phase_runner = make_phase_runner(FakeSessionsApi([api.ApiError(None, "down")]))
-        self.assertEqual(phase_runner._count_in_flight(), 0)
+        self.assertEqual(phase_runner._count_in_flight(), 1)
+
+    def test_stale_api_error_does_not_abort_once_bench_control_is_active(self):
+        phase_runner = make_phase_runner(FakeSessionsApi())
+        phase_runner._api_error = (0.0, "old cold-session error")
+        phase_runner.clock = lambda: 1000.0
+        sampler = mock.Mock(latest={})
+        sampler.restarts_since.return_value = []
+        controller = mock.Mock(external_in_flight=None)  # switched to BENCH control
+        controller.recent_error_rate.return_value = None
+        self.assertIsNone(phase_runner._abort_check(controller, sampler, {})())
 
     def test_sessions_api_rows_set_end_times_but_not_for_failed_sends(self):
         rows = [
@@ -1232,7 +1241,13 @@ class FallbackApiTest(unittest.TestCase):
         ]
         phase_runner = make_phase_runner(FakeSessionsApi(rows=rows))
         records = []
-        for session_id, status in [(1, None), (2, None), (3, "timeout"), (4, None)]:
+        for session_id, status in [
+            (1, None),
+            (2, None),
+            (3, "timeout"),
+            (4, None),
+            (3, "http_error"),
+        ]:
             record = load.SessionRecord("payload", 25, "ladder", 1, intended_ts=1.0)
             record.session_id, record.end_status = session_id, status
             records.append(record)
@@ -1241,6 +1256,7 @@ class FallbackApiTest(unittest.TestCase):
         self.assertEqual((records[1].end_status, records[1].done_ts), ("error", 1791367205.0))
         self.assertEqual((records[2].end_status, records[2].done_ts), ("timeout", None))
         self.assertEqual((records[3].end_status, records[3].done_ts), (None, None))
+        self.assertEqual((records[4].end_status, records[4].done_ts), ("http_error", None))
 
 
 class WorktreeCleanupTest(unittest.TestCase):
@@ -1267,6 +1283,7 @@ class WorktreeCleanupTest(unittest.TestCase):
         self.assertTrue(any("remove" in call for call in calls))
         self.assertTrue(any("prune" in call for call in calls))
         self.assertFalse(worktree._temp_root.exists())
+        shutil.rmtree(repo, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -133,6 +133,9 @@ def main() -> int:
     except CaseError as error:
         print(f"case error: {error}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        print("interrupted — remaining variants skipped", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
