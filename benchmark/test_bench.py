@@ -756,6 +756,19 @@ class RobustnessTest(unittest.TestCase):
         self.assertNotIn("ram", estimate["bounds"])
         self.assertGreater(estimate["concurrency"], 0)
 
+    def test_memory_headline_uses_only_strong_fits(self):
+        data = synthetic_run(mem_slope=0.3)
+        best = {"phase": "payload", "level": 10, "verdict": "pass", "throughput_per_min": 6}
+        best |= {"e2e_s_p50": 10, "e2e_s_p95": 12, "platform_overhead_s_p95": 2}
+        best |= {"cpu_s_per_session": 1, "bottleneck": "", "fail_reasons": ""}
+        fits = [
+            {"phase": "payload", "container": "crew", "mb_per_concurrent": 2.0, "r2": 0.9},
+            {"phase": "payload", "container": "agent", "mb_per_concurrent": -5.0, "r2": 0.006},
+        ]
+        summary = analyze._phase_summary(data, data.case.phases[0], [best], [], {}, fits)
+        self.assertEqual(summary["verdict"]["mb_per_concurrent_total"], 2.0)
+        self.assertEqual(summary["capacity_estimate"]["bounds"]["ram"], 4000)  # 8000 MB / 2.0
+
     def test_unknown_vcpu_gives_no_cpu_bound(self):
         meta = analyze.analyze(synthetic_run(mem_slope=0.3, vcpu=None), Path(tempfile.mkdtemp()))
         self.assertNotIn("cpu", meta["phases"][0]["capacity_estimate"]["bounds"])

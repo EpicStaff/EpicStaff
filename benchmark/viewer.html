@@ -14,7 +14,7 @@
       --surface: #ffffff;
       --ink: #12161c;
       --ink-2: #4b5360;
-      --muted: #7c8592;
+      --muted: #646c79; /* 4.9:1 on --bg, 5.3:1 on --surface */
       --line: #d9dee5;
       --grid: #e6e9ee;
       --accent: #1f5bc4;
@@ -42,7 +42,7 @@
         --surface: #161a21;
         --ink: #edf0f4;
         --ink-2: #b6bdc8;
-        --muted: #858e9b;
+        --muted: #8f98a5; /* 6.5:1 on --bg, 6.0:1 on --surface */
         --line: #2b313b;
         --grid: #232830;
         --accent: #79a6f2;
@@ -178,7 +178,7 @@
     </div>
   </section>
   <section id="diff" class="panel" hidden></section>
-  <nav id="tabs" aria-label="Comparison views"></nav>
+  <nav id="tabs" role="tablist" aria-label="Comparison views"></nav>
   <main id="tab"></main>
   <script>
     "use strict";
@@ -227,6 +227,8 @@
       ["node", "Node", "--series-1"], ["llm", "LLM call", "--series-7"], ["exec", "Python exec (sandbox)", "--series-3"],
     ];
     const PICKS = ["fastest", "median", "slowest", "failed", "cold"];
+    // capacity_estimate.limit → short label; the raw name stays in the cell's tooltip
+    const LIMIT_NAMES = { cpu: "CPU", ram: "RAM", CREW_MAX_CONCURRENT_SESSIONS: "crew slots", AGENT_MAX_CONCURRENT_RUNS: "agent runs" };
 
     const state = {
       runs: new Map(),
@@ -617,7 +619,7 @@
       section.replaceChildren(
         el("div", { class: "panel-head" }, el("h2", {}, "What’s different")),
         caseDiffers || graphDiffers
-          ? el("p", { class: "banner", role: "alert" }, "Different workload: the case or a phase graph differs between the selected runs, so their numbers are not directly comparable.")
+          ? el("p", { class: "banner", role: "alert" }, "Different workload — not comparable (case or a phase graph differs)")
           : "",
         differing.length
           ? el("div", { class: "table-wrap" }, el("table", {},
@@ -633,7 +635,7 @@
 
     function renderNav() {
       $("#tabs").replaceChildren(...TABS.map((name) => el("button", {
-        type: "button", "aria-selected": String(state.tab === name),
+        type: "button", role: "tab", "aria-selected": String(state.tab === name),
         onclick: () => { state.tab = name; renderTab(); },
       }, name)));
     }
@@ -734,7 +736,7 @@
       const baseMeta = metas[0];
       const phases = phaseList(metas.map((meta) => (meta?.phases || []).map((phase) => ({ phase: phase.name }))));
       host.append(el("p", { class: "hint" },
-        `Capacity runs: values at the highest passing concurrency level. Δ vs baseline ${baseline.tag}, only between runs of the same kind: green is better, red is worse (lower is better for latency, CPU and memory).`));
+        `Capacity runs: values at the highest passing concurrency level. Δ vs baseline ${baseline.tag}, only between runs of the same kind: green is better, red is worse (lower is better for latency, CPU and memory). No % is shown when the baseline value is 0 or below, or the value itself is negative.`));
       for (const phaseName of phases) {
         const panel = el("section", { class: "panel" }, el("h2", {}, `Phase ${phaseName}`));
         let slow = false;
@@ -755,7 +757,8 @@
             const cells = columns.map(([key, , better]) => numberCell(verdict[key], basePhase?.verdict?.[key], better, showDelta));
             if (kind === "capacity") {
               const estimate = phase.capacity_estimate;
-              cells.push(el("td", { class: "num" }, estimate ? `${fmt(estimate.concurrency)} (${estimate.limit})` : "—",
+              cells.push(el("td", { class: "num", title: estimate ? JSON.stringify(estimate.bounds) : undefined },
+                estimate ? `${fmt(estimate.concurrency)} (${LIMIT_NAMES[estimate.limit] || estimate.limit})` : "—",
                 showDelta ? delta(estimate?.concurrency, basePhase.capacity_estimate?.concurrency, 1) : null));
               cells.push(el("td", { class: "wrap" }, verdict.bottleneck || "—",
                 verdict.fail_reasons ? el("span", { class: "reason" }, verdict.fail_reasons) : null));
@@ -802,7 +805,8 @@
             pointStyle: (context) => (context.raw?.verdict === "invalid" ? "crossRot" : "circle"),
           });
         });
-        const ticks = [...levels].sort((a, b) => a - b);
+        const ticks = [...levels].filter((level) => typeof level === "number" && level > 0).sort((a, b) => a - b);
+        if (!ticks.length) continue; // no measured level in this phase: nothing to draw, and no NaN axis bounds
         const panel = el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`));
         host.append(panel);
         makeChart(panel, {

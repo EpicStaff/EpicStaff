@@ -1,6 +1,11 @@
 """Synthetic run folders built through the real analyzer — for tests and for checking the viewer.
 
-python benchmark/fixtures.py /tmp/bench-demo   # three runs + index.json
+  python benchmark/fixtures.py /tmp/bench-demo   # three runs + index.json
+
+The numbers are self-consistent: each level keeps `level` sessions in flight (closed loop, so
+throughput = in flight / end-to-end, Little's law); crew runs at most `crew_slots` of them and the
+rest queue; container memory and CPU follow the running sessions; memory returns to (almost)
+baseline after cooldown.
 """
 
 from __future__ import annotations
@@ -16,7 +21,136 @@ from config import load_case
 from load import SessionRecord
 
 HERE = Path(__file__).resolve().parent
-CONTAINERS = ("django_app", "crew", "agent", "sandbox")
+# container: (baseline MB, MB per running session, share of a session's CPU, MB kept after cooldown)
+CONTAINERS = {
+    "django_app": (420, 0.4, 0.15, 1.0),
+    "crew": (610, 3.0, 0.35, 4.0),
+    "agent": (380, 0.15, 0.10, 0.5),
+    "sandbox": (250, 1.2, 0.40, 0.5),
+}
+# phase: (run seconds of one session on an idle stack, CPU-seconds per session)
+PHASE_COST = {"payload": (12.0, 0.3), "complex": (24.0, 0.45)}
+HOST_VCPU, HOST_RAM_MB, HOST_AVAILABLE_MB = 12, 48000, 40000
+SAMPLE_S = 2
+
+
+def _samples(
+    rows: tuple[list, list],
+    rng: random.Random,
+    phase: str,
+    level: int,
+    start: float,
+    count: int,
+    running: int = 0,
+    cores: float = 0.0,
+    cooldown: bool = False,
+) -> None:
+    """`count` samples every 2 s from start + 1, so none sits on a window boundary."""
+    timeline, container_timeline = rows
+    used_mb = sum(per_session * running for _, per_session, _, _ in CONTAINERS.values())
+    available_mb = HOST_AVAILABLE_MB - used_mb
+    for sample in range(count):
+        ts = start + 1 + sample * SAMPLE_S
+        base = {"ts": ts, "rel_s": ts - 1_000_000, "phase": phase, "segment": 1, "level": level}
+        timeline.append(
+            base
+            | {
+                "target": level,
+                "inflight": level,
+                "running": running,
+                "queued": level - running,
+                "completed": 0,
+                "failed": 0,
+                "host_cpu_pct": round(3 + cores / HOST_VCPU * 100, 1),
+                "host_mem_avail_mb": round(available_mb),
+                "host_mem_avail_pct": round(available_mb / HOST_RAM_MB * 100, 1),
+                "load1": round(cores + 0.2, 2),
+                "pg_connections": 10 + running // 5,
+                "pg_max_connections": 200,
+                "redis_used_mb": round(20 + level / 20, 1),
+                "runner_cpu_pct": 4 if level else 1,
+            }
+        )
+        for container, (baseline_mb, per_session, cpu_share, kept_mb) in CONTAINERS.items():
+            if running:
+                mem_mb = baseline_mb + per_session * running + rng.gauss(0, 1.5)
+            elif cooldown:
+                mem_mb = baseline_mb + kept_mb + rng.uniform(0, 0.5)
+            else:
+                mem_mb = baseline_mb
+            container_timeline.append(
+                base
+                | {
+                    "container": container,
+                    "cpu_pct": round(1 + cpu_share * cores * 100, 1),
+                    "mem_mb": round(mem_mb, 1),
+                    "restarts": 0,
+                    "oom_kills": 0,
+                }
+            )
+
+
+def _session_events(session_id: int, sent: float, slot: float, done: float) -> list[dict]:
+    """Checkpoints of one session: five Python nodes, each wrapping a sandbox execution."""
+    node_s = (done - slot - 0.05) / 5  # all five nodes end before session_end
+    events = [
+        {
+            "service": "django_app",
+            "checkpoint": "request_received",
+            "session_id": session_id,
+            "ts": sent + 0.01,
+            "arrival_ts": sent,
+        },
+        {"service": "crew", "checkpoint": "received", "session_id": session_id, "ts": sent + 0.1},
+        {"service": "crew", "checkpoint": "slot_acquired", "session_id": session_id, "ts": slot},
+    ]
+    for node in range(5):
+        node_start = slot + node * node_s
+        name, execution = f"Python {node + 1}", f"e{session_id}-{node}"
+        events += [
+            {
+                "service": "crew",
+                "checkpoint": "node_start",
+                "session_id": session_id,
+                "node_name": name,
+                "node_type": "PythonNode",
+                "ts": node_start,
+            },
+            {
+                "service": "sandbox",
+                "checkpoint": "exec_start",
+                "session_id": session_id,
+                "execution_id": execution,
+                "ts": node_start + 0.05,
+            },
+            {
+                "service": "sandbox",
+                "checkpoint": "exec_end",
+                "session_id": session_id,
+                "execution_id": execution,
+                "ts": node_start + node_s - 0.05,
+                "returncode": 0,
+            },
+            {
+                "service": "crew",
+                "checkpoint": "node_end",
+                "session_id": session_id,
+                "node_name": name,
+                "node_type": "PythonNode",
+                "ok": True,
+                "ts": node_start + node_s,
+            },
+        ]
+    events.append(
+        {
+            "service": "crew",
+            "checkpoint": "session_end",
+            "session_id": session_id,
+            "status": "end",
+            "ts": done,
+        }
+    )
+    return events
 
 
 def _run(
@@ -35,198 +169,60 @@ def _run(
         if case_file == "server.toml"
         else {"payload": 1},
     )
-    clock, records, events, windows, timeline, container_timeline, segments = (
-        1_000_000.0,
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-    )
+    # Crew slots sit between the last passing level and fail_from (a x2 ladder), so fail_from
+    # is the first level whose sessions queue — long enough to fail p95_queue_wait_s.
+    crew_slots = fail_from * 5 // 8 if fail_from is not None else 100_000
+    clock, records, events, windows, segments = 1_000_000.0, [], [], [], []
+    samples: tuple[list, list] = ([], [])
     session_id = 0
     for phase in case.phases:
+        idle_run_s, cpu_s_per_session = PHASE_COST[phase.name]
         baseline_start = clock
-        for sample in range(10):
-            ts = clock + sample * 2
-            timeline.append(
-                {
-                    "ts": ts,
-                    "rel_s": ts - 1_000_000,
-                    "phase": phase.name,
-                    "segment": 1,
-                    "level": 0,
-                    "target": 0,
-                    "inflight": 0,
-                    "running": 0,
-                    "queued": 0,
-                    "completed": 0,
-                    "failed": 0,
-                    "host_cpu_pct": 3,
-                    "host_mem_avail_mb": 40000,
-                    "host_mem_avail_pct": 85,
-                    "load1": 0.2,
-                    "pg_connections": 10,
-                    "pg_max_connections": 100,
-                    "redis_used_mb": 20,
-                    "runner_cpu_pct": 1,
-                }
-            )
-            for container in CONTAINERS:
-                container_timeline.append(
-                    {
-                        "ts": ts,
-                        "rel_s": ts - 1_000_000,
-                        "phase": phase.name,
-                        "segment": 1,
-                        "level": 0,
-                        "container": container,
-                        "cpu_pct": 1,
-                        "mem_mb": 300,
-                        "restarts": 0,
-                        "oom_kills": 0,
-                    }
-                )
+        _samples(samples, rng, phase.name, 0, clock, 10)
         clock += 20
         load_start = clock
         for level in levels:
-            failing = fail_from is not None and level >= fail_from
+            running = min(level, crew_slots)
+            run_s = idle_run_s * (1 + running / 800)
+            queue_s = run_s * (level - running) / running  # Little's law for the queued rest
             start, settle_end, end = clock, clock + 30, clock + 210
             windows.append(
                 analyze.Window(
                     phase.name, level, kind, 1, start, settle_end, end, live_verdict=None
                 )
             )
-            for index in range(level * 3):
-                session_id += 1
-                sent = start + index * (180 / (level * 3)) + 30
-                e2e = rng.uniform(2, 4) * (6 if failing else 1) * (1 + level / 400)
-                records.append(
-                    SessionRecord(
-                        phase.name,
-                        level,
-                        kind,
-                        1,
-                        sent,
-                        sent + 0.001,
-                        8,
-                        200,
-                        session_id,
-                        None,
-                        sent + e2e,
-                        "end",
+            mean_e2e = 0.1 + queue_s + run_s
+            for user in range(level):  # closed loop: each user starts its next session at once
+                sent = start + user * mean_e2e / level
+                while sent < end:
+                    session_id += 1
+                    queue = queue_s * rng.uniform(0.7, 1.3) if queue_s else rng.uniform(0.03, 0.08)
+                    slot = sent + 0.1 + queue
+                    done = slot + run_s * rng.uniform(0.85, 1.15)
+                    records.append(
+                        SessionRecord(
+                            phase.name,
+                            level,
+                            kind,
+                            1,
+                            sent,
+                            sent + 0.001,
+                            8,
+                            200,
+                            session_id,
+                            None,
+                            done,
+                            "end",
+                        )
                     )
-                )
-                slot = sent + 0.2 + (rng.uniform(5, 9) if failing else 0.05)
-                events += [
-                    {
-                        "service": "django_app",
-                        "checkpoint": "request_received",
-                        "session_id": session_id,
-                        "ts": sent + 0.01,
-                        "arrival_ts": sent,
-                    },
-                    {
-                        "service": "crew",
-                        "checkpoint": "received",
-                        "session_id": session_id,
-                        "ts": sent + 0.1,
-                    },
-                    {
-                        "service": "crew",
-                        "checkpoint": "slot_acquired",
-                        "session_id": session_id,
-                        "ts": slot,
-                    },
-                ]
-                for node in range(5):
-                    node_start = slot + node * (e2e - 0.3) / 5
-                    events += [
-                        {
-                            "service": "crew",
-                            "checkpoint": "node_start",
-                            "session_id": session_id,
-                            "node_name": f"Python {node + 1}",
-                            "node_type": "PythonNode",
-                            "ts": node_start,
-                        },
-                        {
-                            "service": "sandbox",
-                            "checkpoint": "exec_start",
-                            "session_id": session_id,
-                            "execution_id": f"e{session_id}-{node}",
-                            "ts": node_start + 0.05,
-                        },
-                        {
-                            "service": "sandbox",
-                            "checkpoint": "exec_end",
-                            "session_id": session_id,
-                            "execution_id": f"e{session_id}-{node}",
-                            "ts": node_start + (e2e - 0.3) / 5 - 0.05,
-                            "returncode": 0,
-                        },
-                        {
-                            "service": "crew",
-                            "checkpoint": "node_end",
-                            "session_id": session_id,
-                            "node_name": f"Python {node + 1}",
-                            "node_type": "PythonNode",
-                            "ok": True,
-                            "ts": node_start + (e2e - 0.3) / 5,
-                        },
-                    ]
-                events.append(
-                    {
-                        "service": "crew",
-                        "checkpoint": "session_end",
-                        "session_id": session_id,
-                        "status": "end",
-                        "ts": sent + e2e,
-                    }
-                )
-            for sample in range(105):
-                ts = start + sample * 2
-                timeline.append(
-                    {
-                        "ts": ts,
-                        "rel_s": ts - 1_000_000,
-                        "phase": phase.name,
-                        "segment": 1,
-                        "level": level,
-                        "target": level,
-                        "inflight": level,
-                        "running": min(level, 25 if failing else level),
-                        "queued": level - min(level, 25 if failing else level),
-                        "completed": 0,
-                        "failed": 0,
-                        "host_cpu_pct": min(98, 10 + level * 1.5),
-                        "host_mem_avail_mb": 40000 - level * 40,
-                        "host_mem_avail_pct": 85 - level * 0.1,
-                        "load1": level / 10,
-                        "pg_connections": 10 + level // 2,
-                        "pg_max_connections": 100,
-                        "redis_used_mb": 20 + level / 10,
-                        "runner_cpu_pct": 4,
-                    }
-                )
-                for container in CONTAINERS:
-                    container_timeline.append(
-                        {
-                            "ts": ts,
-                            "rel_s": ts - 1_000_000,
-                            "phase": phase.name,
-                            "segment": 1,
-                            "level": level,
-                            "container": container,
-                            "cpu_pct": min(400, level * (3 if container == "sandbox" else 1)),
-                            "mem_mb": 300 + level * (4 if container == "crew" else 1.5),
-                            "restarts": 0,
-                            "oom_kills": 0,
-                        }
-                    )
+                    events += _session_events(session_id, sent, slot, done)
+                    sent = done + 0.05
+            cores = cpu_s_per_session * running / run_s  # sessions finished per second x CPU-s
+            _samples(samples, rng, phase.name, level, start, 105, running, cores)
             clock = end
-            if failing:
+            if fail_from is not None and level >= fail_from:
                 break
+        _samples(samples, rng, phase.name, 0, clock, 30, cooldown=True)
         segments.append(
             analyze.Segment(phase.name, 1, kind, baseline_start, load_start, clock, clock + 60)
         )
@@ -244,9 +240,9 @@ def _run(
             "built": True,
         },
         "images": {},
-        "host": {"hostname": "demo", "vcpu": 12, "ram_mb": 48000},
+        "host": {"hostname": "demo", "vcpu": HOST_VCPU, "ram_mb": HOST_RAM_MB},
         "container_limits": {},
-        "env": {"CREW_MAX_CONCURRENT_SESSIONS": "100000"},
+        "env": {"CREW_MAX_CONCURRENT_SESSIONS": str(crew_slots)},
         "labels": [],
         "smoke": {"ran": False},
         "graphs": {
@@ -256,9 +252,7 @@ def _run(
     }
     run_dir = out_dir / name
     analyze.analyze(
-        analyze.RunData(
-            case, "default", meta, records, windows, segments, events, timeline, container_timeline
-        ),
+        analyze.RunData(case, "default", meta, records, windows, segments, events, *samples),
         run_dir,
     )
     return run_dir

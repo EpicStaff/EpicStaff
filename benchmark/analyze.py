@@ -18,6 +18,7 @@ from load import SessionRecord
 SCHEMA_VERSION = 1
 TOOL_VERSION = "1.0.0"
 MIN_MEASURED = 10
+MIN_FIT_R2 = 0.5  # weaker memory-vs-running fits are noise and stay out of the headline
 SESSION_COLUMNS = [
     "phase",
     "segment",
@@ -787,6 +788,7 @@ def _phase_summary(data, phase, steps, rows, by_session, container_phase_rows) -
         for row in container_phase_rows
         if row["phase"] == phase.name
         and row["r2"] is not None
+        and row["r2"] >= MIN_FIT_R2
         and row["mb_per_concurrent"] is not None
     ]
     mb_total = sum(slopes) if slopes else None
