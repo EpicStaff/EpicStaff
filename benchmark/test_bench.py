@@ -15,8 +15,10 @@ from unittest import mock
 
 import analyze
 import api
+import compare
 import config
 import load
+import push
 import sample
 import stack
 from config import AbortRules, PassRules
@@ -813,6 +815,105 @@ class RobustnessTest(unittest.TestCase):
         self.assertEqual(data.meta["labels"], ["mine"])
         self.assertEqual(first["labels"], second["labels"])
         self.assertEqual(len(first["labels"]), 2)
+
+
+def fake_run(
+    folder: Path,
+    name: str,
+    level: int,
+    p95: float,
+    graph_hash="g1",
+    created="2026-10-07T10:00:00+00:00",
+) -> Path:
+    run_dir = folder / name
+    run_dir.mkdir(parents=True)
+    meta = {
+        "schema_version": 1,
+        "run_id": name,
+        "created_at": created,
+        "kind": "capacity",
+        "note": name,
+        "case": {"name": "c", "hash": "h1", "variant": "default"},
+        "git": {"ref": "dev", "sha": "abc", "dirty": False},
+        "host": {"hostname": "h"},
+        "env": {},
+        "labels": [],
+        "phases": [
+            {
+                "name": "payload",
+                "graph_hash": graph_hash,
+                "verdict": {"max_pass_concurrency": level},
+            }
+        ],
+    }
+    (run_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    header = ",".join(analyze.STEP_COLUMNS)
+    values = dict.fromkeys(analyze.STEP_COLUMNS, "")
+    values.update(
+        phase="payload",
+        segment="1",
+        level=str(level),
+        kind="ladder",
+        verdict="pass",
+        e2e_s_p95=str(p95),
+        e2e_s_p50="1",
+        throughput_per_min="60",
+        cpu_s_per_session="0.5",
+    )
+    (run_dir / "steps.csv").write_text(
+        header + "\n" + ",".join(values[c] for c in analyze.STEP_COLUMNS) + "\n", encoding="utf-8"
+    )
+    for file_name, columns in (
+        ("nodes.csv", analyze.NODE_COLUMNS),
+        ("containers.csv", analyze.CONTAINER_COLUMNS),
+        ("container_phases.csv", analyze.CONTAINER_PHASE_COLUMNS),
+    ):
+        (run_dir / file_name).write_text(",".join(columns) + "\n", encoding="utf-8")
+    return run_dir
+
+
+class CompareTest(unittest.TestCase):
+    def test_deltas_against_the_first_run(self):
+        folder = Path(tempfile.mkdtemp())
+        text = compare.compare_runs(
+            [fake_run(folder, "a", 100, 10.0), fake_run(folder, "b", 200, 5.0)]
+        )
+        self.assertIn("max_pass_concurrency", text)
+        self.assertIn("+100.0%", text)
+        self.assertIn("-50.0%", text)
+        self.assertNotIn("not comparable", text)
+
+    def test_banner_when_the_graph_changed(self):
+        folder = Path(tempfile.mkdtemp())
+        text = compare.compare_runs(
+            [fake_run(folder, "a", 100, 10.0), fake_run(folder, "b", 100, 10.0, graph_hash="g2")]
+        )
+        self.assertIn("different workload — not comparable", text)
+
+
+class PushTest(unittest.TestCase):
+    def test_index_keeps_numbers_and_appends(self):
+        folder = Path(tempfile.mkdtemp())
+        fake_run(folder, "old", 100, 1.0, created="2026-10-01T00:00:00+00:00")
+        fake_run(folder, "new", 100, 1.0, created="2026-10-02T00:00:00+00:00")
+        index = push.build_index(folder, {"runs": [{"number": 7, "folder": "old"}]})
+        self.assertEqual(
+            [(run["folder"], run["number"]) for run in index["runs"]], [("old", 7), ("new", 8)]
+        )
+
+    def test_refuses_folder_with_api_key(self):
+        folder = Path(tempfile.mkdtemp())
+        run_dir = fake_run(folder, "leaky", 100, 1.0)
+        (run_dir / "events_sample.csv").write_text("x,secret-key-123\n", encoding="utf-8")
+        self.assertTrue(push.contains_secret(run_dir, "secret-key-123"))
+        with self.assertRaisesRegex(SystemExit, "API key"):
+            push.push(
+                [run_dir],
+                str(folder / "repo"),
+                Path(__file__).with_name("viewer.html"),
+                "secret-key-123",
+                True,
+            )
 
 
 if __name__ == "__main__":
