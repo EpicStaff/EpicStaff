@@ -349,12 +349,14 @@ class FlowAssistantService:
                 current_tool_calls: list[dict] = []
                 is_final_turn = True  # assume final until we see tool calls
                 cancel_inner: bool = False  # set when cancel detected mid-stream
+                iteration_finish_reason: str | None = None
 
                 payload = _messages_for_llm(working_messages)
                 async for event in client.stream_completion(payload, TOOL_SPECS):
                     if isinstance(event, DoneEvent):
                         if event.reasoning_observed:
                             reasoning_observed_this_turn = True
+                        iteration_finish_reason = event.finish_reason
                         break
                     elif isinstance(event, ToolCallEvent):
                         is_final_turn = False
@@ -498,13 +500,28 @@ class FlowAssistantService:
             else:
                 # Fallback: treat accumulated raw content as plain text.
                 if json_buffer:
+                    truncation_note = (
+                        " Output was truncated by the token limit (finish_reason=length)."
+                        if iteration_finish_reason == "length"
+                        else ""
+                    )
                     logger.warning(
                         "FlowAssistantService: could not parse LLM JSON buffer as "
                         "structured output; falling back to raw text. "
-                        "Buffer length: {} chars.",
+                        "Buffer length: {} chars.{}",
                         len(json_buffer),
+                        truncation_note,
                     )
-                final_text = "".join(assistant_content_parts).strip()
+                    # Preview stays at DEBUG: the buffer can contain flow data.
+                    logger.debug(
+                        "FlowAssistantService: unparsed LLM JSON buffer preview: {!r}",
+                        json_buffer[:200],
+                    )
+                final_text = (
+                    _partial_json.extract_message_field(json_buffer).strip()
+                    or json_buffer.strip()
+                    or "".join(assistant_content_parts).strip()
+                )
                 ef_tables = []
                 action_message = []
                 # Mirror the structured branch: emit one terminal event so the

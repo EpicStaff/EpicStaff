@@ -25,6 +25,19 @@ from src.shared.models.graph_nodes import (
     PromptConfigData,
 )
 
+# litellm reports json_schema support for these providers, but their APIs reject it
+# ("This response_format type is unavailable now") and only accept json_object.
+JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
+
+# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
+# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
+PROVIDER_ALIASES = {
+    "google_ai": "gemini",
+    "novita_ai": "novita",
+    "aws_sagemaker": "sagemaker",
+    "featherless-ai": "featherless_ai",
+}
+
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
 # builtins, sys.modules and imported modules are shared by all rows of a batch.
@@ -457,21 +470,40 @@ def main(**kwargs) -> dict:
                     "Prompt output_schema is not valid JSON; sending request without a response_format."
                 )
                 schema = None
+        messages = [{"role": "user", "content": prompt}]
         if isinstance(schema, dict) and schema:
-            response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "cdt_prompt_output",
-                    "schema": schema,
-                    "strict": True,
-                },
-            }
+            if llm.provider.lower().strip() in JSON_OBJECT_ONLY_PROVIDERS:
+                response_format = {"type": "json_object"}
+                # json_object mode carries no schema and requires the word "json" in the
+                # prompt; the user-written prompt guarantees neither, so state both here.
+                messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": (
+                            "Respond with a JSON object that matches this JSON schema: "
+                            f"{json.dumps(schema)}"
+                        ),
+                    },
+                )
+            else:
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "cdt_prompt_output",
+                        "schema": schema,
+                        "strict": True,
+                    },
+                }
 
         # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
+        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
+        # model id and must become "groq/openai/gpt-oss-120b".
+        litellm_provider = PROVIDER_ALIASES.get(llm.provider.lower().strip(), llm.provider)
         model = (
             llm_config.model
-            if llm_config.model.startswith(f"{llm.provider}/")
-            else f"{llm.provider}/{llm_config.model}"
+            if llm_config.model.startswith(f"{litellm_provider}/")
+            else f"{litellm_provider}/{llm_config.model}"
         )
         params = {
             "model": model,
@@ -490,9 +522,7 @@ def main(**kwargs) -> dict:
             "api_key": llm_config.api_key,
             "stream": False,
         }
-        resp = await litellm.acompletion(
-            **{**params, "messages": [{"role": "user", "content": prompt}]}
-        )
+        resp = await litellm.acompletion(**{**params, "messages": messages})
 
         try:
             cost = litellm.completion_cost(completion_response=resp)

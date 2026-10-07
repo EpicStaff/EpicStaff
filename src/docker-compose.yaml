@@ -393,7 +393,7 @@ services:
     restart: unless-stopped
 
   storage-init:
-    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     container_name: storage-init
     networks:
       - backend-network
@@ -458,7 +458,7 @@ services:
       start_period: 5s
 
   epicstaff-nginx:
-    image: nginx
+    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
     container_name: epicstaff-nginx
     ports:
       - "80:80"
