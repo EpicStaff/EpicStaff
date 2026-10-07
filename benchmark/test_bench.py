@@ -3,12 +3,15 @@
 Run from the repo root:  python -m unittest discover -s benchmark -p "test_*.py"
 """
 
+import json
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
 
+import api
 import config
+import stack
 
 CASE_TOML = textwrap.dedent(
     """
@@ -121,6 +124,63 @@ class ConfigTest(unittest.TestCase):
         dev = config.load_case(cases / "dev.toml", {"payload": 1})
         self.assertEqual(server.kind, "capacity")
         self.assertEqual((dev.kind, dev.dev.sessions, dev.dev.concurrency), ("dev", 100, 25))
+
+
+class ApiTest(unittest.TestCase):
+    def test_graph_hash_ignores_timestamps_and_save_version(self):
+        graph = {
+            "id": 1,
+            "name": "f",
+            "updated_at": "x",
+            "save_version": 3,
+            "python_node_list": [{"id": 5, "code": "print(1)", "created_at": "y"}],
+        }
+        same = {**graph, "updated_at": "z", "save_version": 9}
+        edited = {**graph, "python_node_list": [{"id": 5, "code": "print(2)", "created_at": "y"}]}
+        self.assertEqual(api.graph_hash(graph), api.graph_hash(same))
+        self.assertNotEqual(api.graph_hash(graph), api.graph_hash(edited))
+
+
+class EnvOverrideTest(unittest.TestCase):
+    def test_apply_replaces_active_lines_and_appends_missing(self):
+        text = "A=1\n# B=<enter your value>\nC=3\n"
+        self.assertEqual(
+            stack.apply_env_overrides(text, {"A": "9", "B": "2"}),
+            "A=9\n# B=<enter your value>\nC=3\nB=2\n",
+        )
+
+    def test_restores_after_keyboard_interrupt(self):
+        folder = Path(tempfile.mkdtemp())
+        env_path = folder / ".env"
+        env_path.write_text("A=1\n", encoding="utf-8")
+        with self.assertRaises(KeyboardInterrupt), stack.EnvOverride(env_path, {"A": "2"}):
+            self.assertEqual(env_path.read_text(encoding="utf-8"), "A=2\n")
+            raise KeyboardInterrupt
+        self.assertEqual(env_path.read_text(encoding="utf-8"), "A=1\n")
+        self.assertFalse((folder / ".env.bench-backup").exists())
+
+    def test_refuses_when_previous_backup_exists(self):
+        folder = Path(tempfile.mkdtemp())
+        (folder / ".env").write_text("A=1\n", encoding="utf-8")
+        (folder / ".env.bench-backup").write_text("A=0\n", encoding="utf-8")
+        with (
+            self.assertRaisesRegex(stack.StackError, "did not restore"),
+            stack.EnvOverride(folder / ".env", {}),
+        ):
+            pass
+
+
+class ComposeParseTest(unittest.TestCase):
+    def test_parse_ps_accepts_array_and_json_lines(self):
+        row = {"Service": "crew", "State": "running", "Health": ""}
+        self.assertEqual(stack.parse_ps(json.dumps([row])), [row])
+        self.assertEqual(stack.parse_ps(json.dumps(row) + "\n" + json.dumps(row)), [row, row])
+        self.assertEqual(stack.parse_ps(""), [])
+
+    def test_read_env_file_skips_comments(self):
+        folder = Path(tempfile.mkdtemp())
+        (folder / ".env").write_text("# X=1\nA = 2 # note\nB='3'\n", encoding="utf-8")
+        self.assertEqual(stack.read_env_file(folder / ".env"), {"A": "2", "B": "3"})
 
 
 if __name__ == "__main__":
