@@ -172,6 +172,7 @@ class SessionGraphBuilder:
             stop_event=self.stop_event,
             run_code_execution_service=self.python_code_executor_service,
             storage_credentials=storage_credentials,
+            redis_service=self.redis_service,
         )
         subgraph: CompiledStateGraph = builder.build()
 
@@ -218,6 +219,7 @@ class SessionGraphBuilder:
         subgraph_node_data: SubGraphNode,
         unique_subgraph_list: list[SubGraphData],
         stop_event,
+        org_id: int,
         storage_credentials: StorageCredentials | None = None,
     ) -> str:
         """
@@ -235,6 +237,7 @@ class SessionGraphBuilder:
             session_graph_builder=self,
             stop_event=stop_event,
             storage_credentials=storage_credentials,
+            org_id=org_id,
         )
 
         async def inner(state: State, writer: StreamWriter):
@@ -421,6 +424,7 @@ class SessionGraphBuilder:
                 unique_subgraph_list=session_data.unique_subgraph_list,
                 stop_event=self.stop_event,
                 storage_credentials=session_data.storage_credentials,
+                org_id=session_data.org_id,
             )
 
         for webhook_trigger_node_data in schema.webhook_trigger_node_data_list:

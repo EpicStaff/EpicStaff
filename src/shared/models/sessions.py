@@ -8,18 +8,13 @@ from .storage_scope import StorageCredentials
 
 class SessionData(BaseModel):
     id: int
+    org_id: int
     graph: "GraphData"
     unique_subgraph_list: list[SubGraphData] = []
     initial_state: dict[str, Any] = {}
     output_state: dict[str, Any] = {}
     storage_credentials: StorageCredentials | None = None
-    """Temporary storage credentials issued for this session.
-
-    Ephemeral payload — never persisted, never part of graph_schema. Sibling field
-    to `graph`, injected by django when publishing session data to crew. The sole
-    place where credentials flow from django → crew before distribution to
-    storage-demanding nodes.
-    """
+    run_type: str = ""
 
 
 class TokenUsage(BaseModel):

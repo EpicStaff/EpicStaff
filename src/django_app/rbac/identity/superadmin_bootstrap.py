@@ -8,7 +8,7 @@ from loguru import logger
 
 from rbac.exceptions import OrganizationNameConflictError
 from rbac.governance.organizations import OrganizationManagementService
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationConfig, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
 # Last-resort organization name. settings.DEFAULT_ORGANIZATION_NAME already
@@ -130,6 +130,7 @@ class SuperadminBootstrap:
                 org = OrganizationManagementService().create_organization(name=resolved_name)
                 org.is_default = True
                 org.save(update_fields=["is_default"])
+                OrganizationConfig.objects.create(org=org)
                 return org, True
         except (OrganizationNameConflictError, IntegrityError):
             # Race lost — another transaction created the row between our

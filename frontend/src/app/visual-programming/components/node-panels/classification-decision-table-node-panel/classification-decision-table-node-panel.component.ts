@@ -95,7 +95,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel<ClassificationDecisionTableNodeModel> {
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
-    public readonly exportButtonTemplate = viewChild<TemplateRef<unknown>>('exportButtonTpl');
+    public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
 
     private flowService = inject(FlowService);
 

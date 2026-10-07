@@ -82,7 +82,7 @@ def agent(db, org):
     return AgentDefinition.objects.create(
         organization=org,
         name="agent-node-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 

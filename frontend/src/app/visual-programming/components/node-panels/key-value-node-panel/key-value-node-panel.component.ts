@@ -37,7 +37,7 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
 import {
     catchError,
     debounceTime,
@@ -63,6 +63,7 @@ import { KeyValueTablesApiService } from '../../../../features/key-value-tables/
 import { KeyValueTablesStorageService } from '../../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { KEY_VALUE_MODE_LABELS } from '../../../core/constants/key-value-mode-visuals';
 import {
     canConfigureMode,
     duplicateWriteKeys,
@@ -112,11 +113,12 @@ const KEY_HELP = 'Use {variables.name} to insert a variable into the key';
 const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
 const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
 const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table', iconOnly: true };
-const MODE_ITEMS: SelectItem<KeyValueMode>[] = [
-    { name: 'Read', value: 'read' },
-    { name: 'Write', value: 'write' },
-    { name: 'Delete', value: 'delete' },
-];
+// The dot takes the node's stripe colour, so the select and the canvas never disagree.
+const MODE_ITEMS: SelectItem<KeyValueMode>[] = (['read', 'write', 'delete'] as const).map((mode) => ({
+    name: KEY_VALUE_MODE_LABELS[mode],
+    value: mode,
+    dotColor: KEY_VALUE_MODE_COLORS[mode],
+}));
 const NO_READ_NOTICE = 'You need View permission on Key-Value Tables to configure this node.';
 // Names the permissions KEY_VALUE_MODE_ACTIONS lists, as the role editor calls them.
 const MODE_LOCKED_NOTICE: Record<KeyValueMode, string> = {
@@ -467,7 +469,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
                 if (!table) return;
                 this.toastService.success(`Table "${table.name}" created`);
                 this.selectTable(table.id);
-                // Through the shared cache, so the Files page and other panels list the new table too;
+                // Through the shared cache, so the Storage page and other panels list the new table too;
                 // a reload, as a load already in flight may have started before the create.
                 this.trackTablesLoad(this.keyValueTablesStorage.reloadTables());
             });

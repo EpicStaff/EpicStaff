@@ -455,7 +455,7 @@ calls the storage backend itself.
 The storage server is a core service — it starts with every `docker compose up`. No profiles are needed.
 
 - **`storage`** — RustFS (`rustfs/rustfs:1.0.0`, pinned by digest), volume: `rustfs_data`.
-- **`storage-init`** — one-shot container (same RustFS image) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
+- **`storage-init`** — one-shot container (`curlimages/curl:8.22.0`, pinned by digest) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
 
 The `django_app` and `knowledge_new` services depend on `storage` being healthy before starting.
 

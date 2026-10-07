@@ -7,6 +7,10 @@ from db.config import AsyncSessionLocal
 from helpers.logger import logger
 from repositories.session_repository import SessionRepository
 from repositories.temp_storage_account_repository import TempStorageAccountRepository
+from services.audit_export_cleanup_service import (
+    ExportCleanupService,
+    build_export_redis_client,
+)
 from services.redis_service import RedisService
 from services.schedule_service import ScheduleService
 from services.session_timeout_service import SessionTimeoutService
@@ -19,6 +23,7 @@ redis_service = RedisService(
     settings.REDIS_USER,
     settings.REDIS_PASSWORD,
 )
+redis_export_service = build_export_redis_client()
 
 session_repository = SessionRepository(AsyncSessionLocal)
 
@@ -30,6 +35,11 @@ session_timeout_service = SessionTimeoutService(
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
+export_cleanup_service = ExportCleanupService(
+    redis_client=redis_export_service,
+    sweep_interval_seconds=settings.AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS,
+    export_data_dir=settings.AUDITOR_EXPORT_DATA_DIR,
+)
 
 temp_storage_account_repository = TempStorageAccountRepository(AsyncSessionLocal)
 storage_account_cleanup_service = StorageAccountCleanupService(
@@ -93,6 +103,9 @@ async def main():
         await storage_account_cleanup_service.start()
         logger.info("StorageAccountCleanupService started successfully.")
 
+        await export_cleanup_service.start()
+        logger.info("ExportCleanupService started successfully.")
+
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
@@ -109,6 +122,8 @@ async def shutdown():
     storage_account_cleanup_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
+    await export_cleanup_service.stop()
+    await redis_export_service.aclose()
 
 
 if __name__ == "__main__":
