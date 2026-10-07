@@ -12,6 +12,7 @@ from unittest import mock
 
 import api
 import config
+import sample
 import stack
 
 CASE_TOML = textwrap.dedent(
@@ -202,6 +203,44 @@ class ComposeParseTest(unittest.TestCase):
             stack.read_env_file(folder / ".env"),
             {"A": "2", "B": "3", "PASSWORD": "ab#cd", "C": "1", "Q": "x # y"},
         )
+
+
+class SampleParseTest(unittest.TestCase):
+    def test_cgroup_and_proc_parsers(self):
+        self.assertEqual(sample.parse_cpu_stat("usage_usec 1500\nuser_usec 1000\n"), 1500)
+        self.assertEqual(sample.parse_memory_events("low 0\noom 2\noom_kill 1\n"), 1)
+        self.assertEqual(sample.parse_proc_stat("cpu  10 0 5 80 5 0 0 0 0 0\ncpu0 1 2"), (85, 100))
+        self.assertEqual(
+            sample.parse_meminfo("MemTotal: 1000 kB\nMemAvailable: 250 kB\n")["MemAvailable"], 250
+        )
+
+    def test_live_line(self):
+        row = {
+            "phase": "payload",
+            "level": 50,
+            "target": 50,
+            "inflight": 48,
+            "running": 40,
+            "queued": 8,
+            "completed": 120,
+            "failed": 1,
+            "host_cpu_pct": 63.0,
+            "host_mem_avail_mb": 30000,
+            "pg_connections": 42,
+            "redis_used_mb": 25.0,
+        }
+        line = sample.live_line(row, {"crew": {"mem_mb": 812.4}, "agent": {"mem_mb": None}})
+        self.assertEqual(
+            line,
+            "payload L50 target 50 in-flight 48 running 40 queued 8 done 120 err 1 | "
+            "CPU 63% | RAM avail 30000 MB | crew 812 MB agent — MB | pg 42 | redis 25 MB",
+        )
+
+    def test_redis_and_docker_size(self):
+        self.assertEqual(sample.parse_redis_used_mb("# Memory\r\nused_memory:2097152\r\n"), 2.0)
+        self.assertIsNone(sample.parse_redis_used_mb("garbage"))
+        self.assertAlmostEqual(sample.parse_docker_size_mb("1.5GiB / 4GiB"), 1536.0)
+        self.assertAlmostEqual(sample.parse_docker_size_mb("512MiB"), 512.0)
 
 
 if __name__ == "__main__":
