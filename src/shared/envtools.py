@@ -29,6 +29,18 @@ class Env:
     BOOLEAN_TRUE_VALUES = frozenset({"1", "y", "yes", "true", "on"})
     NONE_VALUE = "none"
     LOG_LEVELS = ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
+    # Services that emit benchmark checkpoints (src/shared/bench_log.py) also accept BENCH (15).
+    # uvicorn has no BENCH level, so services that pass their level to uvicorn keep LOG_LEVELS.
+    LOG_LEVELS_WITH_BENCH = (
+        "TRACE",
+        "DEBUG",
+        "BENCH",
+        "INFO",
+        "SUCCESS",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
+    )
 
     def __init__(self):
         self._envs: dict[str, str] = {}
@@ -244,33 +256,38 @@ class Env:
 
         return self.get_value(variable, default, cast)
 
-    def log_level(self, variable: str, default: str | EllipsisType = ...) -> str:
+    def log_level(
+        self,
+        variable: str,
+        default: str | EllipsisType = ...,
+        allowed: tuple[str, ...] = LOG_LEVELS,
+    ) -> str:
         """Read an environment variable as an upper-cased log level name.
 
-        Only loguru's built-in level names are allowed. uvicorn knows all of them except
+        Only the names in ``allowed`` are accepted (default: loguru's built-in levels;
+        ``LOG_LEVELS_WITH_BENCH`` adds BENCH). uvicorn knows all of them except
         ``SUCCESS``, so a caller passing the level to uvicorn must map that one. Unlike the
         other accessors, the ``none`` value is rejected: a sink always needs a level.
 
         Args:
             variable: Name of the environment variable to read.
             default: Value returned when the variable is missing; not validated.
+            allowed: Level names accepted for a set variable.
 
         Returns:
             The upper-cased level name.
 
         Raises:
             EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
-            ValueError: The value is not one of ``LOG_LEVELS``.
+            ValueError: The value is not one of ``allowed``.
         """
         value = self._envs.get(variable)
         if value is None:
             return self.get_value(variable, default)
 
         level = value.strip().upper()
-        if level not in self.LOG_LEVELS:
-            raise ValueError(
-                f"{variable} must be one of {', '.join(self.LOG_LEVELS)}, got {value!r}."
-            )
+        if level not in allowed:
+            raise ValueError(f"{variable} must be one of {', '.join(allowed)}, got {value!r}.")
         return level
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:

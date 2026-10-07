@@ -8,7 +8,7 @@ env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(env_file=BASE_DIR / "../.env")
 
-LOG_LEVEL = env.log_level("SANDBOX_LOG_LEVEL", "INFO")
+LOG_LEVEL = env.log_level("SANDBOX_LOG_LEVEL", "INFO", allowed=env.LOG_LEVELS_WITH_BENCH)
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.str("REDIS_PORT")

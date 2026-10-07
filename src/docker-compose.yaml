@@ -68,7 +68,6 @@ services:
     command: ./entrypoint.sh
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
-      BENCH_SERVICE: django
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DB_USER: ${DB_USER:?}
@@ -136,7 +135,6 @@ services:
       AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
     volumes:
       - media_data:/app/media
-      - ./bench_logs:/app/bench
     networks:
       backend-network:
         aliases:
@@ -296,7 +294,6 @@ services:
     container_name: crew
     environment:
       <<: [*docker-env, *redis-env, *communication-env]
-      BENCH_SERVICE: crew
       CREW_LOG_LEVEL: ${CREW_LOG_LEVEL:-INFO}
       CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
@@ -315,8 +312,6 @@ services:
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_KEY: ${DJANGO_API_KEY:?}
-    volumes:
-      - ./bench_logs:/app/bench
     networks:
       - backend-network
     tty: true
@@ -338,7 +333,6 @@ services:
     init: true
     environment:
       <<: [*docker-env, *redis-env, *storage-env, *communication-env]
-      BENCH_SERVICE: sandbox
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
@@ -352,7 +346,6 @@ services:
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
-      - ./bench_logs:/app/bench
     networks:
       - sandbox-network
     tty: true
@@ -531,7 +524,6 @@ services:
     stop_grace_period: 5m
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
-      BENCH_SERVICE: agent
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:?}
@@ -547,8 +539,6 @@ services:
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
-    volumes:
-      - ./bench_logs:/app/bench
     depends_on:
       redis:
         condition: service_healthy

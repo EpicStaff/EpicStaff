@@ -1,3 +1,4 @@
+import json
 import importlib
 import sys
 
@@ -39,3 +40,26 @@ def test_stdout_sink_writes_debug_records_at_debug_level(reload_logger_module, c
     logger.debug("debug record must be written")
 
     assert "debug record must be written" in capsys.readouterr().out
+
+
+def test_bench_level_writes_each_checkpoint_once_as_json(reload_logger_module, capsys):
+    logger = reload_logger_module("BENCH")
+
+    logger.log(15, "bench {checkpoint}", checkpoint="slot_acquired", session_id=3)
+    logger.debug("debug record must be filtered")
+    logger.info("info record must be written")
+
+    lines = capsys.readouterr().out.splitlines()
+    checkpoints = [json.loads(line) for line in lines if line.startswith('{"bench"')]
+    assert [(item["checkpoint"], item["session_id"]) for item in checkpoints] == [("slot_acquired", 3)]
+    assert sum("slot_acquired" in line for line in lines) == 1
+    assert not any("debug record must be filtered" in line for line in lines)
+    assert any("info record must be written" in line for line in lines)
+
+
+def test_info_level_writes_no_checkpoints(reload_logger_module, capsys):
+    logger = reload_logger_module("INFO")
+
+    logger.log(15, "bench {checkpoint}", checkpoint="slot_acquired")
+
+    assert capsys.readouterr().out == ""

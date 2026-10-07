@@ -43,3 +43,18 @@ def test_accepts_loguru_success_level(monkeypatch):
     monkeypatch.setenv(VARIABLE, "success")
 
     assert Env().log_level(VARIABLE) == "SUCCESS"
+
+
+def test_bench_is_rejected_unless_the_service_allows_it(monkeypatch):
+    monkeypatch.setenv(VARIABLE, "bench")
+
+    with pytest.raises(ValueError, match=f"{VARIABLE} must be one of TRACE, DEBUG, INFO, SUCCESS"):
+        Env().log_level(VARIABLE, "INFO")
+    assert Env().log_level(VARIABLE, "INFO", allowed=Env.LOG_LEVELS_WITH_BENCH) == "BENCH"
+
+
+@pytest.mark.parametrize("level", Env.LOG_LEVELS_WITH_BENCH)
+def test_every_bench_service_level_is_a_loguru_level(level):
+    import src.shared.bench_log  # noqa: F401 -- registers BENCH
+
+    assert logger.level(level).name == level

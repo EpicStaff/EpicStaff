@@ -20,7 +20,7 @@ env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(BASE_DIR / "../.env")
 
-LOG_LEVEL = env.log_level("AGENT_LOG_LEVEL")
+LOG_LEVEL = env.log_level("AGENT_LOG_LEVEL", allowed=env.LOG_LEVELS_WITH_BENCH)
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
