@@ -12,14 +12,11 @@ from tables.models.base_models import (
 
 
 class PythonCode(ContentHashMixin, models.Model):
+    venv_id = models.IntegerField(null=True)
     code = models.TextField()
     entrypoint = models.TextField(default="main")
-    libraries = models.TextField(default="")  # sep: space
     global_kwargs = models.JSONField(default=dict)
     secrets = models.ManyToManyField("Secret", blank=True, related_name="python_codes")
-
-    def get_libraries_list(self):
-        return list(filter(None, self.libraries.split(" ")))
 
 
 class PythonCodeTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin, models.Model):
