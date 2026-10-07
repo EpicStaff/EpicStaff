@@ -14,8 +14,10 @@ from agents.models import (
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.registry import entity_registry
+from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.utils import nest_owned_surface_entries
 
 
 @pytest.fixture
@@ -167,11 +169,14 @@ class TestAgentDefinitionStrategy:
         )
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
-        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
         assert strategy.find_existing(deepcopy(data), mapper).id == agent_definition.id
 
-        data["owned_surfaces"] = []
+        edited = deepcopy(data)
+        edited[OWNED_SURFACE_ENTRIES_KEY][0]["instructions"] = "edited after export"
+        assert strategy.find_existing(edited, mapper) is None
 
+        data[OWNED_SURFACE_ENTRIES_KEY] = []
         assert strategy.find_existing(data, mapper) is None
 
     def test_find_existing_prefers_exact_name_over_newer_identical_copy(
@@ -191,31 +196,43 @@ class TestAgentDefinitionStrategy:
         )
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
-        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
 
         assert strategy.find_existing(data, mapper).id == agent_definition.id
 
-    def test_find_existing_prefers_full_owner_over_newer_subset_match(
+    def test_find_existing_skips_copy_without_equivalent_owned_surface(
         self, agent_definition, export_service, default_org
     ):
         Surface.objects.create(
             organization=default_org, name="owned_surface_x", owner_agent=agent_definition
         )
-        AgentDefinition.objects.create(
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        # After export the original is renamed and a copy takes the exact name,
+        # so the copy sorts first. It owns as many surfaces as the file, in the
+        # same name family but with other content, so only the content pairing
+        # can reject it.
+        agent_definition.name = "agent_def_1 #2"
+        agent_definition.save(update_fields=["name"])
+        copy_without_equivalent = AgentDefinition.objects.create(
             organization=default_org,
-            name="agent_def_1 #2",
+            name="agent_def_1",
             description=agent_definition.description,
             instructions=agent_definition.instructions,
             metadata=agent_definition.metadata,
             llm_config=agent_definition.llm_config,
             max_iter=agent_definition.max_iter,
         )
-        export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        Surface.objects.create(
+            organization=default_org,
+            name="owned_surface_x #2",
+            instructions="different",
+            owner_agent=copy_without_equivalent,
         )
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
-        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
 
         assert strategy.find_existing(data, mapper).id == agent_definition.id
 

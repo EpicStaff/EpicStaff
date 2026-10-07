@@ -9,8 +9,10 @@ from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
+from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
+from tables.import_export.utils import disable_jit_for_transaction
 
 
 class ImportService:
@@ -31,8 +33,10 @@ class ImportService:
 
         id_mapper = IDMapper()
         denied_resources = set()
+        export_data = prepare_import_data(export_data)
 
         with transaction.atomic():
+            disable_jit_for_transaction()
             ordered_types = self._resolve_import_order(export_data)
 
             for entity_type in ordered_types:
@@ -50,7 +54,7 @@ class ImportService:
                     entities = self._resolve_graph_order(entities)
 
                 for entity_data in entities:
-                    denied = self._import_single_entity(
+                    denied_resources |= self._import_single_entity(
                         entity_data,
                         entity_type,
                         strategy,
@@ -61,8 +65,6 @@ class ImportService:
                         user=user,
                         effective_permissions=effective_permissions,
                     )
-                    if denied is not None:
-                        denied_resources.add(denied)
 
             if denied_resources:
                 names = ", ".join(sorted(r.value for r in denied_resources))
@@ -104,11 +106,14 @@ class ImportService:
 
         was_created = existing is None
 
-        denied = None
+        denied = set()
         if was_created and effective_permissions is not None:
-            resource = ENTITY_RESOURCE_MAP.get(entity_type)
-            if resource is not None and not effective_permissions.can(resource, Permission.CREATE):
-                denied = resource
+            for created_type in (entity_type, *strategy.nested_entity_types(entity_data)):
+                resource = ENTITY_RESOURCE_MAP.get(created_type)
+                if resource is not None and not effective_permissions.can(
+                    resource, Permission.CREATE
+                ):
+                    denied.add(resource)
 
         kwargs["org_id"] = org_id
         kwargs["user"] = user

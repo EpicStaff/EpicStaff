@@ -94,6 +94,15 @@ class EntityImportExportStrategy(ABC):
         """
         return None
 
+    def nested_entity_types(self, data: dict) -> tuple[EntityType, ...]:
+        """Return entity types `create_entity` also creates for this entry.
+
+        The import services gate a new entry on CREATE for its own type and for
+        each of these, so a row created as part of another needs the same
+        permission it would need on its own.
+        """
+        return ()
+
     def get_org_scope_q(self, org_id: int) -> Q:
         """Q applied to find_existing lookups to scope reuse to the active org.
 

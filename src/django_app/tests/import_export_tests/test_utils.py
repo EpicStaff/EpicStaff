@@ -1,12 +1,21 @@
+import sys
+
 import pytest
-from types import SimpleNamespace
+from copy import deepcopy
+
+from rest_framework.exceptions import ValidationError
 
 from agents.models import Surface
+from tables.models import PythonCode
+from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
+from tables.import_export.enums import EntityType
 from tables.import_export.utils import (
     ensure_unique_identifier,
     create_filters,
     filter_by_name_or_renamed_copy,
-    python_code_equal,
+    nest_owned_surface_entries,
+    PYTHON_WHITESPACE,
+    python_code_match_q,
 )
 
 
@@ -65,56 +74,54 @@ class TestCreateFilters:
 
 
 @pytest.mark.django_db
-class TestPythonCodeEqual:
-    def _make_instance(
-        self, code="print('hi')", entrypoint="main", libraries="", global_kwargs=None
-    ):
-        return SimpleNamespace(
-            code=code,
-            entrypoint=entrypoint,
-            libraries=libraries,
-            global_kwargs=global_kwargs,
+class TestPythonCodeMatchQ:
+    @pytest.fixture
+    def stored_code(self, db):
+        return PythonCode.objects.create(
+            code="print('hi')  \n", entrypoint="main", libraries="requests", global_kwargs={}
         )
 
-    def test_matching(self):
-        instance = self._make_instance(code="print('hi')\n", libraries="requests")
+    def _matches(self, stored_code, **overrides) -> bool:
         data = {
             "code": "print('hi')\n",
             "entrypoint": "main",
             "libraries": "requests",
-            "global_kwargs": None,
+            "global_kwargs": {},
+            **overrides,
         }
-        assert python_code_equal(instance, data) is True
+        return PythonCode.objects.filter(python_code_match_q(data), id=stored_code.id).exists()
 
-    def test_different_code(self):
-        instance = self._make_instance(code="print('hi')\n")
-        data = {
-            "code": "print('bye')\n",
-            "entrypoint": "main",
-            "libraries": "",
-            "global_kwargs": None,
-        }
-        assert python_code_equal(instance, data) is False
+    def test_matching_ignores_trailing_whitespace(self, stored_code):
+        assert self._matches(stored_code)
 
-    def test_trailing_whitespace_normalization(self):
-        instance = self._make_instance(code="print('hi')  \n")
-        data = {
-            "code": "print('hi')\n",
-            "entrypoint": "main",
-            "libraries": "",
-            "global_kwargs": None,
-        }
-        assert python_code_equal(instance, data) is True
+    def test_trailing_unicode_whitespace_is_ignored_like_str_rstrip(self, stored_code):
+        assert self._matches(stored_code, code="print('hi')" + chr(0x3000) + "\xa0\t")
 
-    def test_different_entrypoint(self):
-        instance = self._make_instance(code="x\n", entrypoint="main")
-        data = {
-            "code": "x\n",
-            "entrypoint": "run",
-            "libraries": "",
-            "global_kwargs": None,
+    def test_different_code(self, stored_code):
+        assert not self._matches(stored_code, code="print('bye')\n")
+
+    def test_leading_whitespace_still_counts(self, stored_code):
+        assert not self._matches(stored_code, code=" print('hi')\n")
+
+    def test_different_entrypoint(self, stored_code):
+        assert not self._matches(stored_code, entrypoint="run")
+
+    def test_different_libraries(self, stored_code):
+        assert not self._matches(stored_code, libraries="")
+
+    def test_different_global_kwargs(self, stored_code):
+        assert not self._matches(stored_code, global_kwargs={"timeout": 5})
+
+    @pytest.mark.parametrize("code_data", [None, {}, {"code": None}, {"code": 5}])
+    def test_data_without_text_code_matches_nothing(self, code_data):
+        assert python_code_match_q(code_data) is None
+
+    def test_whitespace_set_is_what_str_rstrip_strips(self):
+        assert set(PYTHON_WHITESPACE) == {
+            chr(code_point)
+            for code_point in range(sys.maxunicode + 1)
+            if chr(code_point).isspace()
         }
-        assert python_code_equal(instance, data) is False
 
 
 @pytest.mark.django_db
@@ -142,3 +149,45 @@ class TestFilterByNameOrRenamedCopy:
 
     def test_missing_name_matches_nothing(self, surfaces):
         assert not filter_by_name_or_renamed_copy(Surface.objects.all(), None).exists()
+
+
+class TestNestOwnedSurfaceEntries:
+    def _export_data(self):
+        return {
+            EntityType.SURFACE: [{"id": 1, "name": "owned"}, {"id": 2, "name": "shared"}],
+            EntityType.AGENT_DEFINITION: [
+                {"id": 10, "owned_surfaces": [1, 99], OWNED_SURFACE_ENTRIES_KEY: ["forged"]},
+                {"id": 11, "owned_surfaces": [1]},
+            ],
+            "main_entity": EntityType.GRAPH,
+        }
+
+    def test_moves_owned_entries_under_first_owner(self):
+        nested = nest_owned_surface_entries(self._export_data())
+
+        assert nested[EntityType.SURFACE] == [{"id": 2, "name": "shared"}]
+        first_agent, second_agent = nested[EntityType.AGENT_DEFINITION]
+        # An id without a Surface entry (99) is dropped; a forged value is replaced.
+        assert first_agent[OWNED_SURFACE_ENTRIES_KEY] == [{"id": 1, "name": "owned"}]
+        assert second_agent[OWNED_SURFACE_ENTRIES_KEY] == []
+        assert nested["main_entity"] == EntityType.GRAPH
+
+    def test_does_not_modify_input(self):
+        export_data = self._export_data()
+        snapshot = deepcopy(export_data)
+
+        nest_owned_surface_entries(export_data)
+
+        assert export_data == snapshot
+
+    def test_without_agents_returns_input_unchanged(self):
+        export_data = {EntityType.SURFACE: [{"id": 1}], "main_entity": EntityType.SURFACE}
+
+        assert nest_owned_surface_entries(export_data) is export_data
+
+    def test_rejects_duplicate_agent_ids(self):
+        export_data = self._export_data()
+        export_data[EntityType.AGENT_DEFINITION][1]["id"] = 10
+
+        with pytest.raises(ValidationError):
+            nest_owned_surface_entries(export_data)

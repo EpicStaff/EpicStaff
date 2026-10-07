@@ -6,6 +6,7 @@ from tables.import_export.serializers.mcp_tools import McpToolImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     attach_tool_labels,
+    compared_values,
     create_filters,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
@@ -77,16 +78,7 @@ class McpToolStrategy(EntityImportExportStrategy):
         return mcp_tool
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> McpTool:
-        # A key missing from an older file is compared against the model default,
-        # which is what create_entity would store; fields without one are skipped.
-        compared = {}
-        for field_name in COMPARED_FIELDS:
-            model_field = McpTool._meta.get_field(field_name)
-            if field_name in data:
-                compared[field_name] = data[field_name]
-            elif model_field.has_default():
-                compared[field_name] = model_field.get_default()
-        filters, null_filters = create_filters(compared)
+        filters, null_filters = create_filters(compared_values(McpTool, data, COMPARED_FIELDS))
         return filter_by_name_or_renamed_copy(
             McpTool.objects.filter(**filters, **null_filters).filter(self.get_org_scope_q(org_id)),
             data.get("name"),

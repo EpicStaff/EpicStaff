@@ -1,5 +1,5 @@
 from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q, QuerySet
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -9,6 +9,7 @@ from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
+    related_row_count,
     resolve_import_organization,
 )
 
@@ -54,7 +55,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        surface = serializer.save(organization=organization)
+        surface = serializer.save(organization=organization, owner_agent=kwargs.get("owner_agent"))
 
         self._create_python_tools(surface, tools, id_mapper)
         self._create_mcp_tools(surface, tools, id_mapper)
@@ -62,46 +63,89 @@ class SurfaceStrategy(EntityImportExportStrategy):
         return surface
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> Surface:
-        filters, null_filters = create_filters({"instructions": data.get("instructions")})
+        # Entries that reach this method are shared: nest_owned_surface_entries
+        # hands owned ones to AgentDefinitionStrategy. A shared entry reuses only
+        # a shared row -- an agent's owned surface may not be listed by another
+        # agent or node, and would be deleted together with its owner.
+        content_key = self.entry_content_key(data, id_mapper)
+        shared_surfaces = Surface.objects.filter(
+            self.get_org_scope_q(org_id), owner_agent__isnull=True
+        )
+        equivalent_surfaces = self.filter_equivalent_content(shared_surfaces, content_key)
+        return filter_by_name_or_renamed_copy(equivalent_surfaces, data.get("name")).first()
 
+    def filter_equivalent_content(self, queryset: QuerySet, content_key: tuple) -> QuerySet:
+        """Narrow a Surface queryset to rows with the content `content_key` describes.
+
+        Runs entirely in SQL, so a large name family of renamed copies is never
+        loaded: equal active tool-row counts plus one existence check per
+        exported (tool, mode) pair is exact set equality, since a surface holds
+        each tool at most once.
+        """
+        instructions, python_tool_pairs, mcp_tool_pairs = content_key
+        filters, null_filters = create_filters({"instructions": instructions})
+        queryset = (
+            queryset.filter(**filters, **null_filters)
+            .alias(
+                python_tool_count=related_row_count(SurfacePythonTool.objects.all(), "surface"),
+                mcp_tool_count=related_row_count(SurfaceMcpTool.objects.all(), "surface"),
+            )
+            .filter(python_tool_count=len(python_tool_pairs), mcp_tool_count=len(mcp_tool_pairs))
+        )
+        for python_tool_id, mode in python_tool_pairs:
+            queryset = queryset.filter(
+                Exists(
+                    SurfacePythonTool.objects.filter(
+                        surface=OuterRef("pk"), python_tool_id=python_tool_id, mode=mode
+                    )
+                )
+            )
+        for mcp_tool_id, mode in mcp_tool_pairs:
+            queryset = queryset.filter(
+                Exists(
+                    SurfaceMcpTool.objects.filter(
+                        surface=OuterRef("pk"), mcp_tool_id=mcp_tool_id, mode=mode
+                    )
+                )
+            )
+        return queryset
+
+    def entry_content_key(self, data: dict, id_mapper: IDMapper) -> tuple:
+        """Return the content an exported surface entry is matched on.
+
+        Instructions plus the remapped python and MCP tool sets with modes; equal
+        to `surface_content_key` of an equivalent stored surface. Missing
+        instructions compare as the model default, which create_entity stores.
+        Entries are text-typed by prepare_import_data at the import
+        boundary, so SQL and this key compare the same values.
+        """
         tools = data.get("tools", {})
-        incoming_python_tools = self._remap_tool_set(
+        python_tool_pairs = self._remap_tool_set(
             tools.get(EntityType.PYTHON_CODE_TOOL, []),
             "python_tool_id",
             EntityType.PYTHON_CODE_TOOL,
             id_mapper,
         )
-        incoming_mcp_tools = self._remap_tool_set(
+        mcp_tool_pairs = self._remap_tool_set(
             tools.get(EntityType.MCP_TOOL, []),
             "mcp_tool_id",
             EntityType.MCP_TOOL,
             id_mapper,
         )
+        return (
+            data.get("instructions", Surface._meta.get_field("instructions").get_default()),
+            frozenset(python_tool_pairs),
+            frozenset(mcp_tool_pairs),
+        )
 
-        candidates = filter_by_name_or_renamed_copy(
-            Surface.objects.filter(**filters, **null_filters).filter(self.get_org_scope_q(org_id)),
-            data.get("name"),
-        ).prefetch_related("python_tools", "mcp_tools")
-
-        # Ownership is not part of the export, so a candidate owned by a
-        # different agent definition is still reused. AgentDefinitionStrategy
-        # only claims surfaces the import created, so the worst case is a newly
-        # created agent definition without an owned surface — it runs without
-        # that surface — never cross-agent ownership theft.
-        for candidate in candidates:
-            candidate_python_tools = {
-                (row.python_tool_id, row.mode) for row in candidate.python_tools.all()
-            }
-            if candidate_python_tools != incoming_python_tools:
-                continue
-
-            candidate_mcp_tools = {(row.mcp_tool_id, row.mode) for row in candidate.mcp_tools.all()}
-            if candidate_mcp_tools != incoming_mcp_tools:
-                continue
-
-            return candidate
-
-        return None
+    @staticmethod
+    def surface_content_key(surface: Surface) -> tuple:
+        """Return `entry_content_key` for a stored surface (tools prefetched)."""
+        return (
+            surface.instructions,
+            frozenset((row.python_tool_id, row.mode) for row in surface.python_tools.all()),
+            frozenset((row.mcp_tool_id, row.mode) for row in surface.mcp_tools.all()),
+        )
 
     def get_org_scope_q(self, org_id: int) -> Q:
         organization = resolve_import_organization(org_id)

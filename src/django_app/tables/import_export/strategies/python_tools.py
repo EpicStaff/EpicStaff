@@ -10,15 +10,16 @@ from tables.import_export.serializers.python_tools import (
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     attach_tool_labels,
+    compared_values,
     create_filters,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
-    python_code_equal,
+    python_code_match_q,
 )
 from tables.models import PythonCode, PythonCodeTool
 
 # Scalar fields compared for reuse, next to the rename-aware name match,
-# get_org_scope_q and python_code_equal. An explicit allowlist, not
+# get_org_scope_q and python_code_match_q. An explicit allowlist, not
 # create_filters over the whole exported dict: legacy files carry
 # created_at/updated_at (and the source org), which a re-created tool never
 # matches. built_in is left out because create_entity always stores False: a
@@ -100,30 +101,22 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int | None = None):
-        # A key missing from an older file is compared against the model default,
-        # which is what create_entity would store; fields without one are skipped.
-        compared = {}
-        for field_name in COMPARED_FIELDS:
-            model_field = PythonCodeTool._meta.get_field(field_name)
-            if field_name in data:
-                compared[field_name] = data[field_name]
-            elif model_field.has_default():
-                compared[field_name] = model_field.get_default()
-        filters, null_filters = create_filters(compared)
-        candidates = filter_by_name_or_renamed_copy(
-            PythonCodeTool.objects.filter(**filters, **null_filters).filter(
-                self.get_org_scope_q(org_id)
-            ),
-            data.get("name"),
-        ).select_related("python_code")
+        filters, null_filters = create_filters(
+            compared_values(PythonCodeTool, data, COMPARED_FIELDS)
+        )
+        python_code_q = python_code_match_q(data.get("python_code"), prefix="python_code__")
+        if python_code_q is None:
+            return None
 
-        # Several candidates can share every compared field and differ only in
-        # code (that is why the import renamed one of them), so check each.
-        python_code_data = data.get("python_code")
-        for candidate in candidates:
-            if python_code_equal(candidate.python_code, python_code_data):
-                return candidate
-        return None
+        # Every compared value, the code included, is filtered in SQL: a name
+        # family can hold many renamed copies differing only in code, and the
+        # lookup must not load them.
+        return filter_by_name_or_renamed_copy(
+            PythonCodeTool.objects.filter(**filters, **null_filters)
+            .filter(self.get_org_scope_q(org_id))
+            .filter(python_code_q),
+            data.get("name"),
+        ).first()
 
     def _create_python_code(self, python_code_data: dict) -> PythonCode:
         serializer = PythonCodeImportSerializer(data=python_code_data)
