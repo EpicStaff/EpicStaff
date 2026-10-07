@@ -1,4 +1,17 @@
+---
+id: plugins-api-contract
+title: Plugins API contract
+type: protocol
+status: stable
+tags: [plugins, prototype, api]
+created: 2026-10-06
+updated: 2026-10-07
+related: [plugins-architecture, plugin-bridge-v1, plugin-package-format, plugins-rules, plugins-prd, plugins-glossary]
+---
+
 # Plugins API contract (prototype, frozen)
+
+Part of the Plugins docs ([index](INDEX.md)): context in [[plugins-architecture]] ([architecture](plugins-architecture.md)); the bridge uses `ui-session` — see [[plugin-bridge-v1]] ([bridge v1](plugin-bridge-v1.md)); the file it installs — [[plugin-package-format]] ([package format](plugin-package-format.md)).
 
 Status: **frozen**. The frontend builds against this document while the backend
 finishes the lifecycle endpoints. A backend change that breaks a shape below must
