@@ -5,7 +5,9 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import shlex
 import time
+import traceback
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,6 +38,8 @@ LOG_LEVEL_VARIABLES = {
     "agent": "AGENT_LOG_LEVEL",
     "sandbox": "SANDBOX_LOG_LEVEL",
 }
+API_ERROR_PERSIST_S = 10  # a failing sessions API this long makes the level fail
+BENCH_LEVELS = ("BENCH", "DEBUG", "TRACE")
 CAP_VARIABLES = ("CREW_MAX_CONCURRENT_SESSIONS", "AGENT_MAX_CONCURRENT_RUNS")
 
 
@@ -182,6 +186,10 @@ class PhaseRunner:
         self.container_timeline: list[dict] = []
         self.records = []
         self.fallback = False
+        self.clock = time.time
+        self.api_error_persist_s = API_ERROR_PERSIST_S
+        self._api_error: tuple[float, str] | None = None
+        self._last_in_flight = 0
 
     def run_capacity(self) -> None:
         levels = ladder_levels(self.case.ladder)
@@ -253,7 +261,7 @@ class PhaseRunner:
                 None,
             )
             # The cold session is tracked by DB counts, so it ends even on a branch without BENCH lines.
-            controller.external_in_flight = lambda: self.api.in_flight(self.phase.graph_id)
+            controller.external_in_flight = self._count_in_flight
             controller.set_context(self.phase.name, 0, "cold", segment_no)
             controller.hold(
                 1, ladder.session_timeout_s, ladder.session_timeout_s, lambda: None, max_starts=1
@@ -295,7 +303,13 @@ class PhaseRunner:
                 if self.fallback:
                     # crew has no BENCH lines: end times only exist in the sessions API
                     try:
-                        self._apply_sessions_api(controller.records)
+                        self._apply_sessions_api(
+                            [
+                                r
+                                for r in controller.records
+                                if r.segment == segment_no and r.level == level
+                            ]
+                        )
                     except ApiError as error:
                         print(
                             f"[{self.phase.name}] could not refresh sessions from the API: {error}"
@@ -336,7 +350,10 @@ class PhaseRunner:
             completed = True
         finally:
             if not completed:
-                controller.drain(0)  # stop what is still running before cleanup deletes it
+                # stop what is still running before cleanup deletes it; in fallback mode drop the
+                # API-based count so drain only waits for pending HTTP and never calls the API
+                controller.external_in_flight = None
+                self._safe("drain", lambda: controller.drain(0))
             if load_start is not None and len(self.segments) < segment_no:
                 # interrupted mid-segment: keep what was measured
                 now = time.time()
@@ -346,15 +363,33 @@ class PhaseRunner:
                     )
                 )
             if sampler:
-                sampler.stop()
+                self._safe("sampler stop", sampler.stop)
                 self.timeline += sampler.rows
                 self.container_timeline += sampler.container_rows
             for follower in followers:
-                follower.stop()
-            controller.close()
+                self._safe("log follower stop", follower.stop)
+            self._safe("controller close", controller.close)
             self.events += [event for follower in followers for event in follower.events]
             self.records += controller.records
         return results
+
+    def _safe(self, step: str, action) -> None:
+        try:
+            action()
+        except Exception as error:
+            print(f"[{self.phase.name}] {step} failed: {error!r}")
+
+    def _count_in_flight(self) -> int:
+        """Fallback session count; a failing API is the break being measured, not a crash."""
+        try:
+            count = self.api.in_flight(self.phase.graph_id)
+        except ApiError as error:
+            if self._api_error is None:
+                self._api_error = (self.clock(), str(error))
+            return self._last_in_flight
+        self._api_error = None
+        self._last_in_flight = count
+        return count
 
     def _abort_check(self, controller: Controller, sampler: Sampler, counts: dict):
         abort = self.case.abort
@@ -370,6 +405,8 @@ class PhaseRunner:
                 return (
                     f"host RAM available {available:.0f}% < {abort.host_min_available_ram_pct:g}%"
                 )
+            if self._api_error and self.clock() - self._api_error[0] >= self.api_error_persist_s:
+                return f"API unreachable while counting sessions: {self._api_error[1]}"
             rate = controller.recent_error_rate(time.time())
             if rate is not None and rate >= abort.error_rate_30s:
                 return f"error rate {rate:.0%} over 30 s"
@@ -589,7 +626,14 @@ def _resolve_graphs(api: Api, case: Case) -> dict[str, dict]:
     return graphs
 
 
-def _stack_facts(compose: stack.Compose, api: Api, case: Case, env: dict, graphs: dict) -> dict:
+def _stack_facts(
+    compose: stack.Compose,
+    api: Api,
+    case: Case,
+    env: dict,
+    graphs: dict,
+    case_env: dict | None = None,
+) -> dict:
     unhealthy = [
         row["Service"]
         for row in compose.ps()
@@ -615,8 +659,10 @@ def _stack_facts(compose: stack.Compose, api: Api, case: Case, env: dict, graphs
             continue
         host_config = data.get("HostConfig", {})
         log_drivers[service] = host_config.get("LogConfig", {}).get("Type")
-        level = stack.container_env(data).get(LOG_LEVEL_VARIABLES[service], "")
-        bench_active[service] = level.upper() in ("BENCH", "DEBUG", "TRACE")
+        variable = LOG_LEVEL_VARIABLES[service]
+        # a run applies the case env first, so it counts before the running container's env
+        levels = [(case_env or {}).get(variable, ""), stack.container_env(data).get(variable, "")]
+        bench_active[service] = any(level.upper() in BENCH_LEVELS for level in levels)
         memory_limits[service] = host_config.get("Memory") or 0
     caps = {}
     for key in CAP_VARIABLES:
