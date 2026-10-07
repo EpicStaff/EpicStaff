@@ -61,6 +61,8 @@
                     (flowNameFilterChange)="onFlowFilterChange($event)"
                     [trigger]="triggerFilter()"
                     (triggerFilterChange)="onTriggerFilterChange($event)"
+                    [runTypeFilter]="runTypeFilter()"
+                    (runTypeFilterChange)="onRunTypeFilterChange($event)"
                     [durationFilter]="durationFilter()"
                     (durationFilterChange)="onDurationFilterChange($event)"
                     [showDateFilter]="true"

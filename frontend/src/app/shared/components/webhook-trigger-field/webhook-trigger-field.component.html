@@ -84,25 +84,20 @@
         }
 
         @if (showAuth()) {
-            @if (existingAuth(); as auth) {
-                <p class="wt-hint">
-                    Currently configured: {{ authKindLabel(auth.kind) }}
-                    @if (auth.secret_tail) {
-                        (secret ending in ****{{ auth.secret_tail }})
-                    } @else {
-                        — no secret set yet
-                    }
-                    . Leaving the fields below untouched will keep this configuration as-is.
-                </p>
-            }
-
             <app-select
                 label="Auth Strategy"
                 [required]="true"
                 tooltipText="Fixed authentication strategy for inbound requests to this trigger: Webhook Node sends the EPICSTAFF_API_KEY header, Telegram Node sends the X-Telegram-Bot-Api-Secret-Token header, and Twilio is verified via its own X-Twilio-Signature header."
                 formControlName="auth_kind"
                 [items]="authKindItems()"
+                [disabled]="authKindLocked()"
+                [invalid]="authKindProviderConflict()"
             />
+            @if (authKindProviderConflict()) {
+                <p class="wt-error">Telegram and Twilio triggers cannot use the Localhost provider.</p>
+            } @else if (authKindLocked()) {
+                <p class="wt-hint">The auth strategy of an existing trigger cannot be changed.</p>
+            }
 
             @if (authKindValue() === 'webhook' || authKindValue() === 'telegram') {
                 <app-select
@@ -110,11 +105,25 @@
                     label="Auth Secret"
                     variant="boxed"
                     tooltipText="The stored secret used to authenticate inbound requests to this trigger."
-                    placeholder="Select a secret"
-                    [items]="secretItems()"
+                    [placeholder]="authSecretPlaceholder()"
+                    [items]="authSecretItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                @if (existingAuth()) {
+                    <p class="wt-hint">
+                        @if (existingSecretMask(); as mask) {
+                            Current secret: {{ mask }} (its value is never shown).
+                            @if (authSecretIdValue() == null) {
+                                Leave Auth Secret empty to keep it, or choose a secret to replace it.
+                            } @else {
+                                Choose a different secret only to replace it.
+                            }
+                        } @else {
+                            No secret is set for this trigger yet. Choose one to set it.
+                        }
+                    </p>
+                }
             } @else if (authKindValue() === 'twilio') {
                 <p class="wt-hint">
                     No secret needed — this reserves the trigger for a Twilio channel; its auth token is filled in

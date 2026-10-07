@@ -1,5 +1,7 @@
 import asyncio
 import json
+import uuid
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from types import CoroutineType
 from typing import Any
@@ -16,6 +18,17 @@ from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from services.run_python_code_service import RunPythonCodeService
 from settings import DEFAULT_TOKEN_BUDGET
+from src.crew.services.graph.session_audit_provider import (
+    clear_session_flow_name,
+    clear_session_org,
+    emit_session_audit_event,
+    get_session_audit_writer,
+    get_session_flow_name,
+    get_session_org,
+    register_session_flow_name,
+    register_session_org,
+    track_audit_task,
+)
 from src.shared.models import SessionData, StopSessionMessage
 from utils.singleton_meta import SingletonMeta
 
@@ -55,6 +68,19 @@ def _extract_finish_token_total(message_data: dict) -> int:
         return 0
 
     return token_usage.get("total_tokens", 0) or 0
+
+
+def _dispatch_session_audit(build_audit_coroutine: Callable[[], Coroutine]) -> None:
+    """Schedule a session-level audit write without ever failing the session.
+
+    Building the coroutine resolves the audit writer, which can raise (e.g. a
+    misconfigured client); that failure is logged and the event dropped so the
+    session's own status and cleanup are unaffected.
+    """
+    try:
+        track_audit_task(build_audit_coroutine())
+    except Exception as audit_exc:
+        logger.warning("Session audit dispatch failed, dropping: {}", audit_exc)
 
 
 @dataclass
@@ -111,6 +137,17 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
         try:
             session_id = session_data.id
+            register_session_org(session_id, session_data.org_id)
+            register_session_flow_name(session_id, session_data.graph.name)
+            _dispatch_session_audit(
+                lambda: get_session_audit_writer().add_session_start(
+                    session_id=session_id,
+                    org_id=session_data.org_id,
+                    flow_name=session_data.graph.name,
+                    event_id=str(uuid.uuid4()),
+                    run_type=session_data.run_type,
+                )
+            )
             # Copy so popping the reserved budget key never mutates the
             # pydantic SessionData model itself.
             initial_state = dict(session_data.initial_state)
@@ -163,6 +200,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     final_state = chunk
                 elif stream_mode == "custom":
                     data = chunk.to_payload()
+                    try:
+                        emit_session_audit_event(data)
+                    except Exception as audit_exc:
+                        # Audit must never break the primary pipeline - this
+                        # dispatch call must never propagate, no matter what
+                        # goes wrong inside it.
+                        logger.warning("Audit dispatch failed, dropping: {}", audit_exc)
 
                     if token_budget is not None:
                         token_usage_total += _extract_finish_token_total(
@@ -206,11 +250,25 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     "end_node_result": end_node_result,
                 },
             )
+            graph_end_payload = graph_end_data.to_payload()
             self.redis_service.publish_encoded(
-                "graph:messages",
-                GraphMessage.encode_payload(graph_end_data.to_payload()),
+                "graph:messages", GraphMessage.encode_payload(graph_end_payload)
             )
             await asyncio.sleep(0.05)
+
+            org_id = get_session_org(session_id)
+            if org_id is not None:
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        flow_name=get_session_flow_name(session_id) or "",
+                        event_id=graph_end_payload["uuid"],
+                        status="completed",
+                        output=end_node_result,
+                        run_type=session_data.run_type,
+                    )
+                )
 
             await self.redis_service.aupdate_session_status(
                 session_id=session_id,
@@ -218,16 +276,51 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 variables=final_state["variables"].model_dump(),
             )
 
+            clear_session_org(session_id)
+            clear_session_flow_name(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:
             # Status updated in _handle_session_timeout
             logger.warning(f"Session {session_id} was cancelled")
+            org_id = get_session_org(session_id)
+            if org_id is not None:
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        name="Session Cancelled",
+                        flow_name=get_session_flow_name(session_id) or "",
+                        event_id=str(uuid.uuid4()),
+                        status="failed",
+                        details={"reason": "timeout"},
+                        run_type=session_data.run_type,
+                    )
+                )
+            clear_session_org(session_id)
+            clear_session_flow_name(session_id)
         except StopSession as e:
             status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status=stop_event.status, **status_kwargs
             )
+            org_id = get_session_org(session_id)
+            stop_details = {"reason": e.reason or "stopped"}
+            if org_id is not None:
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        name="Session Stopped",
+                        flow_name=get_session_flow_name(session_id) or "",
+                        event_id=str(uuid.uuid4()),
+                        status="failed",
+                        details=stop_details,
+                        run_type=session_data.run_type,
+                    )
+                )
+            clear_session_org(session_id)
+            clear_session_flow_name(session_id)
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
@@ -235,6 +328,23 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )
+            org_id = get_session_org(session_id)
+            failure_details = {"error": str(e)}
+            if org_id is not None:
+                _dispatch_session_audit(
+                    lambda: get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        name="Session Failed",
+                        flow_name=get_session_flow_name(session_id) or "",
+                        event_id=str(uuid.uuid4()),
+                        status="failed",
+                        details=failure_details,
+                        run_type=session_data.run_type,
+                    )
+                )
+            clear_session_org(session_id)
+            clear_session_flow_name(session_id)
 
     async def _listen_callback(self, message: dict[str, Any]):
         try:

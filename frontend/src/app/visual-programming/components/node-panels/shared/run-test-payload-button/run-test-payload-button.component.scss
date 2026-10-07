@@ -1,0 +1,44 @@
+:host {
+    display: inline-flex;
+}
+
+// Outlined accent button, the same height and radius as the panel header's Save button.
+.run-test-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 32px;
+    padding: 0 0.75rem;
+    border: 1px solid var(--accent-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--accent-color);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease;
+
+    &--icon-only {
+        width: 32px;
+        padding: 0;
+    }
+
+    &:hover:not([aria-disabled='true']) {
+        background-color: var(--color-ghost-btn-hover);
+        border-color: var(--accent-color-hover);
+    }
+
+    &:active:not([aria-disabled='true']) {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    // aria-disabled keeps the button focusable (see the component), so style the attribute, not :disabled.
+    &[aria-disabled='true'] {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+}

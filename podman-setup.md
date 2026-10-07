@@ -54,6 +54,7 @@ podman network create mcp-network
 podman volume create sandbox_venvs
 podman volume create crew_pgdata
 podman volume create crew_config
+podman volume create opensearch_data
 ```
 
 ---

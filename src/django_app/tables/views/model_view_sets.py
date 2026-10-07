@@ -123,6 +123,7 @@ from tables.models import (
     SubGraphNode,
     TaskNode,
 )
+from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
@@ -172,6 +173,9 @@ from tables.serializers.model_serializers import (
     AgentNodeSerializer,
     AgentNodeTaskSerializer,
     AudioTranscriptionNodeSerializer,
+    AuditFilterPresetCopySerializer,
+    AuditFilterPresetImportFileSerializer,
+    AuditFilterPresetSerializer,
     ClassificationDecisionTableNodeSerializer,
     ConditionalEdgeSerializer,
     ConversationRecordingSerializer,
@@ -213,6 +217,7 @@ from tables.serializers.model_serializers import (
     TaskNodeSerializer,
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramWebhookInfoSerializer,
     TwilioChannelSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
@@ -242,6 +247,7 @@ from tables.services.classification_decision_table_node_service import (
     ClassificationDecisionTableNodeService,
 )
 from tables.services.copy_services import (
+    AuditFilterPresetCopyService,
     GraphCopyService,
     McpToolCopyService,
     PythonCodeToolCopyService,
@@ -251,12 +257,19 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
+from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
     get_python_code_tool_usage_detail,
 )
 from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.swagger_schemas.audit_filter_preset_schemas import (
+    AUDIT_FILTER_PRESET_COPY,
+    AUDIT_FILTER_PRESET_EXPORT_ALL,
+    AUDIT_FILTER_PRESET_EXPORT_ONE,
+    AUDIT_FILTER_PRESET_IMPORT,
+)
 from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
     GRAPH_DELETE_BY_UUID_DELETE,
 )
@@ -264,9 +277,7 @@ from tables.swagger_schemas.key_value_schemas import KEY_VALUE_TABLE_USAGE_GET
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
-from tables.swagger_schemas.partial_import_schemas import (
-    PARTIAL_IMPORT_SWAGGER,
-)
+from tables.swagger_schemas.partial_import_schemas import PARTIAL_IMPORT_SWAGGER
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
@@ -297,6 +308,8 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
 from tables.swagger_schemas.webhook_schemas import (
+    TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST,
+    TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET,
     WEBHOOK_TRIGGER_CREATE,
     WEBHOOK_TRIGGER_NODE_CREATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
@@ -1596,7 +1609,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     def end(self, request):
         """Mark a RealtimeAgentChat as ended.
 
-        Called server-to-server by the `realtime`/`voice_app` services
+        Called server-to-server by the `realtime` service
         (`voice_call_service._patch_agent_chat`) once a call ends. That caller
         has no logged-in user/org context and identifies the target chat by
         its opaque `connection_key` alone, so this action cannot be scoped
@@ -1683,7 +1696,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     def lookup_by_token(self, request):
         """Resolve a channel by its unique `token`, unscoped by org.
 
-        Used only by the `realtime`/`voice_app` services to route an inbound
+        Used only by the `realtime` service to route an inbound
         Twilio call (POST /voice/{token}) to the right agent — that caller has
         no logged-in user and cannot supply `X-Organization-Id`. The token
         itself (an unguessable UUID) is the lookup/authorization key, so the
@@ -1777,7 +1790,7 @@ class ConversationRecordingViewSet(
     - An authenticated org member (JWT) or a self-issued USER API key, sending
       `X-Organization-Id` as usual — org-scoping is enforced via
       `_assert_parent_in_active_org` exactly like any other child resource.
-    - The `realtime`/`voice_app` services (`voice_call_service._post_recording`),
+    - The `realtime` service (`voice_call_service._post_recording`),
       authenticated with a `key_type=SYSTEM` API key, once a call ends. That
       caller has no logged-in user/org context and can never supply
       `X-Organization-Id`, and identifies its target purely by the opaque
@@ -1825,7 +1838,7 @@ class ConversationRecordingViewSet(
                 ) from e
             serializer.validated_data["rt_agent_chat"] = rt_agent_chat
 
-        # A trusted SYSTEM API key (the realtime/voice_app services) has no
+        # A trusted SYSTEM API key (the realtime service) has no
         # X-Organization-Id to check against — skip the org assertion for it,
         # same trust boundary as RealtimeAgentChatViewSet.end. Any other
         # caller (JWT session or a self-issued USER key) still goes through
@@ -2365,6 +2378,11 @@ class TelegramTriggerNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "webhook_info": Permission.READ,
+        "register_webhook": Permission.UPDATE,
+    }
     org_filter_path = "graph__org_id"
     queryset = TelegramTriggerNode.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
@@ -2375,6 +2393,18 @@ class TelegramTriggerNodeViewSet(
         if self.action in ["list", "retrieve"]:
             return TelegramTriggerNodeReadSerializer
         return TelegramTriggerNodeSerializer
+
+    @extend_schema(**TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET)
+    @action(detail=True, methods=["get"], url_path="webhook-info")
+    def webhook_info(self, request, pk=None):
+        webhook_status = TelegramTriggerService().get_webhook_status(self.get_object())
+        return Response(TelegramWebhookInfoSerializer(webhook_status).data)
+
+    @extend_schema(**TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST)
+    @action(detail=True, methods=["post"], url_path="register-webhook")
+    def register_webhook(self, request, pk=None):
+        webhook_status = TelegramTriggerService().register_webhook_explicitly(self.get_object())
+        return Response(TelegramWebhookInfoSerializer(webhook_status).data)
 
 
 class ScheduleTriggerNodeViewSet(
@@ -2510,6 +2540,106 @@ class SecretViewSet(
         secret = self.get_object()
         effective = PermissionResolver().resolve(user=request.user, org_id=self.get_active_org_id())
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
+
+
+class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """
+    A user's own saved audit-search filters - owner-only (see get_queryset):
+    every action, including an Org Admin's, is scoped to `created_by=request.
+    user` on top of the usual org scoping, so another user's preset id 404s
+    rather than 403s (it isn't visible enough to even name as "forbidden").
+
+    Gated entirely on AUDIT:read, same as browsing itself - presets are a
+    personal convenience over audit data, not audit data or an org-wide
+    setting, so every action (including create/update/destroy/duplicate/
+    overwrite/export/import) maps to READ rather than the CREATE/UPDATE/
+    DELETE bits DEFAULT_ACTION_MAP would otherwise require - which were
+    never granted for the `audit` resource type (see
+    rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
+    """
+
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AUDIT
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "create": Permission.READ,
+        "update": Permission.READ,
+        "partial_update": Permission.READ,
+        "destroy": Permission.READ,
+        "copy": Permission.READ,
+        "export": Permission.READ,
+        # NOTE: the DRF action name is the Python method name ("bulk_export"),
+        # not the url_path ("export") - HasOrgPermission looks this map up by
+        # view.action, so a key of "export_all" here never matched and every
+        # non-superadmin bulk-export request 403'd (masked in manual testing
+        # by the superadmin bypass in HasOrgPermission.has_permission).
+        "bulk_export": Permission.READ,
+        "import_presets": Permission.READ,
+    }
+    queryset = AuditFilterPreset.objects.all()
+    serializer_class = AuditFilterPresetSerializer
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.AUDIT_FILTER_PRESET,
+            export_prefix="audit_filter_preset",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
+
+    @extend_schema(**AUDIT_FILTER_PRESET_COPY)
+    @action(detail=True, methods=["post"])
+    def copy(self, request, pk=None):
+        preset = self.get_object()
+        serializer = AuditFilterPresetCopySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        clone = AuditFilterPresetCopyService().copy(
+            preset,
+            name=serializer.validated_data.get("name"),
+            org_id=self.get_active_org_id(),
+            created_by=request.user,
+        )
+        return Response(AuditFilterPresetSerializer(clone).data, status=201)
+
+    @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk=None):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
+    @action(detail=False, methods=["post"], url_path="export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        presets = list(self.get_queryset().filter(id__in=ids))
+        if len(presets) != len(ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(ids, org_id=self.get_active_org_id())
+
+    @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_presets(self, request):
+        file_serializer = AuditFilterPresetImportFileSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        summary = self.import_export_service.import_entity(
+            file_serializer.validated_data["file"],
+            user=request.user,
+            settings=ImportSettings(),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(summary, status=status.HTTP_200_OK)
 
 
 class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
