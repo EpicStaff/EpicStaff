@@ -2,10 +2,11 @@ import sys
 import traceback
 from types import TracebackType
 
+import settings
 from loguru import logger
 
 logger.remove()
-logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")
+logger.add(sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL)
 # logger.add("logs/file.log", rotation="1 MB", compression="zip")
 
 

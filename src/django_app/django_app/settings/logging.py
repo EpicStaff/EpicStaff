@@ -17,6 +17,8 @@ def _resolve_log_level() -> str:
     return raw_level
 
 
+LOG_LEVEL = _resolve_log_level()
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -28,7 +30,7 @@ LOGGING = {
     },
     "root": {
         "handlers": ["loguru"],
-        "level": _resolve_log_level(),
+        "level": LOG_LEVEL,
     },
     "loggers": {
         "litellm": {

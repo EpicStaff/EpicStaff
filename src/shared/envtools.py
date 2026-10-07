@@ -28,6 +28,7 @@ def _to_json_object(value: str) -> dict:
 class Env:
     BOOLEAN_TRUE_VALUES = frozenset({"1", "y", "yes", "true", "on"})
     NONE_VALUE = "none"
+    LOG_LEVELS = ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
 
     def __init__(self):
         self._envs: dict[str, str] = {}
@@ -242,6 +243,35 @@ class Env:
             return value.lower() in self.BOOLEAN_TRUE_VALUES
 
         return self.get_value(variable, default, cast)
+
+    def log_level(self, variable: str, default: str | EllipsisType = ...) -> str:
+        """Read an environment variable as an upper-cased log level name.
+
+        Only loguru's built-in level names are allowed. uvicorn knows all of them except
+        ``SUCCESS``, so a caller passing the level to uvicorn must map that one. Unlike the
+        other accessors, the ``none`` value is rejected: a sink always needs a level.
+
+        Args:
+            variable: Name of the environment variable to read.
+            default: Value returned when the variable is missing; not validated.
+
+        Returns:
+            The upper-cased level name.
+
+        Raises:
+            EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
+            ValueError: The value is not one of ``LOG_LEVELS``.
+        """
+        value = self._envs.get(variable)
+        if value is None:
+            return self.get_value(variable, default)
+
+        level = value.strip().upper()
+        if level not in self.LOG_LEVELS:
+            raise ValueError(
+                f"{variable} must be one of {', '.join(self.LOG_LEVELS)}, got {value!r}."
+            )
+        return level
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:
         """Read an environment variable as a str.

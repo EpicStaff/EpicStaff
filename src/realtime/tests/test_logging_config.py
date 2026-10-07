@@ -103,6 +103,7 @@ def test_configure_logging_keeps_info_level_outside_debug_mode(
     unconfigured_logging, capsys, monkeypatch
 ):
     monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", False)
+    monkeypatch.setattr(config, "LOG_LEVEL", "INFO")
     configure_logging()
 
     logger.debug("debug record must be filtered")
@@ -111,6 +112,33 @@ def test_configure_logging_keeps_info_level_outside_debug_mode(
     stderr = capsys.readouterr().err
     assert "debug record must be filtered" not in stderr
     assert "info record must be written" in stderr
+
+
+def test_configure_logging_uses_realtime_log_level_outside_debug_mode(
+    unconfigured_logging, capsys, monkeypatch
+):
+    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", False)
+    monkeypatch.setattr(config, "LOG_LEVEL", "WARNING")
+    configure_logging()
+
+    logger.info("info record must be filtered")
+    logger.warning("warning record must be written")
+
+    stderr = capsys.readouterr().err
+    assert "info record must be filtered" not in stderr
+    assert "warning record must be written" in stderr
+
+
+def test_configure_logging_debug_mode_overrides_realtime_log_level(
+    unconfigured_logging, capsys, monkeypatch
+):
+    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", True)
+    monkeypatch.setattr(config, "LOG_LEVEL", "WARNING")
+    configure_logging()
+
+    logger.debug("debug record must be written")
+
+    assert "debug record must be written" in capsys.readouterr().err
 
 
 def test_configure_logging_writes_debug_records_in_debug_mode_without_variable_values(

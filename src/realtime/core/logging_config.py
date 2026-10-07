@@ -28,7 +28,8 @@ def configure_logging() -> None:
 
     `diagnose=False` matters: with loguru's default, `logger.exception` tracebacks print the
     value of every variable on the failing lines, which writes API keys, transcripts and audio
-    payloads into the logs. The level is DEBUG in debug mode and INFO otherwise.
+    payloads into the logs. The level is DEBUG in debug mode and `REALTIME_LOG_LEVEL` (default
+    INFO) otherwise.
 
     NOTE: several debug log sites print conversation text (transcripts, agent replies), so
     `REALTIME_DEBUG_MODE` must not be enabled on a shared host.
@@ -46,7 +47,7 @@ def configure_logging() -> None:
 
     _stderr_handler_id = logger.add(
         sys.stderr,
-        level="DEBUG" if config.REALTIME_DEBUG_MODE else "INFO",
+        level="DEBUG" if config.REALTIME_DEBUG_MODE else config.LOG_LEVEL,
         diagnose=False,
         backtrace=False,
     )

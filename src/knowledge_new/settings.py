@@ -11,6 +11,8 @@ if not env.bool("RUN_IN_DOCKER", False):
 
 DEBUG = env.bool("KNOWLEDGE_DEBUG")
 
+LOG_LEVEL = env.log_level("KNOWLEDGE_LOG_LEVEL", "INFO")
+
 MAX_PROCESS_WORKERS = env.int("KNOWLEDGE_MAX_PROCESS_WORKERS")
 
 DATABASE_DNS = env.dns(
