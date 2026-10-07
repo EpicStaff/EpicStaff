@@ -19,6 +19,8 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
 }
 
+# Every location that proxies must include strip-underscore-forwarding-headers.snippet:
+# with this on, clients could otherwise forge the address Django throttles on.
 underscores_in_headers on;
 
 server {
@@ -50,6 +52,7 @@ server {
 
     location / {
         proxy_pass http://frontend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -60,6 +63,7 @@ server {
     }
     location ^~ /api/run-session/subscribe/ {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         
         proxy_buffering off;
         proxy_cache off;
@@ -79,17 +83,20 @@ server {
 
     location ~ ^/ws/ {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 86400;
     }
 
     location = /api/storage/upload/stream {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_request_buffering off;
         proxy_buffering off;
@@ -111,6 +118,7 @@ server {
 
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-API-Key $http_x_api_key;
         proxy_set_header Host $host;
@@ -121,6 +129,7 @@ server {
 
     location ^~ /webhooks/ {
         proxy_pass http://webhook_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -131,6 +140,7 @@ server {
 
     location ^~ /voice/ {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -145,6 +155,7 @@ server {
 
     location /voice/stream {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -159,6 +170,7 @@ server {
 
     location /realtime/ {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -170,12 +182,14 @@ server {
 
     location /static/ {
         proxy_pass http://backend_server/static/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /media/ {
         proxy_pass http://backend_server/media/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

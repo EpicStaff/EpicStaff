@@ -46,6 +46,24 @@ Base URL in examples: `http://localhost:8000`.
 
 The last two key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
 
+**Login has no account lockout.** Wrong passwords never lock or slow down an account; the login throttle is the only brake on password guessing. Everything below about the client address therefore protects the login endpoint directly.
+
+### Client address and the proxy contract
+
+Every `<ip>` above is DRF's `get_ident()`: the entry `NUM_PROXIES` positions from the end of `X-Forwarded-For`. That is only the caller's real address if each layer keeps its part of this contract:
+
+- **nginx** (`src/nginx/templates/default.conf.template`) sets the forwarding headers itself, per location:
+  - `X-Forwarded-Proto`: every location.
+  - `X-Forwarded-For` (`$proxy_add_x_forwarded_for`) and `X-Real-IP`: every location except `/static/` and `/media/`, which serve files and run no throttle.
+  - `X-Forwarded-Host`: only `/webhooks/`, `/voice/` and `/voice/stream`.
+  - `X-Forwarded-Port`: never.
+
+  Every proxying location also includes `strip-underscore-forwarding-headers.snippet`, which drops the spellings of `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host` and `X-Real-IP` that have an underscore in place of any dash (`X_Forwarded_For`, `X-Forwarded_For`, ...). Django maps a dash and an underscore to the same `META` key and joins the values, so without this a client-sent `X_Forwarded_For` lands after nginx's entry and becomes the throttle identity. A location added later must include the snippet too.
+- **Django** drops the same underscore spellings again, in any letter case, plus those of `X-Forwarded-Port`, before `META` is built (`DropUnderscoreForwardingHeadersMiddleware`, wrapped around the whole ASGI application in `django_app/asgi.py`). This covers a regressed nginx config or a different proxy in front. Django reads only `X-Forwarded-For` (through DRF) and `X-Forwarded-Proto` (`SECURE_PROXY_SSL_HEADER`); `USE_X_FORWARDED_HOST` and `USE_X_FORWARDED_PORT` are off, so the dash spellings of `X-Forwarded-Host` and `X-Forwarded-Port` are ignored.
+- **`DJANGO_NUM_PROXIES`** (default `1`, the bundled nginx) must equal the number of trusted proxies that append to `X-Forwarded-For` before Django. Set it too high and Django reads an entry the client wrote, so callers choose their own identity. Set it too low and Django reads a proxy's address, so every caller shares one bucket. Put a load balancer in front of nginx and the value becomes `2`, but only if that load balancer appends the client address to `X-Forwarded-For`.
+
+`underscores_in_headers on` stays enabled in nginx. Webhook triggers authenticate with a header whose name the user chooses (`request.headers.get(auth.header_name)` in `src/webhook/app/controllers/webhook_routes.py`), third-party senders often use names with underscores, and nginx drops those by default. That is why the forwarding look-alikes are stripped one by one instead of turning the directive off.
+
 **Refresh tokens rotate on every use** (`ROTATE_REFRESH_TOKENS=True`). The old refresh is blacklisted — replaying it returns `401`.
 
 **SSE streams** require a ticket obtained from `POST /api/auth/sse-ticket/` and passed as `?ticket=` on the stream URL. See [`sse_auth.md`](./sse_auth.md) for the FE migration flow.

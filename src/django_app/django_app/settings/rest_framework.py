@@ -18,7 +18,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    "NUM_PROXIES": 1,
+    "NUM_PROXIES": env.int("DJANGO_NUM_PROXIES"),
     "DEFAULT_THROTTLE_RATES": {
         "login": env.str("DJANGO_LOGIN_THROTTLE_RATE"),
         "password_reset_request": env.str("DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE"),
