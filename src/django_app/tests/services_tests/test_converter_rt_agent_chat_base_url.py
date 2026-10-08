@@ -45,7 +45,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_rt_base_url(
         organization=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
     config = OpenAIRealtimeConfig.objects.create(
@@ -77,7 +77,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_defaults_rt_base_url_to_no
         organization=default_org,
         name="voice-agent-no-override",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
     config = OpenAIRealtimeConfig.objects.create(
@@ -98,3 +98,36 @@ def test_convert_rt_agent_definition_chat_to_pydantic_defaults_rt_base_url_to_no
     data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
 
     assert data.rt_base_url is None
+
+
+@pytest.mark.django_db
+def test_convert_rt_agent_definition_chat_to_pydantic_carries_rt_agent_definition_id(
+    converter, default_org, llm_config
+):
+    # The realtime service names the remote ElevenLabs agent after this id, so two
+    # configurations must reach it with different ids.
+    agent_definition = AgentDefinition.objects.create(
+        organization=default_org,
+        name="voice-agent-id",
+        description="Helps with voice tasks",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
+        llm_config=llm_config,
+    )
+    config = OpenAIRealtimeConfig.objects.create(
+        custom_name="openai-cfg-def-id",
+        org=default_org,
+        model_name="gpt-4o-realtime-preview",
+        api_key_secret=_api_key_secret(default_org, "openai-cfg-def-id-api-key"),
+    )
+    rt_agent_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=agent_definition, openai_config=config
+    )
+    chat = RealtimeAgentChat.objects.create(
+        rt_agent_definition=rt_agent_definition,
+        connection_key="conn-def-id",
+        openai_config=config,
+    )
+
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+
+    assert data.rt_agent_definition_id == rt_agent_definition.pk

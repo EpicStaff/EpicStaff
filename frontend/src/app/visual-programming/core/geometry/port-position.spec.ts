@@ -83,7 +83,7 @@ describe('portOffsetFromTop', () => {
     });
 });
 
-describe('getPortPosition — f-flow anchor offset (EST-3346)', () => {
+describe('getPortPosition — f-flow anchor offset', () => {
     it('offsets a table row output port +7 (port-circle radius) past the node edge', () => {
         const defaultRow = port('cdt8', 'decision-default', 'right');
         const cdt8: NodeModel = {

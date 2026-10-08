@@ -62,6 +62,8 @@
                 (statusFilterChange)="onStatusFilterChange($event)"
                 [trigger]="triggerFilter()"
                 (triggerFilterChange)="onTriggerFilterChange($event)"
+                [runTypeFilter]="runTypeFilter()"
+                (runTypeFilterChange)="onRunTypeFilterChange($event)"
                 [showDateFilter]="true"
                 [dateFilter]="dateFilter()"
                 (dateFilterChange)="onDateFilterChange($event)"

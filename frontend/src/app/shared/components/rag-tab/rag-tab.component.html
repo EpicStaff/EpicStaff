@@ -155,10 +155,10 @@
                                         [formControl]="anchorControl"
                                         [alwaysShowSteps]="true"
                                         [min]="100"
-                                        [max]="effectiveLlmContextWindow() ?? 100000"
-                                        [warningMax]="baselineSafeTokenBudget()"
-                                        [warningMessage]="baselineTokenWarningMsg()"
-                                        [errorMessage]="tokenErrorMsg()"
+                                        [max]="maxTokens"
+                                        [warningMax]="baselineTokenWarning().max"
+                                        [warningMessage]="baselineTokenWarning().message"
+                                        [errorMessage]="tokenErrorMsg"
                                     />
                                     @if (useSuggestedParams()) {
                                         <button
@@ -192,6 +192,7 @@
                                         label="Prompt"
                                         placeholder="Custom general knowledge instruction... Leave empty for default."
                                     />
+                                    <app-validation-errors [control]="basicGroup!.get('prompt')!" />
                                 </div>
                                 <div class="form-group-container">
                                     <div class="form-group form-group--narrow">
@@ -224,6 +225,7 @@
                                         label="Prompt"
                                         placeholder="Custom general knowledge instruction... Leave empty for default."
                                     />
+                                    <app-validation-errors [control]="localGroup!.get('prompt')!" />
                                 </div>
 
                                 @if (textUnitProportionControl && communityProportionControl) {
@@ -242,6 +244,11 @@
                                             [step]="0.01"
                                             [disabled]="displayValuesOnly()"
                                         />
+                                        @if (localGroup?.hasError('proportionSum')) {
+                                            <small class="group-error">
+                                                Text Unit and Community Proportion together must not exceed 1.
+                                            </small>
+                                        }
                                     </div>
                                 }
 
@@ -316,6 +323,7 @@
                                         tooltipText="Custom map-stage prompt. Leave empty for default."
                                         placeholder="Leave empty for default."
                                     />
+                                    <app-validation-errors [control]="globalGroup!.get('map_prompt')!" />
                                 </div>
                                 <div class="form-group">
                                     <app-textarea
@@ -325,6 +333,7 @@
                                         tooltipText="Custom reduce-stage prompt. Leave empty for default."
                                         placeholder="Leave empty for default."
                                     />
+                                    <app-validation-errors [control]="globalGroup!.get('reduce_prompt')!" />
                                 </div>
 
                                 <div class="form-group-container">
@@ -365,6 +374,9 @@
                                                     tooltipText="Custom general-knowledge prompt. Leave empty for default."
                                                     placeholder="Leave empty for default."
                                                 />
+                                                <app-validation-errors
+                                                    [control]="globalGroup!.get('knowledge_prompt')!"
+                                                />
                                             </div>
 
                                             <div class="form-group-container">
@@ -382,10 +394,10 @@
                                                             tooltipText="Token limit for the data stage"
                                                             [alwaysShowSteps]="true"
                                                             [min]="100"
-                                                            [max]="effectiveLlmContextWindow() ?? 100000"
-                                                            [warningMax]="safeTokenBudget()"
-                                                            [warningMessage]="tokenWarningMsg()"
-                                                            [errorMessage]="tokenErrorMsg()"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="tokenWarning().max"
+                                                            [warningMessage]="tokenWarning().message"
+                                                            [errorMessage]="tokenErrorMsg"
                                                         />
                                                     }
                                                 </div>
@@ -444,6 +456,7 @@
                                                             tooltipText="Rating threshold to include a community report."
                                                             [alwaysShowSteps]="true"
                                                             [min]="0"
+                                                            [max]="5"
                                                         />
                                                     }
                                                 </div>
@@ -466,6 +479,7 @@
                                                             tooltipText="Number of rating repeats per report."
                                                             [alwaysShowSteps]="true"
                                                             [min]="1"
+                                                            [max]="5"
                                                         />
                                                     }
                                                 </div>
@@ -524,6 +538,7 @@
                                         tooltipText="Custom local-stage prompt for DRIFT. Leave empty for default."
                                         placeholder="Leave empty for default."
                                     />
+                                    <app-validation-errors [control]="driftGroup!.get('prompt')!" />
                                 </div>
                                 <div class="form-group">
                                     <app-textarea
@@ -533,6 +548,7 @@
                                         tooltipText="Custom reduce-stage prompt for DRIFT. Leave empty for default."
                                         placeholder="Leave empty for default."
                                     />
+                                    <app-validation-errors [control]="driftGroup!.get('reduce_prompt')!" />
                                 </div>
 
                                 <div class="form-group-container">
@@ -608,10 +624,10 @@
                                                             tooltipText="Token limit for the primer LLM call."
                                                             [alwaysShowSteps]="true"
                                                             [min]="100"
-                                                            [max]="effectiveLlmContextWindow() ?? 100000"
-                                                            [warningMax]="safeTokenBudget()"
-                                                            [warningMessage]="tokenWarningMsg()"
-                                                            [errorMessage]="tokenErrorMsg()"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="tokenWarning().max"
+                                                            [warningMessage]="tokenWarning().message"
+                                                            [errorMessage]="tokenErrorMsg"
                                                         />
                                                     }
                                                 </div>
@@ -672,6 +688,12 @@
                                                         [step]="0.01"
                                                         [disabled]="displayValuesOnly()"
                                                     />
+                                                    @if (driftGroup?.hasError('proportionSum')) {
+                                                        <small class="group-error">
+                                                            Local Text Unit and Local Community Proportion together must
+                                                            not exceed 1.
+                                                        </small>
+                                                    }
                                                 </div>
                                             }
 
@@ -737,10 +759,10 @@
                                                             tooltipText="Context limit for the local stage."
                                                             [alwaysShowSteps]="true"
                                                             [min]="100"
-                                                            [max]="effectiveLlmContextWindow() ?? 100000"
-                                                            [warningMax]="safeTokenBudget()"
-                                                            [warningMessage]="tokenWarningMsg()"
-                                                            [errorMessage]="tokenErrorMsg()"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="tokenWarning().max"
+                                                            [warningMessage]="tokenWarning().message"
+                                                            [errorMessage]="tokenErrorMsg"
                                                         />
                                                     }
                                                 </div>
@@ -789,18 +811,20 @@
                                                     @if (readOnly()) {
                                                         <app-suggested-value
                                                             label="Reduce Max Tokens"
-                                                            tooltipText="Reduce-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Reduce-answer token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [value]="driftGroup?.get('reduce_max_tokens')?.value"
                                                         />
                                                     } @else {
                                                         <app-input-number
                                                             formControlName="reduce_max_tokens"
                                                             label="Reduce Max Tokens"
-                                                            tooltipText="Reduce-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Reduce-answer token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [alwaysShowSteps]="true"
                                                             [min]="1"
-                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
-                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="driftTokenCapWarning.max"
+                                                            [warningMessage]="driftTokenCapWarning.message"
+                                                            [errorMessage]="optionalTokenErrorMsg"
                                                         />
                                                     }
                                                 </div>
@@ -808,7 +832,7 @@
                                                     @if (readOnly()) {
                                                         <app-suggested-value
                                                             label="Reduce Max Completion Tokens"
-                                                            tooltipText="Reduce completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Reduce completion token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [value]="
                                                                 driftGroup?.get('reduce_max_completion_tokens')?.value
                                                             "
@@ -817,11 +841,13 @@
                                                         <app-input-number
                                                             formControlName="reduce_max_completion_tokens"
                                                             label="Reduce Max Completion Tokens"
-                                                            tooltipText="Reduce completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Reduce completion token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [alwaysShowSteps]="true"
                                                             [min]="1"
-                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
-                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="driftTokenCapWarning.max"
+                                                            [warningMessage]="driftTokenCapWarning.message"
+                                                            [errorMessage]="optionalTokenErrorMsg"
                                                         />
                                                     }
                                                 </div>
@@ -832,7 +858,7 @@
                                                     @if (readOnly()) {
                                                         <app-suggested-value
                                                             label="Local LLM Max Gen Tokens"
-                                                            tooltipText="Local LLM-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Local LLM-answer token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [value]="
                                                                 driftGroup?.get('local_search_llm_max_gen_tokens')
                                                                     ?.value
@@ -842,11 +868,13 @@
                                                         <app-input-number
                                                             formControlName="local_search_llm_max_gen_tokens"
                                                             label="Local LLM Max Gen Tokens"
-                                                            tooltipText="Local LLM-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Local LLM-answer token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [alwaysShowSteps]="true"
                                                             [min]="1"
-                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
-                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="driftTokenCapWarning.max"
+                                                            [warningMessage]="driftTokenCapWarning.message"
+                                                            [errorMessage]="optionalTokenErrorMsg"
                                                         />
                                                     }
                                                 </div>
@@ -854,7 +882,7 @@
                                                     @if (readOnly()) {
                                                         <app-suggested-value
                                                             label="Local LLM Max Completion Tokens"
-                                                            tooltipText="Local completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Local completion token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [value]="
                                                                 driftGroup?.get(
                                                                     'local_search_llm_max_gen_completion_tokens'
@@ -865,11 +893,13 @@
                                                         <app-input-number
                                                             formControlName="local_search_llm_max_gen_completion_tokens"
                                                             label="Local LLM Max Completion Tokens"
-                                                            tooltipText="Local completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            tooltipText="Local completion token cap. Leave empty for no limit. Should stay within Data Max Tokens."
                                                             [alwaysShowSteps]="true"
                                                             [min]="1"
-                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
-                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                            [max]="maxTokens"
+                                                            [warningMax]="driftTokenCapWarning.max"
+                                                            [warningMessage]="driftTokenCapWarning.message"
+                                                            [errorMessage]="optionalTokenErrorMsg"
                                                         />
                                                     }
                                                 </div>

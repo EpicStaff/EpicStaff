@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock
 from infrastructure.providers.openai.openai_realtime_agent_client import (
     OpenaiRealtimeAgentClient,
 )
+from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
 
 
 @pytest.fixture
@@ -79,6 +80,58 @@ async def test_call_tool_response_create_sent_after_function_result(client):
 
     sent_types = [c.args[0].get("type") for c in client.send_server.await_args_list]
     assert sent_types.index("conversation.item.create") < sent_types.index("response.create")
+
+
+# ---------------------------------------------------------------------------
+# call_tool — failing tool never leaks exception text to the provider
+# ---------------------------------------------------------------------------
+
+
+def _function_call_outputs(client) -> list[str]:
+    sent_events = [c.args[0] for c in client.send_server.await_args_list]
+    return [
+        e["item"]["output"] for e in sent_events if e.get("type") == "conversation.item.create"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_call_tool_failure_sends_fixed_result_without_exception_text(client):
+    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+
+    await client.call_tool("call_1", "search_tool", {"query": "hi"})
+
+    outputs = _function_call_outputs(client)
+    assert len(outputs) == 1
+    assert outputs[0].startswith("Tool execution failed")
+    assert PUBLIC_ERROR_REFERENCE.search(outputs[0])
+    for call in client.send_server.await_args_list:
+        assert SECRET_SENTINEL not in str(call.args[0])
+
+
+@pytest.mark.asyncio
+async def test_call_tool_failure_logs_detail_under_the_sent_correlation_id(
+    client, captured_log_messages
+):
+    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+
+    await client.call_tool("call_1", "search_tool", {"query": "hi"})
+
+    correlation_id = PUBLIC_ERROR_REFERENCE.search(_function_call_outputs(client)[0]).group(1)
+    matching_logs = [message for message in captured_log_messages if correlation_id in message]
+    assert len(matching_logs) == 1
+    assert SECRET_SENTINEL in matching_logs[0]
+
+
+@pytest.mark.asyncio
+async def test_call_tool_failure_on_twilio_still_requests_a_response(client):
+    """Without the follow-up response.create the model stays silent after a failed tool."""
+    client.is_twilio = True
+    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+
+    await client.call_tool("call_1", "search_tool", {"query": "hi"})
+
+    sent_types = [c.args[0].get("type") for c in client.send_server.await_args_list]
+    assert sent_types == ["conversation.item.create", "response.create"]
 
 
 @pytest.mark.asyncio

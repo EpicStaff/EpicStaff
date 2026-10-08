@@ -192,6 +192,13 @@
         white-space: nowrap;
     }
 
+    &__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
     &__item-icon {
         font-size: 1rem;
         flex-shrink: 0;

@@ -14,6 +14,7 @@ def _make_s3_backend() -> S3StorageBackend:
             secret_key="s",
             organization_prefix="",
             endpoint_url=None,
+            part_size=16 * 1024 * 1024,
         )
 
 

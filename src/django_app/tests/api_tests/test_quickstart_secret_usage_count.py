@@ -66,7 +66,7 @@ def openai_seeded(db):
         name="text-embedding-3-small", embedding_provider=provider
     )
     RealtimeModel.objects.get_or_create(
-        name="gpt-4o-mini-realtime-preview-2024-12-17", provider=provider
+        name="test-realtime-model", provider=provider
     )
     RealtimeTranscriptionModel.objects.get_or_create(
         name="whisper-1", provider=provider

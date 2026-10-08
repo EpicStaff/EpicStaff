@@ -1,8 +1,9 @@
-import { computed, Injectable, signal } from '@angular/core';
+import { computed, Injectable, Signal, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
-import { NodeType } from '@shared/models';
+import { GetPythonCodeRequest, NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
+import { GraphDto } from '../../features/flows/models/graph.model';
 import {
     generatePortsForClassificationDecisionTableNode,
     generatePortsForDecisionTableNode,
@@ -40,6 +41,18 @@ export class FlowService {
     private canvasRedrawRequest$ = new Subject<void>();
     public readonly canvasRedrawRequested = this.canvasRedrawRequest$.asObservable();
 
+    /**
+     * The flows page's graph as the backend last returned it (load or save), bound rather than copied; null
+     * when unbound (outside the live editor) or when it is known to be outdated.
+     */
+    private readonly savedGraphSource = signal<Signal<GraphDto | null> | null>(null);
+    private readonly savedGraph = computed(() => this.savedGraphSource()?.() ?? null);
+    private readonly savedWebhookPythonCodeByNodeId = computed(
+        () => new Map((this.savedGraph()?.webhook_trigger_node_list ?? []).map((node) => [node.id, node.python_code]))
+    );
+    /** Whether the editor knows what the backend stores for this graph (see `bindSavedGraph`). */
+    public readonly hasSavedGraph = computed(() => this.savedGraph() !== null);
+
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
 
@@ -75,6 +88,20 @@ export class FlowService {
 
     public requestCanvasRedraw(): void {
         this.canvasRedrawRequest$.next();
+    }
+
+    /** Bound by the flows page to its stored-graph signal; null unbinds it (the page is gone). */
+    public bindSavedGraph(source: Signal<GraphDto | null> | null): void {
+        this.savedGraphSource.set(source);
+    }
+
+    /**
+     * The Python code (with its row id) the backend has stored for webhook trigger node `backendId`; null
+     * for a node that is not in the saved graph (never saved, or deleted).
+     */
+    public savedWebhookPythonCode(backendId: number | null): GetPythonCodeRequest | null {
+        if (backendId == null) return null;
+        return this.savedWebhookPythonCodeByNodeId().get(backendId) ?? null;
     }
 
     public setFlow(flow: FlowModel) {

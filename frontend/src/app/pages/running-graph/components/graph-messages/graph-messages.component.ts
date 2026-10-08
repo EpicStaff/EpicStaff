@@ -639,7 +639,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             });
     }
 
-    // UPD (EST-904 Mark message final in session)
     // Stop session only after message with type 'graph_end'
     private checkIfFinish() {
         const messages = this.sseService.messages();

@@ -84,9 +84,11 @@ def _headers(api_key: str) -> dict:
 
     org_id = globals().get("org_id")
     if org_id:
-        # Injected by the crew engine, resolved server-side from the
-        # authoritative Graph.org_id (see run_python_code_service.py /
-        # converter_service.py) -- never from agent/tool config input.
+        # Injected by the crew and realtime executors, resolved server-side
+        # (Graph.org_id for crew, the agent's organization for realtime; see
+        # run_python_code_service.py /
+        # python_code_executor_service.py / converter_service.py) -- never
+        # from agent/tool config input.
         # Required so /schedule-trigger-nodes/ (org-scoped) doesn't 400
         # with org_context_required.
         headers["X-Organization-Id"] = str(org_id)

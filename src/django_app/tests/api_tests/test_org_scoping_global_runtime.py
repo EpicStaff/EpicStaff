@@ -60,7 +60,7 @@ def client_member(db, django_user_model, org_a):
 
 @pytest.fixture
 def client_org_admin(db, django_user_model, org_a):
-    # VOICE is read-only for Member/Viewer (seeded bitmask=2, EST-3962) — the
+    # VOICE is read-only for Member/Viewer (seeded bitmask=2) — the
     # `conversation_recording_create_*` org-scoping tests below need CREATE,
     # so they exercise an Org Admin (bitmask=15) rather than `client_member`.
     return _client(_org_admin(django_user_model, org_a, "voice-admin@example.com"), org_a)
@@ -297,7 +297,7 @@ def test_conversation_recording_create_allowed_for_own_orgs_chat(
 
 @pytest.mark.django_db
 def test_conversation_recording_create_denied_for_member(client_member, org_a):
-    """EST-3962: VOICE is read-only for Member (seeded bitmask=2) — a Member
+    """VOICE is read-only for Member (seeded bitmask=2) — a Member
     must not be able to create a recording even for their own org's chat,
     now that `ConversationRecordingViewSet` wires `HasOrgPermission`."""
     own_chat = _chat(org_a)

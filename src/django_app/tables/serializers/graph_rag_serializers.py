@@ -1,5 +1,19 @@
 from rest_framework import serializers
 from tables.constants.knowledge_constants import (
+    COMMUNITY_LEVEL_MAX,
+    COMMUNITY_LEVEL_MIN,
+    CONVERSATION_HISTORY_MAX_TURNS_MAX,
+    CONVERSATION_HISTORY_MAX_TURNS_MIN,
+    DRIFT_CONCURRENCY_MAX,
+    DRIFT_CONCURRENCY_MIN,
+    DRIFT_K_FOLLOWUPS_MAX,
+    DRIFT_K_FOLLOWUPS_MIN,
+    DRIFT_N_DEPTH_MAX,
+    DRIFT_N_DEPTH_MIN,
+    DYNAMIC_SEARCH_NUM_REPEATS_MAX,
+    DYNAMIC_SEARCH_NUM_REPEATS_MIN,
+    DYNAMIC_SEARCH_THRESHOLD_MAX,
+    DYNAMIC_SEARCH_THRESHOLD_MIN,
     GRAPHRAG_MAX_CHUNK_OVERLAP,
     GRAPHRAG_MAX_CHUNK_SIZE,
     GRAPHRAG_MAX_MAX_CLUSTER_SIZE,
@@ -8,6 +22,24 @@ from tables.constants.knowledge_constants import (
     GRAPHRAG_MIN_CHUNK_SIZE,
     GRAPHRAG_MIN_MAX_CLUSTER_SIZE,
     GRAPHRAG_MIN_MAX_GLEANINGS,
+    LOCAL_SEARCH_N_MAX,
+    LOCAL_SEARCH_N_MIN,
+    MAX_TOKEN_FIELD_VALUE,
+    MIN_OPTIONAL_TOKEN_FIELD_VALUE,
+    MIN_TOKEN_FIELD_VALUE,
+    PRIMER_FOLDS_MAX,
+    PRIMER_FOLDS_MIN,
+    PROPORTION_MAX,
+    PROPORTION_MIN,
+    RESPONSE_MAX_LENGTH_MAX,
+    RESPONSE_MAX_LENGTH_MIN,
+    SEARCH_PROMPT_MAX_LENGTH,
+    TEMPERATURE_MAX,
+    TEMPERATURE_MIN,
+    TOP_K_MAX,
+    TOP_K_MIN,
+    TOP_P_MAX,
+    TOP_P_MIN,
 )
 from tables.models.knowledge_models import (
     GraphRag,
@@ -17,6 +49,8 @@ from tables.models.knowledge_models import (
     GraphRagInputFileType,
 )
 from tables.serializers.knowledge_serializers import BaseRagTypeSerializer
+from tables.validators.finite_number_validator import validate_finite_number
+from tables.validators.search_config_validator import validate_proportion_sum
 
 
 class GraphRagCreateSerializer(serializers.Serializer):
@@ -290,19 +324,20 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         allow_blank=True,
+        max_length=SEARCH_PROMPT_MAX_LENGTH,
         help_text="Custom basic search prompt",
     )
     k = serializers.IntegerField(
         required=False,
-        min_value=1,
-        max_value=100,
-        help_text="Number of text units to include (1-100)",
+        min_value=TOP_K_MIN,
+        max_value=TOP_K_MAX,
+        help_text=f"Number of text units to include ({TOP_K_MIN}-{TOP_K_MAX})",
     )
     max_context_tokens = serializers.IntegerField(
         required=False,
-        min_value=100,
-        max_value=2000000,
-        help_text="Maximum context tokens (100-100000)",
+        min_value=MIN_TOKEN_FIELD_VALUE,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum context tokens ({MIN_TOKEN_FIELD_VALUE}-{MAX_TOKEN_FIELD_VALUE})",
     )
     is_suggested = serializers.BooleanField(
         required=False,
@@ -317,65 +352,117 @@ class GraphLocalSearchConfigInputSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         allow_blank=True,
+        max_length=SEARCH_PROMPT_MAX_LENGTH,
         help_text="Custom local search prompt",
     )
     text_unit_prop = serializers.FloatField(
         required=False,
-        min_value=0.0,
-        max_value=1.0,
+        min_value=PROPORTION_MIN,
+        max_value=PROPORTION_MAX,
         help_text="Text unit proportion (0.0-1.0)",
+        validators=[validate_finite_number],
     )
     community_prop = serializers.FloatField(
         required=False,
-        min_value=0.0,
-        max_value=1.0,
+        min_value=PROPORTION_MIN,
+        max_value=PROPORTION_MAX,
         help_text="Community proportion (0.0-1.0)",
+        validators=[validate_finite_number],
     )
     conversation_history_max_turns = serializers.IntegerField(
         required=False,
-        min_value=1,
-        max_value=50,
-        help_text="Max conversation history turns (1-50)",
+        min_value=CONVERSATION_HISTORY_MAX_TURNS_MIN,
+        max_value=CONVERSATION_HISTORY_MAX_TURNS_MAX,
+        help_text=(
+            "Max conversation history turns "
+            f"({CONVERSATION_HISTORY_MAX_TURNS_MIN}-{CONVERSATION_HISTORY_MAX_TURNS_MAX})"
+        ),
     )
     top_k_entities = serializers.IntegerField(
         required=False,
-        min_value=1,
-        max_value=100,
-        help_text="Top K entities (1-100)",
+        min_value=TOP_K_MIN,
+        max_value=TOP_K_MAX,
+        help_text=f"Top K entities ({TOP_K_MIN}-{TOP_K_MAX})",
     )
     top_k_relationships = serializers.IntegerField(
         required=False,
-        min_value=1,
-        max_value=100,
-        help_text="Top K relationships (1-100)",
+        min_value=TOP_K_MIN,
+        max_value=TOP_K_MAX,
+        help_text=f"Top K relationships ({TOP_K_MIN}-{TOP_K_MAX})",
     )
     max_context_tokens = serializers.IntegerField(
         required=False,
-        min_value=100,
-        help_text="Maximum context tokens (upper bound = model context window)",
+        min_value=MIN_TOKEN_FIELD_VALUE,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum context tokens ({MIN_TOKEN_FIELD_VALUE}-{MAX_TOKEN_FIELD_VALUE})",
     )
     is_suggested = serializers.BooleanField(
         required=False,
         help_text="Whether these values came from parameter suggestion.",
     )
 
+    def validate(self, attrs):
+        validate_proportion_sum(attrs, "text_unit_prop", "community_prop")
+        return attrs
+
+
+def _prompt_field():
+    return serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=SEARCH_PROMPT_MAX_LENGTH,
+    )
+
+
+def _token_field():
+    return serializers.IntegerField(
+        required=False, min_value=MIN_TOKEN_FIELD_VALUE, max_value=MAX_TOKEN_FIELD_VALUE
+    )
+
+
+def _optional_token_field():
+    return serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=MIN_OPTIONAL_TOKEN_FIELD_VALUE,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+    )
+
+
+def _bounded_integer_field(minimum, maximum):
+    return serializers.IntegerField(required=False, min_value=minimum, max_value=maximum)
+
+
+def _bounded_float_field(minimum, maximum):
+    return serializers.FloatField(
+        required=False,
+        min_value=minimum,
+        max_value=maximum,
+        validators=[validate_finite_number],
+    )
+
 
 class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
     """Input serializer for graph RAG global search config."""
 
-    map_prompt = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    reduce_prompt = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    knowledge_prompt = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    max_context_tokens = serializers.IntegerField(required=False, min_value=100)
-    data_max_tokens = serializers.IntegerField(required=False, min_value=100)
-    map_max_length = serializers.IntegerField(required=False, min_value=1, max_value=10000)
-    reduce_max_length = serializers.IntegerField(required=False, min_value=1, max_value=10000)
+    map_prompt = _prompt_field()
+    reduce_prompt = _prompt_field()
+    knowledge_prompt = _prompt_field()
+    max_context_tokens = _token_field()
+    data_max_tokens = _token_field()
+    map_max_length = _bounded_integer_field(RESPONSE_MAX_LENGTH_MIN, RESPONSE_MAX_LENGTH_MAX)
+    reduce_max_length = _bounded_integer_field(RESPONSE_MAX_LENGTH_MIN, RESPONSE_MAX_LENGTH_MAX)
     dynamic_community_selection = serializers.BooleanField(required=False)
-    dynamic_search_threshold = serializers.IntegerField(required=False, min_value=0)
+    dynamic_search_threshold = _bounded_integer_field(
+        DYNAMIC_SEARCH_THRESHOLD_MIN, DYNAMIC_SEARCH_THRESHOLD_MAX
+    )
     dynamic_search_keep_parent = serializers.BooleanField(required=False)
-    dynamic_search_num_repeats = serializers.IntegerField(required=False, min_value=1)
+    dynamic_search_num_repeats = _bounded_integer_field(
+        DYNAMIC_SEARCH_NUM_REPEATS_MIN, DYNAMIC_SEARCH_NUM_REPEATS_MAX
+    )
     dynamic_search_use_summary = serializers.BooleanField(required=False)
-    dynamic_search_max_level = serializers.IntegerField(required=False, min_value=0, max_value=10)
+    dynamic_search_max_level = _bounded_integer_field(COMMUNITY_LEVEL_MIN, COMMUNITY_LEVEL_MAX)
     is_suggested = serializers.BooleanField(
         required=False,
         help_text="Whether these values came from parameter suggestion.",
@@ -385,46 +472,36 @@ class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
 class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
     """Input serializer for graph RAG drift search config."""
 
-    prompt = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    reduce_prompt = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    data_max_tokens = serializers.IntegerField(required=False, min_value=100)
-    reduce_max_tokens = serializers.IntegerField(required=False, allow_null=True, min_value=1)
-    reduce_temperature = serializers.FloatField(required=False, min_value=0.0, max_value=2.0)
-    reduce_max_completion_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
-    concurrency = serializers.IntegerField(required=False, min_value=1, max_value=256)
-    drift_k_followups = serializers.IntegerField(required=False, min_value=1, max_value=100)
-    primer_folds = serializers.IntegerField(required=False, min_value=1, max_value=100)
-    primer_llm_max_tokens = serializers.IntegerField(required=False, min_value=100)
-    n_depth = serializers.IntegerField(required=False, min_value=1, max_value=10)
-    community_level = serializers.IntegerField(required=False, min_value=0, max_value=10)
-    local_search_text_unit_prop = serializers.FloatField(
-        required=False, min_value=0.0, max_value=1.0
-    )
-    local_search_community_prop = serializers.FloatField(
-        required=False, min_value=0.0, max_value=1.0
-    )
-    local_search_top_k_mapped_entities = serializers.IntegerField(
-        required=False, min_value=1, max_value=100
-    )
-    local_search_top_k_relationships = serializers.IntegerField(
-        required=False, min_value=1, max_value=100
-    )
-    local_search_max_data_tokens = serializers.IntegerField(required=False, min_value=100)
-    local_search_temperature = serializers.FloatField(required=False, min_value=0.0, max_value=2.0)
-    local_search_top_p = serializers.FloatField(required=False, min_value=0.0, max_value=1.0)
-    local_search_n = serializers.IntegerField(required=False, min_value=1, max_value=10)
-    local_search_llm_max_gen_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
-    local_search_llm_max_gen_completion_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    prompt = _prompt_field()
+    reduce_prompt = _prompt_field()
+    data_max_tokens = _token_field()
+    reduce_max_tokens = _optional_token_field()
+    reduce_temperature = _bounded_float_field(TEMPERATURE_MIN, TEMPERATURE_MAX)
+    reduce_max_completion_tokens = _optional_token_field()
+    concurrency = _bounded_integer_field(DRIFT_CONCURRENCY_MIN, DRIFT_CONCURRENCY_MAX)
+    drift_k_followups = _bounded_integer_field(DRIFT_K_FOLLOWUPS_MIN, DRIFT_K_FOLLOWUPS_MAX)
+    primer_folds = _bounded_integer_field(PRIMER_FOLDS_MIN, PRIMER_FOLDS_MAX)
+    primer_llm_max_tokens = _token_field()
+    n_depth = _bounded_integer_field(DRIFT_N_DEPTH_MIN, DRIFT_N_DEPTH_MAX)
+    community_level = _bounded_integer_field(COMMUNITY_LEVEL_MIN, COMMUNITY_LEVEL_MAX)
+    local_search_text_unit_prop = _bounded_float_field(PROPORTION_MIN, PROPORTION_MAX)
+    local_search_community_prop = _bounded_float_field(PROPORTION_MIN, PROPORTION_MAX)
+    local_search_top_k_mapped_entities = _bounded_integer_field(TOP_K_MIN, TOP_K_MAX)
+    local_search_top_k_relationships = _bounded_integer_field(TOP_K_MIN, TOP_K_MAX)
+    local_search_max_data_tokens = _token_field()
+    local_search_temperature = _bounded_float_field(TEMPERATURE_MIN, TEMPERATURE_MAX)
+    local_search_top_p = _bounded_float_field(TOP_P_MIN, TOP_P_MAX)
+    local_search_n = _bounded_integer_field(LOCAL_SEARCH_N_MIN, LOCAL_SEARCH_N_MAX)
+    local_search_llm_max_gen_tokens = _optional_token_field()
+    local_search_llm_max_gen_completion_tokens = _optional_token_field()
     is_suggested = serializers.BooleanField(
         required=False,
         help_text="Whether these values came from parameter suggestion.",
     )
+
+    def validate(self, attrs):
+        validate_proportion_sum(attrs, "local_search_text_unit_prop", "local_search_community_prop")
+        return attrs
 
 
 class GraphSearchConfigInputSerializer(serializers.Serializer):

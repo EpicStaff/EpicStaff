@@ -115,6 +115,16 @@
         </div>
     }
 
+    @if (data.checkbox; as checkbox) {
+        <label class="dialog-checkbox">
+            <app-checkbox
+                [checked]="checkboxChecked()"
+                (changed)="checkboxChecked.set($event)"
+            />
+            <span>{{ checkbox.label }}</span>
+        </label>
+    }
+
     <div class="dialog-actions">
         <button
             type="button"

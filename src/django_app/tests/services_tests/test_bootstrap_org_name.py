@@ -16,6 +16,17 @@ def test_org_name_names_a_newly_created_organization():
 
 
 @pytest.mark.django_db
+def test_newly_created_default_organization_gets_its_config_row():
+    """OrganizationResponseSerializer reads org.config; on a fresh install the
+    migration backfill has no orgs to cover, so bootstrap must create the row."""
+    result = FirstSetupService().setup(
+        email="admin@example.com", password="StrongPass123!", org_name="Acme Inc"
+    )
+    assert result.default_org_created is True
+    assert result.organization.config.audit_retention_days == 0
+
+
+@pytest.mark.django_db
 def test_org_name_is_ignored_when_a_default_org_already_exists():
     """The is_default flag is the rename-proof anchor other code depends on;
     a bootstrap command must never rename an existing organization."""

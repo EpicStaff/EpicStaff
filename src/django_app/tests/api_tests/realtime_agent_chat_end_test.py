@@ -36,7 +36,7 @@ class TestRealtimeAgentChatEnd:
     Fixed by restricting the action to `key_type=SYSTEM` API-key callers only
     (`IsSystemApiKeyAuthenticated`), mirroring `RealtimeChannelViewSet.
     lookup_by_token` / `InitRealtimeAPIView`'s pattern — the only
-    legitimate caller is the `realtime`/`voice_app` service's
+    legitimate caller is the `realtime` service's
     `voice_call_service._patch_agent_chat`, which authenticates with the
     env-seeded system API key."""
 

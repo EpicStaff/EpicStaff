@@ -118,7 +118,7 @@ def test_python_code_tool_duplicate_name_returns_400(client_a, org_a):
     assert "already exists" in str(resp.data)
 
 
-# ---- EST-4000: a custom PythonCodeTool must not be able to shadow a built-in ----
+# ---- a custom PythonCodeTool must not be able to shadow a built-in ----
 
 
 @pytest.mark.django_db

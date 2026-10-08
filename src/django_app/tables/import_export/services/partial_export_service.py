@@ -51,6 +51,10 @@ class GraphPartialExportService:
     are included in the result so the selection can be
     re-imported as a coherent unit.
 
+    Node and edge ids come from the caller, so they are resolved inside
+    ``org_id`` only: an id owned by another organisation is reported exactly
+    like an id that does not exist.
+
     Errors are collected rather than raised — callers should check
     ``result.has_errors`` before using ``result.data``.
     """
@@ -61,6 +65,8 @@ class GraphPartialExportService:
     def export(
         self,
         node_refs: list[NodeRef],
+        *,
+        org_id: int,
         edge_ids: list[int] | None = None,
     ) -> PartialExportResult:
         result = PartialExportResult()
@@ -76,7 +82,9 @@ class GraphPartialExportService:
             strategy = self.registry.get_strategy(ref.entity_type)
             instance = strategy.get_instance(ref.node_id)
 
-            if instance is None:
+            # Every exportable node carries its graph; strategies take no org,
+            # so ownership is checked here, where the caller's ids enter.
+            if instance is None or instance.graph.org_id != org_id:
                 result.errors.append(
                     {
                         "node_id": ref.node_id,
@@ -105,7 +113,7 @@ class GraphPartialExportService:
 
         # Pass 3: include explicitly requested edges
         if edge_ids:
-            edges = list(Edge.objects.filter(id__in=edge_ids))
+            edges = list(Edge.objects.filter(id__in=edge_ids, graph__org_id=org_id))
             missing = set(edge_ids) - {e.id for e in edges}
             for eid in missing:
                 result.errors.append({"edge_id": eid, "error": f"Edge with id={eid} not found."})

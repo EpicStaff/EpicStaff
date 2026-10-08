@@ -11,7 +11,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
-import { notNumericOnlyValidator, strictEmailValidator } from '@shared/form-validators';
+import { newAccountEmailValidator, notNumericOnlyValidator } from '@shared/form-validators';
 import { HttpStatus } from '@shared/models';
 import { forkJoin, timer } from 'rxjs';
 
@@ -46,7 +46,10 @@ export class SignUpPageComponent {
     readonly termsControl = new FormControl(false);
 
     readonly form = new FormGroup({
-        email: new FormControl('', { nonNullable: true, validators: [Validators.required, strictEmailValidator()] }),
+        email: new FormControl('', {
+            nonNullable: true,
+            validators: [Validators.required, newAccountEmailValidator()],
+        }),
         password: new FormControl('', {
             nonNullable: true,
             validators: [

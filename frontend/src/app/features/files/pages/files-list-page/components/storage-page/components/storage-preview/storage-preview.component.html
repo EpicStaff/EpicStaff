@@ -145,6 +145,7 @@
                 [blob]="previewBlob()"
                 [fileName]="item()!.name"
                 [size]="item()!.size"
+                [truncated]="previewMode() === 'partial'"
                 [showDownload]="canDownload"
                 (downloadClick)="onDownload()"
             />

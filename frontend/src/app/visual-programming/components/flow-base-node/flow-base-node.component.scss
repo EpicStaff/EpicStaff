@@ -15,8 +15,7 @@
         pointer-events: none;
     }
 
-    .node-name-label,
-    .key-value-caption {
+    .node-name-label {
         background-color: var(--color-nodes-actionbar-bg);
         color: var(--gray-204);
         font-size: 0.75rem;
@@ -24,35 +23,8 @@
         border-radius: 3px;
         white-space: nowrap;
         opacity: 0;
-    }
-
-    .node-name-label {
         overflow: hidden;
         text-overflow: ellipsis;
-    }
-
-    // Below the node, clear of the #N label above it and of the left/right ports.
-    // visibility (not only opacity) so the hidden caption takes no clicks meant for the canvas;
-    // transitioned so it stays reachable for a moment, and bridged so the gap keeps the node hovered.
-    .key-value-caption {
-        --caption-gap: 6px;
-
-        position: absolute;
-        top: calc(100% + var(--caption-gap));
-        left: 0;
-        visibility: hidden;
-        transition:
-            opacity 0.2s ease,
-            visibility 0.2s;
-
-        &::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 100%;
-            height: var(--caption-gap);
-        }
     }
 
     // Outside-the-box bar, only used by NOTE/EDGE (no header row to embed into).
@@ -140,6 +112,20 @@
         &.ungroup-button i {
             color: var(--accent-color);
             font-size: 1rem;
+        }
+
+        &.unpack-button i {
+            color: var(--gray-450);
+            font-size: 1rem;
+        }
+
+        &.unpack-button.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+
+            &:hover {
+                background-color: var(--graphite-780);
+            }
         }
 
         &.delete-button i {
@@ -239,11 +225,44 @@
 
             .node-number-badge {
                 @include mixins.node-action-bar-number-badge(var(--color-divider-regular));
+                // The tab continues the node's outline, so its corners match the node's.
+                border-radius: 16px 16px 0 0;
+
+                // A Key-Value node's summary rides in the tab: it stops short of the delete chip
+                // (26px + 4px gap) and ends in "…"; block, since ellipsis skips flex text.
+                &.has-summary {
+                    display: block;
+                    max-width: calc(100% - 30px);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    line-height: 26px;
+                    // Carries the node's mode stripe up through the tab, so it reads as one line.
+                    box-shadow: inset 3px 0 0 0 var(--key-value-accent);
+
+                    // "#N - Mode / Table / N keys": the parts keep the chip's text colour, the number
+                    // and the separators step down so the summary reads first.
+                    .node-number {
+                        color: var(--color-text-secondary);
+                    }
+
+                    .summary-separator {
+                        color: var(--color-text-tertiary);
+                        margin: 0 4px;
+                    }
+
+                    .summary-separator--number {
+                        margin: 0 8px;
+                    }
+                }
             }
 
             .actions {
                 @include mixins.node-action-bar-delete-chip(var(--color-divider-regular), 4px);
                 right: 0;
+
+                &:has(.unpack-button) {
+                    right: 30px;
+                }
             }
         }
 
@@ -291,11 +310,6 @@
             opacity: 1;
         }
 
-        .key-value-caption {
-            visibility: visible;
-            opacity: 1;
-        }
-
         .port-wrapper .port-label {
             opacity: 1;
         }
@@ -308,6 +322,11 @@
         .interactive-node-body .node-action-bar,
         .node-action-bar--table {
             opacity: 1;
+        }
+
+        // Only while shown, so the hidden tab is no hit zone; the pointer is what lets its title appear.
+        .node-number-badge.has-summary {
+            pointer-events: auto;
         }
 
         .interactive-node-body.has-number-chip {
@@ -356,6 +375,10 @@
             .node-number-badge {
                 border-color: var(--vp-selected-node-border-color);
                 border-bottom: none;
+
+                &.has-summary {
+                    pointer-events: auto;
+                }
             }
 
             .actions {

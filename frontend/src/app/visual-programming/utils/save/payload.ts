@@ -445,6 +445,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            test_payload: n.data.test_payload ?? {},
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
@@ -453,6 +454,7 @@ export function buildBulkSavePayload(
             telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
+            test_payload: n.data.test_payload ?? {},
             metadata: toNodeMetadata(n),
         })),
         schedule_trigger_node_list: nodeItems(nodeDiff.scheduleNodes, (n) => ({

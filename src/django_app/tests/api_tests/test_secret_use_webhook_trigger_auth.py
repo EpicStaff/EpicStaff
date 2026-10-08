@@ -23,6 +23,7 @@ from tables.models.webhook_models import (
     WebhookTriggerAuthKind,
 )
 from tables.services.secrets import secret_service
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 #: WebhookTriggerService.AUTH_SECRET_MIN_LENGTH -- the plaintext must clear this.
 _LONG_ENOUGH = "x" * 40
@@ -31,14 +32,15 @@ _LONG_ENOUGH = "x" * 40
 def _client_with(
     *, org: Organization, django_user_model, email: str, secrets_bitmask: int
 ):
-    """An APIClient for a user whose custom role holds `secrets_bitmask` on secrets and full CRUD on llm_configs."""
+    """An APIClient for a user whose custom role holds `secrets_bitmask` on secrets and full CRUD on webhooks."""
     role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
     RolePermission.objects.create(
         role=role, resource_type=ResourceType.SECRETS.value, permissions=secrets_bitmask
     )
+    # `WebhookTriggerViewSet` gates on the webhooks resource type.
     RolePermission.objects.create(
         role=role,
-        resource_type=ResourceType.LLM_CONFIGS.value,
+        resource_type=ResourceType.WEBHOOKS.value,
         permissions=int(
             Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
         ),
@@ -248,3 +250,72 @@ class TestTwilioBareReservationNowRejectsResendingKindOverAClaimedSecret:
         assert "bare reservation" in response.json()["message"]
         twilio_trigger.refresh_from_db()
         assert twilio_trigger.auth.secret_id == twilio_secret.id
+
+
+@pytest.mark.django_db
+class TestEditFormRoundTripOfTheReturnedSecretId:
+    """The edit form pre-selects `auth.secret_id` from a read and sends it back as `auth_secret_id`."""
+
+    def test_sending_back_the_returned_secret_id_without_use_is_accepted(
+        self, no_use_client, trigger, secret
+    ):
+        read = no_use_client.get(f"/api/webhook-triggers/{trigger.id}/")
+        assert read.status_code == 200, read.json()
+        returned_secret_id = read.json()["auth"]["secret_id"]
+        assert returned_secret_id == secret.id
+
+        response = no_use_client.patch(
+            f"/api/webhook-triggers/{trigger.id}/",
+            {"auth_secret_id": returned_secret_id, "auth_kind": WebhookTriggerAuthKind.WEBHOOK},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        assert response.json()["auth"]["secret_id"] == secret.id
+        trigger.refresh_from_db()
+        assert trigger.auth.secret_id == secret.id
+
+    def test_the_same_form_cannot_switch_to_a_different_secret_without_use(
+        self, no_use_client, trigger, secret, other_secret
+    ):
+        read = no_use_client.get(f"/api/webhook-triggers/{trigger.id}/")
+        assert read.json()["auth"]["secret_id"] == secret.id
+
+        response = no_use_client.patch(
+            f"/api/webhook-triggers/{trigger.id}/",
+            {"auth_secret_id": other_secret.id, "auth_kind": WebhookTriggerAuthKind.WEBHOOK},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert "auth_secret_id" in response.json()["message"]
+        trigger.refresh_from_db()
+        assert trigger.auth.secret_id == secret.id
+
+
+@pytest.mark.django_db
+def test_another_orgs_trigger_and_its_secret_id_are_not_readable(client_as, admin_acme, acme, beta):
+    beta_secret = secret_service.create(text=_LONG_ENOUGH, org=beta, name="WTAUTH_BETA_SECRET")
+    beta_trigger = WebhookTrigger.objects.create(
+        path="wtauth-beta-trigger", provider_type=None, org=beta
+    )
+    WebhookTriggerAuth.objects.create(
+        trigger=beta_trigger, kind=WebhookTriggerAuthKind.WEBHOOK, secret=beta_secret
+    )
+    acme_trigger = WebhookTrigger.objects.create(
+        path="wtauth-acme-trigger", provider_type=None, org=acme
+    )
+    client = client_as(admin_acme)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+    own = client.get(f"/api/webhook-triggers/{acme_trigger.id}/")
+    foreign = client.get(f"/api/webhook-triggers/{beta_trigger.id}/")
+    listing = client.get("/api/webhook-triggers/")
+
+    # Positive control: the same caller reads its own org's trigger, so the 404 is the org filter.
+    assert own.status_code == 200, own.content
+    assert foreign.status_code == 404, foreign.content
+    assert str(beta_secret.id) not in foreign.content.decode()
+    listed = listing.json()
+    listed_triggers = listed["results"] if isinstance(listed, dict) else listed
+    assert beta_trigger.id not in [listed_trigger["id"] for listed_trigger in listed_triggers]

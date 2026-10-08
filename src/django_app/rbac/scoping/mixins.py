@@ -63,6 +63,13 @@ class OrgScopedChildViewSetMixin(OrgScopedResolverMixin):
         self._assert_parent_in_active_org(serializer)
         serializer.save()
 
+    def perform_update(self, serializer):
+        # Same rule on update: a PATCH/PUT that rewrites the parent FK must not
+        # re-attach the child to another org's parent. Runs here, so a viewset
+        # does not depend on its serializer field being org-scoped.
+        self._assert_parent_in_active_org(serializer)
+        super().perform_update(serializer)
+
     def _assert_parent_in_active_org(self, serializer):
         if not self.org_filter_path:
             return

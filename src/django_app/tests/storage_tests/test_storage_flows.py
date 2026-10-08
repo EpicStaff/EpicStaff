@@ -6,13 +6,12 @@ Kept in its own module: test_storage_manager.py applies a module-wide autouse
 patch that mocks StorageFileSync, which would defeat these tests.
 """
 
-from io import BytesIO
-
 import pytest
 
+from tables.exceptions import RangeNotSatisfiable
 from tables.models import StorageFile
 from tables.services.storage_service.manager import StorageManager
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 
 
 pytestmark = pytest.mark.django_db
@@ -28,7 +27,7 @@ class TestMoveFlows:
         self, manager, org, org_user
     ):
         manager.mkdir(org.id, "archive")
-        manager.upload(org.id, "report.txt", BytesIO(b"data"))
+        seed_file(manager._backend, org.id, "report.txt", b"data")
 
         manager.move(org.id, "report.txt", "archive")
 
@@ -40,8 +39,8 @@ class TestMoveFlows:
         self, manager, org, org_user
     ):
         manager.mkdir(org.id, "archive")
-        manager.upload(org.id, "archive/report.txt", BytesIO(b"existing"))
-        manager.upload(org.id, "report.txt", BytesIO(b"incoming"))
+        seed_file(manager._backend, org.id, "archive/report.txt", b"existing")
+        seed_file(manager._backend, org.id, "report.txt", b"incoming")
 
         manager.move(org.id, "report.txt", "archive")
 
@@ -55,7 +54,7 @@ class TestMoveFlows:
     ):
         manager.mkdir(org.id, "archive")
         manager.mkdir(org.id, "docs")
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"a"))
+        seed_file(manager._backend, org.id, "docs/a.txt", b"a")
 
         manager.move(org.id, "docs", "archive")
 
@@ -68,7 +67,7 @@ class TestMoveFlows:
     ):
         manager.mkdir(org.id, "archive/docs")
         manager.mkdir(org.id, "docs")
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"a"))
+        seed_file(manager._backend, org.id, "docs/a.txt", b"a")
 
         manager.move(org.id, "docs", "archive")
 
@@ -84,7 +83,7 @@ class TestCopyFlow:
         self, manager, org, org_user
     ):
         manager.mkdir(org.id, "docs")
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"a"))
+        seed_file(manager._backend, org.id, "docs/a.txt", b"a")
 
         manager.copy(org.id, "docs", "")
 
@@ -102,8 +101,8 @@ class TestRenameFlow:
     def test_rename_onto_existing_path_raises_and_leaves_db_unchanged(
         self, manager, org, org_user
     ):
-        manager.upload(org.id, "a.txt", BytesIO(b"a"))
-        manager.upload(org.id, "b.txt", BytesIO(b"b"))
+        seed_file(manager._backend, org.id, "a.txt", b"a")
+        seed_file(manager._backend, org.id, "b.txt", b"b")
 
         with pytest.raises(FileExistsError):
             manager.rename(org.id, "a.txt", "b.txt")
@@ -116,15 +115,69 @@ class TestDownloadFlow:
     def test_download_without_db_row_raises_file_not_found(
         self, manager, org, org_user
     ):
-        manager._backend.upload(f"org_{org.id}/stray.txt", BytesIO(b"stray"))
+        manager._backend.put_bytes(f"org_{org.id}/stray.txt", b"stray")
 
         with pytest.raises(FileNotFoundError):
             manager.download(org.id, "stray.txt")
 
     def test_download_with_db_row_returns_bytes(self, manager, org, org_user):
-        manager.upload(org.id, "known.txt", BytesIO(b"known content"))
+        seed_file(manager._backend, org.id, "known.txt", b"known content")
 
-        assert manager.download(org.id, "known.txt") == b"known content"
+        download = manager.download(org.id, "known.txt")
+
+        assert download.content == b"known content"
+        assert download.content_range is None
+
+    @pytest.mark.parametrize(
+        ("range_header", "content", "content_range"),
+        [
+            ("bytes=0-4", b"known", "bytes 0-4/13"),
+            ("bytes=6-", b"content", "bytes 6-12/13"),
+            ("bytes=6-999", b"content", "bytes 6-12/13"),
+            # unsupported ranges (suffix, multi, reversed, other unit, huge) get the whole file
+            ("bytes=-5", b"known content", None),
+            ("bytes=0-1,4-5", b"known content", None),
+            ("bytes=5-2", b"known content", None),
+            ("items=0-4", b"known content", None),
+            ("bytes=" + "9" * 5000 + "-", b"known content", None),
+        ],
+    )
+    def test_download_range_returns_only_that_part(
+        self, manager, org, org_user, range_header, content, content_range
+    ):
+        seed_file(manager._backend, org.id, "known.txt", b"known content")
+
+        download = manager.download(org.id, "known.txt", range_header)
+
+        assert download.content == content
+        assert download.content_range == content_range
+
+    def test_download_range_past_end_raises_not_satisfiable(self, manager, org, org_user):
+        seed_file(manager._backend, org.id, "known.txt", b"known content")
+
+        with pytest.raises(RangeNotSatisfiable) as exc_info:
+            manager.download(org.id, "known.txt", "bytes=13-")
+        assert exc_info.value.headers == {"Content-Range": "bytes */13"}
+
+    def test_download_range_follows_the_object_not_a_stale_row_size(
+        self, manager, org, org_user
+    ):
+        seed_file(manager._backend, org.id, "known.txt", b"short")
+        # An agent write replaces the object without touching the row's size.
+        manager._backend.put_bytes(f"org_{org.id}/known.txt", b"much longer content")
+
+        download = manager.download(org.id, "known.txt", "bytes=0-")
+
+        assert download.content == b"much longer content"
+        assert download.content_range == "bytes 0-18/19"
+
+    def test_download_range_of_another_org_file_raises_file_not_found(
+        self, manager, org, org_user, second_org
+    ):
+        seed_file(manager._backend, org.id, "known.txt", b"known content")
+
+        with pytest.raises(FileNotFoundError):
+            manager.download(second_org.id, "known.txt", "bytes=0-4")
 
 
 class TestDownloadZipFlow:
@@ -132,8 +185,8 @@ class TestDownloadZipFlow:
         self, manager, org, org_user
     ):
         manager.mkdir(org.id, "folder")
-        manager.upload(org.id, "folder/tracked.txt", BytesIO(b"tracked"))
-        manager._backend.upload(f"org_{org.id}/folder/stray.txt", BytesIO(b"untracked"))
+        seed_file(manager._backend, org.id, "folder/tracked.txt", b"tracked")
+        manager._backend.put_bytes(f"org_{org.id}/folder/stray.txt", b"untracked")
 
         zip_filename, chunks = manager.download_zip(org.id, ["folder"])
         zip_bytes = b"".join(chunks)
@@ -152,7 +205,7 @@ class TestDownloadZipFlow:
     def test_zip_of_single_file_has_file_name_and_bare_entry(
         self, manager, org, org_user
     ):
-        manager.upload(org.id, "report.txt", BytesIO(b"payload"))
+        seed_file(manager._backend, org.id, "report.txt", b"payload")
 
         zip_filename, chunks = manager.download_zip(org.id, ["report.txt"])
         zip_bytes = b"".join(chunks)
@@ -170,8 +223,8 @@ class TestDownloadZipFlow:
         self, manager, org, org_user
     ):
         manager.mkdir(org.id, "folder")
-        manager.upload(org.id, "folder/tracked.txt", BytesIO(b"tracked"))
-        manager.upload(org.id, "report.txt", BytesIO(b"payload"))
+        seed_file(manager._backend, org.id, "folder/tracked.txt", b"tracked")
+        seed_file(manager._backend, org.id, "report.txt", b"payload")
 
         zip_filename, chunks = manager.download_zip(org.id, ["folder", "report.txt"])
         zip_bytes = b"".join(chunks)
@@ -200,7 +253,7 @@ class TestCrossOrgMoveFlow:
         second_org,
         second_org_user,
     ):
-        manager.upload(org.id, "shared.txt", BytesIO(b"payload"))
+        seed_file(manager._backend, org.id, "shared.txt", b"payload")
         manager.mkdir(second_org.id, "inbox")
 
         manager.move_cross_org(org.id, "shared.txt", second_org.id, "inbox")

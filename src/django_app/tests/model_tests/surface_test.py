@@ -85,7 +85,7 @@ def agent(db, org):
     return AgentDefinition.objects.create(
         organization=org,
         name="agent-a",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 
@@ -94,7 +94,7 @@ def agent_b(db, org):
     return AgentDefinition.objects.create(
         organization=org,
         name="agent-b",
-        instructions="do other things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )
 
 

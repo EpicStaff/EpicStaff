@@ -5,9 +5,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 // import { ToastService } from '../../../../../../services/notifications';
-import { AppSvgIconComponent, Spinner2Component } from '@shared/components';
+import { AppSvgIconComponent, Spinner2Component, StatusBadgeComponent } from '@shared/components';
 import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
@@ -30,6 +30,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
         GraphPresenceIndicatorsComponent,
         MatTooltipModule,
         HasPermissionDirective,
+        StatusBadgeComponent,
     ],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],
@@ -44,6 +45,8 @@ export class FlowHeaderComponent {
     @Input() isSaving = false;
     @Input() isRunning = false;
     readonly isPreviewMode = input(false);
+    /** The status of the run in progress (regular or test); null hides the badge. */
+    readonly runStatus = input<GraphSessionStatus | null>(null);
     @Input() hasUnsavedChanges = false;
     @Input() editors: EditorInfo[] = [];
     @Output() save = new EventEmitter<void>();

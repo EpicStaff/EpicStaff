@@ -8,7 +8,7 @@ def org_scoped_label_ids(instance, request) -> list[int]:
     shared across orgs on a hybrid-visible row (e.g. a built-in
     ``PythonCodeTool``/``McpTool`` with ``org=None``): without this, ``GET``
     would serialize every org's label ids attached to that shared row,
-    leaking org-1's label id into org-2's response (EST-3773).
+    leaking org-1's label id into org-2's response.
     """
     if request is None:
         return list(instance.labels.values_list("id", flat=True))
@@ -22,7 +22,7 @@ def set_org_scoped_labels(instance, labels, request) -> None:
 
     A naive ``instance.labels.set(labels)`` is a destructive full replace: on
     a shared built-in tool, org-2 submitting its own label ids would wipe
-    org-1's previously-attached labels from the same M2M (EST-3773). The
+    org-1's previously-attached labels from the same M2M. The
     incoming ``labels`` are already guaranteed to belong to the active org —
     they were validated through ``OrgScopedPrimaryKeyRelatedField`` — so it is
     safe to treat everything else on the relation as "some other org's rows"

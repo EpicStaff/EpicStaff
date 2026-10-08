@@ -61,6 +61,7 @@ import {
     SurfacePythonTool,
     SurfaceSaveError,
     SurfaceStorageItem,
+    ToolMode,
 } from '../../../../../../models/surface.model';
 import {
     getFirstAvailableSurfaceTab,
@@ -159,6 +160,10 @@ export class SurfaceCardComponent {
 
     readonly menuOpen = signal<boolean>(false);
     private readonly instructionsTextarea = viewChild<ElementRef<HTMLTextAreaElement>>('instrTa');
+    private readonly knowledgeAdvanced = viewChild(SurfaceKnowledgeAdvancedComponent);
+
+    /** True while the open knowledge settings hold an edit that cannot be saved. */
+    readonly knowledgeInvalid = computed<boolean>(() => this.knowledgeAdvanced()?.invalidConfig() ?? false);
 
     readonly name = signal<string>('');
     private readonly nameFocused = signal<boolean>(false);
@@ -202,6 +207,7 @@ export class SurfaceCardComponent {
 
     toggleExpand(): void {
         this.menuOpen.set(false);
+        if (this.expanded() && this.refuseIfKnowledgeInvalid()) return;
         this.expanded.update((v) => !v);
     }
 
@@ -218,7 +224,7 @@ export class SurfaceCardComponent {
         const name = this.name().trim();
         const current = this.surface()?.name ?? '';
         if (this.isCreating()) {
-            if (!name || name === current) return;
+            if (!name || name === current || this.refuseIfKnowledgeInvalid()) return;
             this.createDraft.emit(this.buildCreateRequest(name));
             return;
         }
@@ -231,13 +237,26 @@ export class SurfaceCardComponent {
         const { python_tools, mcp_tools } = this.buildToolsPayload();
         return {
             name: name.trim(),
-            description: '',
             instructions: this.instructions(),
             python_tools,
             mcp_tools,
             storage_items: this.buildStoragePayload(),
             knowledge: this.buildKnowledgePayload(),
         };
+    }
+
+    /** Applies any debounced knowledge edit now, so buildCreateRequest() and knowledgeInvalid() are current. */
+    flushPendingKnowledge(): void {
+        this.knowledgeAdvanced()?.flush();
+    }
+
+    // Hiding or submitting the knowledge settings while they are invalid would silently drop the
+    // edit (and destroying them makes knowledgeInvalid() report false), so callers refuse instead.
+    refuseIfKnowledgeInvalid(): boolean {
+        this.flushPendingKnowledge();
+        if (!this.knowledgeInvalid()) return false;
+        this.toast.warning('Fix the invalid retrieval settings first.');
+        return true;
     }
 
     private hasDraftContent(): boolean {
@@ -638,7 +657,7 @@ export class SurfaceCardComponent {
             if (!this.storageDrag.isDragging()) return;
             if (this.readOnly()) return;
             if (!this.expanded() && !this.hideHeader()) return;
-            this.activeTab.set(ResourceCode.Files);
+            untracked(() => this.showFilesTab());
         });
 
         effect(() => {
@@ -716,6 +735,7 @@ export class SurfaceCardComponent {
     }
 
     selectTab(tab: SurfaceTabId): void {
+        if (tab !== this.activeTab() && this.refuseIfKnowledgeInvalid()) return;
         this.activeTab.set(tab);
     }
 
@@ -779,13 +799,19 @@ export class SurfaceCardComponent {
     }
 
     private buildToolsPayload(): { python_tools: SurfacePythonTool[]; mcp_tools: SurfaceMcpTool[] } {
+        const surface = this.surface();
+        const storedModes = new Map<string, ToolMode>([
+            ...(surface?.python_tools ?? []).map((t): [string, ToolMode] => [`python:${t.python_tool}`, t.mode]),
+            ...(surface?.mcp_tools ?? []).map((t): [string, ToolMode] => [`mcp:${t.mcp_tool}`, t.mode]),
+        ]);
         const python_tools: SurfacePythonTool[] = [];
         const mcp_tools: SurfaceMcpTool[] = [];
         for (const key of this.selectedToolKeys()) {
             const [kind, idStr] = key.split(':');
             const id = Number(idStr);
-            if (kind === 'python') python_tools.push({ python_tool: id, mode: 'allow' });
-            else if (kind === 'mcp') mcp_tools.push({ mcp_tool: id, mode: 'allow' });
+            const mode = storedModes.get(key) ?? 'allow';
+            if (kind === 'python') python_tools.push({ python_tool: id, mode });
+            else if (kind === 'mcp') mcp_tools.push({ mcp_tool: id, mode });
         }
         return { python_tools, mcp_tools };
     }
@@ -937,7 +963,7 @@ export class SurfaceCardComponent {
     onStorageDragHover(): void {
         if (!this.canAcceptFileDrop()) return;
         if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
-        this.activeTab.set(ResourceCode.Files);
+        this.showFilesTab();
     }
 
     onStorageDragOver(event: DragEvent): void {
@@ -964,7 +990,7 @@ export class SurfaceCardComponent {
         this.storageDrag.end();
         if (!dragged) return;
         if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
-        this.activeTab.set(ResourceCode.Files);
+        this.showFilesTab();
         this.catalogs
             .loadStorageTree()
             .pipe(take(1), takeUntilDestroyed(this.destroyRef))
@@ -1104,6 +1130,12 @@ export class SurfaceCardComponent {
         );
     }
 
+    // Leaving the knowledge tab destroys its settings (dropping the invalid edit), so drag
+    // spring-loading only switches tabs while they are valid.
+    private showFilesTab(): void {
+        if (!this.knowledgeInvalid()) this.activeTab.set(ResourceCode.Files);
+    }
+
     private revealAdvancedIfRagMissing(): void {
         if (this.readOnly()) return;
         if (this.collectionsWithoutRag().size > 0) this.collectionAdvancedOpen.set(true);
@@ -1126,6 +1158,7 @@ export class SurfaceCardComponent {
     }
 
     toggleCollectionAdvanced(): void {
+        if (this.collectionAdvancedOpen() && this.refuseIfKnowledgeInvalid()) return;
         this.collectionAdvancedOpen.update((v) => !v);
     }
 
@@ -1161,7 +1194,7 @@ export class SurfaceCardComponent {
 }
 
 function defaultFilePerms(): SurfaceFilePerms {
-    return { list: 'allow', view: 'allow', edit: 'allow', delete: 'unset' };
+    return { list: 'allow', view: 'allow', edit: 'unset', delete: 'unset' };
 }
 
 function serializeToolKeys(keys: Set<string>): string {

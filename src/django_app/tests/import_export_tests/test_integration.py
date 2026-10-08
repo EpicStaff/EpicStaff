@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
+pytestmark = pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
 
 from tables.models import Crew, Graph
 from tables.import_export.enums import EntityType

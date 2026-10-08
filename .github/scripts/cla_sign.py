@@ -23,7 +23,7 @@ import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cla_common import (  # noqa: E402
+from cla_common import (
     cla_sha256,
     drive_service,
     get_or_create_version_folder,
@@ -59,9 +59,7 @@ def get_pr_head_sha(repo: str, pr_no: int, token: str) -> str:
     return response.json()["head"]["sha"]
 
 
-def find_bot_comment_id(
-    repo: str, pr_no: int, token: str
-) -> tuple[int | None, str | None]:
+def find_bot_comment_id(repo: str, pr_no: int, token: str) -> tuple[int | None, str | None]:
     """Return (comment_id, html_url) of our tracking comment on the PR, if any."""
     page = 1
     while True:
@@ -134,20 +132,20 @@ def set_commit_status(
     response.raise_for_status()
 
 
-def build_comment_body(
-    version: str, unsigned: list[dict[str, Any]], unresolved: list[str]
-) -> str:
+def build_comment_body(version: str, unsigned: list[dict[str, Any]], unresolved: list[str]) -> str:
     """Build the tracking-comment markdown for the current CLA status."""
     if not unsigned and not unresolved:
         return f"All contributors have signed CLA v{version}. ✅"
 
     lines = [
-        "Thank you for your submission, we appreciate it. EpicStaff is a "
-        "source-available project maintained by HYS Enterprise B.V. and "
-        "distributed under the PolyForm Perimeter License 1.0.0. Before we can "
-        "accept your contribution, we ask that you read and sign our Individual "
-        "Contributor License Agreement (CLA). You can sign the CLA by posting a "
-        "Pull Request comment in the same format as below.",
+        (
+            "Thank you for your submission, we appreciate it. EpicStaff is a "
+            "source-available project maintained by HYS Enterprise B.V. and "
+            "distributed under the PolyForm Perimeter License 1.0.0. Before we can "
+            "accept your contribution, we ask that you read and sign our Individual "
+            "Contributor License Agreement (CLA). You can sign the CLA by posting a "
+            "Pull Request comment in the same format as below."
+        ),
         "",
         f"`{SIGN_PHRASE}`",
     ]
@@ -214,9 +212,7 @@ def record_signature(
         "comment_text": comment_body,
         "comment_url": comment_url,
         "pull_request_no": pr_no,
-        "signed_at": datetime.datetime.now(datetime.timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ),
+        "signed_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     put_signature(drive_svc, folder_id, signature_filename(login, gid), payload)
 
@@ -228,7 +224,7 @@ def main() -> int:
     event_path = os.environ["GITHUB_EVENT_PATH"]
     root_id = os.environ["CLA_GDRIVE_ROOT_ID"]
 
-    with open(event_path, "r", encoding="utf-8") as event_file:
+    with open(event_path, encoding="utf-8") as event_file:
         event = json.load(event_file)
 
     if event_name == "pull_request_target":
@@ -291,9 +287,7 @@ def main() -> int:
         target_url=comment_url,
     )
 
-    print(
-        f"CLA v{version}: unsigned={[a['login'] for a in unsigned]} unresolved={unresolved}"
-    )
+    print(f"CLA v{version}: unsigned={[a['login'] for a in unsigned]} unresolved={unresolved}")
     return 0
 
 

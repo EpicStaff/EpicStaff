@@ -149,7 +149,7 @@ class IsSystemApiKeyAuthenticated(BasePermission):
     is scoped to its owner's own org's RBAC but this permission class runs
     before, and instead of, any org check — e.g.
     `RealtimeChannelViewSet.lookup_by_token`, restricted to the trusted
-    `realtime`/`voice_app` services.
+    `realtime` service.
     """
 
     message = "This endpoint requires system API key authentication."
@@ -161,14 +161,51 @@ class IsSystemApiKeyAuthenticated(BasePermission):
 class DenyApiKeyAuth(BasePermission):
     """Blocks API-key-authenticated callers.
 
-    Key management is JWT-only: a (possibly leaked) credential must not be
-    able to mint or destroy credentials. Pair AFTER IsAuthenticated.
+    For JWT-only endpoints: key management (a possibly leaked credential
+    must not mint or destroy credentials) and destructive account
+    operations (reset-user, admin password reset). Pair AFTER IsAuthenticated.
     """
 
-    message = "API keys cannot be used to manage API keys. Authenticate with a user session (JWT)."
+    message = "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
 
     def has_permission(self, request, view):
         return not isinstance(request.auth, ApiKey)
+
+
+class RestrictApiKeyToUserKeyReads(BasePermission):
+    """Admin-surface gate: an API key may only read, and only as a USER key.
+
+    JWT callers pass untouched. An API-key caller passes only on a safe
+    method with a `key_type=USER` key, so an MCP-style tool can still list
+    roles with its owner's permissions. Every write is JWT-only: a leaked
+    credential must not be able to rewrite governance. The SYSTEM key is
+    rejected on reads too — its principal is superadmin-equivalent, so
+    letting it in would hand every cross-org row to whoever holds
+    `DJANGO_API_KEY`. Any key type other than USER is rejected, so a new
+    type is denied until someone decides otherwise. Safe in any position:
+    a non-key (or anonymous) request always passes.
+    """
+
+    write_message = (
+        "API keys cannot be used to change organizations, users, roles, memberships or API keys. "
+        "Authenticate with a user session (JWT)."
+    )
+    non_user_key_message = (
+        "The system API key cannot be used on the admin surface. "
+        "Authenticate with a user session (JWT)."
+    )
+
+    def has_permission(self, request, view):
+        key = request.auth
+        if not isinstance(key, ApiKey):
+            return True
+        if key.key_type != ApiKey.KeyType.USER:
+            self.message = self.non_user_key_message
+            return False
+        if request.method not in SAFE_METHODS:
+            self.message = self.write_message
+            return False
+        return True
 
 
 class HasResourcePermissionAnywhere(BaseRbacPermission):

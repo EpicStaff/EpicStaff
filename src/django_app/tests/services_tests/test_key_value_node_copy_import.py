@@ -252,7 +252,8 @@ def _set_mode(node: KeyValueNode, mode: str) -> KeyValueNode:
 
 def _paste(source_node: KeyValueNode, target_graph: Graph, user) -> KeyValueNode:
     result = GraphPartialExportService(entity_registry).export(
-        [NodeRef(entity_type=EntityType.KEY_VALUE_NODE, node_id=source_node.id)]
+        [NodeRef(entity_type=EntityType.KEY_VALUE_NODE, node_id=source_node.id)],
+        org_id=source_node.graph.org_id,
     )
     assert not result.has_errors, result.errors
     PartialImportService(entity_registry).import_data(

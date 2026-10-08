@@ -21,6 +21,15 @@ function renderList(canRename: boolean, canDelete: boolean): HTMLElement {
     return fixture.nativeElement as HTMLElement;
 }
 
+describe('KeyValueTableListComponent card', () => {
+    it('shows a database icon, the name and the entry count', () => {
+        const card = renderList(false, false).querySelector('.table-list__select')!;
+        expect(card.querySelector('app-svg-icon[icon="database"]')).not.toBeNull();
+        expect(card.querySelector('.table-list__name')?.textContent?.trim()).toBe('profiles');
+        expect(card.querySelector('.table-list__count')?.textContent?.trim()).toBe('3 entries');
+    });
+});
+
 describe('KeyValueTableListComponent permission gating', () => {
     it('shows rename but not delete with update permission only', () => {
         const element = renderList(true, false);

@@ -38,7 +38,12 @@ import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
 import { GraphDto } from '../../models/graph.model';
-import { GraphSessionLight, GraphSessionService, TriggerType } from '../../services/flows-sessions.service';
+import {
+    GraphSessionLight,
+    GraphSessionService,
+    SessionRunType,
+    TriggerType,
+} from '../../services/flows-sessions.service';
 import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 
@@ -71,6 +76,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     public statusFilter = signal<string[]>(['all']);
     public nodeFilter = signal<string | null>(null);
     public triggerFilter = signal<TriggerType[]>([]);
+    public runTypeFilter = signal<SessionRunType[]>([]);
     public dateFilter = signal<DateRangeFilter | null>(null);
     public totalCount = 0;
     public availableNodes = signal<string[]>([]);
@@ -114,8 +120,18 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
             const isErrorCause = this.isErrorCauseFilter();
             const triggerType = this.triggerFilter();
             const dateFilter = this.dateFilter();
+            const runType = this.runTypeFilter();
             this.reloadTrigger();
-            this.loadSessions(size, (page - 1) * size, status, nodeName, isErrorCause, triggerType, dateFilter);
+            this.loadSessions(
+                size,
+                (page - 1) * size,
+                status,
+                nodeName,
+                isErrorCause,
+                triggerType,
+                dateFilter,
+                runType
+            );
         });
     }
 
@@ -202,7 +218,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         nodeName: string | null = null,
         isErrorCause: boolean = false,
         triggerType: TriggerType[] = [],
-        dateFilter: DateRangeFilter | null = null
+        dateFilter: DateRangeFilter | null = null,
+        runType: SessionRunType[] = []
     ): void {
         this.cancelLoad$.next();
         this.cancelPolling$.next();
@@ -220,7 +237,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                     isErrorCause,
                     null,
                     triggerType,
-                    dateFilter
+                    dateFilter,
+                    runType
                 )
                 .pipe(takeUntil(this.cancelLoad$))
                 .subscribe({
@@ -407,6 +425,11 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     onTriggerFilterChange(types: TriggerType[]) {
         this.currentPage.set(1);
         this.triggerFilter.set(types);
+    }
+
+    onRunTypeFilterChange(runTypes: SessionRunType[]) {
+        this.currentPage.set(1);
+        this.runTypeFilter.set(runTypes);
     }
 
     onDateFilterChange(filter: DateRangeFilter | null) {

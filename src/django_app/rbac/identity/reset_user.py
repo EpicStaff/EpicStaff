@@ -22,11 +22,13 @@ class ResetUserService:
     _bootstrap = SuperadminBootstrap()
 
     @transaction.atomic
-    def reset(self, *, email: str, password: str):
+    def reset(self, *, email: str, password: str, display_name: str | None = None):
         acquire_bootstrap_lock()
 
         UserModel = get_user_model()  # noqa: N806
         UserModel.objects.all().delete()  # user keys cascade; system key survives
 
-        result = self._bootstrap.provision(email=email, password=password)
+        result = self._bootstrap.provision(
+            email=email, password=password, display_name=display_name
+        )
         return result.user

@@ -26,6 +26,12 @@ from .ai_providers import (
     WebhookConfigData,
     WebhookTriggerAuthData,
 )
+from .audit.base import (
+    BaseAuditEvent,
+)
+from .audit.session_audit import (
+    SessionAuditEvent,
+)
 from .base import ValueObject
 from .graph_nodes import (
     AgentDefinitionData,
@@ -158,6 +164,8 @@ __all__ = [
     "ArrayNestedVariable",
     "ArrayVariable",
     "AudioTranscriptionNodeData",
+    # session_audit
+    "BaseAuditEvent",
     "BaseKnowledgeSearchMessage",
     "BaseKnowledgeSearchMessageResponse",
     "BaseRagSearchConfig",
@@ -243,6 +251,7 @@ __all__ = [
     "SearchConfigEntry",
     "SearchRequest",
     "SearchResponse",
+    "SessionAuditEvent",
     # sessions
     "SessionData",
     "StopSessionMessage",

@@ -127,6 +127,7 @@ const liveWebhook: GetWebhookTriggerNodeRequest = {
     webhook_trigger_path: '',
     webhook_trigger: 77, // the export's bare id
     python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
+    test_payload: { id: '104' },
 };
 const liveTelegram: GetTelegramTriggerNodeRequest = {
     id: ID.telegram,
@@ -136,6 +137,7 @@ const liveTelegram: GetTelegramTriggerNodeRequest = {
     telegram_bot_api_key_secret_id: 102,
     webhook_trigger: null,
     fields: [{ id: 1, parent: 'message', field_name: 'text', variable_path: 'variables.text' }],
+    test_payload: { message: { text: 'hello' } },
 };
 const liveSchedule: GetScheduleTriggerNodeRequest = {
     ...persisted,
@@ -453,6 +455,26 @@ describe('buildPreviewFlowModel', () => {
         const subgraph = result.flow.nodes.find((node) => node.type === NodeType.SUBGRAPH);
         expect(subgraph?.isBlocked).toBe(true);
         expect(byId(ID.agent).data).toMatchObject({ agent_definition: null });
+    });
+
+    it('keeps trigger test payloads and defaults them to {} for versions saved without one', () => {
+        expect((byId(ID.webhook).data as { test_payload: unknown }).test_payload).toEqual({ id: '104' });
+
+        const legacy: GraphVersionSnapshot = {
+            nodes: [
+                exported('WebhookTriggerNode', {
+                    ...liveWebhook,
+                    test_payload: undefined,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+                }),
+                exported('TelegramTriggerNode', { ...liveTelegram, test_payload: undefined }),
+            ],
+        };
+        const { flow: legacyFlow } = buildPreviewFlowModel(legacy, secretsByName, availableFlows);
+
+        for (const node of legacyFlow.nodes.filter((item) => item.type !== NodeType.START)) {
+            expect((node.data as { test_payload: unknown }).test_payload).toEqual({});
+        }
     });
 });
 

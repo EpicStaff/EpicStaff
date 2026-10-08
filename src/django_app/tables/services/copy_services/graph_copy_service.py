@@ -1,8 +1,8 @@
-from tables.import_export.utils import ensure_unique_identifier
+from django.db import transaction
 from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
-from tables.services.copy_services.helpers import copy_python_code
+from tables.services.copy_services.helpers import copy_python_code, next_copy_name
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
 from tables.services.persistent_variables_service import PersistentVariablesService
 
@@ -23,21 +23,18 @@ class GraphCopyService(BaseCopyService):
         org_id: int | None = None,
         user=None,
     ) -> Graph:
-        existing_names = Graph.objects.values_list("name", flat=True)
-        new_name = ensure_unique_identifier(
-            base_name=name if name else graph.name,
-            existing_names=existing_names,
-        )
-
         target_org_id = org_id if org_id is not None else graph.org_id
-        new_graph = Graph.objects.create(
-            name=new_name,
-            description=graph.description,
-            metadata=graph.metadata,
-            time_to_live=graph.time_to_live,
-            enable_persistent_variables=graph.enable_persistent_variables,
-            org_id=target_org_id,
-        )
+        base_name = name if name else graph.name
+
+        with transaction.atomic():
+            new_graph = Graph.objects.create(
+                name=next_copy_name(Graph, org_id=target_org_id, base_name=base_name),
+                description=graph.description,
+                metadata=graph.metadata,
+                time_to_live=graph.time_to_live,
+                enable_persistent_variables=graph.enable_persistent_variables,
+                org_id=target_org_id,
+            )
         new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(

@@ -52,6 +52,7 @@
                     tooltipText="Select the voice for the AI agent. For ElevenLabs enter your custom Voice ID."
                     formControlName="voice"
                     placeholder="ElevenLabs Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM)"
+                    [errorMessage]="voiceError()"
                 />
             } @else {
                 <app-voice-selector

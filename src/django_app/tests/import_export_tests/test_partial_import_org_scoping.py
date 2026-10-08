@@ -33,7 +33,8 @@ def _cdt_node_export(cdt_node):
                 entity_type=EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
                 node_id=cdt_node.id,
             )
-        ]
+        ],
+        org_id=cdt_node.graph.org_id,
     )
     assert not result.has_errors, result.errors
     return result.data

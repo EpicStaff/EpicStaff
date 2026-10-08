@@ -15,6 +15,7 @@ from drf_spectacular.utils import (
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
+from rbac.schemas.admin_surface import admin_read_forbidden_403, admin_write_forbidden_403
 from rbac.serializers.permissions import RoleResponseSerializer
 from rbac.serializers.roles import (
     RoleDeletePreviewSerializer,
@@ -23,28 +24,24 @@ from rbac.serializers.roles import (
     RoleWriteSerializer,
 )
 
-_FORBIDDEN_403 = OpenApiResponse(
-    description=(
-        "Caller lacks the required ROLES permission (permission_denied), or "
-        "?org_ids= named an org the caller cannot read."
-    )
+_FORBIDDEN_403 = admin_read_forbidden_403(
+    "Caller lacks the required ROLES permission (permission_denied), or "
+    "?org_ids= named an org the caller cannot read."
 )
 
-_WRITE_FORBIDDEN_403 = OpenApiResponse(
-    description=(
-        "permission_denied (the caller can see the role but lacks this "
-        "action on ROLES in its org — a role they cannot see is a 404), "
-        "permission_escalation_denied (granting a bit the caller doesn't "
-        "hold), or built_in_role_immutable (target is a built-in role)."
-    )
+_WRITE_FORBIDDEN_DESCRIPTION = (
+    "permission_denied (the caller can see the role but lacks this "
+    "action on ROLES in its org — a role they cannot see is a 404), "
+    "permission_escalation_denied (granting a bit the caller doesn't "
+    "hold), or built_in_role_immutable (target is a built-in role)."
 )
 
-_DELETE_FORBIDDEN_403 = OpenApiResponse(
-    description=(
-        "Everything _WRITE_FORBIDDEN_403 covers, plus cannot_delete_own_role "
-        "— a caller may not delete the role they themselves hold, because the "
-        "delete would reassign them to Viewer."
-    )
+_WRITE_FORBIDDEN_403 = admin_write_forbidden_403(_WRITE_FORBIDDEN_DESCRIPTION)
+
+_DELETE_FORBIDDEN_403 = admin_write_forbidden_403(
+    f"{_WRITE_FORBIDDEN_DESCRIPTION} Also cannot_delete_own_role — a caller "
+    "may not delete the role they themselves hold, because the delete would "
+    "reassign them to Viewer."
 )
 
 _NOT_FOUND_404 = OpenApiResponse(

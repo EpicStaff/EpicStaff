@@ -16,6 +16,7 @@ from tables.models.base_models import (
     ContentHashMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TestPayloadMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -591,7 +592,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
         ]
 
 
-class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -621,6 +622,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
             "content_hash",
             "metadata",
             "python_code",
+            "test_payload",
         ]
 
         data = {
@@ -636,7 +638,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class TelegramTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -661,7 +663,14 @@ class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
     def generate_hash(self):
-        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "content_hash",
+            "metadata",
+            "test_payload",
+        ]
         data = {
             f.name: str(getattr(self, f.attname))
             for f in self._meta.fields

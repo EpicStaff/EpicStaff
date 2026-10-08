@@ -279,7 +279,9 @@ class DocumentViewSet(
             raise ValidationError("document_ids query parameter is required")
 
         try:
-            documents = DocumentManagementService.get_documents_with_content(document_ids)
+            documents = DocumentManagementService.get_documents_with_content(
+                document_ids, org_id=self.get_active_org_id()
+            )
         except DocumentsNotFoundException as e:
             raise NotFound(str(e)) from e
 
@@ -301,6 +303,7 @@ class DocumentViewSet(
                 DocumentManagementService.copy_documents_to_collection(
                     collection_id=serializer.validated_data["collection_id"],
                     document_ids=serializer.validated_data["document_ids"],
+                    org_id=self.get_active_org_id(),
                 )
             )
 

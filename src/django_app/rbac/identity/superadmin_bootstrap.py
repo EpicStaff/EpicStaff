@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from loguru import logger
 
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationConfig, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
 # Last-resort organization name. settings.DEFAULT_ORGANIZATION_NAME already
@@ -53,9 +53,12 @@ class SuperadminBootstrap:
         email: str,
         password: str,
         org_name: str | None = None,
+        display_name: str | None = None,
     ) -> SuperadminBootstrapResult:
         UserModel = get_user_model()  # noqa: N806
-        user = UserModel.objects.create_superuser(email=email, password=password)
+        user = UserModel.objects.create_superuser(
+            email=email, password=password, display_name=display_name
+        )
 
         organization, default_org_created = self._get_or_create_default_org(org_name=org_name)
 
@@ -117,10 +120,9 @@ class SuperadminBootstrap:
         #    reachable on a lost race.
         try:
             with transaction.atomic():
-                return (
-                    Organization.objects.create(name=resolved_name, is_default=True),
-                    True,
-                )
+                org = Organization.objects.create(name=resolved_name, is_default=True)
+                OrganizationConfig.objects.create(org=org)
+                return org, True
         except IntegrityError:
             # Race lost — another transaction created the row between our
             # filter and create. The DB-level constraints are ground truth;

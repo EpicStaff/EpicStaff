@@ -23,8 +23,9 @@ from rbac.views.cross_org_base import CrossOrgAdminPagination, CrossOrgAdminView
 class ApiKeyAdminViewSet(CrossOrgAdminViewSet):
     """Flat, permission-gated cross-org API-key surface.
 
-    JWT only: a credential must not retire credentials. DenyApiKeyAuth is
-    safe here only while `superadmin_actions` stays empty.
+    JWT only, reads included: a credential must not list or retire
+    credentials. `DenyApiKeyAuth` is stricter than the base API-key gate,
+    which still runs in front of it.
     """
 
     pagination_class = CrossOrgAdminPagination

@@ -4,7 +4,7 @@ from django.db import migrations
 # Bitmasks are built from rbac.models.enums.Permission flags:
 #   CREATE=1, READ=2, UPDATE=4, DELETE=8, EXPORT=16
 #
-# EST-3207: tools gained an export/import feature. Built-in roles were seeded
+# Tools gained an export/import feature. Built-in roles were seeded
 # (0183_seed_builtin_role_permissions) before EXPORT existed for `tools`, so
 # their `tools` bitmask is missing bit 16. This mirrors the shape already
 # used for `flows`/`agents`/`projects` (Org Admin: C R U D E; Member: C R U E,

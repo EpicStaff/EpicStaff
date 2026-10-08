@@ -1,6 +1,8 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
+from rbac.exceptions import FormValidationError
 from rbac.identity.reset_user import ResetUserService
+from rbac.validation.auth import AuthValidationService
 
 
 class Command(BaseCommand):
@@ -15,6 +17,16 @@ class Command(BaseCommand):
         parser.add_argument("--password", required=True, help="New superadmin password")
 
     def handle(self, *args, **options):
-        service = ResetUserService()
-        user = service.reset(email=options["email"], password=options["password"])
+        email = options["email"]
+        password = options["password"]
+        # Validate before the reset deletes every user.
+        try:
+            AuthValidationService().validate_reset_user({"email": email, "password": password})
+        except FormValidationError as exc:
+            raise CommandError(
+                "Validation failed:\n  "
+                + "\n  ".join(f"{item['field']}: {item['reason']}" for item in exc.errors)
+            ) from exc
+
+        user = ResetUserService().reset(email=email, password=password)
         self.stdout.write(self.style.SUCCESS(f"Created superadmin '{user.email}'."))

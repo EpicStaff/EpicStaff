@@ -1,14 +1,10 @@
 from django.db import transaction
 from django.db.models import Q
-from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
 from tables.serializers.utils.description_sanitizer import sanitize_description
 from tables.services.copy_services.base_copy_service import BaseCopyService
-from tables.services.copy_services.helpers import (
-    acquire_copy_name_lock,
-    copy_python_code,
-)
+from tables.services.copy_services.helpers import copy_python_code, next_copy_name
 
 
 class PythonCodeToolCopyService(BaseCopyService):
@@ -23,20 +19,13 @@ class PythonCodeToolCopyService(BaseCopyService):
         base_name = name if name else tool.name
 
         with transaction.atomic():
-            clean_base = clean_base_name(base_name)
-            acquire_copy_name_lock(target_org_id, clean_base)
-
-            new_code = copy_python_code(tool.python_code)
-
-            existing_names = (
-                PythonCodeTool.objects.filter(Q(org_id=target_org_id) | Q(built_in=True))
-                .filter(name__istartswith=clean_base)
-                .values_list("name", flat=True)
-            )
-            new_name = ensure_unique_identifier(
+            new_name = next_copy_name(
+                PythonCodeTool,
+                org_id=target_org_id,
                 base_name=base_name,
-                existing_names=existing_names,
+                also_taken=Q(built_in=True),
             )
+            new_code = copy_python_code(tool.python_code)
 
             new_tool = PythonCodeTool.objects.create(
                 name=new_name,

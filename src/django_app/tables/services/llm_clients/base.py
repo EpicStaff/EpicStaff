@@ -48,6 +48,8 @@ class ToolResultEvent:
 class DoneEvent:
     interrupted: bool = False
     reasoning_observed: bool = False
+    # Provider finish reason of the turn (e.g. "stop", "length"); None when unknown.
+    finish_reason: str | None = None
     type: str = field(default="done", init=False)
 
 

@@ -64,10 +64,8 @@ export interface Surface {
     id: number;
     organization: number;
     name: string;
-    description: string;
     instructions: string;
     owner_agent: number | null;
-    allow_creation: boolean;
     python_tools: SurfacePythonTool[];
     mcp_tools: SurfaceMcpTool[];
     storage_items: SurfaceStorageItem[];
@@ -78,22 +76,18 @@ export interface Surface {
 
 export interface CreateSurfaceRequest {
     name: string;
-    description?: string;
     instructions?: string;
     owner_agent?: number | null;
-    allow_creation?: boolean;
     python_tools?: SurfacePythonTool[];
     mcp_tools?: SurfaceMcpTool[];
     storage_items?: SurfaceStorageItem[];
     knowledge?: SurfaceKnowledge[];
 }
 
-export type UpdateSurfaceRequest = CreateSurfaceRequest;
 export type PartialUpdateSurfaceRequest = Partial<CreateSurfaceRequest>;
 
 export interface CombinedSurface {
     instructions: string;
-    allow_creation: boolean;
     python_tools: SurfacePythonTool[];
     mcp_tools: SurfaceMcpTool[];
     storage_items: SurfaceStorageItem[];

@@ -83,8 +83,7 @@
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
-                            routerLinkActive="active"
-                            [routerLinkActiveOptions]="{ exact: false }"
+                            [class.active]="isItemActive(item)"
                             (click)="item.action ? handleItemClick(item, $event) : null"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >
@@ -124,7 +123,7 @@
                             chat-icon-size="32"
                             message-timeout="180000"
                             [apiBaseUrl]="apiBaseUrl"
-                            [accessToken]="accessToken"
+                            [accessToken]="accessToken()"
                             [canReadFlows]="canReadFlows()"
                             [syncAgentsFromApi]="false"
                             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
@@ -156,8 +155,7 @@
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
-                            routerLinkActive="active"
-                            [routerLinkActiveOptions]="{ exact: false }"
+                            [class.active]="isItemActive(item)"
                             (click)="handleItemClick(item, $event)"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >

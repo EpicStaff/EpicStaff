@@ -179,10 +179,17 @@ class TestHybridCrossOrg:
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("openai_realtime_builtin_model")
 class TestProviderRealtimeConfigCrossOrg:
     """OpenAIRealtimeConfig (and its Eleven/Gemini
     siblings, same base strategy) now own `org` NOT NULL — create_entity must
-    stamp it, and find_existing/uniqueness must not leak across orgs."""
+    stamp it, and find_existing/uniqueness must not leak across orgs.
+
+    `openai_realtime_builtin_model` (tests/fixtures.py) seeds the registry
+    create_entity now validates model_name against -- without it,
+    every create_entity call below (model_name="gpt-realtime-1.5") would be
+    rejected as an unregistered model rather than exercising the org-scoping
+    behavior these tests are actually about."""
 
     def test_create_entity_stamps_active_org(self, default_org):
         strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)

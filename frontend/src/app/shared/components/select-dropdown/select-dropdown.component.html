@@ -76,7 +76,10 @@
             </div>
         }
 
-        <div class="select-dropdown__list">
+        <div
+            class="select-dropdown__list"
+            [class.select-dropdown__list--single]="selectionMode() === 'single'"
+        >
             @if (mode() === 'list') {
                 @for (item of filteredItems(); track itemTrackBy($index, item)) {
                     <button
@@ -84,6 +87,7 @@
                         class="select-dropdown__row"
                         [class.select-dropdown__row--selected]="isItemSelected(item)"
                         [class.select-dropdown__row--disabled]="item.disabled"
+                        [attr.aria-pressed]="selectionMode() === 'single' ? isItemSelected(item) : null"
                         (click)="selectItem(item)"
                     >
                         @if (selectionMode() === 'multiple') {
@@ -91,14 +95,6 @@
                                 mod="multiselect"
                                 [checked]="isItemSelected(item)"
                             />
-                        } @else if (isItemSelected(item)) {
-                            <app-svg-icon
-                                class="select-dropdown__check"
-                                icon="check"
-                                size="12px"
-                            />
-                        } @else {
-                            <span class="select-dropdown__check-spacer"></span>
                         }
                         @if (item.icon) {
                             <app-svg-icon

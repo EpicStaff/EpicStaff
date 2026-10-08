@@ -18,9 +18,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
-
 from app.llm.client import LLMChunk
+from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
 
 
 class Emitter(ABC):

@@ -8,6 +8,7 @@ import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 import { GetScheduleTriggerNodeRequest } from '../../../visual-programming/core/models/schedule-trigger.model';
+import { TelegramWebhookInfo } from '../../../visual-programming/core/models/telegram-trigger.model';
 import {
     CreateGraphDtoRequest,
     CreateGraphFromVersionResponse,
@@ -170,6 +171,20 @@ export class FlowsApiService {
         );
     }
 
+    getTelegramTriggerWebhookInfo(id: number): Observable<TelegramWebhookInfo> {
+        return this.http.get<TelegramWebhookInfo>(
+            `${this.configService.apiUrl}telegram-trigger-nodes/${id}/webhook-info/`
+        );
+    }
+
+    /** Points the bot key's Telegram webhook at this node; answers with the fresh webhook-info. */
+    registerTelegramTriggerWebhook(id: number): Observable<TelegramWebhookInfo> {
+        return this.http.post<TelegramWebhookInfo>(
+            `${this.configService.apiUrl}telegram-trigger-nodes/${id}/register-webhook/`,
+            {}
+        );
+    }
+
     createGraphFromVersion(versionId: number): Observable<CreateGraphFromVersionResponse> {
         return this.http.post<CreateGraphFromVersionResponse>(
             `${this.configService.apiUrl}graph-versions/${versionId}/create-graph/`,
@@ -182,5 +197,9 @@ export class FlowsApiService {
         return this.http.get<PreviewGraphVersionResponse>(
             `${this.configService.apiUrl}graph-versions/${versionId}/preview/`
         );
+    }
+
+    getSubflowUsage(graphId: number): Observable<{ parent_flow_ids: number[] }> {
+        return this.http.get<{ parent_flow_ids: number[] }>(`${this.apiUrl}${graphId}/subflow-usage/`);
     }
 }

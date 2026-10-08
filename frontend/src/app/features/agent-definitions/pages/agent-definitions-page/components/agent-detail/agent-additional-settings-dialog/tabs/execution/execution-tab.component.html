@@ -11,7 +11,7 @@
                 label="Maximum Iterations"
                 tooltipText="The maximum number of iterations the agent will perform before stopping."
                 [min]="1"
-                [max]="30"
+                [max]="90"
                 [step]="1"
                 [decimals]="0"
             />
@@ -20,11 +20,11 @@
         <div class="form-group">
             <app-slider-with-stepper
                 formControlName="max_execution_time"
-                label="Maximum Execution Time (seconds)"
-                tooltipText="The maximum time in seconds the agent will run before timing out."
+                label="Maximum Execution Time (minutes)"
+                tooltipText="The maximum time in minutes the agent will run before timing out."
                 [min]="1"
-                [max]="600"
-                [step]="DEFAULT_STEP_SIZE"
+                [max]="30"
+                [step]="1"
                 [decimals]="0"
             />
         </div>
@@ -35,7 +35,7 @@
                 label="Maximum Requests Per Minute (RPM)"
                 tooltipText="Set the maximum number of API requests the agent can make per minute. Higher values allow more throughput but may increase costs."
                 [min]="1"
-                [max]="30"
+                [max]="240"
                 [step]="1"
                 [decimals]="0"
             />
@@ -87,7 +87,7 @@
                         label="Maximum Tool Calls"
                         tooltipText="The maximum number of tool calls the agent may execute per loop iteration."
                         [min]="1"
-                        [max]="100"
+                        [max]="300"
                         [step]="1"
                         [decimals]="0"
                     />
@@ -100,9 +100,9 @@
                         formControlName="tool_timeout"
                         label="Tool Timeout (seconds)"
                         tooltipText="How long to wait for a server response for a single tool call."
-                        [min]="1"
-                        [max]="600"
-                        [step]="DEFAULT_STEP_SIZE"
+                        [min]="10"
+                        [max]="1800"
+                        [step]="10"
                         [decimals]="0"
                     />
                 </div>

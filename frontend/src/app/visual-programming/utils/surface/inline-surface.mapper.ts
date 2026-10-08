@@ -13,7 +13,7 @@ import { InlineSurface } from '../../core/models/task-node.model';
 /**
  * Fabricates a full `Surface`-shaped object from an `InlineSurface` so it can be fed
  * directly into `SurfaceCardComponent`. The anonymous/local-only fields (`id`, `name`,
- * `organization`, `owner_agent`, `description`) are filled with sensible empties since
+ * `organization`, `owner_agent`) are filled with sensible empties since
  * an inline surface has no catalog identity.
  */
 export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
@@ -21,10 +21,8 @@ export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
         id: -1,
         organization: 0,
         name: '',
-        description: '',
         instructions: inline.instructions,
         owner_agent: null,
-        allow_creation: false,
         python_tools: inline.python_tools,
         mcp_tools: inline.mcp_tools,
         storage_items: inline.storage_items,

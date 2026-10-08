@@ -22,6 +22,8 @@ const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     // A flow save with a Key-Value node whose mode needs a key_value_tables permission the role lacks
     // (read: R, write: C and U, delete: D); the save's own error handling shows it.
     'key_value_mode_denied',
+    // An upload over an existing file without FILES:UPDATE; the upload's own error handling shows it.
+    'overwrite_not_permitted',
 ]);
 
 /**
