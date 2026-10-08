@@ -28,7 +28,7 @@ from rbac.exceptions import (
     UserNotFoundError,
 )
 from rbac.governance.users import UserManagementService
-from rbac.identity.session_invalidation import SessionInvalidationService
+from rbac.identity.credential_revocation import CredentialRevocationService
 
 UserModel = get_user_model()
 
@@ -300,15 +300,16 @@ def test_delete_user_report_passes_through_the_documented_serializer(actor, targ
 
 
 @pytest.mark.django_db
-def test_delete_user_report_is_stable_across_calls(actor, target_user):
+def test_delete_user_report_is_stable_across_calls(actor, target_user, issue_api_key):
     """Two service calls against the same target report an identical affected_resources block."""
     # Enriched with a real outstanding refresh token, minted the same way
-    # `test_deleting_a_user_blacklists_their_refresh_tokens` does, so this
-    # exercises the same `blacklist_all_for_user` path the reports must agree
-    # across.
+    # `test_deleting_a_user_blacklists_their_refresh_tokens` does, and a live
+    # API key, so this exercises the same `revoke_all_credentials_for_user`
+    # path the reports must agree across.
     from rest_framework_simplejwt.tokens import RefreshToken
 
     RefreshToken.for_user(target_user)
+    issue_api_key(user=target_user)
 
     service = UserManagementService()
     preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
@@ -412,7 +413,6 @@ def test_cannot_delete_the_last_superadmin_in_real_mode_with_a_correct_phrase(
 
 @pytest.mark.django_db
 def test_deleting_a_user_blacklists_their_refresh_tokens(actor, target_user):
-    """Access tokens outlive the row by up to 15 min; refresh must not."""
     from rest_framework_simplejwt.token_blacklist.models import (
         BlacklistedToken,
         OutstandingToken,
@@ -551,15 +551,15 @@ def test_on_commit_callback_does_not_fire_if_the_enclosing_transaction_rolls_bac
     mock_cleanup.assert_not_called()
 
 
-class _RecordingSessionInvalidator(SessionInvalidationService):
+class _RecordingCredentialRevoker(CredentialRevocationService):
     """Records which users the delete tried to log out."""
 
     def __init__(self):
-        self.blacklisted = []
+        self.revoked_user_ids = []
 
-    def blacklist_all_for_user(self, user) -> int:
-        self.blacklisted.append(user.pk)
-        return super().blacklist_all_for_user(user)
+    def revoke_all_credentials_for_user(self, user) -> None:
+        self.revoked_user_ids.append(user.pk)
+        super().revoke_all_credentials_for_user(user)
 
 
 @pytest.mark.django_db
@@ -579,7 +579,7 @@ class _RecordingSessionInvalidator(SessionInvalidationService):
 def test_delete_user_with_a_wrong_phrase_raises_before_any_side_effect(
     actor, target_user, django_user_model, phrase_template
 ):
-    invalidator = _RecordingSessionInvalidator()
+    revoker = _RecordingCredentialRevoker()
     phrase = (
         None
         if phrase_template is None
@@ -591,25 +591,25 @@ def test_delete_user_with_a_wrong_phrase_raises_before_any_side_effect(
     )
 
     with pytest.raises(InvalidVerificationPhraseError):
-        UserManagementService(session_invalidator=invalidator).delete_user(
+        UserManagementService(credential_revoker=revoker).delete_user(
             actor=actor, target_user_id=target_user.pk, verification_phrase=phrase
         )
 
-    assert invalidator.blacklisted == []
+    assert revoker.revoked_user_ids == []
     assert django_user_model.objects.filter(pk=target_user.pk).exists()
 
 
 @pytest.mark.django_db
 def test_delete_user_with_the_correct_phrase_invalidates_sessions(actor, target_user):
-    invalidator = _RecordingSessionInvalidator()
+    revoker = _RecordingCredentialRevoker()
 
-    UserManagementService(session_invalidator=invalidator).delete_user(
+    UserManagementService(credential_revoker=revoker).delete_user(
         actor=actor,
         target_user_id=target_user.pk,
         verification_phrase=f"delete-{target_user.email}",
     )
 
-    assert invalidator.blacklisted == [target_user.pk]
+    assert revoker.revoked_user_ids == [target_user.pk]
 
 
 @pytest.mark.django_db

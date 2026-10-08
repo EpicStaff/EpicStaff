@@ -1,3 +1,4 @@
+from rest_framework.exceptions import AuthenticationFailed
 from utils.exceptions import CustomAPIExeption
 
 
@@ -295,6 +296,19 @@ class ApiKeyNotFoundError(CustomAPIExeption):
     status_code = 404
     default_detail = "API key not found."
     default_code = "api_key_not_found"
+
+
+class SessionPasswordChangedError(AuthenticationFailed):
+    """Raised when the caller's JWT was minted under a password that has
+    since changed, detected after authentication already passed (under a
+    row lock, so a concurrent password set has committed in between).
+
+    Same status, code and detail as simplejwt's own `password_changed`
+    rejection, so clients handle both identically.
+    """
+
+    default_detail = "The user's password has been changed."
+    default_code = "password_changed"
 
 
 class ApiKeyLimitExceededError(CustomAPIExeption):
