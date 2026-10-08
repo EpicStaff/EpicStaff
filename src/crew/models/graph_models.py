@@ -1,4 +1,3 @@
-import json
 import uuid
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import UTC, datetime
@@ -35,7 +34,7 @@ class GraphMessage:
     node_type: str = ""
 
     def to_payload(self) -> dict:
-        """Shallow dict for `graph:messages` with a fresh `uuid`; `message_data` is always a dict.
+        """Shallow dict for the graph message stream with a fresh `uuid`; `message_data` is a dict.
 
         The `uuid` is the event identity: Django deduplicates on it and the audit trail reuses it.
         """
@@ -44,11 +43,6 @@ class GraphMessage:
             payload["message_data"] = dataclass_to_shallow_dict(self.message_data)
         payload["uuid"] = str(uuid.uuid4())
         return payload
-
-    @staticmethod
-    def encode_payload(payload: dict) -> str:
-        """JSON for `graph:messages`; nested dataclasses are encoded as dicts."""
-        return json.dumps(payload, default=encode_dataclass_as_dict)
 
 
 @dataclass

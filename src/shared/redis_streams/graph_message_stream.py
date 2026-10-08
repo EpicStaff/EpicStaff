@@ -5,6 +5,8 @@ consumer group, persists them, and only then acknowledges and deletes each entry
 message survives a slow or restarting django_app (pub/sub would drop it).
 """
 
+from collections.abc import Callable
+
 from .envelope import StreamEnvelope
 
 GRAPH_MESSAGE_STREAM = "graph.messages"
@@ -16,7 +18,9 @@ GRAPH_MESSAGE_ENVELOPE_TYPE = "graph.message"
 DEFAULT_GRAPH_MESSAGE_STREAM_MAXLEN = 2000
 
 
-def graph_message_fields(message: dict) -> dict[str, str]:
+def graph_message_fields(
+    message: dict, json_default: Callable[[object], object] | None = None
+) -> dict[str, str]:
     """Wrap one graph session message into the stream entry fields crew appends.
 
     The ``payload`` field holds the message as JSON. django_app parses it once and
@@ -26,9 +30,11 @@ def graph_message_fields(message: dict) -> dict[str, str]:
     Args:
         message: A ``GraphSessionMessageData``-shaped dict; its ``uuid`` becomes the
             envelope's ``correlation_id``.
+        json_default: ``json.dumps`` ``default`` hook for values JSON cannot encode
+            natively, such as the producer's own dataclasses.
     """
     return StreamEnvelope(
         type=GRAPH_MESSAGE_ENVELOPE_TYPE,
         correlation_id=message["uuid"],
         payload=message,
-    ).to_fields()
+    ).to_fields(json_default=json_default)

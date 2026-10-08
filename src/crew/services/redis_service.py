@@ -7,6 +7,7 @@ import time
 import redis
 import redis.asyncio as aioredis
 from loguru import logger
+from models.graph_models import encode_dataclass_as_dict
 from redis import Redis
 from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
@@ -238,10 +239,7 @@ class RedisService(metaclass=SingletonMeta):
         logger.info(f"Message published to channel '{channel}'.")
 
     def publish(self, channel: str, message: object):
-        self.publish_encoded(channel, json.dumps(message))
-
-    def publish_encoded(self, channel: str, encoded_message: str):
-        self.sync_redis_client.publish(channel=channel, message=encoded_message)
+        self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
         logger.info(f"Message published to channel '{channel}'.")
 
     async def aadd_graph_message(self, message: dict) -> None:
@@ -251,7 +249,7 @@ class RedisService(metaclass=SingletonMeta):
         """
         await self.aioredis_client.xadd(
             GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message),
+            graph_message_fields(message, json_default=encode_dataclass_as_dict),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
             approximate=True,
         )
@@ -261,7 +259,7 @@ class RedisService(metaclass=SingletonMeta):
         """Synchronous ``aadd_graph_message`` for code without an event loop to await on."""
         self.sync_redis_client.xadd(
             GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message),
+            graph_message_fields(message, json_default=encode_dataclass_as_dict),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
             approximate=True,
         )
