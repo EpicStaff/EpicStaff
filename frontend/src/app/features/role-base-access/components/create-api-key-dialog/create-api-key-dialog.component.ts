@@ -1,6 +1,6 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -13,6 +13,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { finalize } from 'rxjs/operators';
 
@@ -27,12 +28,13 @@ import { ToastService } from '../../../../services/notifications';
     imports: [
         AppSvgIconComponent,
         ButtonComponent,
-        ValidationErrorsComponent,
-        CustomInputComponent,
-        ReactiveFormsModule,
-        InputNumberComponent,
-        SelectComponent,
         CopyFieldComponent,
+        CustomInputComponent,
+        EnterSubmitDirective,
+        InputNumberComponent,
+        ReactiveFormsModule,
+        SelectComponent,
+        ValidationErrorsComponent,
     ],
 })
 export class CreateApiKeyDialogComponent {
@@ -122,6 +124,18 @@ export class CreateApiKeyDialogComponent {
                     this.toast.error(err.error.message);
                 },
             });
+    }
+
+    readonly isEnterSubmitDisabled = computed(() =>
+        this.step() === 'pending' ? this.loading() || this.form.invalid : !this.copiedToClipboard()
+    );
+
+    onEnterSubmit(): void {
+        if (this.step() === 'pending') {
+            this.onCreate();
+        } else {
+            this.onClose();
+        }
     }
 
     onClose(): void {

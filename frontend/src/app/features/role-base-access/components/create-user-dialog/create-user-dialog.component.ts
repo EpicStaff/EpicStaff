@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { FullMembership, Organization } from '@shared/models';
 import { catchError, concat, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
 import { finalize } from 'rxjs/operators';
@@ -34,7 +35,13 @@ export interface UserDialogData {
     templateUrl: './create-user-dialog.component.html',
     styleUrls: ['./create-user-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [ButtonComponent, StepUserDetailsComponent, StepAssignToOrgComponent, LoadingSpinnerComponent],
+    imports: [
+        ButtonComponent,
+        EnterSubmitDirective,
+        LoadingSpinnerComponent,
+        StepAssignToOrgComponent,
+        StepUserDetailsComponent,
+    ],
 })
 export class CreateUserDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);

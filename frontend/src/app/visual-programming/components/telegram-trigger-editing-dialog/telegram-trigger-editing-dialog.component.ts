@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { AppSvgIconComponent, HelpTooltipComponent, JsonEditorComponent, SearchComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { ToastService } from '../../../services/notifications';
 import { MATERIAL_FORMS } from '../../../shared/material-forms';
@@ -19,11 +20,12 @@ export interface TableItem extends DisplayedTelegramField {
     styleUrls: ['./telegram-trigger-editing-dialog.component.scss'],
     imports: [
         AppSvgIconComponent,
+        EnterSubmitDirective,
         HelpTooltipComponent,
-        SearchComponent,
-        TelegramTriggerFieldsTableComponent,
         JsonEditorComponent,
         MATERIAL_FORMS,
+        SearchComponent,
+        TelegramTriggerFieldsTableComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="isSubmitting()"
+>
     <div class="dialog__header">
         {{ data.action === 'create' ? 'Add Configuration' : 'Edit Configuration' }}
     </div>

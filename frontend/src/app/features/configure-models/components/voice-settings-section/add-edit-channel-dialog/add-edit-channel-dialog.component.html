@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="form.invalid || isSubmitting()"
+>
     <div class="dialog__header">
         {{ data.action === 'create' ? 'Add Channel' : 'Edit Channel' }}
     </div>

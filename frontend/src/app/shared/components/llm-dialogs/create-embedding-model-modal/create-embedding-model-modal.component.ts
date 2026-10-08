@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { EnterSubmitDirective } from '@shared/directives';
 import { EmbeddingModel, LLMProvider } from '@shared/models';
 import { EmbeddingModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
@@ -34,6 +35,7 @@ export interface CreateEmbeddingModelDialogData {
         ToggleSwitchComponent,
         TooltipComponent,
         ValidationErrorsComponent,
+        EnterSubmitDirective,
     ],
     templateUrl: './create-embedding-model-modal.component.html',
     styleUrls: ['./create-embedding-model-modal.component.scss'],

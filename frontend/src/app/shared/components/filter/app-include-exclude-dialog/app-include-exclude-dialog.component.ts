@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { EnterSubmitDirective } from '@shared/directives';
 import { LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
 
@@ -57,7 +58,7 @@ interface FlatLabelNode {
  */
 @Component({
     selector: 'app-include-exclude-dialog',
-    imports: [FormsModule, ButtonComponent, AppSvgIconComponent, CheckboxComponent],
+    imports: [FormsModule, ButtonComponent, AppSvgIconComponent, CheckboxComponent, EnterSubmitDirective],
     templateUrl: './app-include-exclude-dialog.component.html',
     styleUrls: ['./app-include-exclude-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

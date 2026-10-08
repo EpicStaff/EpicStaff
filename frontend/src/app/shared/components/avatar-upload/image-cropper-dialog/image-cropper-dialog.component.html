@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onConfirm()"
+    [appEnterSubmitDisabled]="!croppedBlob()"
+>
     <div class="header">
         <span class="title">Crop New Profile Photo</span>
         <button

@@ -1,4 +1,8 @@
-<div class="dialog-container">
+<div
+    class="dialog-container"
+    (appEnterSubmit)="save()"
+    [appEnterSubmitDisabled]="form.invalid"
+>
     <div class="header">
         <h2 class="dialog-title">Additional Settings</h2>
         <app-icon-button

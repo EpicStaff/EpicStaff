@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="form.invalid || isSubmitting()"
+>
     <div class="dialog__header">
         {{ isEdit ? 'Edit Webhook Trigger' : 'Add Webhook Trigger' }}
     </div>

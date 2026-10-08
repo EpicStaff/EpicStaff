@@ -18,6 +18,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { EnterSubmitDirective } from '@shared/directives';
 import { CreateEmbeddingConfigRequest, ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
@@ -52,6 +53,7 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         InputNumberComponent,
         JsonEditorFormFieldComponent,
         LlmModelSelectorComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

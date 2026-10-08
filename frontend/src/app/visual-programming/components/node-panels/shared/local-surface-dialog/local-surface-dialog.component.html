@@ -2,6 +2,7 @@
     class="local-surface-dialog"
     role="dialog"
     [attr.aria-label]="title"
+    (appEnterSubmit)="onConfirm()"
 >
     <header class="local-surface-dialog__header">
         <h2 class="local-surface-dialog__title">{{ title }}</h2>

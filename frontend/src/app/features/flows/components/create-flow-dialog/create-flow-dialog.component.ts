@@ -9,7 +9,7 @@ import {
     LabelDropdownComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
+import { EnterSubmitDirective, ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
@@ -31,6 +31,7 @@ export interface FlowDialogData {
         LabelDropdownComponent,
         ValidationErrorsComponent,
         ServerErrorsDirective,
+        EnterSubmitDirective,
     ],
     templateUrl: './create-flow-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

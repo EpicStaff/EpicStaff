@@ -553,6 +553,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
         const component: ComponentType<unknown> =
             this.kind() === 'realtime' ? VoiceModelConfigDialogComponent : LlmModelConfigDialogComponent;
         this.dialog.open(component, {
+            autoFocus: false,
             height: '90vh',
             width: '600px',
         });

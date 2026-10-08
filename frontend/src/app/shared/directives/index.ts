@@ -3,6 +3,7 @@ export * from './collapse-on-overflow.directive';
 export * from './drag-hover.directive';
 export * from './drag-scroll.directive';
 export * from './enter-blur.directive';
+export * from './enter-submit.directive';
 export * from './has-permission.directive';
 export * from './hide-inline-subtitle-on-overflow.directive';
 export * from './overflow-items.directive';

@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { AppIconComponent } from '../app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -64,6 +65,7 @@ export interface ConfirmationCheckbox {
         AppSvgIconComponent,
         AppIconComponent,
         CheckboxComponent,
+        EnterSubmitDirective,
     ],
     templateUrl: './confirmation-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -92,6 +94,12 @@ export class ConfirmationDialogComponent {
 
     onPhraseInput(event: Event): void {
         this.typedPhrase.set((event.target as HTMLInputElement).value);
+    }
+
+    protected onEnterSubmit(): void {
+        // prevent from performing actions like delete by pressing enter
+        if (this.data.type === 'danger') return;
+        this.onConfirm();
     }
 
     onCancel(): void {

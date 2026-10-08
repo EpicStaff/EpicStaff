@@ -31,12 +31,18 @@
                 }
             </div>
         </div>
-        <app-icon
-            [icon]="'ui/close'"
+        <button
             class="close-btn"
-            [size]="'1.5rem'"
+            type="button"
             (click)="closeDialog()"
-        />
+            matTooltip="Close"
+            matTooltipPosition="above"
+        >
+            <app-icon
+                icon="ui/close"
+                size="1.5rem"
+            />
+        </button>
     </div>
 
     <!-- Content -->

@@ -11,6 +11,7 @@ import {
     ToggleSwitchComponent,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { RealtimeChannel, TwilioChannel, WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
 import {
     RealtimeChannelService,
@@ -40,6 +41,7 @@ export interface AddEditChannelDialogData {
         ButtonComponent,
         WebhookTriggerFieldComponent,
         ToggleSwitchComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

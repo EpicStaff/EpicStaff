@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signa
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ButtonComponent, CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { CreateOrganizationRequest, GetOrganizationResponse } from '@shared/models';
 import { finalize, map, Observable, of, switchMap } from 'rxjs';
@@ -20,10 +21,11 @@ import { OrgMembersEditorComponent } from './org-members-editor/org-members-edit
     styleUrls: ['./create-organization-dialog.component.scss'],
     imports: [
         ButtonComponent,
+        CustomInputComponent,
+        EnterSubmitDirective,
+        OrgMembersEditorComponent,
         ReactiveFormsModule,
         ValidationErrorsComponent,
-        CustomInputComponent,
-        OrgMembersEditorComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

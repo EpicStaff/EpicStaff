@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, SecretsStorageService } from '@shared/services';
 
@@ -28,6 +29,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         ValidationErrorsComponent,
         SelectComponent,
         HintMessageComponent,
+        EnterSubmitDirective,
     ],
 })
 export class EmbeddingModelConfigDialogComponent {

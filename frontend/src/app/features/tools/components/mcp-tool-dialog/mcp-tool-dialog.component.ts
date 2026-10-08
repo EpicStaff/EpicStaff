@@ -31,7 +31,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { EnterSubmitDirective, HasPermissionDirective } from '@shared/directives';
 import { httpUrlValidator, notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CreateMcpToolRequest, GetMcpToolRequest, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
@@ -53,14 +53,15 @@ interface DialogData {
         ReactiveFormsModule,
         DialogModule,
         AppSvgIconComponent,
-        CustomInputComponent,
-        ValidationErrorsComponent,
-        InputNumberComponent,
         ButtonComponent,
-        IconButtonComponent,
+        CustomInputComponent,
+        EnterSubmitDirective,
         HasPermissionDirective,
-        SelectComponent,
         HintMessageComponent,
+        IconButtonComponent,
+        InputNumberComponent,
+        SelectComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './mcp-tool-dialog.component.html',
     styleUrls: ['./mcp-tool-dialog.component.scss'],

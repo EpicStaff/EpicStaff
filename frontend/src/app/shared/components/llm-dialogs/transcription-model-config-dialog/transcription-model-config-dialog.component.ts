@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { SecretsStorageService, TranscriptionConfigStorageService } from '@shared/services';
 
@@ -27,6 +28,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         ValidationErrorsComponent,
         SelectComponent,
         HintMessageComponent,
+        EnterSubmitDirective,
     ],
 })
 export class TranscriptionModelConfigDialogComponent {
