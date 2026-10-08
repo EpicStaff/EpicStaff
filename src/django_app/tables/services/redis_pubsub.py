@@ -30,6 +30,10 @@ from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.utils.memory_trim import start_periodic_malloc_trim
 from utils.logger import logger
 
+# How long one read waits for a message. get_message() returns as soon as one arrives, so
+# this only bounds an idle wait; a shorter one turns the loop into a busy poll.
+READ_TIMEOUT_SECONDS = 1.0
+
 
 class RedisPubSub:
     def __init__(self):
@@ -353,7 +357,9 @@ class RedisPubSub:
         try:
             # Calls the handler registered for the message's channel or pattern, and
             # then returns None.
-            message = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=0.001)
+            message = self.pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=READ_TIMEOUT_SECONDS
+            )
         except (redis.ConnectionError, redis.TimeoutError) as e:
             logger.error(f"Error while listening for Redis messages: {e}")
             raise
