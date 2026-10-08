@@ -34,7 +34,7 @@ Defaults: 100 sessions, 25 in flight, no ladder, no verdict. Options: `--session
 ```bash
 python benchmark/bench.py preflight benchmark/cases/server.toml
 python benchmark/bench.py plan benchmark/cases/server.toml
-python benchmark/bench.py run benchmark/cases/server.toml --note "after EST-1234"
+python benchmark/bench.py run benchmark/cases/server.toml --note "after the agent fix"
 python benchmark/bench.py compare benchmark/results/<run-a> benchmark/results/<run-b>
 python benchmark/bench.py push benchmark/results/<run-a>
 ```
@@ -44,7 +44,7 @@ A case argument is used as a path if it exists, otherwise looked up under `bench
 | Command | What it does |
 |---|---|
 | `preflight <case>` | Host and stack checks without running load. Exit 2 on any error. |
-| `plan <case>` | Prints variants, ladder levels per phase and the worst-case duration. Does not touch the stack. |
+| `plan <case>` | Prints variants, ladder levels per phase and the worst-case duration (every level waiting the full `session_timeout_s` in its finish step; a normal level waits about one session duration). Does not touch the stack. |
 | `smoke <case>` | First variant only, ladder cut to its first level, no bisect. |
 | `run <case>` | Full run, one run folder per variant. |
 | `dev` | Developer check: payload phase only, fixed load, no verdict. |
@@ -84,7 +84,7 @@ Done once, on the machine that runs the benchmark and pushes results.
 7. Flows: build both flows in the UI. This is the operator's job, on every server: the payload flow, the `complex` flow with its LLM config and key, and its RAG collection. Put their graph ids into `benchmark/cases/server.toml` (or pass `--graph`). The smoke run proves each flow completes.
 8. Run: `python3 benchmark/bench.py preflight benchmark/cases/server.toml`, then `plan`, then `run --note "..."`, then `push`.
 
-Never put secrets into case files: a copy of the file is stored in every run folder as `case.toml`.
+Never put secrets into case files: a copy of the file is stored in every run folder as `case.toml`. Values of `[env]` and variant `env` keys outside the allowlist are replaced by `<redacted>` in that copy; phase `variables` and every other value are stored as written.
 
 The first live run on a server should be watched. The orchestration paths (docker, compose, live API) have no automated tests; only the analysis, ladder, config and env-restore logic do (`python -m unittest discover -s benchmark -p "test_*.py"`).
 
@@ -116,12 +116,12 @@ TOML. Unknown keys in `[ladder]`, `[pass]`, `[abort]`, `[dev]` are rejected, so 
 | `start` | 25 | 25 | First concurrency level (sessions held in flight). |
 | `factor` | 2.0 | 2 | Next level = `round(level x factor)` (at least +1). Must be > 1. |
 | `max` | 20000 | 20000 | Hard ceiling. Must be >= `start`. |
-| `hold_s` | 180 | 180 | Measured window per level. |
+| `hold_s` | 180 | 180 | Measured window per level: sessions sent in it are measured. The level then keeps its load until those sessions have ended (the *finish* wait, at most `session_timeout_s`) and only then gets its verdict. Fewer than 10 measured sessions make the level `invalid`. |
 | `settle_s` | 30 | 30 | Excluded from stats after each level change. Raised automatically to the smoke run's p95 session time (not when `--no-smoke`). |
 | `baseline_s` | 20 | 20 | Baseline sampling before load. |
 | `cooldown_s` | 120 | 120 | Sampling after drain. `dev.toml`: 10. |
 | `bisect_steps` | 2 | 2 | Refinement probes between last pass and first fail. |
-| `session_timeout_s` | 900 | 900 | A session older than this is stopped and counted as failed `timeout`. `dev.toml`: 300. |
+| `session_timeout_s` | 900 | 900 | A session older than this is stopped and counted as failed `timeout`. This also caps a level's finish wait. `dev.toml`: 300. |
 
 ### `[pass]` (all must hold in the measured window)
 
@@ -181,14 +181,19 @@ A `[[phase]]` can override any of these with `pass = { ... }`.
 2. **Env and build.** `src/.env` is backed up to `src/.env.bench-backup`, the overrides are written, and `docker compose up -d --build` runs (`--no-build` skips the build and labels the run `build-unverified`). If a previous run crashed hard and left the backup behind, the next run refuses to start and prints `mv src/.env.bench-backup src/.env`; check the file, then do that.
 3. **Resolve graphs** and record the graph hash per phase.
 4. **Smoke** (skip with `--no-smoke`): per phase, concurrency 2 for 60 s. The run stops with exit 3 if no session ends with `end`, any session fails, or a checkpoint is missing from a service that has BENCH active. The reason is printed, for example a missing LLM key or RAG collection on this server.
-5. **Per phase**, one *segment* for the ladder and one for every bisect probe. Each segment: restart `django_app crew agent sandbox knowledge_new` and wait healthy, one cold session (recorded with `cold=1`, excluded from aggregates), baseline sampling, the ladder levels (settle + hold at each, stop at the first level that is not a pass), drain (wait for in-flight sessions up to `session_timeout_s`, then stop the rest), cooldown sampling.
+5. **Per phase**, one *segment* for the ladder and one for every bisect probe. Each segment: restart `django_app crew agent sandbox knowledge_new` and wait healthy, one cold session (recorded with `cold=1`, excluded from aggregates), baseline sampling, the ladder levels, drain (wait for in-flight sessions up to `session_timeout_s`, then stop the rest), cooldown sampling. Each level (a bisect probe too) runs in three steps at the same concurrency:
+   - **settle** (`settle_s`): sessions sent now are not measured;
+   - **hold** (`hold_s`): sessions sent now are the level's measured sessions;
+   - **finish**: the load continues until every measured session has ended, so the verdict uses true durations, not times so far. Sessions sent now get kind `finish` and are never measured. The wait is capped by `session_timeout_s`: a measured session still running then is stopped as a failed `timeout`, a real overload signal.
+
+   The level is judged at the end of the finish step, and the ladder stops at the first level that is not a pass. The final analysis uses the same window, so the live and the final verdict normally agree.
 6. **Bisect.** Between the last passing level P and the first failing level F, probe `(P + F) // 2`, up to `bisect_steps`, and stop early when `(F - P) / P` is 10 % or less. Every probe starts with the restart, cold session and baseline above.
 7. **Cleanup.** The phase's sessions are deleted through the API (batches of 500).
-8. **Always** (also on Ctrl+C or a crash): stop load and log followers, restore `src/.env` from the backup, run `docker compose up -d` from the main checkout to apply the original settings, write what was collected, analyze, print `Run folder: ...`.
+8. **Always** (also on Ctrl+C or a crash): stop load and log followers, restore `src/.env` from the backup, write what was collected, analyze, print `Run folder: ...`, then run `docker compose up -d` from the main checkout to apply the original settings. The run folder is written before that last step because it can take minutes, and a second Ctrl+C there must not lose the measurements.
 
 ### Ctrl+C and crashes
 
-- **Ctrl+C**: stops load, stops in-flight sessions, analyzes what was measured, prints the run folder, skips the remaining variants, exits 130. The run is labelled `interrupted`.
+- **Ctrl+C**: stops load, stops in-flight sessions, analyzes what was measured, prints the run folder, skips the remaining variants, exits 130. The run is labelled `interrupted`. The sessions the runner stopped get status `interrupted`: not a failure, and their duration is unknown (see Definitions). In fallback mode the runner does not know session ids, so it asks the sessions API which of the phase's sessions are still `pending` or `run` and stops those before cleanup deletes them.
 - **Crash**: analyzed the same way, labelled `crashed:<ExceptionType>`, traceback printed, non-zero exit.
 
 ### `--ref` runs
@@ -201,13 +206,17 @@ cd <your checkout>/src && docker compose up -d --build
 
 ### Fallback mode (branches without BENCH lines)
 
-If crew produces no `session_end` line (an old branch, or `CREW_LOG_LEVEL` not BENCH), the run does not fail. In-flight counts come from the API (`GET /api/sessions/statuses/`, once per second) and end times from the sessions list after each level. Such a phase is labelled `fallback-control:<phase>`. Limits: stuck sessions cannot be identified, so `session_timeout_s` is not enforced and `error_rate_30s` is not used; an API that stays unreachable for 10 s or more while counting fails the level. Per-node and per-stage timings are empty without BENCH lines.
+If crew produces no `session_end` line (an old branch, or `CREW_LOG_LEVEL` not BENCH), the run does not fail. In-flight counts come from the API (`GET /api/sessions/statuses/`, once per second) and end times from the sessions list (every 5 s during a level's finish step, and after each level). Such a phase is labelled `fallback-control:<phase>`. Limits: stuck sessions cannot be identified while the load runs, so `session_timeout_s` is enforced only at the end of a finish step (measured sessions the sessions list still shows as running are stopped as `timeout`), and `error_rate_30s` is not used; an API that stays unreachable for 10 s or more while counting fails the level. Per-node and per-stage timings are empty without BENCH lines.
 
 ### Definitions
 
 | Term | Meaning |
 |---|---|
-| **Measured session** | A session sent at a level after that level's `settle_s` window (cold sessions never count). The level verdict uses only these. A level with fewer than 10 measured sessions is `invalid`; raise `hold_s`. |
+| **Measured session** | A session sent during a level's hold, after its `settle_s` and before the hold ends (cold and `finish` sessions never count). The level verdict and the level's statistics use only these. |
+| **Finish session** | Kind `finish` in `sessions.csv`: sent after the hold, while the level kept its load until its measured sessions ended. It keeps the concurrency honest and is in the timeline, but is not measured. |
+| **Unfinished session** | A measured session with no known end when the level is judged. After the finish step this happens only on an interrupt (`interrupted`) or when end times are missing (fallback mode with the sessions API unreachable). Its time so far is a lower bound of its duration (`censored` in `sessions.csv`). For `p95_queue_wait_s`, a session still queued is unfinished. |
+| **Level verdict** | `fail` when a rule fails even with every unfinished session counted at its lower bound. Otherwise `invalid` when fewer than 10 measured sessions ended ("raise ladder.hold_s"), or when more than 5 % of them are unfinished: those could be the slowest 5 %, so the p95 is unknown. Otherwise `pass` or `fail` on the p95 of the ended sessions. |
+| **Interrupted** | Status of a session the runner stopped because the run itself was stopped (Ctrl+C or a crash). Not a failure: it counts in the `interrupted` column of `steps.csv`, apart from `failed` and the error rate. A session that outlives `session_timeout_s` is stopped as `timeout` and is a failure. |
 | **Throughput** | Sessions finished with status `end` per minute during the measured window of a level (`throughput_per_min`). |
 | **Platform overhead** | `platform_overhead_s` = session end-to-end time minus time spent in LLM calls. It is the number that compares branches when the LLM is noisy. |
 | **Bottleneck** | Set at the first failing level. First match wins: container restart/OOM, host RAM under the guard, host CPU at 90 % or more, a container at 90 % of its CPU limit, crew slots full with sessions queued, agent queue wait growing (p95 more than double the previous level and above 1 s), Postgres connections at 90 % of `max_connections`, otherwise "no saturated resource found". |
@@ -224,9 +233,9 @@ Each run is one flat folder in `benchmark/results/`, named `<YYYY-MM-DD_HHMM>_<h
 | File | One row per | Contents |
 |---|---|---|
 | `meta.json` | run | `schema_version`, `tool_version`, `run_id`, `created_at`, `note`, `kind`, `case` (name, hash, variant, overrides), `git` (ref, sha, dirty, built), `images`, `host` (hostname, vcpu, ram_mb, kernel, docker, virtualization), `container_limits`, `env` (allowlist only), `labels`, `smoke`, `phases` (per phase: graph id, name and hash, variables hash, verdict, provider health, capacity estimate, cold session). |
-| `case.toml` | - | The exact case file used. |
-| `sessions.csv.gz` | session | `phase, segment, level, kind, cold, session_id`, send timing (`intended_ts, sent_ts, gen_lag_ms, api_ms, http_status`), checkpoint times (`arrival_ts, received_ts, slot_ts, end_ts`), `status, censored, error_reason`, durations (`e2e_s, dispatch_s, queue_wait_s, run_s, llm_s, agent_queue_s, python_s, other_s, platform_overhead_s`), `llm_calls, tokens, cost_usd`. |
-| `steps.csv` | phase x level | `phase, segment, level, kind` (ladder, bisect, dev), `target, inflight_mean, running_mean, steady_s, sent, completed, failed, throughput_per_min, error_rate`, `p50/p90/p95/p99/max/mean` of `e2e_s, queue_wait_s, run_s, llm_s, platform_overhead_s`, `cpu_s_per_session, mb_per_concurrent, gen_lag_p99_ms, verdict` (pass, fail, invalid), `live_verdict, fail_reasons, bottleneck`. |
+| `case.toml` | - | The exact case file used, unless an `[env]` or variant `env` value is outside the allowlist: then the parsed case written back as TOML with those values replaced by `<redacted>` (comments and layout are not kept). `meta.json` `case.hash` is always the hash of the original file, so re-hashing a redacted copy gives a different value. |
+| `sessions.csv.gz` | session | `phase, segment, level, kind` (ladder, bisect, dev, cold, smoke, or `finish`: sent during a level's finish step, not measured), `cold, session_id`, send timing (`intended_ts, sent_ts, gen_lag_ms, api_ms, http_status`), checkpoint times (`arrival_ts, received_ts, slot_ts, end_ts`), `status` (crew's status, or the runner's `http_error`, `timeout`, `interrupted`), `censored` (true for an `interrupted` session: its durations are lower bounds), `error_reason`, durations (`e2e_s, dispatch_s, queue_wait_s, run_s, llm_s, agent_queue_s, python_s, other_s, platform_overhead_s`), `llm_calls, tokens, cost_usd`. |
+| `steps.csv` | phase x level | `phase, segment, level, kind` (ladder, bisect, dev), `target, inflight_mean, running_mean, steady_s, sent, completed, failed, interrupted, throughput_per_min, error_rate` (failed / sent; `interrupted` is not failed), `p50/p90/p95/p99/max/mean` of `e2e_s, queue_wait_s, run_s, llm_s, platform_overhead_s`, `cpu_s_per_session, mb_per_concurrent, gen_lag_p99_ms, verdict` (pass, fail, invalid), `live_verdict, fail_reasons, bottleneck`. |
 | `containers.csv` | phase x level x container | `cpu_s, cpu_s_per_session, cpu_pct_mean, cpu_pct_max, mem_mean_mb, mem_peak_mb, restarts, oom_kills`. |
 | `container_phases.csv` | phase x container | `baseline_mb, mb_per_concurrent` (slope), `r2, retained_mb_after_cooldown`. |
 | `nodes.csv` | phase x level x node | `node_name, node_type, count, p50_s, p95_s, mean_s, max_s, error_count`. |
@@ -254,7 +263,7 @@ Resource sampling is every 2 s: CPU and memory from the host's cgroup v2 counter
 
 The benchmark relies on **BENCH checkpoints** in the product code: loguru records at custom level `BENCH` (15, between DEBUG and INFO), registered in `src/shared/bench_log.py`. Each is written as one compact JSON line on stdout, `{"bench":1,"ts":<epoch>,"checkpoint":"...", ...}`; the runner follows `docker logs -f` of the four instrumented containers and reads these lines.
 
-Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox`, `agent` and `django_app` (`CREW_LOG_LEVEL`, `SANDBOX_LOG_LEVEL`, `AGENT_LOG_LEVEL`, `DJANGO_LOG_LEVEL`). `DEBUG` and `TRACE` also show them. The case files set BENCH through their `[env]` and the runner applies and restores `src/.env`, so you normally never edit it by hand. Webhook, realtime and knowledge do not accept `BENCH` (their level goes to uvicorn, which has no such level), so they are not instrumented.
+Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox`, `agent` and `django_app` (`CREW_LOG_LEVEL`, `SANDBOX_LOG_LEVEL`, `AGENT_LOG_LEVEL`, `DJANGO_LOG_LEVEL`). `DEBUG` and `TRACE` also show them. The case files set BENCH through their `[env]` and the runner applies and restores `src/.env`, so you normally never edit it by hand. The other services do not accept `BENCH`: webhook passes its level to uvicorn, which has no such level, and realtime and knowledge_new are not instrumented.
 
 **At the default `INFO` level the checkpoints are not printed and not evaluated: INFO hides everything**, so production behaviour is unchanged. At BENCH the normal log lines are unchanged and the checkpoints are not duplicated into them.
 
@@ -288,6 +297,6 @@ python -m unittest discover -s benchmark -p "test_*.py" -v
 
 ## Security notes
 
-- The API key is read from `DJANGO_API_KEY` only and never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file except `events_full.csv.gz`), so it needs the variable set. It also needs `BENCH_RESULTS_REPO`.
+- The API key is read from `DJANGO_API_KEY` only and never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file in the folder and its subfolders except `events_full.csv.gz`, the same set it copies), so it needs the variable set. It also needs `BENCH_RESULTS_REPO`. The scan looks for that one key only; other secrets are kept out by the allowlists below.
 - `bench push` requires a clean results clone, runs `git pull --ff-only`, prints the exact `git add`, `git commit`, `git push` commands, and runs them only after you answer `y` (or pass `--yes`). It copies each run folder without `events_full.csv.gz` and rebuilds `benchmarks/index.json` (existing run numbers are kept, new runs get the next number).
-- `meta.json` keeps environment values only for the allowlist; error reasons are truncated to 300 characters.
+- `meta.json` keeps environment values only for the allowlist; the stored `case.toml` replaces `[env]` and variant `env` values outside it with `<redacted>`; error reasons are truncated to 300 characters.

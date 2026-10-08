@@ -283,11 +283,8 @@ pyrightconfig.json
 # Manager Logs
 src/manager/logs/*
 
-# Stress benchmark runs
-stress/runs/
+# Benchmark run folders (pushed to the results repo with `bench push`, never committed here)
+benchmark/results/
 
-# Flow-specific load data (messages, conversations): copied to the server by hand, never committed
-stress/chat/
-
-# Stress benchmark checkpoint logs (bind-mounted into services)
-src/bench_logs/
+# .env backup the benchmark keeps while a run overrides settings
+src/.env.bench-backup
