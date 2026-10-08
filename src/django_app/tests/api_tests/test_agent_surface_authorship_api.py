@@ -75,24 +75,25 @@ def test_read_response_exposes_org_and_author(basename, acme_client, member_only
     assert "organization" not in response.data
 
 
-# ---- update: claim and keep ----
+# ---- update: never sets or replaces the author ----
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
 @pytest.mark.parametrize("method", ["put", "patch"])
-def test_update_of_unauthored_row_claims_it(basename, method, acme_client, admin_acme, acme):
+def test_update_of_unauthored_row_leaves_it_unauthored(basename, method, acme_client, acme):
     row = _create_row(basename, acme, f"ownerless-{basename}")
 
     response = getattr(acme_client, method)(
         _detail_url(basename, row.pk),
-        {"name": f"claimed-{basename}", "instructions": "claimed"},
+        {"name": f"edited-{basename}", "instructions": "edited"},
         format="json",
     )
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(basename, row.pk) == admin_acme.id
-    assert response.data["created_by"] == expected_user_summary(admin_acme)
+    assert response.data["name"] == f"edited-{basename}"
+    assert _author_id(basename, row.pk) is None
+    assert response.data["created_by"] is None
 
 
 @pytest.mark.django_db
@@ -128,7 +129,7 @@ def test_cross_org_get_returns_404(basename, acme_client, beta):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
-def test_cross_org_patch_returns_404_and_leaves_row_unclaimed(basename, acme_client, beta):
+def test_cross_org_patch_returns_404_and_leaves_row_unauthored(basename, acme_client, beta):
     row = _create_row(basename, beta, f"beta-{basename}")
 
     response = acme_client.patch(

@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -64,7 +65,7 @@ class McpToolStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "org": org_id})
         serializer.is_valid(raise_exception=True)
-        mcp_tool = serializer.save()
+        mcp_tool = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         if import_labels and labels_data:
             attach_tool_labels(mcp_tool, id_mapper, labels_data)

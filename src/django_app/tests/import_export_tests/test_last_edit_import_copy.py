@@ -329,7 +329,11 @@ def test_partial_import_records_importer_on_new_nodes_and_target_graph(
         if node_type not in STRUCTURAL_NODE_TYPES
         for node in getattr(source_flow, relation_name).all()
     ]
-    export_data = GraphPartialExportService(entity_registry).export(node_refs).data
+    export_data = (
+        GraphPartialExportService(entity_registry)
+        .export(node_refs, org_id=source_flow.org_id)
+        .data
+    )
     existing_nodes = set(_graph_nodes(source_flow))
     import_started_at = timezone.now()
 
@@ -355,7 +359,7 @@ def test_cross_org_partial_import_returns_404_and_records_nothing(
     note = GraphNote.objects.create(graph=source, content="imported note")
     export_data = (
         GraphPartialExportService(entity_registry)
-        .export([NodeRef(entity_type=EntityType.NOTE_NODE, node_id=note.id)])
+        .export([NodeRef(entity_type=EntityType.NOTE_NODE, node_id=note.id)], org_id=acme.id)
         .data
     )
     target = Graph.objects.create(name="beta-target", org=beta)

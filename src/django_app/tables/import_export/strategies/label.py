@@ -1,4 +1,5 @@
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -62,6 +63,9 @@ class LabelStrategy(EntityImportExportStrategy):
             parent_id=parent_id,
             org_id=org_id,
             scope=scope,
-            defaults={"metadata": data.get("metadata") or {}},
+            defaults={
+                "metadata": data.get("metadata") or {},
+                "created_by": resolve_author(kwargs.get("user")),
+            },
         )
         return label

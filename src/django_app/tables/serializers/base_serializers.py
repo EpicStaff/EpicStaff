@@ -188,8 +188,6 @@ class WebhookTriggerNestedSerializer(
         new_provider = validated_data.get("provider_type", instance.provider_type)
         instance.path = validated_data.get("path", instance.path)
         instance.provider_type = new_provider
-        if "created_by" in validated_data:
-            instance.created_by = validated_data["created_by"]
         instance.save()
 
         ngrok_data = validated_data.get("ngrok_config")

@@ -1,11 +1,13 @@
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
 from rbac.authorship import AuthorStampingSerializerMixin
 from rbac.identity.api_keys.principals import SystemServicePrincipal
-from tables.models import Label
+from rbac.models import ResourceLastEdit
+from tables.models import Graph, GraphNote, Label
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -14,6 +16,14 @@ class LabelAuthorSerializer(AuthorStampingSerializerMixin, serializers.ModelSeri
     class Meta:
         model = Label
         fields = ["id", "name", "org", "created_by"]
+
+
+class GraphNoteAuthorSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
+    """A last-edit tracked model, so an update records who edited it."""
+
+    class Meta:
+        model = GraphNote
+        fields = ["id", "graph", "content", "metadata", "created_by"]
 
 
 class LabelBodyMethodsSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
@@ -166,17 +176,54 @@ def test_create_by_system_principal_leaves_no_author(acme):
 
 
 @pytest.mark.django_db
-def test_update_claims_row_without_author(acme, author):
-    label = Label.objects.create(name="unclaimed", org=acme)
+def test_update_leaves_row_without_author_unauthored(acme, author):
+    label = Label.objects.create(name="unauthored", org=acme)
     serializer = LabelAuthorSerializer(
-        label, data={"name": "claimed"}, partial=True, context=_context_for(author)
+        label, data={"name": "edited-unauthored"}, partial=True, context=_context_for(author)
     )
     serializer.is_valid(raise_exception=True)
     serializer.save()
 
     stored = Label.objects.get(pk=label.pk)
-    assert stored.name == "claimed"
+    assert stored.name == "edited-unauthored"
+    assert stored.created_by_id is None
+
+
+def _last_editor_id(instance) -> int | None:
+    return ResourceLastEdit.objects.get(
+        content_type=ContentType.objects.get_for_model(instance), object_id=instance.pk
+    ).edited_by_id
+
+
+@pytest.mark.django_db
+def test_update_records_explicit_author_as_editor_but_not_as_author(acme, author):
+    note = GraphNote.objects.create(graph=Graph.objects.create(name="flow", org=acme))
+    serializer = GraphNoteAuthorSerializer(note, data={"content": "explicit-edit"}, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(created_by=author)
+
+    stored = GraphNote.objects.get(pk=note.pk)
+    assert stored.content == "explicit-edit"
+    assert stored.created_by_id is None
+    assert _last_editor_id(stored) == author.id
+
+
+@pytest.mark.django_db
+def test_update_records_explicit_author_as_editor_and_keeps_existing_author(
+    acme, author, other_user
+):
+    note = GraphNote.objects.create(
+        graph=Graph.objects.create(name="flow", org=acme), created_by=author
+    )
+    serializer = GraphNoteAuthorSerializer(
+        note, data={"content": "explicit-owned-edit"}, partial=True
+    )
+    serializer.is_valid(raise_exception=True)
+    serializer.save(created_by=other_user)
+
+    stored = GraphNote.objects.get(pk=note.pk)
     assert stored.created_by_id == author.id
+    assert _last_editor_id(stored) == other_user.id
 
 
 @pytest.mark.django_db
@@ -244,17 +291,22 @@ def test_every_layout_stamps_request_user_on_create(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("serializer_class", STAMPING_LAYOUTS, ids=LAYOUT_IDS)
-def test_every_layout_claims_row_without_author_on_update(serializer_class, acme, author):
-    label = Label.objects.create(name="layout-unclaimed", org=acme)
+def test_every_layout_leaves_row_without_author_unauthored_on_update(
+    serializer_class, acme, author
+):
+    label = Label.objects.create(name="layout-unauthored", org=acme)
     serializer = serializer_class(
-        label, data={"name": "layout-claimed"}, partial=True, context=_context_for(author)
+        label,
+        data={"name": "layout-edited-unauthored", "created_by": author.id},
+        partial=True,
+        context=_context_for(author),
     )
     serializer.is_valid(raise_exception=True)
-    serializer.save()
+    serializer.save(created_by=author)
 
     stored = Label.objects.get(pk=label.pk)
-    assert stored.name == "layout-claimed"
-    assert stored.created_by_id == author.id
+    assert stored.name == "layout-edited-unauthored"
+    assert stored.created_by_id is None
 
 
 @pytest.mark.django_db
@@ -289,15 +341,19 @@ def test_direct_create_call_stamps_request_user(serializer_class, acme, author):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("serializer_class", STAMPING_LAYOUTS, ids=LAYOUT_IDS)
-def test_direct_update_call_claims_row_without_author(serializer_class, acme, author):
-    label = Label.objects.create(name="direct-unclaimed", org=acme)
+def test_direct_update_call_leaves_row_without_author_unauthored(
+    serializer_class, acme, author
+):
+    label = Label.objects.create(name="direct-unauthored", org=acme)
     serializer = serializer_class(
-        label, data={"name": "direct-claimed"}, partial=True, context=_context_for(author)
+        label, data={"name": "direct-edited"}, partial=True, context=_context_for(author)
     )
     serializer.is_valid(raise_exception=True)
-    serializer.update(label, dict(serializer.validated_data))
+    serializer.update(label, {**serializer.validated_data, "created_by": author})
 
-    assert Label.objects.get(pk=label.pk).created_by_id == author.id
+    stored = Label.objects.get(pk=label.pk)
+    assert stored.name == "direct-edited"
+    assert stored.created_by_id is None
 
 
 @pytest.mark.django_db
@@ -321,15 +377,15 @@ def test_plain_serializer_direct_create_call_passes_author(acme, author):
 
 
 @pytest.mark.django_db
-def test_plain_serializer_update_claims_row_without_author(acme, author):
-    label = Label.objects.create(name="plain-unclaimed", org=acme)
+def test_plain_serializer_update_leaves_row_without_author_unauthored(acme, author):
+    label = Label.objects.create(name="plain-unauthored", org=acme)
     serializer = PlainServiceLabelSerializer(context=_context_for(author))
 
-    serializer.update(label, {"name": "plain-claimed"})
+    serializer.update(label, {"name": "plain-edited-unauthored", "created_by": author})
 
     stored = Label.objects.get(pk=label.pk)
-    assert stored.name == "plain-claimed"
-    assert stored.created_by_id == author.id
+    assert stored.name == "plain-edited-unauthored"
+    assert stored.created_by_id is None
 
 
 @pytest.mark.django_db

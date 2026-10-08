@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -44,7 +45,7 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
         data = {**data, "path": find_available_path(data.get("path"), org_id)}
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        return serializer.save(org_id=org_id)
+        return serializer.save(org_id=org_id, created_by=resolve_author(kwargs.get("user")))
 
     def find_existing(
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None

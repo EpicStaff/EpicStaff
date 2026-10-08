@@ -72,8 +72,8 @@ def test_clearing_set_author_is_allowed(acme_graph, author):
 
 @pytest.mark.django_db
 def test_setting_author_on_row_without_author_is_allowed(acme_graph, author):
-    _note(acme_graph, "unclaimed")
-    note = GraphNote.objects.get(content="unclaimed")
+    _note(acme_graph, "unauthored")
+    note = GraphNote.objects.get(content="unauthored")
 
     note.created_by = author
     note.save()
@@ -104,7 +104,7 @@ def test_guard_applies_after_deferred_author_is_loaded(acme_graph, author, other
 
 
 @pytest.mark.django_db
-def test_claim_after_refresh_from_db_follows_database_author(
+def test_author_set_after_refresh_from_db_follows_database_author(
     acme_graph, author, other_user
 ):
     note = _note(acme_graph, "refreshed", created_by=author)

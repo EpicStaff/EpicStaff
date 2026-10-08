@@ -226,15 +226,15 @@ UPDATE_CASES = [
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(("make_node", "basename", "payload"), UPDATE_CASES)
-def test_update_of_unauthored_node_claims_editor(
-    make_node, basename, payload, editor_client, editor, graph, python_code, mock_telegram_service
+def test_update_of_unauthored_node_leaves_it_unauthored(
+    make_node, basename, payload, editor_client, graph, python_code, mock_telegram_service
 ):
     node = make_node(graph, python_code)
 
     response = editor_client.patch(_detail_url(basename, node.pk), payload, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(type(node), node.pk) == editor.id
+    assert _author_id(type(node), node.pk) is None
 
 
 @pytest.mark.django_db
@@ -260,7 +260,7 @@ def test_update_of_authored_node_keeps_author(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("shape", ["id", "summary"])
-def test_created_by_in_update_body_is_ignored(shape, editor_client, editor, regular_user, graph):
+def test_created_by_in_update_body_is_ignored(shape, editor_client, regular_user, graph):
     note = GraphNote.objects.create(graph=graph, content="note")
 
     response = editor_client.patch(
@@ -270,8 +270,8 @@ def test_created_by_in_update_body_is_ignored(shape, editor_client, editor, regu
     )
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(GraphNote, note.pk) == editor.id
-    assert response.data["created_by"] == expected_user_summary(editor)
+    assert _author_id(GraphNote, note.pk) is None
+    assert response.data["created_by"] is None
 
 
 @pytest.mark.django_db
@@ -294,8 +294,8 @@ def test_created_by_in_update_body_cannot_replace_author(
 
 
 @pytest.mark.django_db
-def test_idempotent_create_on_unauthored_node_claims_editor(
-    editor_client, editor, graph, python_code
+def test_idempotent_create_on_unauthored_node_leaves_it_unauthored(
+    editor_client, graph, python_code
 ):
     node = _python_node(graph, python_code)
 
@@ -307,7 +307,7 @@ def test_idempotent_create_on_unauthored_node_claims_editor(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["id"] == node.pk
-    assert _author_id(PythonNode, node.pk) == editor.id
+    assert _author_id(PythonNode, node.pk) is None
 
 
 @pytest.mark.django_db
@@ -328,8 +328,8 @@ def test_idempotent_create_on_authored_node_keeps_author(
 
 
 @pytest.mark.django_db
-def test_idempotent_decision_table_create_on_unauthored_node_claims_editor(
-    editor_client, editor, graph
+def test_idempotent_decision_table_create_on_unauthored_node_leaves_it_unauthored(
+    editor_client, graph
 ):
     node = DecisionTableNode.objects.create(graph=graph, node_name="decide")
 
@@ -340,7 +340,7 @@ def test_idempotent_decision_table_create_on_unauthored_node_claims_editor(
     )
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(DecisionTableNode, node.pk) == editor.id
+    assert _author_id(DecisionTableNode, node.pk) is None
 
 
 # ---- graph bulk save ----
@@ -369,7 +369,7 @@ def test_bulk_save_create_stamps_acting_user(auth_client, regular_user, graph):
 
 
 @pytest.mark.django_db
-def test_bulk_save_update_claims_unauthored_and_keeps_authored(
+def test_bulk_save_update_leaves_unauthored_unauthored_and_keeps_authored(
     editor_client, editor, regular_user, graph, python_code
 ):
     unauthored_note = GraphNote.objects.create(graph=graph, content="free")
@@ -402,7 +402,8 @@ def test_bulk_save_update_claims_unauthored_and_keeps_authored(
     response = editor_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(GraphNote, unauthored_note.pk) == editor.id
+    assert _author_id(GraphNote, unauthored_note.pk) is None
     assert _author_id(GraphNote, authored_note.pk) == regular_user.id
-    assert _author_id(PythonNode, unauthored_python.pk) == editor.id
+    assert _author_id(PythonNode, unauthored_python.pk) is None
+    assert GraphNote.objects.get(pk=unauthored_note.pk).content == "a"
     assert GraphNote.objects.get(pk=authored_note.pk).content == "b"

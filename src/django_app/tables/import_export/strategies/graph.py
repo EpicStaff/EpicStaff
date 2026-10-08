@@ -14,7 +14,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 from loguru import logger
-from rbac.authorship import record_last_edits
+from rbac.authorship import record_last_edits, resolve_author
 
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -188,7 +188,10 @@ class GraphStrategy(EntityImportExportStrategy):
         replaced_telegram_keys = []
         if replaced_graph is not None:
             replaced_telegram_keys = self._prepare_in_place_replace(replaced_graph)
-        graph = serializer.save()
+            # The flow is updated in place, so it keeps its author, or the lack of one.
+            graph = serializer.save()
+        else:
+            graph = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         # Register this graph's own GRAPH mapping immediately, keyed by its
         # real old exported id.

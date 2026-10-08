@@ -8,7 +8,7 @@ from rbac.authorship.last_edit import (
     record_last_edits,
     restore_last_edits,
 )
-from rbac.authorship.policy import claim_authorship, resolve_author
+from rbac.authorship.policy import org_member_ids, resolve_author
 from rbac.authorship.prefetch import authorship_prefetches
 from rbac.authorship.serializers import (
     AuthorStampingSerializerMixin,
@@ -35,7 +35,7 @@ __all__ = [
     "UserSummarySerializer",
     "affects_last_edits",
     "authorship_prefetches",
-    "claim_authorship",
+    "org_member_ids",
     "record_last_edit",
     "record_last_edits",
     "represent_authorship_time",

@@ -592,8 +592,6 @@ def _count_patch_queries(client, graph, payload) -> int:
 def test_graph_patch_query_count_does_not_grow_with_nodes(
     auth_client, regular_user, default_org, python_code
 ):
-    # Both graphs are authored, so neither PATCH claims an author-less graph and the
-    # counts differ only by node count.
     small = Graph.objects.create(name="small-patch-flow", org=default_org, created_by=regular_user)
     large = Graph.objects.create(name="large-patch-flow", org=default_org, created_by=regular_user)
     _add_edited_nodes(small, python_code, [regular_user], 1)

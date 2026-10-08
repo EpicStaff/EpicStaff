@@ -239,9 +239,6 @@ class PythonCodeToolSerializer(
     def update(self, instance, validated_data):
         labels = validated_data.pop("labels", None)
         python_code_data = validated_data.pop("python_code", None)
-        if instance.built_in:
-            # Built-in tools are shared by every org and never get an author.
-            validated_data.pop("created_by", None)
 
         if instance.built_in and (validated_data or python_code_data):
             raise BuiltInToolModificationError(

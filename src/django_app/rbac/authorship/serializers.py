@@ -19,13 +19,16 @@ _ACTIVE_TRACKER_ATTRIBUTE = "_active_last_edit_tracker"
 
 
 class AuthorStampingSerializerMixin:
-    """Stamp the author on create, claim ownerless rows on update and record real edits.
+    """Stamp the author on create, never touch it on update, and record real edits.
 
     Every subclass has its resolved `get_fields`, `create` and `update` wrapped, so this
     applies whatever the base order; once per outermost call, a last edit is recorded for
     a created or changed resource and for the owner it edited (a node's graph). The acting
     user comes from `context["request"].user`, falling back to a `created_by` passed
     through `serializer.save(created_by=...)`.
+
+    The author is only ever set when a row is created: an update drops any `created_by`
+    it is handed, so a row without an author keeps none.
     """
 
     # Serializer whose representation defines the resource state compared for a last
@@ -49,12 +52,8 @@ class AuthorStampingSerializerMixin:
             validated_data[AUTHOR_FIELD] = self._resolve_acting_author(explicit_author)
         return validated_data
 
-    def _stamp_author_for_update(self, instance, validated_data: dict) -> dict:
-        explicit_author = validated_data.pop(AUTHOR_FIELD, None)
-        if _has_author_field(type(instance)) and instance.created_by_id is None:
-            author = self._resolve_acting_author(explicit_author)
-            if author is not None:
-                validated_data[AUTHOR_FIELD] = author
+    def _drop_author_for_update(self, validated_data: dict) -> dict:
+        validated_data.pop(AUTHOR_FIELD, None)
         return validated_data
 
     def _resolve_acting_author(self, explicit_author):
@@ -206,7 +205,7 @@ def _wrap_update(update):
     @functools.wraps(update)
     def stamped_update(self, instance, validated_data):
         explicit_author = validated_data.get(AUTHOR_FIELD)
-        validated_data = self._stamp_author_for_update(instance, validated_data)
+        validated_data = self._drop_author_for_update(validated_data)
 
         def watch_updated(tracker, write):
             if affects_last_edits(instance):

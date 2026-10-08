@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models, transaction
 from django.db.models import Avg, Count, Prefetch
 from loguru import logger
-from rbac.authorship import claim_authorship, record_last_edit, resolve_author
+from rbac.authorship import record_last_edit, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
@@ -165,8 +165,8 @@ class CollectionManagementService:
             collection_id: ID of collection to update
             collection_name: New collection name (unchanged if None)
             description: New description (unchanged if None)
-            user: Acting user; becomes the author if the collection has none, and the last
-                editor if the name or description changed
+            user: Acting user; becomes the last editor if the name or description changed.
+                Never becomes the author, even of a collection that has none.
 
         Returns:
             SourceCollection: Updated collection
@@ -178,9 +178,6 @@ class CollectionManagementService:
         state_before = (collection.collection_name, collection.description)
 
         update_fields = []
-
-        if claim_authorship(collection, user):
-            update_fields.append("created_by")
 
         if collection_name is not None:
             collection.collection_name = collection_name

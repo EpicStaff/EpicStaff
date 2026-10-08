@@ -1,10 +1,11 @@
-from collections import defaultdict
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
+
+from rbac.models.organization_user import OrganizationUser
 
 if TYPE_CHECKING:
     from tables.models.user import User
@@ -23,33 +24,19 @@ def resolve_author(user: object) -> "User | None":
     return None
 
 
-def claim_authorship(instance: models.Model, user: object) -> bool:
-    """Set `user` as the author of an instance with a `created_by` field when it has none.
+def org_member_ids(*, org_id: int, user_ids: Iterable[int | None]) -> set[int]:
+    """Return the subset of `user_ids` that are members of organization `org_id`.
 
-    Returns True when the author was assigned, False when the instance already has an
-    author or `user` does not resolve to one. The instance is not saved.
+    One query; None ids are ignored.
     """
-    if instance.created_by_id is not None:
-        return False
-    author = resolve_author(user)
-    if author is None:
-        return False
-    instance.created_by = author
-    return True
-
-
-def claim_authorship_in_bulk(instances: Iterable[models.Model], author: "User") -> None:
-    """Persist `author` as the author of every instance with a `created_by` field and none set.
-
-    Instances already authored in memory cost no query; the NULL check runs in one UPDATE
-    per model, so an author set since an instance was loaded is never replaced.
-    """
-    ids_by_model: dict[type[models.Model], set[Any]] = defaultdict(set)
-    for instance in instances:
-        if has_author_field(type(instance)) and instance.created_by_id is None:
-            ids_by_model[instance._meta.concrete_model].add(instance.pk)
-    for model, ids in ids_by_model.items():
-        model._base_manager.filter(pk__in=ids, created_by__isnull=True).update(created_by=author)
+    known_user_ids = {user_id for user_id in user_ids if user_id is not None}
+    if not known_user_ids:
+        return set()
+    return set(
+        OrganizationUser.objects.filter(org_id=org_id, user_id__in=known_user_ids).values_list(
+            "user_id", flat=True
+        )
+    )
 
 
 def has_author_field(model: type[models.Model]) -> bool:

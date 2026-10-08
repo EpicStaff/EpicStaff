@@ -9,7 +9,7 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import serializers
 
-from rbac.authorship.policy import claim_authorship_in_bulk, resolve_author
+from rbac.authorship.policy import resolve_author
 from rbac.models.last_edit import LastEditTrackedModel, ResourceLastEdit
 
 LAST_EDIT_TRACKER_CONTEXT_KEY = "last_edit_tracker"
@@ -54,23 +54,21 @@ def record_last_edits(
     *,
     edited_at: datetime.datetime | None = None,
 ) -> None:
-    """Upsert the last edit of every instance in one statement and claim the author-less ones.
+    """Upsert the last edit of every instance in one statement.
 
     Does nothing when `user` is None (no acting user). A user that does not resolve to an
-    author, such as the system API-key principal, is recorded as a NULL editor and claims
-    nothing; rows that opt out via `records_last_edit()` are skipped.
+    author, such as the system API-key principal, is recorded as a NULL editor; rows that
+    opt out via `records_last_edit()` are skipped. Never sets `created_by`: an edit does
+    not make the editor the author.
     """
     if user is None:
         return
-    recorded = [instance for instance in instances if instance.records_last_edit()]
     editor = resolve_author(user)
     edited_at = edited_at or timezone.now()
     _upsert(
         RecordedLastEdit(instance, editor.pk if editor else None, edited_at)
-        for instance in recorded
+        for instance in instances
     )
-    if editor is not None:
-        claim_authorship_in_bulk(recorded, editor)
 
 
 @dataclass(frozen=True)
@@ -165,7 +163,7 @@ class LastEditTracker:
         """Compare every watched update with its current state and record the edited resources.
 
         Edited rows, the owners they edited and the rows marked edited are recorded in one
-        statement, and the author-less ones are claimed by the acting user.
+        statement.
         """
         edited = []
         for watched in self._watched.values():

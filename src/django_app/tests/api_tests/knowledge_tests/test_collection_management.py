@@ -594,18 +594,20 @@ class TestCollectionAuthorship:
             "avatar_url": None,
         }
 
-    def test_patch_claims_null_author(self, auth_client, source_collection, regular_user):
+    def test_patch_leaves_null_author_null(self, auth_client, source_collection):
         assert source_collection.created_by is None
 
         response = auth_client.patch(
             reverse("sourcecollection-detail", args=[source_collection.pk]),
-            {"description": "claimed"},
+            {"description": "edited"},
             format="json",
         )
 
         assert response.status_code == status.HTTP_200_OK
+        assert response.json()["created_by"] is None
         source_collection.refresh_from_db()
-        assert source_collection.created_by == regular_user
+        assert source_collection.description == "edited"
+        assert source_collection.created_by is None
 
     def test_patch_keeps_existing_author(self, auth_client, source_collection):
         original_author = get_user_model().objects.create_user(

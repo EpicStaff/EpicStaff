@@ -37,8 +37,7 @@ def _last_edit_of(instance) -> ResourceLastEdit:
 
 @pytest.mark.django_db
 def test_release_clears_editor_only_in_target_org_and_keeps_time(acme, beta, editor, colleague):
-    # Authored by the colleague, so the editor's edits do not claim them and only last
-    # edits are released.
+    # Authored by the colleague, so only the editor's last edits are released.
     acme_graph = Graph.objects.create(name="acme-edited", org=acme, created_by=colleague)
     deleted_graph = Graph.objects.create(
         name="acme-deleted-edited",
@@ -95,8 +94,7 @@ def test_release_outside_memberships_keeps_editor_in_member_orgs(
     acme_note = GraphNote.objects.create(
         graph=Graph.objects.create(name="member-flow", org=acme), content="kept"
     )
-    # Authored by the colleague, so the editor's edit does not claim it and only its last
-    # edit is released.
+    # Authored by the colleague, so only the editor's last edit is released.
     beta_note = GraphNote.objects.create(
         graph=Graph.objects.create(name="non-member-flow", org=beta),
         content="released",
