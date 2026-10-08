@@ -10,7 +10,6 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
-from tables.import_export.utils import disable_jit_for_transaction
 from tables.models import Graph
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
@@ -65,7 +64,6 @@ class PartialImportService:
         export_data = prepare_import_data(export_data)
 
         with transaction.atomic():
-            disable_jit_for_transaction()
             # Step 1: import non-node dependencies (LLM configs, crews, etc.)
             # into the active org, enforcing per-resource CREATE permission.
             self._import_dependencies(

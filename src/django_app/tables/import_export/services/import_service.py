@@ -12,7 +12,6 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
-from tables.import_export.utils import disable_jit_for_transaction
 
 
 class ImportService:
@@ -36,7 +35,6 @@ class ImportService:
         export_data = prepare_import_data(export_data)
 
         with transaction.atomic():
-            disable_jit_for_transaction()
             ordered_types = self._resolve_import_order(export_data)
 
             for entity_type in ordered_types:

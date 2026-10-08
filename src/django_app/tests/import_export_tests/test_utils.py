@@ -1,21 +1,21 @@
-import sys
-
 import pytest
 from copy import deepcopy
 
 from rest_framework.exceptions import ValidationError
 
 from agents.models import Surface
-from tables.models import PythonCode
+from tables.import_export.serializers.mcp_tools import McpToolImportSerializer
+from tables.import_export.strategies.python_tools import python_code_key
+from tables.models import McpTool
 from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.utils import (
+    compared_values,
     ensure_unique_identifier,
     create_filters,
     filter_by_name_or_renamed_copy,
+    import_values,
     nest_owned_surface_entries,
-    PYTHON_WHITESPACE,
-    python_code_match_q,
 )
 
 
@@ -73,55 +73,54 @@ class TestCreateFilters:
         assert null_filters == {}
 
 
-@pytest.mark.django_db
-class TestPythonCodeMatchQ:
-    @pytest.fixture
-    def stored_code(self, db):
-        return PythonCode.objects.create(
-            code="print('hi')  \n", entrypoint="main", libraries="requests", global_kwargs={}
+class TestPythonCodeKey:
+    def test_trailing_whitespace_and_padded_libraries_are_ignored(self):
+        assert python_code_key("print('hi')\n\n", " requests ", "run") == (
+            python_code_key("print('hi')", "requests", "run")
         )
 
-    def _matches(self, stored_code, **overrides) -> bool:
-        data = {
-            "code": "print('hi')\n",
-            "entrypoint": "main",
-            "libraries": "requests",
-            "global_kwargs": {},
-            **overrides,
-        }
-        return PythonCode.objects.filter(python_code_match_q(data), id=stored_code.id).exists()
+    def test_leading_whitespace_in_code_counts(self):
+        # The sandbox indents every line, so an indented first line is different code.
+        assert python_code_key("  print('hi')", "", "main") != python_code_key(
+            "print('hi')", "", "main"
+        )
 
-    def test_matching_ignores_trailing_whitespace(self, stored_code):
-        assert self._matches(stored_code)
+    def test_stored_blank_entrypoint_is_not_main(self):
+        assert python_code_key("x", "", "") != python_code_key("x", "", "main")
 
-    def test_trailing_unicode_whitespace_is_ignored_like_str_rstrip(self, stored_code):
-        assert self._matches(stored_code, code="print('hi')" + chr(0x3000) + "\xa0\t")
+    @pytest.mark.parametrize(
+        "other",
+        [
+            ("print('bye')", "requests", "main"),
+            ("print('hi')", "", "main"),
+            ("print('hi')", "requests", "run"),
+        ],
+    )
+    def test_any_compared_value_differing_differs(self, other):
+        assert python_code_key("print('hi')", "requests", "main") != python_code_key(*other)
 
-    def test_different_code(self, stored_code):
-        assert not self._matches(stored_code, code="print('bye')\n")
 
-    def test_leading_whitespace_still_counts(self, stored_code):
-        assert not self._matches(stored_code, code=" print('hi')\n")
+@pytest.mark.django_db
+class TestComparedValues:
+    def test_file_values_are_stored_as_the_serializer_would(self):
+        values = compared_values(
+            McpTool,
+            McpToolImportSerializer,
+            {"transport": "  https://example.com  ", "timeout": "30"},
+            ("transport", "timeout", "init_timeout"),
+        )
 
-    def test_different_entrypoint(self, stored_code):
-        assert not self._matches(stored_code, entrypoint="run")
+        assert values == {"transport": "https://example.com", "timeout": 30.0, "init_timeout": 10}
 
-    def test_different_libraries(self, stored_code):
-        assert not self._matches(stored_code, libraries="")
+    def test_rejected_values_are_listed_by_field(self):
+        with pytest.raises(ValidationError) as exc:
+            import_values(
+                McpToolImportSerializer,
+                {"timeout": "abc", "tool_name": None, "transport": "ok"},
+                ("transport", "tool_name", "timeout"),
+            )
 
-    def test_different_global_kwargs(self, stored_code):
-        assert not self._matches(stored_code, global_kwargs={"timeout": 5})
-
-    @pytest.mark.parametrize("code_data", [None, {}, {"code": None}, {"code": 5}])
-    def test_data_without_text_code_matches_nothing(self, code_data):
-        assert python_code_match_q(code_data) is None
-
-    def test_whitespace_set_is_what_str_rstrip_strips(self):
-        assert set(PYTHON_WHITESPACE) == {
-            chr(code_point)
-            for code_point in range(sys.maxunicode + 1)
-            if chr(code_point).isspace()
-        }
+        assert set(exc.value.detail) == {"timeout", "tool_name"}
 
 
 @pytest.mark.django_db
@@ -133,13 +132,13 @@ class TestFilterByNameOrRenamedCopy:
             name: Surface.objects.create(organization=default_org, name=name) for name in names
         }
 
-    def test_matches_exact_name_and_renamed_copies_exact_first(self, surfaces):
+    def test_matches_exact_name_first_then_renamed_copies_newest_first(self, surfaces):
         result = filter_by_name_or_renamed_copy(Surface.objects.all(), "Surf (beta)")
 
         assert [surface.name for surface in result] == [
             "Surf (beta)",
-            "Surf (beta) #3",
             "Surf (beta)#2",
+            "Surf (beta) #3",
         ]
 
     def test_numbered_export_name_matches_its_base_copies(self, surfaces):

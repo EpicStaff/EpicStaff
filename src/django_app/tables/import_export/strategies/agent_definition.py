@@ -1,11 +1,9 @@
 from collections import Counter, defaultdict
 
-from agents.models import AgentDefaultSurface, AgentDefinition, Surface
-from django.db.models import Exists, OuterRef, Q
-from django.db.models.lookups import Exact
+from agents.models import AgentDefaultSurface, AgentDefinition
+from django.db.models import Q
 
-from tables.exceptions import ImportedAgentSurfacesChangedError
-from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
+from tables.import_export.constants import MAX_REUSE_CANDIDATES, OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.schemas import ImportSettings
@@ -19,7 +17,7 @@ from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
-    related_row_count,
+    import_values,
     resolve_import_organization,
 )
 from tables.models import LLMConfig
@@ -89,7 +87,8 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
         create_entity maps the surfaces it creates. On reuse, find_existing
         matched them by content only, so the exported ids are mapped here to the
-        reused agent's equivalent surfaces.
+        reused agent's equivalent surfaces -- by the same function, over the
+        rows find_existing loaded, so the two cannot disagree.
         """
         agent_definition = super().import_entity(
             data, id_mapper, is_main, settings=settings, **kwargs
@@ -101,11 +100,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
             not id_mapper.has_mapping(EntityType.SURFACE, entry["id"])
             for entry in owned_surface_entries
         ):
-            pairing = self._pair_owned_surfaces(data, id_mapper, agent_definition.id)
-            # find_existing matched on the same content, so a failure here means
-            # the agent's surfaces changed in between (a concurrent edit).
-            if pairing is None:
-                raise ImportedAgentSurfacesChangedError()
+            pairing = self._match_surfaces(agent_definition, *self._entry_surfaces(data, id_mapper))
             for old_surface_id, surface_id in pairing.items():
                 id_mapper.map(EntityType.SURFACE, old_surface_id, surface_id, was_created=False)
         return agent_definition
@@ -157,7 +152,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> AgentDefinition | None:
         filters, null_filters = create_filters(
-            compared_values(AgentDefinition, data, COMPARED_FIELDS)
+            compared_values(AgentDefinition, self.serializer_class, data, COMPARED_FIELDS)
         )
 
         new_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, data.get("llm_config"))
@@ -175,126 +170,119 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         else:
             filters["fcm_llm_config_id"] = new_fcm_llm_config_id
 
-        candidates = (
+        # SQL narrows on stored columns; whether the owned and default surfaces
+        # match is decided in Python.
+        content_key_by_old_surface_id, entry_default_rows = self._entry_surfaces(data, id_mapper)
+        candidates = filter_by_name_or_renamed_copy(
             AgentDefinition.objects.filter(**filters, **null_filters)
             .filter(self.get_org_scope_q(org_id))
-            .filter(self._owned_and_default_surfaces_q(data, id_mapper))
-        )
-        # A reused agent is never modified, so it must already own an equivalent
-        # of every surface the file says it owns (and nothing else) and hold the
-        # same default surfaces. The whole comparison runs in SQL; candidate
-        # order: exact name first, then id.
-        return filter_by_name_or_renamed_copy(candidates, data.get("name")).first()
-
-    def _owned_and_default_surfaces_q(self, data: dict, id_mapper: IDMapper) -> Q:
-        """Return a Q for agents whose owned and default surfaces match the entry.
-
-        Owned surfaces compare by content only (instructions plus remapped tool
-        sets with modes), names ignored: per content, the agent owns as many
-        surfaces as the file lists, and no others. Default rows compare per
-        shared surface, and per (content, place) for owned ones. Every subquery
-        is correlated to the candidate agent. Unmapped ids are dropped, as
-        create_entity drops them.
-        """
-        content_key_by_old_surface_id = {}
-        for entry in data.get(OWNED_SURFACE_ENTRIES_KEY, []):
-            content_key_by_old_surface_id[entry["id"]] = self.surface_strategy.entry_content_key(
-                entry, id_mapper
-            )
-
-        conditions = Q(
-            Exact(
-                related_row_count(Surface.objects.all(), "owner_agent"),
-                len(content_key_by_old_surface_id),
-            )
-        )
-        for content_key, entry_count in Counter(content_key_by_old_surface_id.values()).items():
-            owned_surfaces_with_content = self.surface_strategy.filter_equivalent_content(
-                Surface.objects.all(), content_key
-            )
-            conditions &= Q(
-                Exact(related_row_count(owned_surfaces_with_content, "owner_agent"), entry_count)
-            )
-
-        shared_default_rows = set()
-        owned_default_rows = set()
-        for row in data.get("default_surfaces", []):
-            if row["surface_id"] in content_key_by_old_surface_id:
-                owned_default_rows.add((row["surface_id"], row["place"]))
-                continue
-            new_surface_id = id_mapper.get_or_none(EntityType.SURFACE, row["surface_id"])
-            if new_surface_id is not None:
-                shared_default_rows.add((new_surface_id, row["place"]))
-
-        conditions &= Q(
-            Exact(
-                related_row_count(AgentDefaultSurface.objects.all(), "agent_definition"),
-                len(shared_default_rows) + len(owned_default_rows),
-            )
-        )
-        for surface_id, place in shared_default_rows:
-            conditions &= Q(
-                Exists(
-                    AgentDefaultSurface.objects.filter(
-                        agent_definition=OuterRef("pk"), surface_id=surface_id, place=place
-                    )
+            .prefetch_related(
+                "owned_surfaces__python_tools", "owned_surfaces__mcp_tools", "default_surfaces"
+            ),
+            import_values(self.serializer_class, data, ("name",)).get("name"),
+        )[:MAX_REUSE_CANDIDATES]
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if self._match_surfaces(
+                    candidate, content_key_by_old_surface_id, entry_default_rows
                 )
-            )
-        owned_default_counts = Counter(
-            (content_key_by_old_surface_id[old_surface_id], place)
-            for old_surface_id, place in owned_default_rows
+                is not None
+            ),
+            None,
         )
-        for (content_key, place), row_count in owned_default_counts.items():
-            own_surface_with_content = self.surface_strategy.filter_equivalent_content(
-                Surface.objects.filter(
-                    pk=OuterRef("surface_id"), owner_agent=OuterRef("agent_definition_id")
-                ),
-                content_key,
-            )
-            default_rows_on_own_surface = AgentDefaultSurface.objects.filter(
-                Exists(own_surface_with_content), place=place
-            )
-            conditions &= Q(
-                Exact(related_row_count(default_rows_on_own_surface, "agent_definition"), row_count)
-            )
-        return conditions
 
-    def _pair_owned_surfaces(
-        self, data: dict, id_mapper: IDMapper, agent_definition_id: int
+    def _entry_surfaces(self, data: dict, id_mapper: IDMapper) -> tuple[dict, tuple]:
+        """Return the entry's owned surface content keys and its default rows.
+
+        Computed once per lookup or mapping and shared by every candidate.
+        """
+        content_key_by_old_surface_id = {
+            entry["id"]: self.surface_strategy.entry_content_key(entry, id_mapper)
+            for entry in data.get(OWNED_SURFACE_ENTRIES_KEY, [])
+        }
+        return content_key_by_old_surface_id, self._entry_default_rows(
+            data, id_mapper, content_key_by_old_surface_id
+        )
+
+    def _match_surfaces(
+        self,
+        agent_definition: AgentDefinition,
+        content_key_by_old_surface_id: dict,
+        entry_default_rows: tuple,
     ) -> dict[int, int] | None:
-        """Map exported owned surface ids to the surfaces the agent owns.
+        """Pair the entry's owned surfaces with the agent's, if the agent matches.
 
-        Returns {exported surface id: agent's surface id}, or None when the
-        agent's owned surfaces are not, content for content, the entry's. Within
-        one content, exported and stored surfaces pair in ascending id order.
-        Only called for the agent find_existing matched, so it loads as many
-        surfaces as the file lists.
+        A reused agent is never modified, so it must already hold what the file
+        says: owned surfaces equal by content only (instructions plus remapped
+        tool sets with modes; names ignored), as a multiset, and the same default
+        rows -- shared ones by surface and place, owned ones by content and
+        place. Unmapped ids are dropped, as create_entity drops them. Takes the
+        entry's side from `_entry_surfaces`. Returns {exported surface id:
+        agent's surface id}, pairing within one content in ascending id order,
+        or None when the agent does not match.
         """
         old_surface_ids_by_content = defaultdict(list)
-        for entry in data.get(OWNED_SURFACE_ENTRIES_KEY, []):
-            content_key = self.surface_strategy.entry_content_key(entry, id_mapper)
-            old_surface_ids_by_content[content_key].append(entry["id"])
+        for old_surface_id, content_key in content_key_by_old_surface_id.items():
+            old_surface_ids_by_content[content_key].append(old_surface_id)
 
         surface_ids_by_content = defaultdict(list)
-        for surface in (
-            Surface.objects.filter(owner_agent_id=agent_definition_id)
-            .order_by("id")
-            .prefetch_related("python_tools", "mcp_tools")
-        ):
-            surface_ids_by_content[self.surface_strategy.surface_content_key(surface)].append(
-                surface.id
-            )
+        content_key_by_surface_id = {}
+        for surface in sorted(agent_definition.owned_surfaces.all(), key=lambda row: row.id):
+            content_key = self.surface_strategy.surface_content_key(surface)
+            surface_ids_by_content[content_key].append(surface.id)
+            content_key_by_surface_id[surface.id] = content_key
 
-        if {key: len(ids) for key, ids in old_surface_ids_by_content.items()} != {
-            key: len(ids) for key, ids in surface_ids_by_content.items()
-        }:
+        if Counter(content_key_by_old_surface_id.values()) != Counter(
+            content_key_by_surface_id.values()
+        ):
             return None
+        if entry_default_rows != self._agent_default_rows(
+            agent_definition, content_key_by_surface_id
+        ):
+            return None
+
         pairing = {}
         for content_key, old_surface_ids in old_surface_ids_by_content.items():
             pairing.update(
                 zip(sorted(old_surface_ids), surface_ids_by_content[content_key], strict=True)
             )
         return pairing
+
+    @staticmethod
+    def _entry_default_rows(
+        data: dict, id_mapper: IDMapper, content_key_by_old_surface_id: dict
+    ) -> tuple[set, Counter]:
+        """Return (shared rows by mapped surface id, owned rows by content) of the entry."""
+        shared_rows = set()
+        owned_rows = set()
+        for row in data.get("default_surfaces", []):
+            if row["surface_id"] in content_key_by_old_surface_id:
+                owned_rows.add((row["surface_id"], row["place"]))
+                continue
+            new_surface_id = id_mapper.get_or_none(EntityType.SURFACE, row["surface_id"])
+            if new_surface_id is not None:
+                shared_rows.add((new_surface_id, row["place"]))
+        owned_rows_by_content = Counter(
+            (content_key_by_old_surface_id[old_surface_id], place)
+            for old_surface_id, place in owned_rows
+        )
+        return shared_rows, owned_rows_by_content
+
+    @staticmethod
+    def _agent_default_rows(
+        agent_definition: AgentDefinition, content_key_by_surface_id: dict
+    ) -> tuple[set, Counter]:
+        """Return the agent's default rows in the shape of `_entry_default_rows`."""
+        shared_rows = set()
+        owned_rows_by_content = Counter()
+        for row in agent_definition.default_surfaces.all():
+            if row.surface_id in content_key_by_surface_id:
+                owned_rows_by_content[(content_key_by_surface_id[row.surface_id], row.place)] += 1
+            else:
+                shared_rows.add((row.surface_id, row.place))
+        return shared_rows, owned_rows_by_content
 
     def get_org_scope_q(self, org_id: int) -> Q:
         organization = resolve_import_organization(org_id)

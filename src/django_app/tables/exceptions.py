@@ -42,18 +42,6 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     default_code = "parent_session_not_found"
 
 
-class ImportedAgentSurfacesChangedError(CustomAPIExeption):
-    """Raised when a reused agent's owned surfaces no longer match the import file.
-
-    The import matched the agent, then could not map the file's owned surfaces to
-    the agent's -- they changed in between. The import transaction rolls back.
-    """
-
-    status_code = 409
-    default_detail = "The agent's surfaces changed during the import. Retry the import."
-    default_code = "imported_agent_surfaces_changed"
-
-
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"

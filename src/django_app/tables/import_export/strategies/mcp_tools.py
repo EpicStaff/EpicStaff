@@ -10,6 +10,7 @@ from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
+    import_values,
 )
 from tables.models import McpTool
 
@@ -78,8 +79,12 @@ class McpToolStrategy(EntityImportExportStrategy):
         return mcp_tool
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> McpTool:
-        filters, null_filters = create_filters(compared_values(McpTool, data, COMPARED_FIELDS))
+        # Every compared value is a stored column, so SQL decides and at most one
+        # row is loaded.
+        filters, null_filters = create_filters(
+            compared_values(McpTool, self.serializer_class, data, COMPARED_FIELDS)
+        )
         return filter_by_name_or_renamed_copy(
             McpTool.objects.filter(**filters, **null_filters).filter(self.get_org_scope_q(org_id)),
-            data.get("name"),
+            import_values(self.serializer_class, data, ("name",)).get("name"),
         ).first()

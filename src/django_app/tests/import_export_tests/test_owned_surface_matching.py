@@ -1,9 +1,7 @@
 """
-The SQL reuse filter of AgentDefinitionStrategy.find_existing and the Python
-pairing import_entity uses to map a reused agent's owned surfaces must agree:
-find_existing returns the agent exactly when the pairing succeeds. A
-disagreement either loses the owned surfaces of a reused agent or turns a reuse
-into a 409.
+AgentDefinitionStrategy.find_existing reuses an agent only when its owned
+surfaces equal the file's by content, and then maps every exported owned
+surface to one of the agent's.
 """
 
 import pytest
@@ -25,12 +23,12 @@ def tools(default_org):
     return {
         "python": PythonCodeTool.objects.create(
             org=default_org,
-            name="invariant py",
+            name="matching py",
             description="description",
             python_code=PythonCode.objects.create(code="x", entrypoint="main", libraries=""),
         ),
         "mcp": McpTool.objects.create(
-            org=default_org, name="invariant mcp", transport="https://example.com", tool_name="t"
+            org=default_org, name="matching mcp", transport="https://example.com", tool_name="t"
         ),
     }
 
@@ -143,10 +141,10 @@ def _mcp_mode_changed(agent, tools):
     ],
     ids=lambda value: value.__name__.strip("_") if callable(value) else str(value),
 )
-def test_sql_match_agrees_with_python_pairing(
+def test_agent_reused_exactly_when_owned_surfaces_match(
     build_case, expected_match, tools, export_service, default_org
 ):
-    agent = AgentDefinition.objects.create(organization=default_org, name="invariant agent")
+    agent = AgentDefinition.objects.create(organization=default_org, name="matching agent")
     case = build_case(agent, tools)
     if case is not None:
         next(case)
@@ -166,7 +164,9 @@ def test_sql_match_agrees_with_python_pairing(
 
     strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
     found = strategy.find_existing(entry, id_mapper, org_id=default_org.id)
-    pairing = strategy._pair_owned_surfaces(entry, id_mapper, agent.id)
 
     assert (found == agent) is expected_match
-    assert (pairing is not None) is expected_match
+    if expected_match:
+        pairing = strategy._match_surfaces(found, *strategy._entry_surfaces(entry, id_mapper))
+        assert set(pairing) == {owned["id"] for owned in entry[OWNED_SURFACE_ENTRIES_KEY]}
+        assert set(pairing.values()) == set(agent.owned_surfaces.values_list("id", flat=True))

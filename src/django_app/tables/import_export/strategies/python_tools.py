@@ -1,5 +1,6 @@
 from django.db.models import Q
 
+from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.python_tools import (
@@ -14,17 +15,29 @@ from tables.import_export.utils import (
     create_filters,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
-    python_code_match_q,
+    import_values,
 )
 from tables.models import PythonCode, PythonCodeTool
 
 # Scalar fields compared for reuse, next to the rename-aware name match,
-# get_org_scope_q and python_code_match_q. An explicit allowlist, not
+# get_org_scope_q and python_code_key. An explicit allowlist, not
 # create_filters over the whole exported dict: legacy files carry
 # created_at/updated_at (and the source org), which a re-created tool never
 # matches. built_in is left out because create_entity always stores False: a
 # built-in whose code changed would otherwise be copied again on every import.
 COMPARED_FIELDS = ("description", "variables", "use_storage")
+
+
+def python_code_key(code: str, libraries: str, entrypoint: str) -> tuple:
+    """Return what python code is matched on, from file values or a stored row.
+
+    File values arrive as PythonCodeImportSerializer stores them (trimmed, an
+    empty entrypoint made "main"). A stored row is compared as it would run:
+    only trailing whitespace is ignored in code, since the sandbox indents
+    every line and leading whitespace changes it; libraries split on spaces;
+    the entrypoint must be exact.
+    """
+    return (code.rstrip(), libraries.strip(), entrypoint)
 
 
 class PythonCodeToolStrategy(EntityImportExportStrategy):
@@ -101,22 +114,49 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int | None = None):
+        # SQL narrows on stored columns: entrypoint and global_kwargs exactly
+        # (create stores them so, and jsonb equality keeps true apart from 1).
+        # Code and libraries are compared in Python.
         filters, null_filters = create_filters(
-            compared_values(PythonCodeTool, data, COMPARED_FIELDS)
+            compared_values(PythonCodeTool, self.serializer_class, data, COMPARED_FIELDS)
         )
-        python_code_q = python_code_match_q(data.get("python_code"), prefix="python_code__")
-        if python_code_q is None:
-            return None
-
-        # Every compared value, the code included, is filtered in SQL: a name
-        # family can hold many renamed copies differing only in code, and the
-        # lookup must not load them.
-        return filter_by_name_or_renamed_copy(
+        python_code = self.validated_python_code(data.get("python_code"))
+        code_key = python_code_key(
+            python_code["code"], python_code["libraries"], python_code["entrypoint"]
+        )
+        candidates = filter_by_name_or_renamed_copy(
             PythonCodeTool.objects.filter(**filters, **null_filters)
-            .filter(self.get_org_scope_q(org_id))
-            .filter(python_code_q),
-            data.get("name"),
-        ).first()
+            .filter(
+                self.get_org_scope_q(org_id),
+                python_code__entrypoint=code_key[2],
+                python_code__global_kwargs=python_code["global_kwargs"],
+            )
+            .select_related("python_code"),
+            import_values(self.serializer_class, data, ("name",)).get("name"),
+        )[:MAX_REUSE_CANDIDATES]
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if python_code_key(
+                    candidate.python_code.code,
+                    candidate.python_code.libraries,
+                    candidate.python_code.entrypoint,
+                )
+                == code_key
+            ),
+            None,
+        )
+
+    @staticmethod
+    def validated_python_code(python_code_data: dict) -> dict:
+        """Return exported python code as create would store it, defaults filled in."""
+        serializer = PythonCodeImportSerializer(data=python_code_data)
+        serializer.is_valid(raise_exception=True)
+        return {
+            "global_kwargs": PythonCode._meta.get_field("global_kwargs").get_default(),
+            **serializer.validated_data,
+        }
 
     def _create_python_code(self, python_code_data: dict) -> PythonCode:
         serializer = PythonCodeImportSerializer(data=python_code_data)

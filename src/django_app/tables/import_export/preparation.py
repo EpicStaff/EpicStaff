@@ -1,16 +1,24 @@
 """The boundary step both import services run before they write anything."""
 
 from agents.models import SurfacePlace, ToolMode
-from django.db import models
 from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
+from tables.import_export.serializers.agent_definition import AgentDefinitionImportSerializer
+from tables.import_export.serializers.mcp_tools import McpToolImportSerializer
+from tables.import_export.serializers.python_tools import (
+    PythonCodeImportSerializer,
+    PythonCodeToolImportSerializer,
+)
+from tables.import_export.serializers.surface import SurfaceImportSerializer
+from tables.import_export.strategies.agent_definition import (
+    COMPARED_FIELDS as AGENT_COMPARED_FIELDS,
+)
 from tables.import_export.strategies.mcp_tools import COMPARED_FIELDS as MCP_COMPARED_FIELDS
 from tables.import_export.strategies.python_tools import (
     COMPARED_FIELDS as PYTHON_TOOL_COMPARED_FIELDS,
 )
-from tables.import_export.utils import nest_owned_surface_entries
-from tables.models import McpTool, PythonCode, PythonCodeTool
+from tables.import_export.utils import import_values, nest_owned_surface_entries
 
 
 def prepare_import_data(export_data: dict) -> dict:
@@ -24,24 +32,22 @@ def prepare_import_data(export_data: dict) -> dict:
             or AgentDefinition ids repeat.
     """
     errors = [
-        *_surface_entry_errors(export_data),
-        *_tool_entry_errors(export_data),
-        *_agent_entry_errors(export_data),
+        *_lookup_value_errors(export_data),
+        *_surface_tool_errors(export_data),
+        *_agent_surface_errors(export_data),
     ]
     if errors:
         raise ValidationError({"detail": errors})
     return nest_owned_surface_entries(export_data)
 
 
-def _surface_entry_errors(export_data: dict) -> list[str]:
-    """List the Surface entries the reuse lookups cannot compare reliably.
+def _surface_tool_errors(export_data: dict) -> list[str]:
+    """List the Surface entries whose tool lists the import cannot store.
 
-    `instructions` and tool `mode` are text columns: a number in the file would
-    be compared in SQL as its string form but stored by the import as something
-    else, silently forking a copy on every import. Tool rows are bulk-created
-    without model validation, so a mode outside ToolMode would be stored (or
-    fail as a 500), and a tool listed twice would collapse into one row while
-    the reuse lookup still counts two -- never matching again.
+    No serializer covers them: tool rows are bulk-created without model
+    validation, so a mode outside ToolMode would be stored (or fail as a 500),
+    and a tool listed twice would give the lookup two (id, mode) pairs against
+    the one row stored -- never matching again.
     """
     tool_id_fields = {
         EntityType.PYTHON_CODE_TOOL: "python_tool_id",
@@ -50,13 +56,8 @@ def _surface_entry_errors(export_data: dict) -> list[str]:
     errors = []
     for entry in export_data.get(EntityType.SURFACE, []):
         if not isinstance(entry, dict):
-            errors.append("Surface entry is not an object.")
             continue
         entry_id = entry.get("id")
-        if not _is_int(entry_id):
-            errors.append(f"Surface {entry_id}: id must be an integer.")
-        if "instructions" in entry and not isinstance(entry["instructions"], str):
-            errors.append(f"Surface {entry_id}: instructions must be text.")
         tools = entry.get("tools", {})
         if not isinstance(tools, dict):
             errors.append(f"Surface {entry_id}: tools must be an object.")
@@ -87,27 +88,27 @@ def _surface_entry_errors(export_data: dict) -> list[str]:
     return errors
 
 
-def _agent_entry_errors(export_data: dict) -> list[str]:
+def _agent_surface_errors(export_data: dict) -> list[str]:
     """List the AgentDefinition entries the import cannot place surfaces for.
 
-    An export always writes `owned_surfaces` and `default_surfaces` as lists; a
-    null or malformed one would fail mid-import as a 500. A default row may not
-    point at a surface another agent in the file owns -- the state the agents
-    API rejects. A surface listed by several agents belongs to the first, as in
-    nest_owned_surface_entries.
+    An export always writes `owned_surfaces` and `default_surfaces` as lists and
+    llm configs as ids; a null list or a malformed value would fail mid-import
+    as a 500. A default row may not point at a surface another agent in the file
+    owns -- the state the agents API rejects. A surface listed by several agents
+    belongs to the first, as in nest_owned_surface_entries.
     """
     errors = []
     owner_by_surface_id = {}
     default_rows_by_agent = []
     for entry in export_data.get(EntityType.AGENT_DEFINITION, []):
-        if not isinstance(entry, dict):
-            errors.append("AgentDefinition entry is not an object.")
-            continue
-        agent_id = entry.get("id")
-        label = f"AgentDefinition {agent_id}"
+        agent_id = entry.get("id") if isinstance(entry, dict) else None
         if not _is_int(agent_id):
-            errors.append(f"{label}: id must be an integer.")
             continue
+        label = f"AgentDefinition {agent_id}"
+        for llm_config_field in ("llm_config", "fcm_llm_config"):
+            llm_config_id = entry.get(llm_config_field)
+            if llm_config_id is not None and not _is_int(llm_config_id):
+                errors.append(f"{label}: {llm_config_field} must be an integer id or null.")
 
         owned_surface_ids = entry.get("owned_surfaces", [])
         if not isinstance(owned_surface_ids, list) or not all(
@@ -148,97 +149,51 @@ def _is_int(value) -> bool:
     return type(value) is int
 
 
-def _json_types_for(field: models.Field) -> tuple[type, ...] | None:
-    """Return the JSON value types an export writes for `field`; None for any."""
-    if isinstance(field, models.JSONField):
-        return None
-    if isinstance(field, models.BooleanField):
-        return (bool,)
-    if isinstance(field, models.FloatField):
-        return (int, float)
-    if isinstance(field, models.IntegerField):
-        return (int,)
-    if isinstance(field, models.CharField | models.TextField):
-        return (str,)
-    raise TypeError(f"No import type rule for {type(field).__name__} {field.name}.")
-
-
-def _field_rules(model, field_names) -> dict[str, tuple[bool, tuple[type, ...] | None]]:
-    """Map each field to (accepts None, accepted JSON types), built once at import."""
-    rules = {}
-    for field_name in field_names:
-        field = model._meta.get_field(field_name)
-        rules[field_name] = (field.null, _json_types_for(field))
-    return rules
-
-
-# Fields the reuse lookups compare, checked against the model field types. Built
-# at module load, so a compared field without a type rule fails at startup.
-# A python code entry must carry code and libraries; its other fields are
-# optional, as the import serializer allows.
-_TOOL_FIELD_RULES = {
-    EntityType.PYTHON_CODE_TOOL: _field_rules(
-        PythonCodeTool, ("name", *PYTHON_TOOL_COMPARED_FIELDS)
+# The values each reuse lookup compares, validated by the strategy's import
+# serializer: the lookup compares them as create_entity would store them, so a
+# value the serializer rejects is a 400 here rather than a failure mid-import.
+_LOOKUP_FIELDS = {
+    EntityType.PYTHON_CODE_TOOL: (
+        PythonCodeToolImportSerializer,
+        ("name", *PYTHON_TOOL_COMPARED_FIELDS),
     ),
-    EntityType.MCP_TOOL: _field_rules(McpTool, ("name", *MCP_COMPARED_FIELDS)),
+    EntityType.MCP_TOOL: (McpToolImportSerializer, ("name", *MCP_COMPARED_FIELDS)),
+    EntityType.SURFACE: (SurfaceImportSerializer, ("name", "instructions")),
+    EntityType.AGENT_DEFINITION: (
+        AgentDefinitionImportSerializer,
+        ("name", *AGENT_COMPARED_FIELDS),
+    ),
 }
-_PYTHON_CODE_FIELD_RULES = _field_rules(
-    PythonCode, ("code", "libraries", "entrypoint", "global_kwargs")
-)
-_REQUIRED_PYTHON_CODE_FIELDS = ("code", "libraries")
 
 
-def _tool_entry_errors(export_data: dict) -> list[str]:
-    """List the tool entries whose compared values the lookups cannot use.
+def _lookup_value_errors(export_data: dict) -> list[str]:
+    """List malformed entries: not an object, no integer id, or a rejected value.
 
-    Values must have the JSON type an export writes for the model field: text
-    for text fields, a number (not a bool) for numeric ones, a bool for boolean
-    ones. Django would otherwise coerce them differently from the import
-    serializer, or raise inside the lookup (a 500) for "yes" or "abc".
+    A rejected value is one the entity's import serializer refuses for a field
+    the reuse lookup compares.
     """
     errors = []
-    for entity_type, field_rules in _TOOL_FIELD_RULES.items():
+    for entity_type, (serializer_class, field_names) in _LOOKUP_FIELDS.items():
         for entry in export_data.get(entity_type, []):
             if not isinstance(entry, dict):
                 errors.append(f"{entity_type} entry is not an object.")
                 continue
             label = f"{entity_type} {entry.get('id')}"
-            errors.extend(_field_type_errors(label, field_rules, entry))
-            if entity_type != EntityType.PYTHON_CODE_TOOL:
-                continue
-            python_code = entry.get("python_code")
-            if not isinstance(python_code, dict):
-                errors.append(f"{label}: python_code must be an object.")
-                continue
-            errors.extend(
-                _field_type_errors(
-                    f"{label} python_code",
-                    _PYTHON_CODE_FIELD_RULES,
-                    python_code,
-                    required=_REQUIRED_PYTHON_CODE_FIELDS,
-                )
-            )
+            if not _is_int(entry.get("id")):
+                errors.append(f"{label}: id must be an integer.")
+            try:
+                import_values(serializer_class, entry, field_names)
+            except ValidationError as error:
+                errors.append(f"{label}: {_field_messages(error.detail)}")
+            if entity_type == EntityType.PYTHON_CODE_TOOL:
+                python_code = PythonCodeImportSerializer(data=entry.get("python_code"))
+                if not python_code.is_valid():
+                    errors.append(f"{label} python_code: {_field_messages(python_code.errors)}")
     return errors
 
 
-def _field_type_errors(
-    label: str, field_rules: dict, data: dict, required: tuple[str, ...] = ()
-) -> list[str]:
-    errors = []
-    for field_name, (accepts_none, json_types) in field_rules.items():
-        if field_name not in data:
-            if field_name in required:
-                errors.append(f"{label}: {field_name} is required.")
-            continue
-        value = data[field_name]
-        if value is None:
-            fits = accepts_none
-        elif json_types is None:
-            fits = True
-        else:
-            fits = isinstance(value, json_types) and (
-                bool in json_types or not isinstance(value, bool)
-            )
-        if not fits:
-            errors.append(f"{label}: {field_name} has the wrong type.")
-    return errors
+def _field_messages(errors_by_field: dict) -> str:
+    return "; ".join(
+        f"{field_name}: {' '.join(str(message) for message in messages)}"
+        for field_name, messages in errors_by_field.items()
+    )

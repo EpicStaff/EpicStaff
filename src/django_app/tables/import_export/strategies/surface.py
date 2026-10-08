@@ -1,15 +1,16 @@
 from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
-from django.db.models import Exists, OuterRef, Q, QuerySet
+from django.db.models import Q
 
+from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.surface import SurfaceImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
-    create_filters,
+    compared_values,
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
-    related_row_count,
+    import_values,
     resolve_import_organization,
 )
 
@@ -66,58 +67,32 @@ class SurfaceStrategy(EntityImportExportStrategy):
         # Entries that reach this method are shared: nest_owned_surface_entries
         # hands owned ones to AgentDefinitionStrategy. A shared entry reuses only
         # a shared row -- an agent's owned surface may not be listed by another
-        # agent or node, and would be deleted together with its owner.
+        # agent or node, and would be deleted together with its owner. SQL
+        # narrows on stored columns; the tool sets are compared in Python.
         content_key = self.entry_content_key(data, id_mapper)
-        shared_surfaces = Surface.objects.filter(
-            self.get_org_scope_q(org_id), owner_agent__isnull=True
+        candidates = filter_by_name_or_renamed_copy(
+            Surface.objects.filter(
+                self.get_org_scope_q(org_id),
+                owner_agent__isnull=True,
+                instructions=content_key[0],
+            ).prefetch_related("python_tools", "mcp_tools"),
+            import_values(self.serializer_class, data, ("name",)).get("name"),
+        )[:MAX_REUSE_CANDIDATES]
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if self.surface_content_key(candidate) == content_key
+            ),
+            None,
         )
-        equivalent_surfaces = self.filter_equivalent_content(shared_surfaces, content_key)
-        return filter_by_name_or_renamed_copy(equivalent_surfaces, data.get("name")).first()
-
-    def filter_equivalent_content(self, queryset: QuerySet, content_key: tuple) -> QuerySet:
-        """Narrow a Surface queryset to rows with the content `content_key` describes.
-
-        Runs entirely in SQL, so a large name family of renamed copies is never
-        loaded: equal active tool-row counts plus one existence check per
-        exported (tool, mode) pair is exact set equality, since a surface holds
-        each tool at most once.
-        """
-        instructions, python_tool_pairs, mcp_tool_pairs = content_key
-        filters, null_filters = create_filters({"instructions": instructions})
-        queryset = (
-            queryset.filter(**filters, **null_filters)
-            .alias(
-                python_tool_count=related_row_count(SurfacePythonTool.objects.all(), "surface"),
-                mcp_tool_count=related_row_count(SurfaceMcpTool.objects.all(), "surface"),
-            )
-            .filter(python_tool_count=len(python_tool_pairs), mcp_tool_count=len(mcp_tool_pairs))
-        )
-        for python_tool_id, mode in python_tool_pairs:
-            queryset = queryset.filter(
-                Exists(
-                    SurfacePythonTool.objects.filter(
-                        surface=OuterRef("pk"), python_tool_id=python_tool_id, mode=mode
-                    )
-                )
-            )
-        for mcp_tool_id, mode in mcp_tool_pairs:
-            queryset = queryset.filter(
-                Exists(
-                    SurfaceMcpTool.objects.filter(
-                        surface=OuterRef("pk"), mcp_tool_id=mcp_tool_id, mode=mode
-                    )
-                )
-            )
-        return queryset
 
     def entry_content_key(self, data: dict, id_mapper: IDMapper) -> tuple:
         """Return the content an exported surface entry is matched on.
 
-        Instructions plus the remapped python and MCP tool sets with modes; equal
-        to `surface_content_key` of an equivalent stored surface. Missing
-        instructions compare as the model default, which create_entity stores.
-        Entries are text-typed by prepare_import_data at the import
-        boundary, so SQL and this key compare the same values.
+        Instructions as the import serializer stores them (the model default
+        when missing) plus the remapped python and MCP tool sets with modes;
+        equal to `surface_content_key` of an equivalent stored surface.
         """
         tools = data.get("tools", {})
         python_tool_pairs = self._remap_tool_set(
@@ -132,8 +107,9 @@ class SurfaceStrategy(EntityImportExportStrategy):
             EntityType.MCP_TOOL,
             id_mapper,
         )
+        instructions = compared_values(Surface, self.serializer_class, data, ("instructions",))
         return (
-            data.get("instructions", Surface._meta.get_field("instructions").get_default()),
+            instructions["instructions"],
             frozenset(python_tool_pairs),
             frozenset(mcp_tool_pairs),
         )

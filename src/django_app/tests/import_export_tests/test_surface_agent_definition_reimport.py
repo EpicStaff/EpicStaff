@@ -29,7 +29,6 @@ from agents.models import (
     ToolMode,
 )
 from tables.import_export.enums import EntityType
-from tables.exceptions import ImportedAgentSurfacesChangedError
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
@@ -355,6 +354,29 @@ class TestLegacyToolEntries:
             == created_tool_id
         )
         assert PythonCodeTool.objects.filter(org=default_org).count() == tools_before + 1
+
+    @pytest.mark.parametrize(
+        "stored, exported, reused",
+        [
+            ({"global_kwargs": {"flag": 1}}, {"global_kwargs": {"flag": True}}, False),
+            ({"global_kwargs": {"flag": 1}}, {"global_kwargs": {"flag": 1}}, True),
+            ({"entrypoint": ""}, {"entrypoint": ""}, False),
+            ({"code": "  def main(): return 1"}, {"code": "def main(): return 1"}, False),
+            ({"code": "def main(): return 1\n\n"}, {"code": "def main(): return 1"}, True),
+        ],
+    )
+    def test_python_code_reused_only_when_it_runs_the_same(
+        self, stored, exported, reused, agent_flow, export_file, import_file
+    ):
+        python_tool = agent_flow["python_tool"]
+        PythonCode.objects.filter(id=python_tool.python_code_id).update(**stored)
+        data = json.loads(export_file)
+        data[EntityType.PYTHON_CODE_TOOL][0]["python_code"].update(exported)
+
+        id_mapper = import_file(json.dumps(data))
+
+        mapped_id = id_mapper.get(EntityType.PYTHON_CODE_TOOL, python_tool.id)
+        assert (mapped_id == python_tool.id) is reused
 
     def test_agent_entry_missing_defaulted_fields_reuses_the_agent(
         self, agent_flow, export_service, import_file, default_org
@@ -1154,9 +1176,10 @@ class TestDuplicateAgentDefinitionIds:
 
 
 @pytest.mark.django_db
-class TestNonTextSurfaceValuesRejected:
-    """A hand-edited file with a number where text belongs is rejected before
-    anything is written, instead of forking a copy on every import."""
+class TestHandEditedSurfaceValues:
+    """A number for instructions is stored as text by the import serializer and
+    compared as that text, so it imports once and is reused after. A mode the
+    surface tools cannot store is rejected before anything is written."""
 
     def _set_instructions(self, agent_flow, data):
         self._owned_entry(agent_flow, data)["instructions"] = 5
@@ -1176,12 +1199,28 @@ class TestNonTextSurfaceValuesRejected:
             if entry["id"] == agent_flow["owned_surface"].id
         )
 
-    @pytest.mark.parametrize("edit", ["_set_instructions", "_set_mode", "_set_shared_instructions"])
-    def test_import_is_rejected_and_writes_nothing(
+    @pytest.mark.parametrize("edit", ["_set_instructions", "_set_shared_instructions"])
+    def test_numeric_instructions_import_once_then_reuse(
         self, edit, agent_flow, export_file, import_file, default_org
     ):
         data = json.loads(export_file)
         getattr(self, edit)(agent_flow, data)
+        hand_edited_file = json.dumps(data)
+        agent_state_before = _surface_state(agent_flow["agent"])
+
+        import_file(hand_edited_file)
+        counts_after_first_import = _org_counts(default_org)
+        import_file(hand_edited_file)
+
+        assert _org_counts(default_org) == counts_after_first_import
+        assert Surface.objects.filter(organization=default_org, instructions="5").count() == 1
+        assert _surface_state(agent_flow["agent"]) == agent_state_before
+
+    def test_unknown_mode_is_rejected_and_writes_nothing(
+        self, agent_flow, export_file, import_file, default_org
+    ):
+        data = json.loads(export_file)
+        self._set_mode(agent_flow, data)
         agent_state_before = _surface_state(agent_flow["agent"])
         counts_before = _org_counts(default_org)
         graphs_before = Graph.objects.count()
@@ -1199,7 +1238,7 @@ class TestNonTextSurfaceValuesRejected:
             org_id=default_org.id,
         )
         data = json.loads(json.dumps(export_result.data))
-        self._set_instructions(agent_flow, data)
+        self._set_mode(agent_flow, data)
         target_graph = Graph.objects.create(
             name="target flow", metadata={"nodes": [], "edges": []}, org=default_org
         )
@@ -1216,25 +1255,6 @@ class TestNonTextSurfaceValuesRejected:
 
 @pytest.mark.django_db
 class TestReusedAgentSurfaceConflicts:
-    def test_surfaces_changed_between_match_and_mapping_raise_conflict(
-        self, agent_flow, export_file, import_file, default_org, monkeypatch
-    ):
-        # Stands in for a concurrent edit: the lookup returns an agent whose
-        # owned surfaces no longer pair with the file's.
-        stale_match = AgentDefinition.objects.create(
-            organization=default_org, name="stale match"
-        )
-        strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
-        monkeypatch.setattr(strategy, "find_existing", lambda *args, **kwargs: stale_match)
-        counts_before = _org_counts(default_org)
-        graphs_before = Graph.objects.count()
-
-        with pytest.raises(ImportedAgentSurfacesChangedError):
-            import_file(export_file)
-
-        assert _org_counts(default_org) == counts_before
-        assert Graph.objects.count() == graphs_before
-
     def test_default_row_on_another_agents_equivalent_surface_does_not_count(
         self, owned_surface_default_flow, export_service, import_file, default_org
     ):
