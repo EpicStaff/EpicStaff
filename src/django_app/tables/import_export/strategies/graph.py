@@ -21,11 +21,9 @@ from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.serializers.graph import (
-    ConditionalEdgeImportSerializer,
     EdgeImportSerializer,
     GraphImportSerializer,
 )
-from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.strategies.nodes.node_maps import (
     NODE_RELATIONS,
@@ -41,7 +39,7 @@ from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
-GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list", "conditional_edge_list")
+GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
 
 
 class GraphStrategy(EntityImportExportStrategy):
@@ -178,7 +176,7 @@ class GraphStrategy(EntityImportExportStrategy):
 
         nodes_data = import_data.pop("nodes", [])
         edges_data = import_data.pop("edge_list", [])
-        conditional_edges_data = import_data.pop("conditional_edge_list", [])
+        self._discard_conditional_edges(import_data)
         labels_data = import_data.pop("labels", [])
 
         import_data["org"] = org_id
@@ -202,7 +200,6 @@ class GraphStrategy(EntityImportExportStrategy):
             {
                 "nodes": nodes_data,
                 "edge_list": edges_data,
-                "conditional_edge_list": conditional_edges_data,
             },
             id_mapper,
             old_graph_id=old_id,
@@ -339,17 +336,15 @@ class GraphStrategy(EntityImportExportStrategy):
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
-        conditional_edges_data = data.get("conditional_edge_list", [])
 
         node_mapper = IDMapper()
 
         # Pass 1: create all nodes and build the old→new node ID mapping
         self._create_nodes(nodes_data, graph, node_mapper, id_mapper, old_graph_id, user)
 
-        # Pass 2: create edges/conditional-edges with remapped node IDs,
+        # Pass 2: create edges with remapped node IDs,
         # then fix stale node-ID references in decision tables and metadata
         self._create_edges(edges_data, graph, node_mapper)
-        self._create_conditional_edges(conditional_edges_data, graph, node_mapper)
         self._remap_decision_table_references(graph, node_mapper)
         self._remap_classification_decision_table_references(graph, node_mapper)
 
@@ -484,35 +479,17 @@ class GraphStrategy(EntityImportExportStrategy):
             serializer.is_valid(raise_exception=True)
             serializer.save(graph=graph)
 
-    def _create_conditional_edges(
-        self, conditional_edges_data: list, graph: Graph, id_mapper: IDMapper
-    ):
-        for edge_data in conditional_edges_data:
-            python_code_data = edge_data.pop("python_code", None)
-
-            python_code_serializer = PythonCodeImportSerializer(data=python_code_data)
-            python_code_serializer.is_valid(raise_exception=True)
-            python_code = python_code_serializer.save()
-
-            edge_data["graph"] = graph.id
-            edge_data["python_code_id"] = python_code.id
-            if edge_data["source_node_id"] is not None:
-                # ConditionalEdge.clean() rejects a source that does not resolve,
-                # NULL included, so a branch whose source was skipped is dropped
-                # rather than saved with a blank source.
-                source_id = id_mapper.get_or_none(NODE_MAPPING_KEY, edge_data["source_node_id"])
-                if source_id is None:
-                    logger.warning(
-                        "Skipping conditional edge from {} during import: source "
-                        "node was not imported",
-                        edge_data["source_node_id"],
-                    )
-                    continue
-                edge_data["source_node_id"] = source_id
-
-            serializer = ConditionalEdgeImportSerializer(data=edge_data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
+    @staticmethod
+    def _discard_conditional_edges(import_data: dict) -> None:
+        """Drop conditional edges from an export made before they were removed."""
+        conditional_edges = import_data.pop("conditional_edge_list", None)
+        if conditional_edges:
+            logger.info(
+                "Dropping {} conditional edge(s) from imported flow {!r}: "
+                "conditional edges are no longer supported",
+                len(conditional_edges),
+                import_data.get("name"),
+            )
 
     def _remap_node_reference(self, old_node_id, node_mapper: IDMapper):
         """

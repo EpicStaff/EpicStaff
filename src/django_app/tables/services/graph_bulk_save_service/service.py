@@ -5,11 +5,8 @@ from django.db import connection, transaction
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
 from tables.models.base_models import BaseGlobalNode
-from tables.models.graph_models import ConditionalEdge, Edge
-from tables.serializers.graph_bulk_save_serializers import (
-    ConditionalEdgeBulkSerializer,
-    EdgeBulkSerializer,
-)
+from tables.models.graph_models import Edge
+from tables.serializers.graph_bulk_save_serializers import EdgeBulkSerializer
 from tables.services.graph_bulk_save_service.data_types import (
     BuildSaveableResult,
     EdgeListValidationResult,
@@ -23,7 +20,6 @@ from tables.services.graph_bulk_save_service.registry import (
     NodeTypeConfig,
 )
 from tables.services.graph_bulk_save_service.saveables import (
-    _ConditionalEdgeSaveable,
     _EdgeSaveable,
     _NodeSaveable,
 )
@@ -108,17 +104,6 @@ class GraphBulkSaveService:
         else:
             edge_saveables.extend(edge_result.saveables)
             edge_refs_to_validate |= edge_result.real_node_ids
-
-        cond_result = self._validate_conditional_edge_list(
-            graph,
-            validated_input.get("conditional_edge_list", []),
-            payload_temp_ids,
-        )
-        if cond_result.errors:
-            all_errors["conditional_edge_list"] = cond_result.errors
-        else:
-            edge_saveables.extend(cond_result.saveables)
-            edge_refs_to_validate |= cond_result.real_node_ids
 
         # Batch-validate all real (non-temp) node refs across edge types and
         # decision table routing fields combined.
@@ -305,64 +290,6 @@ class GraphBulkSaveService:
                     continue
                 result.saveables.append(
                     _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=db_instance)
-                )
-
-        return result
-
-    def _validate_conditional_edge_list(
-        self,
-        graph: Graph,
-        incoming_list: list[dict],
-        payload_temp_ids: set[str],
-    ) -> EdgeListValidationResult:
-        """Validate all ConditionalEdge items."""
-        result = EdgeListValidationResult()
-
-        db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
-
-        for index, item_data in enumerate(incoming_list):
-            item_data = dict(item_data)
-            item_id = item_data.get("id")
-
-            source_parsed = self._parse_node_ref(
-                item_data, "source_node_id", "source_temp_id", payload_temp_ids, index
-            )
-            if source_parsed.error:
-                result.errors.append(source_parsed.error)
-                continue
-
-            if source_parsed.ref and not source_parsed.ref.is_temp:
-                result.real_node_ids.add(source_parsed.ref.value)
-
-            if item_id is None:
-                item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(data=item_data, context=self._serializer_context)
-                if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
-                    continue
-                result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=None)
-                )
-            else:
-                db_instance = db_map.get(item_id)
-                if db_instance is None:
-                    result.errors.append(
-                        {
-                            "index": index,
-                            "errors": f"id={item_id} not found in graph {graph.id}",
-                        }
-                    )
-                    continue
-
-                item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(
-                    db_instance, data=item_data, context=self._serializer_context
-                )
-                if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
-                    continue
-                result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=db_instance)
                 )
 
         return result

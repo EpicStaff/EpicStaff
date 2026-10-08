@@ -23,11 +23,8 @@ from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
-    ConditionalEdge,
-    Edge,
     Graph,
     PythonNode,
-    StartNode,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
@@ -54,7 +51,6 @@ from tables.services.secrets.usage_sources import (
     HITS_ASSEMBLERS,
     NODE_TYPE_TELEGRAM_TRIGGER,
     READABLE_ALWAYS,
-    SHAPE_EDGE,
     SHAPE_NAMED,
     SHAPE_NODE,
     SHAPE_PROJECTIONS,
@@ -62,7 +58,6 @@ from tables.services.secrets.usage_sources import (
 )
 from tables.services.secrets.python_code_sites import (
     NODE_TYPE_CLASSIFICATION_TABLE,
-    NODE_TYPE_EDGE,
     NODE_TYPE_PYTHON,
     NODE_TYPE_WEBHOOK_TRIGGER,
 )
@@ -543,57 +538,6 @@ class TestPythonCodeToolSource:
 
 
 @pytest.mark.django_db
-class TestConditionalEdgeSource:
-    def test_edge_is_named_after_its_source_node(self, org, secret, ids):
-        """A ConditionalEdge has no name of its own, so it borrows the identity of
-        the node it branches off — the same one converter_service uses. name_field
-        is None in the registry, which is what selects that branch."""
-        graph = Graph.objects.create(name="Branching flow", org=org)
-        start = StartNode.objects.create(graph=graph, variables={"variables": {}})
-        router = PythonNode.objects.create(
-            graph=graph,
-            node_name="route_by_tier",
-            python_code=PythonCode.objects.create(
-                code="def main(**kwargs):\n    return 1\n"
-            ),
-        )
-        Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=router.pk)
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
-        )
-
-        source = _source(model=ConditionalEdge)
-        assert source.name_field is None
-        hits = _hits(source=source, org_id=org.id, secret_ids=ids)
-
-        assert len(hits) == 1
-        hit = hits[0]
-        assert hit.secret_id == secret.pk
-        assert hit.category == CATEGORY_FLOWS
-        assert hit.resource_id == graph.pk
-        assert hit.node_type == NODE_TYPE_EDGE
-        # The plain node name, with no " #<id>" suffix — every other flow source
-        # reports node_name verbatim and the dialog must read consistently.
-        assert hit.node_name == "route_by_tier"
-
-    def test_edge_with_no_source_node_falls_back_to_its_own_id(self, org, secret, ids):
-        graph = Graph.objects.create(name="Orphan branch flow", org=org)
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        edge = ConditionalEdge.objects.create(
-            graph=graph, source_node_id=None, python_code=edge_code
-        )
-
-        hits = _hits(
-            source=_source(model=ConditionalEdge), org_id=org.id, secret_ids=ids
-        )
-
-        assert [hit.node_name for hit in hits] == [f"Conditional edge #{edge.pk}"]
-
-
-@pytest.mark.django_db
 class TestCountPairs:
     """The counts projection. Two columns, and the key carries the dedup rule.
 
@@ -700,22 +644,14 @@ class TestDetailShapes:
     def test_every_source_lands_in_exactly_one_known_shape(self):
         shapes = [source.detail_shape for source in USAGE_SOURCES]
 
-        assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE}
+        assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE}
         # 4 configs + 4 provider-specific realtime configs (OpenAIRealtimeConfig x2,
         # ElevenLabsRealtimeConfig, GeminiRealtimeConfig) + McpTool + PythonCodeTool +
         # TwilioChannel + NgrokWebhookConfig + WebhookTriggerAuth / 5 flow nodes
-        # (Telegram, Python, Webhook, CDT pre, CDT post) / ConditionalEdge.
+        # (Telegram, Python, Webhook, CDT pre, CDT post).
         assert shapes.count(SHAPE_NAMED) == 13
         assert shapes.count(SHAPE_NODE) == 5
-        assert shapes.count(SHAPE_EDGE) == 1
         assert set(HITS_ASSEMBLERS) == set(SHAPE_PROJECTIONS) == set(shapes)
-
-    def test_the_edge_shape_is_conditional_edge_alone(self):
-        edges = [s for s in USAGE_SOURCES if s.detail_shape == SHAPE_EDGE]
-
-        assert [source.model for source in edges] == [ConditionalEdge]
-        # It is its own shape because it has no name of its own to project.
-        assert edges[0].name_field is None
 
     def test_no_named_source_is_a_flow_and_no_flow_source_is_named(self):
         for source in USAGE_SOURCES:
@@ -742,7 +678,7 @@ class TestDetailShapes:
                 assert source.resource_type is None, source.model
 
     @pytest.mark.parametrize(
-        "shape,columns", [(SHAPE_NAMED, 4), (SHAPE_NODE, 6), (SHAPE_EDGE, 7)]
+        "shape,columns", [(SHAPE_NAMED, 4), (SHAPE_NODE, 6)]
     )
     def test_a_shape_projects_a_consistent_column_count(self, org, ids, shape, columns):
         """Differing column counts within a group make the union a hard error."""
@@ -758,7 +694,7 @@ class TestDetailShapes:
     def test_each_group_unions_and_executes(self, org, ids):
         """Compiled *and* run: mixed CharField/TextField name columns raise at compile
         time, an incompatible union at execution time."""
-        for shape in (SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE):
+        for shape in (SHAPE_NAMED, SHAPE_NODE):
             sources = [s for s in USAGE_SOURCES if s.detail_shape == shape]
             first, *rest = [
                 getattr(source, SHAPE_PROJECTIONS[shape])(
@@ -774,14 +710,14 @@ class TestDetailShapes:
 
 @pytest.mark.django_db
 def test_registry_covers_every_declared_source():
-    """Nineteen sources are registered: every FK-declared source plus every source PYTHON_CODE_SITES derives."""
+    """Eighteen sources are registered: every FK-declared source plus every source PYTHON_CODE_SITES derives."""
     # Thirteen FK-declared: eight original + one WebhookTriggerAuth entry + four
-    # provider-specific realtime config entries. Six derived from PYTHON_CODE_SITES. A
+    # provider-specific realtime config entries. Five derived from PYTHON_CODE_SITES. A
     # source added to the module but forgotten in the registry is invisible to both
     # endpoints, which is a silent under-report.
     from tables.services.secrets.python_code_sites import PYTHON_CODE_SITES
 
-    assert len(USAGE_SOURCES) == 19
+    assert len(USAGE_SOURCES) == 18
     # The derived half tracks PYTHON_CODE_SITES automatically; assert the link rather
     # than the number, so adding a Python-carrying model cannot break this test while
     # leaving the dialog under-reporting.

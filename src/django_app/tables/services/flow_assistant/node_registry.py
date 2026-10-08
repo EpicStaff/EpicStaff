@@ -21,7 +21,6 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     CrewNode,
     DecisionTableNode,
     EndNode,
@@ -36,7 +35,7 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 
-NodeNameSource = Literal["column", "property", "synthesized"]
+NodeNameSource = Literal["column", "property"]
 
 
 @dataclass(frozen=True)
@@ -54,16 +53,7 @@ class NodeTypeSpec:
         "column" when `node_name` is a real database column (safe to pass to
         `.only()`), "property" when it's a Python @property computed off the
         instance (StartNode, EndNode — passing "node_name" to `.only()` for
-        those raises FieldDoesNotExist), or "synthesized" when the model has
-        no `node_name` attribute at all, neither column nor property
-        (ConditionalEdge), so a display name must be built from the type
-        label and pk instead.
-    is_edge: True for types the rest of the platform treats as an edge, not
-        a node (currently only ConditionalEdge — see
-        graph_bulk_save_service/registry.py's EDGE_DELETE_CONFIGS). Such
-        types stay in the node index (useful for resolving edge endpoints)
-        but are excluded from node counts/listings and folded into edge
-        counts instead.
+        those raises FieldDoesNotExist).
     deprecated: True for types that new flows cannot create but existing
         graphs may still contain (currently only CrewNode, superseded by
         AgentNode/TaskNode).
@@ -73,7 +63,6 @@ class NodeTypeSpec:
     model: type
     related_name: str
     node_name_source: NodeNameSource = "column"
-    is_edge: bool = False
     deprecated: bool = False
 
     def only_fields(self) -> list[str]:
@@ -85,11 +74,8 @@ class NodeTypeSpec:
 
         For StartNode/EndNode, node_name is a @property returning a fixed
         string ("__start__" / "__end_node__") — getattr picks that up
-        unchanged. For ConditionalEdge, which has no node_name attribute at
-        all, this synthesizes "conditional_edge_{pk}".
+        unchanged.
         """
-        if self.node_name_source == "synthesized":
-            return f"{self.label}_{node.pk}"
         return getattr(node, "node_name", "") or f"{self.label}_{node.pk}"
 
 
@@ -114,13 +100,6 @@ FLOW_ASSISTANT_NODE_TYPES: tuple[NodeTypeSpec, ...] = (
     NodeTypeSpec("agent", AgentNode, "agent_node_list"),
     NodeTypeSpec("task", TaskNode, "task_node_list"),
     NodeTypeSpec("schedule_trigger", ScheduleTriggerNode, "schedule_trigger_node_list"),
-    NodeTypeSpec(
-        "conditional_edge",
-        ConditionalEdge,
-        "conditional_edge_list",
-        node_name_source="synthesized",
-        is_edge=True,
-    ),
     # DEPRECATED: CrewNode only exists in legacy graphs pre-dating
     # AgentNode/TaskNode. New flows cannot create one, but the assistant
     # must still be able to describe existing ones.

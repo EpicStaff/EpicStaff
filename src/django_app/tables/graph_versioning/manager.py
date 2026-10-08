@@ -1,4 +1,3 @@
-from collections import defaultdict
 from copy import deepcopy
 
 from django.db import transaction
@@ -16,7 +15,6 @@ from tables.import_export.strategies.graph import GraphStrategy
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
-    ConditionalEdge,
     Graph,
     KeyValueNode,
     PythonCode,
@@ -43,15 +41,14 @@ class GraphVersioningManager:
 
     def create_snapshot(self, graph: Graph) -> dict:
         """
-        Serialize the graph's internal state (metadata, nodes, edges,
-        conditional edges) into a JSON-serializable dict.
+        Serialize the graph's internal state (metadata, nodes, edges)
+        into a JSON-serializable dict.
         """
         return self._graph_strategy.export_entity(graph)
 
     def collect_secret_declarations(self, *, graph: Graph) -> dict:
         """Which secret names each of this graph's Python-code sites declares."""
         nodes: dict[str, dict[str, list[str]]] = {}
-        conditional_edges: list[dict] = []
 
         for site in GRAPH_PYTHON_CODE_SITES:
             rows = (
@@ -66,14 +63,10 @@ class GraphVersioningManager:
                 names = sorted(secret.name for secret in python_code.secrets.all())
                 if not names:
                     continue
-                if site.model is ConditionalEdge:
-                    conditional_edges.append({"source_node_id": row.source_node_id, "names": names})
-                else:
-                    nodes.setdefault(str(row.pk), {})[site.code_field] = names
+                nodes.setdefault(str(row.pk), {})[site.code_field] = names
 
         return {
             "nodes": nodes,
-            "conditional_edges": conditional_edges,
             "telegram": self._collect_telegram_secrets(graph=graph),
         }
 
@@ -95,18 +88,14 @@ class GraphVersioningManager:
         if not declarations:
             return []
 
+        # Snapshots saved while conditional edges existed also carry a
+        # "conditional_edges" key. Those edges are dropped by filter_snapshot, so
+        # their declarations have nothing to attach to and are not read here.
         warnings: list[dict] = []
         warnings.extend(
             self._restore_node_declarations(
                 graph=graph,
                 recorded=declarations.get("nodes") or {},
-                node_mapper=node_mapper,
-            )
-        )
-        warnings.extend(
-            self._restore_conditional_edge_declarations(
-                graph=graph,
-                recorded=declarations.get("conditional_edges") or [],
                 node_mapper=node_mapper,
             )
         )
@@ -179,7 +168,7 @@ class GraphVersioningManager:
     def _find_site_row(*, graph: Graph, node_id: int, code_field: str):
         """The restored row for one (node id, code field) pair."""
         for site in GRAPH_PYTHON_CODE_SITES:
-            if site.model is ConditionalEdge or site.code_field != code_field:
+            if site.code_field != code_field:
                 continue
             row = (
                 site.model.objects.filter(pk=node_id, graph=graph)
@@ -189,73 +178,6 @@ class GraphVersioningManager:
             if row is not None:
                 return row
         return None
-
-    def _restore_conditional_edge_declarations(
-        self, *, graph: Graph, recorded: list, node_mapper: IDMapper
-    ) -> list[dict]:
-        """Correlate edge declarations through the node each edge branches off."""
-        warnings: list[dict] = []
-        by_source: dict[object, list[dict]] = defaultdict(list)
-        for entry in recorded:
-            by_source[entry.get("source_node_id")].append(entry)
-
-        for old_source_id, entries in by_source.items():
-            names = sorted({name for entry in entries for name in entry["names"]})
-            label = f"conditional edge from node #{old_source_id}"
-
-            if old_source_id is None:
-                warnings.extend(
-                    self._dropped(
-                        names=names,
-                        node_name=label,
-                        reason_suffix=(
-                            "the edge has no source node, so it cannot be identified after restore."
-                        ),
-                    )
-                )
-                continue
-
-            new_source_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_source_id))
-            if new_source_id is None:
-                warnings.extend(
-                    self._dropped(
-                        names=names,
-                        node_name=label,
-                        reason_suffix=(
-                            "its source node was not restored, so the edge cannot be identified."
-                        ),
-                    )
-                )
-                continue
-
-            edges = list(
-                ConditionalEdge.objects.filter(
-                    graph=graph, source_node_id=new_source_id
-                ).select_related("python_code")
-            )
-            if len(edges) != 1 or len(entries) != 1:
-                warnings.extend(
-                    self._dropped(
-                        names=names,
-                        node_name=label,
-                        reason_suffix=(
-                            f"{len(entries)} recorded declaration(s) and "
-                            f"{len(edges)} restored edge(s) share that source "
-                            "node, so the pairing is ambiguous."
-                        ),
-                    )
-                )
-                continue
-
-            warnings.extend(
-                self._link(
-                    python_code=edges[0].python_code,
-                    names=names,
-                    org_id=graph.org_id,
-                    node_name=label,
-                )
-            )
-        return warnings
 
     def _restore_telegram_declarations(
         self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
@@ -655,27 +577,27 @@ class GraphVersioningManager:
 
         return kept_edges, warnings
 
-    def _filter_conditional_edges(
-        self, conditional_edges: list[dict], skipped_node_ids: set[int]
-    ) -> tuple[list[dict], list[dict]]:
-        """
-        Filter conditional edges based on non existing nodes
-        """
-        kept_cond_edges = []
-        warnings = []
-        for edge in conditional_edges:
-            source = edge.get("source_node_id")
-            if source in skipped_node_ids:
-                warnings.append(
-                    {
-                        "type": "edge_dropped",
-                        "reason": f"Conditional edge from {source} references a skipped node.",
-                    }
-                )
-                continue
-            kept_cond_edges.append(edge)
+    @staticmethod
+    def _discard_conditional_edges(snapshot: dict) -> list[dict]:
+        """Remove conditional-edge data from a snapshot saved before they were dropped.
 
-        return kept_cond_edges, warnings
+        Conditional edges are no longer supported, so their edges and secret
+        declarations are discarded in place. Returns one ``edge_dropped`` warning
+        when the snapshot had any edges, so the user learns branching was lost.
+        """
+        conditional_edges = snapshot.pop("conditional_edge_list", None) or []
+        (snapshot.get("secret_declarations") or {}).pop("conditional_edges", None)
+        if not conditional_edges:
+            return []
+        return [
+            {
+                "type": "edge_dropped",
+                "reason": (
+                    f"{len(conditional_edges)} conditional edge(s) were dropped: conditional "
+                    "edges are no longer supported. Use a Decision Table node for branching."
+                ),
+            }
+        ]
 
     def filter_snapshot(self, snapshot: dict, missing: dict) -> tuple[dict, list[dict]]:
         """
@@ -706,11 +628,7 @@ class GraphVersioningManager:
         filtered_snapshot["edge_list"] = kept_edges
         warnings.extend(edge_warnings)
 
-        kept_cond_edges, cond_warnings = self._filter_conditional_edges(
-            filtered_snapshot.get("conditional_edge_list", []), skipped_node_ids
-        )
-        filtered_snapshot["conditional_edge_list"] = kept_cond_edges
-        warnings.extend(cond_warnings)
+        warnings.extend(self._discard_conditional_edges(filtered_snapshot))
 
         return filtered_snapshot, warnings
 
@@ -801,7 +719,6 @@ class GraphVersioningManager:
 
         nodes_data = snapshot_copy.pop("nodes", [])
         edges_data = snapshot_copy.pop("edge_list", [])
-        cond_edges_data = snapshot_copy.pop("conditional_edge_list", [])
 
         with transaction.atomic():
             snapshot_copy["name"] = next_copy_name(Graph, org_id=org_id, base_name=new_graph_name)
@@ -820,7 +737,6 @@ class GraphVersioningManager:
             {
                 "nodes": nodes_data,
                 "edge_list": edges_data,
-                "conditional_edge_list": cond_edges_data,
             },
             id_mapper,
             user=user,

@@ -328,51 +328,6 @@ class Edge(BaseGraphEntity, SoftDeleteFields):
             raise ObjectDoesNotExist(f"End node with ID {self.end_node_id} not found.")
 
 
-class ConditionalEdge(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="conditional_edge_list"
-    )
-
-    source_node_id = models.BigIntegerField(null=True, default=None)
-    python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    input_map = models.JSONField(default=dict)
-
-    class Meta:
-        default_manager_name = "objects"
-        base_manager_name = "all_objects"
-        constraints = [
-            soft_delete_consistency_constraint(),
-            models.UniqueConstraint(
-                fields=["graph", "source_node_id"],
-                name="unique_graph_conditional_edge_source",
-            ),
-        ]
-
-    def generate_hash(self):
-        excluded_fields = [
-            "id",
-            "created_at",
-            "updated_at",
-            "content_hash",
-            "metadata",
-            "python_code",
-        ]
-        data = {
-            f.name: str(getattr(self, f.name))
-            for f in self._meta.fields
-            if f.name not in excluded_fields
-        }
-        data["python_code"] = self.python_code.content_hash
-        data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
-        return hashlib.sha256(data_string).hexdigest()
-
-    def clean(self):
-        if not BaseGlobalNode.find_globally(self.source_node_id):
-            raise ValidationError(
-                {"source_node_id": f"Node with ID {self.source_node_id} does not exist."}
-            )
-
-
 class GraphSessionMessage(models.Model):
     session = models.ForeignKey("Session", on_delete=models.CASCADE)
     created_at = models.DateTimeField()
@@ -947,9 +902,7 @@ class GraphVersion(SoftDeleteMixin):
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
-    snapshot = models.JSONField(
-        help_text="Serialized graph state: nodes, edges, conditional edges, metadata."
-    )
+    snapshot = models.JSONField(help_text="Serialized graph state: nodes, edges, metadata.")
     dependencies = models.JSONField(
         default=dict,
         help_text="Lightweight manifest of external dependency IDs referenced at snapshot time.",

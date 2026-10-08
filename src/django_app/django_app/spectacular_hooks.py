@@ -33,7 +33,6 @@ TAG_MAP = [
     ("api/telegram-trigger-nodes", "Telegram"),
     # Edges
     ("api/edges", "Edges"),
-    ("api/conditionaledges", "Conditional Edges"),
     # Sessions
     ("api/sessions", "Sessions"),
     ("api/run-session", "Run Session"),
@@ -123,7 +122,6 @@ TAGS_ORDER = [
     "Knowledge Nodes",
     "Telegram",
     "Edges",
-    "Conditional Edges",
     "Sessions",
     "Run Session",
     "Providers",

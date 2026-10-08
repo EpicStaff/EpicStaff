@@ -92,16 +92,11 @@ class FlowAssistantService:
             if sn.subgraph
         ]
 
-        # ConditionalEdge is an edge, not a node (NodeTypeSpec.is_edge) — kept out
-        # of both the node counts and the "Nodes in this flow" list below, same
-        # as get_flow_overview.
-        node_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if not spec.is_edge]
-
         # Build "Nodes in this flow" list — up to 30 entries, sorted by (type, id).
         # One query per node table; node_counts below is derived from these same
         # rows instead of a second query per related manager.
         node_tuples: list[tuple[str, int, str]] = []
-        for spec in node_specs:
+        for spec in FLOW_ASSISTANT_NODE_TYPES:
             for node in spec.model.objects.filter(graph_id=graph.pk).only(*spec.only_fields()):
                 node_tuples.append((spec.label, node.pk, spec.display_name(node)))
         node_tuples.sort(key=lambda t: (t[0], t[1]))
@@ -109,7 +104,7 @@ class FlowAssistantService:
         counts_by_label = Counter(label for label, _, _ in node_tuples)
         node_counts = {
             spec.label: counts_by_label[spec.label]
-            for spec in node_specs
+            for spec in FLOW_ASSISTANT_NODE_TYPES
             if counts_by_label[spec.label]
         }
 

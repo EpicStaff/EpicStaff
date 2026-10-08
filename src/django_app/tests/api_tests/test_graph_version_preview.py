@@ -265,7 +265,6 @@ def test_preview_response_has_exactly_snapshot_and_warnings(
     assert {
         "nodes",
         "edge_list",
-        "conditional_edge_list",
         "metadata",
         "secret_declarations",
     } <= set(response.data["snapshot"])

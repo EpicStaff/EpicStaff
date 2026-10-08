@@ -632,14 +632,13 @@ class RunPythonCodeAPIView(APIView):
     @staticmethod
     def _python_code_visible_q(org_id: int) -> Q:
         """A PythonCode is visible to an org if it is referenced by an org-owned
-        tool (built-in tools are global) or by a node/edge in one of the org's
+        tool (built-in tools are global) or by a node in one of the org's
         graphs. Used to scope run-python-code so a caller cannot execute another
         org's stored code by id."""
         return (
             Q(pythoncodetool__built_in=True)
             | Q(pythoncodetool__org_id=org_id)
             | Q(pythonnode__graph__org_id=org_id)
-            | Q(conditionaledge__graph__org_id=org_id)
             | Q(webhooktriggernode__graph__org_id=org_id)
             | Q(cdt_pre_nodes__graph__org_id=org_id)
             | Q(cdt_post_nodes__graph__org_id=org_id)

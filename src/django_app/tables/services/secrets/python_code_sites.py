@@ -1,4 +1,4 @@
-"""The six places Python code lives, declared once.
+"""The five places Python code lives, declared once.
 
 PythonCode is not OrgScopedModel and has no org column, which is why every entry
 declares how it reaches the org.
@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from tables.models import PythonCodeTool
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     PythonNode,
     WebhookTriggerNode,
 )
@@ -17,7 +16,6 @@ from tables.models.graph_models import (
 NODE_TYPE_PYTHON = "python"
 NODE_TYPE_WEBHOOK_TRIGGER = "webhook-trigger"
 NODE_TYPE_CLASSIFICATION_TABLE = "classification-decision-table"
-NODE_TYPE_EDGE = "edge"
 
 
 @dataclass(frozen=True)
@@ -32,9 +30,7 @@ class PythonCodeSite:
     """ORM path from this model to the org id. None means the model is a hybrid
     resource that must be scoped with org_visible_q instead (built-ins carry
     org=NULL, so an org_id filter would hide them)."""
-    name_field: str | None = "node_name"
-    """None means the row has no name of its own — ConditionalEdge, which borrows
-    the identity of the node it branches off."""
+    name_field: str = "node_name"
 
 
 PYTHON_CODE_SITES: tuple[PythonCodeSite, ...] = (
@@ -55,12 +51,6 @@ PYTHON_CODE_SITES: tuple[PythonCodeSite, ...] = (
         node_type=NODE_TYPE_CLASSIFICATION_TABLE,
     ),
     PythonCodeSite(
-        model=ConditionalEdge,
-        code_field="python_code",
-        node_type=NODE_TYPE_EDGE,
-        name_field=None,
-    ),
-    PythonCodeSite(
         model=PythonCodeTool,
         code_field="python_code",
         node_type=None,
@@ -69,7 +59,7 @@ PYTHON_CODE_SITES: tuple[PythonCodeSite, ...] = (
     ),
 )
 
-#: The five sites that live inside a graph. PythonCodeTool is org-owned rather than
+#: The four sites that live inside a graph. PythonCodeTool is org-owned rather than
 #: graph-owned, so a per-graph walk cannot reach it — it is gated in the converter
 #: instead (see declaration_validator.assert_tool_secrets_declared).
 GRAPH_PYTHON_CODE_SITES: tuple[PythonCodeSite, ...] = tuple(
