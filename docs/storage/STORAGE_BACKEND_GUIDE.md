@@ -432,7 +432,7 @@ The `Deny` statement in the temporary credential policy (`policies.py`'s `build_
 
 Live-fire verified against RustFS (2026-09-29), both directions:
 - With `Resource: ["arn:aws:s3:::*"]` (current code): a temporary credential attempting `admin:CreateServiceAccount` on itself is rejected with `403 AccessDenied`.
-- With `Resource: ["*"]` (the pre-EST-3892 form): RustFS rejects the policy document itself at creation time — `400 InvalidArgument: Policy format is invalid` — a temporary credential could not even be issued.
+- With `Resource: ["*"]` (the broader form used before per-session temporary storage credentials existed): RustFS rejects the policy document itself at creation time — `400 InvalidArgument: Policy format is invalid` — a temporary credential could not even be issued.
 
 So the ARN form isn't just a safer choice among two working options — it's the only one RustFS accepts at all. This enforces a hard boundary: a minted credential cannot expand its own access or mint credentials that outlive it.
 

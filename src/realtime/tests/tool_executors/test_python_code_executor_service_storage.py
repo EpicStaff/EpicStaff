@@ -2,7 +2,7 @@
 "Test run") that reached production carrying no storage-scoping fields at
 all -- `run_code()` used to build `CodeTaskData` without scoping fields.
 
-Storage credentials 2.0 (EST-3892): django now mints temporary storage
+Temporary storage credentials: django now mints temporary storage
 credentials once per realtime chat session (in
 `converter_service.convert_rt_agent_definition_chat_to_pydantic`) and hands
 them to this service as the `storage_credentials` parameter. This service
