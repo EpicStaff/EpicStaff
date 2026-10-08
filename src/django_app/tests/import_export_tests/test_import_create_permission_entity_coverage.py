@@ -38,7 +38,6 @@ from tables.models.realtime_models import (
 class CarriedEntityCase:
     entity_type: EntityType
     model: type[Model]
-    org_field: str
     resource: ResourceType
     create_source: Callable
 
@@ -61,7 +60,7 @@ def _create_gemini_realtime_config(org):
 
 def _create_agent_definition(org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="carried agent definition",
         description="description",
         instructions="instructions",
@@ -70,7 +69,7 @@ def _create_agent_definition(org):
 
 def _create_surface(org):
     return Surface.objects.create(
-        organization=org, name="carried surface", instructions="instructions"
+        org=org, name="carried surface", instructions="instructions"
     )
 
 
@@ -78,35 +77,30 @@ CASES = [
     CarriedEntityCase(
         EntityType.OPENAI_REALTIME_CONFIG,
         OpenAIRealtimeConfig,
-        "org",
         ResourceType.LLM_CONFIGS,
         _create_openai_realtime_config,
     ),
     CarriedEntityCase(
         EntityType.ELEVENLABS_REALTIME_CONFIG,
         ElevenLabsRealtimeConfig,
-        "org",
         ResourceType.LLM_CONFIGS,
         _create_elevenlabs_realtime_config,
     ),
     CarriedEntityCase(
         EntityType.GEMINI_REALTIME_CONFIG,
         GeminiRealtimeConfig,
-        "org",
         ResourceType.LLM_CONFIGS,
         _create_gemini_realtime_config,
     ),
     CarriedEntityCase(
         EntityType.AGENT_DEFINITION,
         AgentDefinition,
-        "organization",
         ResourceType.AGENTS,
         _create_agent_definition,
     ),
     CarriedEntityCase(
         EntityType.SURFACE,
         Surface,
-        "organization",
         ResourceType.SURFACES,
         _create_surface,
     ),
@@ -163,7 +157,7 @@ def _post_import(client_as, user, org, file):
 
 
 def _rows_in_org(case: CarriedEntityCase, org) -> int:
-    return case.model.objects.filter(**{case.org_field: org}).count()
+    return case.model.objects.filter(org=org).count()
 
 
 @pytest.mark.django_db

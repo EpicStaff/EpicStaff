@@ -107,7 +107,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_carries_rt_agent_definitio
     # The realtime service names the remote ElevenLabs agent after this id, so two
     # configurations must reach it with different ids.
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent-id",
         description="Helps with voice tasks",
         instructions="Be concise and helpful",

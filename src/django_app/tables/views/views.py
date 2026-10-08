@@ -637,7 +637,7 @@ class InitRealtimeAPIView(APIView):
             # X-Organization-Id to send. It already resolved the agent definition
             # server-side (via RealtimeChannelViewSet.lookup_by_token, itself
             # scoped by the channel's own org), so org is derived here from the
-            # definition's own `organization` FK instead of requiring a header —
+            # definition's own `org` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
             # API-key-authenticated requests (see IsApiKeyAuthenticated /
