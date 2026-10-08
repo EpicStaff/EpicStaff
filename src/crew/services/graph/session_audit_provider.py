@@ -162,10 +162,7 @@ def emit_session_audit_event(encoded_message: str) -> None:
             )
         )
     elif message_type == "error":
-        # Real ErrorMessageData serializes to "details"; the chunk-cleaning
-        # exception fallback (a few lines up in run_session) uses "error"
-        # instead - handle both since they're both real shapes in this file.
-        error_detail = message_data.get("details") or message_data.get("error") or "unknown error"
+        error_detail = message_data.get("details") or "unknown error"
         track_audit_task(
             writer.add_error_message(
                 session_id=session_id,

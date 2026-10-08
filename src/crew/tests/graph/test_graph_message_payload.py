@@ -23,21 +23,10 @@ from services.graph.subgraphs.decision_table_node import DecisionTableNodeSubgra
 from services.redis_service import RedisService
 from src.shared.models.graph_nodes import DecisionTableNodeData
 from utils.singleton_meta import SingletonMeta
+from tests.graph.rebuild_counting_dict import RebuildCountingDict
 
 SESSION_ID = 4242
 
-
-class RebuildCountingDict(dict):
-    """A dict that counts how often an instance of it is constructed.
-
-    Flow variables are dict subclasses (DotDict); a deep copy rebuilds every one of them.
-    """
-
-    constructions = 0
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        type(self).constructions += 1
 
 
 @dataclass

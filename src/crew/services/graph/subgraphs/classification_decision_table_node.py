@@ -141,8 +141,8 @@ class ClassificationDecisionTableNodeSubgraph:
         also means _emit_session_audit_event's own interception point (the
         parent's astream loop) never sees these chunks either, dispatch to
         the audit pipeline explicitly here too, right alongside the primary
-        write (same data dict, same uuid, so both pipelines agree on the
-        event's identity)."""
+        write (the same encoded message, so both pipelines agree on the
+        event's identity and content)."""
         if self.redis_service is None:
             return
         data = graph_message.to_payload()

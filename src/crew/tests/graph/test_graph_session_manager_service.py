@@ -27,6 +27,7 @@ from services.graph.graph_session_manager_service import (
 from services.graph.exceptions import StopSession
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
+from tests.graph.rebuild_counting_dict import RebuildCountingDict
 
 
 def make_finish_chunk(
@@ -509,15 +510,6 @@ async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypat
     assert "end" in statuses
     assert "error" not in statuses
 
-
-class RebuildCountingDict(dict):
-    """Counts its constructions; a deep copy of flow variables rebuilds every DotDict."""
-
-    constructions = 0
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        type(self).constructions += 1
 
 
 @pytest.mark.asyncio
