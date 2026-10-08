@@ -1,8 +1,8 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { forkJoin, Observable, of } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
@@ -58,32 +58,14 @@ export class FlowsApiService {
         if (params?.no_label) {
             httpParams = httpParams.set('no_label', 'true');
         }
-        return this.http
-            .get<ApiGetRequest<GetGraphLightRequest>>(`${this.configService.apiUrl}graph-light/`, {
-                params: httpParams,
-                context: withPermission<ApiGetRequest<GetGraphLightRequest>>(ResourceCode.Flows, ActionCode.Read, {
-                    count: 0,
-                    next: null,
-                    previous: null,
-                    results: [],
-                }),
-            })
-            .pipe(map((response) => response.results.sort((a, b) => b.id - a.id)));
+        return this.getAllFlowPages<GetGraphLightRequest>(`${this.configService.apiUrl}graph-light/`, httpParams).pipe(
+            map((results) => results.sort((a, b) => b.id - a.id))
+        );
     }
 
     getEpicChatEnabledFlows(): Observable<GraphDto[]> {
         const params = new HttpParams().set('epicchat_enabled', 'true');
-        return this.http
-            .get<ApiGetRequest<GraphDto>>(`${this.configService.apiUrl}graph-light/`, {
-                params,
-                context: withPermission<ApiGetRequest<GraphDto>>(ResourceCode.Flows, ActionCode.Read, {
-                    count: 0,
-                    next: null,
-                    previous: null,
-                    results: [],
-                }),
-            })
-            .pipe(map((response) => response.results));
+        return this.getAllFlowPages<GraphDto>(`${this.configService.apiUrl}graph-light/`, params);
     }
 
     getGraphById(id: number, forceRefresh = false): Observable<GraphDto> {
@@ -141,9 +123,7 @@ export class FlowsApiService {
 
     getGraphVersions(graphId: number): Observable<GraphVersionDto[]> {
         const params = new HttpParams().set('graph_id', graphId.toString());
-        return this.http
-            .get<ApiGetRequest<GraphVersionDto>>(`${this.configService.apiUrl}graph-versions/`, { params })
-            .pipe(map((response) => response.results));
+        return this.getAllFlowPages<GraphVersionDto>(`${this.configService.apiUrl}graph-versions/`, params);
     }
 
     updateGraphVersion(id: number, data: GraphVersionUpdateRequest): Observable<GraphVersionDto> {
@@ -201,5 +181,61 @@ export class FlowsApiService {
 
     getSubflowUsage(graphId: number): Observable<{ parent_flow_ids: number[] }> {
         return this.http.get<{ parent_flow_ids: number[] }>(`${this.apiUrl}${graphId}/subflow-usage/`);
+    }
+
+    /** Loads every page of a paginated flows list: the first page, then all remaining pages in parallel.
+     *  Only the query string of `next` is used: its host and scheme come from the proxy-forwarded
+     *  headers and can be wrong, so every page is requested at the original `url`. */
+    private getAllFlowPages<T extends { id: number }>(url: string, params: HttpParams): Observable<T[]> {
+        return this.getFlowPage<T>(url, params).pipe(
+            switchMap((firstPage) => {
+                if (!firstPage.next) {
+                    return of(firstPage.results);
+                }
+                const nextPageParams = this.getQueryParams(firstPage.next);
+                const pageSize = Number(nextPageParams.get('limit')) || firstPage.results.length;
+                const remainingPages: Observable<ApiGetRequest<T>>[] = [];
+                if (pageSize > 0) {
+                    for (let offset = pageSize; offset < firstPage.count; offset += pageSize) {
+                        remainingPages.push(this.getFlowPage<T>(url, nextPageParams.set('offset', offset.toString())));
+                    }
+                }
+                if (remainingPages.length === 0) {
+                    return of(firstPage.results);
+                }
+                return forkJoin(remainingPages).pipe(map((pages) => this.mergeUniqueById([firstPage, ...pages])));
+            })
+        );
+    }
+
+    /** Rows can shift between pages when a flow is created or deleted mid-fetch; the first occurrence wins. */
+    private mergeUniqueById<T extends { id: number }>(pages: ApiGetRequest<T>[]): T[] {
+        const seenIds = new Set<number>();
+        return pages
+            .flatMap((page) => page.results)
+            .filter((item) => {
+                if (seenIds.has(item.id)) {
+                    return false;
+                }
+                seenIds.add(item.id);
+                return true;
+            });
+    }
+
+    private getQueryParams(pageUrl: string): HttpParams {
+        const queryString = new URL(pageUrl, window.location.origin).search.substring(1);
+        return new HttpParams({ fromString: queryString });
+    }
+
+    private getFlowPage<T>(url: string, params?: HttpParams): Observable<ApiGetRequest<T>> {
+        return this.http.get<ApiGetRequest<T>>(url, {
+            params,
+            context: withPermission<ApiGetRequest<T>>(ResourceCode.Flows, ActionCode.Read, {
+                count: 0,
+                next: null,
+                previous: null,
+                results: [],
+            }),
+        });
     }
 }

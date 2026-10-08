@@ -41,7 +41,6 @@ export interface StartNodeModel extends BaseNodeModel {
 }
 export interface PythonNodeModel extends BaseNodeModel {
     type: NodeType.PYTHON;
-    python_code_id: number | null;
     data: CustomPythonCode;
     test_input: Record<string, string | number | boolean>;
 }

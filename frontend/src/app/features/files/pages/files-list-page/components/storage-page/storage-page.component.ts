@@ -3,14 +3,17 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { DragDropAreaComponent, FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
+import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
 
@@ -20,8 +23,6 @@ import { StorageContextActionEvent, StorageTreeFacade } from '../../../../servic
 import { filterStorageItems } from '../../../../utils/storage-file.utils';
 import { StoragePreviewComponent } from './components/storage-preview/storage-preview.component';
 import { StorageTreeComponent } from './components/storage-tree/storage-tree.component';
-
-const SIDEBAR_STORAGE_KEY = 'files';
 
 @Component({
     selector: 'app-storage-page',
@@ -53,14 +54,17 @@ export class StoragePageComponent {
 
     readonly showSidebar = signal<boolean>(true);
 
-    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
-    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+    protected readonly sidebarStorageKey = STORAGE_SIDEBAR_WIDTH_KEY;
+    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(STORAGE_SIDEBAR_WIDTH_KEY);
 
     protected readonly sidebarTargetElement = computed(() => this.sidebarEl()?.nativeElement);
 
-    readonly filteredTreeData = computed(() =>
-        filterStorageItems(this.facade.treeData(), this.filesSearchService.searchTerm())
-    );
+    readonly filteredTreeData = computed(() => {
+        const term = this.filesSearchService.searchTerm();
+        if (!term.trim()) return this.facade.treeData();
+        // Until the whole tree arrives, search what is already loaded.
+        return filterStorageItems(this.facade.searchTreeData() ?? this.facade.treeData(), term);
+    });
 
     readonly onOpenCreateFolder = (folderPath: string): void => {
         this.facade.openCreateFolderDialog(folderPath);
@@ -87,6 +91,14 @@ export class StoragePageComponent {
         });
 
         this.facade.init({ watchRefreshTick: true });
+
+        effect(() => {
+            this.facade.treeData();
+            const isSearching = this.filesSearchService.searchTerm().trim().length > 0;
+            if (isSearching && this.facade.searchTreeData() === null) {
+                untracked(() => this.facade.loadSearchTree());
+            }
+        });
     }
 
     toggleSidebar(): void {

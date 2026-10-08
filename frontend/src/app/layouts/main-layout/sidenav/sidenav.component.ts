@@ -35,7 +35,7 @@ import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string | (() => string | null);
+    routeLink?: string;
     /** URL path prefixes that highlight this item: its own section plus pages that belong to it
      *  but live outside its route tree (e.g. flow sessions under Flows). */
     activePaths?: string[];
@@ -211,7 +211,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: () => this.permissionService.resolveStorageTab(),
+                routeLink: 'storage',
                 activePaths: ['/storage'],
                 icon: 'sources',
                 label: 'Storage',
@@ -316,7 +316,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     }
 
     public resolveRouteLink(item: NavItem): string | null {
-        if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
     }
 
