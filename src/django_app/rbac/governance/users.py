@@ -201,7 +201,8 @@ class UserManagementService(CrossOrgResourceService):
     @transaction.atomic
     def revoke_superadmin(self, actor, target_user_id):
         """Sets is_superadmin=False on target_user_id and clears their authorship in
-        every org they are not a member of. Last-active-superadmin guard.
+        every org they are not a member of, including the authorship recorded in that
+        org's flow version snapshots. Last-active-superadmin guard.
         Idempotent if already False."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
@@ -222,17 +223,23 @@ class UserManagementService(CrossOrgResourceService):
                 raise UserNotFoundError()
 
         released = 0
+        scrubbed_versions = 0
         if target.is_superadmin:
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
             target.refresh_from_db()
             released = AuthorshipReleaseService().release_outside_memberships(user_id=target.pk)
+            scrubbed_versions = VersionSnapshotAuthorshipScrubber().scrub_outside_memberships(
+                user_id=target.pk
+            )
 
         logger.info(
-            "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r}",
+            "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r} "
+            "scrubbed_versions={v}",
             a=getattr(actor, "email", "system"),
             t=target.email,
             r=released,
+            v=scrubbed_versions,
         )
 
         return target

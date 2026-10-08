@@ -212,8 +212,9 @@ class GraphVersioningService:
             The acting user: it last edits the graph and gates re-binding of key-value
             tables. It never becomes an author, of the graph or of a node, nor a node's
             last editor. A version's recorded ``node_authorship`` and ``node_last_edit``
-            are replayed verbatim, without re-checking membership (removing a member or
-            deleting a user scrubs them from every snapshot); a node with no recorded
+            are replayed verbatim, without re-checking membership (removing a member,
+            revoking a superadmin or deleting a user scrubs them from the snapshots of
+            every organization they no longer belong to); a node with no recorded
             author or last edit is restored without one. When ``None``, no last edit is
             recorded.
 

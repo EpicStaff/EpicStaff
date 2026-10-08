@@ -10,6 +10,7 @@ from django.utils import timezone
 from rbac.authorship import record_last_edit
 from rbac.governance import authorship as governance_authorship
 from rbac.governance.authorship import VersionSnapshotAuthorshipScrubber
+from rbac.models import OrganizationUser
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models import Graph, GraphVersion
 from tables.models.graph_models import AgentNode
@@ -309,6 +310,49 @@ def test_scrub_locks_the_versions_it_rewrites(acme, author):
         query["sql"] for query in context.captured_queries if "jsonb_path_match" in query["sql"]
     ]
     assert 'FOR UPDATE OF "tables_graphversion"' in select
+
+
+# ---- outside memberships ----
+
+
+@pytest.mark.django_db
+def test_scrub_outside_memberships_clears_the_user_only_where_they_are_not_a_member(
+    acme, beta, author, role_member
+):
+    OrganizationUser.objects.create(user=author, org=acme, role=role_member)
+    member_org_version = _version(
+        acme, name="member-org-flow", snapshot=_recording_everywhere(author.id)
+    )
+    other_org_version = _version(
+        beta, name="other-org-flow", snapshot=_recording_everywhere(author.id)
+    )
+
+    scrubbed = VersionSnapshotAuthorshipScrubber().scrub_outside_memberships(user_id=author.id)
+
+    assert scrubbed == 1
+    assert _stored_snapshot(member_org_version) == _recording_everywhere(author.id)
+    assert _stored_snapshot(other_org_version) == _cleared_everywhere(author.id)
+
+
+@pytest.mark.django_db
+def test_scrub_outside_memberships_of_a_user_without_memberships_clears_every_org(
+    acme, beta, author, colleague
+):
+    acme_version = _version(acme, name="acme-flow", snapshot=_recording_everywhere(author.id))
+    beta_version = _version(
+        beta,
+        name="beta-flow",
+        snapshot=_snapshot_recording({"node_last_edit": author.id}, default_user_id=colleague.id),
+        soft_deleted_version=True,
+    )
+
+    scrubbed = VersionSnapshotAuthorshipScrubber().scrub_outside_memberships(user_id=author.id)
+
+    assert scrubbed == 2
+    assert _stored_snapshot(acme_version) == _cleared_everywhere(author.id)
+    assert _stored_snapshot(beta_version) == _snapshot_recording(
+        {"node_last_edit": None}, default_user_id=colleague.id
+    )
 
 
 # ---- every user ----

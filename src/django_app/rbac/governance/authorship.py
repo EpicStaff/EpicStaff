@@ -105,7 +105,8 @@ class VersionSnapshotAuthorshipScrubber:
 
     A snapshot records each node's author (`node_authorship`) and last editor
     (`node_last_edit`). Restoring a version replays them verbatim, so a user who leaves an
-    organization, or is deleted, must not stay recorded in its snapshots. Times are kept;
+    organization, loses the superadmin role while not a member of it, or is deleted, must
+    not stay recorded in its snapshots. Times are kept;
     soft-deleted versions, and versions of soft-deleted flows, are included. The versions
     rewritten are locked until the caller's transaction ends, so concurrent scrubs of the
     same version do not overwrite each other.
@@ -131,6 +132,20 @@ class VersionSnapshotAuthorshipScrubber:
         """
         return self._scrub(
             GraphVersion.all_objects.all(),
+            _SnapshotMatchesJsonpath(_RECORDS_USER_JSONPATH, {"user_id": user_id}),
+            lambda recorded_user_id: recorded_user_id == user_id,
+        )
+
+    @transaction.atomic
+    def scrub_outside_memberships(self, user_id: int) -> int:
+        """Clear `user_id` from the version snapshots of every org they are not a member of.
+
+        For a superadmin losing the role: as one they may have edited flows of any
+        organization. Returns the number of versions rewritten.
+        """
+        member_org_ids = OrganizationUser.objects.filter(user_id=user_id).values("org_id")
+        return self._scrub(
+            GraphVersion.all_objects.exclude(graph__org_id__in=member_org_ids),
             _SnapshotMatchesJsonpath(_RECORDS_USER_JSONPATH, {"user_id": user_id}),
             lambda recorded_user_id: recorded_user_id == user_id,
         )

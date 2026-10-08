@@ -415,8 +415,9 @@ class GraphVersioningManager:
         node recorded without an author, or with no ``node_authorship`` entry at all (e.g.
         a version saved before authorship was recorded), ends up without one; its
         ``created_at`` is then left as the recreation set it. Recorded authors are not
-        checked against the organization's members: removing a member or deleting a user
-        clears them from every snapshot (``VersionSnapshotAuthorshipScrubber``).
+        checked against the organization's members: removing a member, revoking a
+        superadmin or deleting a user clears them from the snapshots of every organization
+        they no longer belong to (``VersionSnapshotAuthorshipScrubber``).
         """
         recreated_node_ids = node_mapper.get_new_ids(NODE_MAPPING_KEY)
         if not recreated_node_ids:
@@ -474,7 +475,8 @@ class GraphVersioningManager:
         saved, or a version saved before last edits were recorded) ends up without a last
         edit, discarding the one its recreation recorded. Nodes that were not recreated
         are skipped. Recorded editors are not checked against the organization's members:
-        removing a member or deleting a user clears them from every snapshot
+        removing a member, revoking a superadmin or deleting a user clears them from the
+        snapshots of every organization they no longer belong to
         (``VersionSnapshotAuthorshipScrubber``).
         """
         recreated_node_ids = node_mapper.get_new_ids(NODE_MAPPING_KEY)
