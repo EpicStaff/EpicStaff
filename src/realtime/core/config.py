@@ -18,7 +18,7 @@ REALTIME_WORKERS = env.int("REALTIME_SGI_WORKERS")
 
 REALTIME_DEBUG_MODE: bool = _is_debug
 REALTIME_RELOAD: bool = _is_debug
-LOG_LEVEL = env.log_level("REALTIME_LOG_LEVEL", "INFO")
+LOG_LEVEL = env.log_level("REALTIME_LOG_LEVEL")
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
