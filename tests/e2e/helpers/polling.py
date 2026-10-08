@@ -12,6 +12,7 @@ Value = TypeVar("Value")
 
 TERMINAL_SESSION_STATUSES = frozenset({"end", "error", "stop", "expired"})
 MESSAGES_PAGE_LIMIT = 200
+LAST_VALUE_EXCERPT_LENGTH = 2000
 
 
 def poll(
@@ -37,7 +38,7 @@ def poll(
         if time.monotonic() >= deadline:
             message = (
                 f"Timed out after {timeout:.0f}s waiting for {describe}. "
-                f"Last value: {scrub(repr(redact(value)))}"
+                f"Last value: {scrub(repr(redact(value)))[:LAST_VALUE_EXCERPT_LENGTH]}"
             )
             if diagnostics is not None:
                 message += f"\n{scrub(diagnostics())}"
@@ -57,9 +58,14 @@ def summarize_message(message: dict) -> str:
     message_data = message.get("message_data") or {}
     summary = {
         key: message_data[key]
-        for key in ("message_type", "returncode", "stderr", "output", "details", "error")
+        for key in ("message_type", "output", "details", "end_node_result")
         if key in message_data
     }
+    # Python node messages nest the sandbox result one level down.
+    execution = message_data.get("python_code_execution_data") or {}
+    summary.update(
+        {key: execution[key] for key in ("returncode", "stderr") if key in execution}
+    )
     return f"#{message.get('id')} {message.get('name')}: {json.dumps(redact(summary))[:500]}"
 
 

@@ -49,7 +49,7 @@ from helpers.bootstrap import (
     unique_suffix,
 )
 from helpers.redaction import protect, redact_url, scrub
-from helpers.payloads import python_flow_save_payload
+from helpers.flows import assert_session_ended, create_python_flow, start_session
 from helpers.polling import session_diagnostics, wait_for_session_status
 
 logger = logging.getLogger("e2e.bootstrap")
@@ -323,9 +323,7 @@ def start_warm_up_session(client: ApiClient, graph_id: int) -> int:
     deadline = time.monotonic() + LISTENER_GATE_RETRY_SECONDS
     delay = 2.0
     while True:
-        session_id = client.post(
-            "/api/run-session/", json={"graph_id": graph_id, "variables": {"a": 2, "b": 3}}, expect=201
-        ).json()["session_id"]
+        session_id = start_session(client, graph_id, {"a": 2, "b": 3})["session_id"]
         session = client.get(f"/api/sessions/{session_id}/").json()
         listener_count = listener_count_of_gate_failure(session)
         if listener_count is None:
@@ -358,20 +356,8 @@ def stack_warm_up(user_client: ApiClient, timings: Timings) -> None:
     """
     started = time.monotonic()
     with bootstrap_step(8, "warm-up run"):
-        graph = user_client.post(
-            "/api/graphs/",
-            json={"name": f"e2e-warm-up-{unique_suffix()}", "time_to_live": 600},
-            expect=201,
-        ).json()
-        user_client.post(
-            f"/api/graphs/{graph['id']}/save/",
-            json=python_flow_save_payload(graph["id"], graph["save_version"]),
-        )
-        session_id = start_warm_up_session(user_client, graph["id"])
+        flow = create_python_flow(user_client, f"e2e-warm-up-{unique_suffix()}")
+        session_id = start_warm_up_session(user_client, flow.graph_id)
         status = wait_for_session_status(user_client, session_id, WARM_UP_RUN_TIMEOUT_SECONDS)
-        if status != "end":
-            raise AssertionError(
-                f"session {session_id} ended with {status!r}\n"
-                f"{session_diagnostics(user_client, session_id)}"
-            )
+        assert_session_ended(user_client, session_id, status)
     timings.record("warm_up_seconds", time.monotonic() - started)
