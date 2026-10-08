@@ -271,7 +271,6 @@ const liveGraph = {
     knowledge_node_list: [liveKnowledge],
     key_value_node_list: [liveKeyValue],
     edge_list: liveEdges,
-    conditional_edge_list: [],
 } as unknown as GraphDto;
 
 /** What the export does to a row whose shape is otherwise identical: drop DB columns, tag the type. */
@@ -350,7 +349,6 @@ const snapshot: GraphVersionSnapshot = {
         exported('KeyValueNode', { ...liveKeyValue, key_value_table_name: 'Customers' }),
     ],
     edge_list: liveEdges.map((edge) => exportedEdge(edge)),
-    conditional_edge_list: [],
     metadata: {},
     secret_declarations: {
         nodes: {
