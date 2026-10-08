@@ -1,9 +1,11 @@
 import json
+from datetime import timedelta
 
 import fakeredis
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from tables.models import SessionStorageFile, StorageFile
 from tables.models.graph_models import Graph, GraphOrganization, StartNode
@@ -307,3 +309,36 @@ def test_status_handler_locks_the_session_without_reading_its_large_json_fields(
         assert f'"tables_session"."{large_field}"' not in locking_query
     running_session.refresh_from_db()
     assert running_session.status == Session.SessionStatus.WAIT_FOR_USER
+
+
+def _set_status_updated_at(session, moment):
+    Session.objects.filter(pk=session.pk).update(status_updated_at=moment)
+
+
+@pytest.mark.django_db
+def test_status_change_restarts_the_time_to_live_clock(pubsub_with_redis, running_session):
+    pubsub, _redis_client = pubsub_with_redis
+    an_hour_ago = timezone.now() - timedelta(hours=1)
+    _set_status_updated_at(running_session, an_hour_ago)
+
+    pubsub.session_status_handler(
+        _status_message(running_session.id, Session.SessionStatus.WAIT_FOR_USER)
+    )
+
+    running_session.refresh_from_db()
+    assert running_session.status_updated_at > an_hour_ago + timedelta(minutes=59)
+
+
+@pytest.mark.django_db
+def test_repeated_status_does_not_restart_the_time_to_live_clock(
+    pubsub_with_redis, running_session
+):
+    pubsub, _redis_client = pubsub_with_redis
+    an_hour_ago = timezone.now() - timedelta(hours=1)
+    _set_status_updated_at(running_session, an_hour_ago)
+
+    pubsub.session_status_handler(_status_message(running_session.id, Session.SessionStatus.RUN))
+
+    running_session.refresh_from_db()
+    assert running_session.status_updated_at == an_hour_ago
+

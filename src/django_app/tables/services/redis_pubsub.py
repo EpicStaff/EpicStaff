@@ -119,8 +119,16 @@ class RedisPubSub:
                 status_data["total_token_usage"] = SessionTokenUsageCounter(self.redis_client).read(
                     data["session_id"]
                 )
+                # .update() skips Session.save(), which sets status_updated_at the same
+                # way; the manager counts time_to_live from it.
+                status_change_fields = (
+                    {"status_updated_at": timezone.now()}
+                    if data["status"] != session.status
+                    else {}
+                )
                 updated_rows = Session.objects.filter(pk=session.pk).update(
                     status=data["status"],
+                    **status_change_fields,
                     status_data=status_data,
                     token_usage=status_data["total_token_usage"],
                     finished_at=session.finished_at
