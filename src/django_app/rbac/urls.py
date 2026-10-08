@@ -23,7 +23,7 @@ from rbac.views.auth import (
     WsTicketView,
 )
 from rbac.views.memberships import MembershipAdminViewSet
-from rbac.views.organizations import OrganizationAdminViewSet
+from rbac.views.organizations import OrganizationAdminViewSet, OrganizationSelfServiceViewSet
 from rbac.views.permissions import (
     MyOrgsPermissionsView,
     MyPermissionsView,
@@ -134,6 +134,11 @@ urlpatterns = [
         "api/admin/memberships/<int:pk>/",
         MembershipAdminViewSet.as_view({"patch": "partial_update", "delete": "destroy"}),
         name="admin-membership-detail",
+    ),
+    path(
+        "api/admin/organizations/settings/",
+        OrganizationSelfServiceViewSet.as_view({"patch": "partial_update"}),
+        name="organization-self-settings",
     ),
     path("api/admin/", include(admin_router.urls)),
 ]

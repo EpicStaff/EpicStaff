@@ -195,6 +195,21 @@ class ConverterService(metaclass=SingletonMeta):
             .values_list("storage_file__path", flat=True)
         )
 
+    def _resolve_storage_scope(
+        self, graph_id: int | None, use_storage: bool, extra_paths: list[str]
+    ) -> tuple[list[str] | None, str | None]:
+        """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
+
+        Allowed paths are the graph's attached files followed by `extra_paths`, the
+        folders the run itself may write to (`sessions/<id>/` in a real run). Both
+        are None when the slot does not use storage or there is no graph to scope
+        it by, which tells the sandbox to mint no credentials.
+        """
+        if not use_storage or graph_id is None:
+            return None, None
+        allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
+        return allowed_paths, self._resolve_org_prefix_for_graph(graph_id)
+
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
         org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
         if org_id is not None:
@@ -544,14 +559,24 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        extra_storage_paths: list[str] | None = None,
     ) -> PythonNodeData:
-        storage_allowed_paths = None
-        storage_org_prefix = None
-        if python_node.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                storage_allowed_paths.append(f"sessions/{session_id}/")
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+        """Convert a python node into the data a run sends to the sandbox.
+
+        Args:
+            session_id: The running session; its `sessions/<id>/` folder becomes
+                writable when the node uses storage.
+            extra_storage_paths: Further writable folders for a run without a
+                session, such as a test-mode run's own folder.
+        """
+        writable_paths = list(extra_storage_paths or [])
+        if session_id is not None:
+            writable_paths.append(f"sessions/{session_id}/")
+        storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
+            graph_id=graph_id,
+            use_storage=python_node.use_storage,
+            extra_paths=writable_paths,
+        )
 
         org_id = None
         if graph_id is not None:

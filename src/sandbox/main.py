@@ -3,10 +3,11 @@ import json
 import os
 import shutil
 
+import egress_firewall
 import isolation
 import landlock
 import settings
-from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+from dynamic_venv_executor_chain import SANDBOX_UID, DynamicVenvExecutorChain
 from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
 from services.storage_credential_manager import StorageCredentialManager
@@ -71,7 +72,7 @@ def log_secret_masking_state():
 
 
 def log_isolation_state():
-    """Announce the filesystem, network and signal isolation state once per process."""
+    """Announce the state of every isolation layer once per process."""
 
     # Filesystem isolation log
     abi = landlock.abi_version()
@@ -91,21 +92,44 @@ def log_isolation_state():
             isolation.REQUIRE_ISOLATION_ENV_VAR,
         )
 
-    # Network isolation log
-    if not settings.BLOCK_NETWORK:
+    # Private-network isolation log
+    carve_outs = egress_firewall.active_carve_outs()
+    if not settings.BLOCK_PRIVATE_NETWORK:
         logger.warning(
-            "Network isolation is OFF (SANDBOX_BLOCK_NETWORK=false): executions have "
-            "unrestricted network access."
+            "Private-network isolation is OFF ({}=false): executions can reach the Docker "
+            "host, the LAN, cloud metadata and other containers.",
+            settings.BLOCK_PRIVATE_NETWORK_ENV_VAR,
         )
-        return
-    # Same decision the handler makes per execution; only use_storage varies.
+    elif carve_outs is not None:
+        logger.info(
+            "Private-network isolation is ON: executions cannot reach {} or non-loopback "
+            "IPv6; allowed: DNS to {}, storage at {}.",
+            ", ".join(egress_firewall.BLOCKED_IPV4_RANGES),
+            ", ".join(carve_outs.nameservers) or "none",
+            ", ".join(f"{ip}:{port}" for ip, port in carve_outs.storage_endpoints) or "none",
+        )
+    else:
+        logger.error(
+            "Private-network isolation is UNAVAILABLE (egress firewall not installed) and "
+            "{} is not false: executions will be refused until this is resolved.",
+            settings.BLOCK_PRIVATE_NETWORK_ENV_VAR,
+        )
+
+    # Network isolation log. Same decision the handler makes per execution;
+    # only use_storage varies.
     storage_decision = decide_network_policy(
         block_network=True,
         use_storage=True,
         landlock_abi=abi,
         storage_port=int(settings.STORAGE_PORT),
     )
-    if storage_decision.policy is NetworkPolicy.ALLOW_PORTS:
+    if not settings.BLOCK_NETWORK:
+        logger.warning(
+            "Network isolation is OFF (SANDBOX_BLOCK_NETWORK=false): executions can open IP "
+            "sockets to the internet; private addresses are governed by {}.",
+            settings.BLOCK_PRIVATE_NETWORK_ENV_VAR,
+        )
+    elif storage_decision.policy is NetworkPolicy.ALLOW_PORTS:
         logger.info(
             "Network isolation is ON: executions cannot open IP sockets; storage-enabled "
             "executions may only connect over TCP to port {}.",
@@ -146,6 +170,14 @@ def log_isolation_state():
 async def init():
     sweep_output_path()
     log_secret_masking_state()
+    if settings.BLOCK_PRIVATE_NETWORK:
+        # Log and carry on rather than crash: a dead sandbox leaves every producer
+        # waiting forever for a result, while ExecuteCodeHandler refuses each
+        # execution with an explicit error.
+        try:
+            egress_firewall.apply(SANDBOX_UID)
+        except egress_firewall.EgressFirewallUnavailableError as error:
+            logger.error("Could not install the private-network egress firewall: {}", error)
     log_isolation_state()
     await redis_service.connect()
 

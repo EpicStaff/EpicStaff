@@ -69,7 +69,7 @@ def agent_flow(default_org):
         organization=default_org,
         name="agent",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
     )
     owned_surface = Surface.objects.create(
         organization=default_org,
@@ -382,13 +382,15 @@ class TestLegacyToolEntries:
         self, agent_flow, export_service, import_file, default_org
     ):
         # A missing key compares as the model default, which create stores.
+        # Execution limits are left out: a missing one marks an older file and
+        # takes the legacy value (normalize_legacy_agent_entry).
         agent = agent_flow["agent"]
         agent.description = ""
         agent.save(update_fields=["description"])
         data = json.loads(
             json.dumps(export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id]))
         )
-        for field_name in ("description", "metadata", "max_iter"):
+        for field_name in ("description", "metadata"):
             del data[EntityType.AGENT_DEFINITION][0][field_name]
         counts_before = _org_counts(default_org)
 
@@ -396,6 +398,43 @@ class TestLegacyToolEntries:
 
         assert id_mapper.get(EntityType.AGENT_DEFINITION, agent.id) == agent.id
         assert _org_counts(default_org) == counts_before
+
+
+@pytest.mark.django_db
+class TestLegacyAgentEntries:
+    @pytest.mark.parametrize(
+        "legacy_max_iter, stored_max_iter",
+        [(None, 25), (-5, 1), (10**6, 90)],
+        ids=["null", "below range", "above range"],
+    )
+    def test_legacy_agent_imports_and_is_reused_on_reimport(
+        self, legacy_max_iter, stored_max_iter, agent_flow, export_file, import_file, default_org
+    ):
+        # A file from before named instructions and today's limits: one
+        # instructions string, and a null or out-of-range execution limit.
+        data = json.loads(export_file)
+        agent_entry = data[EntityType.AGENT_DEFINITION][0]
+        del agent_entry["instruction_list"]
+        agent_entry["instructions"] = "legacy instructions"
+        agent_entry["max_iter"] = legacy_max_iter
+        legacy_file = json.dumps(data)
+
+        first_id_mapper = import_file(legacy_file)
+        counts_after_first_import = _org_counts(default_org)
+        second_id_mapper = import_file(legacy_file)
+
+        imported_agent = AgentDefinition.objects.get(
+            id=first_id_mapper.get(EntityType.AGENT_DEFINITION, agent_entry["id"])
+        )
+        assert imported_agent.instruction_list == [
+            {"name": "Instruction_1.md", "content": "legacy instructions"}
+        ]
+        assert imported_agent.max_iter == stored_max_iter
+        assert (
+            second_id_mapper.get(EntityType.AGENT_DEFINITION, agent_entry["id"])
+            == imported_agent.id
+        )
+        assert _org_counts(default_org) == counts_after_first_import
 
 
 @pytest.mark.django_db

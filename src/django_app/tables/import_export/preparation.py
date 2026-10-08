@@ -1,5 +1,7 @@
 """The boundary step both import services run before they write anything."""
 
+from copy import deepcopy
+
 from agents.models import SurfacePlace, ToolMode
 from rest_framework.exceptions import ValidationError
 
@@ -14,6 +16,7 @@ from tables.import_export.serializers.surface import SurfaceImportSerializer
 from tables.import_export.strategies.agent_definition import (
     COMPARED_FIELDS as AGENT_COMPARED_FIELDS,
 )
+from tables.import_export.strategies.agent_definition import normalize_legacy_agent_entry
 from tables.import_export.strategies.mcp_tools import COMPARED_FIELDS as MCP_COMPARED_FIELDS
 from tables.import_export.strategies.python_tools import (
     COMPARED_FIELDS as PYTHON_TOOL_COMPARED_FIELDS,
@@ -181,8 +184,14 @@ def _lookup_value_errors(export_data: dict) -> list[str]:
             label = f"{entity_type} {entry.get('id')}"
             if not _is_int(entry.get("id")):
                 errors.append(f"{label}: id must be an integer.")
+            looked_up_entry = entry
+            if entity_type == EntityType.AGENT_DEFINITION:
+                # Older exports carry nulls and out-of-range limits that the
+                # strategy normalises before its lookup and create.
+                looked_up_entry = deepcopy(entry)
+                normalize_legacy_agent_entry(looked_up_entry)
             try:
-                import_values(serializer_class, entry, field_names)
+                import_values(serializer_class, looked_up_entry, field_names)
             except ValidationError as error:
                 errors.append(f"{label}: {_field_messages(error.detail)}")
             if entity_type == EntityType.PYTHON_CODE_TOOL:

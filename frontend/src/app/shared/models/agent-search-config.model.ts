@@ -75,6 +75,9 @@ export interface GraphDriftSearchConfig {
     local_search_n: number;
     local_search_llm_max_gen_tokens: number | null;
     local_search_llm_max_gen_completion_tokens: number | null;
+    // Not editable in the UI; carried through from the stored config so saving does not reset them.
+    reduce_temperature?: number;
+    local_search_temperature?: number;
     is_suggested?: boolean;
 }
 

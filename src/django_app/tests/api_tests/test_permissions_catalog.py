@@ -68,7 +68,7 @@ def test_catalog_orders_api_keys_after_roles(client_as, admin_acme):
     body = client_as(admin_acme).get("/api/permissions/catalog/").json()
     admin_codes = [r["code"] for r in body["resource_types"] if r["group"] == "admin"]
 
-    assert admin_codes == ["organizations", "memberships", "roles", "api_keys"]
+    assert admin_codes == ["organizations", "memberships", "roles", "api_keys", "audit"]
 
 
 @pytest.mark.django_db

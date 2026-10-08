@@ -214,7 +214,7 @@ class TestToolEntries:
                 EntityType.MCP_TOOL: [
                     _mcp_tool(),
                     _mcp_tool(id=9, init_timeout=10.5),
-                    _mcp_tool(id=10, timeout="30", transport=5),
+                    _mcp_tool(id=10, timeout="30"),
                 ],
             }
         )
@@ -254,6 +254,7 @@ class TestToolEntries:
             {"timeout": "abc"},
             {"init_timeout": None},
             {"transport": ""},
+            {"transport": "not a url"},
             {"tool_name": None},
             {"id": "8"},
         ],

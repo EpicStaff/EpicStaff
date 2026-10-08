@@ -83,8 +83,7 @@
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
-                            routerLinkActive="active"
-                            [routerLinkActiveOptions]="{ exact: false }"
+                            [class.active]="isItemActive(item)"
                             (click)="item.action ? handleItemClick(item, $event) : null"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >
@@ -156,8 +155,7 @@
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
-                            routerLinkActive="active"
-                            [routerLinkActiveOptions]="{ exact: false }"
+                            [class.active]="isItemActive(item)"
                             (click)="handleItemClick(item, $event)"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
                         >

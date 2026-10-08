@@ -1,6 +1,9 @@
+import math
 from collections import Counter, defaultdict
+from copy import deepcopy
 
 from agents.models import AgentDefaultSurface, AgentDefinition
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Q
 
 from tables.import_export.constants import MAX_REUSE_CANDIDATES, OWNED_SURFACE_ENTRIES_KEY
@@ -28,7 +31,7 @@ from tables.models import LLMConfig
 # and immune to serializer/field additions.
 COMPARED_FIELDS = (
     "description",
-    "instructions",
+    "instruction_list",
     "metadata",
     "max_iter",
     "max_rpm",
@@ -41,6 +44,87 @@ COMPARED_FIELDS = (
     "max_consecutive_failures",
     "schema_max_retries",
 )
+
+LEGACY_INSTRUCTION_NAME = "Instruction_1.md"
+
+
+def convert_legacy_instructions(data: dict) -> None:
+    """Replace a released-version `instructions` string with `instruction_list` in place.
+
+    Export files written before AgentDefinition switched to named instructions carry a
+    single `instructions` text; it becomes the agent's only instruction. Their obsolete
+    `metadata["instructions_format"]` flag is dropped, as the migration does for stored
+    rows, so reuse matching in `find_existing` still finds migrated agents.
+    """
+    metadata = data.get("metadata")
+    if isinstance(metadata, dict):
+        metadata.pop("instructions_format", None)
+    legacy_instructions = data.pop("instructions", None)
+    if data.get("instruction_list") is not None:
+        return
+    if isinstance(legacy_instructions, str) and legacy_instructions.strip():
+        data["instruction_list"] = [
+            {"name": LEGACY_INSTRUCTION_NAME, "content": legacy_instructions}
+        ]
+    else:
+        data["instruction_list"] = []
+
+
+# Frozen copy of the singleton values that migration 0010 backfilled NULLs with, so an
+# old export keeps the limits it ran with and matches rows migrated from the same data.
+_LEGACY_NULL_REPLACEMENTS = {
+    "max_iter": 25,
+    "max_rpm": 10,
+    "max_execution_time": 60,
+    "cache": False,
+    "max_retry_limit": 3,
+    "max_tool_calls": 15,
+    "tool_timeout": 300,
+    "max_consecutive_failures": 3,
+    "schema_max_retries": 2,
+}
+_CLAMPED_FIELDS = (*_LEGACY_NULL_REPLACEMENTS, "default_temperature")
+
+
+def _clamp_to_field_validators(field_name: str, value):
+    for validator in AgentDefinition._meta.get_field(field_name).validators:
+        if isinstance(validator, MinValueValidator):
+            value = max(value, validator.limit_value)
+        elif isinstance(validator, MaxValueValidator):
+            value = min(value, validator.limit_value)
+    return value
+
+
+def _normalize_execution_fields(data: dict) -> None:
+    """Make older export files importable under the current field rules, in place.
+
+    Older exports carry null for the execution fields and values outside today's
+    bounds; nulls take the legacy singleton values and numbers are clamped into range.
+    A non-finite default_temperature becomes null, as in agents migration 0010.
+    Non-numeric values are left for the serializer to reject.
+    """
+    for field_name, replacement in _LEGACY_NULL_REPLACEMENTS.items():
+        if data.get(field_name) is None:
+            data[field_name] = replacement
+
+    temperature = data.get("default_temperature")
+    if isinstance(temperature, float) and not math.isfinite(temperature):
+        data["default_temperature"] = None
+
+    for field_name in _CLAMPED_FIELDS:
+        value = data.get(field_name)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            data[field_name] = _clamp_to_field_validators(field_name, value)
+
+
+def normalize_legacy_agent_entry(data: dict) -> None:
+    """Bring an AgentDefinition entry from an older export to today's fields, in place.
+
+    Applied before validation, lookup and create alike, so all three see the
+    same values.
+    """
+    convert_legacy_instructions(data)
+    _normalize_execution_fields(data)
 
 
 class AgentDefinitionStrategy(EntityImportExportStrategy):
@@ -115,6 +199,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         old_llm_config_id = data.pop("llm_config", None)
         old_fcm_llm_config_id = data.pop("fcm_llm_config", None)
         data.pop("id", None)
+        normalize_legacy_agent_entry(data)
 
         organization = resolve_import_organization(kwargs.get("org_id"))
 
@@ -151,8 +236,12 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
     def find_existing(
         self, data: dict, id_mapper: IDMapper, org_id: int | None = None
     ) -> AgentDefinition | None:
+        normalized_data = deepcopy(data)
+        normalize_legacy_agent_entry(normalized_data)
         filters, null_filters = create_filters(
-            compared_values(AgentDefinition, self.serializer_class, data, COMPARED_FIELDS)
+            compared_values(
+                AgentDefinition, self.serializer_class, normalized_data, COMPARED_FIELDS
+            )
         )
 
         new_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, data.get("llm_config"))

@@ -116,7 +116,7 @@ class TestComparedValues:
         with pytest.raises(ValidationError) as exc:
             import_values(
                 McpToolImportSerializer,
-                {"timeout": "abc", "tool_name": None, "transport": "ok"},
+                {"timeout": "abc", "tool_name": None, "transport": "https://example.com/mcp"},
                 ("transport", "tool_name", "timeout"),
             )
 
