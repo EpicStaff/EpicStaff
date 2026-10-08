@@ -34,7 +34,15 @@
                             routerLink="{{ tab.link }}"
                             routerLinkActive="active"
                             #rla="routerLinkActive"
+                            appDragHover
+                            #springLoad="appDragHover"
                             [active]="rla.isActive"
+                            [attr.data-tab]="tab.link"
+                            [dragHoverDelay]="tabSpringLoadDelay"
+                            [dragHoverDisabled]="!storageDrag.isDragging() || rla.isActive"
+                            [class.tab-drop-available]="storageDrag.isDragging() && !rla.isActive"
+                            [class.tab-spring-loading]="springLoad.isHovering()"
+                            (dragHover)="onTabDragHover(tab)"
                         >
                             {{ tab.label }}
                         </app-tab-button>
@@ -78,6 +86,56 @@
         </nav>
     </div>
     <section class="body">
-        <router-outlet></router-outlet>
+        <!--
+            Each @defer block always exists and loads its page lazily; the @if inside it mounts and
+            unmounts the page. Knowledge Sources is prefetched when the browser is idle, so a
+            spring-loaded tab switch mid-drag lands on a page that is ready to drop on.
+        -->
+        @defer (when isKnowledgeSourcesActive(); prefetch on idle) {
+            @if (isKnowledgeSourcesActive()) {
+                <app-collections-list-page class="tab-page" />
+            }
+        } @loading (minimum 200ms) {
+            <div class="tab-page tab-page__loading">
+                <app-spinner
+                    text="Loading knowledge sources..."
+                    [isOverlay]="false"
+                />
+            </div>
+        }
+        @defer (when isStorageRendered()) {
+            <!--
+                Kept alive during a drag: not display:none / [hidden] — the hidden page holds the drag
+                source row, which must stay in the render tree for the drag to continue and end.
+            -->
+            @if (isStorageRendered()) {
+                <div
+                    class="tab-page"
+                    [class.tab-page--kept-alive]="!isStorageActive()"
+                    [attr.inert]="isStorageActive() ? null : ''"
+                >
+                    <app-storage-page />
+                </div>
+            }
+        } @loading (minimum 200ms) {
+            <div class="tab-page tab-page__loading">
+                <app-spinner
+                    text="Loading storage..."
+                    [isOverlay]="false"
+                />
+            </div>
+        }
+        @defer (when isKeyValueTablesActive()) {
+            @if (isKeyValueTablesActive()) {
+                <app-key-value-tables-page class="tab-page" />
+            }
+        } @loading (minimum 200ms) {
+            <div class="tab-page tab-page__loading">
+                <app-spinner
+                    text="Loading key-value tables..."
+                    [isOverlay]="false"
+                />
+            </div>
+        }
     </section>
 </div>

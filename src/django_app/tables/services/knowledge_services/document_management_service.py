@@ -49,21 +49,43 @@ class DocumentManagementService:
             FileSizeExceededException: If file size exceeds limit
             InvalidFileTypeException: If file type is not allowed
         """
-        file_name = uploaded_file.name
-        file_size = uploaded_file.size
+        return DocumentManagementService.validate_file_metadata(
+            uploaded_file.name, uploaded_file.size
+        )
 
+    @staticmethod
+    def validate_file_metadata(file_name: str, file_size: int) -> dict[str, Any]:
+        """Check a file's size and extension against the document upload rules.
+
+        Needs no file bytes, so callers holding only metadata (e.g. storage rows)
+        can pre-screen files before fetching their content.
+
+        Returns:
+            ``{"file_name", "file_size", "file_type"}``.
+
+        Raises:
+            FileSizeExceededException: The size is over ``MAX_UPLOAD_FILE_SIZE``.
+            InvalidFileTypeException: The extension is not in ``ALLOWED_FILE_TYPES``.
+        """
         # Validate file size
         max_file_bytes = default_upload_limits().max_file_bytes
         if file_size > max_file_bytes:
             raise FileSizeExceededException(file_name, max_file_bytes / (1024 * 1024))
 
-        # Extract and validate file extension
-        file_type = file_name.split(".")[-1].lower() if "." in file_name else ""
+        file_type = DocumentManagementService.validate_file_type(file_name)
+        return {"file_name": file_name, "file_size": file_size, "file_type": file_type}
 
+    @staticmethod
+    def validate_file_type(file_name: str) -> str:
+        """Return the file's document type, from its extension.
+
+        Raises:
+            InvalidFileTypeException: The extension is not in ``ALLOWED_FILE_TYPES``.
+        """
+        file_type = file_name.split(".")[-1].lower() if "." in file_name else ""
         if file_type not in ALLOWED_FILE_TYPES:
             raise InvalidFileTypeException(file_name, file_type)
-
-        return {"file_name": file_name, "file_size": file_size, "file_type": file_type}
+        return file_type
 
     @staticmethod
     def validate_files_batch(
@@ -286,6 +308,58 @@ class DocumentManagementService:
         # Collection status will be updated automatically by DocumentMetadata.save()
 
         return created_documents
+
+    @staticmethod
+    @transaction.atomic
+    def upload_new_files_batch(
+        collection_id: int, uploaded_files: list[UploadedFile]
+    ) -> tuple[list[DocumentMetadata], list[UploadedFile]]:
+        """Upload the files the collection does not already hold, skipping the rest.
+
+        A file is a duplicate when the collection already has a document with the
+        same file name and size, or when an earlier file in the same batch has
+        them. The collection row is locked (``SELECT ... FOR NO KEY UPDATE``)
+        before the duplicate check, so two concurrent batches into one collection
+        cannot both insert the same file: the second waits and then sees the
+        first's rows.
+
+        Returns:
+            ``(created documents, duplicate files)``. Nothing is written when every
+            file is a duplicate.
+
+        Raises:
+            CollectionNotFoundException: The collection does not exist (or was deleted).
+            DocumentUploadException: The non-duplicate files failed validation.
+        """
+        try:
+            # no_key: serializes imports into this collection without blocking
+            # other transactions inserting rows that reference it by FK.
+            collection = SourceCollection.objects.select_for_update(no_key=True).get(
+                collection_id=collection_id
+            )
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
+
+        taken_name_sizes = set(collection.documents.values_list("file_name", "file_size"))
+        new_files: list[UploadedFile] = []
+        duplicate_files: list[UploadedFile] = []
+        for uploaded_file in uploaded_files:
+            name_size = (uploaded_file.name, uploaded_file.size)
+            if name_size in taken_name_sizes:
+                duplicate_files.append(uploaded_file)
+            else:
+                new_files.append(uploaded_file)
+                taken_name_sizes.add(name_size)
+
+        if not new_files:
+            return [], duplicate_files
+
+        # Runs as a savepoint inside this transaction, so the lock is held
+        # until every document is written.
+        created_documents = DocumentManagementService.upload_files_batch(
+            collection_id=collection_id, uploaded_files=new_files
+        )
+        return created_documents, duplicate_files
 
     @staticmethod
     @transaction.atomic

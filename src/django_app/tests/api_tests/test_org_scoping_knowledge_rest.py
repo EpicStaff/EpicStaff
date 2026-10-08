@@ -1,7 +1,14 @@
+from unittest.mock import patch
+
 import pytest
+from django.urls import Resolver404, resolve, reverse
 from rest_framework.test import APIClient
 
-from tables.models import SourceCollection, DocumentMetadata
+from rbac.models.enums import Permission, ResourceType
+from rbac.models.role import RolePermission
+from tables.models import SourceCollection, DocumentMetadata, StorageFile
+from tables.services.storage_service.manager import StorageManager
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import BaseRagType, GraphRag, NaiveRag
 from rbac.models import Organization, OrganizationUser, Role
@@ -194,3 +201,176 @@ def test_process_rag_indexing_denied_for_member(client_member, org_a):
         format="json",
     )
     assert resp.status_code == 403  # indexing requires UPDATE; Member is READ only
+
+
+# ---- Import from storage ----
+
+
+@pytest.fixture
+def storage_manager():
+    manager = StorageManager(InMemoryStorageBackend(organization_prefix=""))
+    with patch(
+        "tables.views.knowledge_views.document_management_views.get_storage_manager",
+        return_value=manager,
+    ):
+        yield manager
+
+
+def _stored_file(storage_manager, org, path, content=b"content"):
+    seed_file(storage_manager._backend, org.id, path, content)
+    return StorageFile.objects.get(org=org, path=path)
+
+
+def _import(client, collection, storage_file_ids):
+    return client.post(
+        f"/api/documents/source-collection/{collection.collection_id}/from-storage/",
+        {"storage_file_ids": storage_file_ids},
+        format="json",
+    )
+
+
+def test_import_from_storage_has_only_the_contract_url():
+    match = resolve("/api/documents/source-collection/7/from-storage/")
+    assert match.url_name == "document-import-from-storage"
+    assert match.kwargs == {"collection_id": "7"}
+    assert reverse("document-import-from-storage", args=[7]) == (
+        "/api/documents/source-collection/7/from-storage/"
+    )
+
+    for unintended in (
+        "/api/documents/source-collections/7/from-storage/",
+        "/api/source-collections/7/from-storage/",
+    ):
+        with pytest.raises(Resolver404):
+            resolve(unintended)
+
+
+def _client_with_grants(django_user_model, org, email, grants):
+    role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
+    for resource_type, permissions in grants.items():
+        RolePermission.objects.create(
+            role=role, resource_type=resource_type, permissions=int(permissions)
+        )
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return _client(user, org)
+
+
+@pytest.mark.django_db
+def test_import_from_storage_cross_org_collection_404(client_admin, storage_manager, org_a, org_b):
+    theirs = _collection(org_b, "theirs")
+    mine = _stored_file(storage_manager, org_a, "mine.txt")
+
+    resp = _import(client_admin, theirs, [mine.id])
+
+    assert resp.status_code == 404
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_cross_org_storage_file_404(
+    client_admin, storage_manager, org_a, org_b
+):
+    coll = _collection(org_a, "mine")
+    mine = _stored_file(storage_manager, org_a, "mine.txt")
+    theirs = _stored_file(storage_manager, org_b, "theirs.txt")
+
+    resp = _import(client_admin, coll, [mine.id, theirs.id])
+
+    assert resp.status_code == 404
+    # The generic envelope, identical to a missing collection: no id is named.
+    assert resp.data == {"status_code": 404, "code": "not_found", "message": "Not found."}
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_cross_org_folder_404(client_admin, storage_manager, org_a, org_b):
+    coll = _collection(org_a, "mine")
+    _stored_file(storage_manager, org_b, "shared/theirs.txt")
+    their_folder = StorageFile.objects.get(org=org_b, path="shared/")
+
+    resp = _import(client_admin, coll, [their_folder.id])
+
+    assert resp.status_code == 404
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_explicit_system_file_404(client_admin, storage_manager, org_a):
+    coll = _collection(org_a, "mine")
+    system_file = _stored_file(storage_manager, org_a, "session-output.txt")
+    StorageFile.objects.filter(id=system_file.id).update(is_system=True)
+
+    resp = _import(client_admin, coll, [system_file.id])
+
+    assert resp.status_code == 404
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_denied_without_knowledge_create(client_member, storage_manager, org_a):
+    coll = _collection(org_a, "mine")
+    stored = _stored_file(storage_manager, org_a, "mine.txt")
+
+    resp = _import(client_member, coll, [stored.id])
+
+    assert resp.status_code == 403
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_denied_without_files_read(
+    django_user_model, storage_manager, org_a
+):
+    client = _client_with_grants(
+        django_user_model,
+        org_a,
+        "ks-create-only@example.com",
+        {ResourceType.KNOWLEDGE_SOURCES: Permission.CREATE | Permission.READ},
+    )
+    coll = _collection(org_a, "mine")
+    stored = _stored_file(storage_manager, org_a, "mine.txt")
+
+    resp = _import(client, coll, [stored.id])
+
+    assert resp.status_code == 403
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_denied_with_files_read_only(
+    django_user_model, storage_manager, org_a
+):
+    client = _client_with_grants(
+        django_user_model,
+        org_a,
+        "files-read-only@example.com",
+        {ResourceType.FILES: Permission.READ, ResourceType.KNOWLEDGE_SOURCES: Permission.READ},
+    )
+    coll = _collection(org_a, "mine")
+    stored = _stored_file(storage_manager, org_a, "mine.txt")
+
+    resp = _import(client, coll, [stored.id])
+
+    assert resp.status_code == 403
+    assert not DocumentMetadata.objects.exists()
+
+
+@pytest.mark.django_db
+def test_import_from_storage_allowed_with_both_grants(django_user_model, storage_manager, org_a):
+    client = _client_with_grants(
+        django_user_model,
+        org_a,
+        "ks-create-files-read@example.com",
+        {
+            ResourceType.FILES: Permission.READ,
+            ResourceType.KNOWLEDGE_SOURCES: Permission.CREATE | Permission.READ,
+        },
+    )
+    coll = _collection(org_a, "mine")
+    stored = _stored_file(storage_manager, org_a, "mine.txt")
+
+    resp = _import(client, coll, [stored.id])
+
+    assert resp.status_code == 201, resp.data
+    assert DocumentMetadata.objects.filter(source_collection=coll).count() == 1

@@ -15,6 +15,40 @@ export interface CopyDocumentsResponse {
     documents: CollectionDocument[];
 }
 
+export interface ImportFromStorageRequest {
+    /** Storage file and/or folder ids, exactly as dragged — the server expands folders. */
+    storage_file_ids: number[];
+}
+
+export type StorageImportSkipReason = 'unsupported_type' | 'too_large' | 'duplicate';
+
+export interface StorageImportSkippedFile {
+    storage_file_id: number;
+    path: string;
+    reason: StorageImportSkipReason;
+}
+
+/** 201 body of `POST documents/source-collection/{id}/from-storage/`. */
+export interface ImportFromStorageResponse {
+    message: string;
+    documents: CollectionDocument[];
+    skipped: StorageImportSkippedFile[];
+}
+
+/** 400 body of `POST documents/source-collection/{id}/from-storage/`. */
+export interface ImportFromStorageErrorResponse {
+    error: string;
+    skipped?: StorageImportSkippedFile[];
+}
+
+/** The part of a storage item the knowledge import needs; structurally matches files' `StorageItem`. */
+export interface StorageImportCandidate {
+    id?: number | null;
+    name: string;
+    type: 'file' | 'folder';
+    size?: number;
+}
+
 export type FileType = (typeof FILE_TYPES)[number];
 
 export interface CollectionDocument {

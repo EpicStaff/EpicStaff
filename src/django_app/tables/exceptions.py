@@ -289,6 +289,34 @@ class InvalidCollectionIdException(DocumentUploadException):
         )
 
 
+class StorageFilesNotFoundException(CustomAPIExeption):
+    """Raised when a requested storage file is missing, in another org, or a system file.
+
+    Deliberately carries no ids: naming the offending id would reveal which
+    ids exist in other organizations.
+    """
+
+    status_code = 404
+    default_detail = "Not found."
+    default_code = "not_found"
+
+
+class StorageImportLimitExceededException(DocumentUploadException):
+    """Raised when a storage import selects more files or bytes than one upload allows."""
+
+    status_code = 400
+
+
+class NothingToImportException(DocumentUploadException):
+    """Raised when every selected storage file was skipped."""
+
+    status_code = 400
+
+    def __init__(self, skipped: list):
+        self.skipped = skipped
+        super().__init__("None of the selected storage files can be imported")
+
+
 class InvalidFieldType(CustomAPIExeption):
     """Raised when a field has invalid type"""
 

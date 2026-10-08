@@ -6,6 +6,7 @@ from tables.services.storage_service.dataclasses import (
     FolderInfo,
 )
 from tables.services.storage_service.manager import StorageManager
+from tests.storage_tests.in_memory_backend import seed_file
 
 
 @pytest.fixture(autouse=True)
@@ -507,3 +508,31 @@ class TestStorageIdExposure:
     def test_list_tree_root_node_id_is_none(self, db_manager, org, org_user):
         root, _ = db_manager.list_tree(org.id, "docs")
         assert root.id is None
+
+
+@pytest.mark.django_db
+class TestObjectSize:
+    def test_returns_the_backend_size_even_when_the_index_has_none(self, fake_backend, org):
+        manager = StorageManager(fake_backend)
+        seed_file(fake_backend, org.id, "copied/report.txt", b"twelve bytes")
+        StorageFile.objects.filter(org=org, path="copied/report.txt").update(size=None)
+
+        assert manager.object_size(org.id, "copied/report.txt") == len(b"twelve bytes")
+
+    def test_missing_object_raises_file_not_found(self, fake_backend, org):
+        with pytest.raises(FileNotFoundError):
+            StorageManager(fake_backend).object_size(org.id, "nowhere.txt")
+
+    def test_object_under_another_orgs_prefix_is_not_found(self, fake_backend, org, second_org):
+        manager = StorageManager(fake_backend)
+        seed_file(fake_backend, second_org.id, "shared/report.txt", b"theirs")
+
+        with pytest.raises(FileNotFoundError):
+            manager.object_size(org.id, "shared/report.txt")
+
+    def test_folder_raises_file_not_found(self, fake_backend, org):
+        manager = StorageManager(fake_backend)
+        seed_file(fake_backend, org.id, "docs/a.txt", b"a")
+
+        with pytest.raises(FileNotFoundError):
+            manager.object_size(org.id, "docs")

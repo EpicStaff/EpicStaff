@@ -7,7 +7,7 @@
                 message="Check your connection and try again."
                 (retry)="facade.loadTree()"
             />
-        } @else if (facade.isLoading()) {
+        } @else if (facade.isInitialLoading()) {
             <div class="storage-page__loading">
                 <app-spinner
                     [text]="'Loading storage...'"
@@ -24,6 +24,8 @@
             >
                 <app-storage-tree
                     [items]="filteredTreeData()"
+                    [loadedItems]="facade.treeData()"
+                    [enableKnowledgeImport]="true"
                     (fileSelected)="onFileSelect($event)"
                     (folderSelected)="onFolderSelect($event)"
                     (folderToggled)="facade.onFolderToggle($event)"
