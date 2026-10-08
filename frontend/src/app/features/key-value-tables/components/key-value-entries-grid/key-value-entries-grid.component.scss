@@ -19,7 +19,6 @@
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        flex-wrap: wrap;
     }
 
     &__title {
@@ -32,8 +31,10 @@
         white-space: nowrap;
     }
 
+    // Never shrinks: a long table name gives way and ends in an ellipsis instead.
     &__actions-bar {
         display: flex;
+        flex-shrink: 0;
         align-items: center;
         gap: 12px;
         margin-left: auto;

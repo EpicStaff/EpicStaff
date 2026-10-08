@@ -33,8 +33,16 @@
                 type="button"
                 class="table-list__select"
                 (click)="selected.emit(table)"
+                (mouseenter)="showFullName(nameElement, table.name)"
+                (mouseleave)="hideFullName()"
+                (focus)="showFullName(nameElement, table.name)"
+                (blur)="hideFullName()"
             >
-                <span class="table-list__name">{{ table.name }}</span>
+                <span
+                    #nameElement
+                    class="table-list__name"
+                    >{{ table.name }}</span
+                >
                 <span class="table-list__count">{{ table.entry_count }} entries</span>
             </button>
             @if (canRename() || canDelete()) {
@@ -62,3 +70,18 @@
         <li class="table-list__empty">{{ emptyMessage() }}</li>
     }
 </ul>
+@if (truncatedName(); as truncated) {
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="truncated.element"
+        [cdkConnectedOverlayOpen]="true"
+        [cdkConnectedOverlayPositions]="namePositions"
+    >
+        <div
+            class="table-list__full-name"
+            role="tooltip"
+        >
+            {{ truncated.name }}
+        </div>
+    </ng-template>
+}
