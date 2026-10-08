@@ -1943,6 +1943,20 @@ def test_get_node_trigger_never_exposes_test_payload(org_a, mock_telegram_servic
     assert "private@example.com" not in json.dumps(result, default=str)
 
 
+@pytest.mark.django_db
+def test_get_node_does_not_expose_node_uuid(org_a):
+    from tables.models.graph_models import FileExtractorNode
+    from tables.services.flow_assistant import get_node
+
+    org_graph = Graph.objects.create(name="Uuid Flow", org=org_a)
+    node = FileExtractorNode.objects.create(graph=org_graph, node_name="extract")
+
+    result = get_node(org_graph.pk, str(node.pk))
+
+    assert "uuid" not in result["config"]
+    assert str(node.uuid) not in json.dumps(result, default=str)
+
+
 # ── Fix 17: CDT serialization + pre/post python summaries ────────────────────
 
 

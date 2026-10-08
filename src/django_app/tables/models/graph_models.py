@@ -14,10 +14,12 @@ from tables.models.base_models import (
     BaseGlobalNode,
     BaseGraphEntity,
     ContentHashMixin,
+    NodeIdentityMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
     TestPayloadMixin,
     TimestampMixin,
+    node_uuid_unique_constraint,
     soft_delete_consistency_constraint,
 )
 from tables.models.knowledge_models.collection_models import BaseRagType
@@ -138,7 +140,7 @@ class CrewNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class PythonNode(BaseNode, SoftDeleteFields):
+class PythonNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
@@ -147,7 +149,10 @@ class PythonNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
     def generate_hash(self):
         """
@@ -156,6 +161,7 @@ class PythonNode(BaseNode, SoftDeleteFields):
 
         excluded_fields = [
             "id",
+            "uuid",
             "created_at",
             "updated_at",
             "content_hash",
@@ -177,7 +183,7 @@ class PythonNode(BaseNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class KnowledgeNode(BaseNode, SoftDeleteFields):
+class KnowledgeNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="knowledge_node_list")
     source_collection = models.ForeignKey(
         "SourceCollection", on_delete=models.SET_NULL, null=True, blank=True
@@ -204,10 +210,13 @@ class KnowledgeNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
-class FileExtractorNode(BaseNode, SoftDeleteFields):
+class FileExtractorNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
@@ -215,10 +224,13 @@ class FileExtractorNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
-class KeyValueNode(BaseNode, SoftDeleteFields):
+class KeyValueNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     class Mode(models.TextChoices):
         READ = "read"
         WRITE = "write"
@@ -240,10 +252,13 @@ class KeyValueNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
-class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
+class AudioTranscriptionNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )
@@ -251,10 +266,13 @@ class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
-class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class EndNode(BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields):
     # TODO: can be OneToOne field
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="end_node")
     output_map = models.JSONField()
@@ -268,6 +286,7 @@ class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
             models.UniqueConstraint(fields=["graph"], name="unique_graph_end_node"),
         ]
 
@@ -284,7 +303,7 @@ class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         super().save(*args, **kwargs)
 
 
-class SubGraphNode(BaseNode, SoftDeleteFields):
+class SubGraphNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="subgraph_node_list")
     subgraph = models.ForeignKey(
         "Graph",
@@ -296,7 +315,10 @@ class SubGraphNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
 class Edge(BaseGraphEntity, SoftDeleteFields):
@@ -391,7 +413,7 @@ class GraphSessionMessage(models.Model):
         ]
 
 
-class StartNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class StartNode(BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="start_node_list")
     variables = models.JSONField(default=dict)
 
@@ -404,11 +426,12 @@ class StartNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
             models.UniqueConstraint(fields=["graph"], name="unique_graph_start_node"),
         ]
 
 
-class DecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class DecisionTableNode(BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="decision_table_node_list"
     )
@@ -419,10 +442,13 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
     def generate_hash(self):
-        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+        excluded_fields = ["id", "uuid", "created_at", "updated_at", "content_hash", "metadata"]
         data = {
             f.name: str(getattr(self, f.name))
             for f in self._meta.fields
@@ -592,7 +618,9 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
         ]
 
 
-class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
+class WebhookTriggerNode(
+    BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields
+):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -608,7 +636,10 @@ class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, Soft
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
     def generate_hash(self):
         """
@@ -617,6 +648,7 @@ class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, Soft
 
         excluded_fields = [
             "id",
+            "uuid",
             "created_at",
             "updated_at",
             "content_hash",
@@ -638,7 +670,9 @@ class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, Soft
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
+class TelegramTriggerNode(
+    BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields
+):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -660,11 +694,15 @@ class TelegramTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, Sof
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
     def generate_hash(self):
         excluded_fields = [
             "id",
+            "uuid",
             "created_at",
             "updated_at",
             "content_hash",
@@ -703,7 +741,7 @@ class TelegramTriggerNodeField(ContentHashMixin, SoftDeleteFields):
         ]
 
 
-class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields):
     class RunMode(models.TextChoices):
         ONCE = "once", "Once"
         REPEAT = "repeat", "Repeat"
@@ -743,11 +781,15 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
     def generate_hash(self):
         excluded_fields = [
             "id",
+            "uuid",
             "created_at",
             "updated_at",
             "content_hash",
@@ -764,7 +806,9 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class ClassificationDecisionTableNode(
+    BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields
+):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -830,6 +874,7 @@ class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDelet
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
             models.UniqueConstraint(
                 fields=["graph", "node_name"],
                 name="unique_graph_node_name_for_classification_dt_node",
@@ -929,14 +974,17 @@ class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
                 )
 
 
-class GraphNote(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class GraphNote(BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="graph_note_list")
     content = models.TextField()
 
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
 class GraphVersion(SoftDeleteMixin):
@@ -1058,7 +1106,7 @@ class SessionStorageFile(models.Model):
         ]
 
 
-class TaskNode(BaseNode, SoftDeleteFields):
+class TaskNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -1098,10 +1146,13 @@ class TaskNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
-class AgentNode(BaseNode, SoftDeleteFields):
+class AgentNode(BaseNode, NodeIdentityMixin, SoftDeleteFields):
     """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
 
     graph = models.ForeignKey(
@@ -1129,7 +1180,10 @@ class AgentNode(BaseNode, SoftDeleteFields):
     class Meta:
         default_manager_name = "objects"
         base_manager_name = "all_objects"
-        constraints = [soft_delete_consistency_constraint()]
+        constraints = [
+            soft_delete_consistency_constraint(),
+            node_uuid_unique_constraint(),
+        ]
 
 
 class AgentNodeTask(TimestampMixin, SoftDeleteFields):

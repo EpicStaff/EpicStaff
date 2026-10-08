@@ -4,9 +4,11 @@ import time
 from abc import abstractmethod
 from enum import Enum
 from typing import Self
+from uuid import uuid4
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.postgres.functions import RandomUUID
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
@@ -206,6 +208,40 @@ def soft_delete_consistency_constraint() -> models.CheckConstraint:
     )
 
 
+def node_uuid_unique_constraint() -> models.UniqueConstraint:
+    """
+    Reject two active nodes with the same uuid in one graph.
+
+    Call it in each concrete node model's own Meta.constraints (see
+    soft_delete_consistency_constraint). The columns are expressions, not
+    `fields=`: DRF would derive a UniqueTogetherValidator from `fields=` that
+    fails on partial updates (it reads is_soft_deleted from the request). So no
+    serializer guards this rule; code that accepts a client uuid must check it
+    against every node table of the graph.
+    """
+    return models.UniqueConstraint(
+        models.F("graph"),
+        models.F("uuid"),
+        condition=models.Q(is_soft_deleted=False),
+        name="%(app_label)s_%(class)s_graph_uuid_unique",
+    )
+
+
+class NodeIdentityMixin(models.Model):
+    """
+    Stable identity of a flow node; unlike the primary key it survives a
+    restore or import. Not part of content_hash.
+
+    `default` sets the uuid for every ORM insert, `db_default` for inserts that
+    skip the column (raw SQL, an old release running during a deploy).
+    """
+
+    uuid = models.UUIDField(default=uuid4, db_default=RandomUUID(), editable=False)
+
+    class Meta:
+        abstract = True
+
+
 class SoftDeleteFields(models.Model):
     """
     Only the fields required for soft deletion. No delete() override —
@@ -302,7 +338,7 @@ class ContentHashMixin(models.Model):
         Generates a SHA-256 hash.
         """
 
-        excluded_fields = ["id", "created_at", "updated_at", "metadata"]
+        excluded_fields = ["id", "uuid", "created_at", "updated_at", "metadata"]
 
         data = {
             f.name: str(getattr(self, f.name))
