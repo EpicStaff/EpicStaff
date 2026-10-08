@@ -13,6 +13,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { DragDropAreaComponent, FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
+import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
 
@@ -22,8 +23,6 @@ import { StorageContextActionEvent, StorageTreeFacade } from '../../../../servic
 import { filterStorageItems } from '../../../../utils/storage-file.utils';
 import { StoragePreviewComponent } from './components/storage-preview/storage-preview.component';
 import { StorageTreeComponent } from './components/storage-tree/storage-tree.component';
-
-const SIDEBAR_STORAGE_KEY = 'files';
 
 @Component({
     selector: 'app-storage-page',
@@ -55,8 +54,8 @@ export class StoragePageComponent {
 
     readonly showSidebar = signal<boolean>(true);
 
-    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
-    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+    protected readonly sidebarStorageKey = STORAGE_SIDEBAR_WIDTH_KEY;
+    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(STORAGE_SIDEBAR_WIDTH_KEY);
 
     protected readonly sidebarTargetElement = computed(() => this.sidebarEl()?.nativeElement);
 
